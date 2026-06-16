@@ -14,17 +14,19 @@ The current scaffold is a functional hello world. It uses a fixture game rather 
 
 ```sh
 just install
+just db-up
 just ci
 just hello
 ```
 
-`just hello` runs the full suite:
+`just hello` runs the full suite against Postgres-backed Itotori state:
 
 1. Kaifuu extracts `fixtures/hello-game` into a `BridgeBundle`.
 2. Itotori imports the bridge, creates a fake `ja-JP -> en-US` draft, and exports `PatchExport`.
 3. Kaifuu patches the fixture game, creates a `.kaifuu` delta package, and applies it.
 4. Utsushi traces, captures, and smoke-validates the patched game.
-5. Itotori ingests the runtime report and writes a final summary.
+5. Itotori ingests the runtime report and writes dashboard-readable status to database tables.
+6. The Itotori and Utsushi dashboards read the hello-world status through an API backed by those tables.
 
 ## Project Layout
 
@@ -34,6 +36,7 @@ apps/
   runtime-web-review/      # Minimal browser review shell
 packages/
   localization-bridge-schema/
+  itotori-db/
   test-fixtures/
 crates/
   kaifuu-*/

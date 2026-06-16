@@ -6,6 +6,7 @@ Itotori is a monorepo because the shared contracts are the hard part. The three 
 
 - **Localization Bridge Schema** is neutral and lives under `packages/localization-bridge-schema`.
 - **Itotori** consumes bridge data, produces draft translations and patch exports, and ingests runtime evidence.
+- **Itotori DB** owns migrations, Drizzle ORM schema, repositories, and dashboard read models.
 - **Kaifuu** consumes game files and patch exports, then emits bridge bundles, patch results, and `.kaifuu` delta packages.
 - **Utsushi** consumes patched game directories and emits runtime traces, captures, and smoke reports.
 

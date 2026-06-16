@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { assertBridgeBundle, assertPatchExport, assertRuntimeVerificationReport } from "../src/index.js";
+import {
+  assertBridgeBundle,
+  assertPatchExport,
+  assertRuntimeVerificationReport,
+} from "../src/index.js";
 
 describe("localization bridge schema guards", () => {
   it("accepts minimal valid bridge bundles", () => {

@@ -1,5 +1,5 @@
 {
-  "name": "@itotori/localization-bridge-schema",
+  "name": "@itotori/db",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -14,5 +14,14 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@itotori/localization-bridge-schema": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.21.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0",
+    "vitest": "^4.1.9"
   }
 }

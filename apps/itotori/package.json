@@ -3,18 +3,21 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "@itotori/localization-bridge-schema": "workspace:*",
-    "vite": "^8.0.16",
-    "typescript": "^6.0.3"
-  },
-  "devDependencies": {
-    "vitest": "^4.1.9"
-  },
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "build": "tsc -p tsconfig.json && vite build --outDir web-dist"
+  },
+  "dependencies": {
+    "@itotori/db": "workspace:*",
+    "@itotori/localization-bridge-schema": "workspace:*",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  },
+  "devDependencies": {
+    "jsdom": "^29.1.1",
+    "msw": "^2.14.6",
+    "vitest": "^4.1.9"
   }
 }

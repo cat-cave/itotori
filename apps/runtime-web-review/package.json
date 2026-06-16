@@ -3,16 +3,18 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "dependencies": {
-    "vite": "^8.0.16",
-    "typescript": "^6.0.3"
-  },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "build": "vite build"
   },
+  "dependencies": {
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16"
+  },
   "devDependencies": {
+    "jsdom": "^29.1.1",
+    "msw": "^2.14.6",
     "vitest": "^4.1.9"
   }
 }

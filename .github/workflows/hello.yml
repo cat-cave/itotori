@@ -8,6 +8,22 @@ on:
 jobs:
   hello:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: itotori
+          POSTGRES_PASSWORD: itotori
+          POSTGRES_DB: itotori
+        ports:
+          - 55433:5432
+        options: >-
+          --health-cmd "pg_isready -U itotori -d itotori"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://itotori:itotori@127.0.0.1:55433/itotori
     steps:
       - uses: actions/checkout@v5
       - uses: pnpm/action-setup@v4

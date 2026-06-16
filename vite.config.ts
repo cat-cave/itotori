@@ -19,13 +19,18 @@ export default defineConfig({
         command: "vp run -r build",
         dependsOn: ["schema:check"],
       },
+      "db:migrate:test": {
+        command: "node apps/itotori/dist/cli.js db-migrate",
+        dependsOn: ["ts:build"],
+        cache: false,
+      },
       "rust:check": {
         command: "cargo check --workspace",
       },
       "rust:test": {
         command: "cargo test --workspace",
       },
-      "hello": {
+      hello: {
         command: "just hello",
         dependsOn: ["ts:build", "rust:check"],
         cache: false,

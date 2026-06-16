@@ -115,7 +115,9 @@ export function assertPatchExport(value: unknown): asserts value is PatchExport 
   assertArray(patch.entries, "PatchExport.entries");
 }
 
-export function assertRuntimeVerificationReport(value: unknown): asserts value is RuntimeVerificationReport {
+export function assertRuntimeVerificationReport(
+  value: unknown,
+): asserts value is RuntimeVerificationReport {
   const report = asRecord(value, "RuntimeVerificationReport");
   assertEqual(report.schemaVersion, "0.1.0", "RuntimeVerificationReport.schemaVersion");
   assertString(report.runtimeReportId, "RuntimeVerificationReport.runtimeReportId");

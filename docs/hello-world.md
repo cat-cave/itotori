@@ -4,6 +4,7 @@ The hello world is a full fixture localization loop.
 
 ```sh
 just install
+just db-up
 just hello
 ```
 
@@ -14,6 +15,7 @@ The command runs:
 3. `kaifuu patch`, `diff`, `apply`, and `verify`.
 4. `utsushi trace`, `capture`, and `smoke`.
 5. `itotori ingest-runtime` and final summary generation.
+6. `itotori dashboard-status` reads the dashboard state from Postgres.
 
 Expected final line:
 

@@ -1,5 +1,11 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import {
+  HelloWorldRepository,
+  createDatabaseContext,
+  databaseUrlFromEnv,
+  migrate,
+} from "@itotori/db";
+import {
   type BridgeBundle,
   type PatchExport,
   type RuntimeVerificationReport,
@@ -20,29 +26,46 @@ type ProjectState = {
 const args = process.argv.slice(2);
 const command = args[0];
 
-try {
+main().catch((error: unknown) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});
+
+async function main(): Promise<void> {
   switch (command) {
+    case "db-migrate":
+      await migrate(databaseUrlFromEnv());
+      break;
+    case "db-reset":
+      await withRepository((repo) => repo.reset());
+      break;
+    case "dashboard-status":
+      await runDashboardStatus();
+      break;
     case "import":
-      runImport();
+      await runImport();
       break;
     case "draft":
-      runDraft();
+      await runDraft();
       break;
     case "export-patch":
-      runExportPatch();
+      await runExportPatch();
       break;
     case "ingest-runtime":
-      runIngestRuntime();
+      await runIngestRuntime();
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
   }
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
 }
 
-function runImport(): void {
+async function runDashboardStatus(): Promise<void> {
+  const outputPath = requiredFlag("--output");
+  const status = await withRepository((repo) => repo.getStatus());
+  writeJson(outputPath, status);
+}
+
+async function runImport(): Promise<void> {
   const bridgePath = requiredFlag("--bridge");
   const projectPath = requiredFlag("--project");
   const bridge = readJson(bridgePath);
@@ -55,9 +78,10 @@ function runImport(): void {
     drafts: {},
   };
   writeJson(projectPath, project);
+  await withRepository((repo) => repo.saveImportedProject(project));
 }
 
-function runDraft(): void {
+async function runDraft(): Promise<void> {
   const projectPath = requiredFlag("--project");
   const locale = requiredFlag("--locale");
   const project = readProject(projectPath);
@@ -66,9 +90,10 @@ function runDraft(): void {
     project.drafts[unit.bridgeUnitId] = fakeTranslate(unit.sourceText);
   }
   writeJson(projectPath, project);
+  await withRepository((repo) => repo.saveDrafts(project));
 }
 
-function runExportPatch(): void {
+async function runExportPatch(): Promise<void> {
   const projectPath = requiredFlag("--project");
   const outputPath = requiredFlag("--output");
   const project = readProject(projectPath);
@@ -107,9 +132,10 @@ function runExportPatch(): void {
   project.patchExport = patchExport;
   writeJson(projectPath, project);
   writeJson(outputPath, patchExport);
+  await withRepository((repo) => repo.savePatchExport(project, patchExport));
 }
 
-function runIngestRuntime(): void {
+async function runIngestRuntime(): Promise<void> {
   const projectPath = requiredFlag("--project");
   const runtimeReportPath = requiredFlag("--runtime-report");
   const outputPath = requiredFlag("--output");
@@ -117,6 +143,9 @@ function runIngestRuntime(): void {
   const report = readJson(runtimeReportPath);
   assertRuntimeVerificationReport(report);
   project.runtimeReport = report;
+  const dashboard = await withRepository((repo) =>
+    repo.saveRuntimeReport(project, report, id("patch-result", 1)),
+  );
   writeJson(projectPath, project);
   writeJson(outputPath, {
     status: "hello_world_passed",
@@ -125,6 +154,7 @@ function runIngestRuntime(): void {
     patchExportId: project.patchExport?.patchExportId,
     patchResultId: id("patch-result", 1),
     runtimeReportId: report.runtimeReportId,
+    dashboard,
   });
 }
 
@@ -154,6 +184,15 @@ function readJson(path: string): unknown {
 
 function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+async function withRepository<T>(fn: (repository: HelloWorldRepository) => Promise<T>): Promise<T> {
+  const context = createDatabaseContext();
+  try {
+    return await fn(new HelloWorldRepository(context.db));
+  } finally {
+    await context.close();
+  }
 }
 
 function id(kind: string, n: number): string {
