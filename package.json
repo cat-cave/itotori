@@ -1,0 +1,21 @@
+{
+  "name": "itotori",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.17.1",
+  "engines": {
+    "node": ">=24.14.0",
+    "pnpm": ">=10.17.1"
+  },
+  "scripts": {
+    "affected": "node scripts/affected.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.16",
+    "vite-plus": "^0.1.24",
+    "vitest": "^4.1.9"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "gameId": "hello-fixture",
+  "title": "Hello Fixture",
+  "sourceLocale": "ja-JP",
+  "units": [
+    {
+      "sourceUnitKey": "hello.scene.001.line.001",
+      "speaker": "Narrator",
+      "textSurface": "dialogue",
+      "sourceText": "こんにちは、{player}。",
+      "protectedSpans": [
+        {
+          "kind": "placeholder",
+          "raw": "{player}",
+          "start": 6,
+          "end": 14
+        }
+      ]
+    }
+  ]
+}

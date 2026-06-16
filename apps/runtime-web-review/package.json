@@ -1,0 +1,18 @@
+{
+  "name": "@itotori/runtime-web-review",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "vite": "^8.0.16",
+    "typescript": "^6.0.3"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.9"
+  }
+}

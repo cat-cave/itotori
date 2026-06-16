@@ -1,0 +1,19 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/kaifuu-core",
+  "crates/kaifuu-delta",
+  "crates/kaifuu-engine-fixture",
+  "crates/kaifuu-cli",
+  "crates/utsushi-core",
+  "crates/utsushi-fixture",
+  "crates/utsushi-cli",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cat-cave/itotori"
+
+[workspace.dependencies]
+serde_json = "1"

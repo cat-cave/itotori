@@ -1,0 +1,12 @@
+node_modules/
+target/
+dist/
+web-dist/
+.vite/
+.vite-task/
+.turbo/
+.cache/
+.tmp/
+coverage/
+*.log
+fixtures/private-local/
