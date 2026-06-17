@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Write};
@@ -12,6 +12,15 @@ pub const PROFILE_SCHEMA_VERSION: &str = "0.1.0";
 pub const ASSET_INVENTORY_SCHEMA_VERSION: &str = "0.1.0";
 
 pub const BRIDGE_SCHEMA_VERSION_V02: &str = "0.2.0";
+
+pub const SEMANTIC_MISSING_KEY_PROFILE: &str = "kaifuu.missing_capability.key_profile";
+pub const SEMANTIC_MISSING_KEY_MATERIAL: &str = "kaifuu.missing_key_material";
+pub const SEMANTIC_HELPER_UNAVAILABLE: &str = "kaifuu.helper_unavailable";
+pub const SEMANTIC_KEY_VALIDATION_FAILED: &str = "kaifuu.key_validation_failed";
+pub const SEMANTIC_SECRET_REDACTED: &str = "kaifuu.secret_redacted";
+pub const SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED: &str =
+    "kaifuu.protected_executable_unsupported";
+pub const SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED: &str = "kaifuu.unsupported_variant.encrypted";
 
 pub mod contracts;
 
@@ -194,6 +203,8 @@ impl CapabilityReport {
 pub struct AdapterCapabilities {
     pub adapter_id: String,
     pub reports: Vec<CapabilityReport>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub key_requirements: Vec<AdapterKeyRequirementDeclaration>,
 }
 
 impl AdapterCapabilities {
@@ -201,9 +212,19 @@ impl AdapterCapabilities {
         let mut capabilities = Self {
             adapter_id: adapter_id.into(),
             reports,
+            key_requirements: vec![],
         };
         capabilities.normalize();
         capabilities
+    }
+
+    pub fn with_key_requirements(
+        mut self,
+        key_requirements: Vec<AdapterKeyRequirementDeclaration>,
+    ) -> Self {
+        self.key_requirements = key_requirements;
+        self.normalize();
+        self
     }
 
     pub fn normalize(&mut self) {
@@ -214,6 +235,8 @@ impl AdapterCapabilities {
                 report.limitation.clone(),
             )
         });
+        self.key_requirements
+            .sort_by_key(AdapterKeyRequirementDeclaration::sort_key);
     }
 }
 
@@ -314,6 +337,14 @@ pub struct GameProfile {
     pub title: String,
     pub source_locale: String,
     pub engine: EngineProfile,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_fingerprint: Option<SourceFingerprint>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub key_requirements: Vec<KeyRequirement>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub archive_parameters: Vec<ArchiveParameter>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_evidence: Option<HelperEvidence>,
     pub assets: Vec<AssetProfile>,
     pub capabilities: Vec<CapabilityReport>,
     pub requirements: Vec<ProfileRequirement>,
@@ -337,6 +368,12 @@ impl GameProfile {
             )
         });
         self.requirements.sort_by_key(ProfileRequirement::sort_key);
+        self.key_requirements.sort_by_key(KeyRequirement::sort_key);
+        self.archive_parameters
+            .sort_by_key(ArchiveParameter::sort_key);
+        if let Some(helper_evidence) = &mut self.helper_evidence {
+            helper_evidence.normalize();
+        }
     }
 
     pub fn stable_json(&self) -> KaifuuResult<String> {
@@ -377,6 +414,7 @@ pub fn validate_profile_value(value: &Value) -> ProfileValidationResult {
         });
         return profile_validation_result(None, failures, vec![]);
     }
+    add_redaction_failures(&mut failures, value);
 
     let profile_id = required_string_value(&mut failures, value, "profileId");
     validate_schema_version(&mut failures, value);
@@ -384,6 +422,10 @@ pub fn validate_profile_value(value: &Value) -> ProfileValidationResult {
     required_string_value(&mut failures, value, "title");
     validate_locale_field(&mut failures, value, "sourceLocale");
     validate_engine(&mut failures, value.get("engine"));
+    validate_source_fingerprint(&mut failures, value.get("sourceFingerprint"));
+    let key_requirements = validate_key_requirements(&mut failures, value.get("keyRequirements"));
+    validate_archive_parameters(&mut failures, value.get("archiveParameters"));
+    validate_helper_evidence(&mut failures, value.get("helperEvidence"));
     let asset_patching_capabilities = validate_assets(&mut failures, value.get("assets"));
     let profile_capabilities =
         validate_capabilities(&mut failures, value.get("capabilities"), "capabilities");
@@ -399,6 +441,7 @@ pub fn validate_profile_value(value: &Value) -> ProfileValidationResult {
         }
     }
     let requirements = validate_requirements(&mut failures, value.get("requirements"));
+    validate_required_key_requirement_matches(&mut failures, &requirements, &key_requirements);
 
     profile_validation_result(profile_id, failures, requirements)
 }
@@ -473,6 +516,513 @@ fn validate_engine(failures: &mut Vec<ProfileValidationFailure>, engine: Option<
             code: "invalid_engine_version".to_string(),
             field: "engine.engineVersion".to_string(),
             message: "engine.engineVersion must be null or a non-empty string".to_string(),
+        });
+    }
+}
+
+fn add_redaction_failures(failures: &mut Vec<ProfileValidationFailure>, value: &Value) {
+    for finding in validate_secret_redaction_boundary(value) {
+        failures.push(ProfileValidationFailure {
+            code: finding.code,
+            field: finding.field,
+            message: finding.reason,
+        });
+    }
+}
+
+fn validate_source_fingerprint(
+    failures: &mut Vec<ProfileValidationFailure>,
+    source_fingerprint: Option<&Value>,
+) {
+    let Some(source_fingerprint) = source_fingerprint else {
+        return;
+    };
+    let Some(source_fingerprint) = source_fingerprint.as_object() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: "sourceFingerprint".to_string(),
+            message: "sourceFingerprint must be a JSON object".to_string(),
+        });
+        return;
+    };
+
+    if let Some(game_root_hash) = source_fingerprint.get("gameRootHash")
+        && !game_root_hash.is_null()
+    {
+        validate_sha256_ref_value(failures, game_root_hash, "sourceFingerprint.gameRootHash");
+    }
+
+    let Some(engine_evidence) = source_fingerprint.get("engineEvidence") else {
+        failures.push(ProfileValidationFailure {
+            code: "missing_required_field".to_string(),
+            field: "sourceFingerprint.engineEvidence".to_string(),
+            message: "sourceFingerprint.engineEvidence must list local-safe evidence names"
+                .to_string(),
+        });
+        return;
+    };
+    let Some(engine_evidence) = engine_evidence.as_array() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: "sourceFingerprint.engineEvidence".to_string(),
+            message: "sourceFingerprint.engineEvidence must be an array".to_string(),
+        });
+        return;
+    };
+    if engine_evidence.is_empty() {
+        failures.push(ProfileValidationFailure {
+            code: "missing_required_field".to_string(),
+            field: "sourceFingerprint.engineEvidence".to_string(),
+            message: "sourceFingerprint.engineEvidence must not be empty".to_string(),
+        });
+    }
+    for (index, evidence) in engine_evidence.iter().enumerate() {
+        let field = format!("sourceFingerprint.engineEvidence.{index}");
+        let Some(evidence) = evidence.as_str() else {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_field_type".to_string(),
+                field,
+                message: "engine evidence must be a string".to_string(),
+            });
+            continue;
+        };
+        if evidence.trim().is_empty() {
+            failures.push(ProfileValidationFailure {
+                code: "missing_required_field".to_string(),
+                field,
+                message: "engine evidence must not be empty".to_string(),
+            });
+            continue;
+        }
+        validate_relative_path(failures, &field, evidence);
+    }
+}
+
+fn validate_key_requirements(
+    failures: &mut Vec<ProfileValidationFailure>,
+    key_requirements: Option<&Value>,
+) -> Vec<KeyRequirement> {
+    let Some(key_requirements) = key_requirements else {
+        return vec![];
+    };
+    let Some(key_requirements) = key_requirements.as_array() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: "keyRequirements".to_string(),
+            message: "keyRequirements must be an array".to_string(),
+        });
+        return vec![];
+    };
+
+    let mut parsed = Vec::new();
+    let mut seen = BTreeSet::new();
+    for (index, requirement_value) in key_requirements.iter().enumerate() {
+        let field = format!("keyRequirements.{index}");
+        let Some(requirement_object) = requirement_value.as_object() else {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_field_type".to_string(),
+                field,
+                message: "key requirement must be a JSON object".to_string(),
+            });
+            continue;
+        };
+
+        let requirement_id = required_string_value(
+            failures,
+            requirement_value,
+            &format!("{field}.requirementId"),
+        );
+        let secret_ref =
+            required_string_value(failures, requirement_value, &format!("{field}.secretRef"))
+                .and_then(|secret_ref| validate_secret_ref(failures, &field, secret_ref));
+        let kind = validate_enum_string(
+            failures,
+            requirement_value,
+            &format!("{field}.kind"),
+            &[
+                "fixedBytes",
+                "hexBytes",
+                "utf8String",
+                "archivePassword",
+                "rpgMakerAssetKey",
+            ],
+        )
+        .and_then(|kind| {
+            serde_json::from_value::<KeyMaterialKind>(Value::String(kind.clone()))
+                .map_err(|_| kind)
+                .ok()
+        });
+        let bytes = validate_optional_positive_u32(
+            failures,
+            requirement_object.get("bytes"),
+            &format!("{field}.bytes"),
+        );
+        let validation = requirement_object.get("validation").and_then(|validation| {
+            validate_key_validation_proof(failures, validation, &format!("{field}.validation"))
+        });
+
+        if let Some(requirement_id) = requirement_id.as_deref() {
+            if !seen.insert(requirement_id.to_string()) {
+                failures.push(ProfileValidationFailure {
+                    code: "duplicate_key_requirement".to_string(),
+                    field: "keyRequirements".to_string(),
+                    message: format!("key requirement {requirement_id} appears more than once"),
+                });
+            }
+            validate_identifier(failures, &format!("{field}.requirementId"), requirement_id);
+        }
+
+        if matches!(
+            kind,
+            Some(KeyMaterialKind::FixedBytes | KeyMaterialKind::HexBytes)
+        ) && bytes.is_none()
+        {
+            failures.push(ProfileValidationFailure {
+                code: "missing_required_field".to_string(),
+                field: format!("{field}.bytes"),
+                message: "fixed and hex key requirements must declare byte length".to_string(),
+            });
+        }
+
+        if let (Some(requirement_id), Some(secret_ref), Some(kind)) =
+            (requirement_id, secret_ref, kind)
+        {
+            parsed.push(KeyRequirement {
+                requirement_id,
+                secret_ref,
+                kind,
+                bytes,
+                validation,
+            });
+        }
+    }
+    parsed
+}
+
+fn validate_required_key_requirement_matches(
+    failures: &mut Vec<ProfileValidationFailure>,
+    requirements: &[ProfileRequirement],
+    key_requirements: &[KeyRequirement],
+) {
+    let key_requirement_ids = key_requirements
+        .iter()
+        .map(|requirement| requirement.requirement_id.as_str())
+        .collect::<BTreeSet<_>>();
+    for requirement in requirements.iter().filter(|requirement| {
+        requirement.category == RequirementCategory::SecretKey
+            && requirement.status != RequirementStatus::NotRequired
+    }) {
+        if key_requirement_ids.contains(requirement.key.as_str()) {
+            continue;
+        }
+        failures.push(ProfileValidationFailure {
+            code: SemanticErrorCode::MissingKeyProfile.to_string(),
+            field: "keyRequirements".to_string(),
+            message: format!(
+                "required secret key {} must have a matching keyRequirements.requirementId with a valid secretRef",
+                requirement.key
+            ),
+        });
+    }
+}
+
+fn validate_archive_parameters(
+    failures: &mut Vec<ProfileValidationFailure>,
+    archive_parameters: Option<&Value>,
+) -> Vec<ArchiveParameter> {
+    let Some(archive_parameters) = archive_parameters else {
+        return vec![];
+    };
+    let Some(archive_parameters) = archive_parameters.as_array() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: "archiveParameters".to_string(),
+            message: "archiveParameters must be an array".to_string(),
+        });
+        return vec![];
+    };
+
+    let mut parsed = Vec::new();
+    let mut seen = BTreeSet::new();
+    for (index, parameter) in archive_parameters.iter().enumerate() {
+        let field = format!("archiveParameters.{index}");
+        let Some(parameter_object) = parameter.as_object() else {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_field_type".to_string(),
+                field,
+                message: "archive parameter must be a JSON object".to_string(),
+            });
+            continue;
+        };
+        let parameter_id =
+            required_string_value(failures, parameter, &format!("{field}.parameterId"));
+        let name = required_string_value(failures, parameter, &format!("{field}.name"));
+        let kind = validate_enum_string(
+            failures,
+            parameter,
+            &format!("{field}.kind"),
+            &[
+                "archiveFormat",
+                "compression",
+                "cipherScheme",
+                "encoding",
+                "variant",
+                "other",
+            ],
+        )
+        .and_then(|kind| {
+            serde_json::from_value::<ArchiveParameterKind>(Value::String(kind.clone()))
+                .map_err(|_| kind)
+                .ok()
+        });
+        let value = required_string_value(failures, parameter, &format!("{field}.value"));
+        let source = parameter_object
+            .get("source")
+            .and_then(|_| {
+                validate_enum_string(
+                    failures,
+                    parameter,
+                    &format!("{field}.source"),
+                    &["adapterDefault", "detected", "manual", "helperEvidence"],
+                )
+            })
+            .and_then(|source| {
+                serde_json::from_value::<ArchiveParameterSource>(Value::String(source.clone()))
+                    .map_err(|_| source)
+                    .ok()
+            });
+
+        if let Some(parameter_id) = parameter_id.as_deref() {
+            if !seen.insert(parameter_id.to_string()) {
+                failures.push(ProfileValidationFailure {
+                    code: "duplicate_archive_parameter".to_string(),
+                    field: "archiveParameters".to_string(),
+                    message: format!("archive parameter {parameter_id} appears more than once"),
+                });
+            }
+            validate_identifier(failures, &format!("{field}.parameterId"), parameter_id);
+        }
+
+        if let (Some(parameter_id), Some(name), Some(kind), Some(value)) =
+            (parameter_id, name, kind, value)
+        {
+            parsed.push(ArchiveParameter {
+                parameter_id,
+                name,
+                kind,
+                value,
+                source,
+            });
+        }
+    }
+    parsed
+}
+
+fn validate_helper_evidence(
+    failures: &mut Vec<ProfileValidationFailure>,
+    helper_evidence: Option<&Value>,
+) -> Option<HelperEvidence> {
+    let Some(helper_evidence) = helper_evidence else {
+        return None;
+    };
+    let Some(helper_object) = helper_evidence.as_object() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: "helperEvidence".to_string(),
+            message: "helperEvidence must be a JSON object".to_string(),
+        });
+        return None;
+    };
+    let helper_kind = validate_enum_string(
+        failures,
+        helper_evidence,
+        "helperEvidence.helperKind",
+        &[
+            "staticParser",
+            "knownKeyDatabaseImport",
+            "wineLocalWindowsHelper",
+            "remoteWindowsHelper",
+            "manualKeyEntry",
+        ],
+    )
+    .and_then(|helper_kind| {
+        serde_json::from_value::<HelperKind>(Value::String(helper_kind.clone()))
+            .map_err(|_| helper_kind)
+            .ok()
+    });
+    let tool_version =
+        required_string_value(failures, helper_evidence, "helperEvidence.toolVersion");
+    let redacted_log_hash =
+        required_string_value(failures, helper_evidence, "helperEvidence.redactedLogHash")
+            .and_then(|hash| {
+                validate_sha256_ref_string(failures, "helperEvidence.redactedLogHash", hash)
+            });
+    let proof_hashes = validate_optional_proof_hashes(
+        failures,
+        helper_object.get("proofHashes"),
+        "helperEvidence.proofHashes",
+    );
+
+    if let (Some(helper_kind), Some(tool_version), Some(redacted_log_hash)) =
+        (helper_kind, tool_version, redacted_log_hash)
+    {
+        return Some(HelperEvidence {
+            helper_kind,
+            tool_version,
+            redacted_log_hash,
+            proof_hashes,
+        });
+    }
+    None
+}
+
+fn validate_optional_proof_hashes(
+    failures: &mut Vec<ProfileValidationFailure>,
+    proof_hashes: Option<&Value>,
+    field: &str,
+) -> Vec<KeyValidationProof> {
+    let Some(proof_hashes) = proof_hashes else {
+        return vec![];
+    };
+    let Some(proof_hashes) = proof_hashes.as_array() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: field.to_string(),
+            message: "proofHashes must be an array".to_string(),
+        });
+        return vec![];
+    };
+    proof_hashes
+        .iter()
+        .enumerate()
+        .filter_map(|(index, proof)| {
+            validate_key_validation_proof(failures, proof, &format!("{field}.{index}"))
+        })
+        .collect()
+}
+
+fn validate_key_validation_proof(
+    failures: &mut Vec<ProfileValidationFailure>,
+    validation: &Value,
+    field: &str,
+) -> Option<KeyValidationProof> {
+    if !validation.is_object() {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: field.to_string(),
+            message: "key validation proof must be a JSON object".to_string(),
+        });
+        return None;
+    }
+    let method = validate_enum_string(
+        failures,
+        validation,
+        &format!("{field}.method"),
+        &[
+            "decryptHeaderProof",
+            "archiveIndexProof",
+            "knownPlaintextProof",
+            "fixtureRoundTripProof",
+        ],
+    )
+    .and_then(|method| {
+        serde_json::from_value::<KeyValidationMethod>(Value::String(method.clone()))
+            .map_err(|_| method)
+            .ok()
+    });
+    let proof_hash = required_string_value(failures, validation, &format!("{field}.proofHash"))
+        .and_then(|hash| validate_sha256_ref_string(failures, &format!("{field}.proofHash"), hash));
+    if let (Some(method), Some(proof_hash)) = (method, proof_hash) {
+        return Some(KeyValidationProof { method, proof_hash });
+    }
+    None
+}
+
+fn validate_secret_ref(
+    failures: &mut Vec<ProfileValidationFailure>,
+    parent_field: &str,
+    secret_ref: String,
+) -> Option<SecretRef> {
+    match SecretRef::new(secret_ref) {
+        Ok(secret_ref) => Some(secret_ref),
+        Err(message) => {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_secret_ref".to_string(),
+                field: format!("{parent_field}.secretRef"),
+                message,
+            });
+            None
+        }
+    }
+}
+
+fn validate_sha256_ref_value(
+    failures: &mut Vec<ProfileValidationFailure>,
+    value: &Value,
+    field: &str,
+) -> Option<ProofHash> {
+    let Some(hash) = value.as_str() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_proof_hash".to_string(),
+            field: field.to_string(),
+            message: format!("{field} must be a sha256:<64 lowercase hex> string"),
+        });
+        return None;
+    };
+    validate_sha256_ref_string(failures, field, hash.to_string())
+}
+
+fn validate_sha256_ref_string(
+    failures: &mut Vec<ProfileValidationFailure>,
+    field: &str,
+    hash: String,
+) -> Option<ProofHash> {
+    match ProofHash::new(hash) {
+        Ok(hash) => Some(hash),
+        Err(message) => {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_proof_hash".to_string(),
+                field: field.to_string(),
+                message,
+            });
+            None
+        }
+    }
+}
+
+fn validate_optional_positive_u32(
+    failures: &mut Vec<ProfileValidationFailure>,
+    value: Option<&Value>,
+    field: &str,
+) -> Option<u32> {
+    let Some(value) = value else {
+        return None;
+    };
+    let Some(value) = value.as_u64() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: field.to_string(),
+            message: format!("{field} must be a positive integer"),
+        });
+        return None;
+    };
+    if value == 0 || value > u32::MAX as u64 {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_value".to_string(),
+            field: field.to_string(),
+            message: format!("{field} must be a positive 32-bit integer"),
+        });
+        return None;
+    }
+    Some(value as u32)
+}
+
+fn validate_identifier(failures: &mut Vec<ProfileValidationFailure>, field: &str, value: &str) {
+    if value.chars().any(char::is_whitespace) || value.contains('\0') {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_identifier".to_string(),
+            field: field.to_string(),
+            message: format!("{field} must not contain whitespace or null bytes"),
         });
     }
 }
@@ -842,6 +1392,21 @@ fn validate_requirements(
                 message: "missing secret requirements must name a placeholder and never store the secret value".to_string(),
             });
         }
+        if secret
+            && category.as_deref() == Some("secret_key")
+            && status.as_deref() == Some("missing")
+        {
+            failures.push(ProfileValidationFailure {
+                code: SemanticErrorCode::MissingKeyMaterial.to_string(),
+                field: key
+                    .as_deref()
+                    .map(|key| format!("requirements.{key}"))
+                    .unwrap_or_else(|| format!("requirements.{index}")),
+                message: description.clone().unwrap_or_else(|| {
+                    "required local key material could not be resolved".to_string()
+                }),
+            });
+        }
         if !secret && placeholder.is_some() {
             failures.push(ProfileValidationFailure {
                 code: "unexpected_non_secret_placeholder".to_string(),
@@ -990,6 +1555,596 @@ pub struct EngineProfile {
     pub engine_family: String,
     pub engine_version: Option<String>,
     pub detected_variant: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SourceFingerprint {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub game_root_hash: Option<ProofHash>,
+    pub engine_evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyRequirement {
+    pub requirement_id: String,
+    pub secret_ref: SecretRef,
+    pub kind: KeyMaterialKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation: Option<KeyValidationProof>,
+}
+
+impl KeyRequirement {
+    pub fn sort_key(&self) -> (String, String) {
+        (
+            self.requirement_id.clone(),
+            self.secret_ref.as_str().to_string(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyMaterialKind {
+    FixedBytes,
+    HexBytes,
+    Utf8String,
+    ArchivePassword,
+    RpgMakerAssetKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyValidationProof {
+    pub method: KeyValidationMethod,
+    pub proof_hash: ProofHash,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum KeyValidationMethod {
+    DecryptHeaderProof,
+    ArchiveIndexProof,
+    KnownPlaintextProof,
+    FixtureRoundTripProof,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveParameter {
+    pub parameter_id: String,
+    pub name: String,
+    pub kind: ArchiveParameterKind,
+    pub value: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<ArchiveParameterSource>,
+}
+
+impl ArchiveParameter {
+    pub fn sort_key(&self) -> (String, String) {
+        (self.parameter_id.clone(), self.name.clone())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ArchiveParameterKind {
+    ArchiveFormat,
+    Compression,
+    CipherScheme,
+    Encoding,
+    Variant,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ArchiveParameterSource {
+    AdapterDefault,
+    Detected,
+    Manual,
+    HelperEvidence,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperEvidence {
+    pub helper_kind: HelperKind,
+    pub tool_version: String,
+    pub redacted_log_hash: ProofHash,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub proof_hashes: Vec<KeyValidationProof>,
+}
+
+impl HelperEvidence {
+    pub fn normalize(&mut self) {
+        self.proof_hashes.sort_by_key(|proof| {
+            (
+                serde_json::to_string(&proof.method).unwrap_or_default(),
+                proof.proof_hash.as_str().to_string(),
+            )
+        });
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HelperKind {
+    StaticParser,
+    KnownKeyDatabaseImport,
+    WineLocalWindowsHelper,
+    RemoteWindowsHelper,
+    ManualKeyEntry,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdapterKeyRequirementDeclaration {
+    pub requirement_id: String,
+    pub engine_family: String,
+    pub material_kind: KeyMaterialKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub archive_parameters: Vec<ArchiveParameterDeclaration>,
+    pub validation: AdapterKeyValidationDeclaration,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub semantic_errors: Vec<SemanticErrorCode>,
+}
+
+impl AdapterKeyRequirementDeclaration {
+    pub fn sort_key(&self) -> (String, String, String) {
+        (
+            self.engine_family.clone(),
+            self.requirement_id.clone(),
+            serde_json::to_string(&self.material_kind).unwrap_or_default(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveParameterDeclaration {
+    pub parameter_id: String,
+    pub name: String,
+    pub kind: ArchiveParameterKind,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdapterKeyValidationDeclaration {
+    pub method: KeyValidationMethod,
+    pub proof_required: bool,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct SecretRef(String);
+
+impl SecretRef {
+    pub fn new(value: impl Into<String>) -> Result<Self, String> {
+        let value = value.into();
+        if is_valid_secret_ref(&value) {
+            Ok(Self(value))
+        } else {
+            Err("secretRef must use a local secret-ref scheme and must not contain raw key material, local paths, whitespace, parent traversal, or null bytes".to_string())
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for SecretRef {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("SecretRef")
+            .field(&"<secret-ref>")
+            .finish()
+    }
+}
+
+impl Serialize for SecretRef {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for SecretRef {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ProofHash(String);
+
+impl ProofHash {
+    pub fn new(value: impl Into<String>) -> Result<Self, String> {
+        let value = value.into();
+        if is_sha256_ref(&value) {
+            Ok(Self(value))
+        } else {
+            Err("proof hash must be sha256:<64 lowercase hex characters>".to_string())
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for ProofHash {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_tuple("ProofHash").field(&self.0).finish()
+    }
+}
+
+impl Serialize for ProofHash {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for ProofHash {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum SemanticErrorCode {
+    #[serde(rename = "kaifuu.missing_capability.key_profile")]
+    MissingKeyProfile,
+    #[serde(rename = "kaifuu.missing_key_material")]
+    MissingKeyMaterial,
+    #[serde(rename = "kaifuu.helper_unavailable")]
+    HelperUnavailable,
+    #[serde(rename = "kaifuu.key_validation_failed")]
+    KeyValidationFailed,
+    #[serde(rename = "kaifuu.secret_redacted")]
+    SecretRedacted,
+    #[serde(rename = "kaifuu.protected_executable_unsupported")]
+    ProtectedExecutableUnsupported,
+    #[serde(rename = "kaifuu.unsupported_variant.encrypted")]
+    UnsupportedVariantEncrypted,
+}
+
+impl SemanticErrorCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::MissingKeyProfile => SEMANTIC_MISSING_KEY_PROFILE,
+            Self::MissingKeyMaterial => SEMANTIC_MISSING_KEY_MATERIAL,
+            Self::HelperUnavailable => SEMANTIC_HELPER_UNAVAILABLE,
+            Self::KeyValidationFailed => SEMANTIC_KEY_VALIDATION_FAILED,
+            Self::SecretRedacted => SEMANTIC_SECRET_REDACTED,
+            Self::ProtectedExecutableUnsupported => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
+            Self::UnsupportedVariantEncrypted => SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED,
+        }
+    }
+}
+
+impl fmt::Display for SemanticErrorCode {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretRedactionResult {
+    pub value: Value,
+    pub findings: Vec<SecretRedactionFinding>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SecretRedactionFinding {
+    pub code: String,
+    pub field: String,
+    pub reason: String,
+}
+
+pub fn validate_secret_redaction_boundary(value: &Value) -> Vec<SecretRedactionFinding> {
+    redact_secret_bearing_value(value).findings
+}
+
+pub fn redact_secret_bearing_value(value: &Value) -> SecretRedactionResult {
+    let mut findings = Vec::new();
+    let value = redact_secret_bearing_value_at(value, "$", &mut findings);
+    SecretRedactionResult { value, findings }
+}
+
+fn redact_secret_bearing_value_at(
+    value: &Value,
+    field: &str,
+    findings: &mut Vec<SecretRedactionFinding>,
+) -> Value {
+    match value {
+        Value::Object(object) => {
+            let mut redacted = serde_json::Map::new();
+            for (key, child) in object {
+                let child_field = if field == "$" {
+                    key.to_string()
+                } else {
+                    format!("{field}.{key}")
+                };
+                if let Some(reason) = secret_redaction_reason(key, &child_field, child) {
+                    findings.push(SecretRedactionFinding {
+                        code: SemanticErrorCode::SecretRedacted.to_string(),
+                        field: child_field,
+                        reason: reason.to_string(),
+                    });
+                    redacted.insert(
+                        key.clone(),
+                        Value::String(format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)),
+                    );
+                } else {
+                    redacted.insert(
+                        key.clone(),
+                        redact_secret_bearing_value_at(child, &child_field, findings),
+                    );
+                }
+            }
+            Value::Object(redacted)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| {
+                    redact_secret_bearing_value_at(item, &format!("{field}.{index}"), findings)
+                })
+                .collect(),
+        ),
+        _ => value.clone(),
+    }
+}
+
+fn secret_redaction_reason<'a>(key: &str, field: &str, value: &'a Value) -> Option<&'a str> {
+    let normalized = normalize_secret_field_name(key);
+    if normalized == "secretref"
+        && value
+            .as_str()
+            .is_some_and(|secret_ref| SecretRef::new(secret_ref.to_string()).is_ok())
+    {
+        return None;
+    }
+    if normalized == "secret" && value.is_boolean() {
+        return None;
+    }
+    if is_forbidden_secret_field(&normalized) {
+        return Some(
+            "secret-bearing fields must be redacted before profiles or reports are persisted",
+        );
+    }
+    let text = value.as_str()?;
+    if is_path_like_field(&normalized) && is_local_absolute_path(text) {
+        return Some("local absolute paths must be redacted from profiles and reports");
+    }
+    if is_key_like_context(&normalized, field) && looks_like_raw_key_material(text) {
+        return Some("raw key-like material must be referenced through secretRef, not persisted");
+    }
+    if is_archive_parameter_value_field(field) && looks_like_raw_key_material(text) {
+        return Some(
+            "raw key-like archive parameter values must be referenced through secretRef, not persisted",
+        );
+    }
+    None
+}
+
+fn normalize_secret_field_name(key: &str) -> String {
+    key.chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn is_forbidden_secret_field(normalized: &str) -> bool {
+    matches!(
+        normalized,
+        "rawkey"
+            | "keymaterial"
+            | "keybytes"
+            | "keyhex"
+            | "keyvalue"
+            | "rawsecret"
+            | "secretmaterial"
+            | "secretvalue"
+            | "helperdump"
+            | "helperlog"
+            | "rawlog"
+            | "memorydump"
+            | "decryptedtext"
+            | "decryptedplaintext"
+            | "privatetext"
+            | "localpath"
+    )
+}
+
+fn is_path_like_field(normalized: &str) -> bool {
+    normalized.contains("path") || normalized == "gamedir"
+}
+
+fn is_key_like_context(normalized: &str, field: &str) -> bool {
+    normalized.contains("key")
+        || normalized.contains("secret")
+        || field.starts_with("keyRequirements.")
+        || field.contains(".keyRequirements.")
+}
+
+fn looks_like_raw_key_material(text: &str) -> bool {
+    let text = text.trim();
+    if text.starts_with("sha256:") || is_valid_secret_ref(text) {
+        return false;
+    }
+    looks_like_raw_key_material_without_secret_ref(text)
+}
+
+fn is_archive_parameter_value_field(field: &str) -> bool {
+    let segments = field.split('.').collect::<Vec<_>>();
+    segments.len() >= 3
+        && segments.last() == Some(&"value")
+        && segments
+            .get(segments.len().saturating_sub(3))
+            .is_some_and(|segment| *segment == "archiveParameters")
+        && segments
+            .get(segments.len().saturating_sub(2))
+            .is_some_and(|segment| segment.parse::<usize>().is_ok())
+}
+
+fn is_local_absolute_path(text: &str) -> bool {
+    text.starts_with('/') || text.starts_with('\\') || path_has_windows_drive_prefix_component(text)
+}
+
+fn is_valid_secret_ref(value: &str) -> bool {
+    let Some((scheme, name)) = value.split_once(':') else {
+        return false;
+    };
+    if !matches!(
+        scheme,
+        "local-secret" | "os-keychain" | "secret-manager" | "prompt"
+    ) {
+        return false;
+    }
+    if name.is_empty()
+        || name.trim() != name
+        || name.contains('\0')
+        || name.contains('\\')
+        || name
+            .split('/')
+            .any(|component| component.is_empty() || component == "..")
+        || is_local_absolute_path(name)
+        || looks_like_raw_key_material_without_secret_ref(name)
+    {
+        return false;
+    }
+    name.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | '/' | ':' | '@')
+    })
+}
+
+fn looks_like_raw_key_material_without_secret_ref(text: &str) -> bool {
+    let hex_compact = text
+        .chars()
+        .filter(|character| !matches!(character, ' ' | '\t' | '\n' | '\r' | ':' | '-'))
+        .collect::<String>();
+    if hex_compact.len() >= 32
+        && hex_compact.len() % 2 == 0
+        && hex_compact
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        return true;
+    }
+
+    let encoded_compact = text
+        .chars()
+        .filter(|character| !matches!(character, ' ' | '\t' | '\n' | '\r'))
+        .collect::<String>();
+    looks_like_base64_key_material(&encoded_compact)
+        || looks_like_base64url_key_material(&encoded_compact)
+}
+
+fn looks_like_base64_key_material(text: &str) -> bool {
+    text.len() >= 22
+        && text.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '+' | '/' | '=')
+        })
+        && text
+            .chars()
+            .any(|character| matches!(character, '+' | '/' | '='))
+        && base64_padding_is_valid(text)
+        && encoded_material_entropy(text) >= 4.0
+}
+
+fn looks_like_base64url_key_material(text: &str) -> bool {
+    let unpadded = text.trim_end_matches('=');
+    if !(22..=256).contains(&unpadded.len()) {
+        return false;
+    }
+    if !base64_padding_is_valid(text)
+        || !unpadded
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+        || unpadded.contains('=')
+    {
+        return false;
+    }
+
+    let has_lowercase = unpadded
+        .chars()
+        .any(|character| character.is_ascii_lowercase());
+    let has_uppercase = unpadded
+        .chars()
+        .any(|character| character.is_ascii_uppercase());
+    let has_digit = unpadded.chars().any(|character| character.is_ascii_digit());
+    let has_url_symbol = unpadded
+        .chars()
+        .any(|character| matches!(character, '-' | '_'));
+    let signal_classes =
+        usize::from(has_lowercase) + usize::from(has_uppercase) + usize::from(has_digit);
+    let entropy = encoded_material_entropy(unpadded);
+    (signal_classes >= 3 && entropy >= 4.0)
+        || (has_url_symbol && signal_classes >= 2 && entropy >= 3.8)
+        || (has_lowercase && has_uppercase && unpadded.len() >= 24 && entropy >= 4.0)
+}
+
+fn base64_padding_is_valid(text: &str) -> bool {
+    if text.len() % 4 == 1 {
+        return false;
+    }
+    let first_padding = text.find('=').unwrap_or(text.len());
+    text[first_padding..]
+        .chars()
+        .all(|character| character == '=')
+}
+
+fn encoded_material_entropy(text: &str) -> f64 {
+    let sample = text.trim_end_matches('=');
+    if sample.is_empty() {
+        return 0.0;
+    }
+    let mut frequencies = BTreeMap::<char, usize>::new();
+    for character in sample.chars() {
+        *frequencies.entry(character).or_default() += 1;
+    }
+    let length = sample.chars().count() as f64;
+    frequencies
+        .values()
+        .map(|count| {
+            let probability = *count as f64 / length;
+            -probability * probability.log2()
+        })
+        .sum()
+}
+
+fn is_sha256_ref(value: &str) -> bool {
+    let Some(hash) = value.strip_prefix("sha256:") else {
+        return false;
+    };
+    hash.len() == 64
+        && hash
+            .chars()
+            .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -3027,6 +4182,110 @@ pub struct AdapterFailure {
     pub remediation: Option<String>,
 }
 
+impl AdapterFailure {
+    pub fn semantic(
+        error_code: SemanticErrorCode,
+        adapter: impl Into<String>,
+        engine: Option<String>,
+        detected_variant: Option<String>,
+        asset_ref: Option<String>,
+        required_capability: Option<Capability>,
+        support_boundary: impl Into<String>,
+        remediation: Option<String>,
+    ) -> Self {
+        Self {
+            error_code: error_code.to_string(),
+            adapter: adapter.into(),
+            engine,
+            detected_variant,
+            asset_ref,
+            required_capability,
+            support_boundary: support_boundary.into(),
+            remediation,
+        }
+    }
+
+    pub fn missing_key_profile(
+        adapter: impl Into<String>,
+        engine: impl Into<String>,
+        detected_variant: impl Into<String>,
+        support_boundary: impl Into<String>,
+    ) -> Self {
+        Self::semantic(
+            SemanticErrorCode::MissingKeyProfile,
+            adapter,
+            Some(engine.into()),
+            Some(detected_variant.into()),
+            None,
+            Some(Capability::KeyProfile),
+            support_boundary,
+            Some("provide a key profile that references local secret refs".to_string()),
+        )
+    }
+
+    pub fn missing_key_material(
+        adapter: impl Into<String>,
+        engine: impl Into<String>,
+        detected_variant: impl Into<String>,
+        requirement_id: impl Into<String>,
+        support_boundary: impl Into<String>,
+    ) -> Self {
+        Self::semantic(
+            SemanticErrorCode::MissingKeyMaterial,
+            adapter,
+            Some(engine.into()),
+            Some(detected_variant.into()),
+            Some(requirement_id.into()),
+            Some(Capability::KeyProfile),
+            support_boundary,
+            Some(
+                "resolve the referenced local secret material before extraction or patching"
+                    .to_string(),
+            ),
+        )
+    }
+
+    pub fn helper_unavailable(
+        adapter: impl Into<String>,
+        engine: impl Into<String>,
+        detected_variant: impl Into<String>,
+        support_boundary: impl Into<String>,
+    ) -> Self {
+        Self::semantic(
+            SemanticErrorCode::HelperUnavailable,
+            adapter,
+            Some(engine.into()),
+            Some(detected_variant.into()),
+            None,
+            Some(Capability::KeyProfile),
+            support_boundary,
+            Some(
+                "run an available local helper or provide validated key material manually"
+                    .to_string(),
+            ),
+        )
+    }
+
+    pub fn key_validation_failed(
+        adapter: impl Into<String>,
+        engine: impl Into<String>,
+        detected_variant: impl Into<String>,
+        requirement_id: impl Into<String>,
+        support_boundary: impl Into<String>,
+    ) -> Self {
+        Self::semantic(
+            SemanticErrorCode::KeyValidationFailed,
+            adapter,
+            Some(engine.into()),
+            Some(detected_variant.into()),
+            Some(requirement_id.into()),
+            Some(Capability::KeyProfile),
+            support_boundary,
+            Some("replace or revalidate the local key material".to_string()),
+        )
+    }
+}
+
 fn assert_schema_version_v02(value: &str, label: &str) -> BridgeContractResult<()> {
     if value == BRIDGE_SCHEMA_VERSION_V02 {
         return Ok(());
@@ -4865,6 +6124,406 @@ mod tests {
         }
     }
 
+    const ALL_LETTER_RAW_KEY_MATERIAL: &str = "XqQbHYcPLaMRvTEsJZoWknNd";
+
+    fn valid_key_profile_value() -> Value {
+        serde_json::json!({
+            "schemaVersion": PROFILE_SCHEMA_VERSION,
+            "profileId": deterministic_id("profile", 14),
+            "gameId": "siglus-owned-local",
+            "title": "Siglus Owned Local",
+            "sourceLocale": "ja-JP",
+            "engine": {
+                "adapterId": "kaifuu.siglus",
+                "engineFamily": "siglus",
+                "engineVersion": null,
+                "detectedVariant": "scene-pck-secondary-key"
+            },
+            "sourceFingerprint": {
+                "gameRootHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "engineEvidence": ["Scene.pck", "Gameexe.dat"]
+            },
+            "keyRequirements": [
+                {
+                    "requirementId": "siglus-secondary-key",
+                    "secretRef": "local-secret:siglus/example/secondary-key",
+                    "kind": "fixedBytes",
+                    "bytes": 16,
+                    "validation": {
+                        "method": "decryptHeaderProof",
+                        "proofHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                    }
+                }
+            ],
+            "archiveParameters": [
+                {
+                    "parameterId": "scene-archive",
+                    "name": "sceneArchive",
+                    "kind": "archiveFormat",
+                    "value": "Scene.pck",
+                    "source": "detected"
+                }
+            ],
+            "helperEvidence": {
+                "helperKind": "staticParser",
+                "toolVersion": "kaifuu-key-helper/0.1.0",
+                "redactedLogHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+                "proofHashes": [
+                    {
+                        "method": "decryptHeaderProof",
+                        "proofHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                    }
+                ]
+            },
+            "assets": [
+                {
+                    "assetId": deterministic_id("asset", 14),
+                    "path": "Scene.pck",
+                    "assetKind": "archive",
+                    "textSurfaces": ["dialogue"],
+                    "sourceHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                    "patching": {
+                        "capability": "patching",
+                        "status": "limited",
+                        "limitation": "requires caller-provided resolved keys and archive parameters"
+                    }
+                }
+            ],
+            "capabilities": [
+                {
+                    "capability": "key_profile",
+                    "status": "supported",
+                    "limitation": null
+                },
+                {
+                    "capability": "patching",
+                    "status": "limited",
+                    "limitation": "requires caller-provided resolved keys and archive parameters"
+                }
+            ],
+            "requirements": [
+                {
+                    "category": "secret_key",
+                    "key": "siglus-secondary-key",
+                    "status": "satisfied",
+                    "description": "secondary key is referenced through local secret storage",
+                    "placeholder": null,
+                    "secret": true
+                }
+            ],
+            "metadata": {}
+        })
+    }
+
+    #[test]
+    fn profile_validation_accepts_key_profile_secret_refs_and_proofs() {
+        let profile = valid_key_profile_value();
+
+        let validation = validate_profile_value(&profile);
+
+        assert_eq!(validation.status, OperationStatus::Passed);
+        let profile: GameProfile = serde_json::from_value(profile).unwrap();
+        assert_eq!(profile.key_requirements.len(), 1);
+        assert_eq!(
+            profile.key_requirements[0].secret_ref.as_str(),
+            "local-secret:siglus/example/secondary-key"
+        );
+        assert_eq!(
+            profile.helper_evidence.unwrap().redacted_log_hash.as_str(),
+            "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        );
+    }
+
+    #[test]
+    fn profile_validation_requires_matching_key_requirement_ids() {
+        let mut profile = valid_key_profile_value();
+        profile["keyRequirements"][0]["requirementId"] = serde_json::json!("siglus-unrelated-key");
+
+        let validation = validate_profile_value(&profile);
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(
+            validation.failures.iter().any(|failure| {
+                failure.code == SEMANTIC_MISSING_KEY_PROFILE
+                    && failure.field == "keyRequirements"
+                    && failure.message.contains("siglus-secondary-key")
+            }),
+            "missing strict key requirement match failure: {:#?}",
+            validation.failures
+        );
+    }
+
+    #[test]
+    fn profile_validation_rejects_base64url_raw_secret_refs() {
+        let mut profile = valid_key_profile_value();
+        let raw_base64url = "local-secret:mP9xZpQ2rS7vLj4N8aW_KtYd0hF3uC6b";
+        profile["keyRequirements"][0]["secretRef"] = serde_json::json!(raw_base64url);
+
+        let validation = validate_profile_value(&profile);
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(
+            validation.failures.iter().any(|failure| {
+                failure.code == "invalid_secret_ref"
+                    && failure.field == "keyRequirements.0.secretRef"
+            }),
+            "missing raw secretRef failure: {:#?}",
+            validation.failures
+        );
+        assert!(SecretRef::new("local-secret:siglus-primary-key").is_ok());
+    }
+
+    #[test]
+    fn profile_validation_rejects_all_letter_base64url_raw_secret_refs() {
+        let mut profile = valid_key_profile_value();
+        profile["keyRequirements"][0]["secretRef"] =
+            serde_json::json!(format!("local-secret:{ALL_LETTER_RAW_KEY_MATERIAL}"));
+
+        let validation = validate_profile_value(&profile);
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(
+            validation.failures.iter().any(|failure| {
+                failure.code == "invalid_secret_ref"
+                    && failure.field == "keyRequirements.0.secretRef"
+            }),
+            "missing all-letter raw secretRef failure: {:#?}",
+            validation.failures
+        );
+        assert!(SecretRef::new("local-secret:siglus-primary-key").is_ok());
+        assert!(SecretRef::new("local-secret:rpgmaker-mv-key").is_ok());
+    }
+
+    #[test]
+    fn profile_validation_rejects_raw_archive_parameter_key_values() {
+        let mut profile = valid_key_profile_value();
+        let raw_base64url = "mP9xZpQ2rS7vLj4N8aW_KtYd0hF3uC6b";
+        profile["archiveParameters"][0]["name"] = serde_json::json!("cipherKey");
+        profile["archiveParameters"][0]["kind"] = serde_json::json!("cipherScheme");
+        profile["archiveParameters"][0]["value"] = serde_json::json!(raw_base64url);
+
+        let validation = validate_profile_value(&profile);
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(
+            validation.failures.iter().any(|failure| {
+                failure.code == SEMANTIC_SECRET_REDACTED
+                    && failure.field == "archiveParameters.0.value"
+            }),
+            "missing raw archive parameter redaction failure: {:#?}",
+            validation.failures
+        );
+
+        let redacted = redact_secret_bearing_value(&profile);
+        assert_eq!(
+            redacted.value["archiveParameters"][0]["value"],
+            format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)
+        );
+        assert!(
+            !serde_json::to_string(&redacted.value)
+                .unwrap()
+                .contains(raw_base64url)
+        );
+    }
+
+    #[test]
+    fn profile_validation_rejects_all_letter_raw_archive_parameter_key_values() {
+        for parameter_name in ["archiveKey", "cipherMaterial", "secretMaterial"] {
+            let mut profile = valid_key_profile_value();
+            profile["archiveParameters"][0]["name"] = serde_json::json!(parameter_name);
+            profile["archiveParameters"][0]["kind"] = serde_json::json!("cipherScheme");
+            profile["archiveParameters"][0]["value"] =
+                serde_json::json!(ALL_LETTER_RAW_KEY_MATERIAL);
+            profile["archiveParameters"][0]["source"] = serde_json::json!("manual");
+
+            let validation = validate_profile_value(&profile);
+
+            assert_eq!(validation.status, OperationStatus::Failed);
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.code == SEMANTIC_SECRET_REDACTED
+                        && failure.field == "archiveParameters.0.value"
+                }),
+                "missing all-letter raw archive parameter redaction failure for {parameter_name}: {:#?}",
+                validation.failures
+            );
+
+            let redacted = redact_secret_bearing_value(&profile);
+            assert_eq!(
+                redacted.value["archiveParameters"][0]["value"],
+                format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)
+            );
+            assert!(
+                !serde_json::to_string(&redacted.value)
+                    .unwrap()
+                    .contains(ALL_LETTER_RAW_KEY_MATERIAL)
+            );
+        }
+    }
+
+    #[test]
+    fn profile_validation_rejects_raw_key_material_and_private_evidence() {
+        let mut profile = valid_key_profile_value();
+        profile["keyRequirements"][0]["rawKey"] =
+            serde_json::json!("00112233445566778899aabbccddeeff");
+        profile["helperEvidence"]["helperDump"] = serde_json::json!("register dump with key bytes");
+        profile["metadata"]["localPath"] = serde_json::json!("/home/dev/private-game");
+        profile["metadata"]["decryptedText"] = serde_json::json!("private translated script line");
+
+        let validation = validate_profile_value(&profile);
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for field in [
+            "keyRequirements.0.rawKey",
+            "helperEvidence.helperDump",
+            "metadata.localPath",
+            "metadata.decryptedText",
+        ] {
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.code == SEMANTIC_SECRET_REDACTED && failure.field == field
+                }),
+                "missing redaction failure for {field}: {:#?}",
+                validation.failures
+            );
+        }
+
+        let redacted = redact_secret_bearing_value(&profile);
+        assert_eq!(
+            redacted.value["keyRequirements"][0]["secretRef"],
+            "local-secret:siglus/example/secondary-key"
+        );
+        let serialized = serde_json::to_string(&redacted.value).unwrap();
+        assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
+        assert!(!serialized.contains("/home/dev/private-game"));
+        assert!(!serialized.contains("private translated script line"));
+    }
+
+    #[test]
+    fn missing_secret_requirements_emit_key_profile_semantic_errors() {
+        let mut profile = valid_key_profile_value();
+        profile.as_object_mut().unwrap().remove("keyRequirements");
+        profile["requirements"][0]["status"] = serde_json::json!("missing");
+        profile["requirements"][0]["placeholder"] = serde_json::json!("KAIFUU_SIGLUS_KEY");
+
+        let validation = validate_profile_value(&profile);
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for expected_code in [SEMANTIC_MISSING_KEY_MATERIAL, SEMANTIC_MISSING_KEY_PROFILE] {
+            assert!(
+                validation
+                    .failures
+                    .iter()
+                    .any(|failure| failure.code == expected_code),
+                "missing {expected_code}: {:#?}",
+                validation.failures
+            );
+        }
+    }
+
+    #[test]
+    fn adapter_key_declarations_serialize_stable_semantic_errors() {
+        let capabilities = AdapterCapabilities::new(
+            "kaifuu.siglus",
+            vec![
+                CapabilityReport::requires_user_input(
+                    Capability::KeyProfile,
+                    "requires local-only key profile secret refs",
+                ),
+                CapabilityReport::requires_user_input(
+                    Capability::EncryptedInput,
+                    "requires caller-provided resolved keys",
+                ),
+            ],
+        )
+        .with_key_requirements(vec![AdapterKeyRequirementDeclaration {
+            requirement_id: "siglus-secondary-key".to_string(),
+            engine_family: "siglus".to_string(),
+            material_kind: KeyMaterialKind::FixedBytes,
+            bytes: Some(16),
+            archive_parameters: vec![ArchiveParameterDeclaration {
+                parameter_id: "scene-archive".to_string(),
+                name: "sceneArchive".to_string(),
+                kind: ArchiveParameterKind::ArchiveFormat,
+                required: true,
+            }],
+            validation: AdapterKeyValidationDeclaration {
+                method: KeyValidationMethod::DecryptHeaderProof,
+                proof_required: true,
+            },
+            semantic_errors: vec![
+                SemanticErrorCode::MissingKeyProfile,
+                SemanticErrorCode::MissingKeyMaterial,
+                SemanticErrorCode::HelperUnavailable,
+                SemanticErrorCode::KeyValidationFailed,
+                SemanticErrorCode::SecretRedacted,
+                SemanticErrorCode::ProtectedExecutableUnsupported,
+                SemanticErrorCode::UnsupportedVariantEncrypted,
+            ],
+        }]);
+
+        let value = serde_json::to_value(capabilities).unwrap();
+
+        assert_eq!(
+            value["keyRequirements"][0]["semanticErrors"],
+            serde_json::json!([
+                "kaifuu.missing_capability.key_profile",
+                "kaifuu.missing_key_material",
+                "kaifuu.helper_unavailable",
+                "kaifuu.key_validation_failed",
+                "kaifuu.secret_redacted",
+                "kaifuu.protected_executable_unsupported",
+                "kaifuu.unsupported_variant.encrypted"
+            ])
+        );
+    }
+
+    #[test]
+    fn adapter_failure_constructors_use_key_boundary_codes() {
+        assert_eq!(
+            AdapterFailure::missing_key_profile(
+                "kaifuu.siglus",
+                "siglus",
+                "scene-pck-secondary-key",
+                "pure adapters require a key profile before encrypted extraction"
+            )
+            .error_code,
+            SEMANTIC_MISSING_KEY_PROFILE
+        );
+        assert_eq!(
+            AdapterFailure::missing_key_material(
+                "kaifuu.siglus",
+                "siglus",
+                "scene-pck-secondary-key",
+                "siglus-secondary-key",
+                "local secret storage did not resolve the referenced key"
+            )
+            .error_code,
+            SEMANTIC_MISSING_KEY_MATERIAL
+        );
+        assert_eq!(
+            AdapterFailure::helper_unavailable(
+                "kaifuu.siglus",
+                "siglus",
+                "scene-pck-secondary-key",
+                "helper execution is outside the pure adapter"
+            )
+            .error_code,
+            SEMANTIC_HELPER_UNAVAILABLE
+        );
+        assert_eq!(
+            AdapterFailure::key_validation_failed(
+                "kaifuu.siglus",
+                "siglus",
+                "scene-pck-secondary-key",
+                "siglus-secondary-key",
+                "proof hash did not match local asset validation"
+            )
+            .error_code,
+            SEMANTIC_KEY_VALIDATION_FAILED
+        );
+    }
+
     #[test]
     fn asset_inventory_rejects_engine_specific_source_location_fields() {
         let manifest = AssetInventoryManifest {
@@ -5220,6 +6879,10 @@ mod tests {
                 engine_version: Some("0.0.0".to_string()),
                 detected_variant: "plain-json".to_string(),
             },
+            source_fingerprint: None,
+            key_requirements: vec![],
+            archive_parameters: vec![],
+            helper_evidence: None,
             assets: vec![AssetProfile {
                 asset_id: deterministic_id("asset", 1),
                 path: "source.json".to_string(),
