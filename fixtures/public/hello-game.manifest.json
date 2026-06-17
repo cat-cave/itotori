@@ -5,9 +5,9 @@
     "id": "hello-game",
     "title": "Hello Fixture",
     "kind": "synthetic",
-    "summary": "Minimal synthetic game source used by the hello-world localization loop.",
+    "summary": "Synthetic public game fixture v0.2 covering multiple localization text surfaces for the hello-world localization loop.",
     "sourceLocale": "ja-JP",
-    "targetLocales": ["en-US"],
+    "targetLocales": ["en-US", "fr-FR"],
     "publicRedistribution": "allowed",
     "license": {
       "spdx": "CC0-1.0",
@@ -15,7 +15,7 @@
     },
     "provenance": {
       "author": "Itotori contributors",
-      "creationMethod": "Hand-authored synthetic dialogue fixture for CI and documentation.",
+      "creationMethod": "Hand-authored synthetic multi-surface fixture for CI, contract snapshots, and documentation.",
       "rawAssetPolicy": "contains-no-copyrighted-game-assets"
     }
   },
@@ -24,20 +24,36 @@
       "path": "fixtures/hello-game/source.json",
       "role": "source-game",
       "mediaType": "application/json",
-      "sha256": "28e0a6306f64ba1a5ff0a56c7039932f924959cd878394a5987b49a2aa50f213",
-      "bytes": 441,
+      "sha256": "ebd46081e4a2860b23ac1aeaabe7b9b3a1561309daf2337288b19ca697725625",
+      "bytes": 4412,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/expected/bridge-v0.1.json",
+      "role": "bridge-bundle",
+      "mediaType": "application/json",
+      "sha256": "ccef4d85853aa66ae89f7da7a7202cf0899d56181d34645b6d45ec3d41a2a922",
+      "bytes": 6375,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/surface-coverage-v0.2.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "07dc55993701876f8426ac39d13e795cd825ff77962ef5867d702c1827cef8b3",
+      "bytes": 3258,
       "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 1,
-    "textUnits": 1,
-    "sourceTextUtf16CodeUnits": 15,
-    "protectedSpans": 1,
+    "files": 3,
+    "textUnits": 11,
+    "sourceTextUtf16CodeUnits": 84,
+    "protectedSpans": 3,
     "sourceLocales": ["ja-JP"],
-    "targetLocales": ["en-US"],
+    "targetLocales": ["en-US", "fr-FR"],
     "engineKinds": ["synthetic-json"],
-    "notes": "The source text contains one protected placeholder span."
+    "notes": "Fixture v0.2 covers dialogue, speaker names, choices, UI labels, tutorial text, database/glossary-like terms, image text, metadata text, placeholders, and inline control markup."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

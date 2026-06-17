@@ -8,7 +8,7 @@ This policy separates those use cases.
 
 ```txt
 fixtures/
-  hello-game/                 Existing synthetic public fixture used by hello world.
+  hello-game/                 Synthetic public fixture used by hello world.
   public/                     Public fixture manifests, schema, and validator.
   private-local/              Local-only corpora ignored by git.
 ```
@@ -34,8 +34,9 @@ depends on it:
 - The manifest records aggregate stats that benchmark reports can cite without
   re-reading raw files.
 
-The existing `fixtures/hello-game/source.json` fixture is synthetic and is
-described by `fixtures/public/hello-game.manifest.json`. Future public fixtures
+The `fixtures/hello-game/source.json` fixture is synthetic and is described by
+`fixtures/public/hello-game.manifest.json`. Its expected bridge snapshot and
+surface coverage matrix live beside the source fixture. Future public fixtures
 may place their raw files under `fixtures/public/<fixture-id>/` when that is the
 least surprising layout, but committed manifests should use repo-relative paths
 so tools can validate hashes from the repository root.

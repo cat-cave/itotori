@@ -168,6 +168,13 @@ function exampleFixture(path: string): Record<string, unknown> {
   >;
 }
 
+function publicFixture(path: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8")) as Record<
+    string,
+    unknown
+  >;
+}
+
 function bridgeV02Units(bridge: Record<string, unknown>): Array<Record<string, unknown>> {
   return bridge.units as Array<Record<string, unknown>>;
 }
@@ -310,6 +317,36 @@ describe("localization bridge schema guards", () => {
         units: [],
       }),
     ).not.toThrow();
+  });
+
+  it("accepts the public multi-surface bridge golden snapshot", () => {
+    const bridge = publicFixture("fixtures/hello-game/expected/bridge-v0.1.json");
+
+    expect(() => assertBridgeBundle(bridge)).not.toThrow();
+
+    const units = bridge.units as Array<{
+      textSurface: string;
+      protectedSpans: Array<{ kind: string; raw: string }>;
+    }>;
+    expect(new Set(units.map((unit) => unit.textSurface))).toEqual(
+      new Set([
+        "choice_label",
+        "database_entry",
+        "dialogue",
+        "image_text",
+        "metadata_text",
+        "speaker_name",
+        "tutorial_text",
+        "ui_label",
+      ]),
+    );
+    expect(units).toHaveLength(11);
+
+    const spanKinds = new Set(
+      units.flatMap((unit) => unit.protectedSpans.map((span) => span.kind)),
+    );
+    expect(spanKinds).toContain("placeholder");
+    expect(spanKinds).toContain("control_markup");
   });
 
   it("accepts the v0.2 bridge surface example", () => {

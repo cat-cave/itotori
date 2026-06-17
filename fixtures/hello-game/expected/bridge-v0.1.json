@@ -1,0 +1,210 @@
+{
+  "schemaVersion": "0.1.0",
+  "bridgeId": "019ed000-0000-7000-8000-bridge000001",
+  "sourceBundleHash": "3b437ec4d871a324",
+  "sourceLocale": "ja-JP",
+  "extractorName": "kaifuu-fixture",
+  "extractorVersion": "0.0.0",
+  "units": [
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+      "sourceUnitKey": "hello.scene.001.line.001",
+      "occurrenceId": "occurrence-1",
+      "sourceHash": "3ea1bfd8abd5a001",
+      "sourceLocale": "ja-JP",
+      "sourceText": "こんにちは、{player}。",
+      "speaker": "Narrator",
+      "textSurface": "dialogue",
+      "protectedSpans": [
+        {
+          "kind": "placeholder",
+          "raw": "{player}",
+          "start": 6,
+          "end": 14,
+          "preserveMode": "exact"
+        }
+      ],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "hello.scene.001.line.001"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0002",
+      "sourceUnitKey": "hello.scene.001.name.mira",
+      "occurrenceId": "occurrence-2",
+      "sourceHash": "85e59bbabc9fc151",
+      "sourceLocale": "ja-JP",
+      "sourceText": "ミラ",
+      "speaker": "ミラ",
+      "textSurface": "speaker_name",
+      "protectedSpans": [],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "hello.scene.001.name.mira"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0003",
+      "sourceUnitKey": "hello.scene.001.line.002",
+      "occurrenceId": "occurrence-3",
+      "sourceHash": "590618b05b243083",
+      "sourceLocale": "ja-JP",
+      "sourceText": "依代の灯りが見える<wait=30>。",
+      "speaker": "ミラ",
+      "textSurface": "dialogue",
+      "protectedSpans": [
+        {
+          "kind": "control_markup",
+          "raw": "<wait=30>",
+          "start": 9,
+          "end": 18,
+          "preserveMode": "exact"
+        }
+      ],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "hello.scene.001.line.002"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0004",
+      "sourceUnitKey": "hello.scene.001.choice.open",
+      "occurrenceId": "occurrence-4",
+      "sourceHash": "888a352405d2097a",
+      "sourceLocale": "ja-JP",
+      "sourceText": "門を開ける",
+      "speaker": "",
+      "textSurface": "choice_label",
+      "protectedSpans": [],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "hello.scene.001.choice.open"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0005",
+      "sourceUnitKey": "hello.scene.001.choice.wait",
+      "occurrenceId": "occurrence-5",
+      "sourceHash": "788468be11800fe3",
+      "sourceLocale": "ja-JP",
+      "sourceText": "朝まで待つ",
+      "speaker": "",
+      "textSurface": "choice_label",
+      "protectedSpans": [],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "hello.scene.001.choice.wait"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0006",
+      "sourceUnitKey": "ui.menu.inventory",
+      "occurrenceId": "occurrence-6",
+      "sourceHash": "cea83626a3453c54",
+      "sourceLocale": "ja-JP",
+      "sourceText": "持ち物",
+      "speaker": "",
+      "textSurface": "ui_label",
+      "protectedSpans": [],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "ui.menu.inventory"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0007",
+      "sourceUnitKey": "tutorial.inspect",
+      "occurrenceId": "occurrence-7",
+      "sourceHash": "21e4edb6df3fdab8",
+      "sourceLocale": "ja-JP",
+      "sourceText": "調べるには{confirm}を押してください。",
+      "speaker": "",
+      "textSurface": "tutorial_text",
+      "protectedSpans": [
+        {
+          "kind": "placeholder",
+          "raw": "{confirm}",
+          "start": 5,
+          "end": 14,
+          "preserveMode": "exact"
+        }
+      ],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "tutorial.inspect"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0008",
+      "sourceUnitKey": "database.items.silver-key.name",
+      "occurrenceId": "occurrence-8",
+      "sourceHash": "5084240217c83331",
+      "sourceLocale": "ja-JP",
+      "sourceText": "銀の鍵",
+      "speaker": "",
+      "textSurface": "database_entry",
+      "protectedSpans": [],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "database.items.silver-key.name"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0009",
+      "sourceUnitKey": "database.glossary.yorishiro.term",
+      "occurrenceId": "occurrence-9",
+      "sourceHash": "88d658dc7f81c3a4",
+      "sourceLocale": "ja-JP",
+      "sourceText": "依代",
+      "speaker": "",
+      "textSurface": "database_entry",
+      "protectedSpans": [],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "database.glossary.yorishiro.term"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0010",
+      "sourceUnitKey": "image.sign-caution.region-0",
+      "occurrenceId": "occurrence-10",
+      "sourceHash": "d6fb9913f33421b5",
+      "sourceLocale": "ja-JP",
+      "sourceText": "注意",
+      "speaker": "",
+      "textSurface": "image_text",
+      "protectedSpans": [],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "image.sign-caution.region-0"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0011",
+      "sourceUnitKey": "metadata.package.tagline",
+      "occurrenceId": "occurrence-11",
+      "sourceHash": "4b41aacd23f75201",
+      "sourceLocale": "ja-JP",
+      "sourceText": "夕暮れの門",
+      "speaker": "",
+      "textSurface": "metadata_text",
+      "protectedSpans": [],
+      "patchRef": {
+        "assetId": "source.json",
+        "writeMode": "replace",
+        "sourceUnitKey": "metadata.package.tagline"
+      }
+    }
+  ]
+}
