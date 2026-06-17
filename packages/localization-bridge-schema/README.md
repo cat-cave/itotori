@@ -23,18 +23,46 @@ The bridge package is intentionally independent from any one subproject. Kaifuu 
 - `0.2.0` also defines suite-wide triage records exported as
   `TriageBundleV02`, `TriageEventV02`, `TriageTaskV02`, `FindingRecordV02`,
   provenance/evidence/causality records, and `assertTriageBundleV02`.
+- `0.2.0` defines branch-scoped asset policy records exported as
+  `AssetPolicyBundleV02`, `AssetPolicyDecisionV02`, enum-backed asset policy
+  surfaces, and `assertAssetPolicyBundleV02`. The contract covers image text,
+  UI art/textures, song title metadata, font substitution policy, credits, and
+  video text or replacement decisions.
 
 `PolicyRecordV02.scope` is a known surface category, not freeform text. Use a
 value from the exported `POLICY_SCOPES` list, which currently mirrors
 `SURFACE_KINDS`.
 
 The v0.2 bridge JSON example lives at `test/examples/bridge-v0.2.json`.
+`test/examples/asset-policy-v0.2.json` is an asset policy fixture, not a bridge
+bundle.
 `test/examples/triage-v0.2.json` is a triage fixture, not a bridge bundle.
 `test/examples/runtime-evidence-v0.2.json` is a runtime evidence fixture, not a
 bridge bundle.
 Invalid bridge fixtures live under `test/examples/invalid/` and are expected to
 fail with semantic validation errors. Migration notes from v0.1 are in
 `MIGRATING-0.2.md`.
+
+## Asset Policy
+
+`AssetPolicyBundleV02` records Itotori-owned non-dialogue asset decisions for a
+specific locale branch. `localeBranch.localeBranchId` and
+`localeBranch.targetLocale` scope every decision in the bundle; use a separate
+bundle or branch when the same asset needs a different locale decision.
+
+Each decision names an `assetSurfaceKind` from `ASSET_POLICY_SURFACE_KINDS`, a
+source asset ref, source hash/revision metadata, one `policyAction`, the source
+of the observed text (`metadata`, `manual_transcription`, `ocr_hint`, or
+`not_applicable`), and a `patchMode`. Patch modes describe required downstream
+work: for example, `region_redraw_required` and `asset_replacement_required`
+are requirements, not completed edits.
+
+`metadata_only` is intentionally metadata-first. The guard requires
+`runtimeExpectation.expectationKind: "metadata_only"` for these records so they
+cannot imply visible OCR, image editing, video editing, or runtime screenshot
+validation. Image, UI art, and video policy can still be represented before the
+editing pipeline exists by recording the desired text, branch, and required
+patch mode.
 
 ## Runtime Evidence
 
