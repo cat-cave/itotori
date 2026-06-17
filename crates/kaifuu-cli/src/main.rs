@@ -1,7 +1,10 @@
 use std::path::PathBuf;
 
-use kaifuu_core::{extract_fixture, patch_fixture, read_json, verify_fixture, write_json};
+use kaifuu_core::{read_json, write_json};
 use kaifuu_delta::{apply_delta, create_delta};
+use kaifuu_engine_fixture::{
+    extract_fixture, patch_fixture, verify_fixture, write_fixture_profile,
+};
 
 fn main() {
     if let Err(error) = run() {
@@ -60,7 +63,12 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
                 &verify_fixture(&PathBuf::from(game_dir))?,
             )?;
         }
-        _ => return Err("usage: kaifuu <extract|patch|diff|apply|verify> ...".into()),
+        Some("profile") => {
+            let game_dir = positional(&args, 1)?;
+            let output = flag(&args, "--output")?;
+            write_fixture_profile(&PathBuf::from(game_dir), &PathBuf::from(output))?;
+        }
+        _ => return Err("usage: kaifuu <extract|patch|diff|apply|verify|profile> ...".into()),
     }
     Ok(())
 }

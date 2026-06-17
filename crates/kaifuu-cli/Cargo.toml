@@ -8,3 +8,4 @@ repository.workspace = true
 [dependencies]
 kaifuu-core = { path = "../kaifuu-core" }
 kaifuu-delta = { path = "../kaifuu-delta" }
+kaifuu-engine-fixture = { path = "../kaifuu-engine-fixture" }
