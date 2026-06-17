@@ -3649,7 +3649,7 @@ pub fn run_round_trip_golden(
     let unchanged_patch = match unchanged_patch_export(&extraction.bridge) {
         Ok(patch) => patch,
         Err(failure) => {
-            record_golden_failure(&mut report, failure.with_adapter_id(adapter.id()));
+            record_golden_failure(&mut report, (*failure).with_adapter_id(adapter.id()));
             return Ok(finalize_golden_report(report));
         }
     };
@@ -3758,7 +3758,7 @@ fn prepare_golden_work_dir(root: &Path, child: &str) -> KaifuuResult<PathBuf> {
     Ok(path)
 }
 
-fn unchanged_patch_export(bridge: &BridgeBundle) -> Result<PatchExport, GoldenFailure> {
+fn unchanged_patch_export(bridge: &BridgeBundle) -> Result<PatchExport, Box<GoldenFailure>> {
     let mut entries = Vec::with_capacity(bridge.units.len());
     for unit in &bridge.units {
         let mut protected_span_mappings = Vec::new();
@@ -3768,7 +3768,7 @@ fn unchanged_patch_export(bridge: &BridgeBundle) -> Result<PatchExport, GoldenFa
                 continue;
             }
             let Some(relative_start) = unit.source_text[search_start..].find(&span.raw) else {
-                return Err(GoldenFailure {
+                return Err(Box::new(GoldenFailure {
                     code: "unchanged_patch_protected_span_missing".to_string(),
                     phase: "unchanged_patch_build".to_string(),
                     adapter_id: String::new(),
@@ -3784,7 +3784,7 @@ fn unchanged_patch_export(bridge: &BridgeBundle) -> Result<PatchExport, GoldenFa
                     ),
                     expected: Some(span.raw.clone()),
                     actual: Some(unit.source_text.clone()),
-                });
+                }));
             };
             let target_start = search_start + relative_start;
             let target_end = target_start + span.raw.len();
