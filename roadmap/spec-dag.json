@@ -857,7 +857,7 @@
     {
       "id": "SHARED-004",
       "title": "Patch and source revision semantics",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "kaifuu", "itotori"],
@@ -976,7 +976,7 @@
     {
       "id": "SHARED-007",
       "title": "Event and finding taxonomy",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
@@ -1353,7 +1353,7 @@
     {
       "id": "KAIFUU-002",
       "title": "Fixture engine on adapter architecture",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu"],
