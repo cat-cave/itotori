@@ -8,6 +8,10 @@ Patch writers, delta application, and future engine adapters must follow
 [kaifuu-patch-safety.md](kaifuu-patch-safety.md) for encoding,
 normalization, atomic output, path traversal, rollback, and partial-write
 safety rules.
+New engine adapter workers should start from
+[kaifuu-engine-playbook.md](kaifuu-engine-playbook.md), which defines the
+readiness record, fixture and round-trip test gates, semantic error rules, and
+remote helper boundaries.
 
 ## Fixture Adapter CLI
 

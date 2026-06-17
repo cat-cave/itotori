@@ -3505,7 +3505,7 @@
       ],
       "acceptanceCriteria": [
         "A new agent can start an engine adapter without hidden context",
-        "Remote Windows execution is documented as an optional helper",
+        "Remote Windows execution is documented as an optional helper with safe helper boundaries: explicit opt-in, local-network defaults, redacted structured inputs and outputs, deterministic unavailable/denied errors, and no arbitrary command execution",
         "Every adapter PR has a fixture and round-trip test checklist"
       ],
       "verification": [
