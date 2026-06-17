@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-006-20260617T223311Z",
+  "generatedAt": "2026-06-17T22:33:11Z",
+  "spec": {
+    "id": "ITOTORI-006",
+    "title": "Validated bridge import foundation",
+    "branch": "spec/itotori-006",
+    "worktree": "/tmp/itotori-spec-itotori-006",
+    "commit": "4259aa625cf6006cd3230d87019ada2f2561ea10"
+  },
+  "auditor": {
+    "name": "zeno-the-4th",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final re-audit found no P0/P1 findings after bridge import invariant repairs. Residual hard-delete and broader negative import-status hardening concerns are already represented by ITOTORI-060 and ITOTORI-061.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}

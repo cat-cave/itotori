@@ -5840,7 +5840,7 @@
     {
       "id": "ITOTORI-006",
       "title": "Validated bridge import foundation",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "kaifuu"],
@@ -5882,10 +5882,7 @@
         "Duplicate unit handling",
         "Source revision semantics",
         "Bridge import treated as the only project intake path"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/itotori-006",
-      "worktree": "/tmp/itotori-spec-itotori-006"
+      ]
     },
     {
       "id": "ITOTORI-007",
