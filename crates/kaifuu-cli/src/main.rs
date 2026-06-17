@@ -246,7 +246,7 @@ mod tests {
         AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
         CapabilityReport, CapabilityStatus, DetectRequest, DetectionEvidence,
         DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult, OperationStatus,
-        PatchExportEntry, PatchRef, PatchResult, ProfileRequirement, ProtectedSpan,
+        PatchExportEntry, PatchRef, PatchResult, ProfileRequirement, ProtectedSpanMapping,
         RequirementCategory, RequirementStatus, TextSurface, VerificationResult, content_hash,
         deterministic_id, read_json,
     };
@@ -786,13 +786,7 @@ mod tests {
                 source_unit_key: bridge.units[0].source_unit_key.clone(),
                 source_hash: bridge.units[0].source_hash.clone(),
                 target_text: "Hello, {player}.".to_string(),
-                protected_spans: vec![ProtectedSpan {
-                    kind: "placeholder".to_string(),
-                    raw: "{player}".to_string(),
-                    start: 6,
-                    end: 14,
-                    preserve_mode: "exact".to_string(),
-                }],
+                protected_span_mappings: vec![ProtectedSpanMapping::new("{player}", 7, 15)],
             }],
         };
         let patch_export_path = root.join("patch-export.json");

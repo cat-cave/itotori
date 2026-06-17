@@ -351,8 +351,48 @@ describe("localization bridge schema guards", () => {
     const spanKinds = new Set(
       units.flatMap((unit) => unit.protectedSpans.map((span) => span.kind)),
     );
-    expect(spanKinds).toContain("placeholder");
+    expect(spanKinds).toContain("variable_placeholder");
     expect(spanKinds).toContain("control_markup");
+  });
+
+  it("rejects malformed v0.1 protected span ranges", () => {
+    const bridge = {
+      schemaVersion: "0.1.0",
+      bridgeId: "019ed000-0000-7000-8000-000000000001",
+      sourceBundleHash: "hash",
+      sourceLocale: "ja-JP",
+      extractorName: "kaifuu-fixture",
+      extractorVersion: "0.0.0",
+      units: [
+        {
+          bridgeUnitId: "019ed000-0000-7000-8000-bridgeun0001",
+          sourceUnitKey: "line.001",
+          occurrenceId: "occurrence-1",
+          sourceHash: "hash",
+          sourceLocale: "ja-JP",
+          sourceText: "Hello, {player}.",
+          speaker: "",
+          textSurface: "dialogue",
+          protectedSpans: [
+            {
+              kind: "variable_placeholder",
+              raw: "{player}",
+              start: 0,
+              end: 8,
+              preserveMode: "map",
+              variableName: "player",
+            },
+          ],
+          patchRef: {
+            assetId: "source.json",
+            writeMode: "replace",
+            sourceUnitKey: "line.001",
+          },
+        },
+      ],
+    };
+
+    expect(() => assertBridgeBundle(bridge)).toThrow(/raw must match sourceText byte range/);
   });
 
   it("accepts the v0.2 bridge surface example", () => {
