@@ -25,6 +25,20 @@ const server = setupServer(
       frameCaptureCount: 1,
     }),
   ),
+  http.get("http://itotori.test/api/runtime/v0.2/status", () =>
+    HttpResponse.json({
+      finalStatus: "hello_world_passed",
+      runtimeReportId: "019ed003-0000-7000-8000-000000000001",
+      runtimeStatus: "passed",
+      fidelityTier: "layout_probe",
+      evidenceTier: "E2",
+      textEventCount: 1,
+      frameCaptureCount: 1,
+      screenshotArtifactCount: 1,
+      recordingArtifactCount: 0,
+      validationFindingCount: 0,
+    }),
+  ),
 );
 
 beforeAll(() => server.listen());
@@ -54,5 +68,18 @@ describe("Utsushi runtime dashboard", () => {
     expect(root.textContent).toContain("layout_probe");
     expect(root.textContent).toContain("1 text event");
     expect(root.textContent).toContain("1 frame capture");
+  });
+
+  it("renders v0.2 evidence tier and referenced artifact counts without media embedding", async () => {
+    const root = document.createElement("div");
+    document.body.append(root);
+
+    await renderRuntimeDashboard(root, "http://itotori.test/api/runtime/v0.2/status");
+
+    expect(root.textContent).toContain("E2");
+    expect(root.textContent).toContain("layout_probe");
+    expect(root.textContent).toContain("1 referenced artifact");
+    expect(root.textContent).toContain("0 validation finding");
+    expect(root.querySelector("img, video")).toBeNull();
   });
 });

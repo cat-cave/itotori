@@ -19,26 +19,24 @@ Reports may include multiple tiers. The lowest tier involved in a claim must be
 visible beside the claim. For example, a patch can be "E0 valid" and still have
 no evidence that the localized line renders in-game.
 
-## Legacy Fidelity Tier Mapping
+## Runtime Evidence Schema
 
-The current bridge schema exposes `fidelityTier` as
-`"trace_only" | "layout_probe"` in
-`packages/localization-bridge-schema/src/index.ts`, and current dashboards render
-that value. That field is a legacy runtime adapter capability label, not the
-canonical evidence tier. Until the schema grows an explicit `evidenceTier` field,
-dashboards and audit records must derive the evidence tier as follows:
+Runtime evidence v0.2 exposes `evidenceTier` as the canonical claim tier and
+keeps `fidelityTier` as an adapter capability label. Dashboards and audit records
+must render `evidenceTier` when present and must not promote adapter capability
+above the evidence actually present in the report.
 
-| Current `fidelityTier` | Derived evidence tier | Dashboard wording constraint                                    |
-| ---------------------- | --------------------- | --------------------------------------------------------------- |
-| `trace_only`           | E1 Runtime Trace      | May claim trace reachability only.                              |
-| `layout_probe`         | E2 Frame Capture      | May claim captured frames only; never engine or pixel fidelity. |
+| `fidelityTier`       | Maximum `evidenceTier` | Dashboard wording constraint                                    |
+| -------------------- | ---------------------- | --------------------------------------------------------------- |
+| `trace_only`         | E1 Runtime Trace       | May claim trace reachability only.                              |
+| `layout_probe`       | E2 Frame Capture       | May claim captured frames only; never engine or pixel fidelity. |
+| `replay_review`      | E3 Replay Review       | May claim branchable review, not reference fidelity.            |
+| `reference_fidelity` | E4 Fidelity Target     | Requires reference-runtime comparison evidence.                 |
 
-E0 evidence is produced by static bridge, patch, hash, and schema checks and
-does not require `fidelityTier`. E3 and E4 evidence are not representable by the
-current `RuntimeFidelityTier` type; they require a schema migration that adds an
-explicit `evidenceTier` field and preserves `fidelityTier` only as adapter detail.
-When both fields are present, `evidenceTier` is authoritative and `fidelityTier`
-must not be promoted above the mapped tier without reference-runtime evidence.
+E0 evidence is produced by static bridge, patch, hash, and schema checks. When a
+legacy v0.1 report lacks `evidenceTier`, dashboards may derive E1 from
+`trace_only` and E2 from `layout_probe`, but they must label that as legacy
+evidence. When both fields are present, `evidenceTier` is authoritative.
 
 ## Runtime Environment Matrix
 

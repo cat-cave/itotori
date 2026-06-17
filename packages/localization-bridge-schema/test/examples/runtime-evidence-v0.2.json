@@ -1,0 +1,136 @@
+{
+  "schemaVersion": "0.2.0",
+  "runtimeReportId": "019ed003-0000-7000-8000-000000000001",
+  "sourceBridgeId": "019ed001-0000-7000-8000-000000000001",
+  "sourceBundleHash": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+  "sourceLocale": "en-US",
+  "targetLocale": "fr-FR",
+  "adapterName": "utsushi-contract-example",
+  "adapterVersion": "0.2.0",
+  "fidelityTier": "replay_review",
+  "evidenceTier": "E3",
+  "status": "passed",
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "traceEvents": [
+    {
+      "traceEventId": "019ed003-0000-7000-8000-000000000101",
+      "eventKind": "text_observed",
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+        "sourceUnitKey": "script/prologue#line-001"
+      },
+      "frame": 12,
+      "traceKey": "prologue.line.001",
+      "observedText": "Bonjour, {player}."
+    },
+    {
+      "traceEventId": "019ed003-0000-7000-8000-000000000102",
+      "eventKind": "branch_point_reached",
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed001-0000-7000-8000-000000000202",
+        "sourceUnitKey": "script/prologue#choice-001"
+      },
+      "frame": 18,
+      "traceKey": "prologue.choice.001"
+    }
+  ],
+  "branchEvents": [
+    {
+      "branchEventId": "019ed003-0000-7000-8000-000000000201",
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed001-0000-7000-8000-000000000202",
+        "sourceUnitKey": "script/prologue#choice-001"
+      },
+      "frame": 18,
+      "branchPointKey": "prologue.choice.001",
+      "promptText": "Choose a route",
+      "options": [
+        {
+          "optionId": "019ed003-0000-7000-8000-000000000211",
+          "label": "Stay",
+          "labelBridgeUnitRef": {
+            "bridgeUnitId": "019ed001-0000-7000-8000-000000000202",
+            "sourceUnitKey": "script/prologue#choice-001"
+          },
+          "targetRouteKey": "prologue.stay"
+        },
+        {
+          "optionId": "019ed003-0000-7000-8000-000000000212",
+          "label": "Leave",
+          "targetRouteKey": "prologue.leave"
+        }
+      ],
+      "selectedOptionId": "019ed003-0000-7000-8000-000000000211"
+    }
+  ],
+  "captures": [
+    {
+      "captureId": "019ed003-0000-7000-8000-000000000301",
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+        "sourceUnitKey": "script/prologue#line-001"
+      },
+      "evidenceTier": "E2",
+      "frame": 12,
+      "width": 1280,
+      "height": 720,
+      "nonZeroPixels": 921600,
+      "region": {
+        "x": 96,
+        "y": 520,
+        "width": 1088,
+        "height": 128
+      },
+      "artifactRef": {
+        "artifactId": "019ed003-0000-7000-8000-000000000401",
+        "artifactKind": "screenshot",
+        "uri": "artifacts/utsushi/hello/frame-0001.png",
+        "hash": "sha256:3f7b35b1e64b9fa58bf5d92670ba03059e4ffb54ba7f06f3a3b6a2ce9a0b401e",
+        "mediaType": "image/png",
+        "byteSize": 4096
+      }
+    }
+  ],
+  "recordings": [
+    {
+      "recordingId": "019ed003-0000-7000-8000-000000000501",
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+        "sourceUnitKey": "script/prologue#line-001"
+      },
+      "evidenceTier": "E3",
+      "startedAtFrame": 1,
+      "frameCount": 48,
+      "width": 1280,
+      "height": 720,
+      "encoding": "video/webm;codecs=vp9",
+      "artifactRef": {
+        "artifactId": "019ed003-0000-7000-8000-000000000601",
+        "artifactKind": "recording",
+        "uri": "artifacts/utsushi/hello/replay.webm",
+        "hash": "sha256:6c61b6c6e8d4ffba859a789c59b9276d47b9353d02f81a44c677d5de17487bb6",
+        "mediaType": "video/webm",
+        "byteSize": 65536
+      }
+    }
+  ],
+  "approximations": [
+    {
+      "approximationId": "019ed003-0000-7000-8000-000000000701",
+      "approximationTier": "engine_partial",
+      "scope": "fixture review path",
+      "description": "Replay controls cover the scripted branch path but do not compare pixels against a reference runtime.",
+      "affectedBridgeUnitRefs": [
+        {
+          "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+          "sourceUnitKey": "script/prologue#line-001"
+        }
+      ],
+      "evidenceTierCeiling": "E3"
+    }
+  ],
+  "validationFindings": [],
+  "limitations": [
+    "E3 replay evidence supports review navigation only; it is not an E4 pixel-fidelity claim."
+  ]
+}

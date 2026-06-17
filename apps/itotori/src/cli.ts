@@ -11,7 +11,7 @@ import {
   type BridgeBundle,
   type PatchExport,
   assertBridgeBundle,
-  assertRuntimeVerificationReport,
+  assertRuntimeReport,
 } from "@itotori/localization-bridge-schema";
 import { localUserActor } from "./auth.js";
 
@@ -135,7 +135,7 @@ async function runIngestRuntime(): Promise<void> {
   const outputPath = requiredFlag("--output");
   const project = readProject(projectPath);
   const report = readJson(runtimeReportPath);
-  assertRuntimeVerificationReport(report);
+  assertRuntimeReport(report);
   project.runtimeReport = report;
   const dashboard = await withRepository((repo) =>
     repo.saveRuntimeReport(localUserActor, project, report, id("patch-result", 1)),
