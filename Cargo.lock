@@ -15,6 +15,7 @@ dependencies = [
  "kaifuu-core",
  "kaifuu-delta",
  "kaifuu-engine-fixture",
+ "serde_json",
 ]
 
 [[package]]
