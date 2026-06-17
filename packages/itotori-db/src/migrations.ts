@@ -84,6 +84,10 @@ const migrations = [
     id: "0006_model_registry_cost_ledger",
     file: "0006_model_registry_cost_ledger.sql",
   },
+  {
+    id: "0007_runtime_evidence_ingestion",
+    file: "0007_runtime_evidence_ingestion.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

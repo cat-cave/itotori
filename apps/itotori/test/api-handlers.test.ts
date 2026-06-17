@@ -145,6 +145,30 @@ describe("Itotori API handlers", () => {
     expect(services.projectWorkflow.importBridge).not.toHaveBeenCalled();
   });
 
+  it("allows failed runtime evidence ingest results with validation findings", async () => {
+    const services = serviceFixture();
+    services.projectWorkflow.ingestRuntimeReport.mockResolvedValueOnce({
+      project: projectFixture,
+      result: {
+        ...runtimeIngestResultFixture,
+        status: "hello_world_failed",
+      },
+    });
+
+    const response = await handleItotoriApiRequest(
+      post("/api/projects/project-1/runtime-evidence", {
+        project: projectFixture,
+        runtimeReport: { ...runtimeReportFixture, status: "failed" },
+      }),
+      services,
+    );
+
+    expect(response).toMatchObject({
+      statusCode: 200,
+      body: { status: "hello_world_failed", runtimeReportId: "runtime-1" },
+    });
+  });
+
   it("identifies API paths without claiming static assets", () => {
     expect(isItotoriApiPath("/api/projects/status")).toBe(true);
     expect(isItotoriApiPath("/api/projects/project-1/findings")).toBe(true);

@@ -7,7 +7,10 @@ import type {
   LocalizationUnitV02,
   PatchExport,
   PatchExportV02,
+  RuntimeArtifactRefV02,
+  RuntimeBridgeUnitRefV02,
   RuntimeEvidenceReportV02,
+  RuntimeValidationFindingV02,
   RuntimeVerificationReport,
   SourceRevisionV02,
   TriageEventV02,
@@ -40,11 +43,18 @@ import {
   projectStatusValues,
   projects,
   providerRuns,
+  runtimeBridgeUnitRefRoleValues,
+  runtimeEvidenceBridgeUnitRefs,
+  runtimeEvidenceItems,
+  runtimeEvidenceKindValues,
+  runtimeEvidenceRuns,
+  runtimeValidationFindings,
   sourceBundles,
   sourceRevisions,
   sourceUnits,
   workspaces,
 } from "../schema.js";
+import type { RuntimeBridgeUnitRefRole, RuntimeEvidenceKind } from "../schema.js";
 
 export const defaultWorkspaceId = "local-workspace";
 export const defaultWorkspaceName = "Local workspace";
@@ -166,6 +176,10 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         ${feedbackReportEvidence},
         ${feedbackReports},
         ${feedbackSources},
+        ${runtimeEvidenceBridgeUnitRefs},
+        ${runtimeValidationFindings},
+        ${runtimeEvidenceItems},
+        ${runtimeEvidenceRuns},
         ${artifacts},
         ${findings},
         ${events},
@@ -462,17 +476,42 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
   ): Promise<ProjectDashboardStatus> {
     await requirePermission(this.db, actor, permissionValues.runtimeIngest);
     const sourceBundleId = sourceBundleIdFor(project.bridge);
+    const sourceBundleRevisionId = sourceBundleRevisionIdFor(project.bridge);
     const runtimeReportId = runtimeReportIdFor(runtimeReport);
     const adapterName = runtimeAdapterName(runtimeReport);
+    const adapterVersion = runtimeAdapterVersion(runtimeReport);
     const runtimeStatus = runtimeReportStatus(runtimeReport);
+    const finalStatus = runtimeFinalStatus(runtimeStatus);
     const fidelityTier = runtimeFidelityTier(runtimeReport);
     const evidenceTier = runtimeEvidenceTier(runtimeReport);
     const textEventCount = runtimeTextEventCount(runtimeReport);
+    const branchEventCount = runtimeBranchEventCount(runtimeReport);
     const frameCaptureCount = runtimeFrameCaptureCount(runtimeReport);
     const screenshotArtifactCount = runtimeScreenshotArtifactCount(runtimeReport);
     const recordingArtifactCount = runtimeRecordingArtifactCount(runtimeReport);
     const validationFindingCount = runtimeValidationFindingCount(runtimeReport);
-    const approximations = runtimeApproximations(runtimeReport);
+    const referenceComparisonCount = runtimeReferenceComparisonCount(runtimeReport);
+    const reportCreatedAt = runtimeReportCreatedAt(runtimeReport);
+    const runtimeReportMetadata = runtimeReportMetadataFor(runtimeReport, {
+      adapterName,
+      adapterVersion,
+      finalStatus,
+      runtimeStatus,
+      fidelityTier,
+      evidenceTier,
+      textEventCount,
+      branchEventCount,
+      frameCaptureCount,
+      screenshotArtifactCount,
+      recordingArtifactCount,
+      validationFindingCount,
+      referenceComparisonCount,
+    });
+    const artifactLinks = runtimeArtifactLinks(runtimeReport);
+    const eventArtifacts = runtimeEvidenceEventArtifacts(runtimeReport);
+    const evidenceItems = runtimeEvidenceItemsFor(runtimeReport);
+    const validationRecords = runtimeValidationFindingRecords(runtimeReport);
+    const recordedEventId = `${runtimeReportId}:recorded`;
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -483,36 +522,12 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           localeBranchId: project.localeBranchId,
           sourceBundleId,
           artifactKind: "runtime_report",
-          metadata: {
-            schemaVersion: runtimeReport.schemaVersion,
-            adapterName,
-            fidelityTier,
-            evidenceTier,
-            status: runtimeStatus,
-            textEventCount,
-            frameCaptureCount,
-            screenshotArtifactCount,
-            recordingArtifactCount,
-            validationFindingCount,
-            approximations,
-          },
+          metadata: runtimeReportMetadata,
         })
         .onConflictDoUpdate({
           target: artifacts.artifactId,
           set: {
-            metadata: {
-              schemaVersion: runtimeReport.schemaVersion,
-              adapterName,
-              fidelityTier,
-              evidenceTier,
-              status: runtimeStatus,
-              textEventCount,
-              frameCaptureCount,
-              screenshotArtifactCount,
-              recordingArtifactCount,
-              validationFindingCount,
-              approximations,
-            },
+            metadata: runtimeReportMetadata,
           },
         });
 
@@ -524,52 +539,48 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           localeBranchId: project.localeBranchId,
           sourceBundleId,
           artifactKind: "patch_result",
-          metadata: { status: "passed", runtimeReportId },
+          metadata: { status: runtimeStatus, finalStatus, runtimeReportId },
         })
         .onConflictDoUpdate({
           target: artifacts.artifactId,
-          set: { metadata: { status: "passed", runtimeReportId } },
+          set: { metadata: { status: runtimeStatus, finalStatus, runtimeReportId } },
         });
 
-      for (const frame of runtimeCaptureArtifacts(runtimeReport)) {
+      for (const artifactLink of artifactLinks) {
         await tx
           .insert(artifacts)
           .values({
-            artifactId: frame.artifactId,
+            artifactId: artifactLink.artifactId,
             projectId: project.projectId,
             localeBranchId: project.localeBranchId,
             sourceBundleId,
-            bridgeUnitId: frame.bridgeUnitId,
-            artifactKind: frame.artifactKind,
-            uri: frame.uri,
-            hash: frame.hash ?? null,
+            bridgeUnitId: artifactLink.bridgeUnitId ?? null,
+            artifactKind: artifactLink.artifactKind,
+            uri: artifactLink.uri,
+            hash: artifactLink.hash ?? null,
             metadata: {
-              captureId: frame.captureId,
               schemaVersion: runtimeReport.schemaVersion,
-              evidenceTier: frame.evidenceTier,
-              width: frame.width,
-              height: frame.height,
-              nonZeroPixels: frame.nonZeroPixels,
+              runtimeReportId,
+              ...artifactLink.metadata,
             },
           })
           .onConflictDoUpdate({
             target: artifacts.artifactId,
             set: {
-              uri: frame.uri,
-              hash: frame.hash ?? null,
+              bridgeUnitId: artifactLink.bridgeUnitId ?? null,
+              artifactKind: artifactLink.artifactKind,
+              uri: artifactLink.uri,
+              hash: artifactLink.hash ?? null,
               metadata: {
-                captureId: frame.captureId,
                 schemaVersion: runtimeReport.schemaVersion,
-                evidenceTier: frame.evidenceTier,
-                width: frame.width,
-                height: frame.height,
-                nonZeroPixels: frame.nonZeroPixels,
+                runtimeReportId,
+                ...artifactLink.metadata,
               },
             },
           });
       }
 
-      for (const eventArtifact of runtimeEvidenceEventArtifacts(runtimeReport)) {
+      for (const eventArtifact of eventArtifacts) {
         await tx
           .insert(artifacts)
           .values({
@@ -591,13 +602,123 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       }
 
       await tx
+        .insert(runtimeEvidenceRuns)
+        .values({
+          runtimeRunId: runtimeReportId,
+          projectId: project.projectId,
+          localeBranchId: project.localeBranchId,
+          sourceBundleId,
+          sourceBundleRevisionId,
+          runtimeReportArtifactId: runtimeReportId,
+          patchResultArtifactId: patchResultId,
+          adapterName,
+          adapterVersion,
+          status: runtimeStatus,
+          fidelityTier,
+          evidenceTier,
+          textEventCount,
+          branchEventCount,
+          captureCount: frameCaptureCount,
+          recordingCount: recordingArtifactCount,
+          validationFindingCount,
+          referenceComparisonCount,
+          reportCreatedAt,
+          metadata: runtimeReportMetadata,
+        })
+        .onConflictDoUpdate({
+          target: runtimeEvidenceRuns.runtimeRunId,
+          set: {
+            localeBranchId: project.localeBranchId,
+            sourceBundleId,
+            sourceBundleRevisionId,
+            runtimeReportArtifactId: runtimeReportId,
+            patchResultArtifactId: patchResultId,
+            adapterName,
+            adapterVersion,
+            status: runtimeStatus,
+            fidelityTier,
+            evidenceTier,
+            textEventCount,
+            branchEventCount,
+            captureCount: frameCaptureCount,
+            recordingCount: recordingArtifactCount,
+            validationFindingCount,
+            referenceComparisonCount,
+            reportCreatedAt,
+            metadata: runtimeReportMetadata,
+            updatedAt: sql`now()`,
+          },
+        });
+
+      for (const item of evidenceItems) {
+        await tx
+          .insert(runtimeEvidenceItems)
+          .values({
+            runtimeEvidenceId: item.runtimeEvidenceId,
+            runtimeRunId: runtimeReportId,
+            projectId: project.projectId,
+            localeBranchId: project.localeBranchId,
+            sourceBundleId,
+            sourceBundleRevisionId,
+            bridgeUnitId: item.bridgeUnitId ?? null,
+            artifactId: item.artifactId ?? null,
+            evidenceKind: item.evidenceKind,
+            evidenceTier: item.evidenceTier ?? null,
+            artifactKind: item.artifactKind ?? null,
+            portableArtifactUri: item.portableArtifactUri ?? null,
+            frame: item.frame ?? null,
+            metadata: {
+              schemaVersion: runtimeReport.schemaVersion,
+              runtimeReportId,
+              ...item.metadata,
+            },
+          })
+          .onConflictDoUpdate({
+            target: runtimeEvidenceItems.runtimeEvidenceId,
+            set: {
+              runtimeRunId: runtimeReportId,
+              localeBranchId: project.localeBranchId,
+              sourceBundleId,
+              sourceBundleRevisionId,
+              bridgeUnitId: item.bridgeUnitId ?? null,
+              artifactId: item.artifactId ?? null,
+              evidenceKind: item.evidenceKind,
+              evidenceTier: item.evidenceTier ?? null,
+              artifactKind: item.artifactKind ?? null,
+              portableArtifactUri: item.portableArtifactUri ?? null,
+              frame: item.frame ?? null,
+              metadata: {
+                schemaVersion: runtimeReport.schemaVersion,
+                runtimeReportId,
+                ...item.metadata,
+              },
+              updatedAt: sql`now()`,
+            },
+          });
+
+        await tx
+          .delete(runtimeEvidenceBridgeUnitRefs)
+          .where(eq(runtimeEvidenceBridgeUnitRefs.runtimeEvidenceId, item.runtimeEvidenceId));
+
+        for (const ref of item.bridgeUnitRefs) {
+          await tx.insert(runtimeEvidenceBridgeUnitRefs).values({
+            runtimeEvidenceId: item.runtimeEvidenceId,
+            bridgeUnitId: ref.bridgeUnitId,
+            refRole: ref.refRole,
+            sourceUnitKey: ref.sourceUnitKey ?? "",
+            metadata: ref.metadata ?? {},
+          });
+        }
+      }
+
+      await tx
         .insert(events)
         .values({
-          eventId: `${runtimeReportId}:recorded`,
+          eventId: recordedEventId,
           projectId: project.projectId,
           localeBranchId: project.localeBranchId,
           eventKind: "patch_result_recorded",
-          occurredAt: new Date(),
+          occurredAt: reportCreatedAt,
           actor: { actorKind: "tool", displayName: adapterName },
           subjectRefs: [
             {
@@ -608,9 +729,122 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           ],
           provenance: [],
           causalLinks: [],
-          payload: { patchResultId, status: runtimeStatus, evidenceTier },
+          payload: { patchResultId, finalStatus, status: runtimeStatus, evidenceTier },
         })
         .onConflictDoNothing();
+
+      for (const validation of validationRecords) {
+        await tx
+          .insert(findings)
+          .values({
+            findingId: validation.findingId,
+            projectId: project.projectId,
+            localeBranchId: project.localeBranchId,
+            findingKind: validation.findingKind,
+            severity: validation.severity,
+            qualityCategory: "runtime_validation",
+            title: validation.title,
+            description: validation.message,
+            impact: validation.impact,
+            status: "open",
+            createdAt: reportCreatedAt,
+            firstSeenEventId: recordedEventId,
+            affectedRefs: validation.affectedRefs,
+            evidence: validation.evidence,
+            provenance: validation.provenance,
+            causalLinks: [],
+          })
+          .onConflictDoUpdate({
+            target: findings.findingId,
+            set: {
+              severity: validation.severity,
+              qualityCategory: "runtime_validation",
+              title: validation.title,
+              description: validation.message,
+              impact: validation.impact,
+              status: "open",
+              firstSeenEventId: recordedEventId,
+              affectedRefs: validation.affectedRefs,
+              evidence: validation.evidence,
+              provenance: validation.provenance,
+              causalLinks: [],
+              updatedAt: sql`now()`,
+            },
+          });
+
+        if (validation.artifactRef !== undefined) {
+          await tx
+            .insert(artifacts)
+            .values({
+              artifactId: validation.artifactRef.artifactId,
+              projectId: project.projectId,
+              localeBranchId: project.localeBranchId,
+              sourceBundleId,
+              bridgeUnitId: validation.bridgeUnitId ?? null,
+              findingId: validation.findingId,
+              artifactKind: validation.artifactRef.artifactKind,
+              uri: validation.artifactRef.uri,
+              hash: validation.artifactRef.hash ?? null,
+              metadata: {
+                schemaVersion: runtimeReport.schemaVersion,
+                runtimeReportId,
+                validationFindingId: validation.findingId,
+                artifactRef: validation.artifactRef,
+              },
+            })
+            .onConflictDoUpdate({
+              target: artifacts.artifactId,
+              set: {
+                bridgeUnitId: validation.bridgeUnitId ?? null,
+                findingId: validation.findingId,
+                artifactKind: validation.artifactRef.artifactKind,
+                uri: validation.artifactRef.uri,
+                hash: validation.artifactRef.hash ?? null,
+                metadata: {
+                  schemaVersion: runtimeReport.schemaVersion,
+                  runtimeReportId,
+                  validationFindingId: validation.findingId,
+                  artifactRef: validation.artifactRef,
+                },
+              },
+            });
+        }
+
+        await tx
+          .insert(runtimeValidationFindings)
+          .values({
+            findingId: validation.findingId,
+            runtimeRunId: runtimeReportId,
+            projectId: project.projectId,
+            localeBranchId: project.localeBranchId,
+            sourceBundleId,
+            sourceBundleRevisionId,
+            bridgeUnitId: validation.bridgeUnitId ?? null,
+            artifactId: validation.artifactRef?.artifactId ?? null,
+            findingKind: validation.findingKind,
+            severity: validation.severity,
+            message: validation.message,
+            evidenceTier: validation.evidenceTier,
+            metadata: validation.metadata,
+          })
+          .onConflictDoUpdate({
+            target: runtimeValidationFindings.findingId,
+            set: {
+              runtimeRunId: runtimeReportId,
+              localeBranchId: project.localeBranchId,
+              sourceBundleId,
+              sourceBundleRevisionId,
+              bridgeUnitId: validation.bridgeUnitId ?? null,
+              artifactId: validation.artifactRef?.artifactId ?? null,
+              findingKind: validation.findingKind,
+              severity: validation.severity,
+              message: validation.message,
+              evidenceTier: validation.evidenceTier,
+              metadata: validation.metadata,
+              updatedAt: sql`now()`,
+            },
+          });
+      }
 
       await tx
         .update(projects)
@@ -852,6 +1086,24 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         order by updated_at desc
         limit 1
       ),
+      latest_runtime_run as (
+        select
+          runtime_run_id,
+          status,
+          fidelity_tier,
+          evidence_tier,
+          text_event_count,
+          capture_count,
+          recording_count,
+          validation_finding_count,
+          metadata,
+          report_created_at,
+          created_at
+        from ${runtimeEvidenceRuns}
+        where project_id in (select project_id from latest_project)
+        order by report_created_at desc, created_at desc
+        limit 1
+      ),
       latest_runtime_report as (
         select
           artifact_id,
@@ -876,6 +1128,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       )
       select
         coalesce(
+          latest_runtime_run.metadata->>'finalStatus',
           latest_patch_result.metadata->>'finalStatus',
           case
             when latest_patch_result.metadata->>'status' in (
@@ -883,6 +1136,10 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
               'hello_world_failed'
             )
               then latest_patch_result.metadata->>'status'
+            when latest_runtime_run.status = 'passed'
+              then 'hello_world_passed'
+            when latest_runtime_run.status = 'failed'
+              then 'hello_world_failed'
             when latest_runtime_report.metadata->>'status' = 'passed'
               then 'hello_world_passed'
             when latest_runtime_report.metadata->>'status' = 'failed'
@@ -890,16 +1147,26 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             else latest_patch_result.metadata->>'status'
           end
         ) as final_status,
-        latest_runtime_report.artifact_id as runtime_report_id,
-        latest_runtime_report.metadata->>'status' as runtime_status,
-        latest_runtime_report.metadata->>'fidelityTier' as fidelity_tier,
-        latest_runtime_report.metadata->>'evidenceTier' as evidence_tier,
-        latest_runtime_report.metadata->>'textEventCount' as text_event_count,
-        latest_runtime_report.metadata->>'frameCaptureCount' as frame_capture_count,
-        latest_runtime_report.metadata->>'screenshotArtifactCount' as screenshot_artifact_count,
-        latest_runtime_report.metadata->>'recordingArtifactCount' as recording_artifact_count,
-        latest_runtime_report.metadata->>'validationFindingCount' as validation_finding_count
+        coalesce(latest_runtime_run.runtime_run_id, latest_runtime_report.artifact_id)
+          as runtime_report_id,
+        coalesce(latest_runtime_run.status, latest_runtime_report.metadata->>'status')
+          as runtime_status,
+        coalesce(latest_runtime_run.fidelity_tier, latest_runtime_report.metadata->>'fidelityTier')
+          as fidelity_tier,
+        coalesce(latest_runtime_run.evidence_tier, latest_runtime_report.metadata->>'evidenceTier')
+          as evidence_tier,
+        coalesce(latest_runtime_run.text_event_count::text, latest_runtime_report.metadata->>'textEventCount')
+          as text_event_count,
+        coalesce(latest_runtime_run.capture_count::text, latest_runtime_report.metadata->>'frameCaptureCount')
+          as frame_capture_count,
+        coalesce(latest_runtime_run.capture_count::text, latest_runtime_report.metadata->>'screenshotArtifactCount')
+          as screenshot_artifact_count,
+        coalesce(latest_runtime_run.recording_count::text, latest_runtime_report.metadata->>'recordingArtifactCount')
+          as recording_artifact_count,
+        coalesce(latest_runtime_run.validation_finding_count::text, latest_runtime_report.metadata->>'validationFindingCount')
+          as validation_finding_count
       from latest_project
+      left join latest_runtime_run on true
       left join latest_runtime_report on true
       left join latest_patch_result on true
     `);
@@ -1092,17 +1359,13 @@ function sourceBundleIdFor(bundle: BridgeBundle | BridgeBundleV02): string {
 
 type RuntimeReportInput = RuntimeVerificationReport | RuntimeEvidenceReportV02;
 
-type RuntimeCaptureArtifact = {
+type RuntimeArtifactLink = {
   artifactId: string;
-  captureId: string;
-  bridgeUnitId: string;
   artifactKind: string;
   uri: string;
   hash: string | undefined;
-  evidenceTier: string | null | undefined;
-  width: number;
-  height: number;
-  nonZeroPixels: number | undefined;
+  bridgeUnitId: string | undefined;
+  metadata: Record<string, unknown>;
 };
 
 type RuntimeEvidenceEventArtifact = {
@@ -1117,6 +1380,40 @@ type RuntimeBridgeUnitRef = {
   sourceUnitKey?: string;
 };
 
+type RuntimeBridgeUnitLink = RuntimeBridgeUnitRef & {
+  refRole: RuntimeBridgeUnitRefRole;
+  metadata?: Record<string, unknown>;
+};
+
+type RuntimeEvidenceItemInput = {
+  runtimeEvidenceId: string;
+  evidenceKind: RuntimeEvidenceKind;
+  bridgeUnitId: string | undefined;
+  artifactId: string | undefined;
+  artifactKind: string | undefined;
+  portableArtifactUri: string | undefined;
+  evidenceTier: string | null | undefined;
+  frame: number | undefined;
+  metadata: Record<string, unknown>;
+  bridgeUnitRefs: RuntimeBridgeUnitLink[];
+};
+
+type RuntimeValidationFindingRecord = {
+  findingId: string;
+  findingKind: string;
+  severity: string;
+  message: string;
+  evidenceTier: string;
+  bridgeUnitId: string | undefined;
+  artifactRef: RuntimeArtifactRefV02 | undefined;
+  title: string;
+  impact: string;
+  affectedRefs: unknown[];
+  evidence: unknown[];
+  provenance: unknown[];
+  metadata: Record<string, unknown>;
+};
+
 function runtimeReportIdFor(report: RuntimeReportInput): string {
   return report.runtimeReportId;
 }
@@ -1125,8 +1422,18 @@ function runtimeAdapterName(report: RuntimeReportInput): string {
   return report.adapterName;
 }
 
+function runtimeAdapterVersion(report: RuntimeReportInput): string | null {
+  return isRuntimeEvidenceReportV02(report) ? report.adapterVersion : null;
+}
+
 function runtimeReportStatus(report: RuntimeReportInput): "passed" | "failed" {
   return report.status;
+}
+
+function runtimeFinalStatus(
+  status: "passed" | "failed",
+): "hello_world_passed" | "hello_world_failed" {
+  return status === "passed" ? "hello_world_passed" : "hello_world_failed";
 }
 
 function runtimeFidelityTier(report: RuntimeReportInput): string {
@@ -1139,6 +1446,10 @@ function runtimeEvidenceTier(report: RuntimeReportInput): string | null {
 
 function runtimeTextEventCount(report: RuntimeReportInput): number {
   return isRuntimeEvidenceReportV02(report) ? report.traceEvents.length : report.textEvents.length;
+}
+
+function runtimeBranchEventCount(report: RuntimeReportInput): number {
+  return isRuntimeEvidenceReportV02(report) ? report.branchEvents.length : 0;
 }
 
 function runtimeFrameCaptureCount(report: RuntimeReportInput): number {
@@ -1157,52 +1468,157 @@ function runtimeValidationFindingCount(report: RuntimeReportInput): number {
   return isRuntimeEvidenceReportV02(report) ? report.validationFindings.length : 0;
 }
 
+function runtimeReferenceComparisonCount(report: RuntimeReportInput): number {
+  return isRuntimeEvidenceReportV02(report) ? (report.referenceComparisons ?? []).length : 0;
+}
+
+function runtimeReportCreatedAt(report: RuntimeReportInput): Date {
+  return isRuntimeEvidenceReportV02(report) ? new Date(report.createdAt) : new Date();
+}
+
 function runtimeApproximations(report: RuntimeReportInput): unknown[] {
   return report.approximations;
 }
 
-function runtimeCaptureArtifacts(report: RuntimeReportInput): RuntimeCaptureArtifact[] {
+function sourceBundleRevisionIdFor(bundle: BridgeBundle | BridgeBundleV02): string {
+  return isBridgeBundleV02(bundle)
+    ? bundle.sourceBundleRevision.revisionId
+    : `${bundle.bridgeId}:bundle-revision`;
+}
+
+function runtimeReportMetadataFor(
+  report: RuntimeReportInput,
+  summary: {
+    adapterName: string;
+    adapterVersion: string | null;
+    finalStatus: string;
+    runtimeStatus: string;
+    fidelityTier: string;
+    evidenceTier: string | null;
+    textEventCount: number;
+    branchEventCount: number;
+    frameCaptureCount: number;
+    screenshotArtifactCount: number;
+    recordingArtifactCount: number;
+    validationFindingCount: number;
+    referenceComparisonCount: number;
+  },
+): Record<string, unknown> {
+  return {
+    schemaVersion: report.schemaVersion,
+    adapterName: summary.adapterName,
+    adapterVersion: summary.adapterVersion,
+    sourceBridgeId: isRuntimeEvidenceReportV02(report) ? (report.sourceBridgeId ?? null) : null,
+    sourceBundleHash: isRuntimeEvidenceReportV02(report) ? (report.sourceBundleHash ?? null) : null,
+    sourceLocale: isRuntimeEvidenceReportV02(report) ? (report.sourceLocale ?? null) : null,
+    targetLocale: isRuntimeEvidenceReportV02(report) ? (report.targetLocale ?? null) : null,
+    fidelityTier: summary.fidelityTier,
+    evidenceTier: summary.evidenceTier,
+    status: summary.runtimeStatus,
+    finalStatus: summary.finalStatus,
+    textEventCount: summary.textEventCount,
+    branchEventCount: summary.branchEventCount,
+    frameCaptureCount: summary.frameCaptureCount,
+    screenshotArtifactCount: summary.screenshotArtifactCount,
+    recordingArtifactCount: summary.recordingArtifactCount,
+    validationFindingCount: summary.validationFindingCount,
+    referenceComparisonCount: summary.referenceComparisonCount,
+    approximations: runtimeApproximations(report),
+    limitations: isRuntimeEvidenceReportV02(report) ? report.limitations : [],
+    reportCreatedAt: runtimeReportCreatedAt(report).toISOString(),
+  };
+}
+
+function runtimeArtifactLinks(report: RuntimeReportInput): RuntimeArtifactLink[] {
   if (!isRuntimeEvidenceReportV02(report)) {
     return report.frameCaptures.map((frame) => ({
       artifactId: frame.frameCaptureId,
-      captureId: frame.frameCaptureId,
-      bridgeUnitId: frame.bridgeUnitId,
       artifactKind: "frame_capture",
       uri: frame.artifactPath,
       hash: undefined,
-      evidenceTier: null,
-      width: frame.width,
-      height: frame.height,
-      nonZeroPixels: frame.nonZeroPixels,
+      bridgeUnitId: frame.bridgeUnitId,
+      metadata: {
+        captureId: frame.frameCaptureId,
+        evidenceTier: null,
+        width: frame.width,
+        height: frame.height,
+        nonZeroPixels: frame.nonZeroPixels,
+      },
     }));
   }
 
   return [
+    ...report.traceEvents.flatMap((event) =>
+      event.artifactRef === undefined
+        ? []
+        : [
+            artifactLinkFromRef(event.artifactRef, event.bridgeUnitRef.bridgeUnitId, {
+              evidenceKind: runtimeEvidenceKindValues.traceEvent,
+              traceEventId: event.traceEventId,
+              frame: event.frame,
+              traceKey: event.traceKey,
+            }),
+          ],
+    ),
     ...report.captures.map((capture) => ({
-      artifactId: capture.artifactRef.artifactId,
-      captureId: capture.captureId,
-      bridgeUnitId: capture.bridgeUnitRef.bridgeUnitId,
-      artifactKind: "screenshot",
-      uri: capture.artifactRef.uri,
-      hash: capture.artifactRef.hash,
-      evidenceTier: capture.evidenceTier,
-      width: capture.width,
-      height: capture.height,
-      nonZeroPixels: capture.nonZeroPixels,
+      ...artifactLinkFromRef(capture.artifactRef, capture.bridgeUnitRef.bridgeUnitId, {
+        evidenceKind: runtimeEvidenceKindValues.capture,
+        captureId: capture.captureId,
+        evidenceTier: capture.evidenceTier,
+        frame: capture.frame,
+        width: capture.width,
+        height: capture.height,
+        nonZeroPixels: capture.nonZeroPixels,
+        region: capture.region ?? null,
+      }),
     })),
     ...report.recordings.map((recording) => ({
-      artifactId: recording.artifactRef.artifactId,
-      captureId: recording.recordingId,
-      bridgeUnitId: recording.bridgeUnitRef.bridgeUnitId,
-      artifactKind: "recording",
-      uri: recording.artifactRef.uri,
-      hash: recording.artifactRef.hash,
-      evidenceTier: recording.evidenceTier,
-      width: recording.width,
-      height: recording.height,
-      nonZeroPixels: undefined,
+      ...artifactLinkFromRef(recording.artifactRef, recording.bridgeUnitRef.bridgeUnitId, {
+        evidenceKind: runtimeEvidenceKindValues.recording,
+        recordingId: recording.recordingId,
+        evidenceTier: recording.evidenceTier,
+        startedAtFrame: recording.startedAtFrame,
+        frameCount: recording.frameCount,
+        width: recording.width,
+        height: recording.height,
+        encoding: recording.encoding,
+      }),
     })),
+    ...(report.referenceComparisons ?? []).map((comparison) =>
+      artifactLinkFromRef(
+        comparison.artifactRef,
+        comparison.coveredBridgeUnitRefs[0]?.bridgeUnitId,
+        {
+          evidenceKind: runtimeEvidenceKindValues.referenceComparison,
+          comparisonId: comparison.comparisonId,
+          comparisonKind: comparison.comparisonKind,
+          status: comparison.status,
+          scope: comparison.scope,
+        },
+      ),
+    ),
   ];
+}
+
+function artifactLinkFromRef(
+  artifactRef: RuntimeArtifactRefV02,
+  bridgeUnitId: string | undefined,
+  metadata: Record<string, unknown>,
+): RuntimeArtifactLink {
+  assertPortableRelativeArtifactUri(artifactRef.uri);
+  return {
+    artifactId: artifactRef.artifactId,
+    artifactKind: artifactRef.artifactKind,
+    uri: artifactRef.uri,
+    hash: artifactRef.hash,
+    bridgeUnitId,
+    metadata: {
+      ...metadata,
+      artifactRef,
+      mediaType: artifactRef.mediaType ?? null,
+      byteSize: artifactRef.byteSize ?? null,
+    },
+  };
 }
 
 function runtimeEvidenceEventArtifacts(report: RuntimeReportInput): RuntimeEvidenceEventArtifact[] {
@@ -1244,24 +1660,309 @@ function runtimeEvidenceEventArtifacts(report: RuntimeReportInput): RuntimeEvide
   ];
 }
 
+function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceItemInput[] {
+  if (!isRuntimeEvidenceReportV02(report)) {
+    return [
+      ...report.textEvents.map((event) => ({
+        runtimeEvidenceId: event.runtimeTextEventId,
+        evidenceKind: runtimeEvidenceKindValues.traceEvent,
+        bridgeUnitId: event.bridgeUnitId,
+        artifactId: undefined,
+        artifactKind: undefined,
+        portableArtifactUri: undefined,
+        evidenceTier: null,
+        frame: event.frame,
+        metadata: { event },
+        bridgeUnitRefs: [
+          {
+            bridgeUnitId: event.bridgeUnitId,
+            refRole: runtimeBridgeUnitRefRoleValues.primary,
+          },
+        ],
+      })),
+      ...report.frameCaptures.map((frame) => ({
+        runtimeEvidenceId: frame.frameCaptureId,
+        evidenceKind: runtimeEvidenceKindValues.capture,
+        bridgeUnitId: frame.bridgeUnitId,
+        artifactId: frame.frameCaptureId,
+        artifactKind: "frame_capture",
+        portableArtifactUri: undefined,
+        evidenceTier: null,
+        frame: undefined,
+        metadata: {
+          capture: frame,
+          width: frame.width,
+          height: frame.height,
+          nonZeroPixels: frame.nonZeroPixels,
+        },
+        bridgeUnitRefs: [
+          {
+            bridgeUnitId: frame.bridgeUnitId,
+            refRole: runtimeBridgeUnitRefRoleValues.primary,
+          },
+        ],
+      })),
+    ];
+  }
+
+  return [
+    ...report.traceEvents.map((event) => {
+      const artifactRef = event.artifactRef;
+      if (artifactRef !== undefined) {
+        assertPortableRelativeArtifactUri(artifactRef.uri);
+      }
+      return {
+        runtimeEvidenceId: event.traceEventId,
+        evidenceKind: runtimeEvidenceKindValues.traceEvent,
+        bridgeUnitId: event.bridgeUnitRef.bridgeUnitId,
+        artifactId: artifactRef?.artifactId ?? event.traceEventId,
+        artifactKind: artifactRef?.artifactKind ?? "runtime_trace_event",
+        portableArtifactUri: artifactRef?.uri,
+        evidenceTier: null,
+        frame: event.frame,
+        metadata: {
+          eventKind: event.eventKind,
+          traceKey: event.traceKey,
+          observedText: event.observedText,
+          artifactRef: artifactRef ?? null,
+          event,
+        },
+        bridgeUnitRefs: [
+          bridgeUnitLink(event.bridgeUnitRef, runtimeBridgeUnitRefRoleValues.primary),
+        ],
+      };
+    }),
+    ...report.branchEvents.map((event) => ({
+      runtimeEvidenceId: event.branchEventId,
+      evidenceKind: runtimeEvidenceKindValues.branchEvent,
+      bridgeUnitId: event.bridgeUnitRef.bridgeUnitId,
+      artifactId: event.branchEventId,
+      artifactKind: "runtime_branch_event",
+      portableArtifactUri: undefined,
+      evidenceTier: null,
+      frame: event.frame,
+      metadata: {
+        branchPointKey: event.branchPointKey,
+        selectedOptionId: event.selectedOptionId,
+        event,
+      },
+      bridgeUnitRefs: runtimeBranchEventBridgeUnitLinks(event),
+    })),
+    ...report.captures.map((capture) => {
+      assertPortableRelativeArtifactUri(capture.artifactRef.uri);
+      return {
+        runtimeEvidenceId: capture.captureId,
+        evidenceKind: runtimeEvidenceKindValues.capture,
+        bridgeUnitId: capture.bridgeUnitRef.bridgeUnitId,
+        artifactId: capture.artifactRef.artifactId,
+        artifactKind: capture.artifactRef.artifactKind,
+        portableArtifactUri: capture.artifactRef.uri,
+        evidenceTier: capture.evidenceTier,
+        frame: capture.frame,
+        metadata: {
+          capture,
+          width: capture.width,
+          height: capture.height,
+          nonZeroPixels: capture.nonZeroPixels,
+          region: capture.region ?? null,
+          artifactRef: capture.artifactRef,
+        },
+        bridgeUnitRefs: [
+          bridgeUnitLink(capture.bridgeUnitRef, runtimeBridgeUnitRefRoleValues.primary),
+        ],
+      };
+    }),
+    ...report.recordings.map((recording) => {
+      assertPortableRelativeArtifactUri(recording.artifactRef.uri);
+      return {
+        runtimeEvidenceId: recording.recordingId,
+        evidenceKind: runtimeEvidenceKindValues.recording,
+        bridgeUnitId: recording.bridgeUnitRef.bridgeUnitId,
+        artifactId: recording.artifactRef.artifactId,
+        artifactKind: recording.artifactRef.artifactKind,
+        portableArtifactUri: recording.artifactRef.uri,
+        evidenceTier: recording.evidenceTier,
+        frame: recording.startedAtFrame,
+        metadata: {
+          recording,
+          frameCount: recording.frameCount,
+          width: recording.width,
+          height: recording.height,
+          encoding: recording.encoding,
+          artifactRef: recording.artifactRef,
+        },
+        bridgeUnitRefs: [
+          bridgeUnitLink(recording.bridgeUnitRef, runtimeBridgeUnitRefRoleValues.primary),
+        ],
+      };
+    }),
+    ...report.approximations.map((approximation) => ({
+      runtimeEvidenceId: approximation.approximationId,
+      evidenceKind: runtimeEvidenceKindValues.approximation,
+      bridgeUnitId: approximation.affectedBridgeUnitRefs[0]?.bridgeUnitId,
+      artifactId: undefined,
+      artifactKind: undefined,
+      portableArtifactUri: undefined,
+      evidenceTier: approximation.evidenceTierCeiling,
+      frame: undefined,
+      metadata: { approximation },
+      bridgeUnitRefs: approximation.affectedBridgeUnitRefs.map((ref) =>
+        bridgeUnitLink(ref, runtimeBridgeUnitRefRoleValues.affected),
+      ),
+    })),
+    ...(report.referenceComparisons ?? []).map((comparison) => {
+      assertPortableRelativeArtifactUri(comparison.artifactRef.uri);
+      return {
+        runtimeEvidenceId: comparison.comparisonId,
+        evidenceKind: runtimeEvidenceKindValues.referenceComparison,
+        bridgeUnitId: comparison.coveredBridgeUnitRefs[0]?.bridgeUnitId,
+        artifactId: comparison.artifactRef.artifactId,
+        artifactKind: comparison.artifactRef.artifactKind,
+        portableArtifactUri: comparison.artifactRef.uri,
+        evidenceTier: "E4",
+        frame: undefined,
+        metadata: { comparison, artifactRef: comparison.artifactRef },
+        bridgeUnitRefs: comparison.coveredBridgeUnitRefs.map((ref) =>
+          bridgeUnitLink(ref, runtimeBridgeUnitRefRoleValues.covered),
+        ),
+      };
+    }),
+  ].map((item) => ({
+    ...item,
+    bridgeUnitRefs: uniqueBridgeUnitLinks(item.bridgeUnitRefs),
+  }));
+}
+
 function runtimeBranchEventBridgeUnitRefs(
   event: RuntimeEvidenceReportV02["branchEvents"][number],
 ): RuntimeBridgeUnitRef[] {
-  const refs = [event.bridgeUnitRef];
+  return runtimeBranchEventBridgeUnitLinks(event).map((ref) => ({
+    bridgeUnitId: ref.bridgeUnitId,
+    ...(ref.sourceUnitKey === undefined ? {} : { sourceUnitKey: ref.sourceUnitKey }),
+  }));
+}
+
+function runtimeBranchEventBridgeUnitLinks(
+  event: RuntimeEvidenceReportV02["branchEvents"][number],
+): RuntimeBridgeUnitLink[] {
+  const refs = [bridgeUnitLink(event.bridgeUnitRef, runtimeBridgeUnitRefRoleValues.primary)];
   for (const option of event.options) {
     if (option.labelBridgeUnitRef !== undefined) {
-      refs.push(option.labelBridgeUnitRef);
+      refs.push(
+        bridgeUnitLink(option.labelBridgeUnitRef, runtimeBridgeUnitRefRoleValues.branchLabel, {
+          optionId: option.optionId,
+        }),
+      );
     }
     if (option.targetBridgeUnitRef !== undefined) {
-      refs.push(option.targetBridgeUnitRef);
+      refs.push(
+        bridgeUnitLink(option.targetBridgeUnitRef, runtimeBridgeUnitRefRoleValues.branchTarget, {
+          optionId: option.optionId,
+        }),
+      );
     }
   }
+  return uniqueBridgeUnitLinks(refs);
+}
 
-  const uniqueRefs = new Map<string, RuntimeBridgeUnitRef>();
+function bridgeUnitLink(
+  ref: RuntimeBridgeUnitRefV02,
+  refRole: RuntimeBridgeUnitRefRole,
+  metadata?: Record<string, unknown>,
+): RuntimeBridgeUnitLink {
+  return {
+    bridgeUnitId: ref.bridgeUnitId,
+    refRole,
+    ...(ref.sourceUnitKey === undefined ? {} : { sourceUnitKey: ref.sourceUnitKey }),
+    ...(metadata === undefined ? {} : { metadata }),
+  };
+}
+
+function uniqueBridgeUnitLinks(refs: RuntimeBridgeUnitLink[]): RuntimeBridgeUnitLink[] {
+  const uniqueRefs = new Map<string, RuntimeBridgeUnitLink>();
   for (const ref of refs) {
-    uniqueRefs.set(`${ref.bridgeUnitId}\0${ref.sourceUnitKey ?? ""}`, ref);
+    uniqueRefs.set(`${ref.bridgeUnitId}\0${ref.sourceUnitKey ?? ""}\0${ref.refRole}`, ref);
   }
   return Array.from(uniqueRefs.values());
+}
+
+function runtimeValidationFindingRecords(
+  report: RuntimeReportInput,
+): RuntimeValidationFindingRecord[] {
+  if (!isRuntimeEvidenceReportV02(report)) {
+    return [];
+  }
+
+  return report.validationFindings.map((finding) =>
+    runtimeValidationFindingRecord(report, finding),
+  );
+}
+
+function runtimeValidationFindingRecord(
+  report: RuntimeEvidenceReportV02,
+  finding: RuntimeValidationFindingV02,
+): RuntimeValidationFindingRecord {
+  if (finding.artifactRef !== undefined) {
+    assertPortableRelativeArtifactUri(finding.artifactRef.uri);
+  }
+  const runtimeReportRef = {
+    subjectKind: "runtime_report",
+    subjectId: report.runtimeReportId,
+  };
+  const bridgeUnitRef =
+    finding.bridgeUnitRef === undefined
+      ? undefined
+      : {
+          subjectKind: "bridge_unit",
+          subjectId: finding.bridgeUnitRef.bridgeUnitId,
+          sourceUnitKey: finding.bridgeUnitRef.sourceUnitKey,
+        };
+  const affectedRefs =
+    bridgeUnitRef === undefined ? [runtimeReportRef] : [runtimeReportRef, bridgeUnitRef];
+  const evidence = [
+    {
+      evidenceKind: "runtime_validation",
+      runtimeReportId: report.runtimeReportId,
+      evidenceTier: finding.evidenceTier,
+      artifactRef: finding.artifactRef ?? null,
+    },
+  ];
+  const provenance = [
+    {
+      provenanceKind: "runtime_evidence",
+      runtimeReportId: report.runtimeReportId,
+      adapterName: report.adapterName,
+      adapterVersion: report.adapterVersion,
+    },
+  ];
+
+  return {
+    findingId: finding.findingId,
+    findingKind: finding.findingKind,
+    severity: finding.severity,
+    message: finding.message,
+    evidenceTier: finding.evidenceTier,
+    bridgeUnitId: finding.bridgeUnitRef?.bridgeUnitId,
+    artifactRef: finding.artifactRef,
+    title: `Runtime validation: ${finding.findingKind}`,
+    impact: "Runtime evidence may be incomplete or invalid for this report.",
+    affectedRefs,
+    evidence,
+    provenance,
+    metadata: {
+      schemaVersion: report.schemaVersion,
+      runtimeReportId: report.runtimeReportId,
+      finding,
+      bridgeUnitRef: finding.bridgeUnitRef ?? null,
+      artifactRef: finding.artifactRef ?? null,
+    },
+  };
+}
+
+function assertPortableRelativeArtifactUri(uri: string): void {
+  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(uri) || uri.startsWith("/") || uri.includes("\\")) {
+    throw new Error(`runtime artifact uri must be a portable relative artifact path: ${uri}`);
+  }
 }
 
 function isRuntimeEvidenceReportV02(

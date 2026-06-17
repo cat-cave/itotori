@@ -36,7 +36,7 @@ export type ProjectState = ItotoriProjectRecord;
 export type RuntimeReportInput = RuntimeVerificationReport | RuntimeEvidenceReportV02;
 
 export type RuntimeIngestResult = {
-  status: "hello_world_passed";
+  status: "hello_world_passed" | "hello_world_failed";
   bridgeId: string;
   localeBranchId: string;
   patchExportId: string | undefined;
@@ -253,7 +253,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     return {
       project: nextProject,
       result: {
-        status: "hello_world_passed",
+        status: runtimeReport.status === "passed" ? "hello_world_passed" : "hello_world_failed",
         bridgeId: nextProject.bridge.bridgeId,
         localeBranchId: nextProject.localeBranchId,
         patchExportId: nextProject.patchExport?.patchExportId,
