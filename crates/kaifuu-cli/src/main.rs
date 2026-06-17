@@ -1,10 +1,9 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use kaifuu_core::{
     AdapterRegistry, DetectionReport, DetectionResult, EngineAdapter, ExtractRequest, GameProfile,
-    KaifuuResult, PatchExport, PatchRequest, ProfileRequest, VerifyRequest, read_json,
-    validate_profile_value, write_json,
+    KaifuuResult, PatchExport, PatchRequest, ProfileRequest, VerifyRequest, atomic_write_text,
+    read_json, validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -187,11 +186,7 @@ fn registered_adapter_for_game<'a>(
 }
 
 fn write_stable_profile(output: &Path, profile: &GameProfile) -> KaifuuResult<()> {
-    if let Some(parent) = output.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(output, profile.stable_json()?)?;
-    Ok(())
+    atomic_write_text(output, &profile.stable_json()?)
 }
 
 fn positional(args: &[String], index: usize) -> Result<&str, Box<dyn std::error::Error>> {
@@ -223,6 +218,7 @@ mod tests {
         deterministic_id, read_json,
     };
     use std::cell::RefCell;
+    use std::fs;
     use std::rc::Rc;
     use std::time::{SystemTime, UNIX_EPOCH};
 

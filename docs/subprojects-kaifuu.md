@@ -4,6 +4,11 @@ Kaifuu owns extraction, patching, verification, and `.kaifuu` delta packages.
 
 The scaffold implements a fixture engine only. Real engines such as RPG Maker MV/MZ, KiriKiri, SiglusEngine, and Ren'Py come after the shared contracts and hello world are stable.
 
+Patch writers, delta application, and future engine adapters must follow
+[kaifuu-patch-safety.md](kaifuu-patch-safety.md) for encoding,
+normalization, atomic output, path traversal, rollback, and partial-write
+safety rules.
+
 ## Fixture Adapter CLI
 
 The current CLI resolves game-backed commands through the adapter registry. The fixture adapter handles `fixtures/hello-game` today, and future engine adapters should plug into the same registry path instead of adding command-specific fixture logic.

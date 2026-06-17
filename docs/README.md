@@ -15,6 +15,9 @@ Itotori permission gates and the MVP local-user baseline are documented in
 [permissions.md](permissions.md).
 Kaifuu engine fixture sourcing, reference citation, and unsupported variant
 policy lives in [kaifuu-fixture-policy.md](kaifuu-fixture-policy.md).
+Kaifuu encoding, normalization, atomic output, traversal, rollback, and
+partial-write safety rules live in
+[kaifuu-patch-safety.md](kaifuu-patch-safety.md).
 Affected detection and CI cache rules live in
 [ci-cache-and-affected.md](ci-cache-and-affected.md).
 The implementation roadmap lives in [spec-dag.md](spec-dag.md) and

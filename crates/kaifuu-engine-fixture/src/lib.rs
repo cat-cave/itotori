@@ -8,8 +8,8 @@ use kaifuu_core::{
     DetectionResult, EngineAdapter, EngineProfile, EvidenceStatus, ExtractRequest,
     ExtractionResult, GameProfile, KaifuuResult, OperationStatus, PatchRef, PatchRequest,
     PatchResult, ProfileRequest, ProfileRequirement, ProtectedSpan, RequirementCategory,
-    RequirementStatus, TextSurface, VerificationResult, VerifyRequest, content_hash,
-    deterministic_id, require_str, require_u64,
+    RequirementStatus, TextSurface, VerificationResult, VerifyRequest, atomic_write_text,
+    content_hash, deterministic_id, require_str, require_u64, safe_join_relative,
 };
 use serde_json::{Value, json};
 
@@ -485,10 +485,9 @@ impl EngineAdapter for FixtureAdapter {
             });
         }
 
-        fs::create_dir_all(request.output_dir)?;
-        let output_path = request.output_dir.join("source.json");
+        let output_path = safe_join_relative(request.output_dir, "source.json")?;
         let patched_text = format!("{}\n", serde_json::to_string_pretty(&source)?);
-        fs::write(&output_path, &patched_text)?;
+        atomic_write_text(&output_path, &patched_text)?;
         Ok(PatchResult {
             schema_version: "0.1.0".to_string(),
             patch_result_id: deterministic_id("patch-result", 1),
@@ -681,6 +680,50 @@ mod tests {
                 && failure.required_capability == Some(Capability::LineParityPatching)
         }));
         assert!(!output_dir.join("source.json").exists());
+        let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn validation_failure_preserves_existing_output_file() {
+        let game_dir = temp_game("failed-preserves-output");
+        let adapter = FixtureAdapter;
+        let extraction = adapter
+            .extract(ExtractRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+        let mut patch_export = patch_export_for(&extraction);
+        patch_export.entries[0].source_hash = "stale-source-hash".to_string();
+
+        let output_dir = game_dir.join("patched");
+        fs::create_dir_all(&output_dir).unwrap();
+        let existing_output = output_dir.join("source.json");
+        fs::write(&existing_output, "preexisting output\n").unwrap();
+
+        let patch = adapter
+            .patch(PatchRequest {
+                game_dir: &game_dir,
+                patch_export: &patch_export,
+                output_dir: &output_dir,
+            })
+            .unwrap();
+
+        assert_eq!(patch.status, OperationStatus::Failed);
+        assert_eq!(
+            fs::read_to_string(&existing_output).unwrap(),
+            "preexisting output\n"
+        );
+        let temp_entries = fs::read_dir(&output_dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".source.json.tmp-")
+            })
+            .count();
+        assert_eq!(temp_entries, 0);
         let _ = fs::remove_dir_all(game_dir);
     }
 

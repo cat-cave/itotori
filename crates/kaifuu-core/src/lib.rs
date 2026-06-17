@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
-use std::fs;
-use std::path::Path;
+use std::fs::{self, File, OpenOptions};
+use std::io::{ErrorKind, Write};
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -2464,15 +2465,98 @@ pub fn content_hash(input: &str) -> String {
     format!("{hash:016x}")
 }
 
+pub fn safe_join_relative(root: &Path, relative_path: &str) -> KaifuuResult<PathBuf> {
+    let parts = safe_relative_path_parts(relative_path)?;
+    let mut output_path = root.to_path_buf();
+    for part in parts {
+        output_path.push(part);
+    }
+    Ok(output_path)
+}
+
+fn safe_relative_path_parts(relative_path: &str) -> KaifuuResult<Vec<&str>> {
+    if relative_path.is_empty()
+        || relative_path.starts_with('/')
+        || relative_path.starts_with('\\')
+        || relative_path.contains('\0')
+    {
+        return Err(unsafe_relative_path_error(relative_path));
+    }
+
+    let parts = relative_path.split(['/', '\\']).collect::<Vec<_>>();
+    if parts.iter().enumerate().any(|(index, part)| {
+        part.is_empty() || *part == "." || *part == ".." || (index == 0 && part.ends_with(':'))
+    }) {
+        return Err(unsafe_relative_path_error(relative_path));
+    }
+
+    Ok(parts)
+}
+
+fn unsafe_relative_path_error(relative_path: &str) -> Box<dyn std::error::Error> {
+    format!(
+        "unsafe relative output path {relative_path:?}: path must be relative and must not contain traversal"
+    )
+    .into()
+}
+
+pub fn atomic_write_text(path: &Path, content: &str) -> KaifuuResult<()> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let file_name = path
+        .file_name()
+        .ok_or("atomic write target must include a file name")?
+        .to_string_lossy();
+    fs::create_dir_all(parent)?;
+
+    let mut attempt = 0_u32;
+    let temp_path = loop {
+        let candidate = parent.join(format!(".{file_name}.tmp-{}-{attempt}", std::process::id()));
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(mut file) => {
+                if let Err(error) = write_and_sync(&mut file, content) {
+                    let _ = fs::remove_file(&candidate);
+                    return Err(error);
+                }
+                break candidate;
+            }
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+                attempt = attempt
+                    .checked_add(1)
+                    .ok_or("could not allocate atomic write temp file")?;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    };
+
+    if let Err(error) = fs::rename(&temp_path, path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error.into());
+    }
+    sync_directory_best_effort(parent);
+    Ok(())
+}
+
+fn write_and_sync(file: &mut File, content: &str) -> KaifuuResult<()> {
+    file.write_all(content.as_bytes())?;
+    file.sync_all()?;
+    Ok(())
+}
+
+fn sync_directory_best_effort(path: &Path) {
+    if let Ok(directory) = File::open(path) {
+        let _ = directory.sync_all();
+    }
+}
+
 pub fn write_json<T>(path: &Path, value: &T) -> KaifuuResult<()>
 where
     T: Serialize,
 {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, format!("{}\n", serde_json::to_string_pretty(value)?))?;
-    Ok(())
+    atomic_write_text(path, &format!("{}\n", serde_json::to_string_pretty(value)?))
 }
 
 pub fn read_json<T>(path: &Path) -> KaifuuResult<T>
@@ -2498,6 +2582,18 @@ pub fn require_u64(value: &Value, key: &str) -> KaifuuResult<u64> {
 mod tests {
     use super::*;
 
+    fn temp_dir(name: &str) -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let dir =
+            std::env::temp_dir().join(format!("kaifuu-core-{name}-{}-{nonce}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
     fn bridge_fixture_value(relative_path: &str) -> Value {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../..")
@@ -2518,6 +2614,64 @@ mod tests {
             error.contains(expected_error),
             "expected error containing {expected_error:?}, got: {error}"
         );
+    }
+
+    #[test]
+    fn safe_join_relative_rejects_absolute_and_traversal_paths() {
+        let root = Path::new("patched-game");
+        let safe = safe_join_relative(root, "data/source.json").unwrap();
+        assert_eq!(safe, root.join("data").join("source.json"));
+
+        for unsafe_path in [
+            "",
+            "/source.json",
+            "\\source.json",
+            "C:/source.json",
+            "C:\\source.json",
+            "../source.json",
+            "data/../source.json",
+            "data\\..\\source.json",
+            "data//source.json",
+            "./source.json",
+            "data/./source.json",
+            "source.json\0suffix",
+        ] {
+            assert!(
+                safe_join_relative(root, unsafe_path).is_err(),
+                "{unsafe_path:?} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn atomic_write_text_cleans_temp_file_when_rename_fails() {
+        let dir = temp_dir("atomic-rename-failure");
+        let target = dir.join("source.json");
+        fs::create_dir_all(&target).unwrap();
+
+        let error = atomic_write_text(&target, "patched\n")
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("Is a directory")
+                || error.contains("Access is denied")
+                || error.contains("cannot be moved")
+                || error.contains("directory")
+        );
+        assert!(target.is_dir());
+        let temp_entries = fs::read_dir(&dir)
+            .unwrap()
+            .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".source.json.tmp-")
+            })
+            .count();
+        assert_eq!(temp_entries, 0);
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
