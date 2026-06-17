@@ -5595,7 +5595,7 @@
     {
       "id": "ITOTORI-032",
       "title": "Seeded localization defect corpus",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -5631,7 +5631,10 @@
         "Unrealistic defects",
         "No false-positive coverage",
         "Findings not mapped to taxonomy"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/itotori-032",
+      "worktree": "/tmp/itotori-spec-itotori-032"
     },
     {
       "id": "ITOTORI-033",
