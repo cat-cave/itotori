@@ -1974,10 +1974,7 @@
     {
       "id": "KAIFUU-005",
       "title": ".kaifuu delta package v0.2",
-      "status": "in_progress",
-      "owner": "orchestrator-wave13",
-      "branch": "spec/kaifuu-005",
-      "worktree": "/tmp/itotori-spec-kaifuu-005",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "shared"],
@@ -3844,10 +3841,7 @@
     {
       "id": "ITOTORI-005",
       "title": "Dashboard application shell",
-      "status": "in_progress",
-      "owner": "orchestrator-wave13",
-      "branch": "spec/itotori-005",
-      "worktree": "/tmp/itotori-spec-itotori-005",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -5921,10 +5915,7 @@
     {
       "id": "UTSUSHI-003",
       "title": "Runtime evidence ingestion",
-      "status": "in_progress",
-      "owner": "orchestrator-wave13",
-      "branch": "spec/utsushi-003",
-      "worktree": "/tmp/itotori-spec-utsushi-003",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["utsushi", "itotori"],
@@ -6739,6 +6730,274 @@
         }
       ],
       "auditFocus": ["Overclaiming support", "Setup brittleness", "Missing limitation disclosure"]
+    },
+    {
+      "id": "ITOTORI-055",
+      "title": "Dashboard decision read model",
+      "status": "planned",
+      "priority": "P2",
+      "target": "mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-005"],
+      "summary": "Add a typed dashboard decision read model so pending decisions include project-level findings, locale-branch findings, and runtime validation decisions without inference drift.",
+      "deliverables": [
+        "Decision read API or equivalent typed response",
+        "Dashboard pending-decision wiring",
+        "MSW/API tests for project-level findings"
+      ],
+      "acceptanceCriteria": [
+        "Project-level findings without localeBranchId appear in the dashboard pending-decision area",
+        "Locale-branch, project-level, and runtime validation decision counts are distinguishable in the read model",
+        "Dashboard tests prove no pending-decision band can contradict project finding counts"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vitest run apps/itotori/test/dashboard.test.ts apps/itotori/test/api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Hidden project-level decisions",
+        "Dashboard/API read model drift",
+        "Decision count contradictions"
+      ]
+    },
+    {
+      "id": "ITOTORI-056",
+      "title": "Dashboard data-state precision",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-005", "ITOTORI-007", "ITOTORI-008"],
+      "summary": "Tighten dashboard panel states so style guide, glossary, jobs, and benchmark sections distinguish unknown, unavailable, empty, and populated API-backed states.",
+      "deliverables": [
+        "State model for dashboard panels",
+        "Style guide and glossary populated-state tests",
+        "Unknown versus empty copy updates"
+      ],
+      "acceptanceCriteria": [
+        "Panels never present unqueried data as confirmed empty state",
+        "Style guide and glossary panels render populated API-backed states when endpoints expose records",
+        "Loading, unavailable, empty, and populated states have distinct tests"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vitest run apps/itotori/test/dashboard.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp check apps/itotori/src apps/itotori/test"
+        }
+      ],
+      "auditFocus": [
+        "Unknown data shown as empty",
+        "Misleading reviewer state",
+        "Hard-coded dashboard placeholders"
+      ]
+    },
+    {
+      "id": "ITOTORI-057",
+      "title": "Typed dashboard API errors",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-005", "ITOTORI-004"],
+      "summary": "Render typed API error responses in the dashboard shell so failures show actionable code and message details while preserving safe fallback behavior.",
+      "deliverables": ["Typed API error parser", "Dashboard error state rendering", "MSW error-body tests"],
+      "acceptanceCriteria": [
+        "Typed API error code and message render when available",
+        "Malformed or missing error bodies fall back safely",
+        "Dashboard tests cover typed error and fallback error states"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vitest run apps/itotori/test/dashboard.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": ["Dropped API error details", "Unsafe error parsing", "Unhelpful operator failure states"]
+    },
+    {
+      "id": "KAIFUU-047",
+      "title": "Delta apply preflight completeness",
+      "status": "planned",
+      "priority": "P2",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-005"],
+      "summary": "Precompute source plus changed-entry target manifests before staging writes so incomplete delta packages fail before any apply-side filesystem mutation.",
+      "deliverables": [
+        "Delta apply preflight manifest check",
+        "No-staging-write regression tests",
+        "Updated delta safety docs"
+      ],
+      "acceptanceCriteria": [
+        "Incomplete changed-entry packages fail before staging allocation",
+        "Preflight target manifest comparison uses deterministic package data",
+        "Regression tests prove no staging files are written for rejected incomplete packages"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-delta"
+        },
+        {
+          "type": "command",
+          "value": "cargo clippy -p kaifuu-delta --all-targets --all-features -- -D warnings"
+        }
+      ],
+      "auditFocus": ["Staging writes before preflight failure", "Partial multi-entry packages", "Manifest comparison drift"]
+    },
+    {
+      "id": "KAIFUU-048",
+      "title": "Delta apply report collision safety",
+      "status": "planned",
+      "priority": "P2",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-005"],
+      "summary": "Prevent .kaifuu apply reports from colliding with real game files by reserving paths explicitly or moving command reports outside patched game output.",
+      "deliverables": [
+        "Report path collision guard",
+        "CLI report-output option or safe default",
+        "Collision regression tests"
+      ],
+      "acceptanceCriteria": [
+        "A real root patch-result.json in source or target cannot be silently omitted or overwritten",
+        "CLI apply writes command reports to a non-colliding location or requires explicit report path selection",
+        "Tests cover source collision, target collision, and normal apply report output"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-delta"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": ["Command artifact overwrites game file", "Reserved path ambiguity", "Silent snapshot omission"]
+    },
+    {
+      "id": "KAIFUU-049",
+      "title": "Delta package path normalization hardening",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-005", "SHARED-015"],
+      "summary": "Harden .kaifuu path normalization so backslash-containing Unix filenames cannot apply as different slash-separated paths or collide with normal paths.",
+      "deliverables": [
+        "Backslash path policy",
+        "Delta package path validation or component encoding",
+        "Collision regression tests"
+      ],
+      "acceptanceCriteria": [
+        "Backslash-containing filenames are rejected consistently or encoded losslessly",
+        "A backslash path cannot apply as a slash-separated path",
+        "Regression tests cover backslash and slash-path collision cases"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-delta"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        }
+      ],
+      "auditFocus": [
+        "Ambiguous cross-platform path semantics",
+        "Path collision regressions",
+        "Lossy package path serialization"
+      ]
+    },
+    {
+      "id": "UTSUSHI-018",
+      "title": "Runtime evidence re-ingest cleanup",
+      "status": "planned",
+      "priority": "P2",
+      "target": "mvp",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-003"],
+      "summary": "Ensure corrected runtime reports replace or retire stale normalized evidence rows when the same runtimeReportId is ingested again.",
+      "deliverables": [
+        "Re-ingest cleanup logic",
+        "Stale child-row regression tests",
+        "Runtime evidence repair semantics docs"
+      ],
+      "acceptanceCriteria": [
+        "Corrected runtime reports can remove evidence items, refs, validation findings, artifacts, and open findings from the prior version",
+        "Dashboard/runtime queries reflect the latest report shape after re-ingest",
+        "DB tests cover fewer captures and fewer validation findings on re-ingest"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori_runtime_reingest pnpm exec vitest run packages/itotori-db/test/repository.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": ["Stale normalized runtime rows", "Re-ingest idempotency", "Dashboard state after corrected reports"]
+    },
+    {
+      "id": "UTSUSHI-019",
+      "title": "Runtime evidence nested id namespacing",
+      "status": "planned",
+      "priority": "P2",
+      "target": "mvp",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-003"],
+      "summary": "Namespace or derive runtime evidence child ids so repeated adapter-local frame and event ids cannot collide across runtime reports.",
+      "deliverables": [
+        "Runtime child-id namespacing policy",
+        "Repository identity change",
+        "Multi-run collision regression tests"
+      ],
+      "acceptanceCriteria": [
+        "Runtime evidence items and artifacts cannot move between runs when nested ids repeat",
+        "Two reports with identical nested frame/event ids persist independent evidence rows",
+        "DB and API tests cover repeated nested ids across different runtimeReportIds"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori_runtime_identity pnpm exec vitest run packages/itotori-db/test/repository.test.ts apps/itotori/test/api-handlers.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Nested id collisions across runs",
+        "Evidence rows moving between reports",
+        "Adapter-local ids treated as global ids"
+      ]
     }
   ]
 }

@@ -1,0 +1,234 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-005-20260617T190230Z",
+  "generatedAt": "2026-06-17T19:02:30Z",
+  "spec": {
+    "id": "ITOTORI-005",
+    "title": "Dashboard application shell",
+    "branch": "spec/itotori-005",
+    "worktree": "/tmp/itotori-spec-itotori-005",
+    "commit": "f1c8677d2dfd254ca78b6c33f7d1da1e5c7136d6"
+  },
+  "auditor": {
+    "name": "wave13-dashboard-audit",
+    "kind": "ux"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Dashboard shell audit found no P0/P1 blockers. Pending-decision precision, unknown style/glossary states, and typed API error rendering are tracked as follow-up DAG work.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "ITOTORI-005-F001",
+      "ITOTORI-005-F002",
+      "ITOTORI-005-F003"
+    ]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-005-F001",
+      "severity": "P2",
+      "title": "Project-level findings can be hidden from pending decisions",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "apps/itotori/src/dashboard.ts",
+          "line": 557
+        }
+      ],
+      "description": "The dashboard derives pending decisions from locale-branch open finding counts plus runtime validation findings. Project-level findings without a locale branch can contribute to the project finding count while the prominent pending-decision band says no pending decisions.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit observed pending decisions derived from branch/runtime counts while findings may be persisted without localeBranchId and still count at project level."
+        },
+        {
+          "kind": "test",
+          "detail": "Dashboard, API handler, server, and typecheck focused tests passed during audit; this finding is non-blocking because current shell still surfaces aggregate project finding counts."
+        }
+      ],
+      "impact": "A reviewer may miss actionable project-level findings unless they notice lower-priority aggregate counts elsewhere on the page.",
+      "actionableAcceptanceCriteria": [
+        "Dashboard pending-decision summaries include project-level findings that are not attached to a locale branch.",
+        "A dedicated API read model or equivalent typed response distinguishes locale-branch decisions, project-level decisions, and runtime validation decisions.",
+        "MSW/API-backed tests prove a project-level finding appears in the pending-decision area."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Dashboard decision read model",
+          "priority": "P2",
+          "target": "mvp",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "dashboard",
+          "dependsOn": ["ITOTORI-005"],
+          "summary": "Add a typed dashboard decision read model so pending decisions include project-level findings, locale-branch findings, and runtime validation decisions without inference drift.",
+          "deliverables": [
+            "Decision read API or equivalent typed response",
+            "Dashboard pending-decision wiring",
+            "MSW/API tests for project-level findings"
+          ],
+          "acceptanceCriteria": [
+            "Project-level findings without localeBranchId appear in the dashboard pending-decision area",
+            "Locale-branch, project-level, and runtime validation decision counts are distinguishable in the read model",
+            "Dashboard tests prove no pending-decision band can contradict project finding counts"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm exec vitest run apps/itotori/test/dashboard.test.ts apps/itotori/test/api-handlers.test.ts"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec vp run ts:typecheck"
+            }
+          ],
+          "auditFocus": [
+            "Hidden project-level decisions",
+            "Dashboard/API read model drift",
+            "Decision count contradictions"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-005-F002",
+      "severity": "P3",
+      "title": "Style guide and glossary panels present unqueried state as empty",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "apps/itotori/src/dashboard.ts",
+          "line": 307
+        }
+      ],
+      "description": "The style-guide and glossary panels say no records were returned by the API even though the dashboard shell does not yet query a corresponding API response for those records.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found hard-coded empty state wording for style guide and glossary panels without matching reads in fetchDashboardData."
+        }
+      ],
+      "impact": "Reviewers can confuse unknown or not-yet-wired data with an authoritative empty state.",
+      "actionableAcceptanceCriteria": [
+        "Dashboard panels distinguish unavailable, not-yet-wired, loading, empty, and populated states.",
+        "Style-guide and glossary panels use typed API data once the backing endpoints exist.",
+        "Tests cover unknown/unqueried state wording separately from true empty API responses."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Dashboard data-state precision",
+          "priority": "P3",
+          "target": "post_mvp",
+          "projects": ["itotori"],
+          "parallelGroup": "dashboard",
+          "dependsOn": ["ITOTORI-005", "ITOTORI-007", "ITOTORI-008"],
+          "summary": "Tighten dashboard panel states so style guide, glossary, jobs, and benchmark sections distinguish unknown, unavailable, empty, and populated API-backed states.",
+          "deliverables": [
+            "State model for dashboard panels",
+            "Style guide and glossary populated-state tests",
+            "Unknown versus empty copy updates"
+          ],
+          "acceptanceCriteria": [
+            "Panels never present unqueried data as confirmed empty state",
+            "Style guide and glossary panels render populated API-backed states when endpoints expose records",
+            "Loading, unavailable, empty, and populated states have distinct tests"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm exec vitest run apps/itotori/test/dashboard.test.ts"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec vp check apps/itotori/src apps/itotori/test"
+            }
+          ],
+          "auditFocus": [
+            "Unknown data shown as empty",
+            "Misleading reviewer state",
+            "Hard-coded dashboard placeholders"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-005-F003",
+      "severity": "P3",
+      "title": "Dashboard error rendering drops typed API errors",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "apps/itotori/src/dashboard.ts",
+          "line": 109
+        }
+      ],
+      "description": "Dashboard fetch failures report only route and status. Typed API error bodies and codes are not surfaced even though the server returns structured errors.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit observed generic failed-to-load messages instead of typed API error code/body rendering."
+        }
+      ],
+      "impact": "Operators lose actionable remediation details during API failures.",
+      "actionableAcceptanceCriteria": [
+        "Dashboard API errors render typed error code and message when the response body is available.",
+        "Error rendering safely handles malformed or missing error bodies.",
+        "MSW tests cover typed API error body rendering."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Typed dashboard API errors",
+          "priority": "P3",
+          "target": "post_mvp",
+          "projects": ["itotori"],
+          "parallelGroup": "dashboard",
+          "dependsOn": ["ITOTORI-005", "ITOTORI-004"],
+          "summary": "Render typed API error responses in the dashboard shell so failures show actionable code and message details while preserving safe fallback behavior.",
+          "deliverables": [
+            "Typed API error parser",
+            "Dashboard error state rendering",
+            "MSW error-body tests"
+          ],
+          "acceptanceCriteria": [
+            "Typed API error code and message render when available",
+            "Malformed or missing error bodies fall back safely",
+            "Dashboard tests cover typed error and fallback error states"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm exec vitest run apps/itotori/test/dashboard.test.ts"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec vp run ts:typecheck"
+            }
+          ],
+          "auditFocus": [
+            "Dropped API error details",
+            "Unsafe error parsing",
+            "Unhelpful operator failure states"
+          ]
+        }
+      }
+    }
+  ]
+}

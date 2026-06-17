@@ -1,0 +1,242 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-005-20260617T190230Z",
+  "generatedAt": "2026-06-17T19:02:30Z",
+  "spec": {
+    "id": "KAIFUU-005",
+    "title": ".kaifuu delta package v0.2",
+    "branch": "spec/kaifuu-005",
+    "worktree": "/tmp/itotori-spec-kaifuu-005",
+    "commit": "ef3930eac67bc056e9aa0e596d3a944eba60aa38"
+  },
+  "auditor": {
+    "name": "wave13-delta-audit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Delta package audit found no P0/P1 blockers. Remaining prevalidation, artifact-collision, and backslash-path issues are tracked as non-blocking DAG follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 2,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "KAIFUU-005-F001",
+      "KAIFUU-005-F002",
+      "KAIFUU-005-F003"
+    ]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-005-F001",
+      "severity": "P2",
+      "title": "Target-manifest completeness is verified after staging writes begin",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-delta/src/lib.rs",
+          "line": 219
+        }
+      ],
+      "description": "apply_delta validates package internals and entry hashes, then allocates and writes staging files before checking whether the staged tree equals the target manifest.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found that a partial package can copy/write staging files before the final snapshot check rejects the target mismatch. Final output remains protected."
+        },
+        {
+          "kind": "test",
+          "detail": "cargo test -p kaifuu-delta and focused kaifuu-cli delta tests passed during audit."
+        }
+      ],
+      "impact": "Output safety is preserved, but fail-before-write behavior is weaker for incomplete multi-entry packages and staging-side effects happen before a deterministic preflight failure.",
+      "actionableAcceptanceCriteria": [
+        "apply_delta computes the expected target manifest from source plus changed entries before allocating or writing staging files.",
+        "Partial packages that omit required changed entries fail before staging directory allocation.",
+        "Regression tests prove no staging writes happen for incomplete multi-entry packages."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Delta apply preflight completeness",
+          "priority": "P2",
+          "target": "mvp",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-005"],
+          "summary": "Precompute source plus changed-entry target manifests before staging writes so incomplete delta packages fail before any apply-side filesystem mutation.",
+          "deliverables": [
+            "Delta apply preflight manifest check",
+            "No-staging-write regression tests",
+            "Updated delta safety docs"
+          ],
+          "acceptanceCriteria": [
+            "Incomplete changed-entry packages fail before staging allocation",
+            "Preflight target manifest comparison uses deterministic package data",
+            "Regression tests prove no staging files are written for rejected incomplete packages"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-delta"
+            },
+            {
+              "type": "command",
+              "value": "cargo clippy -p kaifuu-delta --all-targets --all-features -- -D warnings"
+            }
+          ],
+          "auditFocus": [
+            "Staging writes before preflight failure",
+            "Partial multi-entry packages",
+            "Manifest comparison drift"
+          ]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-005-F002",
+      "severity": "P2",
+      "title": "Root patch-result.json can collide with game files",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-delta/src/lib.rs",
+          "line": 549
+        },
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "line": 111
+        }
+      ],
+      "description": "The delta snapshot excludes root patch-result.json and the CLI writes its own apply result at that path. A game containing a real root patch-result.json can lose or replace that file while apply reports success.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit observed root patch-result.json reserved in snapshots and reused by CLI output."
+        }
+      ],
+      "impact": "A legitimate game file at that reserved path can be silently omitted or overwritten by a command artifact.",
+      "actionableAcceptanceCriteria": [
+        "Delta apply output artifacts cannot collide with legitimate game files.",
+        "If root patch-result.json is reserved, package creation fails when source or target contains that path.",
+        "CLI apply can write reports outside the game output tree or to an explicitly requested report path."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Delta apply report collision safety",
+          "priority": "P2",
+          "target": "mvp",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-005"],
+          "summary": "Prevent .kaifuu apply reports from colliding with real game files by reserving paths explicitly or moving command reports outside patched game output.",
+          "deliverables": [
+            "Report path collision guard",
+            "CLI report-output option or safe default",
+            "Collision regression tests"
+          ],
+          "acceptanceCriteria": [
+            "A real root patch-result.json in source or target cannot be silently omitted or overwritten",
+            "CLI apply writes command reports to a non-colliding location or requires explicit report path selection",
+            "Tests cover source collision, target collision, and normal apply report output"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-delta"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli"
+            }
+          ],
+          "auditFocus": [
+            "Command artifact overwrites game file",
+            "Reserved path ambiguity",
+            "Silent snapshot omission"
+          ]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-005-F003",
+      "severity": "P3",
+      "title": "Backslash path components are ambiguous",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-delta/src/lib.rs",
+          "line": 571
+        },
+        {
+          "path": "crates/kaifuu-core/src/lib.rs",
+          "line": 5562
+        }
+      ],
+      "description": "relative_package_path can serialize a Unix filename containing a backslash, while safe_join_relative later treats backslash as a separator.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found that a valid Unix name such as a backslash-containing path component can be applied as a slash-separated path or collide with slash paths."
+        }
+      ],
+      "impact": "Rare Unix filenames can round-trip to the wrong path or collide with normal slash-separated paths.",
+      "actionableAcceptanceCriteria": [
+        "Delta package paths reject backslashes consistently or encode path components losslessly.",
+        "Tests cover a backslash-containing Unix filename and a slash-path collision case.",
+        "Documentation states the v0.2 package path normalization rule."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Delta package path normalization hardening",
+          "priority": "P3",
+          "target": "post_mvp",
+          "projects": ["kaifuu", "shared"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-005", "SHARED-015"],
+          "summary": "Harden .kaifuu path normalization so backslash-containing Unix filenames cannot apply as different slash-separated paths or collide with normal paths.",
+          "deliverables": [
+            "Backslash path policy",
+            "Delta package path validation or component encoding",
+            "Collision regression tests"
+          ],
+          "acceptanceCriteria": [
+            "Backslash-containing filenames are rejected consistently or encoded losslessly",
+            "A backslash path cannot apply as a slash-separated path",
+            "Regression tests cover backslash and slash-path collision cases"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-delta"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core"
+            }
+          ],
+          "auditFocus": [
+            "Ambiguous cross-platform path semantics",
+            "Path collision regressions",
+            "Lossy package path serialization"
+          ]
+        }
+      }
+    }
+  ]
+}

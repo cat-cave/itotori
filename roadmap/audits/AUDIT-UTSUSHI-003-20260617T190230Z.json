@@ -1,0 +1,169 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-003-20260617T190230Z",
+  "generatedAt": "2026-06-17T19:02:30Z",
+  "spec": {
+    "id": "UTSUSHI-003",
+    "title": "Runtime evidence ingestion",
+    "branch": "spec/utsushi-003",
+    "worktree": "/tmp/itotori-spec-utsushi-003",
+    "commit": "b37a668a0a6f2a56a417b094612d4c8cfd7ce80f"
+  },
+  "auditor": {
+    "name": "wave13-runtime-ingestion-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Runtime evidence ingestion re-audit found no remaining P0/P1 blockers after repair. Stale re-ingest cleanup and nested evidence identity hardening are tracked as P2 follow-up DAG work.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 2,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "UTSUSHI-003-F001",
+      "UTSUSHI-003-F002"
+    ]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-003-F001",
+      "severity": "P2",
+      "title": "Runtime re-ingest leaves stale normalized rows",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/project-repository.ts",
+          "line": 653
+        }
+      ],
+      "description": "Re-ingesting the same runtimeReportId upserts current evidence items and refreshes refs only for items currently processed. Evidence items, artifacts, validation findings, and open findings that disappeared from a corrected report can remain attached to the same runtime run.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit found stale normalized rows can survive corrected runtime report ingestion with fewer captures or findings."
+        },
+        {
+          "kind": "test",
+          "detail": "Independent verification passed 41 DB/API tests after P1 repair; stale re-ingest cleanup remains uncovered follow-up behavior."
+        }
+      ],
+      "impact": "Corrected runtime evidence can keep obsolete captures or findings visible, causing stale dashboard and QA state.",
+      "actionableAcceptanceCriteria": [
+        "Re-ingesting the same runtimeReportId removes or supersedes normalized child rows that are absent from the corrected report.",
+        "Runtime evidence items, bridge-unit refs, validation findings, artifacts, and open findings stay consistent with the latest report shape.",
+        "DB tests cover re-ingesting a report with fewer captures and fewer validation findings."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Runtime evidence re-ingest cleanup",
+          "priority": "P2",
+          "target": "mvp",
+          "projects": ["utsushi", "itotori"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-003"],
+          "summary": "Ensure corrected runtime reports replace or retire stale normalized evidence rows when the same runtimeReportId is ingested again.",
+          "deliverables": [
+            "Re-ingest cleanup logic",
+            "Stale child-row regression tests",
+            "Runtime evidence repair semantics docs"
+          ],
+          "acceptanceCriteria": [
+            "Corrected runtime reports can remove evidence items, refs, validation findings, artifacts, and open findings from the prior version",
+            "Dashboard/runtime queries reflect the latest report shape after re-ingest",
+            "DB tests cover fewer captures and fewer validation findings on re-ingest"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori_runtime_reingest pnpm exec vitest run packages/itotori-db/test/repository.test.ts"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec vp run ts:typecheck"
+            }
+          ],
+          "auditFocus": [
+            "Stale normalized runtime rows",
+            "Re-ingest idempotency",
+            "Dashboard state after corrected reports"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-003-F002",
+      "severity": "P2",
+      "title": "Nested runtime evidence IDs can collide across runs",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/project-repository.ts",
+          "line": 653
+        }
+      ],
+      "description": "Multiple runtime runs coexist cleanly only when nested evidence and artifact IDs are globally unique. If two reports reuse frameCaptureId or runtimeTextEventId values, repository upserts by raw nested id and can move or overwrite normalized evidence rows for the later run.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit confirmed the P1 patch-result id issue is fixed, but API regression tests do not prove independent normalized evidence rows when nested report IDs collide."
+        }
+      ],
+      "impact": "Runtime reports from different runs can interfere when adapters reuse local nested ids, weakening the multiple-run coexistence guarantee.",
+      "actionableAcceptanceCriteria": [
+        "Runtime evidence item and artifact identities are namespaced by runtimeReportId or otherwise made globally unique per run.",
+        "Two ingested reports with the same nested frame/event ids keep independent normalized evidence rows.",
+        "API and DB tests prove independent runtime runs, patch-result artifacts, evidence items, bridge refs, and validation findings."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Runtime evidence nested id namespacing",
+          "priority": "P2",
+          "target": "mvp",
+          "projects": ["utsushi", "itotori"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-003"],
+          "summary": "Namespace or derive runtime evidence child ids so repeated adapter-local frame and event ids cannot collide across runtime reports.",
+          "deliverables": [
+            "Runtime child-id namespacing policy",
+            "Repository identity change",
+            "Multi-run collision regression tests"
+          ],
+          "acceptanceCriteria": [
+            "Runtime evidence items and artifacts cannot move between runs when nested ids repeat",
+            "Two reports with identical nested frame/event ids persist independent evidence rows",
+            "DB and API tests cover repeated nested ids across different runtimeReportIds"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori_runtime_identity pnpm exec vitest run packages/itotori-db/test/repository.test.ts apps/itotori/test/api-handlers.test.ts"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec vp run ts:typecheck"
+            }
+          ],
+          "auditFocus": [
+            "Nested id collisions across runs",
+            "Evidence rows moving between reports",
+            "Adapter-local ids treated as global ids"
+          ]
+        }
+      }
+    }
+  ]
+}
