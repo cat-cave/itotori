@@ -1,0 +1,187 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UNIV-017-20260617T232859Z",
+  "generatedAt": "2026-06-17T23:29:00Z",
+  "spec": {
+    "id": "UNIV-017",
+    "title": "Roadmap DAG granularity normalization",
+    "branch": "spec/univ-017-roadmap-granularity",
+    "worktree": "/tmp/itotori-spec-univ-017-roadmap-granularity",
+    "commit": "0e9e88e5657abafd9faf55da82b4cd87680bfb41"
+  },
+  "auditor": {
+    "name": "avicenna-the-4th",
+    "kind": "orchestration"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final audit found no P0/P1 blockers after adding the concrete ITOTORI-071 semantic search harness and rewiring semantic consumers through it. Kaifuu and Utsushi project audits were mergeable. Remaining catalog and Utsushi cleanup is non-blocking and already represented by planned follow-up nodes.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 2,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UNIV-017-F001", "UNIV-017-F002", "UNIV-017-F003"]
+  },
+  "findings": [
+    {
+      "id": "UNIV-017-F001",
+      "severity": "P2",
+      "title": "Catalog crawler broadness remains in CATALOG-005",
+      "category": "orchestration",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "line": 2159,
+          "symbol": "CATALOG-005"
+        },
+        {
+          "path": "roadmap/spec-dag.json",
+          "line": 13714,
+          "symbol": "UNIV-018"
+        }
+      ],
+      "description": "CATALOG-005 still groups crawler framework, multiple external source adapters, checkpointing, rate limits, and fixtures into one P2 alpha node. The normalization branch explicitly tracks this remaining split in UNIV-018 rather than expanding the crawler work in this P1 repair.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final Itotori/catalog re-audit confirmed CATALOG-005 broadness is non-blocking because UNIV-018 requires splitting or replacing it."
+        }
+      ],
+      "impact": "If implemented before UNIV-018, CATALOG-005 may be larger than a comfortable PR-reviewable unit.",
+      "actionableAcceptanceCriteria": [
+        "UNIV-018 splits or replaces CATALOG-005 into crawler job/checkpoint framework, recorded VNDB/EGS importer fixtures, and storefront/source adapter batch nodes.",
+        "CATALOG-005 is not claimed for implementation until UNIV-018 resolves its broadness or marks a narrower successor path."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UNIV-018",
+          "acceptanceCriteria": [
+            "CATALOG-005 is split or replaced by crawler job/checkpoint framework, VNDB/EGS recorded importer fixture, and storefront/source adapter batch nodes before implementation claim",
+            "Catalog crawler normalization updates dependencies so implementation agents do not claim the broad CATALOG-005 node directly"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "node scripts/spec-dag.mjs validate"
+            }
+          ],
+          "auditFocus": [
+            "Catalog crawler node broadness",
+            "External-source adapter dependency ordering"
+          ],
+          "notes": "This is the remaining non-blocking P2 from the Itotori/catalog re-audit."
+        }
+      }
+    },
+    {
+      "id": "UNIV-017-F002",
+      "severity": "P2",
+      "title": "Utsushi browser and branch explorer cleanup remains",
+      "category": "orchestration",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "line": 8170,
+          "symbol": "UTSUSHI-009"
+        },
+        {
+          "path": "roadmap/spec-dag.json",
+          "line": 8335,
+          "symbol": "UTSUSHI-013"
+        },
+        {
+          "path": "roadmap/spec-dag.json",
+          "line": 13811,
+          "symbol": "UTSUSHI-091"
+        }
+      ],
+      "description": "The Utsushi audit found no P0/P1 blockers, but UTSUSHI-009 and UTSUSHI-013 still carry broad branch explorer and browser-shell concerns that should be split or dependency-tightened before implementation.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Utsushi runtime audit recommended tracking UTSUSHI-009 and UTSUSHI-013 cleanup before those nodes are implemented."
+        }
+      ],
+      "impact": "Branch explorer and browser review work could become oversized if claimed before replay, capture, and feedback prerequisites are enforced.",
+      "actionableAcceptanceCriteria": [
+        "UTSUSHI-091 splits or tightens UTSUSHI-009 branch explorer dependencies around branch conformance and capture evidence slices.",
+        "UTSUSHI-091 splits or tightens UTSUSHI-013 browser review shell dependencies around jump/replay, screenshot evidence, and feedback import slices."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-091",
+          "acceptanceCriteria": [
+            "UTSUSHI-009 branch explorer scope is split or dependency-tightened before implementation claim",
+            "UTSUSHI-013 browser review shell scope is split or dependency-tightened before implementation claim"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "node scripts/spec-dag.mjs validate"
+            }
+          ],
+          "auditFocus": ["Utsushi branch explorer scope", "Browser review shell scope"],
+          "notes": "This captures the Utsushi P2 audit residual from UNIV-017."
+        }
+      }
+    },
+    {
+      "id": "UNIV-017-F003",
+      "severity": "P3",
+      "title": "Utsushi verification wording cleanup remains",
+      "category": "documentation",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "line": 8216,
+          "symbol": "UTSUSHI-010"
+        },
+        {
+          "path": "roadmap/spec-dag.json",
+          "line": 13811,
+          "symbol": "UTSUSHI-091"
+        }
+      ],
+      "description": "UTSUSHI-010 says feedback import is out of scope but still has a feedback ingestion verification entry. This is non-blocking wording cleanup because feedback import has a separate UTSUSHI-066 slice.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Utsushi audit classified this as P3 verification wording drift."
+        }
+      ],
+      "impact": "A future implementer could over-scope UTSUSHI-010 by following the stale verification text.",
+      "actionableAcceptanceCriteria": [
+        "UTSUSHI-091 removes feedback-ingestion verification from UTSUSHI-010 or moves it to UTSUSHI-066."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-091",
+          "acceptanceCriteria": [
+            "UTSUSHI-010 verification no longer implies feedback import scope when UTSUSHI-066 owns that behavior"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "node scripts/spec-dag.mjs validate"
+            }
+          ],
+          "auditFocus": ["Utsushi verification wording drift"],
+          "notes": "Non-blocking P3 cleanup from the Utsushi audit."
+        }
+      }
+    }
+  ]
+}

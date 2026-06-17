@@ -10989,7 +10989,7 @@
     {
       "id": "UNIV-017",
       "title": "Roadmap DAG granularity normalization",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["universal", "suite"],
@@ -11030,10 +11030,7 @@
         "New decision/report-only nodes",
         "Alpha nodes depending on continuous work",
         "Cancelled nodes still referenced"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/univ-017-roadmap-granularity",
-      "worktree": "/tmp/itotori-spec-univ-017-roadmap-granularity"
+      ]
     },
     {
       "id": "ITOTORI-062",
@@ -13729,7 +13726,9 @@
         "Roadmap P2 P3 granularity follow-up normalizer has concrete executable behavior or schema validation",
         "CATALOG-005 crawler broadness is split or replaced with concrete crawler job/checkpoint, VNDB/EGS recorded importer, and storefront/source adapter nodes",
         "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Public validation uses fixtures or recorded data, not private local assets",
+        "CATALOG-005 is split or replaced by crawler job/checkpoint framework, VNDB/EGS recorded importer fixture, and storefront/source adapter batch nodes before implementation claim",
+        "Catalog crawler normalization updates dependencies so implementation agents do not claim the broad CATALOG-005 node directly"
       ],
       "verification": [
         {
@@ -13740,7 +13739,9 @@
       "auditFocus": [
         "Node still too broad for one PR",
         "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Dependency bypass of prerequisite slices",
+        "Catalog crawler node broadness",
+        "External-source adapter dependency ordering"
       ]
     },
     {
@@ -13825,7 +13826,10 @@
       "acceptanceCriteria": [
         "Continuous runtime adapter granularity follow-up pack has concrete executable behavior or schema validation",
         "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Public validation uses fixtures or recorded data, not private local assets",
+        "UTSUSHI-009 branch explorer scope is split or dependency-tightened before implementation claim",
+        "UTSUSHI-013 browser review shell scope is split or dependency-tightened before implementation claim",
+        "UTSUSHI-010 verification no longer implies feedback import scope when UTSUSHI-066 owns that behavior"
       ],
       "verification": [
         {
@@ -13836,7 +13840,10 @@
       "auditFocus": [
         "Node still too broad for one PR",
         "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Dependency bypass of prerequisite slices",
+        "Utsushi branch explorer scope",
+        "Browser review shell scope",
+        "Utsushi verification wording drift"
       ]
     }
   ]
