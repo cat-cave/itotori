@@ -104,6 +104,15 @@ output was written. Unsupported multi-entry delta packages must fail before the
 first output write; supported multi-entry delta packages must stage the complete
 target tree before publishing it.
 
+`.kaifuu` delta apply must also prove package completeness before staging. The
+apply preflight derives a deterministic target manifest from the verified source
+tree plus the package's changed-entry payloads and compares it with the package
+target manifest before creating the output parent or staging directory.
+Incomplete packages, including target-manifest changes omitted from
+`changedEntries`, ignored artifact paths including descendants below
+`patch-result.json` with either `/` or `\` separators, and file/dir prefix
+conflicts that cannot be materialized on disk, must fail at this preflight step.
+
 ## Current Guardrails
 
 The fixture implementation enforces a small subset of this policy:
@@ -113,8 +122,9 @@ The fixture implementation enforces a small subset of this policy:
   unmatched keys, stale source hashes, and full entry application before
   writing `source.json`.
 - Fixture `.kaifuu` delta application rejects path traversal, validates source
-  compatibility before writing output, and applies supported multi-entry
-  packages through a staged target tree.
+  compatibility, verifies changed-entry completeness before allocating staging,
+  rejects ignored artifact paths and unmaterializable manifest path sets, and
+  applies supported multi-entry packages through a staged target tree.
 - Profile validation rejects unsafe asset paths in profile asset records.
 
 Future engine adapters must extend these guardrails with encoding-specific

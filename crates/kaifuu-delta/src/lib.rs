@@ -226,6 +226,12 @@ pub fn apply_delta(game_dir: &Path, delta_path: &Path, output_dir: &Path) -> Kai
         return Err("delta package target manifest root hash is inconsistent".into());
     }
     validate_changed_entry_hashes(&package)?;
+    let preflight_target = preflight_target_snapshot(&actual_source, &package)?;
+    if preflight_target.root_hash != package.target.root_hash
+        || preflight_target.files != expected_target.files
+    {
+        return Err("delta package changed entries do not reproduce target manifest".into());
+    }
 
     let changed_by_path = package
         .changed_entries
@@ -311,6 +317,7 @@ fn validate_package_shape(package: &DeltaPackage) -> KaifuuResult<()> {
     let mut paths = BTreeSet::new();
     for entry in &package.changed_entries {
         validate_relative_package_path(&entry.path)?;
+        validate_not_ignored_artifact_path(&entry.path)?;
         if !paths.insert(entry.path.as_str()) {
             return Err(format!(
                 "delta package has duplicate changed entry path {}",
@@ -419,6 +426,64 @@ fn validate_changed_entry_hashes(package: &DeltaPackage) -> KaifuuResult<()> {
     Ok(())
 }
 
+fn preflight_target_snapshot(
+    actual_source: &DirectorySnapshot,
+    package: &DeltaPackage,
+) -> KaifuuResult<DirectorySnapshot> {
+    let mut files = actual_source.files.clone();
+    for entry in &package.changed_entries {
+        if matches!(
+            entry.operation,
+            DeltaOperation::Replace | DeltaOperation::Delete
+        ) && files.remove(entry.path.as_str()).is_none()
+        {
+            let message = match entry.operation {
+                DeltaOperation::Replace => {
+                    format!("replace entry {} missing from source snapshot", entry.path)
+                }
+                DeltaOperation::Delete => {
+                    format!("delete entry {} missing from source snapshot", entry.path)
+                }
+                DeltaOperation::Add => unreachable!(),
+            };
+            return Err(message.into());
+        }
+    }
+    for entry in &package.changed_entries {
+        match entry.operation {
+            DeltaOperation::Add => {
+                if files.contains_key(entry.path.as_str()) {
+                    return Err(
+                        format!("add entry {} exists in source snapshot", entry.path).into(),
+                    );
+                }
+                let content = decode_entry_content(entry)?;
+                files.insert(entry.path.clone(), content_snapshot(entry, &content));
+            }
+            DeltaOperation::Replace => {
+                let content = decode_entry_content(entry)?;
+                files.insert(entry.path.clone(), content_snapshot(entry, &content));
+            }
+            DeltaOperation::Delete => {}
+        }
+    }
+    validate_materializable_file_paths(files.keys().map(String::as_str), "preflight target")?;
+    let byte_count = files.values().map(|file| file.size_bytes).sum();
+    Ok(DirectorySnapshot {
+        root_hash: root_hash(files.values()),
+        byte_count,
+        files,
+    })
+}
+
+fn content_snapshot(entry: &ChangedEntry, content: &[u8]) -> FileSnapshot {
+    FileSnapshot {
+        path: entry.path.clone(),
+        hash: sha256_hex(content),
+        size_bytes: content.len() as u64,
+    }
+}
+
 fn validate_content_hash(entry: &ChangedEntry, target: &FileRecord) -> KaifuuResult<()> {
     if Some(target.hash.as_str()) != entry.target_hash.as_deref()
         || Some(target.size_bytes) != entry.target_size_bytes
@@ -517,6 +582,7 @@ fn snapshot_from_records(records: &[FileRecord]) -> KaifuuResult<DirectorySnapsh
     let mut files = BTreeMap::new();
     for record in records {
         validate_relative_package_path(&record.path)?;
+        validate_not_ignored_artifact_path(&record.path)?;
         let snapshot = FileSnapshot {
             path: record.path.clone(),
             hash: record.hash.clone(),
@@ -526,6 +592,7 @@ fn snapshot_from_records(records: &[FileRecord]) -> KaifuuResult<DirectorySnapsh
             return Err(format!("duplicate file manifest path {}", record.path).into());
         }
     }
+    validate_materializable_file_paths(files.keys().map(String::as_str), "file manifest")?;
     let byte_count = files.values().map(|file| file.size_bytes).sum();
     Ok(DirectorySnapshot {
         root_hash: root_hash(files.values()),
@@ -588,8 +655,45 @@ fn validate_relative_package_path(path: &str) -> KaifuuResult<()> {
     Ok(())
 }
 
+fn validate_not_ignored_artifact_path(path: &str) -> KaifuuResult<()> {
+    if ignored_artifact_path(path) {
+        return Err(format!("delta package path {path} is an ignored artifact").into());
+    }
+    Ok(())
+}
+
 fn ignored_artifact_path(path: &str) -> bool {
     path == ROOT_PATCH_RESULT_ARTIFACT
+        || path
+            .strip_prefix(ROOT_PATCH_RESULT_ARTIFACT)
+            .is_some_and(|suffix| suffix.starts_with(['/', '\\']))
+}
+
+fn validate_materializable_file_paths<'a>(
+    paths: impl IntoIterator<Item = &'a str>,
+    context: &str,
+) -> KaifuuResult<()> {
+    let mut files = BTreeSet::new();
+    for path in paths {
+        files.insert(path.to_string());
+    }
+    for path in &files {
+        let mut ancestor = String::new();
+        let parts = path.split('/').collect::<Vec<_>>();
+        for part in parts.iter().take(parts.len().saturating_sub(1)) {
+            if !ancestor.is_empty() {
+                ancestor.push('/');
+            }
+            ancestor.push_str(part);
+            if files.contains(&ancestor) {
+                return Err(format!(
+                    "{context} contains file/dir prefix conflict: {ancestor} blocks {path}"
+                )
+                .into());
+            }
+        }
+    }
+    Ok(())
 }
 
 fn file_records(files: &BTreeMap<String, FileSnapshot>) -> Vec<FileRecord> {
@@ -1017,11 +1121,368 @@ mod tests {
     }
 
     #[test]
+    fn apply_delta_rejects_target_file_dir_prefix_conflict_before_staging_allocation() {
+        let root = temp_dir("target-prefix-conflict");
+        let original = root.join("original");
+        fs::create_dir_all(&original).unwrap();
+        write_file(&original, "data", b"source\n");
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("conflict.kaifuu");
+        let mut package = create_delta(&original, &original).unwrap();
+        add_utf8_changed_entry(&mut package, "data/nested.txt", b"nested\n");
+        add_target_file_record(&mut package, "data/nested.txt", b"nested\n");
+        refresh_manifest(&mut package, "target");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("file/dir prefix conflict"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_ignored_artifact_changed_entry_before_staging_allocation() {
+        let root = temp_dir("ignored-artifact-entry");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("ignored-artifact.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        add_utf8_changed_entry(&mut package, ROOT_PATCH_RESULT_ARTIFACT, b"cli artifact\n");
+        add_target_file_record(&mut package, ROOT_PATCH_RESULT_ARTIFACT, b"cli artifact\n");
+        refresh_manifest(&mut package, "target");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("ignored artifact"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_ignored_artifact_changed_entry_descendant_before_staging_allocation() {
+        let root = temp_dir("ignored-artifact-entry-descendant");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("ignored-artifact-descendant.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        add_utf8_changed_entry(
+            &mut package,
+            "patch-result.json/nested.txt",
+            b"cli artifact descendant\n",
+        );
+        add_target_file_record(
+            &mut package,
+            "patch-result.json/nested.txt",
+            b"cli artifact descendant\n",
+        );
+        refresh_manifest(&mut package, "target");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("ignored artifact"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_backslash_artifact_changed_entry_before_staging() {
+        let root = temp_dir("ignored-artifact-entry-backslash-descendant");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("ignored-artifact-backslash-descendant.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        add_utf8_changed_entry(
+            &mut package,
+            "patch-result.json\\nested.txt",
+            b"cli artifact descendant\n",
+        );
+        add_target_file_record(
+            &mut package,
+            "patch-result.json\\nested.txt",
+            b"cli artifact descendant\n",
+        );
+        refresh_manifest(&mut package, "target");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("ignored artifact"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_ignored_artifact_manifest_descendant_before_staging_allocation() {
+        let root = temp_dir("ignored-artifact-manifest-descendant");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("ignored-artifact-manifest-descendant.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        add_target_file_record(
+            &mut package,
+            "patch-result.json/nested.txt",
+            b"cli artifact descendant\n",
+        );
+        refresh_manifest(&mut package, "target");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("ignored artifact"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_backslash_artifact_target_manifest_before_staging() {
+        let root = temp_dir("ignored-artifact-target-manifest-backslash-descendant");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("ignored-artifact-target-manifest-backslash-descendant.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        add_target_file_record(
+            &mut package,
+            "patch-result.json\\nested.txt",
+            b"cli artifact descendant\n",
+        );
+        refresh_manifest(&mut package, "target");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("ignored artifact"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_backslash_artifact_source_manifest_before_staging() {
+        let root = temp_dir("ignored-artifact-source-manifest-backslash-descendant");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("ignored-artifact-source-manifest-backslash-descendant.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        add_source_file_record(
+            &mut package,
+            "patch-result.json\\nested.txt",
+            b"cli artifact descendant\n",
+        );
+        refresh_manifest(&mut package, "sourceCompatibility");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("ignored artifact"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_incomplete_changed_entries_without_staging_files() {
+        let root = temp_dir("incomplete-changed-entries");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_dir = root.join("output");
+        let delta_path = root.join("incomplete.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        remove_changed_entry(&mut package, "source.json");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("changed entries do not reproduce target manifest"));
+        assert!(!output_dir.exists());
+        assert_no_staging_dirs(&root, "output");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_incomplete_changed_entries_before_staging_allocation() {
+        let root = temp_dir("incomplete-before-staging");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("incomplete.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        remove_changed_entry(&mut package, "source.json");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("changed entries do not reproduce target manifest"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_omitted_add_entry_before_staging_allocation() {
+        let root = temp_dir("omitted-add-entry");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("incomplete-add.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        remove_changed_entry(&mut package, "data/add.txt");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("changed entries do not reproduce target manifest"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_omitted_delete_entry_before_staging_allocation() {
+        let root = temp_dir("omitted-delete-entry");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("incomplete-delete.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        remove_changed_entry(&mut package, "data/delete.txt");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("changed entries do not reproduce target manifest"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_accepts_reordered_changed_entries_and_target_records() {
+        let root = temp_dir("reordered-package-records");
+        let (original, patched) = write_sample_dirs(&root);
+        let output_dir = root.join("output");
+        let delta_path = root.join("reordered.kaifuu");
+        let mut package = create_delta(&original, &patched).unwrap();
+        package["changedEntries"].as_array_mut().unwrap().reverse();
+        package["target"]["files"].as_array_mut().unwrap().reverse();
+        write_json(&delta_path, &package).unwrap();
+
+        let result = apply_delta(&original, &delta_path, &output_dir).unwrap();
+
+        assert_eq!(result["status"], "passed");
+        assert_eq!(
+            result["outputHash"],
+            create_delta(&original, &output_dir).unwrap()["target"]["rootHash"]
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn sha256_matches_known_digest() {
         assert_eq!(
             sha256_hex(b"abc"),
             "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    fn add_utf8_changed_entry(package: &mut Value, path: &str, bytes: &[u8]) {
+        let text = std::str::from_utf8(bytes).unwrap();
+        package["changedEntries"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "path": path,
+                "operation": "add",
+                "targetHash": sha256_hex(bytes),
+                "targetSizeBytes": bytes.len() as u64,
+                "contentEncoding": "utf8",
+                "content": text,
+            }));
+    }
+
+    fn add_target_file_record(package: &mut Value, path: &str, bytes: &[u8]) {
+        package["target"]["files"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "path": path,
+                "hash": sha256_hex(bytes),
+                "sizeBytes": bytes.len() as u64,
+            }));
+    }
+
+    fn add_source_file_record(package: &mut Value, path: &str, bytes: &[u8]) {
+        package["sourceCompatibility"]["files"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "path": path,
+                "hash": sha256_hex(bytes),
+                "sizeBytes": bytes.len() as u64,
+            }));
+    }
+
+    fn refresh_manifest(package: &mut Value, manifest_key: &str) {
+        let mut files = BTreeMap::new();
+        for record in package[manifest_key]["files"].as_array().unwrap() {
+            let path = record["path"].as_str().unwrap().to_string();
+            files.insert(
+                path.clone(),
+                FileSnapshot {
+                    path,
+                    hash: record["hash"].as_str().unwrap().to_string(),
+                    size_bytes: record["sizeBytes"].as_u64().unwrap(),
+                },
+            );
+        }
+        let byte_count = files.values().map(|file| file.size_bytes).sum::<u64>();
+        package[manifest_key]["fileCount"] = json!(files.len() as u64);
+        package[manifest_key]["byteCount"] = json!(byte_count);
+        package[manifest_key]["rootHash"] = json!(root_hash(files.values()));
+    }
+
+    fn remove_changed_entry(package: &mut Value, path: &str) {
+        let entries = package["changedEntries"].as_array_mut().unwrap();
+        let index = entries
+            .iter()
+            .position(|entry| entry["path"] == path)
+            .unwrap();
+        entries.remove(index);
     }
 
     fn assert_no_staging_dirs(root: &Path, output_name: &str) {
