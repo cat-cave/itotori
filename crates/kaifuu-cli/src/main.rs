@@ -417,6 +417,10 @@ mod tests {
                     engine_version: Some("9.9.9".to_string()),
                     detected_variant: "injected-adapter".to_string(),
                 },
+                source_fingerprint: None,
+                key_requirements: vec![],
+                archive_parameters: vec![],
+                helper_evidence: None,
                 assets: vec![AssetProfile {
                     asset_id: deterministic_id("asset", 98),
                     path: "registry.txt".to_string(),
@@ -1255,6 +1259,136 @@ mod tests {
         let serialized = fs::read_to_string(&validation_path).unwrap();
         assert!(serialized.contains("KAIFUU_ARCHIVE_KEY"));
         assert!(!serialized.contains("actual-secret"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn profile_validation_redacts_secret_bearing_key_profile_fields() {
+        let root = temp_dir("profile-validation-redaction");
+        let profile_path = root.join("profile.json");
+        let validation_path = root.join("validation.json");
+        fs::write(
+            &profile_path,
+            r#"{
+  "schemaVersion": "0.1.0",
+  "profileId": "019ed000-0000-7000-8000-profile00014",
+  "gameId": "siglus-owned-local",
+  "title": "Siglus Owned Local",
+  "sourceLocale": "ja-JP",
+  "engine": {
+    "adapterId": "kaifuu.siglus",
+    "engineFamily": "siglus",
+    "engineVersion": null,
+    "detectedVariant": "scene-pck-secondary-key"
+  },
+  "sourceFingerprint": {
+    "gameRootHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "engineEvidence": ["Scene.pck", "Gameexe.dat"]
+  },
+  "keyRequirements": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:siglus/example/secondary-key",
+      "kind": "fixedBytes",
+      "bytes": 16,
+      "rawKey": "00112233445566778899aabbccddeeff",
+      "validation": {
+        "method": "decryptHeaderProof",
+        "proofHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    }
+  ],
+  "archiveParameters": [
+    {
+      "parameterId": "scene-cipher-key",
+      "name": "cipherKey",
+      "kind": "cipherScheme",
+      "value": "mP9xZpQ2rS7vLj4N8aW_KtYd0hF3uC6b",
+      "source": "manual"
+    }
+  ],
+  "helperEvidence": {
+    "helperKind": "staticParser",
+    "toolVersion": "kaifuu-key-helper/0.1.0",
+    "redactedLogHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "helperDump": "register dump with local key bytes"
+  },
+  "assets": [
+    {
+      "assetId": "019ed000-0000-7000-8000-asset0000014",
+      "path": "Scene.pck",
+      "assetKind": "archive",
+      "textSurfaces": ["dialogue"],
+      "sourceHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "patching": {
+        "capability": "patching",
+        "status": "limited",
+        "limitation": "requires caller-provided resolved keys and archive parameters"
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "capability": "key_profile",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "patching",
+      "status": "limited",
+      "limitation": "requires caller-provided resolved keys and archive parameters"
+    }
+  ],
+  "requirements": [
+    {
+      "category": "secret_key",
+      "key": "siglus-secondary-key",
+      "status": "satisfied",
+      "description": "secondary key is referenced through local secret storage",
+      "placeholder": null,
+      "secret": true
+    }
+  ],
+  "metadata": {
+    "localPath": "/home/dev/private-game",
+    "decryptedText": "private script line"
+  }
+}
+"#,
+        )
+        .unwrap();
+
+        run_cli(&[
+            "profile",
+            "validate",
+            profile_path.to_str().unwrap(),
+            "--output",
+            validation_path.to_str().unwrap(),
+        ]);
+
+        let validation: kaifuu_core::ProfileValidationResult = read_json(&validation_path).unwrap();
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for field in [
+            "keyRequirements.0.rawKey",
+            "archiveParameters.0.value",
+            "helperEvidence.helperDump",
+            "metadata.localPath",
+            "metadata.decryptedText",
+        ] {
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.code == kaifuu_core::SEMANTIC_SECRET_REDACTED && failure.field == field
+                }),
+                "missing secret redaction failure for {field}: {:#?}",
+                validation.failures
+            );
+        }
+        let serialized = fs::read_to_string(&validation_path).unwrap();
+        assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
+        assert!(!serialized.contains("mP9xZpQ2rS7vLj4N8aW_KtYd0hF3uC6b"));
+        assert!(!serialized.contains("/home/dev/private-game"));
+        assert!(!serialized.contains("private script line"));
 
         let _ = fs::remove_dir_all(root);
     }

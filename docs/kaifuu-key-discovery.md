@@ -29,13 +29,20 @@ retail files, helper dumps, or platform-specific discovery internals.
 
 ## Key Profile Shape
 
-The v0.1 profile should be engine-agnostic and strict enough for adapters to
-fail semantically:
+The executable v0.1 profile contract is engine-agnostic and strict enough for
+adapters to fail semantically. Key-bearing profiles extend the normal Kaifuu
+game profile with these top-level fields:
 
 ```json
 {
+  "schemaVersion": "0.1.0",
   "profileId": "uuid7",
-  "engine": "siglus",
+  "engine": {
+    "adapterId": "kaifuu.siglus",
+    "engineFamily": "siglus",
+    "engineVersion": null,
+    "detectedVariant": "scene-pck-secondary-key"
+  },
   "sourceFingerprint": {
     "gameRootHash": "sha256:...",
     "engineEvidence": ["Scene.pck", "Gameexe.dat"]
@@ -47,14 +54,14 @@ fail semantically:
       "kind": "fixedBytes",
       "bytes": 16,
       "validation": {
-        "method": "decrypt-header-proof",
+        "method": "decryptHeaderProof",
         "proofHash": "sha256:..."
       }
     }
   ],
   "archiveParameters": [],
   "helperEvidence": {
-    "helperKind": "static-parser",
+    "helperKind": "staticParser",
     "toolVersion": "kaifuu-key-helper/0.1.0",
     "redactedLogHash": "sha256:..."
   }
@@ -66,6 +73,20 @@ bridge bundles, reports, logs, or CI artifacts. Acceptable local stores include
 an ignored local keyring file, OS keychain integration, a configured secret
 manager, or an interactive prompt. Public fixtures may use public test keys only
 when the generated archive and key are both safe to redistribute.
+
+`secretRef` is the only persisted pointer to private key material. The current
+contract accepts local-only references using `local-secret:`, `os-keychain:`,
+`secret-manager:`, or `prompt:` schemes. Secret refs must be stable ids, not
+absolute paths, raw hex/base64/base64url keys, helper dump offsets, account ids,
+or machine-specific filenames.
+
+Adapters declare required key material through capability output
+`keyRequirements`, including the requirement id, material kind, byte length when
+fixed, required archive parameters, validation proof method, and stable
+semantic errors they may return. Key-bearing profiles must match each required
+secret `requirements[].key` with a `keyRequirements[].requirementId` entry that
+has a valid `secretRef`. The plaintext fixture adapter intentionally emits no
+key requirement declarations.
 
 ## Helper Classes
 
@@ -122,6 +143,13 @@ No command, helper, adapter, report, panic, or dashboard state may print raw
 keys, local absolute paths, retail filenames that disclose story content,
 storefront ids, account ids, helper memory dumps, decrypted scripts, or
 unredacted exception payloads.
+
+`kaifuu-core` exposes profile validation and redaction helpers that preserve
+valid `secretRef` values while rejecting or redacting raw key fields such as
+`rawKey`, `keyMaterial`, `keyBytes`, `keyHex`, helper dumps/logs, local absolute
+paths, raw key-looking archive parameter values, and decrypted private text.
+`kaifuu profile validate` reports those as `kaifuu.secret_redacted` without
+echoing the raw value.
 
 Required stable semantic errors include:
 

@@ -199,6 +199,10 @@ impl FixtureAdapter {
                 engine_version: Some(env!("CARGO_PKG_VERSION").to_string()),
                 detected_variant: "plain-json-source".to_string(),
             },
+            source_fingerprint: None,
+            key_requirements: vec![],
+            archive_parameters: vec![],
+            helper_evidence: None,
             assets: vec![self.asset_from_source(source_text, source)?],
             capabilities: self.capabilities().reports,
             requirements: Self::requirements(true),
@@ -2290,6 +2294,7 @@ mod tests {
     #[test]
     fn capabilities_report_unsupported_patching_limitations() {
         let capabilities = FixtureAdapter.capabilities();
+        assert!(capabilities.key_requirements.is_empty());
         assert!(capabilities.reports.iter().any(|report| {
             report.capability == Capability::AssetInventory
                 && report.status == kaifuu_core::CapabilityStatus::Supported
@@ -2322,6 +2327,10 @@ mod tests {
         }));
         assert!(capabilities.reports.iter().any(|report| {
             report.capability == Capability::EncryptedInput
+                && report.status == kaifuu_core::CapabilityStatus::Unsupported
+        }));
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == Capability::KeyProfile
                 && report.status == kaifuu_core::CapabilityStatus::Unsupported
         }));
         assert!(capabilities.reports.iter().any(|report| {
