@@ -1265,7 +1265,7 @@
     {
       "id": "SHARED-012",
       "title": "Full-system golden artifact corpus",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
@@ -1301,10 +1301,7 @@
         "Snapshot drift",
         "Copyright leakage",
         "Fixtures that assert implementation quirks"
-      ],
-      "owner": "codex-wave9",
-      "branch": "spec/shared-012",
-      "worktree": "/tmp/itotori-spec-shared-012"
+      ]
     },
     {
       "id": "SHARED-013",
@@ -1641,6 +1638,132 @@
       ]
     },
     {
+      "id": "SHARED-021",
+      "title": "Queue index migration drift guard",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["ITOTORI-003"],
+      "summary": "Add a focused guard that keeps Drizzle schema index definitions and SQL migration indexes aligned for event outbox and job queue tables.",
+      "deliverables": [
+        "Queue index source-of-truth decision",
+        "Drizzle-to-migration index verification",
+        "Regression fixture for event queue indexes",
+        "Contributor workflow for queue index changes"
+      ],
+      "acceptanceCriteria": [
+        "Event outbox and job queue indexes are generated from or checked against one documented source",
+        "Changing a Drizzle index without the matching migration update fails targeted verification",
+        "The guard covers current queue indexes without rewriting historical migrations",
+        "Add, rename, and drop index workflows are documented for contributors"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Drizzle schema and migration index drift",
+        "Missing queue performance indexes after schema edits",
+        "Unsafe migration rewrites"
+      ]
+    },
+    {
+      "id": "SHARED-022",
+      "title": "Public golden corpus regeneration utility",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["shared", "kaifuu", "itotori", "utsushi"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["SHARED-012"],
+      "summary": "Commit a deterministic utility for regenerating the public full-system golden corpus without relying on private fixtures or one-off local commands.",
+      "deliverables": [
+        "Golden corpus regeneration command",
+        "Check-only mode for CI",
+        "Fixture hash and schema manifest update",
+        "Contributor documentation for intentional golden changes"
+      ],
+      "acceptanceCriteria": [
+        "Public full-system goldens can be regenerated deterministically from committed inputs",
+        "A check mode fails when regenerated artifacts differ from committed goldens",
+        "Fixture hashes and schema versions are updated together with regenerated artifacts",
+        "The utility does not require private corpus files or live provider credentials"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Golden regeneration dry run"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        }
+      ],
+      "auditFocus": [
+        "Snapshot drift from manual regeneration",
+        "Private corpus leakage",
+        "Formatter churn in regenerated artifacts"
+      ]
+    },
+    {
+      "id": "SHARED-023",
+      "title": "en-US full-system artifact goldens",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["shared", "itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["SHARED-012", "ITOTORI-029"],
+      "summary": "Add en-US full-system artifact goldens if future regression coverage needs both target locales represented in the public corpus.",
+      "deliverables": [
+        "en-US patch export golden artifacts",
+        "en-US delta package and runtime report goldens",
+        "Locale comparison manifest",
+        "Regression guidance for maintaining both target locales"
+      ],
+      "acceptanceCriteria": [
+        "en-US artifacts are generated from public-safe fixtures and committed with fixture hashes",
+        "Locale-specific branch metadata is visible in the golden artifacts",
+        "The corpus makes locale assumptions explicit instead of treating one target locale as universal",
+        "Both locale sets can be validated without live provider credentials"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "en-US golden artifact review"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        }
+      ],
+      "auditFocus": [
+        "Single-target locale assumptions",
+        "Golden corpus bloat without regression value",
+        "Locale branch metadata drift"
+      ]
+    },
+    {
       "id": "KAIFUU-001",
       "title": "Kaifuu adapter trait and game profile model",
       "status": "complete",
@@ -1761,7 +1884,7 @@
     {
       "id": "KAIFUU-004",
       "title": "Protected markup parser and span normalizer",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "shared"],
@@ -1797,10 +1920,7 @@
         "Broken patches from lost commands",
         "Over-normalization",
         "Unsupported unknown markup"
-      ],
-      "owner": "codex-wave9",
-      "branch": "spec/kaifuu-004",
-      "worktree": "/tmp/itotori-spec-kaifuu-004"
+      ]
     },
     {
       "id": "KAIFUU-005",
@@ -2751,6 +2871,90 @@
       ]
     },
     {
+      "id": "KAIFUU-030",
+      "title": "Real-engine protected markup grammar adapters",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-004", "KAIFUU-007", "KAIFUU-008", "KAIFUU-009"],
+      "summary": "Add fixture-backed protected markup grammar adapters for RPG Maker, Ren'Py, and KAG once real-engine adapter fixtures exist.",
+      "deliverables": [
+        "RPG Maker protected markup grammar adapter",
+        "Ren'Py protected markup grammar adapter",
+        "KAG protected markup grammar adapter",
+        "Fixture-backed grammar behavior matrix"
+      ],
+      "acceptanceCriteria": [
+        "Grammar behavior is driven by real-engine fixtures instead of fixture-engine assumptions",
+        "Unknown or unsupported engine commands are preserved with semantic diagnostics",
+        "The shared protected-span model stays engine-neutral while adapters own engine grammar quirks",
+        "Adapter fixtures prove extraction and patch round-trips for representative markup"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "Adapter golden tests"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Fixture-engine grammar overgeneralization",
+        "Engine command loss during patching",
+        "Shared contracts absorbing engine-specific quirks"
+      ]
+    },
+    {
+      "id": "KAIFUU-031",
+      "title": "Target span mapping edge cases",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "shared", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["KAIFUU-004", "SHARED-020"],
+      "summary": "Harden protected-span target mappings for duplicate raw spans and preserveMode=map cases that need richer source-to-target span identity.",
+      "deliverables": [
+        "Duplicate raw protected-span fixtures",
+        "preserveMode=map target mapping contract",
+        "Kaifuu patch preservation regression tests",
+        "Itotori import/export mapping checks"
+      ],
+      "acceptanceCriteria": [
+        "Duplicate raw protected spans can be mapped without relying on text equality alone",
+        "preserveMode=map behavior is explicit in shared contracts and patch diagnostics",
+        "Kaifuu and Itotori agree on target span identity and failure reporting",
+        "Existing simple protected-span fixtures keep their current behavior"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Duplicate raw spans mapped to the wrong target",
+        "preserveMode=map ambiguity",
+        "Kaifuu and Itotori span identity drift"
+      ]
+    },
+    {
       "id": "KAIFUU-020",
       "title": "Engine adapter development playbook",
       "status": "planned",
@@ -2873,7 +3077,7 @@
     {
       "id": "ITOTORI-003",
       "title": "Event outbox and job queue foundation",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -2900,10 +3104,7 @@
           "value": "Failure/retry tests"
         }
       ],
-      "auditFocus": ["Race conditions", "Duplicate work", "Lost events"],
-      "owner": "codex-wave9",
-      "branch": "spec/itotori-003",
-      "worktree": "/tmp/itotori-spec-itotori-003"
+      "auditFocus": ["Race conditions", "Duplicate work", "Lost events"]
     },
     {
       "id": "ITOTORI-004",
@@ -4483,6 +4684,216 @@
         "Over-broad read-only API dependency access",
         "Factory splitting that duplicates service wiring",
         "Read handlers bypassing service boundaries"
+      ]
+    },
+    {
+      "id": "ITOTORI-044",
+      "title": "Queue read authorization before API exposure",
+      "status": "planned",
+      "priority": "P2",
+      "target": "mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-003", "SHARED-008"],
+      "summary": "Add explicit authorization for getOutboxEvent and getJob read paths before any API or dashboard surface exposes queue internals.",
+      "deliverables": [
+        "Queue read permission decision",
+        "Authorized getOutboxEvent read path",
+        "Authorized getJob read path",
+        "Denial tests for queue read access"
+      ],
+      "acceptanceCriteria": [
+        "Queue read APIs cannot expose events or jobs without an explicit permission gate",
+        "Unauthorized users receive denied responses for getOutboxEvent and getJob",
+        "The local all-permissions user path remains available for MVP development",
+        "Repository and API services share the same authorization decision rather than duplicating checks"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Queue read endpoints bypassing permissions",
+        "Sensitive job payload exposure",
+        "Repository and API authorization drift"
+      ]
+    },
+    {
+      "id": "ITOTORI-045",
+      "title": "Queue lifecycle audit trail and retention policy",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["ITOTORI-003"],
+      "summary": "Define and test the audit trail, immutability, and retention or archival policy for queue lifecycle records after worker behavior stabilizes.",
+      "deliverables": [
+        "Queue lifecycle audit policy",
+        "Immutable job_events regression tests",
+        "Retention or archival strategy",
+        "Worker diagnostic event coverage review"
+      ],
+      "acceptanceCriteria": [
+        "Job lifecycle transitions leave an auditable record that cannot be silently rewritten",
+        "Retention or archival rules name what is kept, pruned, and summarized",
+        "Worker diagnostics preserve enough context for failed and retried jobs",
+        "The policy avoids unbounded queue history growth without hiding material failures"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "manual",
+          "value": "Queue retention policy review"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Mutable job_events history",
+        "Unbounded retained queue data",
+        "Worker failures without durable diagnostics"
+      ]
+    },
+    {
+      "id": "ITOTORI-046",
+      "title": "Stale lease completion hardening",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["ITOTORI-003"],
+      "summary": "Harden stale lease and late completion behavior so workers cannot accidentally complete or overwrite jobs after ownership has expired or moved.",
+      "deliverables": [
+        "Stale lease completion policy",
+        "Late completion regression tests",
+        "Lease-owner mismatch diagnostics",
+        "Worker retry behavior documentation"
+      ],
+      "acceptanceCriteria": [
+        "A worker with an expired lease cannot complete a job without revalidating ownership",
+        "Late completion attempts produce clear diagnostics without corrupting final job state",
+        "Retries and dead-letter transitions remain deterministic after stale lease handling",
+        "Tests cover lease expiry, ownership transfer, and duplicate completion attempts"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "manual",
+          "value": "Worker stale lease fixture review"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Expired workers completing stale jobs",
+        "Duplicate completion races",
+        "Lease diagnostics too vague to debug"
+      ]
+    },
+    {
+      "id": "ITOTORI-047",
+      "title": "Queue health metrics and inspection commands",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-003", "ITOTORI-004", "ITOTORI-044"],
+      "summary": "Expose queue health metrics and CLI or dashboard inspection commands for outbox lag, job status, retries, and dead-letter review.",
+      "deliverables": [
+        "Queue health metric definitions",
+        "CLI queue inspection command",
+        "Dashboard queue inspection view",
+        "Dead-letter and retry visibility"
+      ],
+      "acceptanceCriteria": [
+        "Operators can inspect outbox lag, pending jobs, retry counts, and dead-lettered work",
+        "Dashboard and CLI views use typed API responses rather than direct SQL shortcuts",
+        "Metrics distinguish healthy backlog from stuck or repeatedly failing jobs",
+        "Inspection surfaces avoid exposing sensitive job payloads by default"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Invisible stuck queues",
+        "Dashboard reads bypassing APIs",
+        "Sensitive job payloads displayed casually"
+      ]
+    },
+    {
+      "id": "ITOTORI-048",
+      "title": "Typed job-name registry",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "agent-runtime",
+      "dependsOn": ["ITOTORI-003", "ITOTORI-011"],
+      "summary": "Introduce a typed job-name registry after stable worker handlers exist so queued job names, payloads, and handler bindings cannot drift.",
+      "deliverables": [
+        "Typed job-name registry",
+        "Job payload schema mapping",
+        "Worker handler registration checks",
+        "Migration guidance for existing queued job names"
+      ],
+      "acceptanceCriteria": [
+        "Every persisted job name maps to a typed payload and exactly one intended handler",
+        "Adding a worker handler without registering its job name fails targeted verification",
+        "Unknown or retired job names produce semantic diagnostics",
+        "The registry integrates with agent and deterministic tool registry boundaries without duplicating them"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Stringly typed job names",
+        "Worker handler registration drift",
+        "Registry duplication with agent/tool metadata"
       ]
     },
     {
