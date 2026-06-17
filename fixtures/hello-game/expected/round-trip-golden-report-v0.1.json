@@ -1,0 +1,78 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "019ed000-0000-7000-8000-goldenro0001",
+  "adapterId": "kaifuu.fixture",
+  "adapterName": "Kaifuu fixture adapter",
+  "status": "passed",
+  "phases": [
+    {
+      "phase": "detect",
+      "status": "passed",
+      "details": "adapter detected the fixture input"
+    },
+    {
+      "phase": "extract",
+      "status": "passed",
+      "details": "extracted 11 bridge unit(s)"
+    },
+    {
+      "phase": "unchanged_patch",
+      "status": "passed",
+      "details": "unchanged patch applied successfully",
+      "assetRef": "source.json"
+    },
+    {
+      "phase": "byte_equivalence",
+      "status": "skipped",
+      "details": "byte-identical round-trip is not claimed for this adapter",
+      "assetRef": "source.json",
+      "supportBoundary": "byte-identical round-trip is not claimed unless --expect-byte-identical is set for an adapter known to support byte-stable patching"
+    },
+    {
+      "phase": "unchanged_verify",
+      "status": "passed",
+      "details": "adapter verification passed",
+      "assetRef": "source.json"
+    },
+    {
+      "phase": "unchanged_output_equivalence",
+      "status": "passed",
+      "details": "patched output extracts to the same source unit text and hashes",
+      "assetRef": "source.json"
+    },
+    {
+      "phase": "translated_patch_contract",
+      "status": "passed",
+      "details": "translated v0.2 patch export passed contract validation"
+    },
+    {
+      "phase": "translated_source_compatibility",
+      "status": "passed",
+      "details": "validated 11 translated patch source unit(s) against the source bridge"
+    },
+    {
+      "phase": "translated_patch_conversion",
+      "status": "passed",
+      "details": "translated patch export converted to the adapter patch contract"
+    },
+    {
+      "phase": "translated_patch",
+      "status": "passed",
+      "details": "translated patch applied successfully",
+      "assetRef": "source.json"
+    },
+    {
+      "phase": "translated_target_equivalence",
+      "status": "passed",
+      "details": "verified 11 translated targetText value(s) in source.json",
+      "assetRef": "source.json"
+    },
+    {
+      "phase": "translated_verify",
+      "status": "passed",
+      "details": "adapter verification passed",
+      "assetRef": "source.json"
+    }
+  ],
+  "failures": []
+}

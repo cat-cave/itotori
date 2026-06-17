@@ -1194,7 +1194,10 @@ pub fn registry() -> kaifuu_core::AdapterRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaifuu_core::{PatchExport, ProtectedSpanMapping, stable_json};
+    use kaifuu_core::{
+        GoldenAssertionStatus, GoldenByteEquivalenceMode, GoldenHarnessRequest, PatchExport,
+        ProtectedSpanMapping, read_json, run_round_trip_golden, stable_json,
+    };
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::PathBuf;
 
@@ -1206,13 +1209,18 @@ mod tests {
         repo_root().join("fixtures/hello-game")
     }
 
-    fn temp_game(name: &str) -> std::path::PathBuf {
+    fn temp_dir(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "kaifuu-engine-fixture-{name}-{}",
             std::process::id()
         ));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn temp_game(name: &str) -> std::path::PathBuf {
+        let dir = temp_dir(name);
         fs::write(
             dir.join("source.json"),
             r#"{
@@ -1563,6 +1571,224 @@ mod tests {
         let patched = fs::read_to_string(output_dir.join("source.json")).unwrap();
         assert!(patched.contains("Hello, {player}."));
         let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn round_trip_golden_harness_reports_fixture_byte_identity_as_unsupported() {
+        let game_dir = temp_game("golden-round-trip");
+        let work_dir = game_dir.join("golden-work");
+        let report = run_round_trip_golden(
+            &registry(),
+            GoldenHarnessRequest {
+                game_dir: &game_dir,
+                work_dir: &work_dir,
+                adapter_id: Some(FIXTURE_ADAPTER_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::Unsupported {
+                    support_boundary:
+                        "fixture adapter rewrites source.json as pretty JSON and writes targetText fields"
+                            .to_string(),
+                },
+                translated_patch_export: None,
+                translated_source_bridge: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Passed);
+        assert!(report.failures.is_empty());
+        let byte_phase = report
+            .phases
+            .iter()
+            .find(|phase| phase.phase == "byte_equivalence")
+            .expect("byte equivalence phase");
+        assert_eq!(byte_phase.status, GoldenAssertionStatus::Skipped);
+        assert!(
+            byte_phase
+                .support_boundary
+                .as_deref()
+                .unwrap_or("")
+                .contains("rewrites source.json")
+        );
+        assert!(report.phases.iter().any(|phase| {
+            phase.phase == "unchanged_output_equivalence"
+                && phase.status == GoldenAssertionStatus::Passed
+        }));
+
+        let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn round_trip_golden_harness_applies_public_v02_translated_patch() {
+        let fixture_dir = public_fixture_dir();
+        let work_dir = temp_dir("golden-public-v02");
+        let patch_export: Value =
+            read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
+        let source_bridge: Value =
+            read_json(&fixture_dir.join("expected/bridge-v0.2.json")).unwrap();
+
+        let report = run_round_trip_golden(
+            &registry(),
+            GoldenHarnessRequest {
+                game_dir: &fixture_dir,
+                work_dir: &work_dir,
+                adapter_id: Some(FIXTURE_ADAPTER_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::Unsupported {
+                    support_boundary:
+                        "fixture adapter rewrites source.json as pretty JSON and writes targetText fields"
+                            .to_string(),
+                },
+                translated_patch_export: Some(&patch_export),
+                translated_source_bridge: Some(&source_bridge),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Passed);
+        assert!(report.failures.is_empty());
+        for phase_name in [
+            "translated_patch_contract",
+            "translated_source_compatibility",
+            "translated_patch_conversion",
+            "translated_patch",
+            "translated_target_equivalence",
+            "translated_verify",
+        ] {
+            assert!(
+                report.phases.iter().any(|phase| {
+                    phase.phase == phase_name && phase.status == GoldenAssertionStatus::Passed
+                }),
+                "missing passed phase {phase_name}"
+            );
+        }
+
+        let patched = fs::read_to_string(work_dir.join("translated-patch/source.json")).unwrap();
+        assert!(patched.contains("Bonjour, {player}."));
+        assert!(patched.contains("La porte du crepuscule"));
+        let _ = fs::remove_dir_all(work_dir);
+    }
+
+    #[test]
+    fn public_fixture_round_trip_report_matches_reviewed_golden_artifact() {
+        let fixture_dir = public_fixture_dir();
+        let work_dir = temp_dir("golden-public-report-artifact");
+        let patch_export: Value =
+            read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
+        let source_bridge: Value =
+            read_json(&fixture_dir.join("expected/bridge-v0.2.json")).unwrap();
+
+        let report = run_round_trip_golden(
+            &registry(),
+            GoldenHarnessRequest {
+                game_dir: &fixture_dir,
+                work_dir: &work_dir,
+                adapter_id: Some(FIXTURE_ADAPTER_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::Unsupported {
+                    support_boundary:
+                        "byte-identical round-trip is not claimed unless --expect-byte-identical is set for an adapter known to support byte-stable patching"
+                            .to_string(),
+                },
+                translated_patch_export: Some(&patch_export),
+                translated_source_bridge: Some(&source_bridge),
+            },
+        )
+        .unwrap();
+        let actual = report.stable_json().unwrap();
+        let expected =
+            fs::read_to_string(fixture_dir.join("expected/round-trip-golden-report-v0.1.json"))
+                .unwrap();
+
+        assert_eq!(actual, expected);
+        let _ = fs::remove_dir_all(work_dir);
+    }
+
+    #[test]
+    fn round_trip_golden_harness_cites_exact_unit_for_translated_patch_failure() {
+        let fixture_dir = public_fixture_dir();
+        let work_dir = temp_dir("golden-public-v02-negative");
+        let mut patch_export: Value =
+            read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
+        patch_export["entries"][0]["targetText"] = json!("Bonjour.");
+        let source_bridge: Value =
+            read_json(&fixture_dir.join("expected/bridge-v0.2.json")).unwrap();
+
+        let report = run_round_trip_golden(
+            &registry(),
+            GoldenHarnessRequest {
+                game_dir: &fixture_dir,
+                work_dir: &work_dir,
+                adapter_id: Some(FIXTURE_ADAPTER_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::Unsupported {
+                    support_boundary:
+                        "fixture adapter rewrites source.json as pretty JSON and writes targetText fields"
+                            .to_string(),
+                },
+                translated_patch_export: Some(&patch_export),
+                translated_source_bridge: Some(&source_bridge),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.failures.iter().any(|failure| {
+            failure.phase == "translated_patch"
+                && failure.source_unit_key.as_deref() == Some("hello.scene.001.line.001")
+                && failure
+                    .asset_ref
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("source.json#hello.scene.001.line.001")
+                && failure.code.starts_with("protected_span")
+        }));
+        assert!(!work_dir.join("translated-patch/source.json").exists());
+        let _ = fs::remove_dir_all(work_dir);
+    }
+
+    #[test]
+    fn round_trip_golden_harness_rejects_stale_v02_source_hash_before_translation() {
+        let fixture_dir = public_fixture_dir();
+        let work_dir = temp_dir("golden-public-v02-stale");
+        let mut patch_export: Value =
+            read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
+        patch_export["entries"][0]["sourceHash"] =
+            json!("sha256:0000000000000000000000000000000000000000000000000000000000000000");
+        let source_bridge: Value =
+            read_json(&fixture_dir.join("expected/bridge-v0.2.json")).unwrap();
+
+        let report = run_round_trip_golden(
+            &registry(),
+            GoldenHarnessRequest {
+                game_dir: &fixture_dir,
+                work_dir: &work_dir,
+                adapter_id: Some(FIXTURE_ADAPTER_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::Unsupported {
+                    support_boundary:
+                        "fixture adapter rewrites source.json as pretty JSON and writes targetText fields"
+                            .to_string(),
+                },
+                translated_patch_export: Some(&patch_export),
+                translated_source_bridge: Some(&source_bridge),
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        let failure = report
+            .failures
+            .iter()
+            .find(|failure| failure.code == "translated_source_hash_mismatch")
+            .expect("source hash mismatch failure");
+        assert_eq!(
+            failure.source_unit_key.as_deref(),
+            Some("hello.scene.001.line.001")
+        );
+        assert!(failure.asset_ref.as_deref().unwrap_or("").contains('#'));
+        assert!(
+            !report
+                .phases
+                .iter()
+                .any(|phase| phase.phase == "translated_patch")
+        );
+        let _ = fs::remove_dir_all(work_dir);
     }
 
     #[test]

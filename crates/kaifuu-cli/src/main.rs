@@ -2,9 +2,9 @@ use std::path::{Path, PathBuf};
 
 use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
-    DetectionResult, EngineAdapter, ExtractRequest, GameProfile, KaifuuResult, PatchExport,
-    PatchRequest, ProfileRequest, VerifyRequest, atomic_write_text, read_json,
-    validate_profile_value, write_json,
+    DetectionResult, EngineAdapter, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
+    GoldenHarnessRequest, KaifuuResult, PatchExport, PatchRequest, ProfileRequest, VerifyRequest,
+    atomic_write_text, read_json, run_round_trip_golden, validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -113,6 +113,9 @@ fn run_with_args_and_registry(
                 })?,
             )?;
         }
+        Some("golden") => {
+            run_golden_command(&args, registry)?;
+        }
         Some("profile") => {
             run_profile_command(&args, registry)?;
         }
@@ -127,10 +130,59 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|profile|capabilities> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|profile|capabilities> ..."
                     .into(),
             );
         }
+    }
+    Ok(())
+}
+
+fn run_golden_command(
+    args: &[String],
+    registry: &AdapterRegistry,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let game_dir = PathBuf::from(positional(args, 1)?);
+    let output = PathBuf::from(flag(args, "--output")?);
+    let work_dir = flag_optional(args, "--work-dir")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| output.with_extension("work"));
+    let translated_patch_export = flag_optional(args, "--translated-patch")
+        .map(PathBuf::from)
+        .map(|path| read_json::<serde_json::Value>(&path))
+        .transpose()?;
+    let translated_source_bridge = flag_optional(args, "--translated-source-bridge")
+        .map(PathBuf::from)
+        .map(|path| read_json::<serde_json::Value>(&path))
+        .transpose()?;
+    let byte_equivalence = if flag_present(args, "--expect-byte-identical") {
+        GoldenByteEquivalenceMode::AssertSourceJson
+    } else {
+        GoldenByteEquivalenceMode::Unsupported {
+            support_boundary:
+                "byte-identical round-trip is not claimed unless --expect-byte-identical is set for an adapter known to support byte-stable patching"
+                    .to_string(),
+        }
+    };
+    let report = run_round_trip_golden(
+        registry,
+        GoldenHarnessRequest {
+            game_dir: &game_dir,
+            work_dir: &work_dir,
+            adapter_id: flag_optional(args, "--adapter"),
+            byte_equivalence,
+            translated_patch_export: translated_patch_export.as_ref(),
+            translated_source_bridge: translated_source_bridge.as_ref(),
+        },
+    )?;
+    let failed = report.status == kaifuu_core::OperationStatus::Failed;
+    write_json(&output, &report)?;
+    if failed {
+        return Err(format!(
+            "golden round-trip failed; report written to {}",
+            output.display()
+        )
+        .into());
     }
     Ok(())
 }
@@ -236,6 +288,10 @@ fn flag_optional<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
         .map(String::as_str)
 }
 
+fn flag_present(args: &[String], name: &str) -> bool {
+    args.iter().any(|arg| arg == name)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -245,10 +301,11 @@ mod tests {
         AssetInventorySurface, AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind,
         AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
         CapabilityReport, CapabilityStatus, DetectRequest, DetectionEvidence,
-        DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult, OperationStatus,
-        PatchExportEntry, PatchRef, PatchResult, ProfileRequirement, ProtectedSpanMapping,
-        RequirementCategory, RequirementStatus, TextSurface, VerificationResult, content_hash,
-        deterministic_id, read_json,
+        DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult,
+        GoldenAssertionStatus, GoldenRoundTripReport, OperationStatus, PatchExportEntry, PatchRef,
+        PatchResult, ProfileRequirement, ProtectedSpanMapping, RequirementCategory,
+        RequirementStatus, TextSurface, VerificationResult, content_hash, deterministic_id,
+        read_json,
     };
     use std::cell::RefCell;
     use std::collections::BTreeMap;
@@ -300,6 +357,10 @@ mod tests {
         )
         .unwrap();
         game_dir
+    }
+
+    fn public_fixture_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/hello-game")
     }
 
     fn run_cli(args: &[&str]) {
@@ -818,6 +879,103 @@ mod tests {
         ]);
         let verify: VerificationResult = read_json(&verify_path).unwrap();
         assert_eq!(verify.status, OperationStatus::Passed);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn golden_command_runs_fixture_round_trip_and_public_translated_patch() {
+        let root = temp_dir("golden-public-translated");
+        let fixture_dir = public_fixture_dir();
+        let report_path = root.join("golden-report.json");
+        let work_dir = root.join("golden-work");
+        run_cli(&[
+            "golden",
+            fixture_dir.to_str().unwrap(),
+            "--adapter",
+            kaifuu_engine_fixture::FIXTURE_ADAPTER_ID,
+            "--translated-patch",
+            fixture_dir
+                .join("expected/patch-export-v0.2.fr-FR.json")
+                .to_str()
+                .unwrap(),
+            "--translated-source-bridge",
+            fixture_dir
+                .join("expected/bridge-v0.2.json")
+                .to_str()
+                .unwrap(),
+            "--work-dir",
+            work_dir.to_str().unwrap(),
+            "--output",
+            report_path.to_str().unwrap(),
+        ]);
+
+        let report: GoldenRoundTripReport = read_json(&report_path).unwrap();
+        assert_eq!(report.status, OperationStatus::Passed);
+        assert!(report.failures.is_empty());
+        assert!(report.phases.iter().any(|phase| {
+            phase.phase == "byte_equivalence" && phase.status == GoldenAssertionStatus::Skipped
+        }));
+        assert!(report.phases.iter().any(|phase| {
+            phase.phase == "translated_target_equivalence"
+                && phase.status == GoldenAssertionStatus::Passed
+        }));
+        assert!(
+            fs::read_to_string(work_dir.join("translated-patch/source.json"))
+                .unwrap()
+                .contains("Bonjour, {player}.")
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn golden_command_returns_error_and_report_for_translated_patch_failure() {
+        let root = temp_dir("golden-public-translated-failure");
+        let fixture_dir = public_fixture_dir();
+        let mut patch_export: serde_json::Value =
+            read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
+        patch_export["entries"][0]["targetText"] = serde_json::json!("Bonjour.");
+        let patch_path = root.join("bad-patch-export.json");
+        write_json(&patch_path, &patch_export).unwrap();
+        let report_path = root.join("golden-report.json");
+        let work_dir = root.join("golden-work");
+
+        let result = run_with_args(
+            [
+                "golden",
+                fixture_dir.to_str().unwrap(),
+                "--adapter",
+                kaifuu_engine_fixture::FIXTURE_ADAPTER_ID,
+                "--translated-patch",
+                patch_path.to_str().unwrap(),
+                "--translated-source-bridge",
+                fixture_dir
+                    .join("expected/bridge-v0.2.json")
+                    .to_str()
+                    .unwrap(),
+                "--work-dir",
+                work_dir.to_str().unwrap(),
+                "--output",
+                report_path.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        assert!(result.is_err());
+        let report: GoldenRoundTripReport = read_json(&report_path).unwrap();
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.failures.iter().any(|failure| {
+            failure.phase == "translated_patch"
+                && failure.source_unit_key.as_deref() == Some("hello.scene.001.line.001")
+                && failure
+                    .asset_ref
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("source.json#hello.scene.001.line.001")
+        }));
 
         let _ = fs::remove_dir_all(root);
     }

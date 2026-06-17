@@ -2925,6 +2925,83 @@ pub struct VerificationResult {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+pub enum GoldenAssertionStatus {
+    Passed,
+    Failed,
+    Skipped,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoldenPhaseReport {
+    pub phase: String,
+    pub status: GoldenAssertionStatus,
+    pub details: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_unit_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub support_boundary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoldenFailure {
+    pub code: String,
+    pub phase: String,
+    pub adapter_id: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_ref: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_unit_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub support_boundary: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GoldenRoundTripReport {
+    pub schema_version: String,
+    pub report_id: String,
+    pub adapter_id: String,
+    pub adapter_name: String,
+    pub status: OperationStatus,
+    pub phases: Vec<GoldenPhaseReport>,
+    pub failures: Vec<GoldenFailure>,
+}
+
+impl GoldenRoundTripReport {
+    pub fn stable_json(&self) -> KaifuuResult<String> {
+        stable_json(self)
+    }
+}
+
+pub enum GoldenByteEquivalenceMode {
+    AssertSourceJson,
+    Unsupported { support_boundary: String },
+}
+
+pub struct GoldenHarnessRequest<'a> {
+    pub game_dir: &'a Path,
+    pub work_dir: &'a Path,
+    pub adapter_id: Option<&'a str>,
+    pub byte_equivalence: GoldenByteEquivalenceMode,
+    pub translated_patch_export: Option<&'a Value>,
+    pub translated_source_bridge: Option<&'a Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum OperationStatus {
     Passed,
     Failed,
@@ -3474,6 +3551,1135 @@ where
     T: for<'de> Deserialize<'de>,
 {
     Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
+}
+
+pub fn run_round_trip_golden(
+    registry: &AdapterRegistry,
+    request: GoldenHarnessRequest<'_>,
+) -> KaifuuResult<GoldenRoundTripReport> {
+    let adapter = golden_adapter(registry, request.game_dir, request.adapter_id)?;
+    let mut report = GoldenRoundTripReport {
+        schema_version: "0.1.0".to_string(),
+        report_id: deterministic_id("golden-round-trip", 1),
+        adapter_id: adapter.id().to_string(),
+        adapter_name: adapter.name().to_string(),
+        status: OperationStatus::Passed,
+        phases: vec![],
+        failures: vec![],
+    };
+
+    let detection = adapter.detect(DetectRequest {
+        game_dir: request.game_dir,
+    });
+    match detection {
+        Ok(detection) if detection.detected => report_passed_phase(
+            &mut report,
+            "detect",
+            "adapter detected the fixture input",
+            None,
+        ),
+        Ok(detection) => {
+            let failure = GoldenFailure {
+                code: "adapter_not_detected".to_string(),
+                phase: "detect".to_string(),
+                adapter_id: adapter.id().to_string(),
+                message: "selected adapter did not detect the fixture input".to_string(),
+                asset_ref: detection
+                    .evidence
+                    .first()
+                    .map(|evidence| evidence.path.clone()),
+                source_unit_key: None,
+                support_boundary: None,
+                expected: Some("detected=true".to_string()),
+                actual: Some("detected=false".to_string()),
+            };
+            record_golden_failure(&mut report, failure);
+            return Ok(finalize_golden_report(report));
+        }
+        Err(error) => {
+            record_golden_failure(
+                &mut report,
+                GoldenFailure {
+                    code: "detect_error".to_string(),
+                    phase: "detect".to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: error.to_string(),
+                    asset_ref: None,
+                    source_unit_key: None,
+                    support_boundary: None,
+                    expected: Some("successful detection".to_string()),
+                    actual: Some("adapter error".to_string()),
+                },
+            );
+            return Ok(finalize_golden_report(report));
+        }
+    }
+
+    let extraction = match adapter.extract(ExtractRequest {
+        game_dir: request.game_dir,
+    }) {
+        Ok(extraction) => {
+            report_passed_phase(
+                &mut report,
+                "extract",
+                format!("extracted {} bridge unit(s)", extraction.bridge.units.len()),
+                None,
+            );
+            extraction
+        }
+        Err(error) => {
+            record_golden_failure(
+                &mut report,
+                GoldenFailure {
+                    code: "extract_error".to_string(),
+                    phase: "extract".to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: error.to_string(),
+                    asset_ref: None,
+                    source_unit_key: None,
+                    support_boundary: None,
+                    expected: Some("successful extraction".to_string()),
+                    actual: Some("adapter error".to_string()),
+                },
+            );
+            return Ok(finalize_golden_report(report));
+        }
+    };
+
+    let unchanged_patch = match unchanged_patch_export(&extraction.bridge) {
+        Ok(patch) => patch,
+        Err(failure) => {
+            record_golden_failure(&mut report, failure.with_adapter_id(adapter.id()));
+            return Ok(finalize_golden_report(report));
+        }
+    };
+
+    let unchanged_output_dir = prepare_golden_work_dir(request.work_dir, "unchanged-patch")?;
+    match adapter.patch(PatchRequest {
+        game_dir: request.game_dir,
+        patch_export: &unchanged_patch,
+        output_dir: &unchanged_output_dir,
+    }) {
+        Ok(patch_result) if patch_result.status == OperationStatus::Passed => report_passed_phase(
+            &mut report,
+            "unchanged_patch",
+            "unchanged patch applied successfully",
+            Some("source.json"),
+        ),
+        Ok(patch_result) => {
+            record_adapter_failures(&mut report, adapter.id(), "unchanged_patch", &patch_result);
+            return Ok(finalize_golden_report(report));
+        }
+        Err(error) => {
+            record_golden_failure(
+                &mut report,
+                GoldenFailure {
+                    code: "unchanged_patch_error".to_string(),
+                    phase: "unchanged_patch".to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: error.to_string(),
+                    asset_ref: Some("source.json".to_string()),
+                    source_unit_key: None,
+                    support_boundary: None,
+                    expected: Some("successful unchanged patch".to_string()),
+                    actual: Some("adapter error".to_string()),
+                },
+            );
+            return Ok(finalize_golden_report(report));
+        }
+    }
+
+    report_byte_equivalence(
+        &mut report,
+        request.game_dir,
+        &unchanged_output_dir,
+        &request.byte_equivalence,
+    );
+    report_verify_phase(
+        adapter,
+        &mut report,
+        "unchanged_verify",
+        &unchanged_output_dir,
+    );
+    report_output_equivalence(
+        adapter,
+        &mut report,
+        &extraction,
+        &unchanged_output_dir,
+        "unchanged_output_equivalence",
+    );
+
+    if let Some(translated_patch_export) = request.translated_patch_export {
+        report_translated_patch(
+            adapter,
+            &mut report,
+            &extraction,
+            request.game_dir,
+            request.work_dir,
+            translated_patch_export,
+            request.translated_source_bridge,
+        )?;
+    }
+
+    Ok(finalize_golden_report(report))
+}
+
+fn golden_adapter<'a>(
+    registry: &'a AdapterRegistry,
+    game_dir: &Path,
+    adapter_id: Option<&str>,
+) -> KaifuuResult<&'a dyn EngineAdapter> {
+    if let Some(adapter_id) = adapter_id {
+        return registry
+            .get(adapter_id)
+            .ok_or_else(|| format!("adapter {adapter_id} is not registered").into());
+    }
+
+    let detection = registry
+        .detect(game_dir)?
+        .ok_or_else(|| format!("no registered adapter detected {}", game_dir.display()))?;
+    registry.get(&detection.adapter_id).ok_or_else(|| {
+        format!(
+            "detected adapter {} is not registered",
+            detection.adapter_id
+        )
+        .into()
+    })
+}
+
+fn prepare_golden_work_dir(root: &Path, child: &str) -> KaifuuResult<PathBuf> {
+    let path = safe_join_relative(root, child)?;
+    match fs::remove_dir_all(&path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    fs::create_dir_all(&path)?;
+    Ok(path)
+}
+
+fn unchanged_patch_export(bridge: &BridgeBundle) -> Result<PatchExport, GoldenFailure> {
+    let mut entries = Vec::with_capacity(bridge.units.len());
+    for unit in &bridge.units {
+        let mut protected_span_mappings = Vec::new();
+        let mut search_start = 0;
+        for span in &unit.protected_spans {
+            if span.raw.is_empty() {
+                continue;
+            }
+            let Some(relative_start) = unit.source_text[search_start..].find(&span.raw) else {
+                return Err(GoldenFailure {
+                    code: "unchanged_patch_protected_span_missing".to_string(),
+                    phase: "unchanged_patch_build".to_string(),
+                    adapter_id: String::new(),
+                    message: format!(
+                        "protected span raw text {:?} was not present while building unchanged patch",
+                        span.raw
+                    ),
+                    asset_ref: Some(unit.patch_ref.asset_id.clone()),
+                    source_unit_key: Some(unit.source_unit_key.clone()),
+                    support_boundary: Some(
+                        "unchanged patch generation requires protected span raw text to exist in sourceText"
+                            .to_string(),
+                    ),
+                    expected: Some(span.raw.clone()),
+                    actual: Some(unit.source_text.clone()),
+                });
+            };
+            let target_start = search_start + relative_start;
+            let target_end = target_start + span.raw.len();
+            search_start = target_end;
+            protected_span_mappings.push(ProtectedSpanMapping::new(
+                &span.raw,
+                target_start as u64,
+                target_end as u64,
+            ));
+        }
+        entries.push(PatchExportEntry {
+            bridge_unit_id: unit.bridge_unit_id.clone(),
+            source_unit_key: unit.source_unit_key.clone(),
+            source_hash: unit.source_hash.clone(),
+            target_text: unit.source_text.clone(),
+            protected_span_mappings,
+        });
+    }
+
+    Ok(PatchExport {
+        patch_export_id: deterministic_id("round-trip-patch", 1),
+        source_locale: bridge.source_locale.clone(),
+        target_locale: bridge.source_locale.clone(),
+        entries,
+    })
+}
+
+impl GoldenFailure {
+    fn with_adapter_id(mut self, adapter_id: &str) -> Self {
+        self.adapter_id = adapter_id.to_string();
+        self
+    }
+}
+
+fn report_passed_phase(
+    report: &mut GoldenRoundTripReport,
+    phase: &str,
+    details: impl Into<String>,
+    asset_ref: Option<&str>,
+) {
+    report.phases.push(GoldenPhaseReport {
+        phase: phase.to_string(),
+        status: GoldenAssertionStatus::Passed,
+        details: details.into(),
+        asset_ref: asset_ref.map(str::to_string),
+        source_unit_key: None,
+        support_boundary: None,
+        expected: None,
+        actual: None,
+    });
+}
+
+fn record_golden_failure(report: &mut GoldenRoundTripReport, failure: GoldenFailure) {
+    report.phases.push(GoldenPhaseReport {
+        phase: failure.phase.clone(),
+        status: GoldenAssertionStatus::Failed,
+        details: failure.message.clone(),
+        asset_ref: failure.asset_ref.clone(),
+        source_unit_key: failure.source_unit_key.clone(),
+        support_boundary: failure.support_boundary.clone(),
+        expected: failure.expected.clone(),
+        actual: failure.actual.clone(),
+    });
+    report.failures.push(failure);
+}
+
+fn record_adapter_failures(
+    report: &mut GoldenRoundTripReport,
+    adapter_id: &str,
+    phase: &str,
+    patch_result: &PatchResult,
+) {
+    if patch_result.failures.is_empty() {
+        record_golden_failure(
+            report,
+            GoldenFailure {
+                code: "patch_failed_without_detail".to_string(),
+                phase: phase.to_string(),
+                adapter_id: adapter_id.to_string(),
+                message: "adapter returned failed patch status without detailed failures"
+                    .to_string(),
+                asset_ref: None,
+                source_unit_key: None,
+                support_boundary: None,
+                expected: Some("patch status passed".to_string()),
+                actual: Some("patch status failed".to_string()),
+            },
+        );
+        return;
+    }
+
+    for failure in &patch_result.failures {
+        let asset_ref = failure.asset_ref.clone();
+        record_golden_failure(
+            report,
+            GoldenFailure {
+                code: failure.error_code.clone(),
+                phase: phase.to_string(),
+                adapter_id: adapter_id.to_string(),
+                message: failure
+                    .remediation
+                    .clone()
+                    .unwrap_or_else(|| failure.support_boundary.clone()),
+                source_unit_key: source_unit_key_from_asset_ref(asset_ref.as_deref()),
+                asset_ref,
+                support_boundary: Some(failure.support_boundary.clone()),
+                expected: Some("patch status passed".to_string()),
+                actual: Some("patch status failed".to_string()),
+            },
+        );
+    }
+}
+
+fn report_byte_equivalence(
+    report: &mut GoldenRoundTripReport,
+    game_dir: &Path,
+    output_dir: &Path,
+    mode: &GoldenByteEquivalenceMode,
+) {
+    match mode {
+        GoldenByteEquivalenceMode::Unsupported { support_boundary } => {
+            report.phases.push(GoldenPhaseReport {
+                phase: "byte_equivalence".to_string(),
+                status: GoldenAssertionStatus::Skipped,
+                details: "byte-identical round-trip is not claimed for this adapter".to_string(),
+                asset_ref: Some("source.json".to_string()),
+                source_unit_key: None,
+                support_boundary: Some(support_boundary.clone()),
+                expected: None,
+                actual: None,
+            });
+        }
+        GoldenByteEquivalenceMode::AssertSourceJson => {
+            let original_path = game_dir.join("source.json");
+            let patched_path = output_dir.join("source.json");
+            match (fs::read(&original_path), fs::read(&patched_path)) {
+                (Ok(original), Ok(patched)) if original == patched => report_passed_phase(
+                    report,
+                    "byte_equivalence",
+                    "source.json bytes are identical after unchanged patch",
+                    Some("source.json"),
+                ),
+                (Ok(original), Ok(patched)) => record_golden_failure(
+                    report,
+                    GoldenFailure {
+                        code: "byte_equivalence_mismatch".to_string(),
+                        phase: "byte_equivalence".to_string(),
+                        adapter_id: report.adapter_id.clone(),
+                        message: "source.json bytes changed after unchanged patch".to_string(),
+                        asset_ref: Some("source.json".to_string()),
+                        source_unit_key: None,
+                        support_boundary: Some(
+                            "byte-identical mode requires unchanged patch output to match the input bytes"
+                                .to_string(),
+                        ),
+                        expected: Some(byte_content_hash(&original)),
+                        actual: Some(byte_content_hash(&patched)),
+                    },
+                ),
+                (original, patched) => record_golden_failure(
+                    report,
+                    GoldenFailure {
+                        code: "byte_equivalence_io_error".to_string(),
+                        phase: "byte_equivalence".to_string(),
+                        adapter_id: report.adapter_id.clone(),
+                        message: format!(
+                            "could not read source.json for byte comparison: original={}, patched={}",
+                            original.err().map(|error| error.to_string()).unwrap_or_default(),
+                            patched.err().map(|error| error.to_string()).unwrap_or_default()
+                        ),
+                        asset_ref: Some("source.json".to_string()),
+                        source_unit_key: None,
+                        support_boundary: Some(
+                            "byte-identical mode requires source.json to exist before and after patching"
+                                .to_string(),
+                        ),
+                        expected: Some("readable source.json input and output".to_string()),
+                        actual: Some("missing or unreadable source.json".to_string()),
+                    },
+                ),
+            }
+        }
+    }
+}
+
+fn byte_content_hash(bytes: &[u8]) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{hash:016x}")
+}
+
+fn report_verify_phase(
+    adapter: &dyn EngineAdapter,
+    report: &mut GoldenRoundTripReport,
+    phase: &str,
+    game_dir: &Path,
+) {
+    match adapter.verify(VerifyRequest { game_dir }) {
+        Ok(verify) if verify.status == OperationStatus::Passed => report_passed_phase(
+            report,
+            phase,
+            "adapter verification passed",
+            Some("source.json"),
+        ),
+        Ok(verify) => {
+            if verify.failures.is_empty() {
+                record_golden_failure(
+                    report,
+                    GoldenFailure {
+                        code: "verify_failed_without_detail".to_string(),
+                        phase: phase.to_string(),
+                        adapter_id: adapter.id().to_string(),
+                        message: "adapter verification failed without detailed failures"
+                            .to_string(),
+                        asset_ref: Some("source.json".to_string()),
+                        source_unit_key: None,
+                        support_boundary: None,
+                        expected: Some("verify status passed".to_string()),
+                        actual: Some("verify status failed".to_string()),
+                    },
+                );
+            } else {
+                for failure in verify.failures {
+                    let asset_ref = failure.asset_ref.clone();
+                    record_golden_failure(
+                        report,
+                        GoldenFailure {
+                            code: failure.error_code,
+                            phase: phase.to_string(),
+                            adapter_id: adapter.id().to_string(),
+                            message: failure
+                                .remediation
+                                .unwrap_or_else(|| failure.support_boundary.clone()),
+                            source_unit_key: source_unit_key_from_asset_ref(asset_ref.as_deref()),
+                            asset_ref,
+                            support_boundary: Some(failure.support_boundary),
+                            expected: Some("verify status passed".to_string()),
+                            actual: Some("verify status failed".to_string()),
+                        },
+                    );
+                }
+            }
+        }
+        Err(error) => record_golden_failure(
+            report,
+            GoldenFailure {
+                code: "verify_error".to_string(),
+                phase: phase.to_string(),
+                adapter_id: adapter.id().to_string(),
+                message: error.to_string(),
+                asset_ref: Some("source.json".to_string()),
+                source_unit_key: None,
+                support_boundary: None,
+                expected: Some("successful verification".to_string()),
+                actual: Some("adapter error".to_string()),
+            },
+        ),
+    }
+}
+
+fn report_output_equivalence(
+    adapter: &dyn EngineAdapter,
+    report: &mut GoldenRoundTripReport,
+    original_extraction: &ExtractionResult,
+    output_dir: &Path,
+    phase: &str,
+) {
+    let patched_extraction = match adapter.extract(ExtractRequest {
+        game_dir: output_dir,
+    }) {
+        Ok(extraction) => extraction,
+        Err(error) => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "output_equivalence_extract_error".to_string(),
+                    phase: phase.to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: error.to_string(),
+                    asset_ref: Some("source.json".to_string()),
+                    source_unit_key: None,
+                    support_boundary: Some(
+                        "output equivalence requires patched output to remain extractable"
+                            .to_string(),
+                    ),
+                    expected: Some("extractable patched output".to_string()),
+                    actual: Some("adapter extract error".to_string()),
+                },
+            );
+            return;
+        }
+    };
+
+    let expected = unit_signatures(&original_extraction.bridge);
+    let actual = unit_signatures(&patched_extraction.bridge);
+    if expected == actual {
+        report_passed_phase(
+            report,
+            phase,
+            "patched output extracts to the same source unit text and hashes",
+            Some("source.json"),
+        );
+        return;
+    }
+
+    for (key, expected_signature) in &expected {
+        match actual.get(key) {
+            Some(actual_signature) if actual_signature == expected_signature => {}
+            Some(actual_signature) => record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "output_unit_mismatch".to_string(),
+                    phase: phase.to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: "patched output changed an extracted source unit".to_string(),
+                    asset_ref: Some(format!("source.json#{key}")),
+                    source_unit_key: Some(key.clone()),
+                    support_boundary: Some(
+                        "unchanged patch output equivalence requires source units to extract identically"
+                            .to_string(),
+                    ),
+                    expected: Some(expected_signature.clone()),
+                    actual: Some(actual_signature.clone()),
+                },
+            ),
+            None => record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "output_unit_missing".to_string(),
+                    phase: phase.to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: "patched output is missing an extracted source unit".to_string(),
+                    asset_ref: Some(format!("source.json#{key}")),
+                    source_unit_key: Some(key.clone()),
+                    support_boundary: Some(
+                        "unchanged patch output equivalence requires all source units to remain present"
+                            .to_string(),
+                    ),
+                    expected: Some(expected_signature.clone()),
+                    actual: None,
+                },
+            ),
+        }
+    }
+
+    for key in actual.keys().filter(|key| !expected.contains_key(*key)) {
+        record_golden_failure(
+            report,
+            GoldenFailure {
+                code: "output_unit_unexpected".to_string(),
+                phase: phase.to_string(),
+                adapter_id: adapter.id().to_string(),
+                message: "patched output contains an unexpected extracted source unit".to_string(),
+                asset_ref: Some(format!("source.json#{key}")),
+                source_unit_key: Some(key.clone()),
+                support_boundary: Some(
+                    "unchanged patch output equivalence requires no extra source units".to_string(),
+                ),
+                expected: None,
+                actual: actual.get(key).cloned(),
+            },
+        );
+    }
+}
+
+fn unit_signatures(bridge: &BridgeBundle) -> BTreeMap<String, String> {
+    bridge
+        .units
+        .iter()
+        .map(|unit| {
+            (
+                unit.source_unit_key.clone(),
+                format!("{}:{}", unit.source_hash, unit.source_text),
+            )
+        })
+        .collect()
+}
+
+fn report_translated_patch(
+    adapter: &dyn EngineAdapter,
+    report: &mut GoldenRoundTripReport,
+    extraction: &ExtractionResult,
+    game_dir: &Path,
+    work_dir: &Path,
+    patch_export_value: &Value,
+    translated_source_bridge: Option<&Value>,
+) -> KaifuuResult<()> {
+    if patch_export_value["schemaVersion"].as_str() == Some(BRIDGE_SCHEMA_VERSION_V02) {
+        match contracts::validate_patch_export_v02(patch_export_value) {
+            Ok(()) => report_passed_phase(
+                report,
+                "translated_patch_contract",
+                "translated v0.2 patch export passed contract validation",
+                None,
+            ),
+            Err(error) => {
+                record_golden_failure(
+                    report,
+                    GoldenFailure {
+                        code: "translated_patch_contract_invalid".to_string(),
+                        phase: "translated_patch_contract".to_string(),
+                        adapter_id: adapter.id().to_string(),
+                        message: error.to_string(),
+                        asset_ref: None,
+                        source_unit_key: None,
+                        support_boundary: Some(
+                            "translated public fixture patches must satisfy PatchExportV02"
+                                .to_string(),
+                        ),
+                        expected: Some("valid PatchExportV02".to_string()),
+                        actual: Some("invalid patch export".to_string()),
+                    },
+                );
+                return Ok(());
+            }
+        }
+        report_v02_source_compatibility(
+            report,
+            adapter.id(),
+            patch_export_value,
+            translated_source_bridge,
+        );
+    }
+
+    if report
+        .failures
+        .iter()
+        .any(|failure| failure.phase == "translated_source_compatibility")
+    {
+        return Ok(());
+    }
+
+    let patch_export = match patch_export_for_adapter(patch_export_value, &extraction.bridge) {
+        Ok(patch_export) => patch_export,
+        Err(error) => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_patch_conversion_failed".to_string(),
+                    phase: "translated_patch_conversion".to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: error.to_string(),
+                    asset_ref: None,
+                    source_unit_key: None,
+                    support_boundary: Some(
+                        "translated patch conversion requires every sourceUnitKey to exist in the current extraction"
+                            .to_string(),
+                    ),
+                    expected: Some("convertible patch export".to_string()),
+                    actual: Some("conversion error".to_string()),
+                },
+            );
+            return Ok(());
+        }
+    };
+
+    report_passed_phase(
+        report,
+        "translated_patch_conversion",
+        "translated patch export converted to the adapter patch contract",
+        None,
+    );
+
+    let output_dir = prepare_golden_work_dir(work_dir, "translated-patch")?;
+    match adapter.patch(PatchRequest {
+        game_dir,
+        patch_export: &patch_export,
+        output_dir: &output_dir,
+    }) {
+        Ok(patch_result) if patch_result.status == OperationStatus::Passed => {
+            report_passed_phase(
+                report,
+                "translated_patch",
+                "translated patch applied successfully",
+                Some("source.json"),
+            );
+        }
+        Ok(patch_result) => {
+            record_adapter_failures(report, adapter.id(), "translated_patch", &patch_result);
+            return Ok(());
+        }
+        Err(error) => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_patch_error".to_string(),
+                    phase: "translated_patch".to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: error.to_string(),
+                    asset_ref: Some("source.json".to_string()),
+                    source_unit_key: None,
+                    support_boundary: None,
+                    expected: Some("successful translated patch".to_string()),
+                    actual: Some("adapter error".to_string()),
+                },
+            );
+            return Ok(());
+        }
+    }
+
+    report_translated_target_equivalence(report, adapter.id(), &patch_export, &output_dir);
+    report_verify_phase(adapter, report, "translated_verify", &output_dir);
+    Ok(())
+}
+
+fn report_v02_source_compatibility(
+    report: &mut GoldenRoundTripReport,
+    adapter_id: &str,
+    patch_export: &Value,
+    source_bridge: Option<&Value>,
+) {
+    let Some(source_bridge) = source_bridge else {
+        report.phases.push(GoldenPhaseReport {
+            phase: "translated_source_compatibility".to_string(),
+            status: GoldenAssertionStatus::Skipped,
+            details: "no v0.2 source bridge was provided for translated patch source-hash compatibility"
+                .to_string(),
+            asset_ref: None,
+            source_unit_key: None,
+            support_boundary: Some(
+                "v0.2 source compatibility requires the source bridge artifact used to create the patch export"
+                    .to_string(),
+            ),
+            expected: None,
+            actual: None,
+        });
+        return;
+    };
+
+    let bridge_units = match v02_bridge_units_by_key(source_bridge) {
+        Ok(units) => units,
+        Err(error) => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_source_bridge_invalid".to_string(),
+                    phase: "translated_source_compatibility".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message: error.to_string(),
+                    asset_ref: None,
+                    source_unit_key: None,
+                    support_boundary: Some(
+                        "v0.2 source compatibility requires a bridge with units keyed by sourceUnitKey"
+                            .to_string(),
+                    ),
+                    expected: Some("valid source bridge units".to_string()),
+                    actual: Some("invalid source bridge".to_string()),
+                },
+            );
+            return;
+        }
+    };
+
+    let entries = match patch_export["entries"].as_array() {
+        Some(entries) => entries,
+        None => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_patch_entries_missing".to_string(),
+                    phase: "translated_source_compatibility".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message: "translated patch export is missing entries".to_string(),
+                    asset_ref: None,
+                    source_unit_key: None,
+                    support_boundary: None,
+                    expected: Some("entries array".to_string()),
+                    actual: None,
+                },
+            );
+            return;
+        }
+    };
+
+    let mut compatible = 0_usize;
+    for entry in entries {
+        let source_unit_key = entry["sourceUnitKey"].as_str().unwrap_or("");
+        let bridge_unit_id = entry["bridgeUnitId"].as_str().unwrap_or("");
+        let source_hash = entry["sourceHash"].as_str().unwrap_or("");
+        let Some(unit) = bridge_units.get(source_unit_key) else {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_source_unit_missing".to_string(),
+                    phase: "translated_source_compatibility".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message:
+                        "translated patch references a source unit absent from the source bridge"
+                            .to_string(),
+                    asset_ref: Some("source.json".to_string()),
+                    source_unit_key: Some(source_unit_key.to_string()),
+                    support_boundary: Some(
+                        "translated patch sourceUnitKey values must exist in the source bridge"
+                            .to_string(),
+                    ),
+                    expected: Some("source bridge unit".to_string()),
+                    actual: None,
+                },
+            );
+            continue;
+        };
+
+        if unit.bridge_unit_id != bridge_unit_id {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_bridge_unit_mismatch".to_string(),
+                    phase: "translated_source_compatibility".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message: "translated patch bridgeUnitId does not match the source bridge"
+                        .to_string(),
+                    asset_ref: Some(unit.asset_ref.clone()),
+                    source_unit_key: Some(source_unit_key.to_string()),
+                    support_boundary: Some(
+                        "translated patch entries must reference the source bridge unit they were exported from"
+                            .to_string(),
+                    ),
+                    expected: Some(unit.bridge_unit_id.clone()),
+                    actual: Some(bridge_unit_id.to_string()),
+                },
+            );
+            continue;
+        }
+
+        if unit.source_hash != source_hash {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_source_hash_mismatch".to_string(),
+                    phase: "translated_source_compatibility".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message: "translated patch sourceHash does not match the source bridge"
+                        .to_string(),
+                    asset_ref: Some(unit.asset_ref.clone()),
+                    source_unit_key: Some(source_unit_key.to_string()),
+                    support_boundary: Some(
+                        "translated patch sourceHash must match the source bridge before adapter-specific hash translation"
+                            .to_string(),
+                    ),
+                    expected: Some(unit.source_hash.clone()),
+                    actual: Some(source_hash.to_string()),
+                },
+            );
+            continue;
+        }
+
+        compatible += 1;
+    }
+
+    if report
+        .failures
+        .iter()
+        .any(|failure| failure.phase == "translated_source_compatibility")
+    {
+        return;
+    }
+
+    report_passed_phase(
+        report,
+        "translated_source_compatibility",
+        format!("validated {compatible} translated patch source unit(s) against the source bridge"),
+        None,
+    );
+}
+
+#[derive(Debug, Clone)]
+struct V02BridgeUnitSummary {
+    bridge_unit_id: String,
+    source_hash: String,
+    asset_ref: String,
+}
+
+fn v02_bridge_units_by_key(
+    source_bridge: &Value,
+) -> KaifuuResult<BTreeMap<String, V02BridgeUnitSummary>> {
+    let units = source_bridge["units"]
+        .as_array()
+        .ok_or("source bridge missing units array")?;
+    let mut units_by_key = BTreeMap::new();
+    for unit in units {
+        let key = require_str(unit, "sourceUnitKey")?;
+        let asset_ref = unit["patchRef"]["assetId"]
+            .as_str()
+            .or_else(|| unit["sourceAssetRef"]["assetId"].as_str())
+            .unwrap_or("source.json");
+        units_by_key.insert(
+            key.to_string(),
+            V02BridgeUnitSummary {
+                bridge_unit_id: require_str(unit, "bridgeUnitId")?.to_string(),
+                source_hash: require_str(unit, "sourceHash")?.to_string(),
+                asset_ref: format!("{asset_ref}#{key}"),
+            },
+        );
+    }
+    Ok(units_by_key)
+}
+
+fn patch_export_for_adapter(value: &Value, bridge: &BridgeBundle) -> KaifuuResult<PatchExport> {
+    if value["schemaVersion"].as_str() != Some(BRIDGE_SCHEMA_VERSION_V02) {
+        return PatchExport::from_value(value);
+    }
+
+    let units_by_key = bridge
+        .units
+        .iter()
+        .map(|unit| (unit.source_unit_key.as_str(), unit))
+        .collect::<BTreeMap<_, _>>();
+    let entries = value["entries"]
+        .as_array()
+        .ok_or("translated patch export missing entries")?
+        .iter()
+        .map(|entry| {
+            let source_unit_key = require_str(entry, "sourceUnitKey")?;
+            let source_unit = units_by_key.get(source_unit_key).ok_or_else(|| {
+                format!(
+                    "translated patch entry {source_unit_key} is missing from current extraction"
+                )
+            })?;
+            Ok(PatchExportEntry {
+                bridge_unit_id: source_unit.bridge_unit_id.clone(),
+                source_unit_key: source_unit_key.to_string(),
+                source_hash: source_unit.source_hash.clone(),
+                target_text: require_str(entry, "targetText")?.to_string(),
+                protected_span_mappings: serde_json::from_value(
+                    entry["protectedSpanMappings"].clone(),
+                )?,
+            })
+        })
+        .collect::<KaifuuResult<Vec<_>>>()?;
+
+    Ok(PatchExport {
+        patch_export_id: require_str(value, "patchExportId")?.to_string(),
+        source_locale: require_str(value, "sourceLocale")?.to_string(),
+        target_locale: require_str(value, "targetLocale")?.to_string(),
+        entries,
+    })
+}
+
+fn report_translated_target_equivalence(
+    report: &mut GoldenRoundTripReport,
+    adapter_id: &str,
+    patch_export: &PatchExport,
+    output_dir: &Path,
+) {
+    let output_path = output_dir.join("source.json");
+    let source: Value = match read_json(&output_path) {
+        Ok(source) => source,
+        Err(error) => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_target_read_error".to_string(),
+                    phase: "translated_target_equivalence".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message: error.to_string(),
+                    asset_ref: Some("source.json".to_string()),
+                    source_unit_key: None,
+                    support_boundary: Some(
+                        "translated target equivalence requires fixture JSON output with targetText fields"
+                            .to_string(),
+                    ),
+                    expected: Some("readable patched source.json".to_string()),
+                    actual: Some("read error".to_string()),
+                },
+            );
+            return;
+        }
+    };
+
+    let units = match source["units"].as_array() {
+        Some(units) => units,
+        None => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_target_units_missing".to_string(),
+                    phase: "translated_target_equivalence".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message: "translated patch output is missing a units array".to_string(),
+                    asset_ref: Some("source.json".to_string()),
+                    source_unit_key: None,
+                    support_boundary: Some(
+                        "translated target equivalence requires fixture JSON output with units"
+                            .to_string(),
+                    ),
+                    expected: Some("units array".to_string()),
+                    actual: None,
+                },
+            );
+            return;
+        }
+    };
+
+    let targets_by_key = units
+        .iter()
+        .filter_map(|unit| {
+            Some((
+                unit["sourceUnitKey"].as_str()?.to_string(),
+                unit["targetText"].as_str().map(str::to_string),
+            ))
+        })
+        .collect::<BTreeMap<_, _>>();
+
+    let mut matched = 0_usize;
+    for entry in &patch_export.entries {
+        match targets_by_key.get(&entry.source_unit_key) {
+            Some(Some(actual)) if actual == &entry.target_text => {
+                matched += 1;
+            }
+            Some(Some(actual)) => record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_target_text_mismatch".to_string(),
+                    phase: "translated_target_equivalence".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message: "translated patch output targetText does not match the patch export"
+                        .to_string(),
+                    asset_ref: Some(format!("source.json#{}", entry.source_unit_key)),
+                    source_unit_key: Some(entry.source_unit_key.clone()),
+                    support_boundary: Some(
+                        "translated patch target equivalence requires each targetText to be written exactly"
+                            .to_string(),
+                    ),
+                    expected: Some(entry.target_text.clone()),
+                    actual: Some(actual.clone()),
+                },
+            ),
+            Some(None) => record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_target_text_missing".to_string(),
+                    phase: "translated_target_equivalence".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message: "translated patch output unit is missing targetText".to_string(),
+                    asset_ref: Some(format!("source.json#{}", entry.source_unit_key)),
+                    source_unit_key: Some(entry.source_unit_key.clone()),
+                    support_boundary: Some(
+                        "translated patch target equivalence requires each patched unit to contain targetText"
+                            .to_string(),
+                    ),
+                    expected: Some(entry.target_text.clone()),
+                    actual: None,
+                },
+            ),
+            None => record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_target_unit_missing".to_string(),
+                    phase: "translated_target_equivalence".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message: "translated patch output is missing a patched source unit".to_string(),
+                    asset_ref: Some(format!("source.json#{}", entry.source_unit_key)),
+                    source_unit_key: Some(entry.source_unit_key.clone()),
+                    support_boundary: Some(
+                        "translated patch target equivalence requires every patch entry sourceUnitKey to be present"
+                            .to_string(),
+                    ),
+                    expected: Some(entry.target_text.clone()),
+                    actual: None,
+                },
+            ),
+        }
+    }
+
+    if report
+        .failures
+        .iter()
+        .any(|failure| failure.phase == "translated_target_equivalence")
+    {
+        return;
+    }
+
+    report_passed_phase(
+        report,
+        "translated_target_equivalence",
+        format!("verified {matched} translated targetText value(s) in source.json"),
+        Some("source.json"),
+    );
+}
+
+fn source_unit_key_from_asset_ref(asset_ref: Option<&str>) -> Option<String> {
+    let (_, source_unit_key) = asset_ref?.split_once('#')?;
+    (!source_unit_key.is_empty()).then(|| source_unit_key.to_string())
+}
+
+fn finalize_golden_report(mut report: GoldenRoundTripReport) -> GoldenRoundTripReport {
+    report.status = if report.failures.is_empty() {
+        OperationStatus::Passed
+    } else {
+        OperationStatus::Failed
+    };
+    report
 }
 
 pub fn require_str<'a>(value: &'a Value, key: &str) -> KaifuuResult<&'a str> {

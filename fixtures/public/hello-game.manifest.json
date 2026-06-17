@@ -61,6 +61,14 @@
       "redistributable": true
     },
     {
+      "path": "fixtures/hello-game/expected/round-trip-golden-report-v0.1.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "cb3d51c721f06a068816c514f68da08dce844b9d21313afeb91aa6cc9eb4e2d7",
+      "bytes": 2333,
+      "redistributable": true
+    },
+    {
       "path": "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
       "role": "delta-package",
       "mediaType": "application/json",
@@ -110,7 +118,7 @@
     }
   ],
   "aggregateStats": {
-    "files": 11,
+    "files": 12,
     "textUnits": 11,
     "sourceTextUtf16CodeUnits": 84,
     "protectedSpans": 3,
