@@ -870,11 +870,7 @@ describe("ItotoriProjectRepository", () => {
         where artifact_id in ($1, $2, $3)
         order by artifact_id
       `,
-        [
-          "019ed003-0000-7000-8000-000000000901",
-          "legacy-remap-patch",
-          "legacy-remap-patch-result",
-        ],
+        ["019ed003-0000-7000-8000-000000000901", "legacy-remap-patch", "legacy-remap-patch-result"],
       );
       expect(artifactBundles.rows).toEqual([
         {

@@ -230,7 +230,10 @@ function projectFixture(): ProjectState {
 function bridgeV02Fixture(): BridgeBundleV02 {
   return JSON.parse(
     readFileSync(
-      new URL("../../../packages/localization-bridge-schema/test/examples/bridge-v0.2.json", import.meta.url),
+      new URL(
+        "../../../packages/localization-bridge-schema/test/examples/bridge-v0.2.json",
+        import.meta.url,
+      ),
       "utf8",
     ),
   ) as BridgeBundleV02;

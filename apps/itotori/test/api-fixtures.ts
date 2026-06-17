@@ -1,5 +1,9 @@
 import { readFileSync } from "node:fs";
-import type { ProjectCostReport, ProjectDashboardStatus, RuntimeDashboardStatus } from "@itotori/db";
+import type {
+  ProjectCostReport,
+  ProjectDashboardStatus,
+  RuntimeDashboardStatus,
+} from "@itotori/db";
 import type {
   BenchmarkReportV02,
   BridgeBundle,

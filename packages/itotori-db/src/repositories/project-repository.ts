@@ -645,8 +645,10 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     const recordedEventId = `${runtimeReportId}:recorded`;
 
     await this.db.transaction(async (tx) => {
-      const { sourceBundleId, sourceBundleRevisionId } =
-        await resolveSourceBundlePersistenceTarget(tx, project);
+      const { sourceBundleId, sourceBundleRevisionId } = await resolveSourceBundlePersistenceTarget(
+        tx,
+        project,
+      );
       await tx
         .insert(artifacts)
         .values({
@@ -1574,7 +1576,10 @@ async function resolveSourceBundleImportTarget(
       `bridge ${normalized.bridgeId} already belongs to project ${bridgeMatch.projectId}`,
     );
   }
-  if (sourceBundleMatch !== undefined && sourceBundleMatch.sourceBundleId !== bridgeMatch.sourceBundleId) {
+  if (
+    sourceBundleMatch !== undefined &&
+    sourceBundleMatch.sourceBundleId !== bridgeMatch.sourceBundleId
+  ) {
     throw new Error(
       `bridge ${normalized.bridgeId} is already linked to source bundle ${bridgeMatch.sourceBundleId}`,
     );

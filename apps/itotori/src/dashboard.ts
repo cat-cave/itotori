@@ -667,10 +667,7 @@ function formatTokens(value: number | null): string {
   return value === null ? "unknown" : String(value);
 }
 
-function formatDiff(
-  diff: ProjectDashboardStatus["importStatus"]["units"],
-  total: number,
-): string {
+function formatDiff(diff: ProjectDashboardStatus["importStatus"]["units"], total: number): string {
   return `${total} (${diff.added} new / ${diff.updated} updated / ${diff.removed} removed)`;
 }
 
