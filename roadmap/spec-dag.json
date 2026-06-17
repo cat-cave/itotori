@@ -726,6 +726,84 @@
       ]
     },
     {
+      "id": "UNIV-013",
+      "title": "Self-contained DB test recipe",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["universal", "itotori", "shared"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["ITOTORI-002"],
+      "summary": "Add a local and CI-friendly database test recipe that provisions a fresh database or skips with a clear diagnostic when DATABASE_URL is unset.",
+      "deliverables": [
+        "DB test recipe",
+        "Fresh database provisioning path",
+        "DATABASE_URL unset skip behavior",
+        "Contributor test documentation"
+      ],
+      "acceptanceCriteria": [
+        "The recipe can create or reset an isolated test database without relying on a developer's existing state",
+        "When DATABASE_URL is unset, the command exits with an explicit skip message instead of a misleading failure",
+        "Itotori repository and service tests can use the recipe consistently",
+        "Docs name the expected local and CI environment variables without requiring secrets in committed files"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "Run DB recipe with DATABASE_URL unset"
+        },
+        {
+          "type": "manual",
+          "value": "Run DB recipe against a disposable local database"
+        }
+      ],
+      "auditFocus": [
+        "DB tests that depend on hidden local state",
+        "Unset DATABASE_URL producing noisy failures",
+        "Shared tooling that leaks implementation-specific setup"
+      ]
+    },
+    {
+      "id": "UNIV-014",
+      "title": "Local Node toolchain warning cleanup",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["universal"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["UNIV-007"],
+      "summary": "Clean up local Node >=24.14.0 toolchain warnings so contributors see actionable diagnostics instead of confusing version noise.",
+      "deliverables": [
+        "Local warning reproduction notes",
+        "Toolchain diagnostic or script cleanup",
+        "Docs update for Node >=24.14.0 expectations"
+      ],
+      "acceptanceCriteria": [
+        "Local checks do not emit avoidable Node >=24.14.0 warnings when the configured runtime is correct",
+        "When the runtime is too old, the warning names the required version and the policy source",
+        "The cleanup does not weaken the latest-and-greatest toolchain policy"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "Local toolchain warning smoke check"
+        }
+      ],
+      "auditFocus": [
+        "Noisy local warnings hiding real failures",
+        "Version diagnostics that contradict package.json",
+        "Weakening toolchain enforcement to silence warnings"
+      ]
+    },
+    {
       "id": "SHARED-001",
       "title": "Bridge schema v0.2 domain model",
       "status": "complete",
@@ -815,7 +893,7 @@
     {
       "id": "SHARED-003",
       "title": "Multi-surface public bridge fixture corpus",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "kaifuu", "itotori", "utsushi"],
@@ -852,10 +930,7 @@
         "Fixture realism",
         "Surface coverage",
         "No engine-specific leakage into Itotori"
-      ],
-      "owner": "orchestrator-wave8",
-      "branch": "spec/shared-003",
-      "worktree": "/tmp/itotori-spec-shared-003"
+      ]
     },
     {
       "id": "SHARED-004",
@@ -1098,7 +1173,7 @@
     {
       "id": "SHARED-010",
       "title": "Full contract validation",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
@@ -1144,10 +1219,7 @@
         "Divergent TS/Rust assumptions",
         "Missing contract fixtures",
         "Ambiguous schema version behavior"
-      ],
-      "owner": "orchestrator-wave8",
-      "branch": "spec/shared-010",
-      "worktree": "/tmp/itotori-spec-shared-010"
+      ]
     },
     {
       "id": "SHARED-011",
@@ -1479,6 +1551,90 @@
         "Image-only asset validation",
         "Wrong-kind patch refs accepted for audio or video",
         "Unclear font-substitution patch diagnostics"
+      ]
+    },
+    {
+      "id": "SHARED-019",
+      "title": "RFC3339 timestamp validation parity",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["shared", "kaifuu", "itotori", "utsushi"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-010"],
+      "summary": "Make Rust and TypeScript contract validators reject and accept the same RFC3339 timestamp forms across shared fixture contracts.",
+      "deliverables": [
+        "Timestamp validation parity matrix",
+        "Rust validator fixtures",
+        "TypeScript validator fixtures",
+        "Contract documentation update"
+      ],
+      "acceptanceCriteria": [
+        "Rust and TypeScript validators agree on valid RFC3339 timestamps",
+        "Both validators reject malformed, ambiguous, or unsupported timestamp forms with semantic errors",
+        "The parity matrix covers offsets, fractional seconds, UTC Z notation, and obvious invalid dates",
+        "Existing contract fixtures are updated only where they violate the documented rule"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Rust and TypeScript timestamp drift",
+        "Lenient parsing accepting non-contract values",
+        "Fixture updates that hide real validation mismatches"
+      ]
+    },
+    {
+      "id": "SHARED-020",
+      "title": "Bridge surface normalization semantics",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-003", "SHARED-010"],
+      "summary": "Preserve expanded bridge text surface identity and protected-span semantics through shared and Itotori normalization paths.",
+      "deliverables": [
+        "Surface normalization semantics document",
+        "Protected-span preservation fixtures",
+        "Itotori normalization regression tests",
+        "Shared contract validation updates"
+      ],
+      "acceptanceCriteria": [
+        "Expanded bridge text surface kinds survive normalization without being collapsed into generic dialogue",
+        "Protected spans keep offsets, identifiers, and semantic meaning through shared and Itotori import paths",
+        "Fixtures cover UI labels, choices, tutorial text, glossary terms, protected markup, and image-text metadata",
+        "Normalization failures report semantic diagnostics instead of silently dropping surface metadata"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Expanded text surfaces collapsed during normalization",
+        "Protected spans losing semantic meaning",
+        "Itotori import behavior diverging from shared contracts"
       ]
     },
     {
@@ -2243,7 +2399,7 @@
     {
       "id": "KAIFUU-021",
       "title": "Asset inventory and non-text surface extraction",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "shared"],
@@ -2279,10 +2435,7 @@
         "Asset surface blind spots",
         "Overclaiming patch support",
         "Engine-specific manifest leakage"
-      ],
-      "owner": "orchestrator-wave8",
-      "branch": "spec/kaifuu-021",
-      "worktree": "/tmp/itotori-spec-kaifuu-021"
+      ]
     },
     {
       "id": "KAIFUU-022",
@@ -2508,6 +2661,90 @@
       ]
     },
     {
+      "id": "KAIFUU-028",
+      "title": "Asset metadata hashing validator",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-021", "SHARED-010"],
+      "summary": "Add asset inventory metadata hashing and patch-capability consistency validation so manifests cannot imply unsupported asset editing.",
+      "deliverables": [
+        "Asset metadata hashing rule",
+        "Patch-capability consistency validator",
+        "Positive and negative asset manifest fixtures",
+        "Capability diagnostic documentation"
+      ],
+      "acceptanceCriteria": [
+        "Asset manifest metadata includes stable hashes for fields that drive inventory identity or patch decisions",
+        "The validator rejects manifests that advertise patch payloads inconsistent with adapter capabilities",
+        "Metadata-only assets remain representable without implying OCR or image editing support",
+        "Negative fixtures cover missing hashes, stale hashes, and unsupported patch-capability combinations"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Asset manifests without stable metadata identity",
+        "Patch support overclaimed by manifest shape",
+        "Capability diagnostics that hide unsupported asset editing"
+      ]
+    },
+    {
+      "id": "KAIFUU-029",
+      "title": "Stable JSON formatter alignment",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["KAIFUU-021"],
+      "summary": "Align Kaifuu stable JSON formatting with Vite+ and Oxfmt JSON formatting expectations to reduce regenerate-plus-format churn.",
+      "deliverables": [
+        "Stable JSON formatting comparison",
+        "Formatter alignment rule or documented exception",
+        "Regression fixture for generated JSON",
+        "Contributor guidance for regenerated assets"
+      ],
+      "acceptanceCriteria": [
+        "Kaifuu-generated stable JSON does not churn under the repo formatter for equivalent data",
+        "Any intentional formatting difference from Vite+ or Oxfmt is documented with a reason",
+        "Regeneration plus formatting produces deterministic output",
+        "The alignment preserves stable key ordering and metadata hashing semantics"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp fmt --check roadmap/spec-dag.json"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Formatter churn in generated JSON",
+        "Stable key ordering weakened by tooling alignment",
+        "Metadata hash changes caused by formatting-only rewrites"
+      ]
+    },
+    {
       "id": "KAIFUU-020",
       "title": "Engine adapter development playbook",
       "status": "planned",
@@ -2593,7 +2830,7 @@
     {
       "id": "ITOTORI-002",
       "title": "Repository and service layer split",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -2625,10 +2862,7 @@
           "value": "just check"
         }
       ],
-      "auditFocus": ["Leaky abstractions", "Over-broad services", "Unmockable code paths"],
-      "owner": "orchestrator-wave8",
-      "branch": "spec/itotori-002",
-      "worktree": "/tmp/itotori-spec-itotori-002"
+      "auditFocus": ["Leaky abstractions", "Over-broad services", "Unmockable code paths"]
     },
     {
       "id": "ITOTORI-003",
@@ -4201,6 +4435,48 @@
       ]
     },
     {
+      "id": "ITOTORI-043",
+      "title": "Narrow read-only API service factory",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["ITOTORI-002"],
+      "summary": "Narrow the read-only Itotori API service factory so query handlers receive only the dependencies they need.",
+      "deliverables": [
+        "Read-only API service factory review",
+        "Narrowed dependency interface",
+        "Query handler wiring update",
+        "Regression tests for read-only endpoints"
+      ],
+      "acceptanceCriteria": [
+        "Read-only API handlers cannot access mutation services through the default factory",
+        "The narrowed factory still supports existing read endpoints without ad hoc dependency construction",
+        "Tests prove representative read-only handlers work with the reduced dependency surface",
+        "The change does not duplicate repository wiring or bypass shared services"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Over-broad read-only API dependency access",
+        "Factory splitting that duplicates service wiring",
+        "Read handlers bypassing service boundaries"
+      ]
+    },
+    {
       "id": "UTSUSHI-001",
       "title": "Utsushi runtime adapter trait",
       "status": "complete",
@@ -4244,7 +4520,7 @@
     {
       "id": "UTSUSHI-002",
       "title": "Fixture runtime on adapter architecture",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["utsushi"],
@@ -4276,10 +4552,7 @@
           "value": "just hello"
         }
       ],
-      "auditFocus": ["Baseline regression", "Trait ergonomics", "Unclear approximation reporting"],
-      "owner": "orchestrator-wave8",
-      "branch": "spec/utsushi-002",
-      "worktree": "/tmp/itotori-spec-utsushi-002"
+      "auditFocus": ["Baseline regression", "Trait ergonomics", "Unclear approximation reporting"]
     },
     {
       "id": "UTSUSHI-003",
@@ -4796,6 +5069,90 @@
         "Empty adapter limitation metadata",
         "Runtime reports overclaiming fidelity",
         "Reference-adapter exemptions hiding real adapter gaps"
+      ]
+    },
+    {
+      "id": "UTSUSHI-016",
+      "title": "CLI-owned runtime registry composition",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-002"],
+      "summary": "Move runtime registry composition ownership into the Utsushi CLI path so future adapters can plug in without fixture-specific dispatch.",
+      "deliverables": [
+        "CLI-owned registry composition plan",
+        "Runtime adapter registration boundary",
+        "Fixture adapter registration update",
+        "Future adapter wiring regression tests"
+      ],
+      "acceptanceCriteria": [
+        "The CLI composes the runtime registry explicitly rather than relying on fixture-owned defaults",
+        "Adding a future runtime adapter requires registration in one documented CLI composition path",
+        "Fixture runtime behavior remains unchanged after registry ownership moves",
+        "Tests cover unknown adapter selection and fixture adapter selection through the CLI-owned registry"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Fixture-specific CLI dispatch returning by another name",
+        "Future adapters needing scattered registration changes",
+        "Registry composition hiding unsupported adapter diagnostics"
+      ]
+    },
+    {
+      "id": "UTSUSHI-017",
+      "title": "Trace-only approximation wording clarity",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["utsushi", "shared"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-002"],
+      "summary": "Clarify trace-only approximation wording so runtime evidence cannot be read as captured or engine-perfect behavior.",
+      "deliverables": [
+        "Trace-only wording audit",
+        "Runtime evidence text updates",
+        "Shared terminology alignment",
+        "Regression fixture for trace-only reports"
+      ],
+      "acceptanceCriteria": [
+        "Trace-only runtime reports explicitly state that they are approximations and not captured playback",
+        "Shared terminology distinguishes trace, capture, and reference-runtime evidence consistently",
+        "User-facing and fixture-facing report wording avoids engine-perfect or pixel-perfect implications",
+        "A trace-only fixture snapshot covers the clarified wording"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "manual",
+          "value": "Trace-only wording review"
+        }
+      ],
+      "auditFocus": [
+        "Trace-only evidence overclaiming runtime fidelity",
+        "Terminology drift between shared contracts and Utsushi reports",
+        "Fixture wording implying captured playback"
       ]
     },
     {
