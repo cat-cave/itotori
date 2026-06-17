@@ -1,0 +1,319 @@
+{
+  "schemaVersion": "0.1.0",
+  "manifestId": "019ed000-0000-7000-8000-assetinv0001",
+  "adapterId": "kaifuu.fixture",
+  "sourceLocale": "ja-JP",
+  "assets": [
+    {
+      "assetId": "asset-audio-moonlit-path",
+      "assetKey": "audio/bgm/moonlit-path",
+      "assetKind": "audio",
+      "path": "audio/bgm/moonlit-path.ogg",
+      "sourceHash": "d945ccecb6e9ece7",
+      "metadata": {
+        "fixtureAsset": "logical-only",
+        "mediaType": "audio/ogg",
+        "titleField": "vorbisComment.TITLE"
+      }
+    },
+    {
+      "assetId": "asset-font-main-cjk",
+      "assetKey": "fonts/main-cjk",
+      "assetKind": "font",
+      "path": "fonts/main-cjk.otf",
+      "sourceHash": "c983fcd3bf9c8249",
+      "metadata": {
+        "coverage": "ja-Latn",
+        "fixtureAsset": "logical-only",
+        "format": "opentype"
+      }
+    },
+    {
+      "assetId": "asset-image-sign-caution",
+      "assetKey": "image/sign-caution",
+      "assetKind": "image",
+      "path": "images/sign-caution.png",
+      "sourceHash": "e72e3f1da8c5cfff",
+      "metadata": {
+        "dimensions": "256x128",
+        "fixtureAsset": "logical-only",
+        "mediaType": "image/png"
+      }
+    },
+    {
+      "assetId": "asset-metadata-credits",
+      "assetKey": "metadata/credits",
+      "assetKind": "metadata",
+      "path": "credits.json",
+      "sourceHash": "caad154f318de016",
+      "metadata": {
+        "fixtureAsset": "logical-only",
+        "metadataScope": "credits"
+      }
+    },
+    {
+      "assetId": "asset-ui-title-logo",
+      "assetKey": "ui/title-logo",
+      "assetKind": "ui_texture",
+      "path": "ui/title-logo.png",
+      "sourceHash": "ef58da3ed807a38a",
+      "metadata": {
+        "dimensions": "512x128",
+        "fixtureAsset": "logical-only",
+        "mediaType": "image/png"
+      }
+    },
+    {
+      "assetId": "asset-video-opening",
+      "assetKey": "video/opening",
+      "assetKind": "video",
+      "path": "video/opening.webm",
+      "sourceHash": "aa03b35afaad98d4",
+      "metadata": {
+        "duration": "12s",
+        "fixtureAsset": "logical-only",
+        "mediaType": "video/webm"
+      }
+    },
+    {
+      "assetId": "source.json",
+      "assetKey": "source.json",
+      "assetKind": "script",
+      "path": "source.json",
+      "sourceHash": "4eeb69ad51134863",
+      "metadata": {}
+    }
+  ],
+  "surfaces": [
+    {
+      "surfaceId": "surface-audio-moonlit-path-title",
+      "assetSurfaceKind": "song_title",
+      "sourceAssetRef": {
+        "assetId": "asset-audio-moonlit-path",
+        "assetKey": "audio/bgm/moonlit-path"
+      },
+      "sourceLocation": {
+        "containerKey": "audio/bgm/moonlit-path",
+        "entryPath": [
+          "metadata",
+          "TITLE"
+        ]
+      },
+      "sourceText": "月明かりの道",
+      "sourceHash": "7120e80c039c48dc",
+      "textSourceKind": "metadata",
+      "patchMode": "metadata_only",
+      "patching": {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "fixture adapter reports song metadata but does not rewrite audio metadata"
+      },
+      "notes": [
+        "Song title comes from explicit fixture metadata."
+      ]
+    },
+    {
+      "surfaceId": "surface-font-main-cjk-coverage",
+      "assetSurfaceKind": "font",
+      "sourceAssetRef": {
+        "assetId": "asset-font-main-cjk",
+        "assetKey": "fonts/main-cjk"
+      },
+      "sourceLocation": {
+        "containerKey": "fonts/main-cjk"
+      },
+      "textSourceKind": "not_applicable",
+      "patchMode": "font_substitution_required",
+      "patching": {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "fixture adapter reports font coverage policy needs but does not inspect or substitute font files"
+      },
+      "notes": [
+        "Font surface is textless and records coverage risk only."
+      ]
+    },
+    {
+      "surfaceId": "surface-image-sign-caution-text",
+      "assetSurfaceKind": "image_text",
+      "sourceAssetRef": {
+        "assetId": "asset-image-sign-caution",
+        "assetKey": "image/sign-caution"
+      },
+      "sourceLocation": {
+        "containerKey": "image/sign-caution",
+        "region": {
+          "height": 36,
+          "width": 160,
+          "x": 48,
+          "y": 40
+        }
+      },
+      "sourceText": "注意",
+      "sourceHash": "d6fb9913f33421b5",
+      "textSourceKind": "manual_transcription",
+      "patchMode": "region_redraw_required",
+      "patching": {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "fixture adapter records manually annotated image text but does not perform OCR, redraw, or image patching"
+      },
+      "notes": [
+        "Manual fixture annotation; no OCR was performed."
+      ]
+    },
+    {
+      "surfaceId": "surface-metadata-credits-staff",
+      "assetSurfaceKind": "credits",
+      "sourceAssetRef": {
+        "assetId": "asset-metadata-credits",
+        "assetKey": "metadata/credits"
+      },
+      "sourceLocation": {
+        "containerKey": "metadata/credits",
+        "entryPath": [
+          "staff",
+          "line1"
+        ]
+      },
+      "sourceText": "制作: Itotori Contributors",
+      "sourceHash": "ce6cc6e697cd7e5d",
+      "textSourceKind": "metadata",
+      "patchMode": "metadata_only",
+      "patching": {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "fixture adapter reports credits metadata but does not patch metadata assets"
+      },
+      "notes": [
+        "Synthetic credits metadata is safe for public fixtures."
+      ]
+    },
+    {
+      "surfaceId": "surface-ui-title-logo-art",
+      "assetSurfaceKind": "ui_art",
+      "sourceAssetRef": {
+        "assetId": "asset-ui-title-logo",
+        "assetKey": "ui/title-logo"
+      },
+      "sourceLocation": {
+        "containerKey": "ui/title-logo"
+      },
+      "textSourceKind": "not_applicable",
+      "patchMode": "asset_replacement_required",
+      "patching": {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "fixture adapter reports UI texture localization risk but does not replace or redraw UI textures"
+      },
+      "notes": [
+        "Textless UI art surface used to test non-text inventory reporting."
+      ]
+    },
+    {
+      "surfaceId": "surface-video-opening-card",
+      "assetSurfaceKind": "video",
+      "sourceAssetRef": {
+        "assetId": "asset-video-opening",
+        "assetKey": "video/opening"
+      },
+      "sourceLocation": {
+        "containerKey": "video/opening",
+        "region": {
+          "height": 48,
+          "width": 220,
+          "x": 120,
+          "y": 88
+        }
+      },
+      "sourceText": "第1章",
+      "sourceHash": "a626b3e5ac78f4d5",
+      "textSourceKind": "manual_transcription",
+      "patchMode": "asset_replacement_required",
+      "patching": {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "fixture adapter reports manually annotated video frame text but does not OCR, subtitle, or edit video"
+      },
+      "notes": [
+        "Manual fixture annotation; no video frame analysis was performed."
+      ]
+    }
+  ],
+  "capabilities": [
+    {
+      "capability": "asset_inventory",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "asset_listing",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "asset_text_patching",
+      "status": "unsupported",
+      "limitation": "image, audio, video, and external asset text are outside the fixture format"
+    },
+    {
+      "capability": "delta_patching",
+      "status": "unsupported",
+      "limitation": ".kaifuu delta packages are handled by kaifuu-delta, not this engine adapter"
+    },
+    {
+      "capability": "detection",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "encrypted_input",
+      "status": "unsupported",
+      "limitation": "fixture projects are plaintext JSON and never encrypted"
+    },
+    {
+      "capability": "extraction",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "key_profile",
+      "status": "unsupported",
+      "limitation": "fixture projects do not use user-provided keys"
+    },
+    {
+      "capability": "line_parity_patching",
+      "status": "limited",
+      "limitation": "requires patch entries to match existing sourceUnitKey values"
+    },
+    {
+      "capability": "non_text_surface_extraction",
+      "status": "limited",
+      "limitation": "reports explicit fixture asset metadata only; does not perform OCR, audio analysis, font inspection, or video frame analysis"
+    },
+    {
+      "capability": "patching",
+      "status": "limited",
+      "limitation": "writes source.json only; does not rebuild engine archives or binary assets"
+    },
+    {
+      "capability": "profile_generation",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "runtime_vm",
+      "status": "unsupported",
+      "limitation": "runtime validation belongs to Utsushi fixture plumbing"
+    },
+    {
+      "capability": "verification",
+      "status": "supported",
+      "limitation": null
+    }
+  ],
+  "warnings": [],
+  "metadata": {
+    "supportBoundary": "Synthetic plain JSON fixture asset inventory; non-text surfaces are reported from explicit fixture metadata and are not OCR results"
+  }
+}

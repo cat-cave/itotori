@@ -1,9 +1,10 @@
 use std::path::{Path, PathBuf};
 
 use kaifuu_core::{
-    AdapterRegistry, DetectionReport, DetectionResult, EngineAdapter, ExtractRequest, GameProfile,
-    KaifuuResult, PatchExport, PatchRequest, ProfileRequest, VerifyRequest, atomic_write_text,
-    read_json, validate_profile_value, write_json,
+    AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
+    DetectionResult, EngineAdapter, ExtractRequest, GameProfile, KaifuuResult, PatchExport,
+    PatchRequest, ProfileRequest, VerifyRequest, atomic_write_text, read_json,
+    validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -45,6 +46,28 @@ fn run_with_args_and_registry(
                 game_dir: &game_dir,
             })?;
             write_json(&output, &extraction.bridge)?;
+        }
+        Some("asset-inventory" | "assets") => {
+            let game_dir = PathBuf::from(positional(&args, 1)?);
+            let output = PathBuf::from(flag(&args, "--output")?);
+            let adapter = registered_adapter_for_game(registry, &game_dir)?;
+            let manifest = adapter.asset_inventory(AssetInventoryRequest {
+                game_dir: &game_dir,
+            })?;
+            let validation = manifest.validate();
+            if validation.status == kaifuu_core::OperationStatus::Failed {
+                return Err(format!(
+                    "generated asset inventory failed validation: {}",
+                    validation
+                        .failures
+                        .iter()
+                        .map(|failure| failure.code.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+                .into());
+            }
+            write_stable_asset_inventory(&output, &manifest)?;
         }
         Some("patch") => {
             let game_dir = PathBuf::from(positional(&args, 1)?);
@@ -104,7 +127,7 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|patch|diff|apply|verify|profile|capabilities> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|profile|capabilities> ..."
                     .into(),
             );
         }
@@ -189,6 +212,13 @@ fn write_stable_profile(output: &Path, profile: &GameProfile) -> KaifuuResult<()
     atomic_write_text(output, &profile.stable_json()?)
 }
 
+fn write_stable_asset_inventory(
+    output: &Path,
+    manifest: &AssetInventoryManifest,
+) -> KaifuuResult<()> {
+    atomic_write_text(output, &manifest.stable_json()?)
+}
+
 fn positional(args: &[String], index: usize) -> Result<&str, Box<dyn std::error::Error>> {
     args.get(index)
         .map(String::as_str)
@@ -210,14 +240,18 @@ fn flag_optional<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 mod tests {
     use super::*;
     use kaifuu_core::{
-        AdapterCapabilities, AdapterWarning, AssetKind, AssetList, AssetListRequest, AssetProfile,
-        BridgeBundle, BridgeUnit, Capability, CapabilityReport, CapabilityStatus, DetectRequest,
-        DetectionEvidence, DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult,
-        OperationStatus, PatchExportEntry, PatchRef, PatchResult, ProfileRequirement,
-        ProtectedSpan, RequirementCategory, RequirementStatus, TextSurface, VerificationResult,
+        ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterWarning, AssetInventoryAsset,
+        AssetInventoryAssetKind, AssetInventoryAssetRef, AssetInventoryPatchMode,
+        AssetInventorySurface, AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind,
+        AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
+        CapabilityReport, CapabilityStatus, DetectRequest, DetectionEvidence,
+        DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult, OperationStatus,
+        PatchExportEntry, PatchRef, PatchResult, ProfileRequirement, ProtectedSpan,
+        RequirementCategory, RequirementStatus, TextSurface, VerificationResult, content_hash,
         deterministic_id, read_json,
     };
     use std::cell::RefCell;
+    use std::collections::BTreeMap;
     use std::fs;
     use std::rc::Rc;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -285,6 +319,8 @@ mod tests {
                 CapabilityReport::supported(Capability::Extraction),
                 CapabilityReport::supported(Capability::Patching),
                 CapabilityReport::supported(Capability::Verification),
+                CapabilityReport::supported(Capability::AssetInventory),
+                CapabilityReport::supported(Capability::NonTextSurfaceExtraction),
                 CapabilityReport::supported(Capability::ProfileGeneration),
             ],
         )
@@ -380,6 +416,55 @@ mod tests {
                 adapter_id: TEST_ADAPTER_ID.to_string(),
                 assets: vec![],
             })
+        }
+
+        fn asset_inventory(
+            &self,
+            _request: AssetInventoryRequest<'_>,
+        ) -> KaifuuResult<AssetInventoryManifest> {
+            self.record("asset_inventory");
+            let mut metadata = BTreeMap::new();
+            metadata.insert(
+                "supportBoundary".to_string(),
+                "registry test asset inventory".to_string(),
+            );
+            let mut manifest = AssetInventoryManifest {
+                schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
+                manifest_id: deterministic_id("asset-inventory", 98),
+                adapter_id: TEST_ADAPTER_ID.to_string(),
+                source_locale: "en-US".to_string(),
+                assets: vec![AssetInventoryAsset {
+                    asset_id: "registry-image".to_string(),
+                    asset_key: "image/registry".to_string(),
+                    asset_kind: AssetInventoryAssetKind::Image,
+                    path: Some("registry/image.png".to_string()),
+                    source_hash: Some(content_hash("registry-image")),
+                    metadata: BTreeMap::new(),
+                }],
+                surfaces: vec![AssetInventorySurface {
+                    surface_id: "registry-image-text".to_string(),
+                    asset_surface_kind: AssetInventorySurfaceKind::ImageText,
+                    source_asset_ref: AssetInventoryAssetRef {
+                        asset_id: "registry-image".to_string(),
+                        asset_key: Some("image/registry".to_string()),
+                    },
+                    source_location: None,
+                    source_text: Some("Registry".to_string()),
+                    source_hash: Some(content_hash("Registry")),
+                    text_source_kind: AssetInventoryTextSourceKind::ManualTranscription,
+                    patch_mode: AssetInventoryPatchMode::Unsupported,
+                    patching: CapabilityReport::unsupported(
+                        Capability::AssetTextPatching,
+                        "registry test adapter does not patch image assets",
+                    ),
+                    notes: vec![],
+                }],
+                capabilities: test_capabilities().reports,
+                warnings: vec![],
+                metadata,
+            };
+            manifest.normalize();
+            Ok(manifest)
         }
 
         fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
@@ -518,6 +603,25 @@ mod tests {
         assert_eq!(profile.engine.adapter_id, TEST_ADAPTER_ID);
         assert_eq!(profile.game_id, "registry-dispatch-game");
         assert_calls(&calls, &["detect", "profile"]);
+
+        let asset_inventory_path = root.join("asset-inventory.json");
+        run_cli_with_registry(
+            &[
+                "asset-inventory",
+                game_dir.to_str().unwrap(),
+                "--output",
+                asset_inventory_path.to_str().unwrap(),
+            ],
+            &registry,
+        );
+        let asset_inventory: AssetInventoryManifest = read_json(&asset_inventory_path).unwrap();
+        assert_eq!(asset_inventory.adapter_id, TEST_ADAPTER_ID);
+        assert_eq!(asset_inventory.surfaces.len(), 1);
+        assert_eq!(
+            asset_inventory.surfaces[0].patching.status,
+            CapabilityStatus::Unsupported
+        );
+        assert_calls(&calls, &["detect", "asset_inventory"]);
 
         let validation_path = root.join("profile-validation.json");
         run_cli_with_registry(

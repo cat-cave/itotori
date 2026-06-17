@@ -24,20 +24,28 @@
       "path": "fixtures/hello-game/source.json",
       "role": "source-game",
       "mediaType": "application/json",
-      "sha256": "28e0a6306f64ba1a5ff0a56c7039932f924959cd878394a5987b49a2aa50f213",
-      "bytes": 441,
+      "sha256": "2141d86c849a968182e0418027c1aa568a1378a12224a9266f26c17f28d88165",
+      "bytes": 6187,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/asset-inventory.expected.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "590a820d8c62429121d99d980fc308e224962626b2238bc6bfdc12bb57d01d14",
+      "bytes": 9488,
       "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 1,
+    "files": 2,
     "textUnits": 1,
     "sourceTextUtf16CodeUnits": 15,
     "protectedSpans": 1,
     "sourceLocales": ["ja-JP"],
     "targetLocales": ["en-US"],
     "engineKinds": ["synthetic-json"],
-    "notes": "The source text contains one protected placeholder span."
+    "notes": "The source text contains one protected placeholder span and explicit logical asset metadata for six non-text asset surfaces."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,
