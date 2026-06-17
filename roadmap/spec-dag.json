@@ -6813,7 +6813,11 @@
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-005", "ITOTORI-004"],
       "summary": "Render typed API error responses in the dashboard shell so failures show actionable code and message details while preserving safe fallback behavior.",
-      "deliverables": ["Typed API error parser", "Dashboard error state rendering", "MSW error-body tests"],
+      "deliverables": [
+        "Typed API error parser",
+        "Dashboard error state rendering",
+        "MSW error-body tests"
+      ],
       "acceptanceCriteria": [
         "Typed API error code and message render when available",
         "Malformed or missing error bodies fall back safely",
@@ -6829,7 +6833,11 @@
           "value": "pnpm exec vp run ts:typecheck"
         }
       ],
-      "auditFocus": ["Dropped API error details", "Unsafe error parsing", "Unhelpful operator failure states"]
+      "auditFocus": [
+        "Dropped API error details",
+        "Unsafe error parsing",
+        "Unhelpful operator failure states"
+      ]
     },
     {
       "id": "KAIFUU-047",
@@ -6861,7 +6869,11 @@
           "value": "cargo clippy -p kaifuu-delta --all-targets --all-features -- -D warnings"
         }
       ],
-      "auditFocus": ["Staging writes before preflight failure", "Partial multi-entry packages", "Manifest comparison drift"]
+      "auditFocus": [
+        "Staging writes before preflight failure",
+        "Partial multi-entry packages",
+        "Manifest comparison drift"
+      ]
     },
     {
       "id": "KAIFUU-048",
@@ -6893,7 +6905,11 @@
           "value": "cargo test -p kaifuu-cli"
         }
       ],
-      "auditFocus": ["Command artifact overwrites game file", "Reserved path ambiguity", "Silent snapshot omission"]
+      "auditFocus": [
+        "Command artifact overwrites game file",
+        "Reserved path ambiguity",
+        "Silent snapshot omission"
+      ]
     },
     {
       "id": "KAIFUU-049",
@@ -6961,7 +6977,11 @@
           "value": "pnpm exec vp run ts:typecheck"
         }
       ],
-      "auditFocus": ["Stale normalized runtime rows", "Re-ingest idempotency", "Dashboard state after corrected reports"]
+      "auditFocus": [
+        "Stale normalized runtime rows",
+        "Re-ingest idempotency",
+        "Dashboard state after corrected reports"
+      ]
     },
     {
       "id": "UTSUSHI-019",

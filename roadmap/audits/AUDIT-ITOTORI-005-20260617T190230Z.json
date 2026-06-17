@@ -27,11 +27,7 @@
   "orchestration": {
     "completionDecision": "complete_allowed",
     "blockingFindingIds": [],
-    "followUpFindingIds": [
-      "ITOTORI-005-F001",
-      "ITOTORI-005-F002",
-      "ITOTORI-005-F003"
-    ]
+    "followUpFindingIds": ["ITOTORI-005-F001", "ITOTORI-005-F002", "ITOTORI-005-F003"]
   },
   "findings": [
     {

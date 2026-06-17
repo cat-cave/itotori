@@ -27,10 +27,7 @@
   "orchestration": {
     "completionDecision": "complete_allowed",
     "blockingFindingIds": [],
-    "followUpFindingIds": [
-      "UTSUSHI-003-F001",
-      "UTSUSHI-003-F002"
-    ]
+    "followUpFindingIds": ["UTSUSHI-003-F001", "UTSUSHI-003-F002"]
   },
   "findings": [
     {
