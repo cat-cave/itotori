@@ -15,6 +15,11 @@ The bridge package is intentionally independent from any one subproject. Kaifuu 
   enum-backed category lists, bundle-level asset reference integrity, source
   game/profile revision identity, hash strategy metadata, v0.2 patch
   export/result/delta metadata, and runtime guards.
+- `0.2.0` defines Utsushi runtime evidence as
+  `RuntimeEvidenceReportV02`, with explicit `evidenceTier` and
+  `fidelityTier` enums, bridge-unit references, trace events, branch-point
+  events, screenshot capture refs, recording refs, approximation records,
+  validation findings, and `assertRuntimeEvidenceReportV02`.
 - `0.2.0` also defines suite-wide triage records exported as
   `TriageBundleV02`, `TriageEventV02`, `TriageTaskV02`, `FindingRecordV02`,
   provenance/evidence/causality records, and `assertTriageBundleV02`.
@@ -25,9 +30,35 @@ value from the exported `POLICY_SCOPES` list, which currently mirrors
 
 The v0.2 bridge JSON example lives at `test/examples/bridge-v0.2.json`.
 `test/examples/triage-v0.2.json` is a triage fixture, not a bridge bundle.
+`test/examples/runtime-evidence-v0.2.json` is a runtime evidence fixture, not a
+bridge bundle.
 Invalid bridge fixtures live under `test/examples/invalid/` and are expected to
 fail with semantic validation errors. Migration notes from v0.1 are in
 `MIGRATING-0.2.md`.
+
+## Runtime Evidence
+
+`RuntimeEvidenceReportV02.evidenceTier` is the canonical claim tier: `E0`,
+`E1`, `E2`, `E3`, or `E4`. `fidelityTier` describes adapter capability and caps
+the report claim: `trace_only` can claim at most E1, `layout_probe` at most E2,
+`replay_review` at most E3, and `reference_fidelity` at most E4.
+
+Every trace event, capture, recording, branch point, approximation, or runtime
+finding carries a `bridgeUnitRef` when it refers to localized content. The ref
+contains `bridgeUnitId` and should include `sourceUnitKey` when available so
+legacy hello-world bridge units and v0.2 UUID7 units remain traceable.
+
+`reference_fidelity` or `E4` reports must include at least one passed
+`referenceComparisons` record. Each comparison names either a reference runtime
+or engine-specific conformance fixture, lists the covered bridge-unit refs, and
+points at a portable `reference_comparison` artifact. Trace-only evidence,
+captures, recordings, or adapter capability labels alone are not enough for E4.
+
+Screenshots and recordings are represented through `artifactRef` records with a
+portable `uri`, not embedded bytes. The guard rejects `data:` URIs, `file:` URIs,
+absolute local paths, and Windows-style backslash paths. Utsushi fixture smoke
+reports currently produce E2 evidence: deterministic text trace plus a referenced
+screenshot artifact. They do not claim E4 pixel fidelity.
 
 ## Patch And Source Revisions
 
@@ -98,5 +129,6 @@ fixture with serde and checks the same contract-critical semantics as the TS
 guard: schema version, UUID7 identifiers, canonical SHA-256 hashes, revision
 hash consistency, hash strategy scopes, asset reference integrity, patch refs,
 protected span byte ranges, speaker knowledge states, and policy record scopes.
-Runtime, patch, benchmark, and finding contracts remain layered on top of this
-bridge compatibility check.
+Runtime, patch, benchmark, and finding contracts are layered on top of this
+bridge compatibility check; the TypeScript guard remains the runtime evidence
+authority for SHARED-005.

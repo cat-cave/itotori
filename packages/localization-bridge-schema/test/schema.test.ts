@@ -7,6 +7,8 @@ import {
   assertPatchExport,
   assertPatchExportV02,
   assertPatchResultV02,
+  assertRuntimeEvidenceReportV02,
+  assertRuntimeReport,
   assertRuntimeVerificationReport,
   assertTriageBundleV02,
   evaluatePatchExportCompatibilityV02,
@@ -31,6 +33,71 @@ function triageV02Example(): Record<string, unknown> {
   return JSON.parse(
     readFileSync(new URL("./examples/triage-v0.2.json", import.meta.url), "utf8"),
   ) as Record<string, unknown>;
+}
+
+function runtimeEvidenceV02Example(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL("./examples/runtime-evidence-v0.2.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+function traceOnlyReferenceFidelityReport(): Record<string, unknown> {
+  return {
+    schemaVersion: "0.2.0",
+    runtimeReportId: "019ed003-0000-7000-8000-00000000e401",
+    sourceBridgeId: "019ed001-0000-7000-8000-000000000001",
+    sourceBundleHash: "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+    sourceLocale: "en-US",
+    targetLocale: "fr-FR",
+    adapterName: "utsushi-reference-example",
+    adapterVersion: "0.2.0",
+    fidelityTier: "reference_fidelity",
+    evidenceTier: "E4",
+    status: "passed",
+    createdAt: "2026-06-17T00:00:00.000Z",
+    traceEvents: [
+      {
+        traceEventId: "019ed003-0000-7000-8000-00000000e411",
+        eventKind: "text_observed",
+        bridgeUnitRef: {
+          bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+          sourceUnitKey: "script/prologue#line-001",
+        },
+        frame: 12,
+        traceKey: "prologue.line.001",
+        observedText: "Bonjour, {player}.",
+      },
+    ],
+    branchEvents: [],
+    captures: [],
+    recordings: [],
+    approximations: [],
+    validationFindings: [],
+    limitations: [],
+  };
+}
+
+function passedReferenceComparison(): Record<string, unknown> {
+  return {
+    comparisonId: "019ed003-0000-7000-8000-00000000e421",
+    comparisonKind: "reference_runtime",
+    status: "passed",
+    scope: "script/prologue#line-001 rendered text",
+    coveredBridgeUnitRefs: [
+      {
+        bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+        sourceUnitKey: "script/prologue#line-001",
+      },
+    ],
+    artifactRef: {
+      artifactId: "019ed003-0000-7000-8000-00000000e431",
+      artifactKind: "reference_comparison",
+      uri: "artifacts/utsushi/hello/reference-comparison.json",
+      hash: "sha256:9f19ff8b1b206d23c4df42dc35913c9fdb14d5ec4a85139d368c39942c197f51",
+      mediaType: "application/json",
+      byteSize: 2048,
+    },
+  };
 }
 
 function exampleFixture(path: string): Record<string, unknown> {
@@ -85,7 +152,11 @@ function asTestRecord(value: unknown, label: string): Record<string, unknown> {
 
 describe("localization bridge schema guards", () => {
   it("has explicit validation expectations for each top-level example fixture", () => {
-    const expectedTopLevelFixtures = new Set(["bridge-v0.2.json", "triage-v0.2.json"]);
+    const expectedTopLevelFixtures = new Set([
+      "bridge-v0.2.json",
+      "runtime-evidence-v0.2.json",
+      "triage-v0.2.json",
+    ]);
     const topLevelFixtures = readdirSync(new URL("./examples", import.meta.url)).filter((entry) =>
       entry.endsWith(".json"),
     );
@@ -103,6 +174,11 @@ describe("localization bridge schema guards", () => {
       path: "./examples/triage-v0.2.json",
       kind: "triage-v0.2",
       assertValid: assertTriageBundleV02,
+    },
+    {
+      path: "./examples/runtime-evidence-v0.2.json",
+      kind: "runtime-evidence-v0.2",
+      assertValid: assertRuntimeEvidenceReportV02,
     },
   ])("validates committed $kind example fixture", ({ path, assertValid }) => {
     expect(() => assertValid(exampleFixture(path))).not.toThrow();
@@ -778,6 +854,74 @@ describe("localization bridge schema guards", () => {
     expect(() => assertTriageBundleV02(triage)).toThrow(
       /provenanceIds\[0\] must reference provenance on the same finding/,
     );
+  });
+
+  it("accepts v0.2 runtime evidence with trace, branch, capture, and recording refs", () => {
+    const report = runtimeEvidenceV02Example();
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
+    expect(() => assertRuntimeReport(report)).not.toThrow();
+
+    const captures = report.captures as Array<Record<string, unknown>>;
+    const firstCapture = asTestRecord(captures[0], "first runtime capture");
+    const artifactRef = asTestRecord(firstCapture.artifactRef, "first capture artifact ref");
+    expect(artifactRef.uri).toBe("artifacts/utsushi/hello/frame-0001.png");
+    expect(firstCapture).not.toHaveProperty("bytes");
+    expect(firstCapture).not.toHaveProperty("data");
+  });
+
+  it("rejects v0.2 runtime evidence that overclaims fixture fidelity", () => {
+    const report = runtimeEvidenceV02Example();
+    report.fidelityTier = "layout_probe";
+    report.evidenceTier = "E4";
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/evidenceTier must not exceed E2/);
+  });
+
+  it("rejects E4 reference fidelity without reference comparison evidence", () => {
+    const report = traceOnlyReferenceFidelityReport();
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/referenceComparisons/);
+  });
+
+  it("accepts E4 reference fidelity with passed reference comparison evidence", () => {
+    const report = traceOnlyReferenceFidelityReport();
+    report.referenceComparisons = [passedReferenceComparison()];
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
+    expect(() => assertRuntimeReport(report)).not.toThrow();
+  });
+
+  it("rejects v0.2 runtime captures without bridge-unit traceability", () => {
+    const report = runtimeEvidenceV02Example();
+    const captures = report.captures as Array<Record<string, unknown>>;
+    const firstCapture = asTestRecord(captures[0], "first runtime capture");
+    delete firstCapture.bridgeUnitRef;
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/bridgeUnitRef/);
+  });
+
+  it.each([
+    ["embedded data URI", "data:image/png;base64,AAAA"],
+    ["absolute POSIX path", "/tmp/runtime/frame.png"],
+    ["Windows path", "C:\\runtime\\frame.png"],
+  ])("rejects non-portable v0.2 runtime screenshot references: %s", (_label, uri) => {
+    const report = runtimeEvidenceV02Example();
+    const captures = report.captures as Array<Record<string, unknown>>;
+    const firstCapture = asTestRecord(captures[0], "first runtime capture");
+    const artifactRef = asTestRecord(firstCapture.artifactRef, "first capture artifact ref");
+    artifactRef.uri = uri;
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/reference an artifact|portable/);
+  });
+
+  it("rejects v0.2 runtime branch points whose selected option is not listed", () => {
+    const report = runtimeEvidenceV02Example();
+    const branchEvents = report.branchEvents as Array<Record<string, unknown>>;
+    const firstBranchEvent = asTestRecord(branchEvents[0], "first branch event");
+    firstBranchEvent.selectedOptionId = "019ed003-0000-7000-8000-00000000ffff";
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/selectedOptionId/);
   });
 
   it("rejects invalid patch exports", () => {

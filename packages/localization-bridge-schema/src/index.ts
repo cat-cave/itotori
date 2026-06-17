@@ -99,6 +99,65 @@ export type RuntimeVerificationReport = {
 
 export const BRIDGE_SCHEMA_VERSION_V02 = "0.2.0" as const;
 
+export const RUNTIME_FIDELITY_TIERS_V02 = [
+  "trace_only",
+  "layout_probe",
+  "replay_review",
+  "reference_fidelity",
+] as const;
+export type RuntimeFidelityTierV02 = (typeof RUNTIME_FIDELITY_TIERS_V02)[number];
+
+export const RUNTIME_EVIDENCE_TIERS_V02 = ["E0", "E1", "E2", "E3", "E4"] as const;
+export type RuntimeEvidenceTierV02 = (typeof RUNTIME_EVIDENCE_TIERS_V02)[number];
+
+export const RUNTIME_ARTIFACT_KINDS_V02 = [
+  "trace_log",
+  "screenshot",
+  "recording",
+  "capture_metadata",
+  "reference_comparison",
+  "runtime_report",
+] as const;
+export type RuntimeArtifactKindV02 = (typeof RUNTIME_ARTIFACT_KINDS_V02)[number];
+
+export const RUNTIME_TRACE_EVENT_KINDS_V02 = [
+  "scene_entered",
+  "text_observed",
+  "branch_point_reached",
+  "capture_requested",
+] as const;
+export type RuntimeTraceEventKindV02 = (typeof RUNTIME_TRACE_EVENT_KINDS_V02)[number];
+
+export const RUNTIME_APPROXIMATION_TIERS_V02 = [
+  "none",
+  "deterministic_fixture",
+  "layout_probe",
+  "engine_partial",
+  "reference_matched",
+] as const;
+export type RuntimeApproximationTierV02 = (typeof RUNTIME_APPROXIMATION_TIERS_V02)[number];
+
+export const RUNTIME_VALIDATION_FINDING_KINDS_V02 = [
+  "missing_trace",
+  "missing_capture",
+  "text_mismatch",
+  "artifact_unreadable",
+  "unsupported_runtime_feature",
+  "schema_violation",
+] as const;
+export type RuntimeValidationFindingKindV02 = (typeof RUNTIME_VALIDATION_FINDING_KINDS_V02)[number];
+
+export const RUNTIME_REFERENCE_COMPARISON_KINDS_V02 = [
+  "reference_runtime",
+  "conformance_fixture",
+] as const;
+export type RuntimeReferenceComparisonKindV02 =
+  (typeof RUNTIME_REFERENCE_COMPARISON_KINDS_V02)[number];
+
+export const RUNTIME_REFERENCE_COMPARISON_STATUSES_V02 = ["passed", "failed"] as const;
+export type RuntimeReferenceComparisonStatusV02 =
+  (typeof RUNTIME_REFERENCE_COMPARISON_STATUSES_V02)[number];
+
 export const ASSET_KINDS = [
   "script",
   "image",
@@ -553,6 +612,100 @@ export type RuntimeExpectationV02 = {
   traceKey?: string;
 };
 
+export type RuntimeBridgeUnitRefV02 = {
+  bridgeUnitId: string;
+  sourceUnitKey?: string;
+};
+
+export type RuntimeArtifactRefV02 = {
+  artifactId: Uuid7;
+  artifactKind: RuntimeArtifactKindV02;
+  uri: string;
+  hash?: string;
+  mediaType?: string;
+  byteSize?: number;
+};
+
+export type RuntimeTraceEventV02 = {
+  traceEventId: Uuid7;
+  eventKind: RuntimeTraceEventKindV02;
+  bridgeUnitRef: RuntimeBridgeUnitRefV02;
+  frame: number;
+  traceKey?: string;
+  observedText?: string;
+  artifactRef?: RuntimeArtifactRefV02;
+};
+
+export type RuntimeBranchOptionV02 = {
+  optionId: Uuid7;
+  label?: string;
+  labelBridgeUnitRef?: RuntimeBridgeUnitRefV02;
+  targetRouteKey?: string;
+  targetBridgeUnitRef?: RuntimeBridgeUnitRefV02;
+};
+
+export type RuntimeBranchPointEventV02 = {
+  branchEventId: Uuid7;
+  bridgeUnitRef: RuntimeBridgeUnitRefV02;
+  frame: number;
+  branchPointKey?: string;
+  promptText?: string;
+  options: RuntimeBranchOptionV02[];
+  selectedOptionId?: Uuid7;
+};
+
+export type RuntimeCaptureV02 = {
+  captureId: Uuid7;
+  bridgeUnitRef: RuntimeBridgeUnitRefV02;
+  evidenceTier: RuntimeEvidenceTierV02;
+  frame: number;
+  width: number;
+  height: number;
+  nonZeroPixels?: number;
+  region?: PixelRegionV02;
+  artifactRef: RuntimeArtifactRefV02 & { artifactKind: "screenshot" };
+};
+
+export type RuntimeRecordingV02 = {
+  recordingId: Uuid7;
+  bridgeUnitRef: RuntimeBridgeUnitRefV02;
+  evidenceTier: RuntimeEvidenceTierV02;
+  startedAtFrame: number;
+  frameCount: number;
+  width: number;
+  height: number;
+  encoding: string;
+  artifactRef: RuntimeArtifactRefV02 & { artifactKind: "recording" };
+};
+
+export type RuntimeApproximationV02 = {
+  approximationId: Uuid7;
+  approximationTier: RuntimeApproximationTierV02;
+  scope: string;
+  description: string;
+  affectedBridgeUnitRefs: RuntimeBridgeUnitRefV02[];
+  evidenceTierCeiling: RuntimeEvidenceTierV02;
+};
+
+export type RuntimeValidationFindingV02 = {
+  findingId: Uuid7;
+  findingKind: RuntimeValidationFindingKindV02;
+  severity: TriageSeverityV02;
+  bridgeUnitRef?: RuntimeBridgeUnitRefV02;
+  artifactRef?: RuntimeArtifactRefV02;
+  message: string;
+  evidenceTier: RuntimeEvidenceTierV02;
+};
+
+export type RuntimeReferenceComparisonV02 = {
+  comparisonId: Uuid7;
+  comparisonKind: RuntimeReferenceComparisonKindV02;
+  status: RuntimeReferenceComparisonStatusV02;
+  scope: string;
+  coveredBridgeUnitRefs: RuntimeBridgeUnitRefV02[];
+  artifactRef: RuntimeArtifactRefV02 & { artifactKind: "reference_comparison" };
+};
+
 export type PatchRefV02 = {
   assetId: Uuid7;
   writeMode: PatchWriteModeV02;
@@ -666,7 +819,7 @@ export type RuntimeEvidenceProvenanceV02 = {
   runtimeReportId: Uuid7;
   bridgeUnitId?: Uuid7;
   artifactRef?: TriageArtifactRefV02;
-  evidenceTier?: string;
+  evidenceTier?: RuntimeEvidenceTierV02;
 };
 
 export type HumanReviewProvenanceV02 = {
@@ -846,6 +999,29 @@ export type PatchResultV02 = {
   outputHash?: string;
   failures: string[];
   sourceCompatibility?: PatchSourceCompatibilityReportV02;
+};
+
+export type RuntimeEvidenceReportV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  runtimeReportId: Uuid7;
+  sourceBridgeId?: Uuid7;
+  sourceBundleHash?: string;
+  sourceLocale?: Bcp47Locale;
+  targetLocale?: Bcp47Locale;
+  adapterName: string;
+  adapterVersion: string;
+  fidelityTier: RuntimeFidelityTierV02;
+  evidenceTier: RuntimeEvidenceTierV02;
+  status: "passed" | "failed";
+  createdAt: string;
+  traceEvents: RuntimeTraceEventV02[];
+  branchEvents: RuntimeBranchPointEventV02[];
+  captures: RuntimeCaptureV02[];
+  recordings: RuntimeRecordingV02[];
+  approximations: RuntimeApproximationV02[];
+  validationFindings: RuntimeValidationFindingV02[];
+  referenceComparisons?: RuntimeReferenceComparisonV02[];
+  limitations: string[];
 };
 
 export type DeltaPackageMetadataV02 = {
@@ -1167,11 +1343,399 @@ export function assertRuntimeVerificationReport(
   assertArray(report.frameCaptures, "RuntimeVerificationReport.frameCaptures");
 }
 
+export function assertRuntimeEvidenceReportV02(
+  value: unknown,
+): asserts value is RuntimeEvidenceReportV02 {
+  const report = asRecord(value, "RuntimeEvidenceReportV02");
+  assertEqual(
+    report.schemaVersion,
+    BRIDGE_SCHEMA_VERSION_V02,
+    "RuntimeEvidenceReportV02.schemaVersion",
+  );
+  assertUuid7(report.runtimeReportId, "RuntimeEvidenceReportV02.runtimeReportId");
+  assertOptionalUuid7(report.sourceBridgeId, "RuntimeEvidenceReportV02.sourceBridgeId");
+  assertOptionalHashStringV02(report.sourceBundleHash, "RuntimeEvidenceReportV02.sourceBundleHash");
+  assertOptionalString(report.sourceLocale, "RuntimeEvidenceReportV02.sourceLocale");
+  assertOptionalString(report.targetLocale, "RuntimeEvidenceReportV02.targetLocale");
+  assertString(report.adapterName, "RuntimeEvidenceReportV02.adapterName");
+  assertString(report.adapterVersion, "RuntimeEvidenceReportV02.adapterVersion");
+  assertEnum(
+    report.fidelityTier,
+    RUNTIME_FIDELITY_TIERS_V02,
+    "RuntimeEvidenceReportV02.fidelityTier",
+  );
+  assertEnum(
+    report.evidenceTier,
+    RUNTIME_EVIDENCE_TIERS_V02,
+    "RuntimeEvidenceReportV02.evidenceTier",
+  );
+  assertRuntimeEvidenceTierWithinFidelityV02(
+    report.evidenceTier,
+    report.fidelityTier,
+    "RuntimeEvidenceReportV02",
+  );
+  assertEnum(report.status, ["passed", "failed"] as const, "RuntimeEvidenceReportV02.status");
+  assertString(report.createdAt, "RuntimeEvidenceReportV02.createdAt");
+
+  const traceEvents = asArray(report.traceEvents, "RuntimeEvidenceReportV02.traceEvents");
+  for (const [index, event] of traceEvents.entries()) {
+    assertRuntimeTraceEventV02(event, `RuntimeEvidenceReportV02.traceEvents[${index}]`);
+  }
+
+  const branchEvents = asArray(report.branchEvents, "RuntimeEvidenceReportV02.branchEvents");
+  for (const [index, event] of branchEvents.entries()) {
+    assertRuntimeBranchPointEventV02(event, `RuntimeEvidenceReportV02.branchEvents[${index}]`);
+  }
+
+  const captures = asArray(report.captures, "RuntimeEvidenceReportV02.captures");
+  for (const [index, capture] of captures.entries()) {
+    assertRuntimeCaptureV02(capture, `RuntimeEvidenceReportV02.captures[${index}]`);
+  }
+
+  const recordings = asArray(report.recordings, "RuntimeEvidenceReportV02.recordings");
+  for (const [index, recording] of recordings.entries()) {
+    assertRuntimeRecordingV02(recording, `RuntimeEvidenceReportV02.recordings[${index}]`);
+  }
+
+  const approximations = asArray(report.approximations, "RuntimeEvidenceReportV02.approximations");
+  for (const [index, approximation] of approximations.entries()) {
+    assertRuntimeApproximationV02(
+      approximation,
+      `RuntimeEvidenceReportV02.approximations[${index}]`,
+    );
+  }
+
+  const validationFindings = asArray(
+    report.validationFindings,
+    "RuntimeEvidenceReportV02.validationFindings",
+  );
+  for (const [index, finding] of validationFindings.entries()) {
+    assertRuntimeValidationFindingV02(
+      finding,
+      `RuntimeEvidenceReportV02.validationFindings[${index}]`,
+    );
+  }
+
+  const referenceComparisons =
+    report.referenceComparisons === undefined
+      ? []
+      : asArray(report.referenceComparisons, "RuntimeEvidenceReportV02.referenceComparisons");
+  for (const [index, comparison] of referenceComparisons.entries()) {
+    assertRuntimeReferenceComparisonV02(
+      comparison,
+      `RuntimeEvidenceReportV02.referenceComparisons[${index}]`,
+    );
+  }
+  const validatedReferenceComparisons = referenceComparisons as RuntimeReferenceComparisonV02[];
+
+  assertStringArray(report.limitations, "RuntimeEvidenceReportV02.limitations");
+  if (traceEvents.length === 0 && captures.length === 0 && recordings.length === 0) {
+    throw new Error("RuntimeEvidenceReportV02 must contain trace, capture, or recording evidence");
+  }
+  if (captures.length > 0) {
+    assertMinimumRuntimeEvidenceTierV02(
+      report.evidenceTier,
+      "E2",
+      "RuntimeEvidenceReportV02.evidenceTier",
+    );
+  }
+  if (recordings.length > 0) {
+    assertMinimumRuntimeEvidenceTierV02(
+      report.evidenceTier,
+      "E3",
+      "RuntimeEvidenceReportV02.evidenceTier",
+    );
+  }
+  if (report.fidelityTier !== "reference_fidelity" && approximations.length === 0) {
+    throw new Error(
+      "RuntimeEvidenceReportV02.approximations must document non-reference runtime limits",
+    );
+  }
+  if (
+    (report.fidelityTier === "reference_fidelity" || report.evidenceTier === "E4") &&
+    !validatedReferenceComparisons.some((comparison) => comparison.status === "passed")
+  ) {
+    throw new Error(
+      "RuntimeEvidenceReportV02.referenceComparisons must include passed reference-runtime or conformance comparison evidence for E4/reference_fidelity claims",
+    );
+  }
+  if (report.status === "failed" && validationFindings.length === 0) {
+    throw new Error(
+      "RuntimeEvidenceReportV02.validationFindings must explain failed runtime evidence",
+    );
+  }
+}
+
+export function assertRuntimeReport(
+  value: unknown,
+): asserts value is RuntimeVerificationReport | RuntimeEvidenceReportV02 {
+  const report = asRecord(value, "RuntimeReport");
+  if (report.schemaVersion === BRIDGE_SCHEMA_VERSION_V02) {
+    assertRuntimeEvidenceReportV02(report);
+    return;
+  }
+  assertRuntimeVerificationReport(report);
+}
+
 export function isUuid7(value: unknown): value is Uuid7 {
   return (
     typeof value === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value)
   );
+}
+
+function assertRuntimeTraceEventV02(
+  value: unknown,
+  label: string,
+): asserts value is RuntimeTraceEventV02 {
+  const event = asRecord(value, label);
+  assertUuid7(event.traceEventId, `${label}.traceEventId`);
+  assertEnum(event.eventKind, RUNTIME_TRACE_EVENT_KINDS_V02, `${label}.eventKind`);
+  assertRuntimeBridgeUnitRefV02(event.bridgeUnitRef, `${label}.bridgeUnitRef`);
+  assertNonNegativeInteger(event.frame, `${label}.frame`);
+  assertOptionalString(event.traceKey, `${label}.traceKey`);
+  assertOptionalString(event.observedText, `${label}.observedText`);
+  if (event.artifactRef !== undefined) {
+    assertRuntimeArtifactRefV02(event.artifactRef, `${label}.artifactRef`);
+  }
+}
+
+function assertRuntimeBranchPointEventV02(
+  value: unknown,
+  label: string,
+): asserts value is RuntimeBranchPointEventV02 {
+  const event = asRecord(value, label);
+  assertUuid7(event.branchEventId, `${label}.branchEventId`);
+  assertRuntimeBridgeUnitRefV02(event.bridgeUnitRef, `${label}.bridgeUnitRef`);
+  assertNonNegativeInteger(event.frame, `${label}.frame`);
+  assertOptionalString(event.branchPointKey, `${label}.branchPointKey`);
+  assertOptionalString(event.promptText, `${label}.promptText`);
+  const options = asArray(event.options, `${label}.options`);
+  if (options.length === 0) {
+    throw new Error(`${label}.options must contain at least one branch option`);
+  }
+  const optionIds = new Set<Uuid7>();
+  for (const [index, option] of options.entries()) {
+    const optionLabel = `${label}.options[${index}]`;
+    assertRuntimeBranchOptionV02(option, optionLabel);
+    if (optionIds.has(option.optionId)) {
+      throw new Error(`${optionLabel}.optionId must be unique within ${label}.options`);
+    }
+    optionIds.add(option.optionId);
+  }
+  assertOptionalUuid7(event.selectedOptionId, `${label}.selectedOptionId`);
+  if (event.selectedOptionId !== undefined && !optionIds.has(event.selectedOptionId)) {
+    throw new Error(`${label}.selectedOptionId must reference an option in ${label}.options`);
+  }
+}
+
+function assertRuntimeBranchOptionV02(
+  value: unknown,
+  label: string,
+): asserts value is RuntimeBranchOptionV02 {
+  const option = asRecord(value, label);
+  assertUuid7(option.optionId, `${label}.optionId`);
+  assertOptionalString(option.label, `${label}.label`);
+  if (option.labelBridgeUnitRef !== undefined) {
+    assertRuntimeBridgeUnitRefV02(option.labelBridgeUnitRef, `${label}.labelBridgeUnitRef`);
+  }
+  assertOptionalString(option.targetRouteKey, `${label}.targetRouteKey`);
+  if (option.targetBridgeUnitRef !== undefined) {
+    assertRuntimeBridgeUnitRefV02(option.targetBridgeUnitRef, `${label}.targetBridgeUnitRef`);
+  }
+}
+
+function assertRuntimeCaptureV02(
+  value: unknown,
+  label: string,
+): asserts value is RuntimeCaptureV02 {
+  const capture = asRecord(value, label);
+  assertUuid7(capture.captureId, `${label}.captureId`);
+  assertRuntimeBridgeUnitRefV02(capture.bridgeUnitRef, `${label}.bridgeUnitRef`);
+  assertEnum(capture.evidenceTier, RUNTIME_EVIDENCE_TIERS_V02, `${label}.evidenceTier`);
+  assertMinimumRuntimeEvidenceTierV02(capture.evidenceTier, "E2", `${label}.evidenceTier`);
+  assertNonNegativeInteger(capture.frame, `${label}.frame`);
+  assertPositiveInteger(capture.width, `${label}.width`);
+  assertPositiveInteger(capture.height, `${label}.height`);
+  if (capture.nonZeroPixels !== undefined) {
+    assertNonNegativeInteger(capture.nonZeroPixels, `${label}.nonZeroPixels`);
+  }
+  if (capture.region !== undefined) {
+    assertPixelRegionV02(capture.region, `${label}.region`);
+  }
+  assertRuntimeArtifactRefV02(capture.artifactRef, `${label}.artifactRef`, "screenshot");
+}
+
+function assertRuntimeRecordingV02(
+  value: unknown,
+  label: string,
+): asserts value is RuntimeRecordingV02 {
+  const recording = asRecord(value, label);
+  assertUuid7(recording.recordingId, `${label}.recordingId`);
+  assertRuntimeBridgeUnitRefV02(recording.bridgeUnitRef, `${label}.bridgeUnitRef`);
+  assertEnum(recording.evidenceTier, RUNTIME_EVIDENCE_TIERS_V02, `${label}.evidenceTier`);
+  assertMinimumRuntimeEvidenceTierV02(recording.evidenceTier, "E3", `${label}.evidenceTier`);
+  assertNonNegativeInteger(recording.startedAtFrame, `${label}.startedAtFrame`);
+  assertPositiveInteger(recording.frameCount, `${label}.frameCount`);
+  assertPositiveInteger(recording.width, `${label}.width`);
+  assertPositiveInteger(recording.height, `${label}.height`);
+  assertString(recording.encoding, `${label}.encoding`);
+  assertRuntimeArtifactRefV02(recording.artifactRef, `${label}.artifactRef`, "recording");
+}
+
+function assertRuntimeApproximationV02(
+  value: unknown,
+  label: string,
+): asserts value is RuntimeApproximationV02 {
+  const approximation = asRecord(value, label);
+  assertUuid7(approximation.approximationId, `${label}.approximationId`);
+  assertEnum(
+    approximation.approximationTier,
+    RUNTIME_APPROXIMATION_TIERS_V02,
+    `${label}.approximationTier`,
+  );
+  assertString(approximation.scope, `${label}.scope`);
+  assertString(approximation.description, `${label}.description`);
+  const refs = asArray(approximation.affectedBridgeUnitRefs, `${label}.affectedBridgeUnitRefs`);
+  if (refs.length === 0) {
+    throw new Error(`${label}.affectedBridgeUnitRefs must contain at least one bridge unit ref`);
+  }
+  for (const [index, ref] of refs.entries()) {
+    assertRuntimeBridgeUnitRefV02(ref, `${label}.affectedBridgeUnitRefs[${index}]`);
+  }
+  assertEnum(
+    approximation.evidenceTierCeiling,
+    RUNTIME_EVIDENCE_TIERS_V02,
+    `${label}.evidenceTierCeiling`,
+  );
+}
+
+function assertRuntimeValidationFindingV02(
+  value: unknown,
+  label: string,
+): asserts value is RuntimeValidationFindingV02 {
+  const finding = asRecord(value, label);
+  assertUuid7(finding.findingId, `${label}.findingId`);
+  assertEnum(finding.findingKind, RUNTIME_VALIDATION_FINDING_KINDS_V02, `${label}.findingKind`);
+  assertEnum(finding.severity, TRIAGE_SEVERITIES, `${label}.severity`);
+  if (finding.bridgeUnitRef !== undefined) {
+    assertRuntimeBridgeUnitRefV02(finding.bridgeUnitRef, `${label}.bridgeUnitRef`);
+  }
+  if (finding.artifactRef !== undefined) {
+    assertRuntimeArtifactRefV02(finding.artifactRef, `${label}.artifactRef`);
+  }
+  assertString(finding.message, `${label}.message`);
+  assertEnum(finding.evidenceTier, RUNTIME_EVIDENCE_TIERS_V02, `${label}.evidenceTier`);
+}
+
+function assertRuntimeReferenceComparisonV02(
+  value: unknown,
+  label: string,
+): asserts value is RuntimeReferenceComparisonV02 {
+  const comparison = asRecord(value, label);
+  assertUuid7(comparison.comparisonId, `${label}.comparisonId`);
+  assertEnum(
+    comparison.comparisonKind,
+    RUNTIME_REFERENCE_COMPARISON_KINDS_V02,
+    `${label}.comparisonKind`,
+  );
+  assertEnum(comparison.status, RUNTIME_REFERENCE_COMPARISON_STATUSES_V02, `${label}.status`);
+  assertString(comparison.scope, `${label}.scope`);
+  const refs = asArray(comparison.coveredBridgeUnitRefs, `${label}.coveredBridgeUnitRefs`);
+  if (refs.length === 0) {
+    throw new Error(`${label}.coveredBridgeUnitRefs must contain at least one bridge unit ref`);
+  }
+  for (const [index, ref] of refs.entries()) {
+    assertRuntimeBridgeUnitRefV02(ref, `${label}.coveredBridgeUnitRefs[${index}]`);
+  }
+  assertRuntimeArtifactRefV02(
+    comparison.artifactRef,
+    `${label}.artifactRef`,
+    "reference_comparison",
+  );
+}
+
+function assertRuntimeBridgeUnitRefV02(
+  value: unknown,
+  label: string,
+): asserts value is RuntimeBridgeUnitRefV02 {
+  const ref = asRecord(value, label);
+  assertString(ref.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertOptionalString(ref.sourceUnitKey, `${label}.sourceUnitKey`);
+}
+
+function assertRuntimeArtifactRefV02(
+  value: unknown,
+  label: string,
+  expectedKind?: RuntimeArtifactKindV02,
+): asserts value is RuntimeArtifactRefV02 {
+  const ref = asRecord(value, label);
+  assertUuid7(ref.artifactId, `${label}.artifactId`);
+  assertEnum(ref.artifactKind, RUNTIME_ARTIFACT_KINDS_V02, `${label}.artifactKind`);
+  if (expectedKind !== undefined && ref.artifactKind !== expectedKind) {
+    throw new Error(`${label}.artifactKind must be ${expectedKind}`);
+  }
+  assertPortableArtifactUriV02(ref.uri, `${label}.uri`);
+  assertOptionalHashStringV02(ref.hash, `${label}.hash`);
+  assertOptionalString(ref.mediaType, `${label}.mediaType`);
+  if (ref.byteSize !== undefined) {
+    assertPositiveInteger(ref.byteSize, `${label}.byteSize`);
+  }
+}
+
+function assertRuntimeEvidenceTierWithinFidelityV02(
+  evidenceTier: RuntimeEvidenceTierV02,
+  fidelityTier: RuntimeFidelityTierV02,
+  label: string,
+): void {
+  const ceilingByFidelity: Record<RuntimeFidelityTierV02, RuntimeEvidenceTierV02> = {
+    trace_only: "E1",
+    layout_probe: "E2",
+    replay_review: "E3",
+    reference_fidelity: "E4",
+  };
+  assertMaximumRuntimeEvidenceTierV02(
+    evidenceTier,
+    ceilingByFidelity[fidelityTier],
+    `${label}.evidenceTier`,
+  );
+}
+
+function assertMinimumRuntimeEvidenceTierV02(
+  actual: RuntimeEvidenceTierV02,
+  minimum: RuntimeEvidenceTierV02,
+  label: string,
+): void {
+  if (runtimeEvidenceTierRankV02(actual) < runtimeEvidenceTierRankV02(minimum)) {
+    throw new Error(`${label} must be at least ${minimum}`);
+  }
+}
+
+function assertMaximumRuntimeEvidenceTierV02(
+  actual: RuntimeEvidenceTierV02,
+  maximum: RuntimeEvidenceTierV02,
+  label: string,
+): void {
+  if (runtimeEvidenceTierRankV02(actual) > runtimeEvidenceTierRankV02(maximum)) {
+    throw new Error(`${label} must not exceed ${maximum} for the declared fidelityTier`);
+  }
+}
+
+function runtimeEvidenceTierRankV02(tier: RuntimeEvidenceTierV02): number {
+  return RUNTIME_EVIDENCE_TIERS_V02.indexOf(tier);
+}
+
+function assertPortableArtifactUriV02(value: unknown, label: string): asserts value is string {
+  assertString(value, label);
+  if (value.startsWith("data:")) {
+    throw new Error(`${label} must reference an artifact, not embed artifact bytes`);
+  }
+  if (value.startsWith("file:") || value.startsWith("/")) {
+    throw new Error(`${label} must be portable and must not be an absolute local path`);
+  }
+  if (/^[A-Za-z]:[\\/]/.test(value) || value.includes("\\")) {
+    throw new Error(`${label} must use portable forward-slash artifact paths`);
+  }
 }
 
 function assertBridgeAssetV02(value: unknown, label: string): asserts value is BridgeAssetV02 {
@@ -1933,7 +2497,9 @@ function assertProvenanceRecordV02(
       if (provenance.artifactRef !== undefined) {
         assertArtifactRefV02(provenance.artifactRef, `${label}.artifactRef`);
       }
-      assertOptionalString(provenance.evidenceTier, `${label}.evidenceTier`);
+      if (provenance.evidenceTier !== undefined) {
+        assertEnum(provenance.evidenceTier, RUNTIME_EVIDENCE_TIERS_V02, `${label}.evidenceTier`);
+      }
       break;
     case "human_review":
       assertOptionalUuid7(provenance.reviewerId, `${label}.reviewerId`);

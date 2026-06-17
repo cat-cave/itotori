@@ -194,8 +194,220 @@ describe("ItotoriProjectRepository", () => {
         runtimeReportId: "runtime-test",
         runtimeStatus: "passed",
         fidelityTier: "layout_probe",
+        evidenceTier: null,
         textEventCount: 1,
         frameCaptureCount: 1,
+        screenshotArtifactCount: 1,
+        recordingArtifactCount: 0,
+        validationFindingCount: 0,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("persists v0.2 runtime evidence tiers and bridge-linked evidence artifacts", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      await repo.importSourceBundle(localActor, project);
+
+      await repo.saveRuntimeReport(
+        localActor,
+        project,
+        {
+          schemaVersion: "0.2.0",
+          runtimeReportId: "019ed003-0000-7000-8000-000000000001",
+          adapterName: "utsushi-fixture",
+          adapterVersion: "0.0.0",
+          fidelityTier: "layout_probe",
+          evidenceTier: "E2",
+          status: "passed",
+          createdAt: "2026-06-17T00:00:00.000Z",
+          traceEvents: [
+            {
+              traceEventId: "019ed003-0000-7000-8000-000000000101",
+              eventKind: "text_observed",
+              bridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              frame: 1,
+              traceKey: "hello.line.001",
+              observedText: "Hello, {player}.",
+            },
+          ],
+          branchEvents: [
+            {
+              branchEventId: "019ed003-0000-7000-8000-000000000201",
+              bridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              frame: 2,
+              branchPointKey: "hello.choice.001",
+              promptText: "Choose a route",
+              options: [
+                {
+                  optionId: "019ed003-0000-7000-8000-000000000211",
+                  label: "Stay",
+                  labelBridgeUnitRef: {
+                    bridgeUnitId: "bridge-unit-test",
+                    sourceUnitKey: "hello.scene.001.line.001",
+                  },
+                  targetRouteKey: "hello.stay",
+                  targetBridgeUnitRef: {
+                    bridgeUnitId: "bridge-unit-test",
+                    sourceUnitKey: "hello.scene.001.line.001",
+                  },
+                },
+              ],
+              selectedOptionId: "019ed003-0000-7000-8000-000000000211",
+            },
+          ],
+          captures: [
+            {
+              captureId: "019ed003-0000-7000-8000-000000000301",
+              bridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              evidenceTier: "E2",
+              frame: 1,
+              width: 320,
+              height: 180,
+              nonZeroPixels: 57600,
+              artifactRef: {
+                artifactId: "019ed003-0000-7000-8000-000000000401",
+                artifactKind: "screenshot",
+                uri: "artifacts/utsushi/hello/frame-0001.png",
+                mediaType: "image/png",
+              },
+            },
+          ],
+          recordings: [],
+          approximations: [
+            {
+              approximationId: "019ed003-0000-7000-8000-000000000701",
+              approximationTier: "deterministic_fixture",
+              scope: "fixture runtime",
+              description: "Fixture evidence validates runtime plumbing, not engine fidelity.",
+              affectedBridgeUnitRefs: [
+                {
+                  bridgeUnitId: "bridge-unit-test",
+                  sourceUnitKey: "hello.scene.001.line.001",
+                },
+              ],
+              evidenceTierCeiling: "E2",
+            },
+          ],
+          validationFindings: [],
+          limitations: ["No reference-runtime pixel comparison is performed."],
+        },
+        "patch-result-v02",
+      );
+
+      const runtimeStatus = await repo.getRuntimeStatus();
+      expect(runtimeStatus).toMatchObject({
+        runtimeReportId: "019ed003-0000-7000-8000-000000000001",
+        runtimeStatus: "passed",
+        fidelityTier: "layout_probe",
+        evidenceTier: "E2",
+        textEventCount: 1,
+        frameCaptureCount: 1,
+        screenshotArtifactCount: 1,
+        recordingArtifactCount: 0,
+        validationFindingCount: 0,
+      });
+
+      const artifactResult = await context.pool.query<{
+        artifact_kind: string;
+        uri: string | null;
+      }>("select artifact_kind, uri from itotori_artifacts where artifact_id = $1", [
+        "019ed003-0000-7000-8000-000000000401",
+      ]);
+      expect(artifactResult.rows[0]).toEqual({
+        artifact_kind: "screenshot",
+        uri: "artifacts/utsushi/hello/frame-0001.png",
+      });
+
+      const evidenceArtifacts = await context.pool.query<{
+        artifact_id: string;
+        artifact_kind: string;
+        bridge_unit_id: string | null;
+        metadata: Record<string, unknown>;
+      }>(
+        `
+        select artifact_id, artifact_kind, bridge_unit_id, metadata
+        from itotori_artifacts
+        where artifact_kind in ('runtime_trace_event', 'runtime_branch_event')
+        order by artifact_kind
+      `,
+      );
+      expect(evidenceArtifacts.rows).toHaveLength(2);
+
+      const branchArtifact = evidenceArtifacts.rows.find(
+        (row) => row.artifact_kind === "runtime_branch_event",
+      );
+      expect(branchArtifact).toMatchObject({
+        artifact_id: "019ed003-0000-7000-8000-000000000201",
+        bridge_unit_id: "bridge-unit-test",
+      });
+      expect(branchArtifact?.metadata).toMatchObject({
+        runtimeReportId: "019ed003-0000-7000-8000-000000000001",
+        branchPointKey: "hello.choice.001",
+        bridgeUnitRefs: [
+          {
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+          },
+        ],
+        event: {
+          branchEventId: "019ed003-0000-7000-8000-000000000201",
+          bridgeUnitRef: {
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+          },
+          options: [
+            {
+              labelBridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              targetBridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+            },
+          ],
+        },
+      });
+
+      const traceArtifact = evidenceArtifacts.rows.find(
+        (row) => row.artifact_kind === "runtime_trace_event",
+      );
+      expect(traceArtifact).toMatchObject({
+        artifact_id: "019ed003-0000-7000-8000-000000000101",
+        bridge_unit_id: "bridge-unit-test",
+      });
+      expect(traceArtifact?.metadata).toMatchObject({
+        runtimeReportId: "019ed003-0000-7000-8000-000000000001",
+        eventKind: "text_observed",
+        bridgeUnitRefs: [
+          {
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+          },
+        ],
+        event: {
+          traceEventId: "019ed003-0000-7000-8000-000000000101",
+          bridgeUnitRef: {
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+          },
+        },
       });
     } finally {
       await context.close();

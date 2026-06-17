@@ -3,8 +3,12 @@ type RuntimeStatus = {
   runtimeReportId: string | null;
   runtimeStatus: string | null;
   fidelityTier: string | null;
+  evidenceTier?: string | null;
   textEventCount: number;
   frameCaptureCount: number;
+  screenshotArtifactCount?: number;
+  recordingArtifactCount?: number;
+  validationFindingCount?: number;
 };
 
 export async function fetchRuntimeStatus(endpoint = "/api/hello/status"): Promise<RuntimeStatus> {
@@ -33,9 +37,13 @@ export async function renderRuntimeDashboard(
           <h2>${escapeHtml(status.runtimeStatus ?? "missing")}</h2>
           <dl>
             <dt>Report</dt><dd>${escapeHtml(status.runtimeReportId ?? "missing")}</dd>
-            <dt>Fidelity</dt><dd>${escapeHtml(status.fidelityTier ?? "unknown")}</dd>
+            <dt>Evidence</dt><dd>${escapeHtml(status.evidenceTier ?? "legacy")}</dd>
+            <dt>Adapter capability</dt><dd>${escapeHtml(status.fidelityTier ?? "unknown")}</dd>
             <dt>Trace</dt><dd>${status.textEventCount} text event(s)</dd>
             <dt>Capture</dt><dd>${status.frameCaptureCount} frame capture(s)</dd>
+            <dt>Screenshots</dt><dd>${status.screenshotArtifactCount ?? status.frameCaptureCount} referenced artifact(s)</dd>
+            <dt>Recordings</dt><dd>${status.recordingArtifactCount ?? 0} referenced artifact(s)</dd>
+            <dt>Findings</dt><dd>${status.validationFindingCount ?? 0} validation finding(s)</dd>
             <dt>Suite</dt><dd>${escapeHtml(status.finalStatus)}</dd>
           </dl>
         </section>
