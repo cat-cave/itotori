@@ -1265,7 +1265,7 @@
     {
       "id": "SHARED-012",
       "title": "Full-system golden artifact corpus",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
@@ -1301,7 +1301,10 @@
         "Snapshot drift",
         "Copyright leakage",
         "Fixtures that assert implementation quirks"
-      ]
+      ],
+      "owner": "codex-wave9",
+      "branch": "spec/shared-012",
+      "worktree": "/tmp/itotori-spec-shared-012"
     },
     {
       "id": "SHARED-013",
@@ -1758,7 +1761,7 @@
     {
       "id": "KAIFUU-004",
       "title": "Protected markup parser and span normalizer",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "shared"],
@@ -1794,7 +1797,10 @@
         "Broken patches from lost commands",
         "Over-normalization",
         "Unsupported unknown markup"
-      ]
+      ],
+      "owner": "codex-wave9",
+      "branch": "spec/kaifuu-004",
+      "worktree": "/tmp/itotori-spec-kaifuu-004"
     },
     {
       "id": "KAIFUU-005",
@@ -2867,7 +2873,7 @@
     {
       "id": "ITOTORI-003",
       "title": "Event outbox and job queue foundation",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -2894,7 +2900,10 @@
           "value": "Failure/retry tests"
         }
       ],
-      "auditFocus": ["Race conditions", "Duplicate work", "Lost events"]
+      "auditFocus": ["Race conditions", "Duplicate work", "Lost events"],
+      "owner": "codex-wave9",
+      "branch": "spec/itotori-003",
+      "worktree": "/tmp/itotori-spec-itotori-003"
     },
     {
       "id": "ITOTORI-004",
