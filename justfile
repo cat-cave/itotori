@@ -32,6 +32,17 @@ build:
     pnpm exec vp run ts:build
     cargo build --workspace
 
+itotori-scale-build:
+    pnpm --filter @itotori/localization-bridge-schema build
+    pnpm --filter @itotori/db build
+    pnpm --filter @itotori/app build
+
+itotori-scale-smoke: itotori-scale-build db-up db-wait
+    node scripts/itotori-scale-harness.mjs --profile smoke
+
+itotori-scale-large: itotori-scale-build db-up db-wait
+    node scripts/itotori-scale-harness.mjs --profile large
+
 ci: check build db-migrate test
     cargo clippy --workspace --all-targets --all-features -- -D warnings
     cargo deny check

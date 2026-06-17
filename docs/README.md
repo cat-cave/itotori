@@ -39,3 +39,5 @@ semantic retrieval tools, and fallback behavior, is defined in
 Itotori's product workflow, human decision queue, style-guide conversation, and
 feedback escalation policy are defined in
 [itotori-product-workflow.md](itotori-product-workflow.md).
+The synthetic large-project generator and scale harness are documented in
+[itotori-scale-harness.md](itotori-scale-harness.md).
