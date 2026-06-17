@@ -93,3 +93,8 @@ Do not collapse unknown speakers into a single string or boolean.
   the exported `POLICY_SCOPES` list.
 - v0.2 examples are intentionally locale-neutral and use `fr-FR` as the target
   locale to avoid baking a JP-to-EN assumption into the shared contract.
+- `AssetPolicyBundleV02` is a separate v0.2 payload for branch-scoped
+  non-dialogue asset decisions. It references source assets and source
+  revisions but does not mutate `BridgeBundleV02`; consumers should treat
+  `metadata_only` asset policy records as metadata-first decisions, not as
+  completed OCR, image redraw, video editing, or runtime visual validation.

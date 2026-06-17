@@ -164,11 +164,47 @@ export const ASSET_KINDS = [
   "audio",
   "video",
   "ui_texture",
+  "font",
   "database",
   "metadata",
   "text",
 ] as const;
 export type AssetKindV02 = (typeof ASSET_KINDS)[number];
+
+export const ASSET_POLICY_SURFACE_KINDS = [
+  "image_text",
+  "ui_art",
+  "song_title",
+  "font",
+  "credits",
+  "video",
+] as const;
+export type AssetPolicySurfaceKindV02 = (typeof ASSET_POLICY_SURFACE_KINDS)[number];
+
+export const ASSET_POLICY_TEXT_SOURCE_KINDS = [
+  "metadata",
+  "manual_transcription",
+  "ocr_hint",
+  "not_applicable",
+] as const;
+export type AssetPolicyTextSourceKindV02 = (typeof ASSET_POLICY_TEXT_SOURCE_KINDS)[number];
+
+export const ASSET_POLICY_PATCH_MODES = [
+  "metadata_only",
+  "no_patch_required",
+  "region_redraw_required",
+  "asset_replacement_required",
+  "font_substitution_required",
+  "unsupported",
+] as const;
+export type AssetPolicyPatchModeV02 = (typeof ASSET_POLICY_PATCH_MODES)[number];
+
+const TEXTLESS_ASSET_POLICY_SURFACE_KINDS: readonly AssetPolicySurfaceKindV02[] = [
+  "ui_art",
+  "font",
+  "video",
+];
+const REGION_PATCH_ASSET_KINDS: readonly AssetKindV02[] = ["image", "video", "ui_texture"];
 
 export const SURFACE_KINDS = [
   "dialogue",
@@ -714,6 +750,14 @@ export type PatchRefV02 = {
   constraints?: string[];
 };
 
+export type AssetPolicyPatchRefV02 = {
+  assetId: Uuid7;
+  writeMode: PatchWriteModeV02;
+  sourceUnitKey?: string;
+  sourceRevision: SourceRevisionV02;
+  constraints?: string[];
+};
+
 export type LocalizationUnitV02 = {
   bridgeUnitId: Uuid7;
   surfaceId: Uuid7;
@@ -747,6 +791,46 @@ export type PolicyRecordV02 = {
   scope?: PolicyScopeV02;
   policyReason: string;
   reviewRequired?: boolean;
+};
+
+export type LocaleBranchScopeV02 = {
+  localeBranchId: Uuid7;
+  targetLocale: Bcp47Locale;
+  localeBranchKey?: string;
+};
+
+export type AssetPolicyDecisionV02 = {
+  assetPolicyDecisionId: Uuid7;
+  assetSurfaceKind: AssetPolicySurfaceKindV02;
+  sourceAssetRef: AssetRefV02;
+  sourceLocation?: SourceLocationV02;
+  sourceText?: string;
+  sourceHash: string;
+  sourceRevision: SourceRevisionV02;
+  policyAction: PolicyActionV02;
+  targetText?: string;
+  romanizationSystem?: string;
+  preserveForm?: string;
+  policyReason: string;
+  textSourceKind: AssetPolicyTextSourceKindV02;
+  patchMode: AssetPolicyPatchModeV02;
+  patchRef?: AssetPolicyPatchRefV02;
+  runtimeExpectation: RuntimeExpectationV02;
+  reviewRequired?: boolean;
+  linkedBridgeUnitRefs?: RuntimeBridgeUnitRefV02[];
+  notes?: string[];
+};
+
+export type AssetPolicyBundleV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  assetPolicyBundleId: Uuid7;
+  sourceBridgeId: Uuid7;
+  sourceBundleHash?: string;
+  sourceLocale: Bcp47Locale;
+  localeBranch: LocaleBranchScopeV02;
+  assets: BridgeAssetV02[];
+  decisions: AssetPolicyDecisionV02[];
+  compatibilityNotes: string[];
 };
 
 export type TriageActorV02 = {
@@ -1086,6 +1170,50 @@ export function assertBridgeBundleV02(value: unknown): asserts value is BridgeBu
   for (const [index, record] of policyRecords.entries()) {
     assertPolicyRecordV02(record, `BridgeBundleV02.policyRecords[${index}]`);
   }
+}
+
+export function assertAssetPolicyBundleV02(value: unknown): asserts value is AssetPolicyBundleV02 {
+  const bundle = asRecord(value, "AssetPolicyBundleV02");
+  assertEqual(
+    bundle.schemaVersion,
+    BRIDGE_SCHEMA_VERSION_V02,
+    "AssetPolicyBundleV02.schemaVersion",
+  );
+  assertUuid7(bundle.assetPolicyBundleId, "AssetPolicyBundleV02.assetPolicyBundleId");
+  assertUuid7(bundle.sourceBridgeId, "AssetPolicyBundleV02.sourceBridgeId");
+  assertOptionalHashStringV02(bundle.sourceBundleHash, "AssetPolicyBundleV02.sourceBundleHash");
+  assertString(bundle.sourceLocale, "AssetPolicyBundleV02.sourceLocale");
+  assertLocaleBranchScopeV02(bundle.localeBranch, "AssetPolicyBundleV02.localeBranch");
+
+  const assets = asArray(bundle.assets, "AssetPolicyBundleV02.assets");
+  const assetsById = new Map<Uuid7, BridgeAssetV02>();
+  for (const [index, asset] of assets.entries()) {
+    const label = `AssetPolicyBundleV02.assets[${index}]`;
+    assertBridgeAssetV02(asset, label);
+    if (assetsById.has(asset.assetId)) {
+      throw new Error(`${label}.assetId must be unique within AssetPolicyBundleV02.assets`);
+    }
+    assetsById.set(asset.assetId, asset);
+  }
+
+  const decisions = asArray(bundle.decisions, "AssetPolicyBundleV02.decisions");
+  if (decisions.length === 0) {
+    throw new Error("AssetPolicyBundleV02.decisions must contain at least one policy decision");
+  }
+  const decisionIds = new Set<Uuid7>();
+  for (const [index, decision] of decisions.entries()) {
+    const label = `AssetPolicyBundleV02.decisions[${index}]`;
+    assertAssetPolicyDecisionV02(decision, label);
+    if (decisionIds.has(decision.assetPolicyDecisionId)) {
+      throw new Error(
+        `${label}.assetPolicyDecisionId must be unique within AssetPolicyBundleV02.decisions`,
+      );
+    }
+    decisionIds.add(decision.assetPolicyDecisionId);
+    assertAssetPolicyDecisionAssetRefsExist(decision, label, assetsById);
+  }
+
+  assertStringArray(bundle.compatibilityNotes, "AssetPolicyBundleV02.compatibilityNotes");
 }
 
 export function assertTriageBundleV02(value: unknown): asserts value is TriageBundleV02 {
@@ -1801,6 +1929,266 @@ function assertLocalizationUnitAssetRefsExist(
 function assertKnownAssetIdV02(assetId: Uuid7, label: string, assetIds: ReadonlySet<Uuid7>): void {
   if (!assetIds.has(assetId)) {
     throw new Error(`${label} must reference an asset in BridgeBundleV02.assets`);
+  }
+}
+
+function assertLocaleBranchScopeV02(
+  value: unknown,
+  label: string,
+): asserts value is LocaleBranchScopeV02 {
+  const scope = asRecord(value, label);
+  assertUuid7(scope.localeBranchId, `${label}.localeBranchId`);
+  assertString(scope.targetLocale, `${label}.targetLocale`);
+  assertOptionalString(scope.localeBranchKey, `${label}.localeBranchKey`);
+}
+
+function assertAssetPolicyDecisionV02(
+  value: unknown,
+  label: string,
+): asserts value is AssetPolicyDecisionV02 {
+  const decision = asRecord(value, label);
+  assertUuid7(decision.assetPolicyDecisionId, `${label}.assetPolicyDecisionId`);
+  assertEnum(decision.assetSurfaceKind, ASSET_POLICY_SURFACE_KINDS, `${label}.assetSurfaceKind`);
+  assertAssetRefV02(decision.sourceAssetRef, `${label}.sourceAssetRef`);
+  if (decision.sourceLocation !== undefined) {
+    assertSourceLocationV02(decision.sourceLocation, `${label}.sourceLocation`);
+  }
+  assertOptionalString(decision.sourceText, `${label}.sourceText`);
+  assertHashStringV02(decision.sourceHash, `${label}.sourceHash`);
+  assertSourceRevisionV02(decision.sourceRevision, `${label}.sourceRevision`);
+  assertEnum(decision.policyAction, POLICY_ACTIONS, `${label}.policyAction`);
+  assertOptionalString(decision.targetText, `${label}.targetText`);
+  assertOptionalString(decision.romanizationSystem, `${label}.romanizationSystem`);
+  assertOptionalString(decision.preserveForm, `${label}.preserveForm`);
+  assertString(decision.policyReason, `${label}.policyReason`);
+  assertEnum(decision.textSourceKind, ASSET_POLICY_TEXT_SOURCE_KINDS, `${label}.textSourceKind`);
+  assertEnum(decision.patchMode, ASSET_POLICY_PATCH_MODES, `${label}.patchMode`);
+  if (decision.patchRef !== undefined) {
+    assertAssetPolicyPatchRefV02(decision.patchRef, `${label}.patchRef`);
+  }
+  assertRuntimeExpectationV02(decision.runtimeExpectation, `${label}.runtimeExpectation`);
+  if (decision.reviewRequired !== undefined) {
+    assertBoolean(decision.reviewRequired, `${label}.reviewRequired`);
+  }
+  if (decision.linkedBridgeUnitRefs !== undefined) {
+    const refs = asArray(decision.linkedBridgeUnitRefs, `${label}.linkedBridgeUnitRefs`);
+    for (const [index, ref] of refs.entries()) {
+      assertRuntimeBridgeUnitRefV02(ref, `${label}.linkedBridgeUnitRefs[${index}]`);
+    }
+  }
+  if (decision.notes !== undefined) {
+    assertStringArray(decision.notes, `${label}.notes`);
+  }
+
+  const validatedDecision = decision as AssetPolicyDecisionV02;
+  assertAssetPolicyActionFieldsV02(validatedDecision, label);
+  assertAssetPolicyTextSourceV02(validatedDecision, label);
+  assertAssetPolicyPatchModeV02(validatedDecision, label);
+}
+
+function assertAssetPolicyPatchRefV02(
+  value: unknown,
+  label: string,
+): asserts value is AssetPolicyPatchRefV02 {
+  const patchRef = asRecord(value, label);
+  assertUuid7(patchRef.assetId, `${label}.assetId`);
+  assertEnum(patchRef.writeMode, PATCH_WRITE_MODES, `${label}.writeMode`);
+  assertOptionalString(patchRef.sourceUnitKey, `${label}.sourceUnitKey`);
+  assertSourceRevisionV02(patchRef.sourceRevision, `${label}.sourceRevision`);
+  if (patchRef.constraints !== undefined) {
+    assertStringArray(patchRef.constraints, `${label}.constraints`);
+  }
+}
+
+function assertAssetPolicyActionFieldsV02(decision: AssetPolicyDecisionV02, label: string): void {
+  const hasTextSource = decision.textSourceKind !== "not_applicable";
+  if (
+    (decision.policyAction === "localize" || decision.policyAction === "romanize") &&
+    hasTextSource &&
+    decision.targetText === undefined
+  ) {
+    throw new Error(`${label}.targetText is required for localized or romanized asset text`);
+  }
+  if (decision.policyAction === "romanize" && decision.romanizationSystem === undefined) {
+    throw new Error(`${label}.romanizationSystem is required for romanize asset policies`);
+  }
+  if (
+    decision.policyAction === "do_not_translate" &&
+    hasTextSource &&
+    decision.preserveForm === undefined &&
+    decision.sourceText === undefined
+  ) {
+    throw new Error(`${label}.preserveForm or sourceText is required for do_not_translate`);
+  }
+}
+
+function assertAssetPolicyTextSourceV02(decision: AssetPolicyDecisionV02, label: string): void {
+  if (
+    decision.textSourceKind === "not_applicable" &&
+    !TEXTLESS_ASSET_POLICY_SURFACE_KINDS.includes(decision.assetSurfaceKind)
+  ) {
+    throw new Error(
+      `${label}.textSourceKind not_applicable is only valid for textless asset policy surfaces`,
+    );
+  }
+  if (decision.textSourceKind !== "not_applicable" && decision.sourceText === undefined) {
+    throw new Error(`${label}.sourceText is required when textSourceKind is text-bearing`);
+  }
+  if (
+    decision.textSourceKind === "ocr_hint" &&
+    !["image_text", "ui_art", "video"].includes(decision.assetSurfaceKind)
+  ) {
+    throw new Error(`${label}.textSourceKind ocr_hint is only valid for visual asset surfaces`);
+  }
+}
+
+function assertAssetPolicyPatchModeV02(decision: AssetPolicyDecisionV02, label: string): void {
+  if (
+    decision.patchMode === "metadata_only" &&
+    decision.runtimeExpectation.expectationKind !== "metadata_only"
+  ) {
+    throw new Error(
+      `${label}.patchMode metadata_only requires runtimeExpectation.expectationKind metadata_only`,
+    );
+  }
+
+  if (decision.patchRef === undefined) {
+    return;
+  }
+
+  const expectedWriteModes: Partial<Record<AssetPolicyPatchModeV02, PatchWriteModeV02[]>> = {
+    metadata_only: ["metadata"],
+    region_redraw_required: ["update_region"],
+    asset_replacement_required: ["replace_asset"],
+    font_substitution_required: ["replace_asset", "metadata"],
+  };
+  const writeModes = expectedWriteModes[decision.patchMode];
+  if (writeModes !== undefined && !writeModes.includes(decision.patchRef.writeMode)) {
+    throw new Error(
+      `${label}.patchRef.writeMode must be ${writeModes.join(" or ")} for ${decision.patchMode}`,
+    );
+  }
+  if (decision.patchMode === "unsupported" || decision.patchMode === "no_patch_required") {
+    throw new Error(`${label}.patchRef must be omitted for ${decision.patchMode}`);
+  }
+}
+
+function assertAssetPolicyDecisionAssetRefsExist(
+  decision: AssetPolicyDecisionV02,
+  label: string,
+  assetsById: ReadonlyMap<Uuid7, BridgeAssetV02>,
+): void {
+  const sourceAsset = assetsById.get(decision.sourceAssetRef.assetId);
+  if (sourceAsset === undefined) {
+    throw new Error(
+      `${label}.sourceAssetRef.assetId must reference an asset in asset policy assets`,
+    );
+  }
+  assertAssetRefMatchesBridgeAssetV02(
+    decision.sourceAssetRef,
+    sourceAsset,
+    `${label}.sourceAssetRef`,
+  );
+  assertAssetPolicySurfaceMatchesAssetKindV02(decision, sourceAsset, label);
+  if (
+    decision.sourceRevision.revisionId !== sourceAsset.sourceRevision.revisionId ||
+    decision.sourceRevision.value !== sourceAsset.sourceRevision.value
+  ) {
+    throw new Error(`${label}.sourceRevision must match the referenced source asset revision`);
+  }
+
+  if (decision.patchRef !== undefined) {
+    const patchAsset = assetsById.get(decision.patchRef.assetId);
+    if (patchAsset === undefined) {
+      throw new Error(`${label}.patchRef.assetId must reference an asset in asset policy assets`);
+    }
+    if (
+      decision.patchRef.sourceRevision.revisionId !== patchAsset.sourceRevision.revisionId ||
+      decision.patchRef.sourceRevision.value !== patchAsset.sourceRevision.value
+    ) {
+      throw new Error(`${label}.patchRef.sourceRevision must match the patch asset revision`);
+    }
+    assertAssetPolicyPatchAssetKindV02(decision, patchAsset, label);
+  }
+}
+
+function assertAssetRefMatchesBridgeAssetV02(
+  ref: AssetRefV02,
+  asset: BridgeAssetV02,
+  label: string,
+): void {
+  if (ref.assetKey !== undefined && ref.assetKey !== asset.assetKey) {
+    throw new Error(`${label}.assetKey must match the referenced asset`);
+  }
+}
+
+function assertAssetPolicySurfaceMatchesAssetKindV02(
+  decision: AssetPolicyDecisionV02,
+  sourceAsset: BridgeAssetV02,
+  label: string,
+): void {
+  const allowedKinds = assetKindsForAssetPolicySurfaceKindV02(decision.assetSurfaceKind);
+  if (!allowedKinds.includes(sourceAsset.assetKind)) {
+    throw new Error(
+      `${label}.assetSurfaceKind ${decision.assetSurfaceKind} is not valid for assetKind ${sourceAsset.assetKind}`,
+    );
+  }
+}
+
+function assertAssetPolicyPatchAssetKindV02(
+  decision: AssetPolicyDecisionV02,
+  patchAsset: BridgeAssetV02,
+  label: string,
+): void {
+  const allowedKinds = assetKindsForAssetPolicyPatchRefV02(decision);
+  if (!allowedKinds.includes(patchAsset.assetKind)) {
+    throw new Error(
+      `${label}.patchRef.assetId assetKind ${patchAsset.assetKind} is not valid for ${decision.patchMode} on ${decision.assetSurfaceKind}`,
+    );
+  }
+}
+
+function assetKindsForAssetPolicyPatchRefV02(
+  decision: AssetPolicyDecisionV02,
+): readonly AssetKindV02[] {
+  const surfaceKinds = assetKindsForAssetPolicySurfaceKindV02(decision.assetSurfaceKind);
+  const modeKinds = assetKindsForAssetPolicyPatchModeV02(decision.patchMode);
+  return surfaceKinds.filter((kind) => modeKinds.includes(kind));
+}
+
+function assetKindsForAssetPolicyPatchModeV02(
+  patchMode: AssetPolicyPatchModeV02,
+): readonly AssetKindV02[] {
+  switch (patchMode) {
+    case "metadata_only":
+    case "asset_replacement_required":
+      return ASSET_KINDS;
+    case "region_redraw_required":
+      return REGION_PATCH_ASSET_KINDS;
+    case "font_substitution_required":
+      return ["font"];
+    case "no_patch_required":
+    case "unsupported":
+      return [];
+  }
+}
+
+function assetKindsForAssetPolicySurfaceKindV02(
+  surfaceKind: AssetPolicySurfaceKindV02,
+): readonly AssetKindV02[] {
+  switch (surfaceKind) {
+    case "image_text":
+      return ["image", "ui_texture", "video"];
+    case "ui_art":
+      return ["ui_texture", "image"];
+    case "song_title":
+      return ["audio", "metadata"];
+    case "font":
+      return ["font"];
+    case "credits":
+      return ["metadata", "video"];
+    case "video":
+      return ["video"];
   }
 }
 
