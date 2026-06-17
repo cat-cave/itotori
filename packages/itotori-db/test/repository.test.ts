@@ -144,7 +144,7 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
-  it("persists v0.2 runtime evidence tiers and referenced screenshot artifacts", async () => {
+  it("persists v0.2 runtime evidence tiers and bridge-linked evidence artifacts", async () => {
     const context = await migratedContext();
     try {
       const repo = new ItotoriProjectRepository(context.db);
@@ -177,7 +177,34 @@ describe("ItotoriProjectRepository", () => {
               observedText: "Hello, {player}.",
             },
           ],
-          branchEvents: [],
+          branchEvents: [
+            {
+              branchEventId: "019ed003-0000-7000-8000-000000000201",
+              bridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              frame: 2,
+              branchPointKey: "hello.choice.001",
+              promptText: "Choose a route",
+              options: [
+                {
+                  optionId: "019ed003-0000-7000-8000-000000000211",
+                  label: "Stay",
+                  labelBridgeUnitRef: {
+                    bridgeUnitId: "bridge-unit-test",
+                    sourceUnitKey: "hello.scene.001.line.001",
+                  },
+                  targetRouteKey: "hello.stay",
+                  targetBridgeUnitRef: {
+                    bridgeUnitId: "bridge-unit-test",
+                    sourceUnitKey: "hello.scene.001.line.001",
+                  },
+                },
+              ],
+              selectedOptionId: "019ed003-0000-7000-8000-000000000211",
+            },
+          ],
           captures: [
             {
               captureId: "019ed003-0000-7000-8000-000000000301",
@@ -242,6 +269,83 @@ describe("ItotoriProjectRepository", () => {
       expect(artifactResult.rows[0]).toEqual({
         artifact_kind: "screenshot",
         uri: "artifacts/utsushi/hello/frame-0001.png",
+      });
+
+      const evidenceArtifacts = await context.pool.query<{
+        artifact_id: string;
+        artifact_kind: string;
+        bridge_unit_id: string | null;
+        metadata: Record<string, unknown>;
+      }>(
+        `
+        select artifact_id, artifact_kind, bridge_unit_id, metadata
+        from itotori_artifacts
+        where artifact_kind in ('runtime_trace_event', 'runtime_branch_event')
+        order by artifact_kind
+      `,
+      );
+      expect(evidenceArtifacts.rows).toHaveLength(2);
+
+      const branchArtifact = evidenceArtifacts.rows.find(
+        (row) => row.artifact_kind === "runtime_branch_event",
+      );
+      expect(branchArtifact).toMatchObject({
+        artifact_id: "019ed003-0000-7000-8000-000000000201",
+        bridge_unit_id: "bridge-unit-test",
+      });
+      expect(branchArtifact?.metadata).toMatchObject({
+        runtimeReportId: "019ed003-0000-7000-8000-000000000001",
+        branchPointKey: "hello.choice.001",
+        bridgeUnitRefs: [
+          {
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+          },
+        ],
+        event: {
+          branchEventId: "019ed003-0000-7000-8000-000000000201",
+          bridgeUnitRef: {
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+          },
+          options: [
+            {
+              labelBridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              targetBridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+            },
+          ],
+        },
+      });
+
+      const traceArtifact = evidenceArtifacts.rows.find(
+        (row) => row.artifact_kind === "runtime_trace_event",
+      );
+      expect(traceArtifact).toMatchObject({
+        artifact_id: "019ed003-0000-7000-8000-000000000101",
+        bridge_unit_id: "bridge-unit-test",
+      });
+      expect(traceArtifact?.metadata).toMatchObject({
+        runtimeReportId: "019ed003-0000-7000-8000-000000000001",
+        eventKind: "text_observed",
+        bridgeUnitRefs: [
+          {
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+          },
+        ],
+        event: {
+          traceEventId: "019ed003-0000-7000-8000-000000000101",
+          bridgeUnitRef: {
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+          },
+        },
       });
     } finally {
       await context.close();

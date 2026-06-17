@@ -115,6 +115,7 @@ export const RUNTIME_ARTIFACT_KINDS_V02 = [
   "screenshot",
   "recording",
   "capture_metadata",
+  "reference_comparison",
   "runtime_report",
 ] as const;
 export type RuntimeArtifactKindV02 = (typeof RUNTIME_ARTIFACT_KINDS_V02)[number];
@@ -145,6 +146,17 @@ export const RUNTIME_VALIDATION_FINDING_KINDS_V02 = [
   "schema_violation",
 ] as const;
 export type RuntimeValidationFindingKindV02 = (typeof RUNTIME_VALIDATION_FINDING_KINDS_V02)[number];
+
+export const RUNTIME_REFERENCE_COMPARISON_KINDS_V02 = [
+  "reference_runtime",
+  "conformance_fixture",
+] as const;
+export type RuntimeReferenceComparisonKindV02 =
+  (typeof RUNTIME_REFERENCE_COMPARISON_KINDS_V02)[number];
+
+export const RUNTIME_REFERENCE_COMPARISON_STATUSES_V02 = ["passed", "failed"] as const;
+export type RuntimeReferenceComparisonStatusV02 =
+  (typeof RUNTIME_REFERENCE_COMPARISON_STATUSES_V02)[number];
 
 export const ASSET_KINDS = [
   "script",
@@ -685,6 +697,15 @@ export type RuntimeValidationFindingV02 = {
   evidenceTier: RuntimeEvidenceTierV02;
 };
 
+export type RuntimeReferenceComparisonV02 = {
+  comparisonId: Uuid7;
+  comparisonKind: RuntimeReferenceComparisonKindV02;
+  status: RuntimeReferenceComparisonStatusV02;
+  scope: string;
+  coveredBridgeUnitRefs: RuntimeBridgeUnitRefV02[];
+  artifactRef: RuntimeArtifactRefV02 & { artifactKind: "reference_comparison" };
+};
+
 export type PatchRefV02 = {
   assetId: Uuid7;
   writeMode: PatchWriteModeV02;
@@ -999,6 +1020,7 @@ export type RuntimeEvidenceReportV02 = {
   recordings: RuntimeRecordingV02[];
   approximations: RuntimeApproximationV02[];
   validationFindings: RuntimeValidationFindingV02[];
+  referenceComparisons?: RuntimeReferenceComparisonV02[];
   limitations: string[];
 };
 
@@ -1394,6 +1416,18 @@ export function assertRuntimeEvidenceReportV02(
     );
   }
 
+  const referenceComparisons =
+    report.referenceComparisons === undefined
+      ? []
+      : asArray(report.referenceComparisons, "RuntimeEvidenceReportV02.referenceComparisons");
+  for (const [index, comparison] of referenceComparisons.entries()) {
+    assertRuntimeReferenceComparisonV02(
+      comparison,
+      `RuntimeEvidenceReportV02.referenceComparisons[${index}]`,
+    );
+  }
+  const validatedReferenceComparisons = referenceComparisons as RuntimeReferenceComparisonV02[];
+
   assertStringArray(report.limitations, "RuntimeEvidenceReportV02.limitations");
   if (traceEvents.length === 0 && captures.length === 0 && recordings.length === 0) {
     throw new Error("RuntimeEvidenceReportV02 must contain trace, capture, or recording evidence");
@@ -1415,6 +1449,14 @@ export function assertRuntimeEvidenceReportV02(
   if (report.fidelityTier !== "reference_fidelity" && approximations.length === 0) {
     throw new Error(
       "RuntimeEvidenceReportV02.approximations must document non-reference runtime limits",
+    );
+  }
+  if (
+    (report.fidelityTier === "reference_fidelity" || report.evidenceTier === "E4") &&
+    !validatedReferenceComparisons.some((comparison) => comparison.status === "passed")
+  ) {
+    throw new Error(
+      "RuntimeEvidenceReportV02.referenceComparisons must include passed reference-runtime or conformance comparison evidence for E4/reference_fidelity claims",
     );
   }
   if (report.status === "failed" && validationFindings.length === 0) {
@@ -1584,6 +1626,33 @@ function assertRuntimeValidationFindingV02(
   }
   assertString(finding.message, `${label}.message`);
   assertEnum(finding.evidenceTier, RUNTIME_EVIDENCE_TIERS_V02, `${label}.evidenceTier`);
+}
+
+function assertRuntimeReferenceComparisonV02(
+  value: unknown,
+  label: string,
+): asserts value is RuntimeReferenceComparisonV02 {
+  const comparison = asRecord(value, label);
+  assertUuid7(comparison.comparisonId, `${label}.comparisonId`);
+  assertEnum(
+    comparison.comparisonKind,
+    RUNTIME_REFERENCE_COMPARISON_KINDS_V02,
+    `${label}.comparisonKind`,
+  );
+  assertEnum(comparison.status, RUNTIME_REFERENCE_COMPARISON_STATUSES_V02, `${label}.status`);
+  assertString(comparison.scope, `${label}.scope`);
+  const refs = asArray(comparison.coveredBridgeUnitRefs, `${label}.coveredBridgeUnitRefs`);
+  if (refs.length === 0) {
+    throw new Error(`${label}.coveredBridgeUnitRefs must contain at least one bridge unit ref`);
+  }
+  for (const [index, ref] of refs.entries()) {
+    assertRuntimeBridgeUnitRefV02(ref, `${label}.coveredBridgeUnitRefs[${index}]`);
+  }
+  assertRuntimeArtifactRefV02(
+    comparison.artifactRef,
+    `${label}.artifactRef`,
+    "reference_comparison",
+  );
 }
 
 function assertRuntimeBridgeUnitRefV02(

@@ -547,6 +547,27 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           });
       }
 
+      for (const eventArtifact of runtimeEvidenceEventArtifacts(runtimeReport)) {
+        await tx
+          .insert(artifacts)
+          .values({
+            artifactId: eventArtifact.artifactId,
+            projectId: project.projectId,
+            localeBranchId: project.localeBranchId,
+            sourceBundleId,
+            bridgeUnitId: eventArtifact.bridgeUnitId,
+            artifactKind: eventArtifact.artifactKind,
+            metadata: eventArtifact.metadata,
+          })
+          .onConflictDoUpdate({
+            target: artifacts.artifactId,
+            set: {
+              bridgeUnitId: eventArtifact.bridgeUnitId,
+              metadata: eventArtifact.metadata,
+            },
+          });
+      }
+
       await tx
         .insert(events)
         .values({
@@ -1058,6 +1079,18 @@ type RuntimeCaptureArtifact = {
   nonZeroPixels: number | undefined;
 };
 
+type RuntimeEvidenceEventArtifact = {
+  artifactId: string;
+  bridgeUnitId: string;
+  artifactKind: "runtime_trace_event" | "runtime_branch_event";
+  metadata: Record<string, unknown>;
+};
+
+type RuntimeBridgeUnitRef = {
+  bridgeUnitId: string;
+  sourceUnitKey?: string;
+};
+
 function runtimeReportIdFor(report: RuntimeReportInput): string {
   return report.runtimeReportId;
 }
@@ -1144,6 +1177,65 @@ function runtimeCaptureArtifacts(report: RuntimeReportInput): RuntimeCaptureArti
       nonZeroPixels: undefined,
     })),
   ];
+}
+
+function runtimeEvidenceEventArtifacts(report: RuntimeReportInput): RuntimeEvidenceEventArtifact[] {
+  if (!isRuntimeEvidenceReportV02(report)) {
+    return [];
+  }
+
+  return [
+    ...report.traceEvents.map((event) => ({
+      artifactId: event.traceEventId,
+      bridgeUnitId: event.bridgeUnitRef.bridgeUnitId,
+      artifactKind: "runtime_trace_event" as const,
+      metadata: {
+        runtimeReportId: report.runtimeReportId,
+        schemaVersion: report.schemaVersion,
+        eventKind: event.eventKind,
+        frame: event.frame,
+        traceKey: event.traceKey,
+        sourceUnitKey: event.bridgeUnitRef.sourceUnitKey,
+        bridgeUnitRefs: [event.bridgeUnitRef],
+        event,
+      },
+    })),
+    ...report.branchEvents.map((event) => ({
+      artifactId: event.branchEventId,
+      bridgeUnitId: event.bridgeUnitRef.bridgeUnitId,
+      artifactKind: "runtime_branch_event" as const,
+      metadata: {
+        runtimeReportId: report.runtimeReportId,
+        schemaVersion: report.schemaVersion,
+        frame: event.frame,
+        branchPointKey: event.branchPointKey,
+        sourceUnitKey: event.bridgeUnitRef.sourceUnitKey,
+        selectedOptionId: event.selectedOptionId,
+        bridgeUnitRefs: runtimeBranchEventBridgeUnitRefs(event),
+        event,
+      },
+    })),
+  ];
+}
+
+function runtimeBranchEventBridgeUnitRefs(
+  event: RuntimeEvidenceReportV02["branchEvents"][number],
+): RuntimeBridgeUnitRef[] {
+  const refs = [event.bridgeUnitRef];
+  for (const option of event.options) {
+    if (option.labelBridgeUnitRef !== undefined) {
+      refs.push(option.labelBridgeUnitRef);
+    }
+    if (option.targetBridgeUnitRef !== undefined) {
+      refs.push(option.targetBridgeUnitRef);
+    }
+  }
+
+  const uniqueRefs = new Map<string, RuntimeBridgeUnitRef>();
+  for (const ref of refs) {
+    uniqueRefs.set(`${ref.bridgeUnitId}\0${ref.sourceUnitKey ?? ""}`, ref);
+  }
+  return Array.from(uniqueRefs.values());
 }
 
 function isRuntimeEvidenceReportV02(

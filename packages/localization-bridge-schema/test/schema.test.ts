@@ -41,6 +41,65 @@ function runtimeEvidenceV02Example(): Record<string, unknown> {
   ) as Record<string, unknown>;
 }
 
+function traceOnlyReferenceFidelityReport(): Record<string, unknown> {
+  return {
+    schemaVersion: "0.2.0",
+    runtimeReportId: "019ed003-0000-7000-8000-00000000e401",
+    sourceBridgeId: "019ed001-0000-7000-8000-000000000001",
+    sourceBundleHash: "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+    sourceLocale: "en-US",
+    targetLocale: "fr-FR",
+    adapterName: "utsushi-reference-example",
+    adapterVersion: "0.2.0",
+    fidelityTier: "reference_fidelity",
+    evidenceTier: "E4",
+    status: "passed",
+    createdAt: "2026-06-17T00:00:00.000Z",
+    traceEvents: [
+      {
+        traceEventId: "019ed003-0000-7000-8000-00000000e411",
+        eventKind: "text_observed",
+        bridgeUnitRef: {
+          bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+          sourceUnitKey: "script/prologue#line-001",
+        },
+        frame: 12,
+        traceKey: "prologue.line.001",
+        observedText: "Bonjour, {player}.",
+      },
+    ],
+    branchEvents: [],
+    captures: [],
+    recordings: [],
+    approximations: [],
+    validationFindings: [],
+    limitations: [],
+  };
+}
+
+function passedReferenceComparison(): Record<string, unknown> {
+  return {
+    comparisonId: "019ed003-0000-7000-8000-00000000e421",
+    comparisonKind: "reference_runtime",
+    status: "passed",
+    scope: "script/prologue#line-001 rendered text",
+    coveredBridgeUnitRefs: [
+      {
+        bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+        sourceUnitKey: "script/prologue#line-001",
+      },
+    ],
+    artifactRef: {
+      artifactId: "019ed003-0000-7000-8000-00000000e431",
+      artifactKind: "reference_comparison",
+      uri: "artifacts/utsushi/hello/reference-comparison.json",
+      hash: "sha256:9f19ff8b1b206d23c4df42dc35913c9fdb14d5ec4a85139d368c39942c197f51",
+      mediaType: "application/json",
+      byteSize: 2048,
+    },
+  };
+}
+
 function exampleFixture(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as Record<
     string,
@@ -817,6 +876,20 @@ describe("localization bridge schema guards", () => {
     report.evidenceTier = "E4";
 
     expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/evidenceTier must not exceed E2/);
+  });
+
+  it("rejects E4 reference fidelity without reference comparison evidence", () => {
+    const report = traceOnlyReferenceFidelityReport();
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/referenceComparisons/);
+  });
+
+  it("accepts E4 reference fidelity with passed reference comparison evidence", () => {
+    const report = traceOnlyReferenceFidelityReport();
+    report.referenceComparisons = [passedReferenceComparison()];
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
+    expect(() => assertRuntimeReport(report)).not.toThrow();
   });
 
   it("rejects v0.2 runtime captures without bridge-unit traceability", () => {

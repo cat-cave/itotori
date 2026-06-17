@@ -48,6 +48,12 @@ finding carries a `bridgeUnitRef` when it refers to localized content. The ref
 contains `bridgeUnitId` and should include `sourceUnitKey` when available so
 legacy hello-world bridge units and v0.2 UUID7 units remain traceable.
 
+`reference_fidelity` or `E4` reports must include at least one passed
+`referenceComparisons` record. Each comparison names either a reference runtime
+or engine-specific conformance fixture, lists the covered bridge-unit refs, and
+points at a portable `reference_comparison` artifact. Trace-only evidence,
+captures, recordings, or adapter capability labels alone are not enough for E4.
+
 Screenshots and recordings are represented through `artifactRef` records with a
 portable `uri`, not embedded bytes. The guard rejects `data:` URIs, `file:` URIs,
 absolute local paths, and Windows-style backslash paths. Utsushi fixture smoke
