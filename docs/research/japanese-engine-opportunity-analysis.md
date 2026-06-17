@@ -1,13 +1,15 @@
 # Japanese VN/RPG Engine & Untranslated-Game Opportunity Analysis
 
-**Status:** Historical research input. The canonical executable plan is
-`roadmap/spec-dag.json`; older MVP and post-MVP wording here is preserved only
-as research context until `UNIV-015` completes the full research-to-DAG
-crosswalk.
+**Status:** Historical evidence. The canonical executable plan is
+`roadmap/spec-dag.json`; older milestone wording here is preserved only as
+research context. Use
+[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for current
+live DAG mappings.
 
 **Purpose:** Reframe Kaifuu adapter priorities using real catalog data rather than
-reputation. The point of this analysis is _opportunity discovery_ — it deliberately
-challenges the current MVP/roadmap ordering where the evidence warrants.
+reputation. The point of this analysis is _opportunity discovery_. At original
+publication, it deliberately challenged the then-current roadmap ordering where
+the evidence warranted.
 
 **Primary data source (confirmed, quantitative):** Official VNDB database dump
 `vndb-db-2026-06-17.tar.zst` (full public dump, downloaded 2026-06-17 from
@@ -160,7 +162,8 @@ arc_unpacker (<https://github.com/vn-tools/arc_unpacker>), KrkrExtract
 (<https://thewiki.moe/tutorials/visualnovels/>).
 
 **The decisive nuance for KiriKiri:** the engine splits into _plaintext `.ks`_ (Easy —
-what the current MVP scopes) and _encrypted XP3_ (Hard — most **commercial** titles).
+what the then-current early scope covered) and _encrypted XP3_ (Hard — most
+**commercial** titles).
 KirikiriTools' `version.dll` trick lets the engine accept unencrypted XP3 without
 reversing per-game keys [confirmed], but extracting the original encrypted archive still
 needs key discovery. So a plaintext-only KiriKiri adapter mostly reaches the **doujin /
@@ -259,19 +262,21 @@ Trials are usually built on the same engine as the full product → reliable for
 
 ---
 
-## 6. Recommendation: reframed Kaifuu adapter priority
+## 6. Historical recommendation: reframed Kaifuu adapter priority
 
-This **diverges from the current frozen MVP set and post-MVP order** where the data
-justifies it. Ranking axis = _untranslated-JP value × tractability for Kaifuu_.
+At original publication, this diverged from the then-current roadmap ordering
+where the data justified it. Ranking axis = _untranslated-JP value ×
+tractability for Kaifuu_. The current adopted/deferred mapping lives in
+[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md).
 
-**Tier 0 — keep, but re-scope (MVP):**
+**Historical Tier 0 - keep, but re-scope:**
 
 - **KiriKiri/KAG — strongly validated as #1 by volume** (4,046 JP VNs, 3,569 open).
   **But:** scope the adapter to land _with_ the XP3 encryption/key-discovery boundary
   (KAIFUU-014/038), or it only reaches the doujin/unpacked subset and misses the
   commercial backlog that makes KiriKiri valuable. This is the single most important
   re-scope.
-- **RPG Maker MV/MZ (JSON)** — keep; Easy and it is the _only_ MVP engine addressing the
+- **RPG Maker MV/MZ (JSON)** — keep; Easy and it was the only early engine addressing the
   RPG side. **But its value is invisible in VNDB** — validate/size it against **DLsite**
   before over- or under-investing (§7).
 - **Ren'Py** — keep as the easy reference adapter and for Western indie, **but reset
@@ -282,10 +287,13 @@ justifies it. Ranking axis = _untranslated-JP value × tractability for Kaifuu_.
 
 - **TyranoScript** — _the biggest reframe._ #2 JP VN engine (3,430), **96% untranslated,
   only 4% ever touched**, and **plaintext `.ks`/`.ksx` (HTML5/JS) → Easy**, reusing most
-  of the KiriKiri-KAG plaintext machinery. It is the largest greenfield in the catalog
-  yet is absent from the MVP/early roadmap. **Recommend adding it as an early adapter.**
+  of the KiriKiri-KAG plaintext machinery. At original publication, it was the largest
+  greenfield in the catalog that had not yet been represented in the roadmap. It is now
+  mapped to `KAIFUU-016`, `UTSUSHI-052`, `UTSUSHI-053`, and `ALPHA-004`.
 - **NScripter/ONScripter** — 1,264 JP VNs, 94% open, Moderate (simple XOR + Shift-JIS),
-  mature open ecosystem. High volume, low effort.
+  mature open ecosystem. This remains useful historical evidence, but the live DAG does
+  not currently adopt a dedicated NScripter/ONScripter adapter; see the deferred mapping
+  in [`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md).
 
 **Tier 2 — high-value, targeted (small pools, prestige/popularity per title):**
 
@@ -303,11 +311,12 @@ justifies it. Ranking axis = _untranslated-JP value × tractability for Kaifuu_.
   auto-translation hooks_, a different paradigm than extract/reinsert — note this before
   committing adapter effort).
 
-**Net change vs. current roadmap:** validate KiriKiri-first (✓) but bind it to the
-encryption boundary; **insert TyranoScript and NScripter ahead of the binary-format
-engines** (they are high-volume and plaintext/simple, matching Kaifuu's plaintext-first
-architecture); treat Ren'Py as a reference/Western play, not a JP-opportunity engine;
-and **resolve the RPG-Maker/Wolf question with DLsite data** rather than VNDB.
+**Historical net change vs. the then-current roadmap:** validate KiriKiri-first
+but bind it to the encryption boundary; insert TyranoScript and NScripter ahead
+of the binary-format engines; treat Ren'Py as a reference/Western play, not a
+JP-opportunity engine; and resolve the RPG-Maker/Wolf question with DLsite data
+rather than VNDB. Current adoption differs: TyranoScript is mapped to live DAG
+nodes, while NScripter/ONScripter is deferred.
 
 ---
 
@@ -318,7 +327,7 @@ single largest untranslated, tooling-relevant pool, and exactly where the easy
 (JSON/plaintext) engines dominate. Pull **DLsite** structured data (product/maniax JSON
 API + per-RJ metadata; engine inferable per §5) and run the same prevalence × gap
 analysis. Expect it to substantially raise RPG Maker MV/MZ and Wolf RPG in the priority
-order — potentially validating the current RPG-Maker MVP pick on _different_ evidence
+order — potentially validating the existing RPG Maker priority on _different_ evidence
 than VNDB provides.
 
 ### Open questions / limitations

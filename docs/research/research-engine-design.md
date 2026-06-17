@@ -1,11 +1,12 @@
 # Cross-Source Localization Research Engine — Design & Roadmap Mapping
 
-**Status:** Historical research input. The canonical executable plan is
-`roadmap/spec-dag.json`; older MVP and post-MVP wording here is preserved only
-as research context until `UNIV-015` completes the full research-to-DAG
-crosswalk.
+**Status:** Historical evidence and prototype design. The canonical executable
+plan is `roadmap/spec-dag.json`; older milestone wording and `RESEARCH-*`
+proposal ids here are preserved only as research context. Use
+[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for current
+live DAG mappings.
 
-**Status:** A temporary Python pipeline exists today under [`/research`](../../research)
+**Implementation note:** A temporary Python pipeline exists today under [`/research`](../../research)
 and is producing real data. This document specifies the **full feature set** so the work
 can be promoted into the monorepo as a first-class Rust subsystem (DB + migrations + core
 schema) with proper DAG nodes. The Python pipeline is the prototype/oracle; the Rust
@@ -182,13 +183,12 @@ local_scan(path, source, source_id, engine, signals, owned, scanned_at)     -- l
 
 ---
 
-## 9. Proposed roadmap DAG nodes
+## 9. Historical proposed roadmap DAG nodes
 
-New project suggested: **`research`** (working name; a Japanese codename such as **Shirabe**
-/調べ "investigation" would fit the suite). Prefix `RESEARCH-*`, target mostly `post_mvp`
-(it informs priorities rather than blocking the MVP), priorities P2 except the resolver.
-Schema matches `roadmap/spec-dag.json` (id/title/status/priority/target/projects/dependsOn/
-summary/deliverables/acceptanceCriteria).
+This section preserves the original proposal table. The `RESEARCH-*` ids are
+historical placeholders and are not claimable. The live DAG absorbed adopted
+scope into `CATALOG-*`, Kaifuu, Itotori, Utsushi, Shared, and Alpha nodes; see
+[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md).
 
 | id           | title                                | pri    | dependsOn         | summary                                                                                                                  |
 | ------------ | ------------------------------------ | ------ | ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -210,8 +210,9 @@ summary/deliverables/acceptanceCriteria).
 | RESEARCH-015 | MobyGames console augmenter          | P3     | RESEARCH-013      | Broaden console/historical coverage and release-region data.                                                             |
 | RESEARCH-016 | Platform-aware completeness          | P1     | RESEARCH-006, 014 | `release_platform` + `unverified_console`; per-platform official detection; remove console false positives.              |
 
-`RESEARCH-005` (resolver) and `RESEARCH-006` (completeness) are the load-bearing P1s; the
-adapters are parallelizable; finders and discovery extensions are post-MVP.
+`RESEARCH-005` (resolver) and `RESEARCH-006` (completeness) were the load-bearing
+proposal ids. They are now superseded by `CATALOG-001` and `CATALOG-002`;
+adapter, finder, and discovery scope is mapped in the crosswalk.
 
 ---
 

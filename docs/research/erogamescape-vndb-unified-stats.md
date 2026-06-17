@@ -1,5 +1,10 @@
 # ErogameScape × VNDB — Unified Statistics
 
+**Status:** Historical evidence. This document is a dated statistical input from
+2026-06-17, not a current adapter or roadmap plan. Use
+[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for current
+live DAG mappings.
+
 **Purpose:** Add ErogameScape (EGS) as a second statistical front and join it to VNDB, so
 we have one combined catalog. EGS covers many games VNDB doesn't — especially the DLsite
 indie/doujin-RPG side — and contributes a Japanese-audience score that complements VNDB's
@@ -129,7 +134,7 @@ recent fan work — verify before acting.
 2. **Engine is the missing column in both sources for the EGS-only pool.** EGS gives the RJ
    code; the next step is **DLsite file/trial inference** (per §5 of the engine report) to
    stamp engines on these 4,210 games — likely confirming RPG Maker MV/MZ + Wolf as the
-   dominant indie engines and re-validating those MVP picks on indie evidence.
+   dominant indie engines and re-validating those early priorities on indie evidence.
 3. **EGS median is a second, Japanese-audience ranking signal** — use it alongside VNDB
    votes so we don't underweight titles big in Japan but quiet in the West (e.g. _Kono
    Aozora ni Yakusoku o_, _ChuSinGura_).

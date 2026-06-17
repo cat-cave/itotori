@@ -1,9 +1,10 @@
 # Engine Prioritization & Roadmap Synthesis
 
-**Status:** Historical research input. The canonical executable plan is
-`roadmap/spec-dag.json`; where this document says MVP or proposes nodes, read it
-as the research framing that informed later alpha-readiness DAG updates until
-`UNIV-015` completes the full research-to-DAG crosswalk.
+**Status:** Historical evidence and proposal source. The canonical executable
+plan is `roadmap/spec-dag.json`; where this document uses older milestone
+framing or proposes nodes, use
+[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for the current
+live DAG mapping.
 
 **Written:** 2026-06-17 (interim — enrichment crawl still running; market/VNDB/EGS data is final)
 
@@ -15,7 +16,9 @@ DAG nodes and roadmap adjustments.
 > **Superseded note:** This report originally made no direct
 > `roadmap/spec-dag.json` edits. Several proposals below have since been adopted
 > or split into live DAG nodes. Treat the node lists as historical proposal
-> context until `UNIV-015` writes the complete research-to-DAG crosswalk.
+> context and use
+> [`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for current
+> node ids.
 
 The three streams:
 
@@ -88,18 +91,19 @@ with each engine's _type of work_ (positive adapter vs readiness/encryption prof
 | **8** | **NScripter / RealLive / NeXAS / Aoi / Majiro / BGI** | long tail                            | scattered                     | Moderate–Hard                           | Readiness profiles; targeted adapters              |
 | **—** | **Ren'Py**                                            | 307 JP / 41% (already done)          | **absent**                    | Easy                                    | Keep as reference only; **low JP value**           |
 
-**Reframes vs. the current MVP set:**
+**Historical reframes vs. the then-current early adapter set:**
 
-- **RPG Maker MV/MZ → unambiguous #1** (all three streams agree). Already MVP; this
-  _strengthens_ it and says invest in the full MV/MZ surface (events/db/UI/plugins +
-  encrypted-media gating + collections), not a toy slice.
-- **KiriKiri MVP scope is wrong as "plaintext-only."** Both local KiriKiri titles are
+- **RPG Maker MV/MZ → unambiguous #1** (all three streams agree). This
+  _strengthened_ the existing early selection and says invest in the full MV/MZ surface
+  (events/db/UI/plugins + encrypted-media gating + collections), not a toy slice.
+- **KiriKiri plaintext-only scope is wrong.** Both local KiriKiri titles are
   XP3-packed; commercial KiriKiri is encrypted. Rescope to **readiness + XP3/encryption**
   (bind to the key-discovery boundary) — plaintext-only reaches almost none of the 4,046.
-- **Ren'Py is over-weighted in the MVP.** Near-zero local backlog, 41% already translated,
+- **Ren'Py was over-weighted in the early adapter set.** Near-zero local backlog, 41% already translated,
   307 JP VNs. Keep it as the easy reference adapter; do not expect JP opportunity from it.
 - **TyranoScript is under-weighted.** Biggest plaintext greenfield in the market; cheap to
-  add; missing from MVP and roadmap. Propose promoting.
+  add. At original publication this was described as missing from the roadmap; it is now
+  mapped to `KAIFUU-016`, `UTSUSHI-052`, `UTSUSHI-053`, and `ALPHA-004`.
 - **RGSS3/VX Ace is under-weighted relative to the _local_ backlog** (ROBF/Re:BF). Its
   binary-patcher dependency should be pulled earlier than a pure VN-market view implies.
 
@@ -141,18 +145,21 @@ container + key-profile fields. (2) KiriKiri scope plaintext→XP3+encryption. (
 emits capability levels (identify/inventory/extract/patch) + container/crypto facts, not
 just an engine name. (4) consume VNDB's existing mtl/partial/official flags in prioritization.
 
-**Net-new (absent from roadmap):** (1) **layered decryption/container framework +
-key-profile model** (Kaifuu); (2) **catalog/cross-source research engine** as an Itotori
-subsystem; (3) **translation-completeness intelligence** (status + conflict detection +
-benchmark-set construction); (4) **engine detector registry** (capability-leveled);
-(5) **readiness profiles** as a deliverable type; (6) **local corpus inventory + sidecar
-writer**; (7) **console/generic DB tier** (IGDB/Wikidata); (8) **archive/install-state +
-edition mapping**; (9) **benchmark-vs-existing-TL harness** (Utsushi).
+**Historical net-new proposal list:** at original publication, the following were not yet
+live DAG nodes: (1) **layered decryption/container framework + key-profile model**
+(Kaifuu); (2) **catalog/cross-source research engine** as an Itotori subsystem; (3)
+**translation-completeness intelligence** (status + conflict detection + benchmark-set
+construction); (4) **engine detector registry** (capability-leveled); (5) **readiness
+profiles** as a deliverable type; (6) **local corpus inventory + sidecar writer**; (7)
+**console/generic DB tier** (IGDB/Wikidata); (8) **archive/install-state + edition
+mapping**; (9) **benchmark-vs-existing-TL harness**. Most are now mapped in
+[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md).
 
-**Reprioritize (reorder existing):** (1) pull encryption/key-discovery (KAIFUU-014) +
-binary-patcher core (KAIFUU-011) into the MVP — they gate the pool; (2) MV/MZ stays #1 via
-the full pipeline; (3) RGSS3/VX Ace earlier (local backlog); (4) Ren'Py → reference adapter;
-(5) TyranoScript added early (null-key config); (6) KiriKiri high but on the encryption track.
+**Historical reprioritization proposal:** (1) pull encryption/key-discovery
+(KAIFUU-014) + binary-patcher core (KAIFUU-011) into the early alpha-readiness path
+because they gate the pool; (2) MV/MZ stays #1 via the full pipeline; (3) RGSS3/VX
+Ace earlier (local backlog); (4) Ren'Py → reference adapter; (5) TyranoScript added
+early (null-key config); (6) KiriKiri high but on the encryption track.
 
 **Single highest-leverage item:** build the layered pipeline with a key-profile model _now_
 so every encrypted engine is an incremental decryptor stage, not a rebuild.
@@ -174,8 +181,8 @@ patch` — so a recognized-but-packed engine is never presented as usable. (Loca
 4. **Translation-completeness model** — per-(work, language) status `official_full /
 fan_full / fan_partial / mtl / interface_only / unverified_console / none`, with
    provenance and **cross-source conflict detection** (the 689). This is the engine for
-   _opportunity ranking_ and _benchmark-set construction_, and it is **absent from the
-   current roadmap**.
+   _opportunity ranking_ and _benchmark-set construction_; it is now mapped to
+   `CATALOG-002`, `CATALOG-004`, `CATALOG-061`, and `ITOTORI-026`.
 5. **Readiness profiles for packed/encrypted engines** (Siglus / KiriKiri XP3 / NeXAS PAC /
    RGSS / Unity bundles / Aoi VFS / RealLive Seen) — classify container/version/key
    readiness _before_ extraction; never leak keys/raw text.
@@ -234,11 +241,12 @@ generic_game / release_platform / local_scan / seed_target` (prototype SQLite �
 
 ---
 
-## 6. Proposed DAG nodes (NOT applied — for post-research adoption)
+## 6. Historical proposed DAG nodes
 
-Builds on the `RESEARCH-*` set in [`research-engine-design.md`](./research-engine-design.md)
-and adds the cross-cutting / per-subproject nodes implied by this synthesis. Schema mirrors
-`roadmap/spec-dag.json` (id/title/priority/target/projects/dependsOn).
+This section preserves the original proposal table. These placeholder ids are not
+claimable. Use
+[`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md) for the current live
+node ids and deferred items.
 
 | Proposed id      | title                                                                                              | proj           | pri   | dependsOn          |
 | ---------------- | -------------------------------------------------------------------------------------------------- | -------------- | ----- | ------------------ |
@@ -269,9 +277,9 @@ and adds the cross-cutting / per-subproject nodes implied by this synthesis. Sch
 6. **Elevate the catalog + completeness engine to a first-class Itotori subsystem**, not a
    research script — it's the substrate for prioritization, benchmarking, and identity.
 7. **Add the console/generic tier (IGDB/Wikidata)** so completeness is correct.
-8. **Frame the MVP** as inventory → identity → readiness → MV/MZ extraction/patch →
-   packed-engine readiness → expand-on-proven-round-trip (matches the local-corpus report's
-   conclusion).
+8. **Frame alpha readiness** as inventory → identity → readiness → MV/MZ
+   extraction/patch → packed-engine readiness → expand-on-proven-round-trip (matches the
+   local-corpus report's conclusion).
 
 ---
 
@@ -302,4 +310,6 @@ and adds the cross-cutting / per-subproject nodes implied by this synthesis. Sch
   catalog-discovery crawl (proposed) would size it directly.
 - Engine attribution is null for ~53% of JP VNs in VNDB; local-scan ground-truth + DLsite
   `work_type` + IGDB are the fill.
-- All DAG nodes above are **proposals**; the live `roadmap/` is untouched.
+- At original publication, all DAG nodes above were **proposals** and the live
+  `roadmap/` was untouched. The current adoption map lives in
+  [`research-to-dag-crosswalk.md`](./research-to-dag-crosswalk.md).

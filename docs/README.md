@@ -46,6 +46,7 @@ feedback escalation policy are defined in
 [itotori-product-workflow.md](itotori-product-workflow.md).
 The synthetic large-project generator and scale harness are documented in
 [itotori-scale-harness.md](itotori-scale-harness.md).
-Engine prioritization, catalog/completeness research, and the current
-post-research roadmap synthesis are tracked under
-[research/engine-prioritization-and-roadmap-synthesis.md](research/engine-prioritization-and-roadmap-synthesis.md).
+Research recommendations are historical evidence unless mapped to live DAG
+nodes. The current research-to-DAG mapping lives in
+[research/research-to-dag-crosswalk.md](research/research-to-dag-crosswalk.md);
+the research index is [research/README.md](research/README.md).
