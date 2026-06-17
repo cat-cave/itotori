@@ -61,7 +61,7 @@
     {
       "id": "MVP-000",
       "title": "MVP definition of done and release gate matrix",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["suite", "universal"],
@@ -573,7 +573,7 @@
     {
       "id": "UNIV-009",
       "title": "Orchestrator claim, plan, audit lifecycle CLI",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["universal"],
@@ -1017,7 +1017,7 @@
     {
       "id": "SHARED-008",
       "title": "Permission model and local-user baseline",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori"],
@@ -1312,7 +1312,7 @@
     {
       "id": "KAIFUU-001",
       "title": "Kaifuu adapter trait and game profile model",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "shared"],
