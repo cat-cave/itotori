@@ -78,27 +78,29 @@ patch validation without depending on a brittle host runtime.
 This is deliberately P3 continuous work, but it is not speculative
 decision-making. The roadmap contains executable Rust-port specs:
 
-- `UTSUSHI-020` builds the shared runtime substrate: virtual filesystem, asset
-  resolver, input/clock model, render/audio/text boundaries, snapshot state,
-  WASM/embed ABI, and engine-port implementation maps.
-- `UTSUSHI-021` builds the conformance harness for traces, branch points,
-  screenshots, recordings, snapshots, reference comparisons, and Itotori
-  ingestion.
-- `UTSUSHI-022` through `UTSUSHI-027` create engine-specific skeletons for RPG
-  Maker MV/MZ, Siglus, KiriKiri/KAG, Ren'Py, Wolf RPG Editor, and
+- `UTSUSHI-020` through `UTSUSHI-025` build the shared substrate in reviewable
+  slices: VFS and asset packages, deterministic input and clocks, headless
+  text/render/audio sinks, inspectable state and snapshots, WASM/embed ABI, and
+  implementation-map validation.
+- `UTSUSHI-026` through `UTSUSHI-030` build the conformance layer: profile and
+  result schemas, trace and branch checks, snapshot checks, capture and
+  recording artifact checks, and Itotori ingestion fixtures.
+- `UTSUSHI-031` through `UTSUSHI-048` create engine-specific executable slices
+  for RPG Maker MV/MZ, Siglus, KiriKiri/KAG, Ren'Py, Wolf RPG Editor, and
   BGI/Ethornell.
 
-Each engine-port node must produce code, fixtures, conformance output, and a
-subsystem coverage map. A worker can research an engine deeply, but the accepted
-artifact cannot be a feasibility report. It must leave behind an executable
-skeleton or a concrete conformance fixture that future workers can expand.
+Each engine-port slice must produce code, fixtures, conformance output, and a
+subsystem coverage map tied to tests. A worker can research an engine deeply,
+but the accepted artifact cannot be a feasibility report. It must leave behind
+an executable skeleton, a controlled playback smoke, or a concrete conformance
+fixture that future workers can expand.
 
-The intended pattern is one engine-focused worker per port node. Each worker
-maps the engine's script model, asset model, state model, rendering/text
-surfaces, save/snapshot behavior, patch handoff, and validation strategy against
-the shared substrate. The result should make the next split of subsystem work
-obvious, such as KAG macro handling, Siglus opcode coverage, MV/MZ event
-commands, Wolf common events, or BGI bytecode opcodes.
+The intended pattern is one engine-focused worker per executable slice. The
+first slice for an engine chooses one control surface and proves it: existing
+runtime instrumentation, parser/replay, VM adapter smoke, archive handoff, or a
+specific subsystem pack. Follow-up slices then expand concrete subsystems such
+as KAG macro handling, Siglus opcode coverage, MV/MZ event commands, Wolf common
+events, or BGI bytecode opcodes.
 
 ## Runtime Evidence v0.2
 

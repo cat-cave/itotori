@@ -332,8 +332,9 @@ For P2/P3 findings:
 - create a new planned DAG node when the work is independent;
 - append acceptance criteria to an existing planned DAG node when it already
   owns the work;
-- fix in the active branch only when the work is cheap, low-risk, explicitly
-  assigned, and recorded in a durable disposition.
+- fix in the active branch only when the work is already inside that node's
+  deliverables, acceptance criteria, and verification scope; is explicitly
+  assigned; and is recorded in a durable disposition.
 
 ### 6. Merge
 

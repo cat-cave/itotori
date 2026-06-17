@@ -158,9 +158,11 @@ provider policy, cost discipline, and worktree hygiene.
    P0/P1 findings produce a blocked repair patch; P2/P3 findings produce draft
    DAG nodes or append payloads.
 9. Convert P2/P3 findings into new DAG nodes or add them to existing planned
-   nodes unless they are cheap, explicitly assigned to a worker before merge,
-   and recorded durably in a tracked and committed branch note file, audit
-   report artifact, DAG node/update, PR comment/description, or commit message.
+   nodes unless the finding is already inside the active node's deliverables,
+   acceptance criteria, and verification scope; is explicitly assigned to a
+   worker before merge; and is recorded durably in a tracked and committed
+   branch note file, audit report artifact, DAG node/update, PR
+   comment/description, or commit message.
 10. Prepare completion bookkeeping with
     `node scripts/spec-dag.mjs complete NODE-ID --audit REPORT.json`, but merge
     only after CI is green, P0/P1 findings are gone, acceptance criteria
@@ -174,7 +176,7 @@ Humans or an orchestrator still merge only after CI and audit gates.
 
 ## Parallelism
 
-The graph intentionally exposes early parallel lanes:
+The graph exposes ready parallel lanes derived from node dependencies:
 
 - `baseline`: already-completed scaffold and roadmap foundation nodes.
 - `roadmap-infra`: issue sync, worktree lifecycle, and audit templates.
@@ -228,10 +230,11 @@ When an audit finds issues:
 - P0/P1: create a repair plan, assign worker implementation in the active spec
   branch, then re-audit.
 - P2/P3: add a new planned node or amend an existing planned node with the
-  finding's acceptance criteria unless the finding is cheap and explicitly
-  assigned to a worker before merge with a durable disposition record in an
-  audit report artifact, DAG node/update, tracked and committed branch note
-  file, PR comment/description, or commit message.
+  finding's acceptance criteria unless the finding is already inside the active
+  node's deliverables, acceptance criteria, and verification scope and is
+  explicitly assigned to a worker before merge with a durable disposition record
+  in an audit report artifact, DAG node/update, tracked and committed branch
+  note file, PR comment/description, or commit message.
 
 Do not mark a node complete because the code was written. Mark it complete only
 after the implementation is merged into `main`, verified, and audit-clean for

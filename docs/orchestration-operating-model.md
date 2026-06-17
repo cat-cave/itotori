@@ -124,8 +124,9 @@ The required loop is:
 
 P2 and P3 findings do not normally block merge. Insert them into the DAG as new
 planned nodes or attach them to an existing planned node with acceptance
-criteria. A P2/P3 finding may be handled before merge only when it is cheap,
-low-risk, and explicitly assigned to a worker as part of the active branch.
+criteria. A P2/P3 finding may be handled before merge only when it is already
+inside the active node's deliverables, acceptance criteria, and verification
+scope, and is explicitly assigned to a worker as part of the active branch.
 When a worker fixes a P2/P3 finding before merge, record the disposition
 durably in at least one of: a tracked and committed branch note file, audit
 report artifact, DAG node/update, PR comment/description, or commit message.
@@ -235,7 +236,8 @@ testable outcome.
 
 Add a follow-up node when:
 
-- a P2/P3 audit finding is real but not cheap enough for the active branch;
+- a P2/P3 audit finding is real and is outside the active node's deliverables,
+  acceptance criteria, or verification scope;
 - an experiment reveals provider, prompt, cost, or framework work that should be
   reproducible;
 - worktree, CI, audit, or merge process gaps need tooling support;

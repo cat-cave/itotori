@@ -134,8 +134,8 @@ stable split view:
 - **Reasoning and findings**: deterministic check results, QA findings, agent
   rationale summaries, cited style/glossary rules, feedback reports, and root
   cause hypothesis.
-- **Impact and options**: blast radius, export or rerun effect, cost/time
-  estimate, available actions, and durable consequences.
+- **Impact and options**: blast radius, export or rerun effect, cost impact,
+  affected dependency scope, available actions, and durable consequences.
 
 The queue may offer compact rows for scanning, but every action that changes
 draft, policy, glossary, feedback, export state, or rerun scheduling must open or

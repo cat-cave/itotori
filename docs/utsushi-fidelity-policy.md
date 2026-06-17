@@ -198,11 +198,12 @@ Utsushi owns runtime probes, traces, captures, replay sessions, and VM/playback
 adapters. It must be useful even when imperfect, as long as its reports state the
 capability level honestly.
 
-Engine VMs are not vanity scope and they are not forbidden complexity. The first
-real-engine target may use an existing runtime when that is cheaper and stronger.
-For RPG Maker MV/MZ, that likely means launching or instrumenting the
-browser/NW.js runtime and capturing trace plus frame evidence before attempting a
-Rust reimplementation. For engines where the native runtime cannot provide
+Engine VMs are not vanity scope and they are not forbidden complexity. A
+real-engine target may use an existing runtime when that produces stronger
+validated evidence for the current dependency slice. For RPG Maker MV/MZ, that
+means launching or instrumenting the browser/NW.js runtime and capturing trace
+plus frame evidence; Rust runtime-port work is tracked by separate Utsushi P3
+port slices. For engines where the native runtime cannot provide
 controlled playback, deterministic jumping, snapshot state, embedded review, or
 agent-inspectable evidence, a partial or full VM is the expected path. A weak
 wrapper that cannot support the envisioned Itotori workflows must not be treated

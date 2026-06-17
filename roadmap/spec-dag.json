@@ -8,7 +8,7 @@
       "P0": "Critical orchestration, data integrity, or alpha-readiness blocker. A failed P0 audit blocks merge and must be repaired immediately.",
       "P1": "Required for alpha readiness or for the owning spec acceptance criteria. P1 audit findings block merge for the owning spec.",
       "P2": "Important quality, scale, or continuous expansion work. P2 findings may become new DAG nodes.",
-      "P3": "Exploratory, nice-to-have, or research work. P3 findings should be batched unless cheap."
+      "P3": "Exploratory, nice-to-have, or research work. P3 findings should become DAG nodes or be attached to existing planned nodes unless already covered by the active node scope."
     },
     "statusDefinitions": {
       "complete": "Already implemented and verified in main.",
@@ -1745,7 +1745,7 @@
       "target": "continuous",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
       "parallelGroup": "quality-foundation",
-      "dependsOn": ["SHARED-012", "ITOTORI-029"],
+      "dependsOn": ["SHARED-012", "ITOTORI-059"],
       "summary": "Add en-US full-system artifact goldens alongside the existing target locale so public fixtures prove locale-branch behavior across at least two concrete target locales.",
       "deliverables": [
         "en-US patch export golden artifacts",
@@ -1967,7 +1967,7 @@
       "acceptanceCriteria": [
         "The scanner distinguishes source archives, installed games, collection members, editions, and sidecar metadata",
         "Sidecars record stable local ids, owned flag, engine/readiness evidence, aggregate counts, hashes, and tool versions without raw text, private paths, keys, screenshots, or story filenames",
-        "Kaifuu detector evidence and catalog identity can share one engine-fingerprint registry",
+        "Sidecars emit normalized engine-family, variant, and detector evidence compatible with the shared engine-fingerprint registry introduced by KAIFUU-053",
         "Absence of private local corpora never affects public CI"
       ],
       "verification": [
@@ -1992,25 +1992,25 @@
     },
     {
       "id": "CATALOG-004",
-      "title": "Opportunity ranking and benchmark seed finder",
+      "title": "Benchmark seed finder",
       "status": "planned",
-      "priority": "P2",
+      "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared", "utsushi"],
       "parallelGroup": "catalog",
       "dependsOn": ["CATALOG-002", "CATALOG-003"],
-      "summary": "Expose ranked opportunity and benchmark seed queries from completeness, local corpus, market prevalence, engine readiness, and existing translation status.",
+      "summary": "Expose readiness-aware benchmark seed queries from catalog, local corpus, engine readiness, and existing translation status so alpha benchmark and quality runs can select credible corpora.",
       "deliverables": [
-        "Opportunity scoring service",
         "Benchmark seed finder queries",
-        "Readiness-aware ranking fixtures",
-        "Dashboard/API read model seed"
+        "Readiness-aware benchmark fixture set",
+        "Private-local aggregate-safe benchmark seed output",
+        "Benchmark seed API/read model fixture"
       ],
       "acceptanceCriteria": [
-        "RPG Maker MV/MZ, RGSS3/VX Ace, KiriKiri XP3, TyranoScript, Unity, Siglus, Wolf, MTL-only, fan-partial, and conflict pools can be ranked with explainable evidence",
-        "Opportunity output distinguishes prevalence, local ownership, translation completeness, adapter readiness, and benchmark usefulness",
-        "Ranking can be generated from public fixtures and from private-local aggregate sidecars without leaking private data",
-        "The $25-cost target and quality benchmarks can select corpora by readiness rather than arbitrary fixture availability"
+        "Benchmark seeds distinguish local ownership, translation completeness, engine readiness, and benchmark usefulness",
+        "MTL-only, fan-partial, no-English, conflict, and readiness-filtered pools can be selected from public fixtures and private-local aggregate sidecars",
+        "Benchmark seed output can be generated without leaking private paths, filenames, story text, or raw corpus records",
+        "The cost and quality benchmark flow can select corpora by readiness instead of arbitrary fixture availability"
       ],
       "verification": [
         {
@@ -2018,12 +2018,53 @@
           "value": "pnpm --filter @itotori/app test"
         },
         {
-          "type": "manual",
-          "value": "Opportunity ranking fixture review"
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
         },
         {
           "type": "command",
           "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Benchmark seed leakage",
+        "Readiness filters ignored",
+        "Unexplainable benchmark seed selection"
+      ]
+    },
+    {
+      "id": "CATALOG-061",
+      "title": "Opportunity ranking service",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared", "utsushi"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-004"],
+      "summary": "Add opportunity ranking for localization project selection from completeness, local corpus, market prevalence, engine readiness, existing translation status, and benchmark usefulness without blocking alpha benchmark seed selection.",
+      "deliverables": [
+        "Opportunity scoring service",
+        "Ranked opportunity API/read model",
+        "Opportunity dashboard seed fixture",
+        "Explainability and provenance tests"
+      ],
+      "acceptanceCriteria": [
+        "RPG Maker MV/MZ, RGSS3/VX Ace, KiriKiri XP3, TyranoScript, Unity, Siglus, Wolf, MTL-only, fan-partial, and conflict pools can be ranked with explainable evidence",
+        "Opportunity output distinguishes prevalence, local ownership, translation completeness, adapter readiness, benchmark usefulness, and unknown evidence",
+        "Ranking can be generated from public fixtures and private-local aggregate sidecars without leaking private data"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "manual",
+          "value": "Opportunity ranking fixture review"
         }
       ],
       "auditFocus": [
@@ -2535,6 +2576,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/localization-bridge-schema test"
+        },
+        {
           "type": "manual",
           "value": "Contract tests"
         },
@@ -2558,7 +2607,7 @@
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-003", "KAIFUU-004", "KAIFUU-019", "KAIFUU-052"],
-      "summary": "Build shared binary offset, relocation, encoding, and string-table rewriting utilities early because RGSS3/VX Ace, Wolf, Majiro, BGI, and other high-value local backlog engines depend on them.",
+      "summary": "Build shared binary offset, relocation, encoding, and string-table rewriting utilities because RGSS3/VX Ace, Wolf, Majiro, BGI, and other high-value local backlog engines depend on them.",
       "deliverables": [
         "BinaryPatcher utility",
         "Offset mapping tests",
@@ -2898,7 +2947,7 @@
     },
     {
       "id": "KAIFUU-037",
-      "title": "Platform-assisted key discovery harness",
+      "title": "Local key discovery helper contract",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
@@ -2912,32 +2961,73 @@
         "KAIFUU-050",
         "KAIFUU-051"
       ],
-      "summary": "Implement the local helper harness contract for static parsers, known-key imports, Wine/Windows execution, remote Windows helper calls, and manual key entry without putting helper code inside pure adapters.",
+      "summary": "Implement the local helper contract for static parser outputs, known-key imports, manual key entry, fixture-only helper stubs, and secret-ref validation without putting helper code inside pure adapters.",
       "deliverables": [
         "Helper result schema",
         "Helper registry and capability model",
         "Known-key database import policy",
-        "Local/Wine/Windows/remote helper boundary docs",
-        "Fixture-only helper stub",
         "Manual key-entry helper path",
+        "Fixture-only helper stub",
         "No-raw-key logging tests"
       ],
       "acceptanceCriteria": [
         "Helpers return structured validated results with secret refs, proof hashes, tool versions, and remediation, not raw keys in logs",
         "Known-key database imports are local-only, provenance-recorded, and never required by public CI or live network calls",
-        "Pure adapters depend only on resolved profile data and do not call Windows hooks or network helpers directly",
+        "Manual key-entry cancellation, unavailable helper, unsupported executable, and failed validation paths are deterministic and triageable",
+        "Pure adapters depend only on resolved profile data and do not call platform hooks, Wine, Windows, or network helpers directly",
         "Linux/macOS flows work when key material has already been supplied",
-        "Unavailable helper, unsupported protected executable, failed validation, and manual-entry cancellation paths are deterministic and triageable",
         "The fixture-only helper exercises helper result validation and secret resolution without using private games, Wine, Windows, or network calls"
       ],
       "verification": [
         {
           "type": "command",
-          "value": "cargo test --workspace"
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
         },
         {
           "type": "manual",
-          "value": "Helper harness design review"
+          "value": "Helper contract and redaction review"
+        }
+      ],
+      "auditFocus": [
+        "Platform coupling in adapters",
+        "Raw key leakage",
+        "Helper result validation gaps"
+      ]
+    },
+    {
+      "id": "KAIFUU-064",
+      "title": "Wine and Windows helper execution harness",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-037"],
+      "summary": "Implement the bounded local platform execution slice for key-discovery helpers that require Wine, Proton, or Windows process control while keeping pure adapters and public CI independent of those hosts.",
+      "deliverables": [
+        "Wine/Windows helper execution adapter",
+        "Process timeout and cancellation policy",
+        "Platform capability diagnostics",
+        "Redacted helper dry-run fixture"
+      ],
+      "acceptanceCriteria": [
+        "Wine, Proton, and Windows helper paths are invoked only through the helper execution adapter, never from pure extraction or patch adapters",
+        "Unavailable platform, protected executable, timeout, cancellation, and failed helper validation paths return semantic diagnostics",
+        "Helper execution logs, reports, and dry-run fixtures do not expose raw keys, private game paths, decrypted scripts, or story filenames",
+        "Public CI can run fixture-only helper tests without Wine, Windows, private executables, or live network calls"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
         },
         {
           "type": "manual",
@@ -2945,9 +3035,46 @@
         }
       ],
       "auditFocus": [
-        "Platform coupling in adapters",
-        "Unsafe remote execution assumptions",
-        "Raw key leakage"
+        "Platform helper called from pure adapters",
+        "Hung or unbounded helper processes",
+        "Private path or key leakage"
+      ]
+    },
+    {
+      "id": "KAIFUU-065",
+      "title": "Remote helper execution boundary",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-064"],
+      "summary": "Add the optional remote helper boundary for agent-friendly Windows helper hosts with explicit authentication, redaction, timeout, and local-only secret material policies.",
+      "deliverables": [
+        "Remote helper request and response schema",
+        "Authentication and host capability policy",
+        "Redacted remote dry-run fixture",
+        "Network-disabled public CI tests"
+      ],
+      "acceptanceCriteria": [
+        "Remote helper calls are optional and disabled by default in public fixture and CI modes",
+        "Requests and responses use secret refs and proof hashes instead of raw keys or decrypted script text",
+        "Authentication, timeout, cancellation, and host capability failures return semantic diagnostics"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "Remote helper boundary security review"
+        }
+      ],
+      "auditFocus": [
+        "Remote helper becoming required for CI",
+        "Raw key or private path over RPC",
+        "Unauthenticated helper execution"
       ]
     },
     {
@@ -3163,7 +3290,8 @@
         "KAIFUU-053",
         "KAIFUU-054",
         "KAIFUU-055",
-        "CATALOG-003"
+        "CATALOG-003",
+        "KAIFUU-064"
       ],
       "summary": "Implement an alpha encrypted-input readiness verifier that checks docs, detectors, key profiles, helper boundaries, redaction tests, fixture proofs, and optional private-local summaries without making universal decryption claims.",
       "deliverables": [
@@ -3457,22 +3585,29 @@
     },
     {
       "id": "KAIFUU-056",
-      "title": "Packed-engine readiness profile set",
+      "title": "Alpha packed-engine readiness profile subset",
       "status": "planned",
-      "priority": "P2",
+      "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "suite"],
       "parallelGroup": "engine-research",
-      "dependsOn": ["KAIFUU-015", "KAIFUU-036", "KAIFUU-040", "KAIFUU-052", "KAIFUU-053"],
-      "summary": "Implement validated readiness profiles for high-value packed or encrypted engines such as Siglus, Unity/Naninovel, Wolf, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2, using readiness as executable capability metadata rather than permanent non-support scope.",
+      "dependsOn": [
+        "KAIFUU-015",
+        "KAIFUU-038",
+        "KAIFUU-040",
+        "KAIFUU-052",
+        "KAIFUU-053",
+        "KAIFUU-055"
+      ],
+      "summary": "Implement the alpha readiness profile subset for high-value packed or encrypted engines whose prerequisite proof nodes exist: Siglus, KiriKiri XP3, Wolf RPG Editor, and RPG Maker VX Ace/RGSS3.",
       "deliverables": [
         "Packed-engine readiness profile template",
-        "Siglus, Unity, Wolf, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2 profile seeds",
-        "Capability-level summary renderer",
+        "Siglus, KiriKiri XP3, Wolf, and RGSS3/VX Ace profile seeds",
+        "Alpha capability-level summary renderer",
         "Profile validation fixtures"
       ],
       "acceptanceCriteria": [
-        "Every readiness profile states identify/inventory/extract/patch status and required container, crypto, codec, key, helper, and patch-back stages",
+        "Alpha readiness profiles state identify, inventory, extract, patch, and helper/key status for Siglus, KiriKiri XP3, Wolf, and RGSS3/VX Ace",
         "Profiles can be generated from public synthetic fixtures and supplemented by private-local aggregate reports",
         "No readiness profile serializes raw keys, private asset paths, decrypted scripts, helper dumps, or story filenames",
         "Profiles distinguish unknown/out-of-profile semantic failures from bugs inside claimed support profiles",
@@ -3497,6 +3632,47 @@
         "Secret/private evidence leakage",
         "Profile fields too vague for production adapter work",
         "Readiness treated as a permanent non-support state instead of executable capability metadata"
+      ]
+    },
+    {
+      "id": "KAIFUU-063",
+      "title": "Broad packed-engine readiness profile seeds",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu", "suite"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-056", "KAIFUU-017", "KAIFUU-018", "KAIFUU-041"],
+      "summary": "Extend readiness profile seeds beyond the alpha subset to Unity/Naninovel, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2 after their prerequisite parser, detector, or profile proof nodes exist.",
+      "deliverables": [
+        "Unity/Naninovel readiness seed",
+        "Majiro and CatSystem2 readiness seeds",
+        "BGI readiness seed",
+        "NeXAS, Aoi, and RealLive placeholder-ready profile seeds with semantic unsupported status"
+      ],
+      "acceptanceCriteria": [
+        "Every broad-readiness seed names its fixture or proof-node provenance and declares identify, inventory, extract, patch, and helper/key status",
+        "Engines without sufficient parser or detector proof are represented as semantic unsupported profiles instead of broad support claims",
+        "Generated broad-readiness output keeps private-local aggregate evidence redacted"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "Broad readiness profile fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Readiness profile overclaiming support",
+        "Missing fixture provenance",
+        "Private evidence leakage"
       ]
     },
     {
@@ -3681,7 +3857,7 @@
       "id": "KAIFUU-016",
       "title": "TyranoScript null-key adapter",
       "status": "planned",
-      "priority": "P2",
+      "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
@@ -3693,7 +3869,7 @@
         "KAIFUU-052",
         "KAIFUU-053"
       ],
-      "summary": "Implement TyranoScript extraction and patching as an early high-reach null-key/plaintext adapter using the layered pipeline rather than depending on KiriKiri plaintext work.",
+      "summary": "Implement TyranoScript extraction and patching as a high-reach null-key/plaintext adapter using the layered pipeline rather than depending on KiriKiri plaintext work.",
       "deliverables": ["Tyrano adapter", "Markup fixtures", "Patch tests", "Capability docs"],
       "acceptanceCriteria": [
         "Plaintext TyranoScript scenario fixtures round-trip through identity container, null-key crypto, and script codec stages",
@@ -3703,16 +3879,16 @@
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Adapter tests"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
         },
         {
-          "type": "manual",
-          "value": "Golden fixtures"
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
         },
         {
-          "type": "manual",
-          "value": "Patch smoke"
+          "type": "command",
+          "value": "just check"
         }
       ],
       "auditFocus": [
@@ -4818,6 +4994,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
           "type": "manual",
           "value": "Service tests"
         },
@@ -4854,6 +5038,14 @@
         "Conflicts become findings or decisions"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
         {
           "type": "manual",
           "value": "Repository tests"
@@ -5004,6 +5196,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
           "type": "manual",
           "value": "Repository tests"
         },
@@ -5041,6 +5241,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
           "type": "manual",
           "value": "Mock model tests"
         },
@@ -5077,6 +5285,14 @@
         "Unknown or ambiguous identity is explicit"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
         {
           "type": "manual",
           "value": "Mock model tests"
@@ -5119,6 +5335,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
           "type": "manual",
           "value": "Graph fixture tests"
         },
@@ -5156,6 +5380,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
           "type": "manual",
           "value": "Mock model tests"
         },
@@ -5192,6 +5424,14 @@
         "Ambiguity is represented explicitly"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
         {
           "type": "manual",
           "value": "Fixture tests"
@@ -5234,6 +5474,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
           "type": "manual",
           "value": "Batch snapshot tests"
         },
@@ -5263,7 +5511,7 @@
         "ITOTORI-013",
         "ITOTORI-016",
         "ITOTORI-017",
-        "ITOTORI-029",
+        "ITOTORI-058",
         "ITOTORI-034",
         "ITOTORI-014",
         "ITOTORI-015"
@@ -5282,6 +5530,14 @@
         "No live credential is required for CI; live runs are opt-in and recorded as non-committed artifacts"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
         {
           "type": "manual",
           "value": "Mock provider tests"
@@ -5313,7 +5569,7 @@
         "ITOTORI-032",
         "SHARED-009"
       ],
-      "summary": "Implement deterministic checks for protected spans, empty translations, charset, line length, punctuation policy, glossary exact matches, and patch export integrity.",
+      "summary": "Implement deterministic checks for protected spans, empty translations, charset, line length, punctuation policy, and glossary exact matches before patch-export-specific preflight runs.",
       "deliverables": [
         "QA tool registry entries",
         "Finding emitters",
@@ -5327,6 +5583,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
           "type": "manual",
           "value": "Tool unit tests"
         },
@@ -5339,7 +5603,12 @@
           "value": "Patch export negative tests"
         }
       ],
-      "auditFocus": ["QA as vague LLM judge", "Noisy findings", "Missing repair metadata"]
+      "auditFocus": [
+        "QA as vague LLM judge",
+        "Noisy findings",
+        "Missing repair metadata",
+        "Patch-export-specific checks creeping into pre-export QA"
+      ]
     },
     {
       "id": "ITOTORI-021",
@@ -5364,6 +5633,14 @@
         "No live credential is required for CI; live runs are opt-in and recorded as non-committed artifacts"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
         {
           "type": "manual",
           "value": "Mock model tests"
@@ -5402,6 +5679,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
           "type": "manual",
           "value": "Seeded triage fixtures"
         },
@@ -5431,7 +5716,8 @@
         "ITOTORI-007",
         "ITOTORI-008",
         "ITOTORI-033",
-        "UTSUSHI-005"
+        "UTSUSHI-005",
+        "ITOTORI-055"
       ],
       "summary": "Build the polished queue for style disputes, important glossary conflicts, draft feedback, screenshots, comparisons, reasoning, batch actions, and rerun triggers.",
       "deliverables": [
@@ -5447,6 +5733,14 @@
         "MSW handlers are generated from or checked against real API response schemas"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
         {
           "type": "manual",
           "value": "MSW interaction tests"
@@ -5522,10 +5816,19 @@
       ],
       "acceptanceCriteria": [
         "Exports fail if deterministic P0 checks fail",
-        "Export includes source revision compatibility",
+        "Export includes source revision compatibility and locale branch identity",
+        "Patch export integrity checks validate protected-span mappings, required unit coverage, and source compatibility before Kaifuu receives data",
         "Kaifuu receives engine-agnostic data only"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        },
         {
           "type": "manual",
           "value": "Patch export tests"
@@ -5533,10 +5836,6 @@
         {
           "type": "manual",
           "value": "Kaifuu handoff fixture"
-        },
-        {
-          "type": "command",
-          "value": "just hello"
         }
       ],
       "auditFocus": ["Engine leakage into Itotori", "Skipping preflight", "Stale source exports"]
@@ -5576,6 +5875,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
           "type": "manual",
           "value": "Benchmark fixture run"
         },
@@ -5602,7 +5909,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
-      "dependsOn": ["ITOTORI-005", "ITOTORI-026", "ITOTORI-029"],
+      "dependsOn": ["ITOTORI-005", "ITOTORI-026", "ITOTORI-059"],
       "summary": "Expose benchmark, cost, token, model, provider, QA, and draft-quality trends in the dashboard.",
       "deliverables": [
         "Benchmark dashboard views",
@@ -5617,6 +5924,14 @@
         "MSW handlers are generated from or checked against real API response schemas"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
         {
           "type": "manual",
           "value": "MSW dashboard tests"
@@ -5666,6 +5981,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
           "type": "manual",
           "value": "End-to-end integration test"
         },
@@ -5682,29 +6005,29 @@
     },
     {
       "id": "ITOTORI-029",
-      "title": "Locale branch foundation",
+      "title": "Locale branch identity foundation",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "translation-loop",
       "dependsOn": ["ITOTORI-002", "SHARED-001", "SHARED-008"],
-      "summary": "Make 1->N localization first-class before drafting: independent target branches, branch-scoped policies, glossary, drafts, QA, exports, and benchmark costs.",
+      "summary": "Make target locale branches first-class project state before drafting by defining branch identity, repository/service behavior, and multi-locale fixtures without bundling policy, draft, export, benchmark, or dashboard scope.",
       "deliverables": [
-        "Locale branch services",
-        "Branch-scoped policy hooks",
-        "Branch repository tests",
-        "Branch dashboard/API seeds"
+        "Locale branch tables and types",
+        "Locale branch repository and service methods",
+        "Multi-locale source-revision fixtures",
+        "JP-to-EN hardcoding regression tests"
       ],
       "acceptanceCriteria": [
-        "No JP->EN hardcoding remains",
-        "Multiple target locales can coexist for one source revision",
-        "Branch-specific glossary and style decisions do not leak"
+        "Multiple target locales can coexist for one source revision with stable locale branch ids",
+        "Repository and service APIs never infer JP-to-EN as the only localization direction",
+        "Locale branch identity can be queried independently of style guide, glossary, drafts, exports, or benchmark state"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Multi-locale fixture review"
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
         },
         {
           "type": "command",
@@ -5715,7 +6038,11 @@
           "value": "just check"
         }
       ],
-      "auditFocus": ["Single-target assumptions", "Policy leakage", "Branch performance"]
+      "auditFocus": [
+        "Single-target assumptions",
+        "Locale branch identity leaks",
+        "Policy or draft scope creep"
+      ]
     },
     {
       "id": "ITOTORI-030",
@@ -5880,7 +6207,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "translation-loop",
-      "dependsOn": ["ITOTORI-002", "ITOTORI-008", "ITOTORI-029"],
+      "dependsOn": ["ITOTORI-002", "ITOTORI-008", "ITOTORI-058"],
       "summary": "Store reusable source/target segments, fuzzy matches, reuse provenance, locale-branch scope, and draft prefill hooks to reduce cost and improve consistency.",
       "deliverables": [
         "Translation memory tables",
@@ -6106,7 +6433,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
-      "dependsOn": ["ITOTORI-005", "ITOTORI-006", "ITOTORI-029", "ITOTORI-034", "ITOTORI-030"],
+      "dependsOn": ["ITOTORI-005", "ITOTORI-006", "ITOTORI-059", "ITOTORI-034", "ITOTORI-030"],
       "summary": "Build the main reviewer workspace for browsing projects, scenes, units, assets, source/draft/final comparisons, searchable context, manual corrections, and edit history.",
       "deliverables": [
         "Project/scene/unit browser",
@@ -6831,45 +7158,90 @@
     },
     {
       "id": "UTSUSHI-004",
-      "title": "Artifact storage foundation",
+      "title": "Runtime artifact storage foundation",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "utsushi-core",
-      "dependsOn": ["UTSUSHI-003", "CATALOG-003"],
-      "summary": "Provide the narrow local artifact storage contract for screenshots, frame captures, traces, recordings, corpus sidecars, and benchmark artifacts, deferring richer runtime UX until catalog/readiness foundations land.",
+      "dependsOn": ["UTSUSHI-003"],
+      "summary": "Provide the narrow local artifact storage contract for runtime screenshots, frame captures, traces, recordings, and runtime conformance artifacts.",
       "deliverables": [
-        "Artifact root and path policy",
-        "Deterministic naming contract",
-        "Postgres artifact reference conventions",
-        "Cleanup safety tests"
+        "Runtime artifact root and path policy",
+        "Deterministic runtime artifact naming contract",
+        "Postgres runtime artifact reference conventions",
+        "Runtime artifact cleanup safety tests"
       ],
       "acceptanceCriteria": [
-        "Artifacts are reproducibly named under a dedicated artifact root",
-        "DB rows reference artifacts without embedding large files",
-        "Cleanup is constrained to managed artifact roots and cannot delete source game files, local corpus roots, or patch outputs",
-        "The storage contract can serve runtime evidence, local corpus sidecars, and benchmark artifacts without assuming screenshot capture is the next product priority"
+        "Runtime artifacts are reproducibly named under a dedicated managed artifact root",
+        "DB rows reference runtime artifacts without embedding large screenshot, trace, or recording blobs",
+        "Cleanup is constrained to managed runtime artifact roots and cannot delete source game files, local corpus roots, benchmark outputs, or patch outputs",
+        "The runtime artifact contract can serve screenshots, frame captures, traces, recordings, and conformance reports without depending on catalog sidecar storage"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Artifact store tests"
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
         },
         {
           "type": "manual",
-          "value": "Dashboard route tests"
-        },
-        {
-          "type": "manual",
-          "value": "Manual smoke"
+          "value": "Runtime artifact storage review"
         }
       ],
       "auditFocus": [
         "Unsafe file deletion",
         "Path traversal",
         "Large DB blobs",
-        "Runtime UX scope creep before catalog/readiness"
+        "Catalog sidecar scope leaking into runtime storage"
+      ]
+    },
+    {
+      "id": "UTSUSHI-049",
+      "title": "Corpus and benchmark artifact storage integration",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori", "shared"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-004", "CATALOG-003", "CATALOG-004", "SHARED-006"],
+      "summary": "Extend managed artifact storage to corpus sidecars and benchmark artifacts after runtime artifact storage, local corpus scanning, and benchmark seed/report foundations exist.",
+      "deliverables": [
+        "Corpus sidecar artifact reference conventions",
+        "Benchmark artifact reference conventions",
+        "Cross-artifact cleanup safety tests",
+        "Private-local redaction fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Corpus sidecars and benchmark artifacts use managed artifact references without reusing runtime-only assumptions",
+        "Cleanup policies cannot delete source game files, local corpus roots, runtime artifacts outside scope, benchmark outputs outside scope, or patch outputs",
+        "Private-local sidecar and benchmark artifacts are redacted before any public summary or dashboard fixture is produced"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "manual",
+          "value": "Corpus and benchmark artifact redaction review"
+        }
+      ],
+      "auditFocus": [
+        "Runtime artifact contract overextended to corpus data",
+        "Private sidecar leakage",
+        "Unsafe cleanup across artifact classes"
       ]
     },
     {
@@ -6895,6 +7267,14 @@
         "MSW handlers are generated from or checked against real API response schemas"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
         {
           "type": "manual",
           "value": "MSW dashboard tests"
@@ -6928,7 +7308,7 @@
         "UTSUSHI-000",
         "UTSUSHI-002",
         "UTSUSHI-003",
-        "UTSUSHI-014"
+        "UTSUSHI-050"
       ],
       "summary": "Implement the first useful real-engine Utsushi proof for RPG Maker MV/MZ: use the existing browser or NW.js-style runtime where possible to emit trace, branch, screenshot, and limitation evidence, rather than starting with a Rust engine port.",
       "deliverables": [
@@ -6939,13 +7319,21 @@
       ],
       "acceptanceCriteria": [
         "Adapter produces useful validation evidence without requiring pixel-perfect porting",
-        "The first implementation wraps or instruments an existing MV/MZ runtime before attempting a Rust reimplementation",
+        "The implementation wraps or instruments an existing MV/MZ runtime; Rust runtime-port work is tracked separately by Utsushi P3 runtime-port nodes",
         "Static route analysis remains E0 unless a launched runtime actually observed the content",
         "Limitations are explicit",
         "It supports the first real-engine alpha readiness loop",
         "Evidence tier is visible wherever evidence is shown"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        },
         {
           "type": "manual",
           "value": "Runtime adapter tests"
@@ -7087,7 +7475,7 @@
       "target": "continuous",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-005", "UTSUSHI-006", "UTSUSHI-014"],
+      "dependsOn": ["UTSUSHI-005", "UTSUSHI-006", "UTSUSHI-050"],
       "summary": "Prototype a local playable review slice with annotations and evidence capture for at least one supported engine.",
       "deliverables": [
         "Playable review command",
@@ -7256,36 +7644,125 @@
     },
     {
       "id": "UTSUSHI-014",
-      "title": "Cross-platform launch and capture harness",
+      "title": "Launch and capture harness core",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-001", "UTSUSHI-004", "UTSUSHI-000"],
-      "summary": "Build a pragmatic launch/capture harness for native, Wine/Proton, or browser-backed probes with process control, screenshots, timeouts, and semantic errors.",
+      "summary": "Build the engine-agnostic launch and capture harness core for process lifecycle, timeout control, capture hook boundaries, artifact storage, and semantic errors.",
       "deliverables": [
-        "Launch harness",
-        "Capture hook abstraction",
-        "Timeout/error policy",
-        "Platform capability docs"
+        "Launch process lifecycle core",
+        "Capture hook interface",
+        "Timeout and cancellation policy",
+        "Semantic launch error model",
+        "Artifact-store integration tests"
       ],
       "acceptanceCriteria": [
-        "Launch failures produce semantic evidence rather than hanging",
-        "Wine/Proton/native assumptions are explicit",
-        "Screenshots are stored through the artifact store"
+        "Launch failures produce semantic evidence rather than hanging or panicking",
+        "Capture hooks write screenshots and frame artifacts through the managed runtime artifact store",
+        "The core harness does not hard-code Wine, Proton, browser, NW.js, or engine-specific launch behavior",
+        "Process cleanup is bounded and does not leave orphaned child processes in fixture tests"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Launch harness smoke report"
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
         },
         {
           "type": "command",
-          "value": "cargo test --workspace"
+          "value": "cargo test -p utsushi-cli"
+        },
+        {
+          "type": "manual",
+          "value": "Launch harness core smoke report"
         }
       ],
-      "auditFocus": ["Host-specific flakiness", "Hung processes", "Unsafe file/process handling"]
+      "auditFocus": [
+        "Hung processes",
+        "Unsafe file/process handling",
+        "Platform-specific assumptions leaking into core harness"
+      ]
+    },
+    {
+      "id": "UTSUSHI-050",
+      "title": "Browser and NW.js launch adapter",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-014"],
+      "summary": "Implement the browser and NW.js launch adapter slice used by RPG Maker MV/MZ validation probes, with process control, screenshot capture, and capability diagnostics through the core harness.",
+      "deliverables": [
+        "Browser launch adapter",
+        "NW.js launch adapter or documented capability fallback",
+        "Screenshot capture smoke fixture",
+        "Browser/NW capability diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "A public fixture can launch through the browser path and produce bounded trace or screenshot evidence when the host supports it",
+        "NW.js support is either implemented or reported through an explicit unsupported capability diagnostic",
+        "Browser/NW launch failures, timeouts, and capture failures return semantic errors without hanging",
+        "Captured artifacts use the runtime artifact store and do not expose raw local private paths"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "manual",
+          "value": "Browser/NW launch smoke when host support exists"
+        }
+      ],
+      "auditFocus": [
+        "Browser/NW launch flakiness",
+        "Screenshot artifacts outside managed roots",
+        "Unsupported NW.js behavior hidden as pass"
+      ]
+    },
+    {
+      "id": "UTSUSHI-051",
+      "title": "Wine Proton and native launch adapters",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-014"],
+      "summary": "Add optional Wine, Proton, and native executable launch adapters for engines whose validation probes need host runtime execution beyond browser or NW.js paths.",
+      "deliverables": [
+        "Wine launch adapter",
+        "Proton launch adapter",
+        "Native executable launch adapter",
+        "Host capability and redaction fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Wine, Proton, and native launch paths are optional capabilities and disabled in public CI unless explicitly fixture-backed",
+        "Unavailable host support, protected executable constraints, timeout, and capture failure return semantic diagnostics",
+        "Runtime reports do not expose private executable paths, usernames, install roots, or story filenames"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "manual",
+          "value": "Wine/Proton/native launch smoke when host support exists"
+        }
+      ],
+      "auditFocus": [
+        "Host-specific flakiness",
+        "Private path leakage",
+        "Platform adapters bypassing launch core"
+      ]
     },
     {
       "id": "UTSUSHI-015",
@@ -7495,6 +7972,14 @@
       ],
       "verification": [
         {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        },
+        {
           "type": "manual",
           "value": "End-to-end feedback test"
         },
@@ -7576,7 +8061,7 @@
         "Engine capability matrix schema",
         "Matrix generator command or script",
         "MV/MZ full-surface run artifact inputs",
-        "TyranoScript null-key artifact inputs when complete",
+        "TyranoScript null-key artifact inputs",
         "Packed-engine readiness profile inputs",
         "Known-limitation renderer"
       ],
@@ -7680,11 +8165,11 @@
       "id": "ITOTORI-055",
       "title": "Dashboard decision read model",
       "status": "planned",
-      "priority": "P2",
+      "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "dashboard",
-      "dependsOn": ["ITOTORI-005"],
+      "dependsOn": ["ITOTORI-005", "ITOTORI-004", "SHARED-007", "SHARED-008", "UTSUSHI-003"],
       "summary": "Add a typed dashboard decision read model so pending decisions include project-level findings, locale-branch findings, and runtime validation decisions without inference drift.",
       "deliverables": [
         "Decision read API or equivalent typed response",
@@ -7697,6 +8182,14 @@
         "Dashboard tests prove no pending-decision band can contradict project finding counts"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
         {
           "type": "command",
           "value": "pnpm exec vitest run apps/itotori/test/dashboard.test.ts apps/itotori/test/api-handlers.test.ts"
@@ -7782,6 +8275,88 @@
         "Dropped API error details",
         "Unsafe error parsing",
         "Unhelpful operator failure states"
+      ]
+    },
+    {
+      "id": "ITOTORI-058",
+      "title": "Branch-scoped policy and glossary references",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-029", "ITOTORI-007", "ITOTORI-008"],
+      "summary": "Attach style-guide and glossary versions to locale branches so policy and terminology decisions are scoped by target locale without leaking across 1->N branches.",
+      "deliverables": [
+        "Branch policy reference model",
+        "Branch glossary reference model",
+        "Policy/glossary leak regression tests",
+        "API fixtures for branch-scoped references"
+      ],
+      "acceptanceCriteria": [
+        "A locale branch can resolve the exact style-guide and glossary versions used for drafting or review",
+        "Branch-specific glossary and style decisions do not leak into sibling target locales",
+        "Policy/glossary reference updates are auditable and do not rewrite historical draft provenance"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Policy leakage across locale branches",
+        "Glossary version ambiguity",
+        "Historical provenance rewritten"
+      ]
+    },
+    {
+      "id": "ITOTORI-059",
+      "title": "Branch-aware draft export and benchmark metadata",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-029", "ITOTORI-019", "ITOTORI-025", "ITOTORI-026"],
+      "summary": "Propagate locale branch identity through drafts, patch exports, benchmark reports, cost ledgers, API seeds, and dashboard seed fixtures without changing drafting or export behavior itself.",
+      "deliverables": [
+        "Draft locale-branch metadata propagation",
+        "Patch export locale-branch metadata propagation",
+        "Benchmark and cost locale-branch metadata propagation",
+        "API and dashboard seed fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Draft, export, benchmark, and cost records all identify the target locale branch they belong to",
+        "API and dashboard seed fixtures show two target locale branches without conflating draft or benchmark state",
+        "Metadata propagation tests fail if a workflow falls back to project-level or JP-to-EN-only assumptions"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": [
+        "Branch metadata dropped in drafts or exports",
+        "Benchmark costs merged across target locales",
+        "Dashboard/API seed drift"
       ]
     },
     {
@@ -7969,27 +8544,24 @@
     },
     {
       "id": "UTSUSHI-020",
-      "title": "Cross-engine Rust runtime substrate",
+      "title": "Runtime VFS and asset package boundary",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
-      "projects": ["utsushi", "shared"],
+      "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "utsushi-core",
-      "dependsOn": ["UTSUSHI-012", "UTSUSHI-004", "SHARED-005"],
-      "summary": "Build the reusable Rust substrate that full and partial engine ports share: virtual filesystem, asset resolver, input and clock model, audio and render sink boundaries, save/snapshot state, WASM/embed ABI, and inspectable runtime state.",
+      "dependsOn": ["UTSUSHI-012", "UTSUSHI-004", "KAIFUU-052"],
+      "summary": "Implement the shared read-only virtual filesystem and asset package boundary that future runtime ports use instead of direct host paths or engine-specific file access.",
       "deliverables": [
-        "Virtual filesystem and asset resolver traits",
-        "Input, clock, audio, render, and text-surface abstractions",
-        "Save, snapshot, replay, and inspectable-state primitives",
-        "WASM/embed ABI draft with fixture implementation",
-        "Runtime-port worker implementation-map template"
+        "Runtime VFS trait",
+        "Asset package adapter",
+        "Missing and helper-gated asset diagnostics",
+        "Path redaction tests"
       ],
       "acceptanceCriteria": [
-        "A future engine port can load assets through Utsushi-managed virtual filesystem APIs without direct host path assumptions",
-        "Snapshot, replay, input, clock, and inspectable-state primitives are engine-agnostic and exercised by a fixture adapter",
-        "The WASM/embed ABI can expose controlled playback metadata without embedding private local assets in public fixtures",
-        "The implementation-map template captures engine subsystems, fixture sources, reference behavior, unsupported areas, and validation flows for per-engine workers",
-        "The substrate does not require a decision about which engine is easiest; it gives every engine-port node concrete primitives to build on"
+        "Fixture adapters load assets through Utsushi-managed VFS APIs without direct host path assumptions",
+        "Missing, encrypted, helper-gated, and out-of-package assets produce semantic diagnostics",
+        "Runtime evidence and conformance reports never expose raw local paths or private corpus roots"
       ],
       "verification": [
         {
@@ -8006,35 +8578,150 @@
         }
       ],
       "auditFocus": [
-        "Host path leakage into portable runtime ports",
-        "Engine-specific abstractions in shared substrate",
-        "WASM/embed ABI exposing private assets or raw local paths",
-        "Implementation-map template ending as unstructured notes"
+        "Host path leakage",
+        "VFS API shaped around one engine",
+        "Encrypted/helper-gated assets reported as generic missing files"
       ]
     },
     {
       "id": "UTSUSHI-021",
-      "title": "Runtime port conformance harness",
+      "title": "Deterministic input clock and replay log",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
-      "projects": ["utsushi", "itotori"],
+      "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
-      "dependsOn": ["UTSUSHI-020", "UTSUSHI-003"],
-      "summary": "Implement the shared conformance harness for Rust engine ports so traces, branch points, screenshots, recordings, snapshots, and validation reports can be compared against declared fixture expectations.",
+      "dependsOn": ["UTSUSHI-020"],
+      "summary": "Implement the engine-agnostic input, clock, and replay-log primitives required for deterministic trace and branch replay.",
       "deliverables": [
-        "Runtime-port conformance test harness",
-        "Trace, branch, screenshot, recording, and snapshot expectation fixtures",
-        "Reference-output comparison report schema",
-        "Determinism and tolerance policy",
-        "Itotori ingestion fixture for conformance reports"
+        "Input event model",
+        "Deterministic clock model",
+        "Replay log fixture",
+        "Unsupported input diagnostics"
       ],
       "acceptanceCriteria": [
-        "A port can declare supported conformance profiles and receive pass, fail, skipped, or unsupported results with semantic diagnostics",
-        "Trace order, branch discovery, snapshot restore, screenshot artifact, and recording metadata can be validated independently",
-        "Reference comparisons distinguish exact match, tolerated approximation, unsupported feature, and regression",
-        "Conformance reports can be ingested by Itotori without being mistaken for stronger evidence than their declared evidence tier",
-        "Fixture adapter tests prove the harness fails on intentional trace, branch, and screenshot mismatches"
+        "A fixture runtime replays the same text and choice sequence from a recorded input and clock log",
+        "Unsupported input kinds are represented explicitly instead of being dropped",
+        "Replay logs are serializable without private local paths or large binary artifacts"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        }
+      ],
+      "auditFocus": [
+        "Nondeterministic replay state",
+        "Unsupported inputs hidden as successful replay",
+        "Replay logs that cannot drive future runtime ports"
+      ]
+    },
+    {
+      "id": "UTSUSHI-022",
+      "title": "Headless text render and audio sink contracts",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-020"],
+      "summary": "Implement headless sink contracts for text surfaces, frame artifacts, and audio events so runtime ports can emit useful evidence without claiming full rendering fidelity.",
+      "deliverables": [
+        "Text surface sink",
+        "Frame artifact sink",
+        "Audio event sink",
+        "Evidence-tier sink docs"
+      ],
+      "acceptanceCriteria": [
+        "Text-only adapters can emit text-surface evidence without pretending to render screenshots",
+        "Screenshot-capable adapters attach portable artifact refs through the artifact store",
+        "Audio events are represented as inspectable metadata without requiring audio playback parity"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "manual",
+          "value": "Evidence-tier sink contract review"
+        }
+      ],
+      "auditFocus": [
+        "Text evidence overclaiming rendered output",
+        "Screenshot refs bypassing artifact policy",
+        "Audio metadata treated as playback fidelity"
+      ]
+    },
+    {
+      "id": "UTSUSHI-023",
+      "title": "Inspectable state and snapshot primitives",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-021"],
+      "summary": "Implement portable inspectable-state and snapshot primitives so runtime ports can save, restore, compare, and explain controlled playback state.",
+      "deliverables": [
+        "Snapshot schema",
+        "Inspectable state tree",
+        "Restore fixture",
+        "State-diff diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "Fixture runtime saves and restores state with deterministic replay results",
+        "Conformance failures can identify changed state paths rather than only saying replay failed",
+        "Snapshot payloads avoid raw local paths and private asset data by default"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Snapshot payloads leaking private data",
+        "State diffs too vague to debug",
+        "Restore behavior coupled to fixture runtime only"
+      ]
+    },
+    {
+      "id": "UTSUSHI-024",
+      "title": "WASM embed ABI fixture",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-022", "UTSUSHI-023"],
+      "summary": "Implement the minimal browser/embed ABI fixture for controlled playback metadata, traces, snapshots, and artifact references without committing to full engine parity.",
+      "deliverables": [
+        "WASM/embed ABI shape",
+        "Fixture web embed",
+        "Trace and snapshot bridge",
+        "Private asset policy tests"
+      ],
+      "acceptanceCriteria": [
+        "The fixture embed can expose trace, current state, snapshot metadata, and artifact refs through a stable ABI",
+        "The ABI cannot expose raw local paths, private assets, or secret profile material in public fixture mode",
+        "Unsupported runtime capabilities are visible to the embedding host before playback starts"
       ],
       "verification": [
         {
@@ -8047,39 +8734,318 @@
         },
         {
           "type": "manual",
-          "value": "Conformance fixture review"
+          "value": "Browser embed fixture smoke"
         }
       ],
       "auditFocus": [
-        "Conformance results overclaiming pixel-perfect fidelity",
-        "Skipped features hidden as pass results",
-        "Unstable screenshot or timing expectations",
-        "Itotori ingestion losing evidence-tier boundaries"
+        "Browser ABI exposing private assets",
+        "ABI shaped around one engine",
+        "Unsupported capabilities discovered only after silent failure"
       ]
     },
     {
-      "id": "UTSUSHI-022",
-      "title": "RPG Maker MV/MZ Rust runtime port skeleton",
+      "id": "UTSUSHI-025",
+      "title": "Engine port implementation map validator",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
-      "projects": ["utsushi", "kaifuu"],
+      "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "UTSUSHI-006", "KAIFUU-007"],
-      "summary": "Create a Rust runtime-port skeleton for RPG Maker MV/MZ that loads public MV/MZ data, executes a small event-command subset, emits controlled playback evidence, and documents the subsystem coverage needed for a fuller port.",
+      "dependsOn": ["UTSUSHI-020"],
+      "summary": "Implement a typed, validated implementation-map artifact for engine-port workers so research produces executable coverage plans tied to fixtures and commands.",
       "deliverables": [
-        "RPG Maker MV/MZ runtime-port crate skeleton",
-        "Map, event, command, message-window, and choice subsystem coverage map",
-        "Public fixture exercising movement, dialogue, choice, and switch-variable state",
-        "Controlled playback and conformance smoke output",
-        "Known-missing subsystem diagnostics"
+        "Implementation-map schema",
+        "Validation command",
+        "Fixture provenance fields",
+        "Reference-behavior and unsupported-subsystem fields"
       ],
       "acceptanceCriteria": [
-        "The port skeleton loads MV/MZ JSON data through the shared virtual filesystem and emits runtime evidence through the shared adapter contract",
-        "At least one public fixture can step through dialogue and a choice branch with deterministic trace and snapshot metadata",
-        "Unsupported event commands fail or skip with semantic subsystem diagnostics rather than panics or silent no-ops",
-        "The coverage map names concrete next subsystems for future port work, including plugins, battle, menus, rendering, audio, saves, and text layout",
-        "The implementation remains separate from the alpha MV/MZ validation probe and does not block that practical path"
+        "Engine-port maps must name executable fixtures, reference behavior, supported subsystems, unsupported subsystems, and validation commands",
+        "A map without concrete fixture provenance or validation commands fails validation",
+        "The map artifact is used by engine-port nodes but is not accepted as a standalone feasibility report"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "Implementation-map fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Validated report becoming a decision node",
+        "Unstructured engine notes accepted as coverage",
+        "Missing fixture provenance"
+      ]
+    },
+    {
+      "id": "UTSUSHI-026",
+      "title": "Runtime conformance manifest and result schema",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-021"],
+      "summary": "Implement the conformance profile manifest and result schema shared by runtime probes, partial VMs, and full engine ports.",
+      "deliverables": [
+        "Conformance profile manifest",
+        "Result schema",
+        "Pass/fail/skipped/unsupported semantics",
+        "Negative result fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Adapters declare supported conformance profiles before a run starts",
+        "Skipped and unsupported checks cannot be represented as pass results",
+        "Result fixtures validate independently of any one engine adapter"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "manual",
+          "value": "Conformance schema fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Skipped features hidden as passing checks",
+        "Schema coupled to one engine",
+        "Unsupported features reported without semantic reason codes"
+      ]
+    },
+    {
+      "id": "UTSUSHI-027",
+      "title": "Trace and branch conformance",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-026"],
+      "summary": "Implement conformance checks for runtime text trace order, branch discovery, and bridge-unit linkage.",
+      "deliverables": [
+        "Golden trace fixtures",
+        "Branch expectation fixtures",
+        "Bridge-unit linkage checks",
+        "Mismatch diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "Intentional text, order, branch, and bridge-unit mismatches fail predictably",
+        "Trace and branch failures identify the expected and observed runtime event ids",
+        "Trace-only conformance remains distinct from screenshot or reference-render conformance"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "manual",
+          "value": "Trace conformance fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Trace-only evidence overclaiming rendered playback",
+        "Branch mismatches hidden as skipped checks",
+        "Bridge-unit links missing from conformance output"
+      ]
+    },
+    {
+      "id": "UTSUSHI-028",
+      "title": "Snapshot conformance",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-026", "UTSUSHI-023"],
+      "summary": "Implement conformance checks for snapshot save, restore, and state comparison behavior.",
+      "deliverables": [
+        "Snapshot expectation fixtures",
+        "Restore drift diagnostics",
+        "State-path comparison helpers",
+        "Negative mutated-state fixture"
+      ],
+      "acceptanceCriteria": [
+        "A mutated snapshot fixture fails with state-path diagnostics",
+        "Snapshot conformance can run without screenshot support",
+        "Snapshot report data avoids raw private asset payloads"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        }
+      ],
+      "auditFocus": [
+        "State drift reported too vaguely",
+        "Snapshot checks requiring renderer support",
+        "Private data embedded in snapshot reports"
+      ]
+    },
+    {
+      "id": "UTSUSHI-029",
+      "title": "Capture and recording artifact conformance",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-026", "UTSUSHI-022"],
+      "summary": "Implement conformance checks for screenshot and recording metadata, artifact references, and evidence-tier boundaries.",
+      "deliverables": [
+        "Screenshot metadata validators",
+        "Recording metadata validators",
+        "Artifact portability fixtures",
+        "Evidence-tier regression tests"
+      ],
+      "acceptanceCriteria": [
+        "Capture and recording artifacts are referenced through portable artifact refs",
+        "Missing capture support is reported as unsupported rather than failed rendering parity",
+        "Evidence tiers remain visible in conformance and Itotori-facing output"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "manual",
+          "value": "Artifact conformance fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Host-specific artifact refs",
+        "Unsupported capture reported as pass",
+        "Evidence tier hidden from reviewers"
+      ]
+    },
+    {
+      "id": "UTSUSHI-030",
+      "title": "Runtime conformance ingestion fixture",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-027", "UTSUSHI-028", "UTSUSHI-029", "UTSUSHI-003"],
+      "summary": "Wire conformance reports into Itotori ingestion fixtures without raising evidence or fidelity claims beyond the report contents.",
+      "deliverables": [
+        "Conformance ingestion fixture",
+        "Runtime evidence mapping tests",
+        "Evidence-tier preservation checks",
+        "Dashboard-safe query fixture"
+      ],
+      "acceptanceCriteria": [
+        "Itotori ingests conformance reports while preserving adapter evidence tier and fidelity tier separately",
+        "Skipped and unsupported conformance checks remain queryable and cannot inflate readiness metrics",
+        "Dashboard fixtures can display conformance evidence without exposing raw local artifact paths"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "manual",
+          "value": "Itotori conformance ingestion review"
+        }
+      ],
+      "auditFocus": [
+        "Evidence tier inflation during ingestion",
+        "Skipped checks hidden from dashboard queries",
+        "Artifact path leakage"
+      ]
+    },
+    {
+      "id": "UTSUSHI-031",
+      "title": "MV/MZ instrumented runtime smoke",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-006", "UTSUSHI-027", "UTSUSHI-029"],
+      "summary": "Implement the first RPG Maker MV/MZ runtime observation slice through browser or NW.js-style instrumentation, separate from any Rust reimplementation.",
+      "deliverables": [
+        "MV/MZ browser or NW hook",
+        "Public fixture run",
+        "Trace, choice, and screenshot report",
+        "Unsupported plugin diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "A public MV/MZ fixture observes real JavaScript runtime text and choice events",
+        "Screenshot evidence is attached only when capture succeeds through the artifact store",
+        "Plugin-dependent or unsupported hooks are explicit capability diagnostics"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "manual",
+          "value": "MV/MZ instrumented smoke review"
+        }
+      ],
+      "auditFocus": [
+        "Instrumentation mistaken for Rust port parity",
+        "Plugin hooks silently skipped",
+        "Runtime observations detached from bridge units"
+      ]
+    },
+    {
+      "id": "UTSUSHI-032",
+      "title": "MV/MZ JSON event replay skeleton",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-023", "UTSUSHI-027", "UTSUSHI-025", "KAIFUU-007"],
+      "summary": "Implement a narrow Rust replay skeleton for RPG Maker MV/MZ JSON event data around message, choice, and switch-variable state.",
+      "deliverables": [
+        "MV/MZ replay crate skeleton",
+        "Command 101 and 102 fixtures",
+        "Switch-variable state fixture",
+        "Unknown-command diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "The replay skeleton emits deterministic text, choice, and state traces for the declared event-command subset",
+        "Unknown or unsupported event commands fail or skip with semantic diagnostics",
+        "The implementation map names follow-up command packs instead of claiming broad MV/MZ runtime support"
       ],
       "verification": [
         {
@@ -8092,39 +9058,72 @@
         },
         {
           "type": "manual",
-          "value": "MV/MZ conformance smoke review"
+          "value": "MV/MZ replay fixture review"
         }
       ],
       "auditFocus": [
-        "Rust port blocking the practical MV/MZ probe",
         "Event commands silently ignored",
-        "Coverage map not tied to executable fixtures",
-        "Plugin and text-layout limitations hidden"
+        "Replay skeleton overclaiming full runtime support",
+        "Coverage map not tied to executable fixtures"
       ]
     },
     {
-      "id": "UTSUSHI-023",
-      "title": "Siglus Rust VM integration skeleton",
+      "id": "UTSUSHI-033",
+      "title": "MV/MZ event-command profile packs",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
-      "projects": ["utsushi", "kaifuu"],
+      "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "KAIFUU-015"],
-      "summary": "Create a Siglus VM integration skeleton that connects Kaifuu key-profile handoff, Scene.pck/Gameexe.dat parsing boundaries, controlled playback evidence, and siglus_rs-inspired VM subsystem mapping without committing private keys or retail assets.",
+      "dependsOn": ["UTSUSHI-032"],
+      "summary": "Add the first tested MV/MZ event-command profile packs as independent replay expansions with golden traces and negative fixtures.",
       "deliverables": [
-        "Siglus VM integration crate skeleton",
-        "Scene, Gameexe, asset, text, choice, and VM-state subsystem map",
-        "Key-profile handoff fixture using local-only secret references",
-        "Synthetic or public controlled playback fixture",
-        "Conformance report for the implemented Siglus subset"
+        "Message command pack",
+        "Transfer command pack",
+        "Switch and variable command pack",
+        "Negative command fixtures"
       ],
       "acceptanceCriteria": [
-        "The skeleton consumes Kaifuu-style key profiles by reference and never serializes raw key material in public reports or fixtures",
-        "A synthetic or redistributable fixture exercises at least text trace and VM-state snapshot metadata through Utsushi evidence contracts",
-        "The subsystem map captures concrete siglus_rs reference concepts to port or integrate, including scene VM state, assets, text rendering boundaries, and save/snapshot behavior",
-        "Unsupported opcodes, asset formats, or encrypted variants fail with semantic diagnostics tied to declared support profiles",
-        "Private-local validation can summarize owned-game readiness without filenames, paths, keys, or decrypted text"
+        "Each command pack adds declared commands with golden replay expectations",
+        "Unsupported commands remain explicit and do not regress to silent no-ops",
+        "The implementation map can split later packs without changing the substrate APIs"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-rpgmaker-mv"
+        },
+        {
+          "type": "manual",
+          "value": "MV/MZ command-pack fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Command packs too broad for review",
+        "Unsupported command behavior hidden",
+        "Fixture coverage not matching implementation map"
+      ]
+    },
+    {
+      "id": "UTSUSHI-034",
+      "title": "Siglus siglus_rs VM adapter smoke",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-024", "UTSUSHI-027", "UTSUSHI-025", "KAIFUU-015"],
+      "summary": "Implement the first Siglus VM integration smoke using siglus_rs-inspired boundaries, key-reference redaction, and Utsushi runtime evidence contracts.",
+      "deliverables": [
+        "Siglus VM adapter crate skeleton",
+        "Key-ref redaction fixture",
+        "VM text trace smoke",
+        "Implementation map for Siglus subsystems"
+      ],
+      "acceptanceCriteria": [
+        "The smoke consumes local-only key references without serializing raw key material",
+        "A synthetic or redistributable fixture emits text and VM-state evidence through Utsushi contracts",
+        "The implementation map names concrete Siglus subsystem follow-ups without claiming broad compatibility"
       ],
       "verification": [
         {
@@ -8137,39 +9136,191 @@
         },
         {
           "type": "manual",
-          "value": "Siglus secret-redaction and conformance review"
+          "value": "Siglus secret-redaction runtime smoke review"
         }
       ],
       "auditFocus": [
-        "Raw Siglus key leakage",
-        "Retail asset leakage in fixtures",
-        "VM opcode gaps hidden as successful playback",
+        "Raw key leakage",
+        "Retail asset leakage",
         "siglus_rs concepts copied without license/provenance review"
       ]
     },
     {
-      "id": "UTSUSHI-024",
-      "title": "KiriKiri KAG runtime port skeleton",
+      "id": "UTSUSHI-035",
+      "title": "Siglus Scene and Gameexe parser boundary",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
-      "projects": ["utsushi", "kaifuu"],
+      "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "KAIFUU-009", "KAIFUU-038"],
-      "summary": "Create a KiriKiri/KAG runtime-port skeleton around XP3 virtual filesystem handoff, KAG command execution, text-window state, branch control, and controlled playback evidence.",
+      "dependsOn": ["UTSUSHI-034", "KAIFUU-050"],
+      "summary": "Implement Siglus Scene.pck and Gameexe.dat runtime-profile boundary fixtures for no-key, required-key, and out-of-profile cases.",
       "deliverables": [
-        "KiriKiri/KAG runtime-port crate skeleton",
-        "XP3 virtual filesystem integration boundary",
-        "KAG command coverage map and executable fixture",
-        "Text, choice, macro, layer, and storage subsystem diagnostics",
-        "Controlled playback conformance smoke output"
+        "Scene profile fixtures",
+        "Gameexe profile fixtures",
+        "Required-key diagnostics",
+        "Out-of-profile diagnostics"
       ],
       "acceptanceCriteria": [
-        "The skeleton can load plaintext or profiled XP3-backed KAG fixture data through the shared virtual filesystem boundary",
-        "A fixture exercises message text, speaker/name state, choice or jump flow, macro handling, and snapshot metadata for the supported subset",
-        "Unsupported KAG/TJS commands and plugin-dependent behavior produce semantic diagnostics that name the missing subsystem",
-        "The coverage map separates KAG script semantics, TJS execution, layer/rendering behavior, storage, input, and audio rather than treating KiriKiri as one parser",
-        "XP3/key-profile handling remains Kaifuu-owned and Utsushi-owned playback does not leak private archive details"
+        "Fixtures distinguish no-key, zero-key, required-key, helper-required, and out-of-profile cases",
+        "Runtime reports refer to key material only through local secret references",
+        "Parser-boundary failures occur before any runtime evidence claim is emitted"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-siglus"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "Siglus profile-boundary fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Encrypted variants misreported as runnable",
+        "Secret refs expanded in reports",
+        "Parser failures emitted as runtime playback failures"
+      ]
+    },
+    {
+      "id": "UTSUSHI-036",
+      "title": "Siglus VM opcode and choice profiles",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-034", "UTSUSHI-028"],
+      "summary": "Add the first Siglus VM opcode and choice-flow conformance profiles with explicit unsupported-opcode diagnostics.",
+      "deliverables": [
+        "Opcode coverage fixtures",
+        "Choice-flow fixtures",
+        "Unsupported opcode diagnostics",
+        "Snapshot-state checks"
+      ],
+      "acceptanceCriteria": [
+        "Declared opcodes have golden trace or state expectations",
+        "Unsupported opcodes are visible in conformance output and cannot pass silently",
+        "Choice and menu flow evidence links back to bridge units where available"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-siglus"
+        },
+        {
+          "type": "manual",
+          "value": "Siglus opcode conformance review"
+        }
+      ],
+      "auditFocus": [
+        "Opcode subset overclaiming full VM support",
+        "Unsupported opcodes treated as no-ops",
+        "Choice evidence detached from bridge units"
+      ]
+    },
+    {
+      "id": "UTSUSHI-037",
+      "title": "KAG plaintext parser replay skeleton",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-023", "UTSUSHI-027", "UTSUSHI-025", "UTSUSHI-008"],
+      "summary": "Implement a KiriKiri/KAG plaintext replay skeleton for message text, speaker/name state, choices, and jumps without claiming full TJS or XP3 runtime support.",
+      "deliverables": [
+        "KAG parser/replay crate skeleton",
+        "Text and name-state fixture",
+        "Choice and jump fixture",
+        "Unsupported command diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "Plaintext KAG fixtures emit deterministic text, name, choice, and jump traces",
+        "Unsupported KAG commands and TJS expressions fail with semantic diagnostics",
+        "The support boundary remains plaintext or already-extracted KAG until XP3 handoff lands"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-kirikiri"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "manual",
+          "value": "KAG replay fixture review"
+        }
+      ],
+      "auditFocus": [
+        "KAG subset overclaiming full KiriKiri/TJS support",
+        "Unsupported commands treated as no-ops",
+        "Jump semantics drifting from fixtures"
+      ]
+    },
+    {
+      "id": "UTSUSHI-038",
+      "title": "KAG macro and storage subset",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-037"],
+      "summary": "Add KAG macro expansion and storage-variable replay fixtures as a bounded follow-up to the plaintext parser skeleton.",
+      "deliverables": [
+        "Macro expansion fixtures",
+        "Storage variable fixtures",
+        "Unsupported expression diagnostics",
+        "Replay conformance updates"
+      ],
+      "acceptanceCriteria": [
+        "Macro expansion changes trace output only according to golden fixtures",
+        "Unsupported TJS expressions or storage operations produce semantic diagnostics",
+        "Variable state changes are visible in snapshot or trace metadata"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-kirikiri"
+        },
+        {
+          "type": "manual",
+          "value": "KAG macro/storage fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Macro drift hidden by loose fixtures",
+        "Unsupported TJS accepted silently",
+        "Storage state missing from evidence"
+      ]
+    },
+    {
+      "id": "UTSUSHI-039",
+      "title": "KiriKiri XP3 VFS handoff smoke",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-037", "KAIFUU-054"],
+      "summary": "Implement a KiriKiri XP3-backed VFS handoff smoke so Utsushi consumes Kaifuu archive/profile output without owning archive decryption.",
+      "deliverables": [
+        "XP3-backed fixture boundary",
+        "Redacted archive metadata",
+        "KAG replay through VFS",
+        "Archive capability diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "Utsushi consumes Kaifuu-owned XP3/profile output through the shared VFS boundary",
+        "Archive keys, protected paths, and private local filenames are not serialized in runtime reports",
+        "Out-of-profile archive cases fail before KAG runtime evidence is claimed"
       ],
       "verification": [
         {
@@ -8182,39 +9333,35 @@
         },
         {
           "type": "manual",
-          "value": "KAG command conformance review"
+          "value": "XP3 VFS handoff review"
         }
       ],
       "auditFocus": [
-        "KAG-only support overclaiming full KiriKiri/TJS compatibility",
-        "XP3 archive details leaking from runtime reports",
-        "Macro or jump semantics drifting from fixtures",
-        "Unsupported commands treated as harmless no-ops"
+        "Runtime adapter taking ownership of decryption",
+        "Archive details leaking into reports",
+        "XP3 handoff overclaiming TJS/runtime support"
       ]
     },
     {
-      "id": "UTSUSHI-025",
-      "title": "RenPy controlled runtime port skeleton",
+      "id": "UTSUSHI-040",
+      "title": "RenPy route parser replay subset",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
-      "projects": ["utsushi", "kaifuu"],
+      "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "UTSUSHI-007", "KAIFUU-008"],
-      "summary": "Create a RenPy controlled-runtime skeleton that models labels, menus, text events, save/snapshot metadata, and packaging or browser constraints while respecting that full RenPy compatibility may remain hybrid rather than pure Rust.",
+      "dependsOn": ["UTSUSHI-023", "UTSUSHI-027", "UTSUSHI-025", "UTSUSHI-007", "KAIFUU-008"],
+      "summary": "Implement a declared RenPy route replay subset for labels, menus, and say statements with explicit diagnostics for Python and screen-language behavior.",
       "deliverables": [
-        "RenPy controlled-runtime crate or adapter skeleton",
-        "Label, menu, say, variable, and screen-language coverage map",
-        "Public fixture for route replay and branch evidence",
-        "Hybrid native/Python/browser boundary diagnostics",
-        "Controlled playback conformance smoke output"
+        "RenPy route replay crate or adapter skeleton",
+        "Label/menu/say fixture",
+        "Python-unsupported diagnostics",
+        "Bridge-unit linkage fixture"
       ],
       "acceptanceCriteria": [
-        "The skeleton can replay at least one public fixture label path with menu branching, text trace, and snapshot metadata",
-        "The coverage map names pure-Rust, hybrid, and unsupported RenPy subsystems explicitly rather than claiming broad engine parity",
-        "Packaging and browser/WASM constraints are represented as runtime capabilities and semantic diagnostics",
-        "Evidence links back to Kaifuu extracted units where the reference adapter can provide bridge ids",
-        "Unsupported Python or screen-language behavior cannot be silently skipped in conformance results"
+        "The replay subset handles only declared label, menu, and say behavior with golden traces",
+        "Python, init, rollback, and screen-language gaps are explicit unsupported diagnostics",
+        "Route replay evidence links to Kaifuu extracted units where bridge ids are available"
       ],
       "verification": [
         {
@@ -8227,38 +9374,112 @@
         },
         {
           "type": "manual",
-          "value": "RenPy hybrid-boundary conformance review"
+          "value": "RenPy replay subset review"
         }
       ],
       "auditFocus": [
-        "Broad RenPy compatibility overclaim",
-        "Python execution hidden inside supposedly portable Rust path",
-        "Screen-language gaps hidden from reviewers",
-        "Route replay evidence detached from bridge units"
+        "Pure replay overclaiming RenPy runtime behavior",
+        "Python execution hidden inside portable path",
+        "Route evidence detached from bridge units"
       ]
     },
     {
-      "id": "UTSUSHI-026",
-      "title": "Wolf RPG runtime port skeleton",
+      "id": "UTSUSHI-041",
+      "title": "RenPy native and web instrumentation smoke",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
-      "projects": ["utsushi", "kaifuu"],
+      "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "KAIFUU-011", "KAIFUU-040"],
-      "summary": "Create a Wolf RPG Editor runtime-port skeleton around map/event command execution, database state, message windows, common events, asset resolution, and encrypted-archive profile boundaries.",
+      "dependsOn": ["UTSUSHI-040", "UTSUSHI-029"],
+      "summary": "Implement a RenPy native or web instrumentation smoke that separates observed runtime evidence from static route replay inference.",
       "deliverables": [
-        "Wolf RPG runtime-port crate skeleton",
-        "Map, event, common-event, database, message, battle, and asset subsystem map",
-        "Synthetic or public fixture for dialogue and event-state replay",
-        "Encrypted archive/key-profile boundary diagnostics",
-        "Controlled playback conformance smoke output"
+        "RenPy launcher or web hook",
+        "Runtime text and screenshot fixture",
+        "Observed-versus-inferred evidence labels",
+        "Packaging constraint diagnostics"
       ],
       "acceptanceCriteria": [
-        "The skeleton loads a public or synthetic Wolf-style fixture through Utsushi virtual filesystem and Kaifuu profile boundaries",
-        "A fixture executes a small event-command subset with dialogue trace, variable/switch state, and snapshot metadata",
-        "Unsupported common events, database features, battle systems, asset formats, or protected archive variants fail with semantic diagnostics",
-        "The subsystem map is concrete enough that future workers can split engine-port expansion specs by subsystem",
+        "A public fixture can produce observed runtime text evidence through native or web instrumentation",
+        "Observed runtime evidence and static route inference are labeled separately in reports",
+        "Packaging, browser, and host constraints produce semantic diagnostics rather than silent skips"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-renpy"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "manual",
+          "value": "RenPy instrumentation smoke review"
+        }
+      ],
+      "auditFocus": [
+        "Observed and inferred evidence conflated",
+        "Host-specific launch assumptions hidden",
+        "Packaging constraints discovered only after failure"
+      ]
+    },
+    {
+      "id": "UTSUSHI-042",
+      "title": "RenPy screen text probe profile",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-041"],
+      "summary": "Add a RenPy screen/text probe profile for visible UI text and screen-language gaps with constrained conformance fixtures.",
+      "deliverables": [
+        "Screen text fixture",
+        "Screen-language gap diagnostics",
+        "Visible text evidence mapping",
+        "Web constraint fixture"
+      ],
+      "acceptanceCriteria": [
+        "Visible screen text can be reported separately from script say/menu text",
+        "Unsupported screen-language behavior cannot pass silently",
+        "Web/native differences are represented in capability diagnostics"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-renpy"
+        },
+        {
+          "type": "manual",
+          "value": "RenPy screen probe review"
+        }
+      ],
+      "auditFocus": [
+        "Screen text hidden from evidence",
+        "Screen-language gaps treated as pass",
+        "Native/web drift hidden from reviewers"
+      ]
+    },
+    {
+      "id": "UTSUSHI-043",
+      "title": "Wolf data and text replay skeleton",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-023", "UTSUSHI-027", "UTSUSHI-025", "KAIFUU-040"],
+      "summary": "Implement a Wolf RPG Editor data/text replay skeleton around synthetic event data, dialogue traces, variables, and switch state.",
+      "deliverables": [
+        "Wolf replay crate skeleton",
+        "Synthetic event/data fixture",
+        "Dialogue trace fixture",
+        "Variable and switch state fixture"
+      ],
+      "acceptanceCriteria": [
+        "The skeleton replays a declared Wolf-style dialogue and event-state subset",
+        "Common events, battle systems, database features, and unknown commands remain semantic unsupported diagnostics",
         "Private-local validation summaries never include raw paths, decrypted text, or protection keys"
       ],
       "verification": [
@@ -8272,39 +9493,113 @@
         },
         {
           "type": "manual",
-          "value": "Wolf runtime-port conformance review"
+          "value": "Wolf replay fixture review"
         }
       ],
       "auditFocus": [
-        "Wolf event-command subset overclaiming full engine support",
+        "Wolf subset overclaiming full engine support",
         "Database or common-event state drift",
-        "Protected archive/key material leakage",
-        "Subsystem map not actionable for follow-up workers"
+        "Private profile leakage"
       ]
     },
     {
-      "id": "UTSUSHI-027",
-      "title": "BGI/Ethornell runtime port skeleton",
+      "id": "UTSUSHI-044",
+      "title": "Wolf archive decryption handoff smoke",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
-      "projects": ["utsushi", "kaifuu"],
+      "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "KAIFUU-012", "KAIFUU-041"],
-      "summary": "Create a BGI/Ethornell runtime-port skeleton around bytecode script stepping, Shift-JIS/UTF text surfaces, string-table references, choice flow, asset lookup, and conformance against synthetic script fixtures.",
+      "dependsOn": ["UTSUSHI-043", "KAIFUU-058"],
+      "summary": "Implement Wolf archive/profile handoff smoke so runtime replay consumes Kaifuu extracted/profiled data without owning decryption or protection-key workflows.",
       "deliverables": [
-        "BGI/Ethornell runtime-port crate skeleton",
-        "Bytecode, string-table, message, choice, asset, save, and render subsystem map",
-        "Synthetic or redistributable script fixture",
-        "Controlled playback conformance smoke output",
-        "Unsupported opcode and encoding diagnostics"
+        "Wolf archive handoff fixture",
+        "Protection-key boundary diagnostics",
+        "Redacted profile evidence",
+        "VFS-backed replay smoke"
       ],
       "acceptanceCriteria": [
-        "The skeleton can step through a synthetic or redistributable BGI-like script fixture and emit text trace plus snapshot metadata",
-        "String-table references, encoding boundaries, and patched text surfaces remain linked to Kaifuu extraction units where available",
-        "Unsupported opcodes, format versions, asset commands, or encoding cases fail with semantic diagnostics rather than silent skips",
-        "The subsystem map separates script VM, rendering, asset lookup, save state, and patch-back concerns",
-        "Conformance fixtures prove at least one intentional opcode and one encoding mismatch fail predictably"
+        "Handoff fixtures distinguish unencrypted, key-required, helper-required, and out-of-profile Wolf cases",
+        "Utsushi runtime reports never serialize raw protection keys or decrypted private text",
+        "Archive/profile failures occur before runtime evidence is claimed"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-wolf"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "Wolf archive handoff review"
+        }
+      ],
+      "auditFocus": [
+        "Utsushi owning decryption workflow",
+        "Protection key leakage",
+        "Archive failures reported as runtime playback failures"
+      ]
+    },
+    {
+      "id": "UTSUSHI-045",
+      "title": "Wolf common event and database profile",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-043"],
+      "summary": "Add the first Wolf common-event and database-state replay profile with snapshot conformance and negative fixtures.",
+      "deliverables": [
+        "Common-event fixtures",
+        "Database state fixtures",
+        "Snapshot conformance updates",
+        "Unsupported command diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "Common-event and database-state changes are visible in trace or snapshot metadata",
+        "Unsupported event commands and DB structures fail conformance predictably",
+        "The profile can be expanded by later subsystem packs without broadening the skeleton node"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-wolf"
+        },
+        {
+          "type": "manual",
+          "value": "Wolf common-event/database review"
+        }
+      ],
+      "auditFocus": [
+        "Common-event state drift",
+        "Unsupported commands hidden",
+        "Subsystem packs too broad for review"
+      ]
+    },
+    {
+      "id": "UTSUSHI-046",
+      "title": "BGI bytecode string-table replay skeleton",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-023", "UTSUSHI-027", "UTSUSHI-025", "KAIFUU-041"],
+      "summary": "Implement a BGI/Ethornell bytecode and string-table replay skeleton for synthetic or redistributable script fixtures.",
+      "deliverables": [
+        "BGI replay crate skeleton",
+        "Bytecode fixture",
+        "Shift-JIS and UTF text fixture",
+        "Unsupported opcode diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "The skeleton steps declared text and choice opcodes with golden traces",
+        "Encoding and string-table references remain linked to Kaifuu extraction units where available",
+        "Unsupported opcodes and format variants fail with semantic diagnostics rather than no-ops"
       ],
       "verification": [
         {
@@ -8317,14 +9612,91 @@
         },
         {
           "type": "manual",
-          "value": "BGI runtime-port conformance review"
+          "value": "BGI replay fixture review"
         }
       ],
       "auditFocus": [
-        "BGI bytecode subset overclaiming full engine support",
-        "Encoding or string-table linkage drift",
-        "Unsupported opcodes treated as no-ops",
-        "Runtime evidence detached from Kaifuu patch-back constraints"
+        "BGI subset overclaiming full engine support",
+        "Encoding drift",
+        "Unsupported opcodes treated as no-ops"
+      ]
+    },
+    {
+      "id": "UTSUSHI-047",
+      "title": "BGI patch-back linkage conformance",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-046", "KAIFUU-011"],
+      "summary": "Add conformance checks that keep replayed BGI text linked to extraction, string-reference, and patch-back units.",
+      "deliverables": [
+        "String-reference fixtures",
+        "Bridge-unit mapping checks",
+        "Patch-back linkage report",
+        "Negative linkage fixture"
+      ],
+      "acceptanceCriteria": [
+        "Replayed text remains linked to the source extraction and patch-back unit identity",
+        "A mismatched string-reference fixture fails with clear diagnostics",
+        "Runtime evidence cannot hide patch-back constraints or offset-rewrite assumptions"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-bgi"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "BGI patch-back linkage review"
+        }
+      ],
+      "auditFocus": [
+        "Runtime evidence detached from patch-back constraints",
+        "String references linked by text equality only",
+        "Offset assumptions hidden"
+      ]
+    },
+    {
+      "id": "UTSUSHI-048",
+      "title": "BGI BSI and profile variant fixtures",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-046"],
+      "summary": "Add BGI/Ethornell BSI and profile-variant fixtures so supported runtime profiles are exact and unknown variants fail before playback claims.",
+      "deliverables": [
+        "BSI profile fixtures",
+        "Variant diagnostics",
+        "Unsupported-version negative fixtures",
+        "Implementation-map update"
+      ],
+      "acceptanceCriteria": [
+        "Supported BGI/Ethornell profile variants are named exactly in the implementation map",
+        "Unknown or unsupported versions fail before runtime evidence is claimed",
+        "Variant fixture coverage remains separate from broad bytecode/runtime parity claims"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-bgi"
+        },
+        {
+          "type": "manual",
+          "value": "BGI variant fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Unknown variants overclaimed as supported",
+        "Variant coverage not tied to fixtures",
+        "Playback claims emitted after profile rejection"
       ]
     }
   ]
