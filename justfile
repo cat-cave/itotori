@@ -12,6 +12,7 @@ dashboard:
 
 check:
     pnpm exec vp check
+    node scripts/spec-dag.mjs validate
     pnpm exec vp run ts:typecheck
     cargo fmt --check
     cargo check --workspace
@@ -79,6 +80,15 @@ hello: build
 
 affected:
     node scripts/affected.mjs
+
+roadmap-validate:
+    node scripts/spec-dag.mjs validate
+
+roadmap-ready:
+    node scripts/spec-dag.mjs ready
+
+roadmap-pop:
+    node scripts/spec-dag.mjs pop
 
 upgrade:
     corepack enable

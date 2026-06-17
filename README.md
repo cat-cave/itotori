@@ -51,4 +51,9 @@ Vite+ and Vite Task are the high-level TypeScript/web workspace surface. Cargo r
 
 ## Status
 
-This repository is scaffolded for the first real roadmap pass. The next step after the hello world is a full roadmap DAG for the shared schema, Itotori, Kaifuu, and Utsushi tracks.
+This repository is scaffolded for DAG-driven development from the DB-backed hello
+world toward the MVP.
+
+The canonical roadmap is tracked as machine-readable data in `roadmap/spec-dag.json`.
+Use `just roadmap-validate`, `just roadmap-ready`, and `just roadmap-pop` to inspect
+the next PR-sized specs.

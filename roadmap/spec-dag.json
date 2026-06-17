@@ -1,0 +1,4630 @@
+{
+  "$schema": "./spec-dag.schema.json",
+  "schemaVersion": "0.1.0",
+  "metadata": {
+    "generatedFrom": "Itotori hello-world monorepo state after commit aa9339c",
+    "currentBaseline": "DB-backed fixture hello world across Itotori, Kaifuu, and Utsushi",
+    "priorityDefinitions": {
+      "P0": "Critical orchestration or MVP blocker. A failed P0 audit blocks merge and must be repaired immediately.",
+      "P1": "Required for the MVP target. P1 audit findings block merge for the owning spec.",
+      "P2": "Important quality, scale, or post-MVP work. P2 findings may become new DAG nodes.",
+      "P3": "Exploratory, nice-to-have, or research work. P3 findings should be batched unless cheap."
+    },
+    "statusDefinitions": {
+      "complete": "Already implemented and verified in main.",
+      "planned": "Not started. It becomes ready when all dependencies are complete.",
+      "in_progress": "Owned by an active branch or worktree.",
+      "blocked": "Cannot proceed without a named decision or external input.",
+      "cancelled": "Intentionally removed from scope."
+    }
+  },
+  "nodes": [
+    {
+      "id": "UNIV-000",
+      "title": "DB-backed monorepo hello world",
+      "status": "complete",
+      "priority": "P0",
+      "target": "baseline",
+      "projects": ["universal", "shared", "itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "baseline",
+      "dependsOn": [],
+      "summary": "Current committed baseline: fixture extraction, deterministic draft, patch, delta package, runtime smoke report, DB-backed dashboard status, local and GitHub CI.",
+      "deliverables": [
+        "Root monorepo scaffold",
+        "Fixture bridge and patch flow",
+        "Postgres-backed dashboard hello world"
+      ],
+      "acceptanceCriteria": [
+        "GitHub CI is green",
+        "GitHub Hello World workflow is green",
+        "Local just hello prints status=hello_world_passed"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        },
+        {
+          "type": "command",
+          "value": "gh run list --repo cat-cave/itotori --limit 10"
+        }
+      ],
+      "auditFocus": [
+        "Baseline must not claim real engine support",
+        "Generated build artifacts remain ignored"
+      ]
+    },
+    {
+      "id": "MVP-000",
+      "title": "MVP definition of done and release gate matrix",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["suite", "universal"],
+      "parallelGroup": "release",
+      "dependsOn": [
+        "UNIV-001",
+        "UNIV-005",
+        "UNIV-006",
+        "SHARED-000",
+        "ITOTORI-000",
+        "UTSUSHI-000",
+        "KAIFUU-000",
+        "UNIV-007",
+        "UNIV-008",
+        "ITOTORI-031"
+      ],
+      "summary": "Define exact MVP engines, fixture requirements, dashboard flows, quality/cost reports, non-goals, release checks, and demo script before integration milestones claim MVP completion.",
+      "deliverables": [
+        "docs/mvp-definition-of-done.md",
+        "Release gate matrix",
+        "Demo script",
+        "Known non-goals"
+      ],
+      "acceptanceCriteria": [
+        "MVP engines and fixture requirements are explicit",
+        "Required dashboard workflows and quality/cost reports are named",
+        "Known non-goals are documented"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "MVP gate review"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Moving MVP target", "Implicit demo requirements", "Unclear non-goals"]
+    },
+    {
+      "id": "UTSUSHI-000",
+      "title": "Runtime probe environment and fidelity policy",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["utsushi", "kaifuu", "itotori"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UNIV-001"],
+      "summary": "Define static-vs-runtime evidence tiers, screenshot capability matrix, OS/browser/Wine assumptions, artifact limits, and wording that prevents static analysis pretending to be runtime.",
+      "deliverables": [
+        "docs/utsushi-fidelity-policy.md",
+        "Runtime environment matrix",
+        "Evidence tier definitions",
+        "Artifact limits"
+      ],
+      "acceptanceCriteria": [
+        "Evidence tier is visible everywhere evidence is shown",
+        "OS/native/Wine/browser assumptions are explicit",
+        "Static analysis, runtime trace, screenshot capture, and VM playback are distinct"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Runtime policy review"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Fidelity overclaiming", "Platform assumptions", "Artifact size surprises"]
+    },
+    {
+      "id": "ITOTORI-000",
+      "title": "Product workflow and HITL UX spec",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["UNIV-001", "UTSUSHI-000"],
+      "summary": "Specify the human interaction points, decision queue information architecture, style-guide conversation, batch review model, and escalation policy before building UX-heavy flows.",
+      "deliverables": [
+        "docs/itotori-product-workflow.md",
+        "Decision queue IA",
+        "Style guide conversation flow",
+        "Escalation policy"
+      ],
+      "acceptanceCriteria": [
+        "Random line without context is explicitly rejected",
+        "Reviewers see source, draft, context, screenshots/evidence, and reasoning together",
+        "Human escalation is reserved for style disputes and high-value ambiguity"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Workflow spec review"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["HITL UX without context", "Escalation spam", "Unclear decision consequences"]
+    },
+    {
+      "id": "KAIFUU-000",
+      "title": "Engine fixture sourcing and reference implementation policy",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "universal"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["UNIV-005", "UNIV-008"],
+      "summary": "Define how engine fixtures and reference implementations are sourced, licensed, documented, and used by parallel adapter agents.",
+      "deliverables": [
+        "docs/kaifuu-fixture-policy.md",
+        "Reference implementation citation rules",
+        "Per-engine fixture checklist",
+        "Unsupported variant policy"
+      ],
+      "acceptanceCriteria": [
+        "Every engine adapter has documented fixture source and support boundary",
+        "Reference implementation licenses are reviewed before porting",
+        "Unsupported encrypted or compiled variants fail with semantic capability errors"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Fixture policy review"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Unclear fixture provenance",
+        "License blind spots",
+        "Adapters starting without round-trip artifacts"
+      ]
+    },
+    {
+      "id": "SHARED-000",
+      "title": "Localization surface inventory and contract ADR",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["UNIV-001"],
+      "summary": "Define the canonical inventory of game localization surfaces and the contract source of truth before expanding schemas.",
+      "deliverables": [
+        "docs/localization-surfaces.md",
+        "Contract source-of-truth ADR",
+        "Surface inventory checklist",
+        "Non-translate/romanize/localize policy categories"
+      ],
+      "acceptanceCriteria": [
+        "Dialogue, narration, speakers, choices, UI, tutorials, bestiary/database text, song titles, images-with-text, metadata, control markup, variables, ruby/furigana, and romanized/non-translated cases are covered",
+        "TS schema, JSON Schema, Rust serde, and generated binding responsibilities are decided",
+        "The inventory is engine-agnostic"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Surface inventory review"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Forgetting non-dialogue surfaces",
+        "Engine-specific schema bias",
+        "Unclear contract authority"
+      ]
+    },
+    {
+      "id": "UNIV-001",
+      "title": "Machine-readable spec DAG and orchestration docs",
+      "status": "complete",
+      "priority": "P0",
+      "target": "baseline",
+      "projects": ["universal"],
+      "parallelGroup": "roadmap-infra",
+      "dependsOn": ["UNIV-000"],
+      "summary": "Introduce the canonical roadmap DAG artifact, validation command, ready-node popper, and docs for the plan/implement/audit/merge lifecycle.",
+      "deliverables": [
+        "roadmap/spec-dag.json",
+        "roadmap/spec-dag.schema.json",
+        "scripts/spec-dag.mjs",
+        "docs/spec-dag.md"
+      ],
+      "acceptanceCriteria": [
+        "DAG validates structurally",
+        "Ready nodes can be listed deterministically",
+        "Docs define P0/P1 audit gating and P2/P3 reinsertion"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-ready"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "No cyclic dependencies",
+        "Nodes are PR-reviewable units",
+        "Initial ready set enables parallel work"
+      ]
+    },
+    {
+      "id": "UNIV-002",
+      "title": "GitHub issue sync for DAG nodes",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["universal"],
+      "parallelGroup": "roadmap-infra",
+      "dependsOn": ["UNIV-001"],
+      "summary": "Add a deterministic command that creates or updates GitHub issues from DAG nodes, preserving labels, dependencies, status, and acceptance criteria.",
+      "deliverables": ["Issue sync CLI", "Dry-run mode", "Issue body template", "Label taxonomy"],
+      "acceptanceCriteria": [
+        "Dry-run output is stable",
+        "Existing issues are updated rather than duplicated",
+        "Every synced issue links back to its DAG node id",
+        "Issue sync is non-mutating by default; GitHub writes require an explicit apply flag"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs sync-issues --dry-run"
+        },
+        {
+          "type": "manual",
+          "value": "Unit tests for issue body rendering"
+        }
+      ],
+      "auditFocus": [
+        "Idempotency",
+        "No accidental destructive GitHub mutations",
+        "Issue text remains useful to implementation agents",
+        "Accidental issue mutation from a default command"
+      ]
+    },
+    {
+      "id": "UNIV-003",
+      "title": "Agent worktree lifecycle playbook",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["universal"],
+      "parallelGroup": "roadmap-infra",
+      "dependsOn": ["UNIV-001", "UNIV-006"],
+      "summary": "Define and script the branch/worktree lifecycle used by the orchestrator: claim node, plan, implement, audit, repair, merge, and mark complete.",
+      "deliverables": [
+        "docs/agent-orchestration.md",
+        "Worktree naming convention",
+        "Audit severity rules",
+        "Merge checklist"
+      ],
+      "acceptanceCriteria": [
+        "A coding agent can follow the lifecycle without hidden context",
+        "P0/P1 repair loops are explicitly documented",
+        "P2/P3 findings have DAG insertion rules"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Docs review"
+        },
+        {
+          "type": "manual",
+          "value": "Dry-run on one non-code node"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-ready"
+        }
+      ],
+      "auditFocus": ["No ambiguous merge authority", "No process gaps around failed audits"]
+    },
+    {
+      "id": "UNIV-004",
+      "title": "Affected task detection and CI cache hardening",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["universal"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["UNIV-001", "UNIV-007"],
+      "summary": "Make CI fast and trustworthy for parallel work by formalizing affected-package detection, Vite+ cache usage, Rust cache usage, and required gates per project.",
+      "deliverables": [
+        "Affected graph command",
+        "CI job split by project",
+        "Cache key documentation",
+        "Required-check mapping"
+      ],
+      "acceptanceCriteria": [
+        "A docs-only PR skips expensive runtime checks safely",
+        "A schema change fans out to all dependent checks",
+        "CI still has one full-suite path before merge"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just affected"
+        },
+        {
+          "type": "manual",
+          "value": "GitHub Actions dry run through a PR"
+        },
+        {
+          "type": "manual",
+          "value": "Manual dependency-change matrix review"
+        }
+      ],
+      "auditFocus": [
+        "False negatives in affected detection",
+        "Cache poisoning",
+        "CI results matching local just recipes"
+      ]
+    },
+    {
+      "id": "UNIV-005",
+      "title": "Golden fixture and private corpus policy",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["universal", "shared"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["UNIV-001"],
+      "summary": "Define how public fixtures, private purchased-game fixtures, hashes, metrics, and reproducible benchmark summaries are organized without redistributing copyrighted content.",
+      "deliverables": [
+        "docs/fixtures-and-corpora.md",
+        "fixtures/public manifest format",
+        "fixtures/private-local conventions",
+        "Hash and metrics reporting policy"
+      ],
+      "acceptanceCriteria": [
+        "Public CI can run with only open fixtures",
+        "Private local corpora can run without changing committed paths",
+        "Benchmark reports can cite hashes and aggregate stats"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "manual",
+          "value": "Fixture manifest validation"
+        },
+        {
+          "type": "manual",
+          "value": "Private path ignored by git"
+        }
+      ],
+      "auditFocus": [
+        "No copyrighted raw assets in repo",
+        "Policy supports later benchmark credibility"
+      ]
+    },
+    {
+      "id": "UNIV-006",
+      "title": "Spec audit templates and finding schema",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["universal", "shared"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["UNIV-001"],
+      "summary": "Standardize audit output so review agents can report P0-P3 findings that are machine-ingestible back into the DAG.",
+      "deliverables": [
+        "Audit report schema",
+        "docs/audit-playbook.md",
+        "P0-P3 examples",
+        "Finding-to-DAG insertion rules"
+      ],
+      "acceptanceCriteria": [
+        "Audit output is parseable JSON plus human summary",
+        "P0/P1 findings block completion",
+        "P2/P3 findings can be converted into new node drafts"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Schema validation tests"
+        },
+        {
+          "type": "manual",
+          "value": "Example audit report fixture"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        }
+      ],
+      "auditFocus": ["Severity inflation", "Findings without actionable acceptance criteria"]
+    },
+    {
+      "id": "UNIV-007",
+      "title": "Toolchain version and upgrade policy",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["universal"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["UNIV-001"],
+      "summary": "Document and enforce how latest Node, pnpm, Vite+, TypeScript, Rust, dependency upgrades, lockfiles, and CI upgrade checks are managed.",
+      "deliverables": [
+        "docs/toolchain-policy.md",
+        "Upgrade checklist",
+        "CI behavior after upgrades",
+        "Lockfile rules"
+      ],
+      "acceptanceCriteria": [
+        "Latest-and-greatest policy is explicit",
+        "just upgrade remains the canonical update command",
+        "CI failures after upgrades have a documented repair path"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "manual",
+          "value": "Toolchain policy review"
+        }
+      ],
+      "auditFocus": ["Version drift", "LTS assumptions", "Unreviewed lockfile churn"]
+    },
+    {
+      "id": "UNIV-008",
+      "title": "BDD and fixture-driven testing standard",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["universal", "shared"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["UNIV-001", "UNIV-005"],
+      "summary": "Define behavior-first testing conventions for TypeScript, Rust, DB, MSW, golden fixtures, property tests, mutation tests, and no-live-API CI.",
+      "deliverables": [
+        "docs/testing-standard.md",
+        "Fixture naming rules",
+        "Golden snapshot policy",
+        "BDD examples"
+      ],
+      "acceptanceCriteria": [
+        "Given/When/Then style is defined where useful",
+        "MSW and DB test isolation expectations are explicit",
+        "Live provider calls are opt-in and never required in CI"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "manual",
+          "value": "Testing-standard docs review"
+        }
+      ],
+      "auditFocus": [
+        "Tests that only assert implementation details",
+        "Fixture naming drift",
+        "Live API leakage into CI"
+      ]
+    },
+    {
+      "id": "UNIV-009",
+      "title": "Orchestrator claim, plan, audit lifecycle CLI",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["universal"],
+      "parallelGroup": "roadmap-infra",
+      "dependsOn": ["UNIV-002", "UNIV-003", "UNIV-006", "UNIV-008"],
+      "summary": "Implement the DAG orchestration lifecycle as tooling: claim nodes, create worktrees, ingest audit reports, manage P0/P1 repair loops, and draft P2/P3 follow-up nodes.",
+      "deliverables": [
+        "Claim/lock command",
+        "Worktree creation command",
+        "Audit ingestion command",
+        "Complete/merge bookkeeping"
+      ],
+      "acceptanceCriteria": [
+        "Two agents cannot claim the same node",
+        "P0/P1 audit findings keep the node in repair state",
+        "P2/P3 findings can draft new DAG nodes without hand-copying"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "Dry-run claim/repair/complete lifecycle"
+        },
+        {
+          "type": "manual",
+          "value": "Audit ingestion fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Race conditions in claims",
+        "Unclear merge authority",
+        "Findings lost outside the DAG"
+      ]
+    },
+    {
+      "id": "UNIV-010",
+      "title": "Large-project synthetic scale harness",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["universal", "shared", "itotori"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["SHARED-003", "ITOTORI-001", "UNIV-008"],
+      "summary": "Prove import, indexing, batch planning, queueing, and dashboard queries against generated large bridge bundles before real huge games force redesign.",
+      "deliverables": [
+        "Synthetic corpus generator",
+        "DB load tests",
+        "Batch planner timing tests",
+        "Dashboard query budgets"
+      ],
+      "acceptanceCriteria": [
+        "A synthetic 1M+ character project imports and indexes within documented limits",
+        "Batch planning has a measured timing budget",
+        "Dashboard status queries have explicit performance expectations"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Synthetic scale run report"
+        },
+        {
+          "type": "command",
+          "value": "just ci"
+        },
+        {
+          "type": "manual",
+          "value": "Query plan review"
+        }
+      ],
+      "auditFocus": ["Toy-only assumptions", "Unbounded memory use", "Slow dashboard queries"]
+    },
+    {
+      "id": "UNIV-011",
+      "title": "Mutation and property-test quality gates",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["universal", "shared"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["UNIV-004", "UNIV-008"],
+      "summary": "Add mutation testing and property-style testing to the highest-risk TypeScript and Rust packages after the MVP gates are stable.",
+      "deliverables": [
+        "Stryker or equivalent TS setup",
+        "Rust property-test examples",
+        "Coverage/mutation thresholds",
+        "CI opt-in policy"
+      ],
+      "acceptanceCriteria": [
+        "Selected schema/delta/protected-span logic has mutation or property coverage",
+        "Quality gates are meaningful and not prohibitively slow",
+        "Slow gates are scheduled intentionally"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Mutation-test pilot report"
+        },
+        {
+          "type": "manual",
+          "value": "Property-test review"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Slow CI", "Meaningless mutation thresholds", "Untested critical invariants"]
+    },
+    {
+      "id": "SHARED-001",
+      "title": "Bridge schema v0.2 domain model",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["UNIV-001", "SHARED-000"],
+      "summary": "Expand the bridge schema from fixture dialogue to game-localization primitives: assets, text surfaces, choices, UI, images-with-text, speaker metadata, source revisions, route context, and protected spans.",
+      "deliverables": [
+        "TypeScript schema",
+        "JSON examples",
+        "Enum-backed category model",
+        "Migration notes from 0.1.0",
+        "Rust/TypeScript/JSON Schema binding authority decision"
+      ],
+      "acceptanceCriteria": [
+        "No raw string categories where enums are known",
+        "UUID7 ids are required and validated",
+        "Schema distinguishes parser-unknown from reader-unknown speaker state"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Schema guard tests"
+        },
+        {
+          "type": "manual",
+          "value": "Fixture snapshots"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Overfitting JP->EN",
+        "Missing game surfaces",
+        "Breaking Kaifuu/Itotori/Utsushi contracts"
+      ]
+    },
+    {
+      "id": "SHARED-002",
+      "title": "Bridge contract validation",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-001", "UNIV-008"],
+      "summary": "Make TypeScript and Rust agree on bridge bundle JSON through shared fixtures and strict validation before patch, runtime, benchmark, and finding contracts are layered on.",
+      "deliverables": [
+        "Bridge contract fixture suite",
+        "Rust bridge deserialization checks",
+        "TypeScript bridge assertion checks",
+        "Bridge compatibility tests"
+      ],
+      "acceptanceCriteria": [
+        "Every committed bridge fixture validates in TypeScript and Rust",
+        "Invalid bridge fixtures fail with semantic errors",
+        "Bridge schema version behavior is documented"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": [
+        "Divergent TS/Rust bridge assumptions",
+        "Weak bridge validation paths",
+        "Ambiguous bridge schema version behavior"
+      ]
+    },
+    {
+      "id": "SHARED-003",
+      "title": "Multi-surface public bridge fixture corpus",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "kaifuu", "itotori", "utsushi"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["SHARED-001", "SHARED-002", "UNIV-005", "UNIV-008"],
+      "summary": "Replace the single-line fixture with public bridge fixtures covering dialogue, names, choices, UI labels, tutorial text, glossary terms, protected markup, and image-text metadata.",
+      "deliverables": [
+        "Public fixture game v0.2",
+        "Expected bridge bundles",
+        "Surface coverage matrix",
+        "Golden bridge snapshots"
+      ],
+      "acceptanceCriteria": [
+        "At least five text surfaces are represented",
+        "Protected spans include placeholders and inline control markup",
+        "Fixture supports 1->N locale branches",
+        "Patch exports and runtime reports are handled by later full-system artifact nodes"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just hello"
+        },
+        {
+          "type": "manual",
+          "value": "Contract fixture snapshot review"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Fixture realism",
+        "Surface coverage",
+        "No engine-specific leakage into Itotori"
+      ]
+    },
+    {
+      "id": "SHARED-004",
+      "title": "Patch and source revision semantics",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "kaifuu", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-001"],
+      "summary": "Define how source game versions, source text changes, patch exports, patch results, and delta patch packages relate across reruns and updated games.",
+      "deliverables": [
+        "Source revision schema",
+        "Patch compatibility rules",
+        "Hash strategy",
+        "Delta package metadata"
+      ],
+      "acceptanceCriteria": [
+        "A source typo patch can invalidate only affected units",
+        "Patch application reports incompatible source hashes clearly",
+        "Delta packages can be traced to a source revision"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Compatibility fixture tests"
+        },
+        {
+          "type": "manual",
+          "value": "Kaifuu delta tests"
+        },
+        {
+          "type": "manual",
+          "value": "Itotori patch export tests"
+        }
+      ],
+      "auditFocus": ["Silent stale patches", "Hash ambiguity", "Unclear rerun semantics"]
+    },
+    {
+      "id": "SHARED-005",
+      "title": "Runtime evidence schema v0.2",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "utsushi", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-001", "SHARED-007", "UTSUSHI-000"],
+      "summary": "Define trace, branch, capture, recording, approximation, and validation finding schemas for Utsushi-generated evidence.",
+      "deliverables": [
+        "Runtime evidence schema",
+        "Fidelity tier enum",
+        "Screenshot artifact references",
+        "Branch-point event model"
+      ],
+      "acceptanceCriteria": [
+        "Evidence can be linked back to bridge units",
+        "Approximation tiers are explicit",
+        "Screenshots and recordings are referenced, not embedded by default"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Runtime fixture validation"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard rendering tests"
+        },
+        {
+          "type": "manual",
+          "value": "Rust/TS contract tests"
+        }
+      ],
+      "auditFocus": [
+        "Overclaiming pixel fidelity",
+        "Untraceable evidence",
+        "Asset path portability"
+      ]
+    },
+    {
+      "id": "SHARED-006",
+      "title": "Benchmark and cost report schema",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["SHARED-001", "SHARED-007", "SHARED-009", "ITOTORI-031"],
+      "summary": "Define benchmark run, model/provider, cost, token, quality finding, deterministic QA, and human evaluation result schemas.",
+      "deliverables": [
+        "Benchmark schema",
+        "Cost ledger schema",
+        "Model/provider identity fields",
+        "Report JSON examples"
+      ],
+      "acceptanceCriteria": [
+        "Reports capture exact model, provider, prompt preset, and timestamp",
+        "MTL baseline runs fit the same schema",
+        "QA agent evaluation is first-class"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Schema tests"
+        },
+        {
+          "type": "manual",
+          "value": "Example report validation"
+        },
+        {
+          "type": "manual",
+          "value": "Docs review"
+        }
+      ],
+      "auditFocus": [
+        "Unverifiable quality claims",
+        "Provider ambiguity",
+        "Missing QA-agent metrics"
+      ]
+    },
+    {
+      "id": "SHARED-007",
+      "title": "Event and finding taxonomy",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-001"],
+      "summary": "Define canonical event, task, finding, severity, provenance, and causality records for event-driven triage across the suite.",
+      "deliverables": [
+        "Event schema",
+        "Finding schema",
+        "Severity enum",
+        "Causality/provenance model"
+      ],
+      "acceptanceCriteria": [
+        "A QA finding can point to source annotation, style guide, model output, or patching cause",
+        "P0-P3 severities are distinct from localization quality categories",
+        "Events are append-only"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Schema tests"
+        },
+        {
+          "type": "manual",
+          "value": "Repository tests"
+        },
+        {
+          "type": "manual",
+          "value": "Example triage fixtures"
+        }
+      ],
+      "auditFocus": [
+        "Conflating confidence with evidence",
+        "Missing provenance",
+        "Mutable event history"
+      ]
+    },
+    {
+      "id": "SHARED-008",
+      "title": "Permission model and local-user baseline",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-001"],
+      "summary": "Introduce permission-based access primitives now, with a single all-permissions local user for MVP and a clean path to custom roles later.",
+      "deliverables": [
+        "Permission enum",
+        "User and grant schema",
+        "Authorization helper",
+        "Single-user bootstrap"
+      ],
+      "acceptanceCriteria": [
+        "No role strings are hardcoded into authorization checks",
+        "Every API mutation has a permission gate",
+        "MVP local mode remains frictionless"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Repository tests"
+        },
+        {
+          "type": "manual",
+          "value": "API tests"
+        },
+        {
+          "type": "manual",
+          "value": "Permission matrix docs"
+        }
+      ],
+      "auditFocus": ["Role-based shortcuts", "Ungated mutations", "Migration path to teams"]
+    },
+    {
+      "id": "SHARED-009",
+      "title": "Localization quality taxonomy and benchmark protocol",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["SHARED-007"],
+      "summary": "Choose and document the localization quality taxonomy and benchmark protocol, including MQM comparison, game-localization extensions, seeded defects, and QA-agent metrics.",
+      "deliverables": [
+        "Quality taxonomy ADR",
+        "MQM/alternative comparison",
+        "Seeded-defect taxonomy",
+        "Human evaluation rubric"
+      ],
+      "acceptanceCriteria": [
+        "Localization quality severities are distinct from DAG P0-P3",
+        "QA agents map findings to the taxonomy",
+        "Benchmark reports distinguish severity, category, root cause, and reviewer adjudication"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Quality taxonomy review"
+        },
+        {
+          "type": "manual",
+          "value": "Seeded-defect rubric review"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-validate"
+        }
+      ],
+      "auditFocus": [
+        "Quality taxonomy vagueness",
+        "Conflating orchestration severity with translation severity",
+        "Unscorable QA findings"
+      ]
+    },
+    {
+      "id": "SHARED-010",
+      "title": "Full contract validation",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "contracts",
+      "dependsOn": [
+        "SHARED-002",
+        "SHARED-004",
+        "SHARED-005",
+        "SHARED-006",
+        "SHARED-007",
+        "SHARED-009",
+        "SHARED-011",
+        "SHARED-008"
+      ],
+      "summary": "Validate bridge, patch, delta, runtime, benchmark, asset-policy, and finding contracts together across TypeScript and Rust.",
+      "deliverables": [
+        "Full contract fixture suite",
+        "Cross-language validation commands",
+        "Invalid fixture cases",
+        "Compatibility report"
+      ],
+      "acceptanceCriteria": [
+        "Every committed contract fixture validates in TypeScript and Rust",
+        "Invalid fixtures fail with semantic errors",
+        "Schema compatibility across the suite is documented",
+        "Permission and local-user contract fixtures validate with the rest of the suite"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": [
+        "Divergent TS/Rust assumptions",
+        "Missing contract fixtures",
+        "Ambiguous schema version behavior"
+      ]
+    },
+    {
+      "id": "SHARED-011",
+      "title": "Asset localization policy schema",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "itotori", "kaifuu"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-001"],
+      "summary": "Represent non-dialogue localization decisions for images with text, UI textures, audio/song metadata, fonts, credits, videos, and romanize/translate/do-not-translate choices.",
+      "deliverables": [
+        "Asset policy schema",
+        "Asset surface enums",
+        "Decision examples",
+        "Compatibility notes"
+      ],
+      "acceptanceCriteria": [
+        "Image text, song titles, UI art, fonts, credits, and videos have representable policy choices",
+        "Policies can be locale-branch scoped",
+        "Metadata-first support does not imply OCR or image editing is complete"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Asset policy fixture review"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Non-text surfaces forgotten",
+        "Overpromising image editing",
+        "Policy not tied to locale branches"
+      ]
+    },
+    {
+      "id": "SHARED-012",
+      "title": "Full-system golden artifact corpus",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["shared", "itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["SHARED-003", "SHARED-010"],
+      "summary": "Add expected patch exports, patch results, delta packages, runtime reports, benchmark reports, and findings for public fixtures after their schemas exist.",
+      "deliverables": [
+        "Expected patch export fixtures",
+        "Expected runtime report fixtures",
+        "Expected benchmark report fixtures",
+        "Negative fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Full-system fixtures cover success and failure cases",
+        "Artifacts cite fixture hashes and schema versions",
+        "Fixtures are public-safe and reproducible"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Golden artifact snapshot review"
+        },
+        {
+          "type": "command",
+          "value": "just ci"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        }
+      ],
+      "auditFocus": [
+        "Snapshot drift",
+        "Copyright leakage",
+        "Fixtures that assert implementation quirks"
+      ]
+    },
+    {
+      "id": "KAIFUU-001",
+      "title": "Kaifuu adapter trait and game profile model",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["SHARED-001"],
+      "summary": "Define the Rust adapter abstraction for detection, extraction, patching, verification, asset listing, capability reporting, and game profiles.",
+      "deliverables": [
+        "EngineAdapter trait",
+        "GameProfile schema",
+        "Capability enum",
+        "Adapter registry"
+      ],
+      "acceptanceCriteria": [
+        "Fixture engine uses the same trait as real engines",
+        "Adapters report patching limitations",
+        "Profile serialization is deterministic"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "Fixture adapter tests"
+        },
+        {
+          "type": "manual",
+          "value": "CLI smoke tests"
+        }
+      ],
+      "auditFocus": [
+        "Engine-specific leakage into shared contracts",
+        "Adapter methods too broad for review",
+        "Profile instability"
+      ]
+    },
+    {
+      "id": "KAIFUU-002",
+      "title": "Fixture engine on adapter architecture",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-001"],
+      "summary": "Refactor the existing hello-world fixture engine to prove the adapter trait before real engines are added.",
+      "deliverables": [
+        "Fixture adapter implementation",
+        "CLI dispatch through registry",
+        "No behavior regression in hello world"
+      ],
+      "acceptanceCriteria": [
+        "Existing fixture commands still pass",
+        "Adapter capability output is visible",
+        "No duplicated fixture logic remains outside the adapter"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just hello"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-engine-fixture"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": ["Regression of current baseline", "Trait ergonomics for future adapters"]
+    },
+    {
+      "id": "KAIFUU-003",
+      "title": "Round-trip golden harness",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-001", "SHARED-003", "KAIFUU-002", "UNIV-008"],
+      "summary": "Build a deterministic harness for extract -> patch unchanged -> verify byte/output equivalence, plus translated patch application for public fixtures.",
+      "deliverables": [
+        "Golden test runner",
+        "Round-trip fixtures",
+        "Patch-equivalence assertions",
+        "Failure report format"
+      ],
+      "acceptanceCriteria": [
+        "Unchanged extraction/patching is byte-identical where engine supports it",
+        "Translated patch failures cite exact unit and asset",
+        "Harness can run per adapter"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        },
+        {
+          "type": "manual",
+          "value": "Adapter-specific fixture tests"
+        }
+      ],
+      "auditFocus": [
+        "False positives in round-trip claims",
+        "Missing negative tests",
+        "Slow fixture execution"
+      ]
+    },
+    {
+      "id": "KAIFUU-004",
+      "title": "Protected markup parser and span normalizer",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-001", "SHARED-001", "KAIFUU-019", "SHARED-003"],
+      "summary": "Parse engine scripting embedded in lines into protected spans so Itotori localizes text without breaking runtime commands.",
+      "deliverables": [
+        "Markup token model",
+        "Parser utilities",
+        "Span normalization tests",
+        "Engine hook examples"
+      ],
+      "acceptanceCriteria": [
+        "Placeholders, ruby/furigana, color tags, name variables, and wait/control tags have coverage",
+        "Unknown tags are preserved safely",
+        "Clean text and raw text round-trip"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Parser unit tests"
+        },
+        {
+          "type": "manual",
+          "value": "Golden bridge fixtures"
+        },
+        {
+          "type": "manual",
+          "value": "Patch preservation tests"
+        }
+      ],
+      "auditFocus": [
+        "Broken patches from lost commands",
+        "Over-normalization",
+        "Unsupported unknown markup"
+      ]
+    },
+    {
+      "id": "KAIFUU-005",
+      "title": ".kaifuu delta package v0.2",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-003", "SHARED-004", "KAIFUU-019"],
+      "summary": "Promote the fixture whole-file delta into a real patch package format with metadata, source compatibility, changed-file entries, and efficient apply behavior.",
+      "deliverables": [
+        "Delta package schema",
+        "Create/apply commands",
+        "Compatibility checks",
+        "Fixture and negative tests"
+      ],
+      "acceptanceCriteria": [
+        "Delta patching is not deferred",
+        "Incompatible source hashes fail before writing output",
+        "Patch packages are deterministic and easy to distribute"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-delta"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        },
+        {
+          "type": "manual",
+          "value": "Large fixture timing test"
+        }
+      ],
+      "auditFocus": [
+        "Slow iteration cycle",
+        "Partial writes on failure",
+        "Ambiguous source compatibility"
+      ]
+    },
+    {
+      "id": "KAIFUU-006",
+      "title": "Engine detection and profile CLI",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-001", "KAIFUU-000"],
+      "summary": "Add detect/profile commands that identify likely engines, emit editable game profiles, and report missing keys or platform constraints.",
+      "deliverables": [
+        "kaifuu detect",
+        "kaifuu profile init",
+        "Detection confidence evidence fields",
+        "Profile validation"
+      ],
+      "acceptanceCriteria": [
+        "Detection output lists evidence, not LLM-style confidence",
+        "Profiles are stable TOML or JSON",
+        "Missing secrets/keys are represented without blocking unencrypted engines"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "CLI tests"
+        },
+        {
+          "type": "manual",
+          "value": "Fixture detection tests"
+        },
+        {
+          "type": "manual",
+          "value": "Profile validation tests"
+        }
+      ],
+      "auditFocus": [
+        "Unsupported engine false certainty",
+        "Profile secrets handling",
+        "Cross-platform assumptions"
+      ]
+    },
+    {
+      "id": "KAIFUU-007",
+      "title": "RPG Maker MV/MZ adapter",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": [
+        "KAIFUU-003",
+        "KAIFUU-004",
+        "KAIFUU-006",
+        "KAIFUU-000",
+        "KAIFUU-019",
+        "KAIFUU-020",
+        "KAIFUU-021"
+      ],
+      "summary": "Implement extraction, patching, and verification for RPG Maker MV/MZ JSON assets across dialogue, choices, common events, database text, and UI-like strings.",
+      "deliverables": [
+        "RPG Maker adapter",
+        "Public fixture",
+        "Round-trip tests",
+        "Capability documentation"
+      ],
+      "acceptanceCriteria": [
+        "Adapter extracts core map/event/database text",
+        "Patch writes preserve JSON structure and control codes",
+        "Unchanged round-trip is stable",
+        "Fixture source is documented, support boundary is explicit, and unsupported encrypted or compiled variants fail with semantic capability errors"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "Adapter golden tests"
+        },
+        {
+          "type": "manual",
+          "value": "Manual fixture patch smoke"
+        }
+      ],
+      "auditFocus": [
+        "Missing high-value text locations",
+        "Control-code damage",
+        "Large project performance"
+      ]
+    },
+    {
+      "id": "KAIFUU-008",
+      "title": "Ren'Py adapter",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": [
+        "KAIFUU-003",
+        "KAIFUU-004",
+        "KAIFUU-006",
+        "KAIFUU-000",
+        "KAIFUU-019",
+        "KAIFUU-020",
+        "KAIFUU-021"
+      ],
+      "summary": "Implement a Ren'Py adapter for plaintext scripts and documented decompiled-script handoff, with clean extraction of dialogue, menus, labels, and translatable strings.",
+      "deliverables": [
+        "Ren'Py adapter",
+        "Script parser tests",
+        "Patch writer",
+        "Decompiled input policy"
+      ],
+      "acceptanceCriteria": [
+        "Plaintext .rpy fixtures round-trip",
+        "Menus and labels retain structure",
+        "Compiled .rpyc handling is explicitly profiled or delegated",
+        "Fixture source is documented, support boundary is explicit, and unsupported encrypted or compiled variants fail with semantic capability errors"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Adapter golden tests"
+        },
+        {
+          "type": "manual",
+          "value": "Patch smoke tests"
+        },
+        {
+          "type": "manual",
+          "value": "Docs review"
+        }
+      ],
+      "auditFocus": [
+        "Python/Ren'Py syntax corruption",
+        "Ambiguous support for compiled scripts",
+        "Choice text coverage"
+      ]
+    },
+    {
+      "id": "KAIFUU-009",
+      "title": "KiriKiri/KAG plaintext adapter",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": [
+        "KAIFUU-003",
+        "KAIFUU-004",
+        "KAIFUU-006",
+        "KAIFUU-000",
+        "KAIFUU-019",
+        "KAIFUU-020",
+        "KAIFUU-021"
+      ],
+      "summary": "Implement KAG .ks extraction and patching for plaintext or already-extracted KiriKiri projects, including speaker/name context and inline command preservation.",
+      "deliverables": ["KAG parser", "Speaker extraction", "Patch writer", "Fixture corpus"],
+      "acceptanceCriteria": [
+        "Dialogue, names, choices, and command-heavy lines are covered",
+        "Reader-unknown speaker state can be represented",
+        "Round-trip keeps commands stable",
+        "Fixture source is documented, support boundary is explicit, and unsupported encrypted or compiled variants fail with semantic capability errors"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "KAG parser tests"
+        },
+        {
+          "type": "manual",
+          "value": "Golden bridge fixtures"
+        },
+        {
+          "type": "manual",
+          "value": "Patch smoke tests"
+        }
+      ],
+      "auditFocus": [
+        "Regex-only parser fragility",
+        "Speaker attribution mistakes",
+        "Inline command damage"
+      ]
+    },
+    {
+      "id": "KAIFUU-010",
+      "title": "Patch result and verification v0.2",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "shared", "itotori"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-005", "SHARED-002", "KAIFUU-019", "SHARED-007"],
+      "summary": "Make Kaifuu patching emit structured success/failure reports suitable for Itotori ingestion, dashboarding, and triage.",
+      "deliverables": [
+        "PatchResult v0.2",
+        "Failure taxonomy",
+        "Itotori ingest compatibility",
+        "Negative fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Failures cite asset, unit, adapter, and cause",
+        "Partial patch attempts are visible",
+        "Successful reports include output hashes"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Contract tests"
+        },
+        {
+          "type": "manual",
+          "value": "Kaifuu negative tests"
+        },
+        {
+          "type": "manual",
+          "value": "Itotori ingestion tests"
+        }
+      ],
+      "auditFocus": ["Untriageable errors", "Weak failure categories", "Silent partial success"]
+    },
+    {
+      "id": "KAIFUU-011",
+      "title": "Binary patcher core",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-003", "KAIFUU-004", "KAIFUU-019"],
+      "summary": "Build shared binary offset rewriting utilities for engines that store text in string tables or bytecode with referenced offsets.",
+      "deliverables": [
+        "BinaryPatcher utility",
+        "Offset mapping tests",
+        "Encoding helpers",
+        "Negative tests"
+      ],
+      "acceptanceCriteria": [
+        "String growth/shrink rewrites offsets correctly",
+        "Shift-JIS and UTF-16LE cases have fixtures",
+        "Failures avoid corrupt writes"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "Property-style offset tests"
+        }
+      ],
+      "auditFocus": [
+        "Off-by-one offset corruption",
+        "Encoding assumptions",
+        "Unsafe partial writes"
+      ]
+    },
+    {
+      "id": "KAIFUU-012",
+      "title": "Wolf RPG Editor adapter",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-006", "KAIFUU-011", "KAIFUU-000", "KAIFUU-020"],
+      "summary": "Implement a Wolf RPG Editor adapter once the binary patching utilities are ready.",
+      "deliverables": [
+        "Wolf adapter",
+        "Database/script fixtures",
+        "Round-trip tests",
+        "Capability docs"
+      ],
+      "acceptanceCriteria": [
+        "Core text tables extract and patch",
+        "Binary layout changes are verified",
+        "Unsupported encrypted variants are profiled"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Adapter golden tests"
+        },
+        {
+          "type": "manual",
+          "value": "Round-trip tests"
+        },
+        {
+          "type": "manual",
+          "value": "Patch smoke"
+        }
+      ],
+      "auditFocus": [
+        "Format variant handling",
+        "String table reconstruction",
+        "Performance on large databases"
+      ]
+    },
+    {
+      "id": "KAIFUU-013",
+      "title": "BGI/Ethornell adapter",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-006", "KAIFUU-011", "KAIFUU-000", "KAIFUU-020"],
+      "summary": "Implement BGI/Ethornell bytecode string extraction and patching with offset rewriting and Shift-JIS handling.",
+      "deliverables": [
+        "BGI adapter",
+        "String-reference parser",
+        "Round-trip fixtures",
+        "Patch tests"
+      ],
+      "acceptanceCriteria": [
+        "Known header and no-header variants are profiled",
+        "False-positive string references are tested",
+        "Patch output remains loadable in fixtures"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Adapter tests"
+        },
+        {
+          "type": "manual",
+          "value": "Binary patcher tests"
+        },
+        {
+          "type": "manual",
+          "value": "Fixture round-trip"
+        }
+      ],
+      "auditFocus": [
+        "Heuristic parser fragility",
+        "Shift-JIS edge cases",
+        "Offset table corruption"
+      ]
+    },
+    {
+      "id": "KAIFUU-014",
+      "title": "Encryption and key profile boundary",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-006", "KAIFUU-011"],
+      "summary": "Define how adapters request keys, compression options, and platform-assisted discovery without coupling extraction/patching to Windows-only discovery code.",
+      "deliverables": [
+        "Key profile schema",
+        "Secret redaction rules",
+        "Adapter key requirements",
+        "Discovery boundary docs"
+      ],
+      "acceptanceCriteria": [
+        "Profiles can reference required keys without storing secrets accidentally",
+        "Linux/macOS extraction remains possible when keys are provided",
+        "Discovery and patching remain separate"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Profile validation tests"
+        },
+        {
+          "type": "manual",
+          "value": "Docs review"
+        },
+        {
+          "type": "manual",
+          "value": "Secret redaction tests"
+        }
+      ],
+      "auditFocus": ["Accidental key leakage", "Platform coupling", "Blocking unencrypted engines"]
+    },
+    {
+      "id": "KAIFUU-015",
+      "title": "SiglusEngine research slice",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "utsushi"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-014"],
+      "summary": "Produce a concrete implementation plan for Siglus extraction/patching from reference implementations, including scene VM opportunities and key discovery boundaries.",
+      "deliverables": [
+        "Siglus format notes",
+        "Minimal parser spike",
+        "Risk register",
+        "Adapter implementation DAG updates"
+      ],
+      "acceptanceCriteria": [
+        "Scene.pck/Gameexe.dat requirements are clear",
+        "Key discovery is separated from pure parsing",
+        "VM value for validation is assessed"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Research doc review"
+        },
+        {
+          "type": "manual",
+          "value": "Parser spike tests if safe fixtures exist"
+        },
+        {
+          "type": "manual",
+          "value": "DAG update dry-run"
+        }
+      ],
+      "auditFocus": ["Overcommitting without fixtures", "Legal overstatement", "VM scope creep"]
+    },
+    {
+      "id": "KAIFUU-016",
+      "title": "TyranoScript adapter",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-004", "KAIFUU-006", "KAIFUU-009", "KAIFUU-000", "KAIFUU-020"],
+      "summary": "Implement TyranoScript extraction and patching by reusing KAG-like markup parsing where appropriate.",
+      "deliverables": ["Tyrano adapter", "Markup fixtures", "Patch tests", "Capability docs"],
+      "acceptanceCriteria": [
+        "Dialogue, choices, and common tags extract",
+        "Unsupported plugins are preserved or reported",
+        "Patch round-trip is stable"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Adapter tests"
+        },
+        {
+          "type": "manual",
+          "value": "Golden fixtures"
+        },
+        {
+          "type": "manual",
+          "value": "Patch smoke"
+        }
+      ],
+      "auditFocus": [
+        "Assuming KAG equivalence too broadly",
+        "Plugin tag preservation",
+        "Speaker context"
+      ]
+    },
+    {
+      "id": "KAIFUU-017",
+      "title": "Majiro and CatSystem2 research adapters",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-011", "KAIFUU-020", "KAIFUU-000"],
+      "summary": "Research and spike Majiro and CatSystem2 support enough to split each into implementation specs with real fixtures.",
+      "deliverables": [
+        "Research notes",
+        "Parser spike if feasible",
+        "Fixture requirements",
+        "Follow-up DAG nodes"
+      ],
+      "acceptanceCriteria": [
+        "Each engine has a scoped next implementation node or explicit blocker",
+        "Reference implementations are cataloged",
+        "Binary risks are documented"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Research doc review"
+        },
+        {
+          "type": "manual",
+          "value": "Spike tests if fixtures exist"
+        }
+      ],
+      "auditFocus": ["Spec vagueness", "Unsupported claims", "Fixture scarcity"]
+    },
+    {
+      "id": "KAIFUU-018",
+      "title": "Unity localization asset research",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "utsushi"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-020", "SHARED-011", "KAIFUU-021"],
+      "summary": "Assess Unity text extraction and patching strategies for I2 Localization, TextMeshPro, Addressables, and common asset bundle layouts.",
+      "deliverables": [
+        "Unity research doc",
+        "Fixture requirements",
+        "Tooling options",
+        "Follow-up DAG nodes"
+      ],
+      "acceptanceCriteria": [
+        "Common Unity localization storage patterns are separated",
+        "Patch feasibility is rated by asset type",
+        "Runtime validation implications are documented"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Research doc review"
+        },
+        {
+          "type": "manual",
+          "value": "Optional public fixture spike"
+        }
+      ],
+      "auditFocus": [
+        "One-size-fits-all Unity assumptions",
+        "Asset bundle mutation risk",
+        "Scope explosion"
+      ]
+    },
+    {
+      "id": "KAIFUU-019",
+      "title": "Encoding, normalization, and patch safety policy",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-001", "SHARED-001", "UNIV-008"],
+      "summary": "Define encoding, Unicode normalization, newline, atomic-write, temp-dir, path traversal, rollback, and partial-write safety rules for patching.",
+      "deliverables": [
+        "docs/kaifuu-patch-safety.md",
+        "Encoding policy",
+        "Atomic write helper requirements",
+        "Negative safety fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Shift-JIS, UTF-8, and UTF-16LE handling is specified",
+        "Patch writers use atomic output rules where feasible",
+        "Path traversal and partial writes fail safely"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Patch safety policy review"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Encoding corruption", "Unsafe writes", "Silent partial patch success"]
+    },
+    {
+      "id": "KAIFUU-021",
+      "title": "Asset inventory and non-text surface extraction",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-001", "SHARED-011"],
+      "summary": "Emit asset manifests for images with text, UI textures, song/audio metadata, fonts, credits, and video assets without promising full editing support.",
+      "deliverables": [
+        "Asset inventory schema support",
+        "Fixture asset manifest",
+        "Adapter capability hooks",
+        "Round-trip metadata tests"
+      ],
+      "acceptanceCriteria": [
+        "Adapters can report non-text surfaces even when they cannot patch them",
+        "Asset manifests are engine-agnostic",
+        "No OCR or image editing capability is implied unless explicitly implemented"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Asset manifest fixture review"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Asset surface blind spots",
+        "Overclaiming patch support",
+        "Engine-specific manifest leakage"
+      ]
+    },
+    {
+      "id": "KAIFUU-022",
+      "title": "Siglus pure extraction and patching adapter",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-015", "KAIFUU-014", "KAIFUU-011", "KAIFUU-020"],
+      "summary": "Implement pure Siglus extraction and patching once research, key-profile boundaries, and binary patching utilities are ready.",
+      "deliverables": [
+        "Siglus adapter",
+        "Scene/Gameexe fixtures where available",
+        "Round-trip tests",
+        "Capability docs"
+      ],
+      "acceptanceCriteria": [
+        "Pure parsing/patching is separated from key discovery",
+        "Unsupported encrypted cases fail with key-requirement errors",
+        "Patch output is verified against fixtures"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Siglus fixture review"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        }
+      ],
+      "auditFocus": [
+        "Key discovery coupling",
+        "UTF-16LE corruption",
+        "Overclaiming engine coverage"
+      ]
+    },
+    {
+      "id": "KAIFUU-023",
+      "title": "Majiro adapter",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-017", "KAIFUU-011", "KAIFUU-020"],
+      "summary": "Implement Majiro extraction and patching after the research spike splits out concrete format requirements.",
+      "deliverables": [
+        "Majiro adapter",
+        "Disassembly/string-reference fixtures",
+        "Patch tests",
+        "Capability docs"
+      ],
+      "acceptanceCriteria": [
+        "String reference discovery is fixture-tested",
+        "Unsupported bytecode variants fail semantically",
+        "Patch safety follows the shared binary patcher policy"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Majiro fixture review"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        }
+      ],
+      "auditFocus": [
+        "Bytecode parser fragility",
+        "Offset corruption",
+        "Unsupported variant ambiguity"
+      ]
+    },
+    {
+      "id": "KAIFUU-024",
+      "title": "CatSystem2 adapter",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-017", "KAIFUU-011", "KAIFUU-020"],
+      "summary": "Implement CatSystem2 extraction and patching after the research spike identifies safe fixtures and binary string table requirements.",
+      "deliverables": [
+        "CatSystem2 adapter",
+        "String table fixtures",
+        "Round-trip tests",
+        "Capability docs"
+      ],
+      "acceptanceCriteria": [
+        "Shift-JIS string table handling is tested",
+        "Unsupported format variants are reported clearly",
+        "Binary patching is safe on failure"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "CatSystem2 fixture review"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        }
+      ],
+      "auditFocus": ["String table corruption", "Encoding mistakes", "Sparse fixture coverage"]
+    },
+    {
+      "id": "KAIFUU-025",
+      "title": "Unity text asset adapter prototype",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "utsushi"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-018", "KAIFUU-021", "KAIFUU-020"],
+      "summary": "Prototype Unity localization asset extraction for one selected pattern after research separates I2, TextMeshPro, Addressables, and asset bundles.",
+      "deliverables": [
+        "Unity adapter prototype",
+        "Asset fixture",
+        "Capability docs",
+        "Follow-up implementation nodes"
+      ],
+      "acceptanceCriteria": [
+        "Prototype names the Unity localization pattern it supports",
+        "Unsupported asset bundle mutation is explicit",
+        "Runtime validation implications are documented"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Unity prototype review"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        }
+      ],
+      "auditFocus": ["One-size-fits-all Unity claims", "Asset mutation risk", "Scope explosion"]
+    },
+    {
+      "id": "KAIFUU-026",
+      "title": "Asset OCR and text-region extraction prototype",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "itotori"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-021", "SHARED-011"],
+      "summary": "Prototype OCR and text-region extraction for image/UI assets as evidence and drafting input without silently treating OCR as truth.",
+      "deliverables": [
+        "OCR prototype",
+        "Text-region fixture output",
+        "Uncertainty findings",
+        "Asset provenance records"
+      ],
+      "acceptanceCriteria": [
+        "Fixture images produce text regions with provenance",
+        "Uncertain OCR is represented as findings",
+        "OCR output does not overwrite source asset policy decisions"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "OCR prototype report"
+        },
+        {
+          "type": "manual",
+          "value": "Asset fixture review"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Silent OCR hallucinations",
+        "Unsupported image formats",
+        "Asset provenance loss"
+      ]
+    },
+    {
+      "id": "KAIFUU-020",
+      "title": "Engine adapter development playbook",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "universal"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-003", "KAIFUU-006", "UNIV-003"],
+      "summary": "Create the repeatable workflow for adding engines with parallel coding agents: fixture requirements, parser spikes, round-trip tests, error codes, and remote Windows helper patterns.",
+      "deliverables": [
+        "docs/kaifuu-engine-playbook.md",
+        "Adapter checklist",
+        "Semantic error code rules",
+        "Remote helper protocol sketch"
+      ],
+      "acceptanceCriteria": [
+        "A new agent can start an engine adapter without hidden context",
+        "Remote Windows execution is documented as an optional helper",
+        "Every adapter PR has a fixture and round-trip test checklist"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Docs review"
+        },
+        {
+          "type": "manual",
+          "value": "Apply playbook to one adapter issue"
+        },
+        {
+          "type": "command",
+          "value": "just roadmap-ready"
+        }
+      ],
+      "auditFocus": [
+        "Playbook too vague",
+        "Unsafe remote execution assumptions",
+        "Missing test requirements"
+      ]
+    },
+    {
+      "id": "ITOTORI-001",
+      "title": "Itotori persistence schema v0.2",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["SHARED-001", "SHARED-007", "SHARED-008", "UNIV-008"],
+      "summary": "Replace hello-world persistence with real project, source bundle, unit, asset, source revision, locale branch, event, finding, user, permission, and artifact tables.",
+      "deliverables": [
+        "Drizzle schema",
+        "Migration 0002",
+        "Repository interfaces",
+        "Seed local user"
+      ],
+      "acceptanceCriteria": [
+        "Schema supports 1->N locale branches",
+        "Events are append-only",
+        "Permission primitives exist from day one",
+        "No dashboard reads from local JSON"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "DB repository tests"
+        },
+        {
+          "type": "manual",
+          "value": "Migration tests"
+        },
+        {
+          "type": "command",
+          "value": "just ci"
+        }
+      ],
+      "auditFocus": [
+        "Premature enterprise complexity",
+        "Missing indexes",
+        "Weak repository boundaries"
+      ]
+    },
+    {
+      "id": "ITOTORI-002",
+      "title": "Repository and service layer split",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["ITOTORI-001"],
+      "summary": "Separate DB repositories, domain services, CLI handlers, and dashboard API handlers so future agents do not add ad hoc SQL or UI-coupled state.",
+      "deliverables": [
+        "Repository modules",
+        "Service modules",
+        "CLI command handlers",
+        "API handler tests"
+      ],
+      "acceptanceCriteria": [
+        "CLI and API share services",
+        "No direct SQL in app UI handlers",
+        "Tests cover repository and service boundaries"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Leaky abstractions", "Over-broad services", "Unmockable code paths"]
+    },
+    {
+      "id": "ITOTORI-003",
+      "title": "Event outbox and job queue foundation",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["ITOTORI-002", "SHARED-007"],
+      "summary": "Add durable event outbox and job queue primitives for agent tasks, deterministic tools, reruns, and triage loops.",
+      "deliverables": ["Outbox repository", "Job table", "Worker loop", "Retry/dead-letter policy"],
+      "acceptanceCriteria": [
+        "Jobs are idempotent or explicitly non-idempotent",
+        "Retries preserve error history",
+        "Events can trigger follow-up jobs without synchronous coupling"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "DB integration tests"
+        },
+        {
+          "type": "manual",
+          "value": "Worker unit tests"
+        },
+        {
+          "type": "manual",
+          "value": "Failure/retry tests"
+        }
+      ],
+      "auditFocus": ["Race conditions", "Duplicate work", "Lost events"]
+    },
+    {
+      "id": "ITOTORI-004",
+      "title": "Typed API layer and local dashboard backend",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-002", "SHARED-008"],
+      "summary": "Replace the hello-world API with typed project, import, branch, findings, decisions, benchmark, and runtime evidence endpoints.",
+      "deliverables": [
+        "API routing layer",
+        "Request/response validators",
+        "Permission middleware",
+        "Endpoint tests"
+      ],
+      "acceptanceCriteria": [
+        "Every mutation checks permissions",
+        "Response schemas are typed and tested",
+        "MSW handlers mirror real API shapes",
+        "MSW handlers are generated from or checked against real API response schemas"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "API tests"
+        },
+        {
+          "type": "manual",
+          "value": "MSW contract tests"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Untyped request bodies", "Permission gaps", "API/dashboard drift"]
+    },
+    {
+      "id": "ITOTORI-005",
+      "title": "Dashboard application shell",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-004"],
+      "summary": "Build the non-marketing workbench shell for projects, locale branches, style guide, glossary, jobs, QA findings, decisions, runtime evidence, and benchmarks.",
+      "deliverables": [
+        "Navigation shell",
+        "Project overview",
+        "Job/status panels",
+        "MSW-backed component tests"
+      ],
+      "acceptanceCriteria": [
+        "A non-technical reviewer can find pending decisions",
+        "Dashboard reads only through APIs",
+        "Loading, empty, and error states exist",
+        "MSW handlers are generated from or checked against real API response schemas"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Vitest jsdom tests"
+        },
+        {
+          "type": "manual",
+          "value": "MSW tests"
+        },
+        {
+          "type": "manual",
+          "value": "Manual dashboard smoke"
+        }
+      ],
+      "auditFocus": [
+        "Card-heavy landing page drift",
+        "Hidden critical workflow state",
+        "Unclear error states"
+      ]
+    },
+    {
+      "id": "ITOTORI-006",
+      "title": "Bridge import workflow",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "kaifuu"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["ITOTORI-004", "SHARED-002", "SHARED-004"],
+      "summary": "Import Kaifuu bridge bundles into projects, preserve source revisions, index units/assets, and expose import status in CLI and dashboard.",
+      "deliverables": [
+        "Import service",
+        "CLI command",
+        "Dashboard import view",
+        "Validation and duplicate handling"
+      ],
+      "acceptanceCriteria": [
+        "Invalid bridge bundles fail before DB writes",
+        "Reimported source revisions are diffed, not blindly duplicated",
+        "Import metrics are visible"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Repository tests"
+        },
+        {
+          "type": "manual",
+          "value": "CLI tests"
+        },
+        {
+          "type": "manual",
+          "value": "MSW dashboard tests"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        }
+      ],
+      "auditFocus": ["Partial imports", "Duplicate unit handling", "Source revision semantics"]
+    },
+    {
+      "id": "ITOTORI-007",
+      "title": "Conversational style guide builder",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-004", "ITOTORI-000", "ITOTORI-029", "ITOTORI-031", "ITOTORI-005"],
+      "summary": "Build the human-in-the-loop style guide creation workflow inspired by product-brief creation, with explicit decisions and versioned policy output.",
+      "deliverables": [
+        "Style guide schema",
+        "Conversational builder flow",
+        "Policy versioning",
+        "Dashboard editor"
+      ],
+      "acceptanceCriteria": [
+        "Human decisions are structured and versioned",
+        "Style guide changes can trigger affected reruns",
+        "The UX presents context instead of isolated random lines"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Service tests"
+        },
+        {
+          "type": "manual",
+          "value": "MSW dashboard tests"
+        },
+        {
+          "type": "manual",
+          "value": "Policy fixture snapshots"
+        }
+      ],
+      "auditFocus": ["Unstructured policy blobs", "Bad HITL ergonomics", "No rerun semantics"]
+    },
+    {
+      "id": "ITOTORI-008",
+      "title": "Glossary and terminology index",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-002", "ITOTORI-029", "ITOTORI-030"],
+      "summary": "Implement terminology storage, preferred translations, aliases, source references, semantic search hooks, and conflict handling.",
+      "deliverables": [
+        "Glossary tables",
+        "Repository/service layer",
+        "Search endpoint",
+        "pgvector-ready embedding fields"
+      ],
+      "acceptanceCriteria": [
+        "Terms are searchable by exact and semantic-like fields",
+        "Preferred translations are locale-branch scoped",
+        "Conflicts become findings or decisions"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Repository tests"
+        },
+        {
+          "type": "manual",
+          "value": "Search tests"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard MSW tests"
+        }
+      ],
+      "auditFocus": ["Glossary escalation spam", "Missing locale scope", "Indexing performance"]
+    },
+    {
+      "id": "ITOTORI-009",
+      "title": "LLM provider abstraction",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "agent-runtime",
+      "dependsOn": ["ITOTORI-003", "ITOTORI-031"],
+      "summary": "Create provider-neutral model invocation interfaces with an OpenRouter implementation first and local OpenAI-compatible endpoints later.",
+      "deliverables": [
+        "Provider interface",
+        "OpenRouter adapter",
+        "Local endpoint adapter stub",
+        "Structured-output capability model"
+      ],
+      "acceptanceCriteria": [
+        "Itotori core does not depend directly on OpenRouter response quirks",
+        "Provider/model capabilities are explicit",
+        "Free/logging provider policy is represented",
+        "No live credential is required for CI; live runs are opt-in and recorded as non-committed artifacts"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Mock provider tests"
+        },
+        {
+          "type": "manual",
+          "value": "Contract tests with recorded fixtures"
+        },
+        {
+          "type": "manual",
+          "value": "No live API required in CI"
+        }
+      ],
+      "auditFocus": ["OpenRouter lock-in", "Tool-call capability ambiguity", "Secret handling"]
+    },
+    {
+      "id": "ITOTORI-010",
+      "title": "Model registry, presets, and cost ledger",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "agent-runtime",
+      "dependsOn": ["ITOTORI-009", "SHARED-006"],
+      "summary": "Track model/provider identity, prompt presets, router settings, token estimates, actual usage, and per-job cost.",
+      "deliverables": [
+        "Model registry tables",
+        "Cost ledger",
+        "Preset schema",
+        "Dashboard cost view"
+      ],
+      "acceptanceCriteria": [
+        "Every LLM job records model/provider/preset",
+        "Cost reports separate estimated and billed usage",
+        "Provider fallback decisions are auditable",
+        "No live credential is required for CI; live runs are opt-in and recorded as non-committed artifacts"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Repository tests"
+        },
+        {
+          "type": "manual",
+          "value": "Mock provider usage tests"
+        },
+        {
+          "type": "manual",
+          "value": "Benchmark report fixture"
+        }
+      ],
+      "auditFocus": ["Cost undercounting", "Untracked fallback model changes", "Preset drift"]
+    },
+    {
+      "id": "ITOTORI-011",
+      "title": "Agent and deterministic tool registry",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "agent-runtime",
+      "dependsOn": ["ITOTORI-003", "SHARED-007"],
+      "summary": "Separate LLM-powered agents from deterministic tools, with typed inputs, outputs, provenance, and event emission for both.",
+      "deliverables": ["Agent registry", "Tool registry", "Typed job IO", "Provenance events"],
+      "acceptanceCriteria": [
+        "Deterministic tools never masquerade as agents",
+        "Agent outputs require rationales/findings when scoring",
+        "Tool outputs are reproducible"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Registry tests"
+        },
+        {
+          "type": "manual",
+          "value": "Example agent/tool fixtures"
+        },
+        {
+          "type": "manual",
+          "value": "Event assertions"
+        }
+      ],
+      "auditFocus": [
+        "Confidence fields without evidence",
+        "Weak output schemas",
+        "Non-reproducible deterministic tools"
+      ]
+    },
+    {
+      "id": "ITOTORI-012",
+      "title": "Context artifact framework",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "context-agents",
+      "dependsOn": ["ITOTORI-011", "ITOTORI-006", "ITOTORI-030"],
+      "summary": "Store, version, index, and retrieve context artifacts such as scene summaries, character notes, route maps, speaker labels, and terminology candidates.",
+      "deliverables": [
+        "Context artifact schema",
+        "Artifact repository",
+        "Invalidation rules",
+        "Retrieval tools"
+      ],
+      "acceptanceCriteria": [
+        "Artifacts cite source units and producing agent/tool",
+        "Source changes invalidate affected artifacts",
+        "Agents retrieve context through tools, not opaque legacy RAG"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Repository tests"
+        },
+        {
+          "type": "manual",
+          "value": "Invalidation tests"
+        },
+        {
+          "type": "manual",
+          "value": "Retrieval tool tests"
+        }
+      ],
+      "auditFocus": ["Stale context", "Unbounded artifact blobs", "Poor retrieval precision"]
+    },
+    {
+      "id": "ITOTORI-013",
+      "title": "Scene summary agent",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "context-agents",
+      "dependsOn": ["ITOTORI-012", "ITOTORI-010"],
+      "summary": "Implement a focused scene-summary agent that produces source-language summaries with source-unit citations and rerun invalidation.",
+      "deliverables": [
+        "Agent prompt/preset",
+        "Structured output schema",
+        "Citation validation",
+        "Fixture tests"
+      ],
+      "acceptanceCriteria": [
+        "Summaries cite covered units",
+        "No character relationship or route mapping scope creep",
+        "Outputs are versioned by source revision and style policy when relevant"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Mock model tests"
+        },
+        {
+          "type": "manual",
+          "value": "Fixture output review"
+        },
+        {
+          "type": "manual",
+          "value": "Artifact invalidation test"
+        }
+      ],
+      "auditFocus": ["Overbroad agent scope", "Uncited claims", "Prompt brittleness"]
+    },
+    {
+      "id": "ITOTORI-014",
+      "title": "Character relationship agent",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "context-agents",
+      "dependsOn": ["ITOTORI-012", "ITOTORI-010"],
+      "summary": "Implement a focused character bio and relationship artifact agent with cited evidence and change tracking.",
+      "deliverables": [
+        "Character artifact schema",
+        "Agent prompt/preset",
+        "Citation checks",
+        "Dashboard read view"
+      ],
+      "acceptanceCriteria": [
+        "Character claims cite scenes or lines",
+        "Relationship changes over time can be represented",
+        "Unknown or ambiguous identity is explicit"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Mock model tests"
+        },
+        {
+          "type": "manual",
+          "value": "Artifact repository tests"
+        },
+        {
+          "type": "manual",
+          "value": "Fixture output review"
+        }
+      ],
+      "auditFocus": [
+        "Hallucinated bios",
+        "Missing chronology",
+        "Reader-known vs parser-known confusion"
+      ]
+    },
+    {
+      "id": "ITOTORI-015",
+      "title": "Route and choice map agent",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "utsushi"],
+      "parallelGroup": "context-agents",
+      "dependsOn": ["ITOTORI-012", "SHARED-005", "UTSUSHI-003", "ITOTORI-010"],
+      "summary": "Build route and choice map artifacts from bridge structure and runtime evidence, enabling scalable localization of branching games.",
+      "deliverables": [
+        "Route map schema",
+        "Choice graph builder",
+        "Agent enrichment step",
+        "Dashboard visualization seed"
+      ],
+      "acceptanceCriteria": [
+        "Static bridge edges and runtime branch observations can coexist",
+        "Large route maps are chunked",
+        "Choice text links to source units"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Graph fixture tests"
+        },
+        {
+          "type": "manual",
+          "value": "Runtime evidence fixture tests"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard smoke"
+        }
+      ],
+      "auditFocus": ["Context-window scaling", "Branch ambiguity", "Route graph performance"]
+    },
+    {
+      "id": "ITOTORI-016",
+      "title": "Terminology candidate agent",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "context-agents",
+      "dependsOn": ["ITOTORI-012", "ITOTORI-008", "ITOTORI-010"],
+      "summary": "Suggest glossary candidates from source text with citations, frequency, context, and proposed handling without auto-escalating every term to humans.",
+      "deliverables": [
+        "Candidate schema",
+        "Agent prompt/preset",
+        "Merge/reject workflow",
+        "Search integration"
+      ],
+      "acceptanceCriteria": [
+        "Candidates include evidence and frequency",
+        "Human escalation is reserved for material conflicts",
+        "Accepted terms become locale-scoped glossary entries"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Mock model tests"
+        },
+        {
+          "type": "manual",
+          "value": "Glossary service tests"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard decision fixture"
+        }
+      ],
+      "auditFocus": ["Noisy terminology spam", "Uncited candidates", "Locale scope mistakes"]
+    },
+    {
+      "id": "ITOTORI-017",
+      "title": "Speaker and hidden-identity labeling agent",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "context-agents",
+      "dependsOn": ["ITOTORI-012", "ITOTORI-010"],
+      "summary": "Label speakers and hidden identities while preserving the difference between unknown-to-parser and unknown-to-reader.",
+      "deliverables": [
+        "Speaker label schema",
+        "Agent prompt/preset",
+        "Evidence checks",
+        "Patch-safe metadata storage"
+      ],
+      "acceptanceCriteria": [
+        "Labels never overwrite source display names",
+        "Reader-hidden identities are protected from accidental translation spoilers",
+        "Ambiguity is represented explicitly"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Fixture tests"
+        },
+        {
+          "type": "manual",
+          "value": "Mock model tests"
+        },
+        {
+          "type": "manual",
+          "value": "Metadata round-trip tests"
+        }
+      ],
+      "auditFocus": [
+        "Spoiler leakage",
+        "False certainty",
+        "Conflating parser and narrative unknowns"
+      ]
+    },
+    {
+      "id": "ITOTORI-018",
+      "title": "Batch planner and context packer",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "agent-runtime",
+      "dependsOn": ["ITOTORI-012", "ITOTORI-008", "ITOTORI-010"],
+      "summary": "Plan translation and QA batches from units, scene boundaries, route context, glossary hits, and model context limits.",
+      "deliverables": [
+        "Batch planner service",
+        "Context packing heuristics",
+        "Token budgeting",
+        "Fixture batch snapshots"
+      ],
+      "acceptanceCriteria": [
+        "Works for tiny games and million-character projects",
+        "Batches include cited context instead of whole-game prompts",
+        "Token estimates are stored"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Batch snapshot tests"
+        },
+        {
+          "type": "manual",
+          "value": "Large synthetic fixture test"
+        },
+        {
+          "type": "manual",
+          "value": "Cost ledger integration test"
+        }
+      ],
+      "auditFocus": ["Context-window assumptions", "Overlarge batches", "Missing relevant context"]
+    },
+    {
+      "id": "ITOTORI-019",
+      "title": "Translation drafting engine",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": [
+        "ITOTORI-007",
+        "ITOTORI-010",
+        "ITOTORI-018",
+        "ITOTORI-013",
+        "ITOTORI-016",
+        "ITOTORI-017",
+        "ITOTORI-029",
+        "ITOTORI-034",
+        "ITOTORI-014",
+        "ITOTORI-015"
+      ],
+      "summary": "Generate locale-branch drafts from batches, style guide, glossary, context artifacts, protected spans, and model routing.",
+      "deliverables": [
+        "Draft job service",
+        "Structured translation output",
+        "Draft storage",
+        "Retry/fallback policy"
+      ],
+      "acceptanceCriteria": [
+        "Protected spans are preserved or findings are emitted",
+        "Drafts are tied to source revision and style guide version",
+        "Cost and model metadata are recorded per batch",
+        "No live credential is required for CI; live runs are opt-in and recorded as non-committed artifacts"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Mock provider tests"
+        },
+        {
+          "type": "manual",
+          "value": "Draft repository tests"
+        },
+        {
+          "type": "manual",
+          "value": "Protected-span fixture tests"
+        }
+      ],
+      "auditFocus": ["Raw MTL shortcutting", "Untracked model output", "Lost markup"]
+    },
+    {
+      "id": "ITOTORI-020",
+      "title": "Deterministic QA tool suite",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "qa",
+      "dependsOn": [
+        "ITOTORI-011",
+        "SHARED-002",
+        "ITOTORI-008",
+        "SHARED-004",
+        "ITOTORI-032",
+        "SHARED-009"
+      ],
+      "summary": "Implement deterministic checks for protected spans, empty translations, charset, line length, punctuation policy, glossary exact matches, and patch export integrity.",
+      "deliverables": [
+        "QA tool registry entries",
+        "Finding emitters",
+        "Test fixtures",
+        "Dashboard status integration"
+      ],
+      "acceptanceCriteria": [
+        "Every deterministic failure includes exact unit and repair hint",
+        "Tools can run without LLMs",
+        "False positives are fixture-tested"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Tool unit tests"
+        },
+        {
+          "type": "manual",
+          "value": "Finding schema tests"
+        },
+        {
+          "type": "manual",
+          "value": "Patch export negative tests"
+        }
+      ],
+      "auditFocus": ["QA as vague LLM judge", "Noisy findings", "Missing repair metadata"]
+    },
+    {
+      "id": "ITOTORI-021",
+      "title": "LLM QA agents and scored findings",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "qa",
+      "dependsOn": ["ITOTORI-019", "ITOTORI-020", "ITOTORI-032", "SHARED-009"],
+      "summary": "Implement focused LLM QA agents for style adherence, semantic drift, tone/register, and unresolved terminology, using finding-backed scores rather than confidence.",
+      "deliverables": [
+        "QA agent schemas",
+        "Scored finding workflow",
+        "Fresh-judge regrade loop",
+        "Calibration fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Scores require findings that explain the gap",
+        "A second judge can regrade findings",
+        "Each agent owns a narrow issue class",
+        "No live credential is required for CI; live runs are opt-in and recorded as non-committed artifacts"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Mock model tests"
+        },
+        {
+          "type": "manual",
+          "value": "Seeded defect benchmark"
+        },
+        {
+          "type": "manual",
+          "value": "QA agent precision/recall report fixture"
+        }
+      ],
+      "auditFocus": ["Unverifiable scores", "Overbroad QA prompts", "QA findings worse than no QA"]
+    },
+    {
+      "id": "ITOTORI-022",
+      "title": "Finding triage and root-cause router",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "qa",
+      "dependsOn": ["ITOTORI-021", "SHARED-007"],
+      "summary": "Route QA and human findings to likely causes: translator mistake, stale context, source annotation issue, glossary conflict, style guide issue, Kaifuu patching, or runtime evidence.",
+      "deliverables": [
+        "Triage service",
+        "Root-cause categories",
+        "Event emissions",
+        "Decision escalation rules"
+      ],
+      "acceptanceCriteria": [
+        "Triage never assumes translator fault by default",
+        "Root-cause hypotheses cite evidence",
+        "P0/P1 findings can trigger repair jobs"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Seeded triage fixtures"
+        },
+        {
+          "type": "manual",
+          "value": "Event tests"
+        },
+        {
+          "type": "manual",
+          "value": "Repair-loop smoke"
+        }
+      ],
+      "auditFocus": ["Misrouting systemic errors", "Human escalation overuse", "Stale policy use"]
+    },
+    {
+      "id": "ITOTORI-023",
+      "title": "Human decision queue UX",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": [
+        "ITOTORI-005",
+        "ITOTORI-022",
+        "ITOTORI-000",
+        "ITOTORI-007",
+        "ITOTORI-008",
+        "ITOTORI-033",
+        "UTSUSHI-005"
+      ],
+      "summary": "Build the polished queue for style disputes, important glossary conflicts, draft feedback, screenshots, comparisons, reasoning, batch actions, and rerun triggers.",
+      "deliverables": [
+        "Decision queue dashboard",
+        "Context panel",
+        "Batch action UX",
+        "Rerun command wiring"
+      ],
+      "acceptanceCriteria": [
+        "A reviewer sees source, draft, context, screenshot/evidence, and agent reasoning together",
+        "Batch approvals/rejections are possible",
+        "Low-value issues can be deferred without losing traceability",
+        "MSW handlers are generated from or checked against real API response schemas"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "MSW interaction tests"
+        },
+        {
+          "type": "manual",
+          "value": "Service tests"
+        },
+        {
+          "type": "manual",
+          "value": "Manual UX smoke"
+        }
+      ],
+      "auditFocus": [
+        "Random-line-without-context UX",
+        "Reviewer overload",
+        "Unclear consequences of decisions"
+      ]
+    },
+    {
+      "id": "ITOTORI-024",
+      "title": "Playtest feedback intake",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "feedback",
+      "dependsOn": ["ITOTORI-023", "ITOTORI-033"],
+      "summary": "Ingest human feedback from playable or runtime-reviewed drafts into the same triage queue, starting with manual/imported playtest reports before external community integrations.",
+      "deliverables": [
+        "Manual playtest feedback intake",
+        "Screenshot/save/context attachment handling",
+        "Duplicate grouping",
+        "Triage integration"
+      ],
+      "acceptanceCriteria": [
+        "Feedback can include screenshots, save/context, and line references",
+        "Style preference disputes are labeled distinctly",
+        "Duplicate reports aggregate evidence",
+        "Feedback enters the same decision and triage workflows as QA findings"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Playtest feedback fixture review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Human feedback without context", "Privacy leakage", "Duplicate spam"]
+    },
+    {
+      "id": "ITOTORI-025",
+      "title": "Patch export and Kaifuu handoff v0.2",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "kaifuu"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-019", "ITOTORI-020", "SHARED-004", "ITOTORI-029", "ITOTORI-035"],
+      "summary": "Export patch-ready translations with source compatibility metadata, protected-span mappings, and deterministic preflight checks before Kaifuu writes files.",
+      "deliverables": [
+        "Patch export service",
+        "Preflight checks",
+        "CLI/API handoff",
+        "Negative tests"
+      ],
+      "acceptanceCriteria": [
+        "Exports fail if deterministic P0 checks fail",
+        "Export includes source revision compatibility",
+        "Kaifuu receives engine-agnostic data only"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Patch export tests"
+        },
+        {
+          "type": "manual",
+          "value": "Kaifuu handoff fixture"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        }
+      ],
+      "auditFocus": ["Engine leakage into Itotori", "Skipping preflight", "Stale source exports"]
+    },
+    {
+      "id": "ITOTORI-026",
+      "title": "Benchmark harness and MTL baseline",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "benchmarks",
+      "dependsOn": [
+        "SHARED-006",
+        "ITOTORI-010",
+        "ITOTORI-020",
+        "ITOTORI-021",
+        "ITOTORI-032",
+        "ITOTORI-029",
+        "SHARED-009"
+      ],
+      "summary": "Run raw MTL baselines, deterministic QA, seeded defect tests, QA-agent evaluation, cost reports, and quality summaries through one benchmark harness.",
+      "deliverables": [
+        "Benchmark runner",
+        "MTL baseline mode",
+        "Seeded defect suite",
+        "Cost/quality report output"
+      ],
+      "acceptanceCriteria": [
+        "Raw MTL is a comparable baseline",
+        "QA agents are benchmarked separately from final drafts",
+        "Reports are reproducible with fixture hashes",
+        "Reports include raw MTL, Itotori draft, QA-agent evaluation, deterministic QA output, token/cost data, and fixture hashes"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Benchmark fixture run"
+        },
+        {
+          "type": "manual",
+          "value": "Report schema validation"
+        },
+        {
+          "type": "manual",
+          "value": "Cost ledger assertions"
+        }
+      ],
+      "auditFocus": [
+        "Self-deluding quality claims",
+        "Untracked model/provider versions",
+        "QA accuracy blind spots"
+      ]
+    },
+    {
+      "id": "ITOTORI-027",
+      "title": "Cost and quality dashboard",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-005", "ITOTORI-026", "ITOTORI-029"],
+      "summary": "Expose benchmark, cost, token, model, provider, QA, and draft-quality trends in the dashboard.",
+      "deliverables": [
+        "Benchmark dashboard views",
+        "Cost breakdown panels",
+        "QA-agent metrics",
+        "Report drilldown"
+      ],
+      "acceptanceCriteria": [
+        "The $25 indie localization target can be tracked empirically",
+        "Provider/model changes are visible",
+        "QA false positives/negatives are represented",
+        "MSW handlers are generated from or checked against real API response schemas"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "MSW dashboard tests"
+        },
+        {
+          "type": "manual",
+          "value": "Report fixture rendering"
+        },
+        {
+          "type": "manual",
+          "value": "Manual dashboard smoke"
+        }
+      ],
+      "auditFocus": ["Vanity metrics", "Hidden costs", "Misleading aggregate quality"]
+    },
+    {
+      "id": "ITOTORI-028",
+      "title": "End-to-end draft iteration loop",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "mvp-integration",
+      "dependsOn": [
+        "ITOTORI-023",
+        "ITOTORI-025",
+        "KAIFUU-010",
+        "UTSUSHI-006",
+        "UTSUSHI-005",
+        "ITOTORI-024",
+        "ITOTORI-038",
+        "UTSUSHI-011",
+        "ITOTORI-040",
+        "ITOTORI-042"
+      ],
+      "summary": "Wire import, context, draft, QA, decision, patch export, Kaifuu patch, Utsushi validation, feedback, triage, and rerun into one vertical iteration loop.",
+      "deliverables": [
+        "Loop orchestration command",
+        "Dashboard run status",
+        "Repair job examples",
+        "End-to-end fixture"
+      ],
+      "acceptanceCriteria": [
+        "A P1 QA finding can trigger repair and re-audit",
+        "Human decisions update policy/glossary/draft state and rerun affected work",
+        "The loop is event-driven, not a brittle linear script"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "End-to-end integration test"
+        },
+        {
+          "type": "manual",
+          "value": "End-to-end v0.2 loop command introduced by this node"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard smoke"
+        }
+      ],
+      "auditFocus": ["Pipeline-only thinking", "Rerun invalidation bugs", "State divergence"]
+    },
+    {
+      "id": "ITOTORI-029",
+      "title": "Locale branch foundation",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-002", "SHARED-001", "SHARED-008"],
+      "summary": "Make 1->N localization first-class before drafting: independent target branches, branch-scoped policies, glossary, drafts, QA, exports, and benchmark costs.",
+      "deliverables": [
+        "Locale branch services",
+        "Branch-scoped policy hooks",
+        "Branch repository tests",
+        "Branch dashboard/API seeds"
+      ],
+      "acceptanceCriteria": [
+        "No JP->EN hardcoding remains",
+        "Multiple target locales can coexist for one source revision",
+        "Branch-specific glossary and style decisions do not leak"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Multi-locale fixture review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Single-target assumptions", "Policy leakage", "Branch performance"]
+    },
+    {
+      "id": "ITOTORI-030",
+      "title": "Search and indexing infrastructure decision",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["ITOTORI-001", "ITOTORI-031"],
+      "summary": "Decide exact and semantic indexing strategy for glossary terms, scenes, context artifacts, feedback, and agent tools, including pgvector handling.",
+      "deliverables": [
+        "Search/indexing ADR",
+        "pgvector yes/no decision",
+        "Fallback strategy",
+        "Index migration plan"
+      ],
+      "acceptanceCriteria": [
+        "Exact search indexes are specified",
+        "Semantic search tool interface is defined",
+        "Docker and CI behavior is clear if pgvector is unavailable"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Indexing ADR review"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Legacy opaque RAG",
+        "Unavailable extensions blocking CI",
+        "Search performance blind spots"
+      ]
+    },
+    {
+      "id": "ITOTORI-031",
+      "title": "Provider credentials, routing, and recording policy",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "agent-runtime",
+      "dependsOn": ["UNIV-001"],
+      "summary": "Define provider boundaries, OpenRouter quirks, local OpenAI-compatible endpoints, secret storage, prompt logging, free-provider policy, structured-output fallback, and recorded fixtures.",
+      "deliverables": [
+        "Provider policy ADR",
+        "Secret handling rules",
+        "Recorded fixture policy",
+        "OpenRouter capability checklist"
+      ],
+      "acceptanceCriteria": [
+        "No live credential is required for CI",
+        "Live provider runs are opt-in and recorded as non-committed artifacts",
+        "Free/logging provider policy is explicit"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Provider policy review"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Secret leakage", "OpenRouter lock-in", "Prompt logging surprises"]
+    },
+    {
+      "id": "ITOTORI-032",
+      "title": "Seeded localization defect corpus",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["SHARED-003", "SHARED-009", "UNIV-008"],
+      "summary": "Create fixtures with known localization defects for deterministic QA, LLM QA, triage, benchmarks, and false-positive calibration.",
+      "deliverables": [
+        "Seeded defect fixtures",
+        "Expected findings",
+        "False-positive cases",
+        "Defect coverage matrix"
+      ],
+      "acceptanceCriteria": [
+        "Lost markup, wrong speaker, style violation, glossary drift, semantic mistranslation, over-literal MTL, line length/UI overflow, and false-positive QA cases are represented",
+        "Expected findings map to the quality taxonomy",
+        "Fixture hashes are recorded"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Seeded defect fixture review"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Unrealistic defects",
+        "No false-positive coverage",
+        "Findings not mapped to taxonomy"
+      ]
+    },
+    {
+      "id": "ITOTORI-033",
+      "title": "Feedback source model and manual import stub",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "feedback",
+      "dependsOn": ["ITOTORI-000", "ITOTORI-001"],
+      "summary": "Define feedback sources, manual report entry, screenshot/save/context attachment shapes, dedupe keys, and style-dispute labels before external integrations.",
+      "deliverables": [
+        "Feedback source schema",
+        "Manual feedback import service",
+        "Attachment shape",
+        "Dedupe key policy"
+      ],
+      "acceptanceCriteria": [
+        "Manual feedback can include screenshot, save/context, line reference, and reporter note",
+        "Style preference disputes are distinct from objective defects",
+        "Duplicates can aggregate evidence"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Feedback fixture review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Feedback without context",
+        "Duplicate spam",
+        "Style disputes treated as facts"
+      ]
+    },
+    {
+      "id": "ITOTORI-034",
+      "title": "Translation memory and reuse index",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-002", "ITOTORI-008", "ITOTORI-029"],
+      "summary": "Store reusable source/target segments, fuzzy matches, reuse provenance, locale-branch scope, and draft prefill hooks to reduce cost and improve consistency.",
+      "deliverables": [
+        "Translation memory tables",
+        "Reuse search service",
+        "Draft prefill hook",
+        "Reuse provenance events"
+      ],
+      "acceptanceCriteria": [
+        "Repeated lines and near-duplicates can reuse prior decisions",
+        "Memory is locale-branch scoped",
+        "Reuse is costed and auditable rather than invisible"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Translation memory fixture review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Wrong-locale reuse", "Stale source reuse", "Untracked cost savings"]
+    },
+    {
+      "id": "ITOTORI-035",
+      "title": "Asset localization decision workflow",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori", "kaifuu"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-007", "SHARED-011", "KAIFUU-021"],
+      "summary": "Let humans set locale-branch policy for images with text, song titles, UI art, fonts, videos, romanization, full localization, or do-not-translate handling.",
+      "deliverables": [
+        "Asset decision service",
+        "Dashboard policy view",
+        "Batch decision UX",
+        "Policy-to-export hooks"
+      ],
+      "acceptanceCriteria": [
+        "Asset localization choices are explicit and locale-scoped",
+        "Metadata-only assets can be tracked without patch support",
+        "Human decisions are respected by exports and QA"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Asset decision UX review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Policy ignored by agents",
+        "Overpromising asset editing",
+        "Bad batch-review UX"
+      ]
+    },
+    {
+      "id": "ITOTORI-036",
+      "title": "Local model provider parity",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "agent-runtime",
+      "dependsOn": ["ITOTORI-009", "ITOTORI-010", "ITOTORI-019"],
+      "summary": "Prove LM Studio or another OpenAI-compatible local endpoint can run drafting and QA loops with explicit capability gaps and zero/estimated cost accounting.",
+      "deliverables": [
+        "Local provider adapter",
+        "Capability gap reporting",
+        "Local model smoke fixture",
+        "Cost accounting mode"
+      ],
+      "acceptanceCriteria": [
+        "Local endpoint can draft and QA fixture batches",
+        "Capability gaps are visible",
+        "Costs are recorded as zero or estimated without corrupting OpenRouter reports"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Local model smoke report"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": [
+        "Assuming local model quality",
+        "Provider capability mismatch",
+        "Cost ledger distortion"
+      ]
+    },
+    {
+      "id": "ITOTORI-037",
+      "title": "External community channel integrations",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "feedback",
+      "dependsOn": ["ITOTORI-024", "ITOTORI-033"],
+      "summary": "Integrate GitHub issues, forms, Discord/forum exports, or other community channels after the manual feedback model is proven.",
+      "deliverables": [
+        "Channel importer interface",
+        "GitHub/forms importer prototype",
+        "Deduplication integration",
+        "Privacy rules"
+      ],
+      "acceptanceCriteria": [
+        "Imported reports keep source/channel metadata",
+        "Duplicates aggregate evidence",
+        "Privacy-sensitive data is redacted or flagged"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Importer fixture review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": ["Accepting community feedback as truth", "Privacy leakage", "Importer spam"]
+    },
+    {
+      "id": "ITOTORI-038",
+      "title": "Repair and rerun orchestration skeleton",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-003", "ITOTORI-022", "ITOTORI-025"],
+      "summary": "Implement the minimal event-driven repair loop that turns P0/P1 findings and human decisions into targeted rerun jobs before the full E2E iteration milestone.",
+      "deliverables": [
+        "Repair job service",
+        "Affected-work selector",
+        "Rerun event flow",
+        "Fixture repair loop"
+      ],
+      "acceptanceCriteria": [
+        "P0/P1 findings can trigger targeted repair jobs",
+        "Human decisions rerun affected work without rerunning the whole project unless necessary",
+        "Repair history remains auditable"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Repair-loop fixture review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": ["Pipeline-only reruns", "Lost repair provenance", "Over-broad invalidation"]
+    },
+    {
+      "id": "ITOTORI-039",
+      "title": "Model and prompt experiment runner",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "benchmarks",
+      "dependsOn": ["ITOTORI-010", "ITOTORI-026", "ITOTORI-031"],
+      "summary": "Run reproducible model, provider, prompt, preset, router, and tool-strategy experiments so agent defaults are benchmarked rather than assumed.",
+      "deliverables": [
+        "Experiment matrix runner",
+        "Prompt/version registry",
+        "Provider route comparison reports",
+        "Recommended preset snapshots"
+      ],
+      "acceptanceCriteria": [
+        "Reports compare cost, latency, quality taxonomy findings, structured-output reliability, and provider failure rate",
+        "Selected presets are reproducible and auditable",
+        "Live calls remain opt-in and recorded as non-committed artifacts"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Experiment fixture report review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Choosing models by vibes",
+        "Prompt drift",
+        "Provider failure rates hidden from reports"
+      ]
+    },
+    {
+      "id": "ITOTORI-040",
+      "title": "Localization workspace UX",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-005", "ITOTORI-006", "ITOTORI-029", "ITOTORI-034", "ITOTORI-030"],
+      "summary": "Build the main reviewer workspace for browsing projects, scenes, units, assets, source/draft/final comparisons, searchable context, manual corrections, and edit history.",
+      "deliverables": [
+        "Project/scene/unit browser",
+        "Source/draft/final comparison view",
+        "Searchable context panel",
+        "Manual edit flow",
+        "Edit history events"
+      ],
+      "acceptanceCriteria": [
+        "A reviewer who does not speak the source language can navigate by translated summaries and context",
+        "Manual edits enter the same event and repair loop",
+        "Dashboard reads through APIs rather than direct DB access"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Workspace UX smoke review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Queue-only UX that hides project context",
+        "Manual edits outside event history",
+        "Unsearchable large projects"
+      ]
+    },
+    {
+      "id": "ITOTORI-041",
+      "title": "Asset localization drafting and QA loop",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["itotori", "kaifuu"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-035", "KAIFUU-026", "ITOTORI-019", "ITOTORI-020"],
+      "summary": "Extend drafting, review, QA, and export workflows to image/UI text and other asset-localization payloads once OCR and asset inventory exist.",
+      "deliverables": [
+        "Asset draft records",
+        "Asset QA findings",
+        "Asset review UI integration",
+        "Patch/export handoff rules"
+      ],
+      "acceptanceCriteria": [
+        "Image/UI text can be drafted, reviewed, QA’d, and exported as decisions or patch payloads",
+        "Unsupported engine asset patching remains explicit",
+        "Asset localization does not pretend every asset is editable"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Asset drafting fixture review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": [
+        "Text workflow assumptions leaking into assets",
+        "Unsupported patch support hidden",
+        "Poor reviewer context"
+      ]
+    },
+    {
+      "id": "ITOTORI-042",
+      "title": "Style dispute adjudication workflow",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "feedback",
+      "dependsOn": ["ITOTORI-007", "ITOTORI-024"],
+      "summary": "Add explicit accept, reject, defer, and style-guide-amendment handling for controversial localization feedback.",
+      "deliverables": [
+        "Style dispute state machine",
+        "Decision rationale capture",
+        "Style-guide amendment flow",
+        "Duplicate unresolved-feedback suppression"
+      ],
+      "acceptanceCriteria": [
+        "Style feedback can be accepted, rejected, deferred, or converted into a style-guide amendment",
+        "Rejected feedback keeps rationale and does not reappear as unresolved QA",
+        "Accepted style changes trigger affected reruns"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Style dispute workflow review"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Accepting all fan style feedback",
+        "Lost rejection rationale",
+        "Style-guide changes without reruns"
+      ]
+    },
+    {
+      "id": "UTSUSHI-001",
+      "title": "Utsushi runtime adapter trait",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["utsushi", "shared"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["SHARED-005", "UTSUSHI-000"],
+      "summary": "Define runtime adapter APIs for trace, branch discovery, capture, smoke validation, capability reporting, and approximation tiers.",
+      "deliverables": [
+        "RuntimeAdapter trait",
+        "Capability enum",
+        "Fidelity tier docs",
+        "Adapter registry"
+      ],
+      "acceptanceCriteria": [
+        "Fixture runtime uses the same trait as future adapters",
+        "Adapters can be useful without pixel-perfect emulation",
+        "Approximation limits are explicit"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "manual",
+          "value": "Fixture adapter tests"
+        },
+        {
+          "type": "manual",
+          "value": "Runtime schema tests"
+        }
+      ],
+      "auditFocus": [
+        "Pixel-perfect overcommitment",
+        "Vague fidelity tiers",
+        "Adapter API too engine-specific"
+      ]
+    },
+    {
+      "id": "UTSUSHI-002",
+      "title": "Fixture runtime on adapter architecture",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-001"],
+      "summary": "Refactor the existing fixture trace/capture/smoke code onto the runtime adapter trait with no hello-world regression.",
+      "deliverables": [
+        "Fixture runtime adapter",
+        "CLI dispatch through registry",
+        "Capability output",
+        "Regression tests"
+      ],
+      "acceptanceCriteria": [
+        "Current Utsushi commands still pass",
+        "Fixture reports fidelity tier explicitly",
+        "No special-case CLI logic remains"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        }
+      ],
+      "auditFocus": ["Baseline regression", "Trait ergonomics", "Unclear approximation reporting"]
+    },
+    {
+      "id": "UTSUSHI-003",
+      "title": "Runtime evidence ingestion",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-001", "ITOTORI-002", "UTSUSHI-002"],
+      "summary": "Persist runtime evidence in Itotori with links to projects, source revisions, locale branches, bridge units, artifacts, and validation findings.",
+      "deliverables": [
+        "Runtime evidence repositories",
+        "Ingestion service",
+        "Artifact references",
+        "Dashboard API"
+      ],
+      "acceptanceCriteria": [
+        "Evidence links back to bridge units",
+        "Multiple runtime runs can coexist",
+        "Artifact paths are portable and not raw blobs by default"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "DB tests"
+        },
+        {
+          "type": "manual",
+          "value": "API tests"
+        },
+        {
+          "type": "manual",
+          "value": "Fixture ingestion tests"
+        }
+      ],
+      "auditFocus": ["Evidence orphaning", "Artifact path fragility", "Dashboard query performance"]
+    },
+    {
+      "id": "UTSUSHI-004",
+      "title": "Screenshot and artifact store",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-003"],
+      "summary": "Provide local artifact storage conventions for screenshots, frame captures, traces, and recordings, with references stored in Postgres.",
+      "deliverables": [
+        "Artifact store module",
+        "Path policy",
+        "Cleanup command",
+        "Dashboard-serving route"
+      ],
+      "acceptanceCriteria": [
+        "Artifacts are reproducibly named",
+        "DB rows reference artifacts without embedding large files",
+        "Cleanup cannot delete source game files"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Artifact store tests"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard route tests"
+        },
+        {
+          "type": "manual",
+          "value": "Manual smoke"
+        }
+      ],
+      "auditFocus": ["Unsafe file deletion", "Path traversal", "Large DB blobs"]
+    },
+    {
+      "id": "UTSUSHI-005",
+      "title": "Runtime review dashboard",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["UTSUSHI-004", "ITOTORI-005"],
+      "summary": "Upgrade the runtime dashboard from hello-world status to reviewable traces, screenshots, branch points, validation findings, and comparison views.",
+      "deliverables": [
+        "Runtime evidence views",
+        "Screenshot comparison view",
+        "Trace table",
+        "Finding links"
+      ],
+      "acceptanceCriteria": [
+        "A reviewer can inspect where a line appeared",
+        "Screenshots and traces link to source units and drafts",
+        "Approximation/fidelity limits are visible",
+        "MSW handlers are generated from or checked against real API response schemas"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "MSW dashboard tests"
+        },
+        {
+          "type": "manual",
+          "value": "Artifact route tests"
+        },
+        {
+          "type": "manual",
+          "value": "Manual review smoke"
+        }
+      ],
+      "auditFocus": [
+        "Evidence without context",
+        "Misleading fidelity presentation",
+        "Poor reviewer ergonomics"
+      ]
+    },
+    {
+      "id": "UTSUSHI-006",
+      "title": "RPG Maker MV/MZ validation probe",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["utsushi", "kaifuu"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-001", "KAIFUU-007", "UTSUSHI-000", "UTSUSHI-002", "UTSUSHI-003"],
+      "summary": "Implement a pragmatic validation probe for RPG Maker MV/MZ projects: route/text trace extraction, lightweight launch or static validation, and screenshot hooks where feasible.",
+      "deliverables": [
+        "RPG Maker runtime adapter",
+        "Trace fixtures",
+        "Capture strategy",
+        "Capability docs"
+      ],
+      "acceptanceCriteria": [
+        "Adapter produces useful validation evidence without requiring pixel-perfect porting",
+        "Limitations are explicit",
+        "It supports the first real-engine MVP loop",
+        "Evidence tier is visible wherever evidence is shown"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Runtime adapter tests"
+        },
+        {
+          "type": "manual",
+          "value": "Public fixture smoke"
+        },
+        {
+          "type": "manual",
+          "value": "Itotori ingestion test"
+        }
+      ],
+      "auditFocus": [
+        "Overpromising VM fidelity",
+        "Missing branch/text evidence",
+        "Platform assumptions"
+      ]
+    },
+    {
+      "id": "UTSUSHI-007",
+      "title": "Ren'Py route and text probe",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["utsushi", "kaifuu"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-001", "KAIFUU-008", "UTSUSHI-000", "UTSUSHI-002", "UTSUSHI-003"],
+      "summary": "Produce runtime-like validation evidence for Ren'Py projects through script structure, route/menu analysis, and optional launch/capture hooks.",
+      "deliverables": [
+        "Ren'Py runtime probe",
+        "Route fixtures",
+        "Evidence ingestion",
+        "Capability docs"
+      ],
+      "acceptanceCriteria": [
+        "Menus and labels are traced",
+        "Evidence links to bridge units",
+        "Unsupported runtime capture is represented honestly",
+        "Evidence tier is visible wherever evidence is shown"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Runtime adapter tests"
+        },
+        {
+          "type": "manual",
+          "value": "Route fixture tests"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard smoke"
+        }
+      ],
+      "auditFocus": [
+        "Static analysis masquerading as runtime",
+        "Route explosion",
+        "Script syntax variants"
+      ]
+    },
+    {
+      "id": "UTSUSHI-008",
+      "title": "KiriKiri/KAG trace probe",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["utsushi", "kaifuu"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-001", "KAIFUU-009", "UTSUSHI-000", "UTSUSHI-002", "UTSUSHI-003"],
+      "summary": "Build a trace-focused KAG validation probe for command-heavy visual novel scripts, emphasizing text order, speaker context, and branch points.",
+      "deliverables": [
+        "KAG trace probe",
+        "Command fixtures",
+        "Evidence ingestion",
+        "Capability docs"
+      ],
+      "acceptanceCriteria": [
+        "Trace order is useful for review",
+        "Speaker and branch metadata link back to bridge units",
+        "Unsupported rendering is clearly tiered",
+        "Evidence tier is visible wherever evidence is shown"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Runtime probe tests"
+        },
+        {
+          "type": "manual",
+          "value": "KAG fixture trace tests"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard smoke"
+        }
+      ],
+      "auditFocus": [
+        "Command parser drift from Kaifuu",
+        "Fidelity overclaim",
+        "Speaker/branch ambiguity"
+      ]
+    },
+    {
+      "id": "UTSUSHI-009",
+      "title": "Branch point explorer",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-006", "UTSUSHI-007", "ITOTORI-015"],
+      "summary": "Use runtime probes and route maps to expose branch points, reachable text, screenshots, and validation gaps.",
+      "deliverables": [
+        "Branch explorer service",
+        "Dashboard view",
+        "Coverage metrics",
+        "Gap findings"
+      ],
+      "acceptanceCriteria": [
+        "Reviewers can see branch coverage",
+        "Unvisited text can be identified",
+        "Large route maps remain navigable"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Route graph tests"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard MSW tests"
+        },
+        {
+          "type": "manual",
+          "value": "Coverage fixture"
+        }
+      ],
+      "auditFocus": ["Coverage misreporting", "Route graph scale", "Unclear unreachable states"]
+    },
+    {
+      "id": "UTSUSHI-010",
+      "title": "Playable review package prototype",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-005", "UTSUSHI-006", "UTSUSHI-014"],
+      "summary": "Prototype a local playable review slice with annotations and evidence capture for at least one supported engine.",
+      "deliverables": [
+        "Playable review command",
+        "Annotation overlay concept",
+        "Feedback capture",
+        "Limitations doc"
+      ],
+      "acceptanceCriteria": [
+        "A reviewer can play a small patched slice and submit contextual feedback",
+        "Feedback links to runtime evidence",
+        "The prototype does not block MVP if fidelity is limited"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Manual smoke"
+        },
+        {
+          "type": "manual",
+          "value": "Feedback ingestion test"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard review test"
+        }
+      ],
+      "auditFocus": [
+        "Scope creep into full emulator",
+        "Bad feedback context",
+        "Fragile launch assumptions"
+      ]
+    },
+    {
+      "id": "UTSUSHI-011",
+      "title": "Agent validation hooks over runtime evidence",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "qa",
+      "dependsOn": ["UTSUSHI-003", "ITOTORI-022", "UTSUSHI-005"],
+      "summary": "Let QA agents inspect runtime evidence through tools for layout, missing text, wrong branch, screenshot OCR hints, and mismatch findings.",
+      "deliverables": [
+        "Runtime evidence tools",
+        "Agent prompts",
+        "Finding fixtures",
+        "Triage integration"
+      ],
+      "acceptanceCriteria": [
+        "Agents request evidence through tools",
+        "Findings cite screenshots/traces",
+        "Deterministic runtime checks run before LLM review",
+        "Runtime evidence can trigger findings for visible overflow, missing text, broken markup artifacts, wrong scene or branch, and screenshot/evidence mismatch",
+        "Every runtime-evidence QA finding records evidence tier"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Mock agent tests"
+        },
+        {
+          "type": "manual",
+          "value": "Runtime finding fixtures"
+        },
+        {
+          "type": "manual",
+          "value": "Triage tests"
+        }
+      ],
+      "auditFocus": [
+        "Tool-less RAG regression",
+        "Uncited visual claims",
+        "Expensive evidence overuse"
+      ]
+    },
+    {
+      "id": "UTSUSHI-012",
+      "title": "Scene VM feasibility report",
+      "status": "planned",
+      "priority": "P2",
+      "target": "mvp",
+      "projects": ["utsushi", "kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["UTSUSHI-001", "KAIFUU-020", "UTSUSHI-000"],
+      "summary": "Evaluate when engine-specific VMs are worth building for validation, branch navigation, screenshots, recordings, and browser playback.",
+      "deliverables": [
+        "VM feasibility report",
+        "Engine ranking",
+        "Prototype selection",
+        "Follow-up DAG nodes"
+      ],
+      "acceptanceCriteria": [
+        "Accuracy target is validation usefulness first, pixel-perfect second",
+        "Siglus, RPG Maker, and KiriKiri are compared",
+        "Build-vs-skip criteria are explicit",
+        "The report can create follow-up DAG nodes without blocking MVP runtime probes"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Research doc review"
+        },
+        {
+          "type": "manual",
+          "value": "DAG update dry-run"
+        }
+      ],
+      "auditFocus": [
+        "Engine-specific sinkhole",
+        "Pixel-perfect barrier confusion",
+        "Undefined payoff"
+      ]
+    },
+    {
+      "id": "UTSUSHI-013",
+      "title": "Browser playback experiment",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["utsushi"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["UTSUSHI-010", "UTSUSHI-012"],
+      "summary": "Experiment with WebAssembly/browser playback or partial runtime visualization for one selected engine family.",
+      "deliverables": [
+        "Prototype",
+        "Performance notes",
+        "Fidelity notes",
+        "Next-spec recommendation"
+      ],
+      "acceptanceCriteria": [
+        "Prototype shows whether browser playback helps review",
+        "Limitations are measured",
+        "No MVP dependency is introduced"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Manual demo"
+        },
+        {
+          "type": "manual",
+          "value": "Smoke test if automated feasible"
+        },
+        {
+          "type": "manual",
+          "value": "Research summary"
+        }
+      ],
+      "auditFocus": [
+        "Premature productization",
+        "Security of local assets",
+        "Performance overclaim"
+      ]
+    },
+    {
+      "id": "UTSUSHI-014",
+      "title": "Cross-platform launch and capture harness",
+      "status": "planned",
+      "priority": "P2",
+      "target": "mvp",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-001", "UTSUSHI-004", "UTSUSHI-000"],
+      "summary": "Build a pragmatic launch/capture harness for native, Wine/Proton, or browser-backed probes with process control, screenshots, timeouts, and semantic errors.",
+      "deliverables": [
+        "Launch harness",
+        "Capture hook abstraction",
+        "Timeout/error policy",
+        "Platform capability docs"
+      ],
+      "acceptanceCriteria": [
+        "Launch failures produce semantic evidence rather than hanging",
+        "Wine/Proton/native assumptions are explicit",
+        "Screenshots are stored through the artifact store"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Launch harness smoke report"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        }
+      ],
+      "auditFocus": ["Host-specific flakiness", "Hung processes", "Unsafe file/process handling"]
+    },
+    {
+      "id": "MVP-001",
+      "title": "First real-engine end-to-end vertical slice",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["suite", "itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "mvp-integration",
+      "dependsOn": [
+        "SHARED-002",
+        "ITOTORI-028",
+        "KAIFUU-007",
+        "UTSUSHI-006",
+        "MVP-000",
+        "SHARED-012"
+      ],
+      "summary": "Run the full Itotori/Kaifuu/Utsushi loop on a public or private-local RPG Maker MV/MZ fixture without relying on the synthetic fixture engine.",
+      "deliverables": [
+        "Real-engine fixture profile",
+        "Full run command",
+        "Dashboard evidence",
+        "Patch package"
+      ],
+      "acceptanceCriteria": [
+        "Extract, draft, QA, patch, delta apply, runtime evidence, feedback, and rerun all work",
+        "No raw copyrighted assets are committed",
+        "All failures are structured findings"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "End-to-end run"
+        },
+        {
+          "type": "command",
+          "value": "just ci"
+        },
+        {
+          "type": "manual",
+          "value": "Artifact review"
+        }
+      ],
+      "auditFocus": [
+        "Synthetic-fixture assumptions",
+        "Patch correctness",
+        "Reviewer workflow coherence"
+      ]
+    },
+    {
+      "id": "MVP-002",
+      "title": "Playable draft feedback loop",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["suite", "itotori", "utsushi"],
+      "parallelGroup": "mvp-integration",
+      "dependsOn": ["MVP-001", "ITOTORI-023", "UTSUSHI-005", "MVP-000", "ITOTORI-024"],
+      "summary": "Make human draft feedback from a playable or runtime-reviewed slice flow into triage, decisions, repair jobs, and updated patch output.",
+      "deliverables": [
+        "Feedback UX",
+        "Triage wiring",
+        "Repair rerun",
+        "Before/after dashboard evidence"
+      ],
+      "acceptanceCriteria": [
+        "A typo correction can be submitted with context and batched",
+        "Style disputes can become decision queue items",
+        "Repair jobs update only affected work where possible"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "End-to-end feedback test"
+        },
+        {
+          "type": "manual",
+          "value": "Manual UX smoke"
+        },
+        {
+          "type": "manual",
+          "value": "Event history assertions"
+        }
+      ],
+      "auditFocus": [
+        "Human feedback without context",
+        "Over-escalation",
+        "Broken rerun invalidation"
+      ]
+    },
+    {
+      "id": "MVP-003",
+      "title": "Cost and quality target report",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["suite", "itotori"],
+      "parallelGroup": "mvp-integration",
+      "dependsOn": ["MVP-001", "ITOTORI-026", "ITOTORI-027", "MVP-000", "ITOTORI-039"],
+      "summary": "Produce the first credible MVP report comparing raw MTL, Itotori drafts, deterministic QA, LLM QA, cost, and runtime evidence on fixture and private-local data.",
+      "deliverables": ["Benchmark run", "Cost report", "Quality report", "README-safe summary"],
+      "acceptanceCriteria": [
+        "Reports avoid unverifiable public claims",
+        "MTL baseline is included",
+        "The $25 target is evaluated with real token/count data",
+        "Reports include raw MTL, Itotori draft, QA-agent evaluation, deterministic QA output, token/cost data, and fixture hashes"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Benchmark command"
+        },
+        {
+          "type": "manual",
+          "value": "Report schema validation"
+        },
+        {
+          "type": "manual",
+          "value": "Manual report audit"
+        }
+      ],
+      "auditFocus": ["Quality self-delusion", "Private data leakage", "Cost optimism"]
+    },
+    {
+      "id": "MVP-004",
+      "title": "Multi-engine MVP demonstration",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["suite", "kaifuu", "itotori", "utsushi"],
+      "parallelGroup": "mvp-integration",
+      "dependsOn": ["MVP-002", "KAIFUU-008", "KAIFUU-009", "UTSUSHI-007", "UTSUSHI-008", "MVP-000"],
+      "summary": "Demonstrate that the architecture is engine-agnostic by running supported slices across RPG Maker, Ren'Py, and KAG-style fixtures.",
+      "deliverables": [
+        "Multi-engine run matrix",
+        "Engine capability dashboard",
+        "Known limitations",
+        "Regression fixtures"
+      ],
+      "acceptanceCriteria": [
+        "At least three engine families have extraction/patching paths",
+        "Runtime evidence fidelity is clearly tiered",
+        "Itotori code remains engine-agnostic"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Adapter tests"
+        },
+        {
+          "type": "manual",
+          "value": "Multi-engine integration run"
+        },
+        {
+          "type": "manual",
+          "value": "Dashboard review"
+        }
+      ],
+      "auditFocus": [
+        "Engine-specific Itotori leakage",
+        "Thin demos without patch verification",
+        "Unclear limitations"
+      ]
+    },
+    {
+      "id": "MVP-005",
+      "title": "MVP release hardening",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["suite", "universal"],
+      "parallelGroup": "release",
+      "dependsOn": [
+        "MVP-003",
+        "MVP-004",
+        "UNIV-004",
+        "UNIV-006",
+        "MVP-000",
+        "UNIV-007",
+        "UNIV-008",
+        "UNIV-009",
+        "UNIV-010",
+        "ITOTORI-040",
+        "ITOTORI-042"
+      ],
+      "summary": "Prepare the MVP for public use: docs, install flow, security posture, known limitations, examples, green required checks, and roadmap continuation.",
+      "deliverables": [
+        "MVP README",
+        "Install docs",
+        "Security/limitations docs",
+        "Release checklist",
+        "Next DAG tranche"
+      ],
+      "acceptanceCriteria": [
+        "A new user can run public fixture demos",
+        "Known legal/safety boundaries are practical and not overstated",
+        "CI and hello-world workflows are required and green"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Fresh clone smoke"
+        },
+        {
+          "type": "command",
+          "value": "just ci"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        },
+        {
+          "type": "manual",
+          "value": "Docs audit"
+        }
+      ],
+      "auditFocus": ["Overclaiming support", "Setup brittleness", "Missing limitation disclosure"]
+    }
+  ]
+}

@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/roadmap/spec-dag.schema.json",
+  "title": "Itotori Spec DAG",
+  "type": "object",
+  "required": ["schemaVersion", "metadata", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "metadata": {
+      "type": "object",
+      "required": ["generatedFrom", "currentBaseline", "priorityDefinitions", "statusDefinitions"],
+      "additionalProperties": false,
+      "properties": {
+        "generatedFrom": { "type": "string", "minLength": 1 },
+        "currentBaseline": { "type": "string", "minLength": 1 },
+        "priorityDefinitions": {
+          "type": "object",
+          "required": ["P0", "P1", "P2", "P3"],
+          "additionalProperties": false,
+          "properties": {
+            "P0": { "type": "string" },
+            "P1": { "type": "string" },
+            "P2": { "type": "string" },
+            "P3": { "type": "string" }
+          }
+        },
+        "statusDefinitions": {
+          "type": "object",
+          "required": ["complete", "planned", "in_progress", "blocked", "cancelled"],
+          "additionalProperties": false,
+          "properties": {
+            "complete": { "type": "string" },
+            "planned": { "type": "string" },
+            "in_progress": { "type": "string" },
+            "blocked": { "type": "string" },
+            "cancelled": { "type": "string" }
+          }
+        }
+      }
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/node" }
+    }
+  },
+  "$defs": {
+    "node": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "status",
+        "priority",
+        "target",
+        "projects",
+        "parallelGroup",
+        "dependsOn",
+        "summary",
+        "deliverables",
+        "acceptanceCriteria",
+        "verification",
+        "auditFocus"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Z]+-[0-9]{3}$" },
+        "title": { "type": "string", "minLength": 1 },
+        "status": {
+          "type": "string",
+          "enum": ["complete", "planned", "in_progress", "blocked", "cancelled"]
+        },
+        "priority": {
+          "type": "string",
+          "enum": ["P0", "P1", "P2", "P3"]
+        },
+        "target": {
+          "type": "string",
+          "enum": ["baseline", "mvp", "post_mvp"]
+        },
+        "projects": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["universal", "shared", "itotori", "kaifuu", "utsushi", "suite"]
+          }
+        },
+        "parallelGroup": {
+          "type": "string",
+          "enum": [
+            "agent-runtime",
+            "baseline",
+            "benchmarks",
+            "context-agents",
+            "contracts",
+            "dashboard",
+            "engine-adapters",
+            "engine-research",
+            "feedback",
+            "itotori-core",
+            "kaifuu-core",
+            "mvp-integration",
+            "policy",
+            "qa",
+            "quality-foundation",
+            "release",
+            "roadmap-infra",
+            "runtime-adapters",
+            "tooling",
+            "translation-loop",
+            "utsushi-core"
+          ]
+        },
+        "dependsOn": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Z]+-[0-9]{3}$" }
+        },
+        "summary": { "type": "string", "minLength": 1 },
+        "deliverables": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "acceptanceCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "verification": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["type", "value"],
+            "additionalProperties": false,
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["command", "manual"]
+              },
+              "value": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "auditFocus": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "statusReason": { "type": "string", "minLength": 1 },
+        "issue": { "type": "string", "minLength": 1 },
+        "branch": { "type": "string", "minLength": 1 },
+        "worktree": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 },
+        "blockedBy": { "type": "string", "minLength": 1 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "blocked" } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["statusReason", "blockedBy"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "const": "in_progress" } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["owner"],
+            "anyOf": [{ "required": ["branch"] }, { "required": ["worktree"] }]
+          }
+        },
+        {
+          "if": {
+            "properties": { "status": { "const": "cancelled" } },
+            "required": ["status"]
+          },
+          "then": {
+            "required": ["statusReason"]
+          }
+        }
+      ]
+    }
+  }
+}
