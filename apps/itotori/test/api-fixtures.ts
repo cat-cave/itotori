@@ -1,5 +1,9 @@
 import { readFileSync } from "node:fs";
-import type { ProjectDashboardStatus, RuntimeDashboardStatus } from "@itotori/db";
+import type {
+  ProjectCostReport,
+  ProjectDashboardStatus,
+  RuntimeDashboardStatus,
+} from "@itotori/db";
 import type {
   BenchmarkReportV02,
   BridgeBundle,
@@ -8,6 +12,83 @@ import type {
   TriageEventV02,
 } from "@itotori/localization-bridge-schema";
 import type { ProjectState, RuntimeIngestResult } from "../src/services/project-workflow.js";
+
+export const costReportFixture: ProjectCostReport = {
+  projectId: "project-1",
+  currency: "USD",
+  runCount: 2,
+  billedMicrosUsd: 1200,
+  estimatedMicrosUsd: 980,
+  zeroRunCount: 0,
+  unknownRunCount: 0,
+  includesUnknownCost: false,
+  totalsByCostKind: [
+    {
+      costKind: "billed",
+      runCount: 1,
+      amountMicrosUsd: 1200,
+      promptTokens: 12,
+      completionTokens: 8,
+      totalTokens: 20,
+    },
+    {
+      costKind: "provider_estimate",
+      runCount: 1,
+      amountMicrosUsd: 980,
+      promptTokens: 10,
+      completionTokens: 6,
+      totalTokens: 16,
+    },
+    {
+      costKind: "local_estimate",
+      runCount: 0,
+      amountMicrosUsd: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    },
+    {
+      costKind: "zero",
+      runCount: 0,
+      amountMicrosUsd: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    },
+    {
+      costKind: "unknown",
+      runCount: 0,
+      amountMicrosUsd: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    },
+  ],
+  recentRuns: [
+    {
+      providerRunId: "provider-run-1",
+      taskKind: "draft_translation",
+      status: "succeeded",
+      startedAt: "2026-06-17T00:00:00.000Z",
+      providerFamily: "fake",
+      endpointFamily: "chat-completions",
+      providerName: "itotori-fixture",
+      requestedModelId: "itotori-fake-draft-v0",
+      actualModelId: "itotori-fake-draft-v0",
+      upstreamProvider: null,
+      routeSettingsHash: null,
+      promptPresetId: "itotori-draft-default-v1",
+      promptTemplateVersion: "1.0.0",
+      promptHash: "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      fallbackUsed: false,
+      fallbackPlan: ["itotori-fake-draft-v0"],
+      costKind: "billed",
+      amountMicrosUsd: 1200,
+      tokenCountSource: "provider_reported",
+      totalTokens: 20,
+    },
+  ],
+};
 
 export const dashboardStatusFixture: ProjectDashboardStatus = {
   projectId: "project-1",
@@ -24,6 +105,7 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
   artifactCount: 3,
   latestEventKind: "patch_result_recorded",
   latestEventAt: "2026-06-17T00:00:00.000Z",
+  cost: costReportFixture,
   localeBranches: [
     {
       localeBranchId: "locale-1",

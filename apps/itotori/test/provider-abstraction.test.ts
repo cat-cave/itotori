@@ -111,7 +111,82 @@ describe("OpenRouterProvider", () => {
     });
     expect(recorder.artifacts).toHaveLength(1);
     expect(recorder.artifacts[0]?.request.rawTextCaptured).toBe(false);
+    expect(recorder.artifacts[0]?.request.prompt).toMatchObject({
+      presetId: "test-prompt-v1",
+      templateVersion: "1.0.0",
+    });
+    expect(recorder.artifacts[0]?.request.providerPreset).toMatchObject({
+      slug: "openrouter/itotori-test",
+      version: "2026-06-17",
+      configSnapshot: expect.objectContaining({
+        route: "fixture",
+      }),
+    });
     expect(recorder.artifacts[0]?.adapterMetadata).toHaveProperty("openrouterMetadata");
+  });
+
+  it("throws provider errors carrying failed run records", async () => {
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () => {
+      return jsonResponse({ error: { message: "rate limited" } }, 429);
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesForPrivateInputs(),
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    await expect(provider.invoke(jsonSchemaRequest())).rejects.toMatchObject({
+      code: "provider_http_error",
+      retryable: true,
+      providerRun: expect.objectContaining({
+        status: "failed",
+        errorClasses: ["http_429"],
+        cost: { costKind: "unknown", currency: "USD" },
+        prompt: expect.objectContaining({ presetId: "test-prompt-v1" }),
+        providerPreset: expect.objectContaining({ slug: "openrouter/itotori-test" }),
+      }),
+    });
+    expect(recorder.artifacts).toHaveLength(1);
+    expect(recorder.artifacts[0]?.run.status).toBe("failed");
+    expect(recorder.artifacts[0]?.error).toMatchObject({
+      class: "provider_http_error",
+      message: "rate limited",
+    });
+  });
+
+  it("records malformed successful responses as failed provider runs", async () => {
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () => {
+      return jsonResponse({
+        model: "openai/gpt-4o-mini",
+        choices: { malformed: true },
+      });
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesForPrivateInputs(),
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    await expect(provider.invoke(jsonSchemaRequest())).rejects.toMatchObject({
+      code: "provider_response_invalid",
+      providerRun: expect.objectContaining({
+        status: "failed",
+        errorClasses: ["provider_response_invalid"],
+        cost: { costKind: "unknown", currency: "USD" },
+        prompt: expect.objectContaining({ presetId: "test-prompt-v1" }),
+      }),
+    });
+    expect(recorder.artifacts).toHaveLength(1);
+    expect(recorder.artifacts[0]?.run.status).toBe("failed");
+    expect(recorder.artifacts[0]?.error).toMatchObject({
+      class: "provider_response_invalid",
+    });
   });
 
   it("requires explicit live opt-in before any fetch can run", async () => {
@@ -324,6 +399,7 @@ describe("LocalOpenAICompatibleProvider", () => {
     const result = await provider.invoke({
       taskKind: "draft_translation",
       inputClassification: "private_corpus",
+      prompt: promptFixture(),
       messages: [{ role: "user", content: "こんにちは、{player}。" }],
     });
 
@@ -336,6 +412,44 @@ describe("LocalOpenAICompatibleProvider", () => {
     const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as { provider?: unknown };
     expect(requestBody.provider).toBeUndefined();
     expect(recorder.artifacts[0]?.run.provider.endpointFamily).toBe("local-chat-completions");
+  });
+
+  it("records malformed local responses as failed unknown-cost provider runs", async () => {
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () => {
+      return jsonResponse({
+        model: "local-model",
+        choices: "not-an-array",
+      });
+    }) as unknown as typeof fetch;
+    const provider = new LocalOpenAICompatibleProvider({
+      modelId: "local-model",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      fetch: fetchMock,
+      capabilities: localCapabilities(),
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    await expect(
+      provider.invoke({
+        taskKind: "draft_translation",
+        inputClassification: "private_corpus",
+        prompt: promptFixture(),
+        messages: [{ role: "user", content: "こんにちは、{player}。" }],
+      }),
+    ).rejects.toMatchObject({
+      code: "provider_response_invalid",
+      providerRun: expect.objectContaining({
+        status: "failed",
+        errorClasses: ["provider_response_invalid"],
+        cost: { costKind: "unknown", currency: "USD" },
+      }),
+    });
+    expect(recorder.artifacts).toHaveLength(1);
+    expect(recorder.artifacts[0]?.run.status).toBe("failed");
+    expect(recorder.artifacts[0]?.error).toMatchObject({
+      class: "provider_response_invalid",
+    });
   });
 
   it("translates tool_call_arguments into a required local OpenAI-compatible tool call", async () => {
@@ -407,6 +521,8 @@ function jsonSchemaRequest(): ModelInvocationRequest {
   return {
     taskKind: "draft_translation",
     inputClassification: "private_corpus",
+    prompt: promptFixture(),
+    preset: providerPresetFixture(),
     messages: [{ role: "user", content: "translate hello" }],
     structuredOutput: {
       mode: "json_schema",
@@ -428,12 +544,37 @@ function toolCallArgumentsRequest(): ModelInvocationRequest {
   return {
     taskKind: "draft_translation",
     inputClassification: "private_corpus",
+    prompt: promptFixture(),
     messages: [{ role: "user", content: "translate hello" }],
     structuredOutput: {
       mode: "tool_call_arguments",
       toolName: "emit_translation",
       strict: true,
       schema: toolCallSchema(),
+    },
+  };
+}
+
+function promptFixture() {
+  return {
+    presetId: "test-prompt-v1",
+    templateVersion: "1.0.0",
+    promptHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    schemaVersion: "itotori.prompt-preset.v0",
+    configSnapshot: {
+      prompt: "test fixture prompt",
+    },
+  };
+}
+
+function providerPresetFixture() {
+  return {
+    slug: "openrouter/itotori-test",
+    version: "2026-06-17",
+    configHash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    configSnapshot: {
+      route: "fixture",
+      models: ["openai/gpt-4o-mini"],
     },
   };
 }

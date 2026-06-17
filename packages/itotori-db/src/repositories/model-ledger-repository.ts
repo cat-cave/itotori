@@ -1,0 +1,603 @@
+import { createHash } from "node:crypto";
+import { sql } from "drizzle-orm";
+import type { ItotoriDatabase } from "../connection.js";
+import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
+import {
+  costLedgerEntries,
+  modelProviders,
+  modelRegistry,
+  promptPresets,
+  providerCostKindValues,
+  providerRuns,
+  projects,
+  type ProviderCostKind,
+  type ProviderRunStatus,
+} from "../schema.js";
+
+export type LedgerJsonRecord = Record<string, unknown>;
+
+export type PromptPresetLedgerInput = {
+  promptPresetId: string;
+  promptTemplateVersion: string;
+  promptHash: string;
+  presetSchemaVersion?: string;
+  configSnapshot?: LedgerJsonRecord;
+};
+
+export type ProviderRunLedgerInput = {
+  providerRunId: string;
+  projectId: string;
+  localeBranchId?: string;
+  jobId?: string;
+  systemId?: string;
+  taskKind: string;
+  startedAt: string | Date;
+  completedAt: string | Date;
+  latencyMs: number;
+  status: ProviderRunStatus;
+  provider: {
+    providerFamily: string;
+    endpointFamily: string;
+    providerName: string;
+    requestedModelId: string;
+    actualModelId: string;
+    upstreamProvider?: string;
+    routeSettingsHash?: string;
+  };
+  prompt: PromptPresetLedgerInput;
+  providerPreset?: LedgerJsonRecord;
+  structuredOutputMode: string;
+  retryCount: number;
+  errorClasses: string[];
+  fallbackUsed: boolean;
+  fallbackPlan: string[];
+  tokenUsage: {
+    tokenCountSource: string;
+    promptTokens?: number;
+    completionTokens?: number;
+    reasoningTokens?: number;
+    cachedInputTokens?: number;
+    totalTokens?: number;
+  };
+  cost: {
+    costKind: ProviderCostKind;
+    currency: "USD";
+    amountMicrosUsd?: number;
+    pricingSnapshotId?: string;
+  };
+  dataHandling: LedgerJsonRecord;
+  accountPrivacy?: LedgerJsonRecord;
+  adapterMetadata?: LedgerJsonRecord;
+};
+
+export type CostKindBreakdown = {
+  costKind: ProviderCostKind;
+  runCount: number;
+  amountMicrosUsd: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
+
+export type ProviderRunCostSummary = {
+  providerRunId: string;
+  taskKind: string;
+  status: string;
+  startedAt: string;
+  providerFamily: string;
+  endpointFamily: string;
+  providerName: string;
+  requestedModelId: string;
+  actualModelId: string;
+  upstreamProvider: string | null;
+  routeSettingsHash: string | null;
+  promptPresetId: string;
+  promptTemplateVersion: string;
+  promptHash: string;
+  fallbackUsed: boolean;
+  fallbackPlan: string[];
+  costKind: ProviderCostKind;
+  amountMicrosUsd: number | null;
+  tokenCountSource: string;
+  totalTokens: number | null;
+};
+
+export type ProjectCostReport = {
+  projectId: string;
+  currency: "USD";
+  runCount: number;
+  billedMicrosUsd: number;
+  estimatedMicrosUsd: number;
+  zeroRunCount: number;
+  unknownRunCount: number;
+  includesUnknownCost: boolean;
+  totalsByCostKind: CostKindBreakdown[];
+  recentRuns: ProviderRunCostSummary[];
+};
+
+export interface ItotoriModelLedgerRepositoryPort {
+  recordProviderRun(
+    actor: AuthorizationActor,
+    input: ProviderRunLedgerInput,
+  ): Promise<ProviderRunCostSummary>;
+  getProjectCostReport(projectId?: string): Promise<ProjectCostReport>;
+}
+
+const costKinds = Object.values(providerCostKindValues) as ProviderCostKind[];
+
+export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositoryPort {
+  constructor(private readonly db: ItotoriDatabase) {}
+
+  async recordProviderRun(
+    actor: AuthorizationActor,
+    input: ProviderRunLedgerInput,
+  ): Promise<ProviderRunCostSummary> {
+    await requirePermission(this.db, actor, permissionValues.runtimeIngest);
+    assertProviderRunLedgerInput(input);
+
+    const providerId = modelProviderId(input.provider);
+    const requestedModelRegistryId = modelRegistryId(providerId, input.provider.requestedModelId);
+    const actualModelRegistryId = modelRegistryId(providerId, input.provider.actualModelId);
+    const costLedgerEntryId = `${input.providerRunId}:cost`;
+    const amountMicrosUsd = amountForCost(input.cost);
+    const pricing = input.cost.pricingSnapshotId
+      ? { pricingSnapshotId: input.cost.pricingSnapshotId }
+      : {};
+    const presetSchemaVersion = input.prompt.presetSchemaVersion ?? "itotori.prompt-preset.v0";
+    const presetConfigSnapshot = input.prompt.configSnapshot ?? {};
+
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(modelProviders)
+        .values({
+          providerId,
+          providerFamily: input.provider.providerFamily,
+          endpointFamily: input.provider.endpointFamily,
+          providerName: input.provider.providerName,
+          dataHandling: input.dataHandling,
+          accountPrivacy: input.accountPrivacy ?? null,
+          metadata: {},
+        })
+        .onConflictDoUpdate({
+          target: modelProviders.providerId,
+          set: {
+            providerFamily: input.provider.providerFamily,
+            endpointFamily: input.provider.endpointFamily,
+            providerName: input.provider.providerName,
+            dataHandling: input.dataHandling,
+            accountPrivacy: input.accountPrivacy ?? null,
+            updatedAt: sql`now()`,
+          },
+        });
+
+      for (const [registryId, modelId] of [
+        [requestedModelRegistryId, input.provider.requestedModelId],
+        [actualModelRegistryId, input.provider.actualModelId],
+      ] as const) {
+        await tx
+          .insert(modelRegistry)
+          .values({
+            modelRegistryId: registryId,
+            providerId,
+            modelId,
+            capabilities: {},
+            pricing,
+          })
+          .onConflictDoUpdate({
+            target: modelRegistry.modelRegistryId,
+            set: {
+              modelId,
+              pricing,
+              updatedAt: sql`now()`,
+            },
+          });
+      }
+
+      const existingPresetResult = await tx.execute(sql`
+        select preset_schema_version, prompt_hash, config_snapshot
+        from ${promptPresets}
+        where prompt_preset_id = ${input.prompt.promptPresetId}
+          and prompt_template_version = ${input.prompt.promptTemplateVersion}
+        limit 1
+      `);
+      const existingPreset = existingPresetResult.rows[0] as Record<string, unknown> | undefined;
+      if (existingPreset) {
+        assertPromptPresetMatches(input.prompt, presetSchemaVersion, presetConfigSnapshot, {
+          presetSchemaVersion: String(existingPreset.preset_schema_version),
+          promptHash: String(existingPreset.prompt_hash),
+          configSnapshot: existingPreset.config_snapshot,
+        });
+      } else {
+        await tx.insert(promptPresets).values({
+          promptPresetId: input.prompt.promptPresetId,
+          promptTemplateVersion: input.prompt.promptTemplateVersion,
+          presetSchemaVersion,
+          promptHash: input.prompt.promptHash,
+          configSnapshot: presetConfigSnapshot,
+        });
+      }
+
+      await tx
+        .insert(providerRuns)
+        .values({
+          providerRunId: input.providerRunId,
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId ?? null,
+          jobId: input.jobId ?? null,
+          systemId: input.systemId ?? null,
+          taskKind: input.taskKind,
+          status: input.status,
+          startedAt: new Date(input.startedAt),
+          completedAt: new Date(input.completedAt),
+          latencyMs: input.latencyMs,
+          providerId,
+          requestedModelRegistryId,
+          actualModelRegistryId,
+          requestedModelId: input.provider.requestedModelId,
+          actualModelId: input.provider.actualModelId,
+          upstreamProvider: input.provider.upstreamProvider ?? null,
+          routeSettingsHash: input.provider.routeSettingsHash ?? null,
+          promptPresetId: input.prompt.promptPresetId,
+          promptTemplateVersion: input.prompt.promptTemplateVersion,
+          promptHash: input.prompt.promptHash,
+          providerPreset: input.providerPreset ?? null,
+          structuredOutputMode: input.structuredOutputMode,
+          retryCount: input.retryCount,
+          errorClasses: input.errorClasses,
+          fallbackUsed: input.fallbackUsed,
+          fallbackPlan: input.fallbackPlan,
+          tokenCountSource: input.tokenUsage.tokenCountSource,
+          promptTokens: input.tokenUsage.promptTokens ?? null,
+          completionTokens: input.tokenUsage.completionTokens ?? null,
+          reasoningTokens: input.tokenUsage.reasoningTokens ?? null,
+          cachedInputTokens: input.tokenUsage.cachedInputTokens ?? null,
+          totalTokens: input.tokenUsage.totalTokens ?? null,
+          dataHandling: input.dataHandling,
+          accountPrivacy: input.accountPrivacy ?? null,
+          adapterMetadata: input.adapterMetadata ?? {},
+        });
+
+      await tx
+        .insert(costLedgerEntries)
+        .values({
+          costLedgerEntryId,
+          providerRunId: input.providerRunId,
+          projectId: input.projectId,
+          localeBranchId: input.localeBranchId ?? null,
+          costKind: input.cost.costKind,
+          currency: input.cost.currency,
+          amountMicrosUsd,
+          pricingSnapshotId: input.cost.pricingSnapshotId ?? null,
+          tokenCountSource: input.tokenUsage.tokenCountSource,
+          promptTokens: input.tokenUsage.promptTokens ?? null,
+          completionTokens: input.tokenUsage.completionTokens ?? null,
+          reasoningTokens: input.tokenUsage.reasoningTokens ?? null,
+          cachedInputTokens: input.tokenUsage.cachedInputTokens ?? null,
+          totalTokens: input.tokenUsage.totalTokens ?? null,
+        });
+    });
+
+    const run = await this.getProviderRunCostSummary(input.projectId, input.providerRunId);
+    if (!run) {
+      throw new Error(`provider run ${input.providerRunId} was not recorded`);
+    }
+    return run;
+  }
+
+  async getProjectCostReport(projectId?: string): Promise<ProjectCostReport> {
+    const targetProjectId = projectId ?? (await this.latestProjectId());
+    const totalsResult = await this.db.execute(sql`
+      select
+        cost_kind,
+        count(*)::int as run_count,
+        coalesce(sum(amount_micros_usd), 0)::text as amount_micros_usd,
+        coalesce(sum(prompt_tokens), 0)::int as prompt_tokens,
+        coalesce(sum(completion_tokens), 0)::int as completion_tokens,
+        coalesce(sum(total_tokens), 0)::int as total_tokens
+      from ${costLedgerEntries}
+      where project_id = ${targetProjectId}
+      group by cost_kind
+    `);
+
+    const byKind = new Map<ProviderCostKind, CostKindBreakdown>();
+    for (const costKind of costKinds) {
+      byKind.set(costKind, {
+        costKind,
+        runCount: 0,
+        amountMicrosUsd: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      });
+    }
+    for (const row of totalsResult.rows as Array<Record<string, unknown>>) {
+      const costKind = asCostKind(row.cost_kind);
+      byKind.set(costKind, {
+        costKind,
+        runCount: Number(row.run_count ?? 0),
+        amountMicrosUsd: Number(row.amount_micros_usd ?? 0),
+        promptTokens: Number(row.prompt_tokens ?? 0),
+        completionTokens: Number(row.completion_tokens ?? 0),
+        totalTokens: Number(row.total_tokens ?? 0),
+      });
+    }
+
+    const recentRunsResult = await this.db.execute(sql`
+      select
+        pr.provider_run_id,
+        pr.task_kind,
+        pr.status,
+        pr.started_at,
+        mp.provider_family,
+        mp.endpoint_family,
+        mp.provider_name,
+        pr.requested_model_id,
+        pr.actual_model_id,
+        pr.upstream_provider,
+        pr.route_settings_hash,
+        pr.prompt_preset_id,
+        pr.prompt_template_version,
+        pr.prompt_hash,
+        pr.fallback_used,
+        pr.fallback_plan,
+        cle.cost_kind,
+        cle.amount_micros_usd::text as amount_micros_usd,
+        cle.token_count_source,
+        cle.total_tokens
+      from ${providerRuns} pr
+      join ${modelProviders} mp on mp.provider_id = pr.provider_id
+      join ${costLedgerEntries} cle on cle.provider_run_id = pr.provider_run_id
+      where pr.project_id = ${targetProjectId}
+      order by pr.started_at desc, pr.provider_run_id desc
+      limit 20
+    `);
+
+    const recentRuns = (recentRunsResult.rows as Array<Record<string, unknown>>).map(runFromRow);
+    const billed = byKind.get(providerCostKindValues.billed)?.amountMicrosUsd ?? 0;
+    const providerEstimate =
+      byKind.get(providerCostKindValues.providerEstimate)?.amountMicrosUsd ?? 0;
+    const localEstimate = byKind.get(providerCostKindValues.localEstimate)?.amountMicrosUsd ?? 0;
+    const unknownRunCount = byKind.get(providerCostKindValues.unknown)?.runCount ?? 0;
+
+    return {
+      projectId: targetProjectId,
+      currency: "USD",
+      runCount: [...byKind.values()].reduce((sum, row) => sum + row.runCount, 0),
+      billedMicrosUsd: billed,
+      estimatedMicrosUsd: providerEstimate + localEstimate,
+      zeroRunCount: byKind.get(providerCostKindValues.zero)?.runCount ?? 0,
+      unknownRunCount,
+      includesUnknownCost: unknownRunCount > 0,
+      totalsByCostKind: costKinds.map(
+        (costKind) => byKind.get(costKind) ?? zeroBreakdown(costKind),
+      ),
+      recentRuns,
+    };
+  }
+
+  private async getProviderRunCostSummary(
+    projectId: string,
+    providerRunId: string,
+  ): Promise<ProviderRunCostSummary | undefined> {
+    const result = await this.db.execute(sql`
+      select
+        pr.provider_run_id,
+        pr.task_kind,
+        pr.status,
+        pr.started_at,
+        mp.provider_family,
+        mp.endpoint_family,
+        mp.provider_name,
+        pr.requested_model_id,
+        pr.actual_model_id,
+        pr.upstream_provider,
+        pr.route_settings_hash,
+        pr.prompt_preset_id,
+        pr.prompt_template_version,
+        pr.prompt_hash,
+        pr.fallback_used,
+        pr.fallback_plan,
+        cle.cost_kind,
+        cle.amount_micros_usd::text as amount_micros_usd,
+        cle.token_count_source,
+        cle.total_tokens
+      from ${providerRuns} pr
+      join ${modelProviders} mp on mp.provider_id = pr.provider_id
+      join ${costLedgerEntries} cle on cle.provider_run_id = pr.provider_run_id
+      where pr.project_id = ${projectId}
+        and pr.provider_run_id = ${providerRunId}
+      limit 1
+    `);
+    const first = result.rows[0] as Record<string, unknown> | undefined;
+    return first ? runFromRow(first) : undefined;
+  }
+
+  private async latestProjectId(): Promise<string> {
+    const result = await this.db.execute(sql`
+      select project_id
+      from ${projects}
+      order by updated_at desc
+      limit 1
+    `);
+    const first = result.rows[0] as Record<string, unknown> | undefined;
+    if (!first) {
+      throw new Error("no Itotori project state found");
+    }
+    return String(first.project_id);
+  }
+}
+
+function assertPromptPresetMatches(
+  input: PromptPresetLedgerInput,
+  presetSchemaVersion: string,
+  configSnapshot: LedgerJsonRecord,
+  existing: {
+    presetSchemaVersion: string;
+    promptHash: string;
+    configSnapshot: unknown;
+  },
+): void {
+  if (
+    existing.presetSchemaVersion === presetSchemaVersion &&
+    existing.promptHash === input.promptHash &&
+    jsonEqual(existing.configSnapshot, configSnapshot)
+  ) {
+    return;
+  }
+  throw new Error(
+    `prompt preset ${input.promptPresetId}@${input.promptTemplateVersion} is immutable; create a new template version for prompt or config changes`,
+  );
+}
+
+function jsonEqual(left: unknown, right: unknown): boolean {
+  return stableJsonString(left) === stableJsonString(right);
+}
+
+function stableJsonString(value: unknown): string {
+  return JSON.stringify(normalizeJson(value));
+}
+
+function normalizeJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(normalizeJson);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, normalizeJson(entry)]),
+    );
+  }
+  return value;
+}
+
+function assertProviderRunLedgerInput(input: ProviderRunLedgerInput): void {
+  assertNonEmpty(input.providerRunId, "providerRunId");
+  assertNonEmpty(input.projectId, "projectId");
+  assertNonEmpty(input.provider.providerFamily, "provider.providerFamily");
+  assertNonEmpty(input.provider.endpointFamily, "provider.endpointFamily");
+  assertNonEmpty(input.provider.providerName, "provider.providerName");
+  assertNonEmpty(input.provider.requestedModelId, "provider.requestedModelId");
+  assertNonEmpty(input.provider.actualModelId, "provider.actualModelId");
+  assertNonEmpty(input.prompt.promptPresetId, "prompt.promptPresetId");
+  assertNonEmpty(input.prompt.promptTemplateVersion, "prompt.promptTemplateVersion");
+  assertHash(input.prompt.promptHash, "prompt.promptHash");
+  if (!costKinds.includes(input.cost.costKind)) {
+    throw new Error(`unsupported cost kind: ${input.cost.costKind}`);
+  }
+  if (input.cost.currency !== "USD") {
+    throw new Error(`unsupported cost currency: ${input.cost.currency}`);
+  }
+  amountForCost(input.cost);
+}
+
+function amountForCost(cost: ProviderRunLedgerInput["cost"]): number | null {
+  if (cost.costKind === providerCostKindValues.unknown) {
+    if (cost.amountMicrosUsd !== undefined) {
+      throw new Error("unknown cost entries must not include amountMicrosUsd");
+    }
+    return null;
+  }
+  if (cost.costKind === providerCostKindValues.zero) {
+    if (cost.amountMicrosUsd !== undefined && cost.amountMicrosUsd !== 0) {
+      throw new Error("zero cost entries must use amountMicrosUsd 0");
+    }
+    return 0;
+  }
+  if (cost.amountMicrosUsd === undefined) {
+    throw new Error(`${cost.costKind} cost entries require amountMicrosUsd`);
+  }
+  if (!Number.isFinite(cost.amountMicrosUsd) || cost.amountMicrosUsd < 0) {
+    throw new Error("amountMicrosUsd must be a non-negative finite number");
+  }
+  return cost.amountMicrosUsd;
+}
+
+function modelProviderId(provider: ProviderRunLedgerInput["provider"]): string {
+  return stableId("provider", [
+    provider.providerFamily,
+    provider.endpointFamily,
+    provider.providerName,
+  ]);
+}
+
+function modelRegistryId(providerId: string, modelId: string): string {
+  return stableId("model", [providerId, modelId]);
+}
+
+function stableId(prefix: string, parts: string[]): string {
+  const hash = createHash("sha256").update(parts.join("\u001f")).digest("hex").slice(0, 32);
+  return `${prefix}-${hash}`;
+}
+
+function assertNonEmpty(value: string, label: string): void {
+  if (value.length === 0) {
+    throw new Error(`${label} must be non-empty`);
+  }
+}
+
+function assertHash(value: string, label: string): void {
+  assertNonEmpty(value, label);
+  if (!value.startsWith("sha256:")) {
+    throw new Error(`${label} must be a sha256 hash`);
+  }
+}
+
+function asCostKind(value: unknown): ProviderCostKind {
+  if (typeof value === "string" && costKinds.includes(value as ProviderCostKind)) {
+    return value as ProviderCostKind;
+  }
+  throw new Error(`unknown cost kind in ledger: ${String(value)}`);
+}
+
+function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
+  return {
+    providerRunId: String(row.provider_run_id),
+    taskKind: String(row.task_kind),
+    status: String(row.status),
+    startedAt:
+      row.started_at instanceof Date ? row.started_at.toISOString() : String(row.started_at),
+    providerFamily: String(row.provider_family),
+    endpointFamily: String(row.endpoint_family),
+    providerName: String(row.provider_name),
+    requestedModelId: String(row.requested_model_id),
+    actualModelId: String(row.actual_model_id),
+    upstreamProvider: nullableString(row.upstream_provider),
+    routeSettingsHash: nullableString(row.route_settings_hash),
+    promptPresetId: String(row.prompt_preset_id),
+    promptTemplateVersion: String(row.prompt_template_version),
+    promptHash: String(row.prompt_hash),
+    fallbackUsed: row.fallback_used === true,
+    fallbackPlan: stringArray(row.fallback_plan),
+    costKind: asCostKind(row.cost_kind),
+    amountMicrosUsd: nullableNumber(row.amount_micros_usd),
+    tokenCountSource: String(row.token_count_source),
+    totalTokens: nullableNumber(row.total_tokens),
+  };
+}
+
+function nullableString(value: unknown): string | null {
+  return value === null || value === undefined ? null : String(value);
+}
+
+function nullableNumber(value: unknown): number | null {
+  return value === null || value === undefined ? null : Number(value);
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map(String);
+}
+
+function zeroBreakdown(costKind: ProviderCostKind): CostKindBreakdown {
+  return {
+    costKind,
+    runCount: 0,
+    amountMicrosUsd: 0,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  };
+}

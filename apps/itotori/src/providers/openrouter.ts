@@ -20,6 +20,7 @@ import {
   type ProviderRunArtifact,
   type ProviderRunRecord,
   type TokenUsage,
+  createProviderRunId,
 } from "./types.js";
 
 export type OpenRouterProviderRouting = {
@@ -111,18 +112,56 @@ export class OpenRouterProvider implements ModelProvider {
 
     const requestBody = buildOpenRouterRequestBody(request, requestedModelId, providerRouting);
     const routeSettingsHash = hashJson(providerRouting);
-    const response = await this.fetchImpl(`${stripTrailingSlash(this.baseUrl)}/chat/completions`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "X-OpenRouter-Metadata": "enabled",
-      },
-      body: JSON.stringify(requestBody),
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${stripTrailingSlash(this.baseUrl)}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "X-OpenRouter-Metadata": "enabled",
+        },
+        body: JSON.stringify(requestBody),
+      });
+    } catch (error) {
+      const metadata = adapterMetadata({}, providerRouting);
+      const run = buildProviderRunRecord({
+        descriptor: this.descriptor,
+        request,
+        requestedModelId,
+        startedAt,
+        status: "failed",
+        actualModelId: requestedModelId,
+        upstreamProvider: undefined,
+        routeSettingsHash,
+        errorClasses: ["provider_network_error"],
+        tokenUsage: { tokenCountSource: "unknown" },
+        dataHandling: effectiveDataHandling,
+      });
+      await this.live.artifactRecorder.recordProviderRun(
+        buildArtifact({
+          request,
+          run,
+          rawCapture: this.live.rawCapture,
+          error: {
+            class: "provider_http_error",
+            message: providerExceptionMessage(error),
+          },
+          adapterMetadata: metadata,
+        }),
+      );
+      throw new ModelProviderError(
+        `OpenRouter request failed before response: ${providerExceptionMessage(error)}`,
+        "provider_http_error",
+        true,
+        run,
+        metadata,
+      );
+    }
 
     const body = await safeJson(response);
     if (!response.ok) {
+      const metadata = adapterMetadata(body, providerRouting);
       const run = buildProviderRunRecord({
         descriptor: this.descriptor,
         request,
@@ -145,17 +184,56 @@ export class OpenRouterProvider implements ModelProvider {
             class: "provider_http_error",
             message: providerErrorMessage(body, response.status),
           },
-          adapterMetadata: adapterMetadata(body, providerRouting),
+          adapterMetadata: metadata,
         }),
       );
       throw new ModelProviderError(
         `OpenRouter request failed with HTTP ${response.status}`,
         "provider_http_error",
         response.status >= 500 || response.status === 429,
+        run,
+        metadata,
       );
     }
 
-    const normalized = normalizeOpenRouterResponse(body, requestedModelId);
+    let normalized: ReturnType<typeof normalizeOpenRouterResponse>;
+    try {
+      normalized = normalizeOpenRouterResponse(body, requestedModelId);
+    } catch (error) {
+      const metadata = adapterMetadata(body, providerRouting);
+      const run = buildProviderRunRecord({
+        descriptor: this.descriptor,
+        request,
+        requestedModelId,
+        startedAt,
+        status: "failed",
+        actualModelId: selectedOpenRouterModel(body) ?? requestedModelId,
+        upstreamProvider: selectedOpenRouterProvider(body),
+        routeSettingsHash,
+        errorClasses: ["provider_response_invalid"],
+        tokenUsage: isRecord(body) ? normalizeUsage(body.usage) : { tokenCountSource: "unknown" },
+        dataHandling: effectiveDataHandling,
+      });
+      await this.live.artifactRecorder.recordProviderRun(
+        buildArtifact({
+          request,
+          run,
+          rawCapture: this.live.rawCapture,
+          error: {
+            class: "provider_response_invalid",
+            message: providerExceptionMessage(error),
+          },
+          adapterMetadata: metadata,
+        }),
+      );
+      throw new ModelProviderError(
+        `OpenRouter response was invalid: ${providerExceptionMessage(error)}`,
+        "provider_response_invalid",
+        false,
+        run,
+        metadata,
+      );
+    }
     const run = buildProviderRunRecord({
       descriptor: this.descriptor,
       request,
@@ -555,7 +633,7 @@ function buildProviderRunRecord(input: {
     provider.upstreamProvider = input.upstreamProvider;
   }
   const run: ProviderRunRecord = {
-    runId: input.request.runId ?? `openrouter-${completedAt.getTime().toString(36)}`,
+    runId: input.request.runId ?? createProviderRunId("openrouter"),
     taskKind: input.request.taskKind,
     startedAt: input.startedAt.toISOString(),
     completedAt: completedAt.toISOString(),
@@ -572,8 +650,12 @@ function buildProviderRunRecord(input: {
       costKind: "unknown",
       currency: "USD",
     },
+    prompt: input.request.prompt,
     dataHandling: input.dataHandling,
   };
+  if (input.request.preset) {
+    run.providerPreset = input.request.preset;
+  }
   if (input.descriptor.capabilities.accountPrivacy) {
     run.accountPrivacy = input.descriptor.capabilities.accountPrivacy;
   }
@@ -599,8 +681,12 @@ function buildArtifact(input: {
       structuredOutputMode: input.run.structuredOutputMode,
       toolCount: input.request.tools?.length ?? 0,
       rawTextCaptured,
+      prompt: input.run.prompt,
     },
   };
+  if (input.run.providerPreset) {
+    artifact.request.providerPreset = input.run.providerPreset;
+  }
   if (input.response) {
     artifact.response = input.response;
   }
@@ -666,6 +752,13 @@ function providerErrorMessage(body: unknown, status: number): string {
     return body.error.message;
   }
   return `HTTP ${status}`;
+}
+
+function providerExceptionMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 function hashJson(value: JsonObject): string {

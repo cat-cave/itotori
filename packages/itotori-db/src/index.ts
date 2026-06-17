@@ -17,6 +17,8 @@ export {
   jobTaskTypeValues,
   outboxEventTypeValues,
   outboxStatusValues,
+  providerCostKindValues,
+  providerRunStatusValues,
 } from "./schema.js";
 export type {
   JobIdempotencyPolicy,
@@ -24,6 +26,8 @@ export type {
   JobTaskType,
   OutboxEventType,
   OutboxStatus,
+  ProviderCostKind,
+  ProviderRunStatus,
 } from "./schema.js";
 export {
   defaultWorkspaceId,
@@ -40,6 +44,16 @@ export type {
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
 } from "./repositories/project-repository.js";
+export { ItotoriModelLedgerRepository } from "./repositories/model-ledger-repository.js";
+export type {
+  CostKindBreakdown,
+  ItotoriModelLedgerRepositoryPort,
+  LedgerJsonRecord,
+  ProjectCostReport,
+  PromptPresetLedgerInput,
+  ProviderRunCostSummary,
+  ProviderRunLedgerInput,
+} from "./repositories/model-ledger-repository.js";
 export {
   deriveFeedbackDedupeKey,
   feedbackContextStatusValues,

@@ -36,6 +36,33 @@ export async function renderDashboard(
         `,
       )
       .join("");
+    const costRows = status.cost.totalsByCostKind
+      .map(
+        (cost) => `
+          <tr>
+            <td>${escapeHtml(cost.costKind)}</td>
+            <td>${cost.runCount}</td>
+            <td>${formatMicrosUsd(cost.amountMicrosUsd)}</td>
+            <td>${cost.totalTokens}</td>
+          </tr>
+        `,
+      )
+      .join("");
+    const recentRunRows = status.cost.recentRuns
+      .map(
+        (run) => `
+          <tr>
+            <td>${escapeHtml(run.taskKind)}</td>
+            <td>${escapeHtml(run.providerFamily)} / ${escapeHtml(run.providerName)}</td>
+            <td>${escapeHtml(run.requestedModelId)} -> ${escapeHtml(run.actualModelId)}</td>
+            <td>${escapeHtml(run.promptPresetId)}@${escapeHtml(run.promptTemplateVersion)}</td>
+            <td>${escapeHtml(run.costKind)}</td>
+            <td>${formatMicrosUsd(run.amountMicrosUsd)}</td>
+            <td>${run.fallbackUsed ? "yes" : "no"}</td>
+          </tr>
+        `,
+      )
+      .join("");
     root.innerHTML = `
       <main style="font-family: system-ui; margin: 2rem; max-width: 960px">
         <h1>Itotori</h1>
@@ -50,6 +77,9 @@ export async function renderDashboard(
             <dt>Findings</dt><dd>${status.findingCount}</dd>
             <dt>Artifacts</dt><dd>${status.artifactCount}</dd>
             <dt>Latest event</dt><dd>${escapeHtml(status.latestEventKind ?? "none")}</dd>
+            <dt>Billed cost</dt><dd>${formatMicrosUsd(status.cost.billedMicrosUsd)}</dd>
+            <dt>Estimated cost</dt><dd>${formatMicrosUsd(status.cost.estimatedMicrosUsd)}</dd>
+            <dt>Unknown cost runs</dt><dd>${status.cost.unknownRunCount}</dd>
           </dl>
           <table>
             <thead>
@@ -62,6 +92,33 @@ export async function renderDashboard(
               </tr>
             </thead>
             <tbody>${branches}</tbody>
+          </table>
+          <h2>Cost</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Kind</th>
+                <th>Runs</th>
+                <th>Amount</th>
+                <th>Tokens</th>
+              </tr>
+            </thead>
+            <tbody>${costRows}</tbody>
+          </table>
+          <h2>Provider runs</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Task</th>
+                <th>Provider</th>
+                <th>Model</th>
+                <th>Preset</th>
+                <th>Cost kind</th>
+                <th>Amount</th>
+                <th>Fallback</th>
+              </tr>
+            </thead>
+            <tbody>${recentRunRows}</tbody>
           </table>
         </section>
       </main>
@@ -83,4 +140,11 @@ function escapeHtml(value: string): string {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function formatMicrosUsd(value: number | null): string {
+  if (value === null) {
+    return "unknown";
+  }
+  return `$${(value / 1_000_000).toFixed(6)}`;
 }

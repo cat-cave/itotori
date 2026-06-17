@@ -80,6 +80,10 @@ const migrations = [
     id: "0005_event_queue_foundation",
     file: "0005_event_queue_foundation.sql",
   },
+  {
+    id: "0006_model_registry_cost_ledger",
+    file: "0006_model_registry_cost_ledger.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

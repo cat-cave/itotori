@@ -22,6 +22,8 @@ describe("Itotori dashboard", () => {
     expect(root.textContent).toContain("en-US");
     expect(root.textContent).toContain("1/1");
     expect(root.textContent).toContain("patch_result_recorded");
+    expect(root.textContent).toContain("provider_estimate");
+    expect(root.textContent).toContain("itotori-draft-default-v1@1.0.0");
   });
 
   it("checks MSW project fixtures against the real API response schema", () => {

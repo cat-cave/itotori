@@ -1,4 +1,8 @@
-import type { ProjectDashboardStatus, RuntimeDashboardStatus } from "@itotori/db";
+import type {
+  ProjectCostReport,
+  ProjectDashboardStatus,
+  RuntimeDashboardStatus,
+} from "@itotori/db";
 import {
   assertBenchmarkReportV02,
   assertBridgeBundle,
@@ -31,6 +35,7 @@ import type {
 export type ItotoriApiRouteId =
   | "projects.list"
   | "projects.status"
+  | "projects.cost"
   | "runtime.status"
   | "imports.bridge"
   | "branches.draft"
@@ -47,6 +52,8 @@ export type ApiErrorResponse = {
 export type ApiProjectsResponse = {
   projects: ProjectDashboardStatus[];
 };
+
+export type ApiProjectCostResponse = ProjectCostReport;
 
 export type ApiProjectImportRequest = {
   bridge: BridgeBundle | BridgeBundleV02;
@@ -99,6 +106,7 @@ export type ApiRuntimeEvidenceResponse = RuntimeIngestResult;
 export type ItotoriApiResponseBody =
   | ApiProjectsResponse
   | ProjectDashboardStatus
+  | ApiProjectCostResponse
   | RuntimeDashboardStatus
   | ApiProjectImportResponse
   | ApiDraftBranchResponse
@@ -205,6 +213,9 @@ export function assertItotoriApiResponse(
     case "projects.status":
       assertProjectDashboardStatus(value);
       return;
+    case "projects.cost":
+      assertProjectCostReport(value);
+      return;
     case "runtime.status":
       assertRuntimeDashboardStatus(value);
       return;
@@ -248,6 +259,7 @@ export function assertProjectDashboardStatus(
   assertNonNegativeInteger(status.artifactCount, `${label}.artifactCount`);
   assertNullableString(status.latestEventKind, `${label}.latestEventKind`);
   assertNullableString(status.latestEventAt, `${label}.latestEventAt`);
+  assertProjectCostReport(status.cost, `${label}.cost`);
   const branches = asArray(status.localeBranches, `${label}.localeBranches`);
   for (const [index, branchValue] of branches.entries()) {
     const branch = asRecord(branchValue, `${label}.localeBranches[${index}]`);
@@ -267,6 +279,82 @@ export function assertProjectDashboardStatus(
       branch.artifactCount,
       `${label}.localeBranches[${index}].artifactCount`,
     );
+  }
+}
+
+export function assertProjectCostReport(
+  value: unknown,
+  label = "ProjectCostReport",
+): asserts value is ProjectCostReport {
+  const report = asRecord(value, label);
+  assertString(report.projectId, `${label}.projectId`);
+  assertEnum(report.currency, ["USD"] as const, `${label}.currency`);
+  assertNonNegativeInteger(report.runCount, `${label}.runCount`);
+  assertNonNegativeInteger(report.billedMicrosUsd, `${label}.billedMicrosUsd`);
+  assertNonNegativeInteger(report.estimatedMicrosUsd, `${label}.estimatedMicrosUsd`);
+  assertNonNegativeInteger(report.zeroRunCount, `${label}.zeroRunCount`);
+  assertNonNegativeInteger(report.unknownRunCount, `${label}.unknownRunCount`);
+  assertBoolean(report.includesUnknownCost, `${label}.includesUnknownCost`);
+  const totals = asArray(report.totalsByCostKind, `${label}.totalsByCostKind`);
+  for (const [index, totalValue] of totals.entries()) {
+    const total = asRecord(totalValue, `${label}.totalsByCostKind[${index}]`);
+    assertEnum(
+      total.costKind,
+      ["billed", "provider_estimate", "local_estimate", "zero", "unknown"] as const,
+      `${label}.totalsByCostKind[${index}].costKind`,
+    );
+    assertNonNegativeInteger(total.runCount, `${label}.totalsByCostKind[${index}].runCount`);
+    assertNonNegativeInteger(
+      total.amountMicrosUsd,
+      `${label}.totalsByCostKind[${index}].amountMicrosUsd`,
+    );
+    assertNonNegativeInteger(
+      total.promptTokens,
+      `${label}.totalsByCostKind[${index}].promptTokens`,
+    );
+    assertNonNegativeInteger(
+      total.completionTokens,
+      `${label}.totalsByCostKind[${index}].completionTokens`,
+    );
+    assertNonNegativeInteger(total.totalTokens, `${label}.totalsByCostKind[${index}].totalTokens`);
+  }
+  const recentRuns = asArray(report.recentRuns, `${label}.recentRuns`);
+  for (const [index, runValue] of recentRuns.entries()) {
+    const run = asRecord(runValue, `${label}.recentRuns[${index}]`);
+    assertString(run.providerRunId, `${label}.recentRuns[${index}].providerRunId`);
+    assertString(run.taskKind, `${label}.recentRuns[${index}].taskKind`);
+    assertString(run.status, `${label}.recentRuns[${index}].status`);
+    assertString(run.startedAt, `${label}.recentRuns[${index}].startedAt`);
+    assertString(run.providerFamily, `${label}.recentRuns[${index}].providerFamily`);
+    assertString(run.endpointFamily, `${label}.recentRuns[${index}].endpointFamily`);
+    assertString(run.providerName, `${label}.recentRuns[${index}].providerName`);
+    assertString(run.requestedModelId, `${label}.recentRuns[${index}].requestedModelId`);
+    assertString(run.actualModelId, `${label}.recentRuns[${index}].actualModelId`);
+    assertNullableString(run.upstreamProvider, `${label}.recentRuns[${index}].upstreamProvider`);
+    assertNullableString(run.routeSettingsHash, `${label}.recentRuns[${index}].routeSettingsHash`);
+    assertString(run.promptPresetId, `${label}.recentRuns[${index}].promptPresetId`);
+    assertString(run.promptTemplateVersion, `${label}.recentRuns[${index}].promptTemplateVersion`);
+    assertString(run.promptHash, `${label}.recentRuns[${index}].promptHash`);
+    assertBoolean(run.fallbackUsed, `${label}.recentRuns[${index}].fallbackUsed`);
+    const fallbackPlan = asArray(run.fallbackPlan, `${label}.recentRuns[${index}].fallbackPlan`);
+    for (const [fallbackIndex, fallbackModel] of fallbackPlan.entries()) {
+      assertString(fallbackModel, `${label}.recentRuns[${index}].fallbackPlan[${fallbackIndex}]`);
+    }
+    assertEnum(
+      run.costKind,
+      ["billed", "provider_estimate", "local_estimate", "zero", "unknown"] as const,
+      `${label}.recentRuns[${index}].costKind`,
+    );
+    if (run.amountMicrosUsd !== null) {
+      assertNonNegativeInteger(
+        run.amountMicrosUsd,
+        `${label}.recentRuns[${index}].amountMicrosUsd`,
+      );
+    }
+    assertString(run.tokenCountSource, `${label}.recentRuns[${index}].tokenCountSource`);
+    if (run.totalTokens !== null) {
+      assertNonNegativeInteger(run.totalTokens, `${label}.recentRuns[${index}].totalTokens`);
+    }
   }
 }
 

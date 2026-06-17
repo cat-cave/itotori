@@ -169,6 +169,15 @@ export type ProviderPresetReference = {
   slug: string;
   version?: string;
   configHash?: string;
+  configSnapshot?: JsonObject;
+};
+
+export type PromptPresetReference = {
+  presetId: string;
+  templateVersion: string;
+  promptHash: string;
+  schemaVersion?: string;
+  configSnapshot?: JsonObject;
 };
 
 export type ModelInvocationRequest = {
@@ -182,11 +191,7 @@ export type ModelInvocationRequest = {
   generation?: ModelGenerationOptions;
   fallbackModels?: string[];
   preset?: ProviderPresetReference;
-  prompt?: {
-    presetId: string;
-    templateVersion: string;
-    promptHash?: string;
-  };
+  prompt: PromptPresetReference;
   runId?: string;
   recordRawText?: boolean;
 };
@@ -232,6 +237,8 @@ export type ProviderRunRecord = {
   fallbackPlan: string[];
   tokenUsage: TokenUsage;
   cost: ProviderCost;
+  prompt: PromptPresetReference;
+  providerPreset?: ProviderPresetReference;
   dataHandling: ProviderDataHandlingPolicy;
   accountPrivacy?: OpenRouterAccountPrivacyState;
 };
@@ -254,6 +261,8 @@ export type ProviderRunArtifact = {
     structuredOutputMode: StructuredOutputMode | "none";
     toolCount: number;
     rawTextCaptured: boolean;
+    prompt: PromptPresetReference;
+    providerPreset?: ProviderPresetReference;
   };
   response?: {
     finishReason: string;
@@ -296,8 +305,20 @@ export class ModelProviderError extends Error {
       | "provider_http_error"
       | "provider_response_invalid",
     readonly retryable = false,
+    readonly providerRun?: ProviderRunRecord,
+    readonly adapterMetadata?: JsonObject,
   ) {
     super(message);
     this.name = "ModelProviderError";
   }
+}
+
+let providerRunCounter = 0;
+
+export function createProviderRunId(prefix: string): string {
+  providerRunCounter += 1;
+  const timestamp = Date.now().toString(36);
+  const counter = providerRunCounter.toString(36);
+  const random = Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${timestamp}-${counter}-${random}`;
 }

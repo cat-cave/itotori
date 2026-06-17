@@ -4,11 +4,14 @@ import {
   type ItotoriApiResponseBody,
   type ItotoriApiRouteId,
 } from "../src/api-schema.js";
-import { dashboardStatusFixture, runtimeStatusFixture } from "./api-fixtures.js";
+import { costReportFixture, dashboardStatusFixture, runtimeStatusFixture } from "./api-fixtures.js";
 
 export const itotoriApiMswHandlers = [
   http.get("http://itotori.test/api/projects/status", () =>
     apiJson("projects.status", dashboardStatusFixture),
+  ),
+  http.get("http://itotori.test/api/projects/cost", () =>
+    apiJson("projects.cost", costReportFixture),
   ),
   http.get("http://itotori.test/api/projects", () =>
     apiJson("projects.list", { projects: [dashboardStatusFixture] }),

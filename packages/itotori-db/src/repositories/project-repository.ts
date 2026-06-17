@@ -19,9 +19,11 @@ import {
   permissionValues,
   requirePermission,
 } from "../authorization.js";
+import { ItotoriModelLedgerRepository, type ProjectCostReport } from "./model-ledger-repository.js";
 import {
   artifacts,
   assets,
+  costLedgerEntries,
   eventOutbox,
   events,
   feedbackReportEvidence,
@@ -32,8 +34,12 @@ import {
   localeBranches,
   localeBranchStatusValues,
   localeBranchUnits,
+  modelProviders,
+  modelRegistry,
+  promptPresets,
   projectStatusValues,
   projects,
+  providerRuns,
   sourceBundles,
   sourceRevisions,
   sourceUnits,
@@ -104,6 +110,7 @@ export type ProjectDashboardStatus = {
   artifactCount: number;
   latestEventKind: string | null;
   latestEventAt: string | null;
+  cost: ProjectCostReport;
   localeBranches: LocaleBranchStatus[];
 };
 
@@ -151,6 +158,11 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       truncate
         ${jobQueue},
         ${eventOutbox},
+        ${costLedgerEntries},
+        ${providerRuns},
+        ${promptPresets},
+        ${modelRegistry},
+        ${modelProviders},
         ${feedbackReportEvidence},
         ${feedbackReports},
         ${feedbackSources},
@@ -808,8 +820,11 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         }),
       );
 
+    const projectId = String(first.project_id);
+    const cost = await new ItotoriModelLedgerRepository(this.db).getProjectCostReport(projectId);
+
     return {
-      projectId: String(first.project_id),
+      projectId,
       projectKey: String(first.project_key),
       name: String(first.name),
       status: String(first.status),
@@ -824,6 +839,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       latestEventKind: nullableString(first.latest_event_kind),
       latestEventAt:
         first.latest_event_at instanceof Date ? first.latest_event_at.toISOString() : null,
+      cost,
       localeBranches: branches,
     };
   }
