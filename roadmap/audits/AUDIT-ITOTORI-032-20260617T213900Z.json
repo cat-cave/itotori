@@ -1,0 +1,32 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-032-20260617T213900Z",
+  "generatedAt": "2026-06-17T21:39:00Z",
+  "spec": {
+    "id": "ITOTORI-032",
+    "title": "Seeded defect evaluation fixture",
+    "branch": "spec/itotori-032",
+    "worktree": "/tmp/itotori-spec-itotori-032"
+  },
+  "auditor": {
+    "name": "locke-the-4th",
+    "kind": "orchestration"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final audit found no P0/P1/P2/P3 findings after seeded-defect fixture repair. Manifest, taxonomy, oracle, false-positive, coverage, and expected report consistency checks passed.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
