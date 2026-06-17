@@ -178,11 +178,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         sourceUnitKey: unit.sourceUnitKey,
         sourceHash: unit.sourceHash,
         targetText,
-        protectedSpanMappings: unit.protectedSpans.map((span) => ({
-          raw: span.raw,
-          targetStart: targetText.indexOf(span.raw),
-          targetEnd: targetText.indexOf(span.raw) + span.raw.length,
-        })),
+        protectedSpanMappings: protectedSpanMappingsForTarget(unit, targetText),
       };
     });
     const patchExport: PatchExport = {
@@ -311,4 +307,28 @@ function protectedSpanRaws(unit: BridgeUnit | LocalizationUnitV02): string[] {
     return unit.spans.map((span) => span.raw);
   }
   return unit.protectedSpans.map((span) => span.raw);
+}
+
+function protectedSpanMappingsForTarget(
+  unit: BridgeUnit,
+  targetText: string,
+): PatchExport["entries"][number]["protectedSpanMappings"] {
+  let searchStart = 0;
+  return unit.protectedSpans.map((span) => {
+    const targetStartCodeUnit = targetText.indexOf(span.raw, searchStart);
+    if (targetStartCodeUnit < 0) {
+      throw new Error(`draft for ${unit.bridgeUnitId} lost protected span ${span.raw}`);
+    }
+    const targetEndCodeUnit = targetStartCodeUnit + span.raw.length;
+    searchStart = targetEndCodeUnit;
+    return {
+      raw: span.raw,
+      targetStart: utf8ByteLength(targetText.slice(0, targetStartCodeUnit)),
+      targetEnd: utf8ByteLength(targetText.slice(0, targetEndCodeUnit)),
+    };
+  });
+}
+
+function utf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
 }

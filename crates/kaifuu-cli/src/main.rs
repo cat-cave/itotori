@@ -80,7 +80,15 @@ fn run_with_args_and_registry(
                 patch_export: &patch_export,
                 output_dir: &output,
             })?;
+            let failed = result.status == kaifuu_core::OperationStatus::Failed;
             write_json(&output.join("patch-result.json"), &result)?;
+            if failed {
+                return Err(format!(
+                    "patch failed; see {}",
+                    output.join("patch-result.json").display()
+                )
+                .into());
+            }
         }
         Some("diff") => {
             let original = positional(&args, 1)?;
@@ -879,6 +887,57 @@ mod tests {
         ]);
         let verify: VerificationResult = read_json(&verify_path).unwrap();
         assert_eq!(verify.status, OperationStatus::Passed);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_command_returns_error_when_adapter_reports_failed_patch_result() {
+        let root = temp_dir("patch-failed-exit");
+        let game_dir = temp_game(&root);
+        let bridge_path = root.join("bridge.json");
+        run_cli(&[
+            "extract",
+            game_dir.to_str().unwrap(),
+            "--output",
+            bridge_path.to_str().unwrap(),
+        ]);
+        let bridge: BridgeBundle = read_json(&bridge_path).unwrap();
+        let patch_export = PatchExport {
+            patch_export_id: deterministic_id("patch", 1),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![PatchExportEntry {
+                bridge_unit_id: bridge.units[0].bridge_unit_id.clone(),
+                source_unit_key: bridge.units[0].source_unit_key.clone(),
+                source_hash: bridge.units[0].source_hash.clone(),
+                target_text: "Hello, {player}.".to_string(),
+                protected_span_mappings: vec![ProtectedSpanMapping::new("{player}", 0, 8)],
+            }],
+        };
+        let patch_export_path = root.join("patch-export.json");
+        write_json(&patch_export_path, &patch_export).unwrap();
+        let patched_dir = root.join("patched");
+
+        let result = run_with_args(
+            [
+                "patch",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                patched_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("patch failed; see"));
+        let patch_result: PatchResult = read_json(&patched_dir.join("patch-result.json")).unwrap();
+        assert_eq!(patch_result.status, OperationStatus::Failed);
+        assert!(!patched_dir.join("source.json").exists());
 
         let _ = fs::remove_dir_all(root);
     }

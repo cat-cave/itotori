@@ -3357,22 +3357,25 @@
       "id": "KAIFUU-031",
       "title": "Target span mapping edge cases",
       "status": "planned",
-      "priority": "P3",
-      "target": "post_mvp",
+      "priority": "P2",
+      "target": "mvp",
       "projects": ["kaifuu", "shared", "itotori"],
       "parallelGroup": "contracts",
-      "dependsOn": ["KAIFUU-004", "SHARED-020"],
-      "summary": "Harden protected-span target mappings for duplicate raw spans and preserveMode=map cases that need richer source-to-target span identity.",
+      "dependsOn": ["KAIFUU-004", "SHARED-010"],
+      "summary": "Harden the MVP protected-span target-mapping slice before real patch export so translated placeholders and protected spans can be reordered, duplicated, or preserveMode=map without Itotori assuming source-span order.",
       "deliverables": [
+        "Reordered target placeholder and protected-span fixtures",
         "Duplicate raw protected-span fixtures",
-        "preserveMode=map target mapping contract",
-        "Kaifuu patch preservation regression tests",
-        "Itotori import/export mapping checks"
+        "preserveMode=map target mapping contract that documents source-to-target identity",
+        "Kaifuu patch preservation regression tests for reordered and duplicated spans",
+        "Itotori import/export mapping checks that do not rely on source-span order"
       ],
       "acceptanceCriteria": [
+        "Distinct variable placeholders can be validly reordered in target text without being rejected solely because target order differs from source order",
         "Duplicate raw protected spans can be mapped without relying on text equality alone",
         "preserveMode=map behavior is explicit in shared contracts and patch diagnostics",
-        "Kaifuu and Itotori agree on target span identity and failure reporting",
+        "Itotori patch export records explicit target mappings by span identity rather than walking source protectedSpans in order",
+        "Kaifuu and Itotori agree on target span identity, byte offsets, and failure reporting",
         "Existing simple protected-span fixtures keep their current behavior"
       ],
       "verification": [
@@ -3390,7 +3393,9 @@
         }
       ],
       "auditFocus": [
+        "Itotori exporter rejecting valid target placeholder reordering",
         "Duplicate raw spans mapped to the wrong target",
+        "Implicit source-order assumptions in target protected-span mapping",
         "preserveMode=map ambiguity",
         "Kaifuu and Itotori span identity drift"
       ]

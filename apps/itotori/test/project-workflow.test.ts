@@ -109,6 +109,19 @@ describe("ItotoriProjectWorkflowService", () => {
     expect(repository.savePatchExport).not.toHaveBeenCalled();
   });
 
+  it("exports protected span mappings as UTF-8 byte offsets", async () => {
+    const repository = repositoryFixture();
+    const service = new ItotoriProjectWorkflowService(repository, actor);
+
+    const { patchExport } = await service.exportPatch(
+      projectFixture({ drafts: { "bridge-unit-test": "翻訳 {player}." } }),
+    );
+
+    expect(patchExport.entries[0]?.protectedSpanMappings).toEqual([
+      { raw: "{player}", targetStart: 7, targetEnd: 15 },
+    ]);
+  });
+
   it("stores runtime reports through the repository and returns CLI output", async () => {
     const repository = repositoryFixture();
     const service = new ItotoriProjectWorkflowService(repository, actor);
