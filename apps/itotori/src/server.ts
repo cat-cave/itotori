@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { extname, join } from "node:path";
-import { HelloWorldRepository, createDatabaseContext } from "@itotori/db";
+import { ItotoriProjectRepository, createDatabaseContext } from "@itotori/db";
 
 export type DashboardServerOptions = {
   databaseUrl?: string;
@@ -14,10 +14,14 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
   const webRoot = options.webRoot ?? new URL("../web-dist/", import.meta.url);
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-    if (url.pathname === "/api/hello/status") {
+    if (url.pathname === "/api/projects/status" || url.pathname === "/api/hello/status") {
       const context = createDatabaseContext(options.databaseUrl);
       try {
-        const status = await new HelloWorldRepository(context.db).getStatus();
+        const repository = new ItotoriProjectRepository(context.db);
+        const status =
+          url.pathname === "/api/hello/status"
+            ? await repository.getRuntimeStatus()
+            : await repository.getDashboardStatus();
         response.writeHead(200, { "content-type": "application/json" });
         response.end(JSON.stringify(status));
       } catch (error) {

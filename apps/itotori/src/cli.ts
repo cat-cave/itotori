@@ -1,29 +1,21 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import {
-  HelloWorldRepository,
+  ItotoriProjectRepository,
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
   migrate,
+  type ItotoriProjectRecord,
 } from "@itotori/db";
 import {
   type BridgeBundle,
   type PatchExport,
-  type RuntimeVerificationReport,
   assertBridgeBundle,
   assertRuntimeVerificationReport,
 } from "@itotori/localization-bridge-schema";
 import { localUserActor } from "./auth.js";
 
-type ProjectState = {
-  projectId: string;
-  bridge: BridgeBundle;
-  localeBranchId: string;
-  targetLocale: string;
-  drafts: Record<string, string>;
-  patchExport?: PatchExport;
-  runtimeReport?: RuntimeVerificationReport;
-};
+type ProjectState = ItotoriProjectRecord & { bridge: BridgeBundle };
 
 const args = process.argv.slice(2);
 const command = args[0];
@@ -63,7 +55,7 @@ async function main(): Promise<void> {
 
 async function runDashboardStatus(): Promise<void> {
   const outputPath = requiredFlag("--output");
-  const status = await withRepository((repo) => repo.getStatus());
+  const status = await withRepository((repo) => repo.getDashboardStatus());
   writeJson(outputPath, status);
 }
 
@@ -80,7 +72,7 @@ async function runImport(): Promise<void> {
     drafts: {},
   };
   writeJson(projectPath, project);
-  await withRepository((repo) => repo.saveImportedProject(localUserActor, project));
+  await withRepository((repo) => repo.importSourceBundle(localUserActor, project));
 }
 
 async function runDraft(): Promise<void> {
@@ -188,11 +180,13 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-async function withRepository<T>(fn: (repository: HelloWorldRepository) => Promise<T>): Promise<T> {
+async function withRepository<T>(
+  fn: (repository: ItotoriProjectRepository) => Promise<T>,
+): Promise<T> {
   const context = createDatabaseContext();
   try {
     await bootstrapLocalUser(context.db);
-    return await fn(new HelloWorldRepository(context.db));
+    return await fn(new ItotoriProjectRepository(context.db));
   } finally {
     await context.close();
   }
