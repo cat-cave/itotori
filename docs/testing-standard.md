@@ -199,9 +199,13 @@ with the behavior first:
 ```rust
 #[test]
 fn extracts_bridge_units_from_public_fixture() {
-    let bridge = extract_fixture(Path::new("fixtures/hello-game")).unwrap();
+    let extraction = FixtureAdapter
+        .extract(ExtractRequest {
+            game_dir: Path::new("fixtures/hello-game"),
+        })
+        .unwrap();
 
-    assert_eq!(bridge["extractorName"], "kaifuu-fixture");
+    assert_eq!(extraction.bridge.extractor_name, "kaifuu-fixture");
 }
 ```
 

@@ -6,9 +6,9 @@ use kaifuu_core::{
     AdapterCapabilities, AdapterFailure, AssetKind, AssetList, AssetListRequest, AssetProfile,
     BridgeBundle, BridgeUnit, Capability, CapabilityReport, DetectRequest, DetectionIndicator,
     DetectionResult, EngineAdapter, EngineProfile, ExtractRequest, ExtractionResult, GameProfile,
-    KaifuuResult, OperationStatus, PatchExport, PatchRef, PatchRequest, PatchResult,
-    ProfileRequest, ProtectedSpan, TextSurface, VerificationResult, VerifyRequest, content_hash,
-    deterministic_id, read_json, require_str, require_u64, write_json,
+    KaifuuResult, OperationStatus, PatchRef, PatchRequest, PatchResult, ProfileRequest,
+    ProtectedSpan, TextSurface, VerificationResult, VerifyRequest, content_hash, deterministic_id,
+    require_str, require_u64,
 };
 use serde_json::{Value, json};
 
@@ -462,60 +462,10 @@ pub fn registry() -> kaifuu_core::AdapterRegistry {
     registry
 }
 
-pub fn extract_fixture(game_dir: &Path) -> KaifuuResult<Value> {
-    Ok(serde_json::to_value(
-        FixtureAdapter.extract(ExtractRequest { game_dir })?.bridge,
-    )?)
-}
-
-pub fn patch_fixture(
-    game_dir: &Path,
-    patch_export: &Value,
-    output_dir: &Path,
-) -> KaifuuResult<Value> {
-    let patch_export = PatchExport::from_value(patch_export)?;
-    Ok(serde_json::to_value(FixtureAdapter.patch(
-        PatchRequest {
-            game_dir,
-            patch_export: &patch_export,
-            output_dir,
-        },
-    )?)?)
-}
-
-pub fn verify_fixture(game_dir: &Path) -> KaifuuResult<Value> {
-    Ok(serde_json::to_value(
-        FixtureAdapter.verify(VerifyRequest { game_dir })?,
-    )?)
-}
-
-pub fn profile_fixture(game_dir: &Path) -> KaifuuResult<GameProfile> {
-    FixtureAdapter.profile(ProfileRequest { game_dir })
-}
-
-pub fn write_fixture_profile(game_dir: &Path, output: &Path) -> KaifuuResult<()> {
-    let profile = profile_fixture(game_dir)?;
-    if let Some(parent) = output.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(output, profile.stable_json()?)?;
-    Ok(())
-}
-
-pub fn read_patch_export(path: &Path) -> KaifuuResult<PatchExport> {
-    read_json(path)
-}
-
-pub fn write_adapter_json<T>(path: &Path, value: &T) -> KaifuuResult<()>
-where
-    T: serde::Serialize,
-{
-    write_json(path, value)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kaifuu_core::PatchExport;
 
     fn temp_game(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -821,8 +771,20 @@ mod tests {
     #[test]
     fn fixture_profile_json_is_stable() {
         let game_dir = temp_game("profile");
-        let first = profile_fixture(&game_dir).unwrap().stable_json().unwrap();
-        let second = profile_fixture(&game_dir).unwrap().stable_json().unwrap();
+        let first = FixtureAdapter
+            .profile(ProfileRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap()
+            .stable_json()
+            .unwrap();
+        let second = FixtureAdapter
+            .profile(ProfileRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap()
+            .stable_json()
+            .unwrap();
         assert_eq!(first, second);
         assert!(first.contains("\"capability\": \"line_parity_patching\""));
         let _ = fs::remove_dir_all(game_dir);
