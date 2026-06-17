@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UNIV-015-20260617T224343Z",
+  "generatedAt": "2026-06-17T22:43:43Z",
+  "spec": {
+    "id": "UNIV-015",
+    "title": "Canonical research-to-DAG crosswalk",
+    "branch": "spec/univ-015",
+    "worktree": "/tmp/itotori-spec-univ-015",
+    "commit": "6b2943edb850c3c968981c8fbbbe2c9865b031a8"
+  },
+  "auditor": {
+    "name": "hume-the-4th",
+    "kind": "documentation"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final re-audit found no P0/P1/P2/P3 findings. The branch contains the committed research crosswalk implementation, live node references are valid, NScripter/ONScripter is marked deferred rather than adopted, and canonical docs avoid stale MVP/post-MVP framing outside historical notes.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
