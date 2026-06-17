@@ -16,6 +16,10 @@ just roadmap-pop
 node scripts/spec-dag.mjs show ITOTORI-019
 node scripts/spec-dag.mjs ready --project kaifuu --target mvp --json
 node scripts/spec-dag.mjs sync-issues --dry-run
+node scripts/spec-dag.mjs claim UNIV-009 --owner orchestrator --json
+node scripts/spec-dag.mjs worktree UNIV-009 --json
+node scripts/spec-dag.mjs ingest-audit roadmap/examples/audit-report.example.json --json
+node scripts/spec-dag.mjs complete UNIV-009 --audit path/to/audit-report.json --json
 node scripts/spec-dag.mjs graph > .tmp/spec-dag.dot
 ```
 
@@ -127,27 +131,37 @@ authoritative operating model for orchestrator responsibilities, delegation,
 provider policy, cost discipline, and worktree hygiene.
 
 1. Run `just roadmap-ready` or `node scripts/spec-dag.mjs pop --json`.
-2. Create the branch and worktree using the node id before editing the node out
-   of `planned`.
-3. Claim the node by committing schema-valid `in_progress` metadata with
-   `owner` plus `branch` or `worktree`; push or merge the claim according to the
-   coordination workflow before delegation.
+2. Create the branch and worktree with
+   `node scripts/spec-dag.mjs worktree NODE-ID`. The default is a dry run;
+   `--apply` runs `git worktree add`.
+3. In the new worktree, claim the node with
+   `node scripts/spec-dag.mjs claim NODE-ID --owner OWNER`. The default is a dry
+   run. `--apply` creates an atomic claim lock in the shared `/tmp`
+   repo-derived lock namespace and updates the node to schema-valid
+   `in_progress` metadata with `owner`, `branch`, and `worktree`.
 4. Launch a spec-planning agent to turn the node into an implementation plan.
 5. Launch one or more implementation agents in separate worktrees only when
    their write scopes are disjoint.
 6. Run local checks required by the node's `verification` list.
 7. Launch audit agents for architecture, correctness, tests, performance, and
    UX where relevant.
-8. For P0/P1 audit findings, create a repair plan, assign worker
-   implementation, and re-audit.
+8. Ingest audit JSON with `node scripts/spec-dag.mjs ingest-audit REPORT.json`.
+   P0/P1 findings produce a blocked repair patch; P2/P3 findings produce draft
+   DAG nodes or append payloads.
 9. Convert P2/P3 findings into new DAG nodes or add them to existing planned
    nodes unless they are cheap, explicitly assigned to a worker before merge,
    and recorded durably in a tracked and committed branch note file, audit
    report artifact, DAG node/update, PR comment/description, or commit message.
-10. Merge only after CI is green, P0/P1 findings are gone, acceptance criteria
+10. Prepare completion bookkeeping with
+    `node scripts/spec-dag.mjs complete NODE-ID --audit REPORT.json`, but merge
+    only after CI is green, P0/P1 findings are gone, acceptance criteria
     are met, and the orchestrator trusts the result.
 11. After the implementation is merged into `main`, mark the node `complete`
     only when the merged result is verified and audit-clean for P0/P1.
+
+The lifecycle commands are default-safe: they print dry-run plans unless
+`--apply` is supplied. They never grant merge authority or run a git merge.
+Humans or an orchestrator still merge only after CI and audit gates.
 
 ## Parallelism
 

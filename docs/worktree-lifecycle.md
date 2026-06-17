@@ -124,6 +124,49 @@ If any command shows uncommitted, untracked, or unknown state, stop and assign
 cleanup to the owning worker or record the node as blocked. Do not delete the
 worktree just because the branch name looks stale.
 
+The CLI can prepare the same checks and state transitions:
+
+```sh
+node scripts/spec-dag.mjs claim UNIV-003 --owner orchestrator --json
+node scripts/spec-dag.mjs claim UNIV-003 --owner orchestrator --apply
+node scripts/spec-dag.mjs worktree UNIV-003 --json
+node scripts/spec-dag.mjs worktree UNIV-003 --apply
+```
+
+`claim` is the concurrency gate. With `--apply`, it creates
+`/tmp/itotori-spec-dag-claims/<repo-hash>/<NODE-ID>.json` with atomic file
+creation before updating `roadmap/spec-dag.json`. The repo hash is derived from
+`git rev-parse --git-common-dir`, so worktrees for the same repository share the
+same lock namespace. If another process already created the lock, the second
+claim fails instead of racing to write `in_progress` metadata. The lock is a
+local filesystem guard; the durable ownership record is still the DAG update
+committed and coordinated through the normal branch workflow.
+
+Claim lock removal is never implicit during claim. It is allowed only through
+one of these explicit lifecycle events:
+
+- `node scripts/spec-dag.mjs claim <NODE-ID> --owner <OWNER> --release --apply`
+  removes the lock only when the lock metadata owner matches `--owner`. If the
+  DAG node is still `in_progress`, the DAG claim fields are cleared only when
+  the active DAG owner, branch, and worktree match the release request.
+- `node scripts/spec-dag.mjs claim <NODE-ID> --owner <OWNER> --force-stale --apply`
+  may remove an abandoned lock only when its `claimedAt` age is at least
+  `staleAfterHours` (default: 24). After removing the stale lock, the command
+  immediately reacquires the new claim with atomic file creation; if the DAG
+  still contains the stale `in_progress` owner/branch/worktree from that lock,
+  those fields are cleared before the new claim is written.
+- `node scripts/spec-dag.mjs complete <NODE-ID> --audit REPORT.json --apply`
+  removes the completed node's claim lock only after the completion DAG update
+  succeeds.
+
+Do not delete files from the claim-lock directory by hand unless the equivalent
+owner, stale-age, or completion condition above has already been verified and
+recorded in durable project notes.
+
+`worktree` is also dry-run by default. With `--apply`, it runs
+`git worktree add -b <branch> <path> <base>`. The command does not invent random
+suffixes for branch or path collisions.
+
 ## Lifecycle
 
 ### 1. Claim
@@ -146,7 +189,18 @@ worktree just because the branch name looks stale.
    claim owns the node; do not create a second worktree or resolve the collision
    with a random suffix.
 6. Create the primary branch and worktree from an up-to-date `main` using the
-   chosen names while the DAG node is still `planned`:
+   chosen names:
+
+   ```sh
+   node scripts/spec-dag.mjs worktree UNIV-003 --json
+   node scripts/spec-dag.mjs worktree UNIV-003 --apply
+   ```
+
+   If branch or worktree creation fails, do not continue on an ad hoc branch.
+   Reconcile the stale branch/worktree collision or leave the node `planned`
+   until the collision is resolved.
+
+   Manual equivalent:
 
    ```sh
    git switch main
@@ -154,13 +208,22 @@ worktree just because the branch name looks stale.
    git worktree add -b spec/univ-003 /tmp/itotori-spec-univ-003 main
    ```
 
-   If branch or worktree creation fails, do not edit the DAG to `in_progress`
-   and do not continue on an ad hoc branch. Reconcile the stale branch/worktree
-   collision or leave the node `planned` until the collision is resolved.
+7. In the new worktree, claim the node with the lifecycle CLI. Dry-run first:
 
-7. In the new worktree, re-read `roadmap/spec-dag.json`. If the node is still
-   `planned`, move it to `in_progress` with schema-valid claim metadata. If it
-   changed after branch creation, stop and reconcile that state before editing:
+   ```sh
+   node scripts/spec-dag.mjs claim UNIV-003 --owner "Worker UNIV-003" --json
+   node scripts/spec-dag.mjs claim UNIV-003 --owner "Worker UNIV-003" --apply
+   ```
+
+   The apply form creates an atomic claim lock shared across the repo's
+   worktrees and writes schema-valid `in_progress` metadata. If the lock already
+   exists, stop and inspect the owning claim instead of creating another branch
+   or worktree. If the owning claim is abandoned, release it with matching owner
+   metadata or recover it with `--force-stale` after the configured stale age;
+   both forms are dry-run unless `--apply` is present.
+
+8. Re-read `roadmap/spec-dag.json`. The claimed node should now have
+   schema-valid metadata like:
 
    ```json
    {
@@ -171,11 +234,11 @@ worktree just because the branch name looks stale.
    }
    ```
 
-   The schema requires `owner` plus at least one of `branch` or `worktree`; use
-   both when the worktree name is known. Do not set `status: "in_progress"`
-   alone. Run `node scripts/spec-dag.mjs validate` after the edit.
+   The schema requires `owner` plus at least one of `branch` or `worktree`; the
+   lifecycle CLI uses both. Do not set `status: "in_progress"` alone. Run
+   `node scripts/spec-dag.mjs validate` after the edit.
 
-8. Commit the claim metadata before planning, implementation, or delegation:
+9. Commit the claim metadata before planning, implementation, or delegation:
 
    ```sh
    git -C /tmp/itotori-spec-univ-003 diff --check
@@ -334,7 +397,9 @@ The completion update must include:
 - no open P0/P1 audit findings;
 - durable disposition for P2/P3 findings;
 - verification evidence from the merged branch or a clearly equivalent local
-  run.
+  run;
+- removal of the local claim lock by `complete --apply` after the DAG write
+  succeeds.
 
 If the merged result cannot be trusted, leave the node non-complete and record
 the blocker instead.

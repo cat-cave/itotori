@@ -13,6 +13,7 @@ dashboard:
 check:
     pnpm exec vp check
     node scripts/spec-dag-issues.test.mjs
+    node scripts/spec-dag-lifecycle.test.mjs
     node scripts/spec-dag.mjs validate
     just fixtures-validate
     node scripts/verify-toolchain-policy.mjs
