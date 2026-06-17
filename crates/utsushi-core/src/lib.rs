@@ -1,38 +1,275 @@
 use std::fs;
 use std::path::Path;
 
-use serde_json::{Value, json};
+use serde_json::Value;
 
 pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
 
-pub fn trace_fixture(game_dir: &Path) -> UtsushiResult<Value> {
-    let source = read_source(game_dir)?;
-    let unit = first_unit(&source)?;
-    Ok(runtime_report(
-        &source,
-        vec![trace_event(unit, 1)?],
-        vec![],
-        "trace_only",
-        "E1",
-        "Runtime trace reached fixture text; no frame was captured.",
-    ))
+#[derive(Clone, Copy, Debug)]
+pub struct RuntimeRequest<'a> {
+    pub input_root: &'a Path,
+    pub artifact_root: Option<&'a Path>,
 }
 
-pub fn capture_fixture(game_dir: &Path) -> UtsushiResult<Value> {
-    let source = read_source(game_dir)?;
-    let unit = first_unit(&source)?;
-    Ok(runtime_report(
-        &source,
-        vec![trace_event(unit, 1)?],
-        vec![capture_event(unit, 1)?],
-        "layout_probe",
-        "E2",
-        "Fixture capture produced a screenshot reference; no pixel comparison was performed.",
-    ))
+impl<'a> RuntimeRequest<'a> {
+    pub fn new(input_root: &'a Path) -> Self {
+        Self {
+            input_root,
+            artifact_root: None,
+        }
+    }
+
+    pub fn with_artifact_root(mut self, artifact_root: &'a Path) -> Self {
+        self.artifact_root = Some(artifact_root);
+        self
+    }
 }
 
-pub fn smoke_fixture(game_dir: &Path) -> UtsushiResult<Value> {
-    capture_fixture(game_dir)
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeAdapterDescriptor {
+    pub name: String,
+    pub version: String,
+    pub fidelity_tier: FidelityTier,
+    pub evidence_tier_ceiling: EvidenceTier,
+    pub capabilities: Vec<RuntimeCapability>,
+    pub approximation_tiers: Vec<ApproximationTier>,
+    pub limitations: Vec<String>,
+}
+
+impl RuntimeAdapterDescriptor {
+    pub fn supports(&self, capability: RuntimeCapability) -> bool {
+        self.capabilities.contains(&capability)
+    }
+
+    pub fn uses_approximation(&self, approximation_tier: ApproximationTier) -> bool {
+        self.approximation_tiers.contains(&approximation_tier)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RuntimeOperation {
+    Trace,
+    BranchDiscovery,
+    Capture,
+    SmokeValidation,
+}
+
+impl RuntimeOperation {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Trace => "trace",
+            Self::BranchDiscovery => "branch_discovery",
+            Self::Capture => "capture",
+            Self::SmokeValidation => "smoke_validation",
+        }
+    }
+
+    pub fn required_capability(self) -> RuntimeCapability {
+        match self {
+            Self::Trace => RuntimeCapability::Trace,
+            Self::BranchDiscovery => RuntimeCapability::BranchDiscovery,
+            Self::Capture => RuntimeCapability::FrameCapture,
+            Self::SmokeValidation => RuntimeCapability::SmokeValidation,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RuntimeCapability {
+    Trace,
+    BranchDiscovery,
+    FrameCapture,
+    SmokeValidation,
+    ReplayReview,
+    ReferenceComparison,
+}
+
+impl RuntimeCapability {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Trace => "trace",
+            Self::BranchDiscovery => "branch_discovery",
+            Self::FrameCapture => "frame_capture",
+            Self::SmokeValidation => "smoke_validation",
+            Self::ReplayReview => "replay_review",
+            Self::ReferenceComparison => "reference_comparison",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum EvidenceTier {
+    E0,
+    E1,
+    E2,
+    E3,
+    E4,
+}
+
+impl EvidenceTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::E0 => "E0",
+            Self::E1 => "E1",
+            Self::E2 => "E2",
+            Self::E3 => "E3",
+            Self::E4 => "E4",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum FidelityTier {
+    TraceOnly,
+    LayoutProbe,
+    ReplayReview,
+    ReferenceFidelity,
+}
+
+impl FidelityTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::TraceOnly => "trace_only",
+            Self::LayoutProbe => "layout_probe",
+            Self::ReplayReview => "replay_review",
+            Self::ReferenceFidelity => "reference_fidelity",
+        }
+    }
+
+    pub fn evidence_ceiling(self) -> EvidenceTier {
+        match self {
+            Self::TraceOnly => EvidenceTier::E1,
+            Self::LayoutProbe => EvidenceTier::E2,
+            Self::ReplayReview => EvidenceTier::E3,
+            Self::ReferenceFidelity => EvidenceTier::E4,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ApproximationTier {
+    None,
+    DeterministicFixture,
+    LayoutProbe,
+    EnginePartial,
+    ReferenceMatched,
+}
+
+impl ApproximationTier {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::DeterministicFixture => "deterministic_fixture",
+            Self::LayoutProbe => "layout_probe",
+            Self::EnginePartial => "engine_partial",
+            Self::ReferenceMatched => "reference_matched",
+        }
+    }
+}
+
+pub trait RuntimeAdapter {
+    fn descriptor(&self) -> RuntimeAdapterDescriptor;
+
+    fn trace(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value>;
+
+    fn discover_branches(&self, _request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
+        Err(unsupported_operation(&self.descriptor(), RuntimeOperation::BranchDiscovery).into())
+    }
+
+    fn capture(&self, _request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
+        Err(unsupported_operation(&self.descriptor(), RuntimeOperation::Capture).into())
+    }
+
+    fn smoke_validate(&self, _request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
+        Err(unsupported_operation(&self.descriptor(), RuntimeOperation::SmokeValidation).into())
+    }
+
+    fn run(
+        &self,
+        operation: RuntimeOperation,
+        request: &RuntimeRequest<'_>,
+    ) -> UtsushiResult<Value> {
+        match operation {
+            RuntimeOperation::Trace => self.trace(request),
+            RuntimeOperation::BranchDiscovery => self.discover_branches(request),
+            RuntimeOperation::Capture => self.capture(request),
+            RuntimeOperation::SmokeValidation => self.smoke_validate(request),
+        }
+    }
+}
+
+pub struct RuntimeAdapterRegistry<'a> {
+    adapters: Vec<&'a dyn RuntimeAdapter>,
+}
+
+impl<'a> RuntimeAdapterRegistry<'a> {
+    pub fn new() -> Self {
+        Self {
+            adapters: Vec::new(),
+        }
+    }
+
+    pub fn register(&mut self, adapter: &'a dyn RuntimeAdapter) -> UtsushiResult<()> {
+        let descriptor = adapter.descriptor();
+        if descriptor.evidence_tier_ceiling > descriptor.fidelity_tier.evidence_ceiling() {
+            return Err(format!(
+                "runtime adapter {} evidence ceiling {} exceeds fidelity tier {}",
+                descriptor.name,
+                descriptor.evidence_tier_ceiling.as_str(),
+                descriptor.fidelity_tier.as_str()
+            )
+            .into());
+        }
+        if self
+            .adapters
+            .iter()
+            .any(|registered| registered.descriptor().name == descriptor.name)
+        {
+            return Err(format!("runtime adapter already registered: {}", descriptor.name).into());
+        }
+        self.adapters.push(adapter);
+        Ok(())
+    }
+
+    pub fn adapter(&self, name: &str) -> Option<&'a dyn RuntimeAdapter> {
+        self.adapters
+            .iter()
+            .find(|adapter| adapter.descriptor().name == name)
+            .copied()
+    }
+
+    pub fn require(&self, name: &str) -> UtsushiResult<&'a dyn RuntimeAdapter> {
+        self.adapter(name)
+            .ok_or_else(|| format!("runtime adapter not registered: {name}").into())
+    }
+
+    pub fn descriptors(&self) -> Vec<RuntimeAdapterDescriptor> {
+        self.adapters
+            .iter()
+            .map(|adapter| adapter.descriptor())
+            .collect()
+    }
+
+    pub fn run(
+        &self,
+        adapter_name: &str,
+        operation: RuntimeOperation,
+        request: &RuntimeRequest<'_>,
+    ) -> UtsushiResult<Value> {
+        let adapter = self.require(adapter_name)?;
+        let descriptor = adapter.descriptor();
+        let required_capability = operation.required_capability();
+        if !descriptor.supports(required_capability) {
+            return Err(unsupported_operation(&descriptor, operation).into());
+        }
+        adapter.run(operation, request)
+    }
+}
+
+impl Default for RuntimeAdapterRegistry<'_> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 pub fn write_json(path: &Path, value: &Value) -> UtsushiResult<()> {
@@ -43,193 +280,138 @@ pub fn write_json(path: &Path, value: &Value) -> UtsushiResult<()> {
     Ok(())
 }
 
-fn read_source(game_dir: &Path) -> UtsushiResult<Value> {
-    Ok(serde_json::from_str(&fs::read_to_string(
-        game_dir.join("source.json"),
-    )?)?)
-}
-
-fn first_unit(source: &Value) -> UtsushiResult<&Value> {
-    source["units"]
-        .as_array()
-        .and_then(|units| units.first())
-        .ok_or_else(|| "source has no units".into())
-}
-
-fn runtime_report(
-    source: &Value,
-    trace_events: Vec<Value>,
-    captures: Vec<Value>,
-    fidelity_tier: &str,
-    evidence_tier: &str,
-    limitation: &str,
-) -> Value {
-    let affected_bridge_unit_refs = trace_events
-        .iter()
-        .filter_map(|event| event.get("bridgeUnitRef").cloned())
-        .collect::<Vec<_>>();
-    json!({
-        "schemaVersion": "0.2.0",
-        "runtimeReportId": deterministic_uuid("runtime-report", 1),
-        "sourceLocale": source["sourceLocale"].as_str().unwrap_or("und"),
-        "adapterName": "utsushi-fixture",
-        "adapterVersion": env!("CARGO_PKG_VERSION"),
-        "fidelityTier": fidelity_tier,
-        "evidenceTier": evidence_tier,
-        "status": "passed",
-        "createdAt": "2026-06-17T00:00:00.000Z",
-        "traceEvents": trace_events,
-        "branchEvents": [],
-        "captures": captures,
-        "recordings": [],
-        "approximations": [
-            {
-                "approximationId": deterministic_uuid("approximation", 1),
-                "approximationTier": "deterministic_fixture",
-                "scope": "fixture runtime",
-                "description": "Fixture runtime emits deterministic trace and capture evidence without reference-runtime pixel comparison.",
-                "affectedBridgeUnitRefs": affected_bridge_unit_refs,
-                "evidenceTierCeiling": evidence_tier
-            }
-        ],
-        "validationFindings": [],
-        "limitations": [limitation]
-    })
-}
-
-fn trace_event(unit: &Value, frame: usize) -> UtsushiResult<Value> {
-    Ok(json!({
-        "traceEventId": deterministic_uuid("runtime-trace", frame),
-        "eventKind": "text_observed",
-        "bridgeUnitRef": bridge_unit_ref(unit, 1)?,
-        "frame": frame,
-        "traceKey": require_str(unit, "sourceUnitKey")?,
-        "observedText": unit["targetText"]
-            .as_str()
-            .or_else(|| unit["sourceText"].as_str())
-            .unwrap_or("")
-    }))
-}
-
-fn capture_event(unit: &Value, frame: usize) -> UtsushiResult<Value> {
-    Ok(json!({
-        "captureId": deterministic_uuid("capture", frame),
-        "bridgeUnitRef": bridge_unit_ref(unit, 1)?,
-        "evidenceTier": "E2",
-        "frame": frame,
-        "width": 320,
-        "height": 180,
-        "nonZeroPixels": 57600,
-        "artifactRef": {
-            "artifactId": deterministic_uuid("screenshot", frame),
-            "artifactKind": "screenshot",
-            "uri": format!("artifacts/utsushi/hello/frame-{frame:04}.png"),
-            "mediaType": "image/png"
-        }
-    }))
-}
-
-fn bridge_unit_ref(unit: &Value, index: usize) -> UtsushiResult<Value> {
-    Ok(json!({
-        "bridgeUnitId": legacy_fixture_id("bridge-unit", index),
-        "sourceUnitKey": require_str(unit, "sourceUnitKey")?
-    }))
-}
-
-fn require_str<'a>(value: &'a Value, key: &str) -> UtsushiResult<&'a str> {
-    value[key]
-        .as_str()
-        .ok_or_else(|| format!("fixture source unit missing {key}").into())
-}
-
-fn legacy_fixture_id(kind: &str, index: usize) -> String {
-    let mut compact = kind.replace('-', "");
-    compact.truncate(8);
-    while compact.len() < 8 {
-        compact.push('0');
-    }
-    format!("019ed000-0000-7000-8000-{}{:04}", compact, index)
-}
-
-fn deterministic_uuid(kind: &str, index: usize) -> String {
-    let kind_code = match kind {
-        "runtime-report" => 0x1000,
-        "runtime-trace" => 0x2000,
-        "capture" => 0x3000,
-        "screenshot" => 0x4000,
-        "approximation" => 0x5000,
-        _ => 0xf000,
-    };
-    format!("019ed003-0000-7000-8000-{kind_code:08x}{index:04x}")
+fn unsupported_operation(
+    descriptor: &RuntimeAdapterDescriptor,
+    operation: RuntimeOperation,
+) -> String {
+    format!(
+        "runtime adapter {} does not support {}",
+        descriptor.name,
+        operation.as_str()
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use serde_json::json;
 
-    fn temp_game(name: &str) -> std::path::PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let dir = std::env::temp_dir().join(format!(
-            "utsushi-core-{name}-{}-{nonce}",
-            std::process::id()
-        ));
-        let _ = fs::remove_dir_all(&dir);
-        fs::create_dir_all(&dir).unwrap();
-        fs::write(
-            dir.join("source.json"),
-            r#"{
-  "gameId": "hello-fixture",
-  "title": "Hello Fixture",
-  "sourceLocale": "ja-JP",
-  "units": [
-    {
-      "sourceUnitKey": "hello.scene.001.line.001",
-      "speaker": "Narrator",
-      "textSurface": "dialogue",
-      "sourceText": "こんにちは、{player}。",
-      "targetText": "Hello, {player}.",
-      "protectedSpans": []
+    struct FakeTraceAdapter;
+
+    impl RuntimeAdapter for FakeTraceAdapter {
+        fn descriptor(&self) -> RuntimeAdapterDescriptor {
+            RuntimeAdapterDescriptor {
+                name: "fake-trace".to_string(),
+                version: "0.0.0-test".to_string(),
+                fidelity_tier: FidelityTier::TraceOnly,
+                evidence_tier_ceiling: EvidenceTier::E1,
+                capabilities: vec![RuntimeCapability::Trace],
+                approximation_tiers: vec![ApproximationTier::DeterministicFixture],
+                limitations: vec!["unit test adapter".to_string()],
+            }
+        }
+
+        fn trace(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
+            Ok(json!({
+                "operation": "trace",
+                "inputRoot": request.input_root.display().to_string()
+            }))
+        }
     }
-  ]
-}
-"#,
-        )
-        .unwrap();
-        dir
+
+    struct OverclaimingAdapter;
+
+    impl RuntimeAdapter for OverclaimingAdapter {
+        fn descriptor(&self) -> RuntimeAdapterDescriptor {
+            RuntimeAdapterDescriptor {
+                name: "overclaiming".to_string(),
+                version: "0.0.0-test".to_string(),
+                fidelity_tier: FidelityTier::LayoutProbe,
+                evidence_tier_ceiling: EvidenceTier::E4,
+                capabilities: vec![RuntimeCapability::Trace, RuntimeCapability::FrameCapture],
+                approximation_tiers: vec![ApproximationTier::ReferenceMatched],
+                limitations: vec![],
+            }
+        }
+
+        fn trace(&self, _request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
+            Ok(json!({ "operation": "trace" }))
+        }
     }
 
     #[test]
-    fn smoke_fixture_serializes_v02_referenced_capture_evidence() {
-        let game_dir = temp_game("smoke");
-        let report = smoke_fixture(&game_dir).unwrap();
-
-        assert_eq!(report["schemaVersion"], "0.2.0");
-        assert_eq!(report["evidenceTier"], "E2");
-        assert_eq!(report["fidelityTier"], "layout_probe");
-        assert_eq!(report["traceEvents"].as_array().unwrap().len(), 1);
-        assert_eq!(report["captures"].as_array().unwrap().len(), 1);
+    fn fidelity_tiers_match_runtime_schema_evidence_ceilings() {
+        assert_eq!(FidelityTier::TraceOnly.evidence_ceiling(), EvidenceTier::E1);
         assert_eq!(
-            report["captures"][0]["artifactRef"]["uri"],
-            "artifacts/utsushi/hello/frame-0001.png"
+            FidelityTier::LayoutProbe.evidence_ceiling(),
+            EvidenceTier::E2
         );
-        assert!(report["captures"][0].get("bytes").is_none());
-        assert!(report["captures"][0].get("data").is_none());
-        let _ = fs::remove_dir_all(game_dir);
+        assert_eq!(
+            FidelityTier::ReplayReview.evidence_ceiling(),
+            EvidenceTier::E3
+        );
+        assert_eq!(
+            FidelityTier::ReferenceFidelity.evidence_ceiling(),
+            EvidenceTier::E4
+        );
     }
 
     #[test]
-    fn trace_fixture_serializes_e1_without_capture_claims() {
-        let game_dir = temp_game("trace");
-        let report = trace_fixture(&game_dir).unwrap();
+    fn registry_dispatches_by_adapter_name() {
+        let adapter = FakeTraceAdapter;
+        let mut registry = RuntimeAdapterRegistry::new();
+        registry.register(&adapter).unwrap();
 
-        assert_eq!(report["schemaVersion"], "0.2.0");
-        assert_eq!(report["evidenceTier"], "E1");
-        assert_eq!(report["fidelityTier"], "trace_only");
-        assert_eq!(report["captures"].as_array().unwrap().len(), 0);
-        let _ = fs::remove_dir_all(game_dir);
+        let input_root = Path::new("fixtures/hello-game");
+        let report = registry
+            .run(
+                "fake-trace",
+                RuntimeOperation::Trace,
+                &RuntimeRequest::new(input_root),
+            )
+            .unwrap();
+
+        assert_eq!(report["operation"], "trace");
+        assert_eq!(report["inputRoot"], "fixtures/hello-game");
+        assert_eq!(registry.descriptors()[0].name, "fake-trace");
+    }
+
+    #[test]
+    fn registry_rejects_duplicate_adapter_names() {
+        let adapter = FakeTraceAdapter;
+        let mut registry = RuntimeAdapterRegistry::new();
+
+        registry.register(&adapter).unwrap();
+        let error = registry.register(&adapter).unwrap_err().to_string();
+
+        assert!(error.contains("already registered"));
+    }
+
+    #[test]
+    fn registry_rejects_adapter_evidence_overclaims() {
+        let adapter = OverclaimingAdapter;
+        let mut registry = RuntimeAdapterRegistry::new();
+
+        let error = registry.register(&adapter).unwrap_err().to_string();
+
+        assert!(error.contains("exceeds fidelity tier"));
+    }
+
+    #[test]
+    fn registry_fails_closed_for_unsupported_operations() {
+        let adapter = FakeTraceAdapter;
+        let mut registry = RuntimeAdapterRegistry::new();
+        registry.register(&adapter).unwrap();
+
+        let error = registry
+            .run(
+                "fake-trace",
+                RuntimeOperation::Capture,
+                &RuntimeRequest::new(Path::new("fixtures/hello-game")),
+            )
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("does not support capture"));
     }
 }

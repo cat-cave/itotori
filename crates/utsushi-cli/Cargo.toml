@@ -7,3 +7,4 @@ repository.workspace = true
 
 [dependencies]
 utsushi-core = { path = "../utsushi-core" }
+utsushi-fixture = { path = "../utsushi-fixture" }
