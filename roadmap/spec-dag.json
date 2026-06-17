@@ -728,7 +728,7 @@
     {
       "id": "SHARED-001",
       "title": "Bridge schema v0.2 domain model",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
