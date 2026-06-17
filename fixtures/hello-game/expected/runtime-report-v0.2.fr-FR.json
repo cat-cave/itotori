@@ -1,0 +1,199 @@
+{
+  "adapterName": "utsushi-public-fixture",
+  "adapterVersion": "0.2.0",
+  "approximations": [
+    {
+      "affectedBridgeUnitRefs": [
+        {
+          "bridgeUnitId": "019ed012-0000-7000-8000-000000000400",
+          "sourceUnitKey": "hello.scene.001.line.001"
+        },
+        {
+          "bridgeUnitId": "019ed012-0000-7000-8000-000000000402",
+          "sourceUnitKey": "hello.scene.001.line.002"
+        },
+        {
+          "bridgeUnitId": "019ed012-0000-7000-8000-000000000403",
+          "sourceUnitKey": "hello.scene.001.choice.open"
+        },
+        {
+          "bridgeUnitId": "019ed012-0000-7000-8000-000000000404",
+          "sourceUnitKey": "hello.scene.001.choice.wait"
+        },
+        {
+          "bridgeUnitId": "019ed012-0000-7000-8000-000000000405",
+          "sourceUnitKey": "ui.menu.inventory"
+        },
+        {
+          "bridgeUnitId": "019ed012-0000-7000-8000-000000000406",
+          "sourceUnitKey": "tutorial.inspect"
+        },
+        {
+          "bridgeUnitId": "019ed012-0000-7000-8000-000000000407",
+          "sourceUnitKey": "database.items.silver-key.name"
+        },
+        {
+          "bridgeUnitId": "019ed012-0000-7000-8000-000000000409",
+          "sourceUnitKey": "image.sign-caution.region-0"
+        },
+        {
+          "bridgeUnitId": "019ed012-0000-7000-8000-000000000410",
+          "sourceUnitKey": "metadata.package.tagline"
+        }
+      ],
+      "approximationId": "019ed012-0000-7000-8000-000000001201",
+      "approximationTier": "deterministic_fixture",
+      "description": "The committed public runtime report records deterministic text trace evidence only; it does not claim screenshot, recording, or reference-runtime pixel fidelity.",
+      "evidenceTierCeiling": "E1",
+      "scope": "hello-game trace-only public fixture"
+    }
+  ],
+  "branchEvents": [
+    {
+      "branchEventId": "019ed012-0000-7000-8000-000000001101",
+      "branchPointKey": "hello-scene-001-choice",
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed012-0000-7000-8000-000000000403",
+        "sourceUnitKey": "hello.scene.001.choice.open"
+      },
+      "frame": 30,
+      "options": [
+        {
+          "label": "Ouvrir la porte",
+          "labelBridgeUnitRef": {
+            "bridgeUnitId": "019ed012-0000-7000-8000-000000000403",
+            "sourceUnitKey": "hello.scene.001.choice.open"
+          },
+          "optionId": "019ed012-0000-7000-8000-000000001111",
+          "targetRouteKey": "open-gate"
+        },
+        {
+          "label": "Attendre jusqu'au matin",
+          "labelBridgeUnitRef": {
+            "bridgeUnitId": "019ed012-0000-7000-8000-000000000404",
+            "sourceUnitKey": "hello.scene.001.choice.wait"
+          },
+          "optionId": "019ed012-0000-7000-8000-000000001112",
+          "targetRouteKey": "wait-until-morning"
+        }
+      ],
+      "promptText": "Choisir une action",
+      "selectedOptionId": "019ed012-0000-7000-8000-000000001111"
+    }
+  ],
+  "captures": [],
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "evidenceTier": "E1",
+  "fidelityTier": "trace_only",
+  "limitations": [
+    "Trace-only fixture evidence is suitable for schema and contract regression tests, not visual fidelity claims."
+  ],
+  "recordings": [],
+  "runtimeReportId": "019ed012-0000-7000-8000-000000000904",
+  "schemaVersion": "0.2.0",
+  "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+  "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+  "sourceLocale": "ja-JP",
+  "status": "passed",
+  "targetLocale": "fr-FR",
+  "traceEvents": [
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed012-0000-7000-8000-000000000400",
+        "sourceUnitKey": "hello.scene.001.line.001"
+      },
+      "eventKind": "text_observed",
+      "frame": 12,
+      "observedText": "Bonjour, {player}.",
+      "traceEventId": "019ed012-0000-7000-8000-000000001000",
+      "traceKey": "hello-scene-001-line-001"
+    },
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed012-0000-7000-8000-000000000402",
+        "sourceUnitKey": "hello.scene.001.line.002"
+      },
+      "eventKind": "text_observed",
+      "frame": 18,
+      "observedText": "On voit la lumiere du Yorishiro<wait=30>.",
+      "traceEventId": "019ed012-0000-7000-8000-000000001001",
+      "traceKey": "hello-scene-001-line-002"
+    },
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed012-0000-7000-8000-000000000403",
+        "sourceUnitKey": "hello.scene.001.choice.open"
+      },
+      "eventKind": "branch_point_reached",
+      "frame": 24,
+      "traceEventId": "019ed012-0000-7000-8000-000000001002",
+      "traceKey": "hello-scene-001-choice-open"
+    },
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed012-0000-7000-8000-000000000404",
+        "sourceUnitKey": "hello.scene.001.choice.wait"
+      },
+      "eventKind": "branch_point_reached",
+      "frame": 30,
+      "traceEventId": "019ed012-0000-7000-8000-000000001003",
+      "traceKey": "hello-scene-001-choice-wait"
+    },
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed012-0000-7000-8000-000000000405",
+        "sourceUnitKey": "ui.menu.inventory"
+      },
+      "eventKind": "text_observed",
+      "frame": 36,
+      "observedText": "Inventaire",
+      "traceEventId": "019ed012-0000-7000-8000-000000001004",
+      "traceKey": "ui-menu-inventory"
+    },
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed012-0000-7000-8000-000000000406",
+        "sourceUnitKey": "tutorial.inspect"
+      },
+      "eventKind": "text_observed",
+      "frame": 42,
+      "observedText": "Appuyez sur {confirm} pour examiner.",
+      "traceEventId": "019ed012-0000-7000-8000-000000001005",
+      "traceKey": "tutorial-inspect"
+    },
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed012-0000-7000-8000-000000000407",
+        "sourceUnitKey": "database.items.silver-key.name"
+      },
+      "eventKind": "text_observed",
+      "frame": 48,
+      "observedText": "Cle d'argent",
+      "traceEventId": "019ed012-0000-7000-8000-000000001006",
+      "traceKey": "database-items-silver-key-name"
+    },
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed012-0000-7000-8000-000000000409",
+        "sourceUnitKey": "image.sign-caution.region-0"
+      },
+      "eventKind": "text_observed",
+      "frame": 54,
+      "observedText": "Attention",
+      "traceEventId": "019ed012-0000-7000-8000-000000001007",
+      "traceKey": "image-sign-caution-region-0"
+    },
+    {
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed012-0000-7000-8000-000000000410",
+        "sourceUnitKey": "metadata.package.tagline"
+      },
+      "eventKind": "text_observed",
+      "frame": 60,
+      "observedText": "La porte du crepuscule",
+      "traceEventId": "019ed012-0000-7000-8000-000000001008",
+      "traceKey": "metadata-package-tagline"
+    }
+  ],
+  "validationFindings": []
+}

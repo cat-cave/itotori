@@ -24,6 +24,43 @@
       "schemaVersion": "0.1.0",
       "path": "fixtures/hello-game/expected/bridge-v0.1.json",
       "producer": "kaifuu-fixture"
+    },
+    {
+      "schemaVersion": "0.2.0",
+      "path": "fixtures/hello-game/expected/bridge-v0.2.json",
+      "producer": "kaifuu-fixture-public-golden"
+    }
+  ],
+  "expectedArtifactCoverage": [
+    {
+      "artifactKind": "patch-export-v0.2",
+      "path": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
+      "targetLocale": "fr-FR"
+    },
+    {
+      "artifactKind": "patch-result-v0.2",
+      "path": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
+      "targetLocale": "fr-FR"
+    },
+    {
+      "artifactKind": "delta-package-v0.2",
+      "path": "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
+      "targetLocale": "fr-FR"
+    },
+    {
+      "artifactKind": "runtime-report-v0.2",
+      "path": "fixtures/hello-game/expected/runtime-report-v0.2.fr-FR.json",
+      "targetLocale": "fr-FR"
+    },
+    {
+      "artifactKind": "benchmark-report-v0.2",
+      "path": "fixtures/hello-game/expected/benchmark-report-v0.2.fr-FR.json",
+      "targetLocale": "fr-FR"
+    },
+    {
+      "artifactKind": "finding-v0.2",
+      "path": "fixtures/hello-game/expected/finding-v0.2.fr-FR.json",
+      "targetLocale": "fr-FR"
     }
   ],
   "surfaces": [
@@ -106,7 +143,6 @@
     }
   ],
   "outOfScope": [
-    "Patch export golden files are owned by later full-system artifact specs.",
-    "Runtime report breadth is owned by later Utsushi runtime evidence specs."
+    "Private-local corpus artifacts remain out of scope for this public fixture coverage record."
   ]
 }

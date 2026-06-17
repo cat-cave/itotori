@@ -175,6 +175,44 @@ function publicFixture(path: string): Record<string, unknown> {
   >;
 }
 
+const PUBLIC_HELLO_GAME_GOLDEN_ARTIFACTS = [
+  {
+    path: "fixtures/hello-game/expected/bridge-v0.2.json",
+    role: "bridge-bundle",
+    kind: "bridge-v0.2",
+  },
+  {
+    path: "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
+    role: "patch-export",
+    kind: "patch-export-v0.2",
+  },
+  {
+    path: "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
+    role: "patch-result",
+    kind: "patch-result-v0.2",
+  },
+  {
+    path: "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
+    role: "delta-package",
+    kind: "delta-package-v0.2",
+  },
+  {
+    path: "fixtures/hello-game/expected/runtime-report-v0.2.fr-FR.json",
+    role: "runtime-report",
+    kind: "runtime-evidence-v0.2",
+  },
+  {
+    path: "fixtures/hello-game/expected/benchmark-report-v0.2.fr-FR.json",
+    role: "benchmark-report",
+    kind: "benchmark-report-v0.2",
+  },
+  {
+    path: "fixtures/hello-game/expected/finding-v0.2.fr-FR.json",
+    role: "finding",
+    kind: "finding-v0.2",
+  },
+] as const;
+
 function bridgeV02Units(bridge: Record<string, unknown>): Array<Record<string, unknown>> {
   return bridge.units as Array<Record<string, unknown>>;
 }
@@ -393,6 +431,111 @@ describe("localization bridge schema guards", () => {
     };
 
     expect(() => assertBridgeBundle(bridge)).toThrow(/raw must match sourceText byte range/);
+  });
+
+  it("accepts the public full-system hello-game v0.2 golden artifact corpus", () => {
+    const manifest = publicFixture("fixtures/public/hello-game.manifest.json");
+    const manifestFiles = manifest.files as Array<{
+      path: string;
+      role: string;
+      redistributable: boolean;
+    }>;
+
+    for (const artifact of PUBLIC_HELLO_GAME_GOLDEN_ARTIFACTS) {
+      expect(manifestFiles).toContainEqual(
+        expect.objectContaining({
+          path: artifact.path,
+          role: artifact.role,
+          redistributable: true,
+        }),
+      );
+      expect(() =>
+        assertContractFixtureV02(artifact.kind, publicFixture(artifact.path)),
+      ).not.toThrow();
+    }
+
+    const expectedRoles = new Set([
+      "patch-export",
+      "patch-result",
+      "delta-package",
+      "runtime-report",
+      "benchmark-report",
+      "finding",
+    ]);
+    const manifestRoles = new Set(manifestFiles.map((file) => file.role));
+    for (const role of expectedRoles) {
+      expect(manifestRoles).toContain(role);
+    }
+
+    const bridge = publicFixture("fixtures/hello-game/expected/bridge-v0.2.json");
+    const patchExport = publicFixture("fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json");
+    const patchResult = publicFixture("fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json");
+    const deltaPackage = publicFixture(
+      "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
+    );
+    const runtimeReport = publicFixture(
+      "fixtures/hello-game/expected/runtime-report-v0.2.fr-FR.json",
+    );
+    const benchmarkReport = publicFixture(
+      "fixtures/hello-game/expected/benchmark-report-v0.2.fr-FR.json",
+    );
+    const finding = publicFixture("fixtures/hello-game/expected/finding-v0.2.fr-FR.json");
+
+    expect(() => assertBridgeBundleV02(bridge)).not.toThrow();
+    expect(() => assertPatchExportV02(patchExport)).not.toThrow();
+    expect(() => assertPatchResultV02(patchResult)).not.toThrow();
+    expect(() => assertDeltaPackageMetadataV02(deltaPackage)).not.toThrow();
+    expect(() => assertRuntimeEvidenceReportV02(runtimeReport)).not.toThrow();
+    expect(() => assertRuntimeReport(runtimeReport)).not.toThrow();
+    expect(() => assertBenchmarkReportV02(benchmarkReport)).not.toThrow();
+    expect(() => assertFindingRecordFixtureV02(finding)).not.toThrow();
+
+    const bridgeUnits = bridge.units as Array<Record<string, unknown>>;
+    const bridgeUnitIds = new Set(bridgeUnits.map((unit) => unit.bridgeUnitId));
+    const patchEntries = patchExport.entries as Array<Record<string, unknown>>;
+    expect(patchExport.sourceBridgeId).toBe(bridge.bridgeId);
+    expect(patchExport.sourceBundleHash).toBe(bridge.sourceBundleHash);
+    expect(patchExport.targetLocale).toBe("fr-FR");
+    expect(patchEntries).toHaveLength(bridgeUnits.length);
+    expect(patchEntries.every((entry) => bridgeUnitIds.has(entry.bridgeUnitId))).toBe(true);
+
+    const sourceCompatibility = asTestRecord(
+      patchResult.sourceCompatibility,
+      "public patch result source compatibility",
+    );
+    expect(patchResult.patchExportId).toBe(patchExport.patchExportId);
+    expect(sourceCompatibility.status).toBe("compatible");
+    expect(sourceCompatibility.compatibleUnits).toHaveLength(patchEntries.length);
+
+    expect(deltaPackage.sourceBridgeId).toBe(bridge.bridgeId);
+    expect(deltaPackage.generatedPatchExportId).toBe(patchExport.patchExportId);
+    expect(deltaPackage.generatedPatchExportHash).toBe(patchExport.patchExportHash);
+
+    const traceEvents = runtimeReport.traceEvents as Array<{
+      bridgeUnitRef: { bridgeUnitId: string };
+    }>;
+    expect(traceEvents.length).toBeGreaterThan(0);
+    expect(traceEvents.every((event) => bridgeUnitIds.has(event.bridgeUnitRef.bridgeUnitId))).toBe(
+      true,
+    );
+    expect(runtimeReport.fidelityTier).toBe("trace_only");
+
+    const fixtureRefs = benchmarkReport.fixtureOrCorpusRefs as Array<Record<string, unknown>>;
+    expect(fixtureRefs).toContainEqual(
+      expect.objectContaining({
+        corpusKind: "public_fixture",
+        manifestUri: "fixtures/public/hello-game.manifest.json",
+        publicContent: true,
+      }),
+    );
+
+    const findingRecord = asTestRecord(finding.finding, "public standalone finding");
+    expect(findingRecord.affectedRefs).toContainEqual(
+      expect.objectContaining({
+        subjectKind: "bridge_unit",
+        subjectId: bridgeUnits[2]?.bridgeUnitId,
+      }),
+    );
   });
 
   it("accepts the v0.2 bridge surface example", () => {

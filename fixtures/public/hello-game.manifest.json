@@ -32,16 +32,72 @@
       "path": "fixtures/hello-game/expected/bridge-v0.1.json",
       "role": "bridge-bundle",
       "mediaType": "application/json",
-      "sha256": "c6b0f1d03edd4b084bea00787e2bba0142d65550df097537b3ea3da403641993",
-      "bytes": 6375,
+      "sha256": "97043e2f54ad6805af89dcfdbeaffe4033e2c82302ba8a7195e57f920ac4cd8f",
+      "bytes": 6528,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/expected/bridge-v0.2.json",
+      "role": "bridge-bundle",
+      "mediaType": "application/json",
+      "sha256": "6102810a6a9c0c5239ed5666aea9379694a14067ee07af39064fd404967af6cc",
+      "bytes": 31595,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
+      "role": "patch-export",
+      "mediaType": "application/json",
+      "sha256": "1fb49bd51cf9343b89404baf89d628362bda10058b2ff3921f150ab5eb8938d5",
+      "bytes": 8706,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
+      "role": "patch-result",
+      "mediaType": "application/json",
+      "sha256": "4c05bfedab6cff96ad314d794f393a39453da16aecf4c68bae9bc9b8699ccea7",
+      "bytes": 5562,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
+      "role": "delta-package",
+      "mediaType": "application/json",
+      "sha256": "a9cb30ef265ac6dbc0ff8690f80ddad25876e05a3396e83ecf37dc2370cdd4f2",
+      "bytes": 1990,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/expected/runtime-report-v0.2.fr-FR.json",
+      "role": "runtime-report",
+      "mediaType": "application/json",
+      "sha256": "c71310b80e2e96bb6420c608da080e248a6433cfd1a2f6e65abe508ff485ec0b",
+      "bytes": 6879,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/expected/benchmark-report-v0.2.fr-FR.json",
+      "role": "benchmark-report",
+      "mediaType": "application/json",
+      "sha256": "e08217064d9fc1eb95fd6d848c29628cff24c0520d4a4f03eace72cf2d4075b3",
+      "bytes": 6731,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/expected/finding-v0.2.fr-FR.json",
+      "role": "finding",
+      "mediaType": "application/json",
+      "sha256": "757fb7dd628e0bc23790c751842c30cae411d4342667e23e93aff7826cd43c5c",
+      "bytes": 2194,
       "redistributable": true
     },
     {
       "path": "fixtures/hello-game/surface-coverage-v0.2.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "07dc55993701876f8426ac39d13e795cd825ff77962ef5867d702c1827cef8b3",
-      "bytes": 3258,
+      "sha256": "a064359b4d3aabb8776ae78dd4dc49c4a7bf2f42e10a54bfb582d2f60cc0754b",
+      "bytes": 4378,
       "redistributable": true
     },
     {
@@ -54,14 +110,14 @@
     }
   ],
   "aggregateStats": {
-    "files": 4,
+    "files": 11,
     "textUnits": 11,
     "sourceTextUtf16CodeUnits": 84,
     "protectedSpans": 3,
     "sourceLocales": ["ja-JP"],
     "targetLocales": ["en-US", "fr-FR"],
     "engineKinds": ["synthetic-json"],
-    "notes": "Fixture v0.2 covers dialogue, speaker names, choices, UI labels, tutorial text, database/glossary-like terms, image text, metadata text, placeholders, inline control markup, and explicit logical asset metadata for six non-text asset surfaces."
+    "notes": "Fixture v0.2 covers dialogue, speaker names, choices, UI labels, tutorial text, database/glossary-like terms, image text, metadata text, placeholders, inline control markup, explicit logical asset metadata for six non-text asset surfaces, and full-system expected artifacts for fr-FR patching, runtime trace evidence, benchmark reporting, and seeded finding regression coverage."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

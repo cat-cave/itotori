@@ -35,11 +35,13 @@ depends on it:
   re-reading raw files.
 
 The `fixtures/hello-game/source.json` fixture is synthetic and is described by
-`fixtures/public/hello-game.manifest.json`. Its expected bridge snapshot and
-surface coverage matrix live beside the source fixture. Future public fixtures
-may place their raw files under `fixtures/public/<fixture-id>/` when that is the
-least surprising layout, but committed manifests should use repo-relative paths
-so tools can validate hashes from the repository root.
+`fixtures/public/hello-game.manifest.json`. Its expected bridge snapshots,
+patch export, patch result, delta metadata, runtime report, benchmark report,
+standalone finding, and surface coverage matrix live beside the source fixture.
+Future public fixtures may place their raw files under
+`fixtures/public/<fixture-id>/` when that is the least surprising layout, but
+committed manifests should use repo-relative paths so tools can validate hashes
+from the repository root.
 
 Validate public fixture manifests with:
 

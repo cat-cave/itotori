@@ -1,0 +1,58 @@
+{
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "deltaPackageId": "019ed012-0000-7000-8000-000000000903",
+  "generatedPatchExportHash": "sha256:9e83ab1404ebc6255776949d71a768a68f2d7ca0ef522817550aba9824c92359",
+  "generatedPatchExportId": "019ed012-0000-7000-8000-000000000901",
+  "hashStrategy": {
+    "deltaPackage": {
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "scope": "delta_package"
+    },
+    "patchExport": {
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "scope": "patch_export"
+    },
+    "sourceAsset": {
+      "algorithm": "sha256",
+      "normalization": "bytes",
+      "scope": "source_asset"
+    },
+    "sourceBundle": {
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "scope": "source_bundle"
+    },
+    "sourceProfile": {
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "scope": "source_profile"
+    },
+    "sourceUnit": {
+      "algorithm": "sha256",
+      "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"],
+      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "scope": "source_unit"
+    }
+  },
+  "schemaVersion": "0.2.0",
+  "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+  "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+  "sourceBundleRevision": {
+    "revisionId": "019ed012-0000-7000-8000-000000000101",
+    "revisionKind": "content_hash",
+    "value": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498"
+  },
+  "sourceGame": {
+    "gameId": "hello-fixture",
+    "gameVersion": "0.2.0",
+    "sourceProfileId": "hello-game-public-fixture",
+    "sourceProfileRevision": {
+      "revisionId": "019ed012-0000-7000-8000-000000000102",
+      "revisionKind": "content_hash",
+      "value": "sha256:455ca2497039c0cc1f0b8cf92001a7c35e9a0029234528e6cf1aff7daedbd3f7"
+    }
+  },
+  "targetLocale": "fr-FR"
+}
