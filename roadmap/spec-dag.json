@@ -2722,7 +2722,7 @@
         "KAIFUU-050",
         "KAIFUU-051"
       ],
-      "summary": "Produce an alpha readiness research and validation slice for Siglus key discovery, Scene.pck/Gameexe.dat requirements, pure adapter boundaries, and Utsushi VM opportunities without claiming production Siglus support.",
+      "summary": "Produce an alpha readiness research and validation slice for Siglus key discovery, Scene.pck/Gameexe.dat requirements, pure adapter boundaries, Utsushi VM opportunities, and the concrete path to claimed production Siglus support.",
       "deliverables": [
         "Siglus format notes",
         "Static and dynamic key-discovery notes",
@@ -2963,7 +2963,7 @@
         "KAIFUU-050",
         "KAIFUU-051"
       ],
-      "summary": "Research KiriKiri/XP3 archive encryption and patch workflows enough to define fixture requirements, helper boundaries, and future production adapter nodes.",
+      "summary": "Research KiriKiri/XP3 archive encryption and patch workflows enough to define fixture requirements, helper boundaries, and production encrypted-XP3 adapter nodes.",
       "deliverables": [
         "XP3 encryption scheme notes",
         "docs/kaifuu-encrypted-engine-research.md update",
@@ -3057,7 +3057,7 @@
         "KAIFUU-050",
         "KAIFUU-051"
       ],
-      "summary": "Research Wolf RPG Editor archive encryption and Pro protection-key workflows so Kaifuu can triage owned Wolf games before full text patching exists.",
+      "summary": "Research Wolf RPG Editor archive encryption and Pro protection-key workflows so Kaifuu can triage owned Wolf games and define the production encrypted-archive adapter path.",
       "deliverables": [
         "Wolf archive/key notes",
         "docs/kaifuu-encrypted-engine-research.md update",
@@ -3460,7 +3460,7 @@
       "projects": ["kaifuu", "suite"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-015", "KAIFUU-036", "KAIFUU-040", "KAIFUU-052", "KAIFUU-053"],
-      "summary": "Create readiness profiles for high-value packed or encrypted engines such as Siglus, Unity/Naninovel, Wolf, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2 without claiming extraction until round-trip support exists.",
+      "summary": "Create readiness profiles for high-value packed or encrypted engines such as Siglus, Unity/Naninovel, Wolf, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2, using readiness to create production adapter work rather than treating unsupported extraction as permanent scope.",
       "deliverables": [
         "Packed-engine readiness profile template",
         "Siglus, Unity, Wolf, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2 profile seeds",
@@ -3471,7 +3471,9 @@
         "Every readiness profile states identify/inventory/extract/patch status and required container, crypto, codec, key, helper, and patch-back stages",
         "Profiles can be generated from public synthetic fixtures and supplemented by private-local aggregate reports",
         "No readiness profile serializes raw keys, private asset paths, decrypted scripts, helper dumps, or story filenames",
-        "Adapter implementation nodes are created only where readiness evidence and fixture strategy are strong enough"
+        "Adapter implementation nodes are created only where readiness evidence and fixture strategy are strong enough",
+        "Profiles distinguish unknown/out-of-profile semantic failures from bugs inside claimed support profiles",
+        "High-value profiles produce explicit follow-up adapter nodes when extraction and patching evidence is strong enough"
       ],
       "verification": [
         {
@@ -3490,7 +3492,186 @@
       "auditFocus": [
         "Readiness profiles mistaken for support claims",
         "Secret/private evidence leakage",
-        "Adapter nodes created without fixture strategy"
+        "Adapter nodes created without fixture strategy",
+        "Readiness treated as a permanent non-support state instead of a production adapter staging step"
+      ]
+    },
+    {
+      "id": "KAIFUU-057",
+      "title": "KiriKiri XP3 encrypted extraction and patching adapter",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-054", "KAIFUU-011", "KAIFUU-037", "KAIFUU-050", "KAIFUU-051"],
+      "summary": "Implement production encrypted KiriKiri/XP3 extraction and patching for profiled crypt schemes and helper workflows, with claimed-variant failures treated as bugs.",
+      "deliverables": [
+        "Encrypted XP3 adapter implementation",
+        "Public or synthetic XP3 encrypted fixtures",
+        "Private-local validation workflow for owned XP3 games",
+        "Extraction, patch, verify, and delta smoke tests"
+      ],
+      "acceptanceCriteria": [
+        "Profiled XP3 variants with required key/helper evidence extract text surfaces and patch them back",
+        "Plain, encrypted, protected-executable, helper-required, and out-of-profile XP3 cases have distinct semantic outcomes",
+        "No raw keys, helper dumps, retail filenames, decrypted private text, or local paths are persisted",
+        "Failures inside declared XP3 support profiles are documented as bugs or compatibility regressions"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "manual",
+          "value": "Encrypted XP3 fixture and redaction audit"
+        },
+        {
+          "type": "manual",
+          "value": "Private-local owned-game validation summary when available"
+        }
+      ],
+      "auditFocus": [
+        "XP3 support overclaiming",
+        "Helper/key leakage",
+        "Patch-back corruption",
+        "Claimed profile failures treated as feature requests"
+      ]
+    },
+    {
+      "id": "KAIFUU-058",
+      "title": "Wolf encrypted archive extraction and patching adapter",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-040", "KAIFUU-011", "KAIFUU-037", "KAIFUU-050", "KAIFUU-051"],
+      "summary": "Implement Wolf RPG Editor encrypted archive extraction and patching for profiled archive/protection-key workflows, turning claimed-profile failures into compatibility bugs.",
+      "deliverables": [
+        "Wolf encrypted archive adapter",
+        "Protection-key/helper integration boundary",
+        "Synthetic encrypted Wolf fixtures where redistributable",
+        "Private-local validation summary for owned Wolf games when available"
+      ],
+      "acceptanceCriteria": [
+        "Profiled Wolf archive variants extract text-bearing data and patch it back without unsafe writes",
+        "Automatic key detection, manual key refs, helper-required, and out-of-profile cases are separated",
+        "Binary patching constraints are explicit and tested for supported data-file variants",
+        "Failures inside declared Wolf support profiles are documented as bugs or compatibility regressions"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "manual",
+          "value": "Wolf encrypted fixture and redaction audit"
+        },
+        {
+          "type": "manual",
+          "value": "Private-local owned-game validation summary when available"
+        }
+      ],
+      "auditFocus": [
+        "Archive/protection-key overclaiming",
+        "Binary patching corruption",
+        "Helper leakage",
+        "Claimed profile failures treated as feature requests"
+      ]
+    },
+    {
+      "id": "KAIFUU-059",
+      "title": "RPG Maker MV/MZ encrypted media localization support",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu", "itotori"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": [
+        "KAIFUU-007",
+        "KAIFUU-039",
+        "KAIFUU-050",
+        "KAIFUU-051",
+        "KAIFUU-021",
+        "SHARED-011"
+      ],
+      "summary": "Move beyond MV/MZ JSON text by supporting profiled encrypted media localization surfaces such as text-bearing images, UI textures, audio/song metadata, and asset replacement policy.",
+      "deliverables": [
+        "MV/MZ encrypted media extraction and key handling",
+        "Asset replacement and patch-back policy",
+        "Text-bearing image/UI texture fixture strategy",
+        "Itotori asset-decision handoff contract"
+      ],
+      "acceptanceCriteria": [
+        "Encrypted MV/MZ image/audio extensions are detected, decrypted when keys are available, and represented as localization surfaces where relevant",
+        "Text-bearing media patching is supported only for profiled asset types with safe replacement rules",
+        "Unsupported media variants return semantic capability errors instead of being silently ignored",
+        "Failures inside declared MV/MZ media support profiles are documented as bugs or compatibility regressions"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "manual",
+          "value": "MV/MZ encrypted media fixture audit"
+        },
+        {
+          "type": "manual",
+          "value": "Itotori asset policy integration review"
+        }
+      ],
+      "auditFocus": [
+        "Media text silently omitted",
+        "Unsafe asset replacement",
+        "Encrypted media key leakage",
+        "Claimed profile failures treated as feature requests"
+      ]
+    },
+    {
+      "id": "KAIFUU-060",
+      "title": "Claimed engine support compatibility suite",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "suite"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["KAIFUU-053", "KAIFUU-056"],
+      "summary": "Define and enforce the compatibility contract for claimed engine profiles so regressions on supported owned-game variants become bugs, not vague future feature requests.",
+      "deliverables": [
+        "Claimed-support compatibility policy",
+        "Engine capability profile test matrix",
+        "Bug-report reproduction bundle format with redaction rules",
+        "Compatibility regression triage workflow"
+      ],
+      "acceptanceCriteria": [
+        "Each claimed adapter profile states the exact engine family, variant, container, crypto, codec, helper, key, and patch-back assumptions it supports",
+        "Bug reports for claimed profiles can include redacted detection, key-profile, extraction, patch, and verify evidence without raw assets or keys",
+        "Unknown and out-of-profile inputs still produce semantic capability errors with actionable next evidence",
+        "CI or private-local validation can detect regressions against claimed support profiles"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "Compatibility policy review"
+        },
+        {
+          "type": "manual",
+          "value": "Redacted bug-report bundle review"
+        }
+      ],
+      "auditFocus": [
+        "Claimed support boundaries too vague to debug",
+        "Private evidence leakage in bug reports",
+        "Unsupported variants mislabeled as regressions"
       ]
     },
     {
@@ -3694,7 +3875,7 @@
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-015", "KAIFUU-014", "KAIFUU-011", "KAIFUU-020"],
-      "summary": "Implement pure Siglus extraction and patching once research, key-profile boundaries, and binary patching utilities are ready.",
+      "summary": "Implement pure Siglus extraction and patching for profiled Scene.pck/Gameexe.dat variants once research, key-profile boundaries, helper validation, and binary patching utilities are ready; failures inside claimed profiles become bugs.",
       "deliverables": [
         "Siglus adapter",
         "Scene/Gameexe fixtures where available",
@@ -3702,9 +3883,11 @@
         "Capability docs"
       ],
       "acceptanceCriteria": [
-        "Pure parsing/patching is separated from key discovery",
-        "Unsupported encrypted cases fail with key-requirement errors",
-        "Patch output is verified against fixtures"
+        "Pure parsing/patching is separated from key discovery helpers",
+        "Resolved secondary-key secret refs and validation proofs are consumed without persisting raw key material",
+        "Profiled Scene.pck/Gameexe.dat fixtures extract, unchanged-round-trip, translated-round-trip, patch, and verify",
+        "Unsupported or protected variants fail with key/helper/capability errors before writing output",
+        "Failures inside the declared Siglus support profile are documented as bugs or compatibility regressions, not feature requests"
       ],
       "verification": [
         {
@@ -3719,7 +3902,8 @@
       "auditFocus": [
         "Key discovery coupling",
         "UTF-16LE corruption",
-        "Overclaiming engine coverage"
+        "Overclaiming engine coverage",
+        "Claimed profile failures dismissed as unsupported without evidence"
       ]
     },
     {
@@ -7343,6 +7527,7 @@
         "KAIFUU-054",
         "KAIFUU-055",
         "KAIFUU-056",
+        "KAIFUU-060",
         "CATALOG-004",
         "ALPHA-000"
       ],

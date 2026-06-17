@@ -27,6 +27,10 @@ The implementation stance is:
   hash and aggregate status.
 - Unsupported encrypted, packed, protected, compiled, or unknown variants fail
   with stable semantic capability errors before patching writes output.
+- Readiness reports must lead to production adapter nodes when evidence is
+  strong enough. Once an adapter claims a profiled encrypted variant, failure to
+  extract, patch, or validate that variant is treated as a bug unless the input
+  is outside the declared support profile.
 
 ## Engine Findings
 
@@ -43,8 +47,10 @@ bypass conflicts are difficult.
 Kaifuu implication: plaintext KAG support must not imply encrypted XP3 support.
 XP3 detection should distinguish plain archive, encrypted archive, protected
 executable, helper-required, and patch-database workflows. Production encrypted
-XP3 patching needs a later explicit support claim with fixtures and helper
-evidence, but alpha detection/helper/redaction boundaries are mandatory.
+XP3 patching needs an explicit support claim with fixtures and helper evidence;
+once that claim exists, failures inside the declared XP3 profile are bugs, not
+feature requests. Alpha detection/helper/redaction boundaries are mandatory
+because they make that later claim safe.
 
 ### SiglusEngine
 

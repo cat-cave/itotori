@@ -1,10 +1,20 @@
 # Kaifuu Key Discovery And Encrypted Corpus Policy
 
 Kaifuu must be useful on owned and licensed Japanese games, so encrypted-input
-readiness is an alpha requirement. The alpha readiness milestone does not claim universal decryption or
-production support for every protected commercial variant. It does require a
-clean boundary where local key discovery, secret storage, archive detection, and
-pure extraction/patching can evolve independently.
+readiness is an alpha requirement. The alpha readiness milestone does not claim
+universal decryption or production support for every protected commercial
+variant. It does require a clean boundary where local key discovery, secret
+storage, archive detection, and pure extraction/patching can evolve
+independently.
+
+Readiness is the staging area for production support, not an escape hatch. The
+project goal is to legitimately decrypt, extract text, produce trivial and real
+patches, and validate owned games for every engine variant Kaifuu claims. Before
+a claim exists, unsupported or unknown variants return semantic capability
+errors. After a claim exists for an exact engine family, variant, container,
+crypto, codec, and patch-back profile, a failure in that profile is a bug report
+or compatibility regression unless new evidence proves the input is outside the
+declared boundary.
 
 ## Architecture Boundary
 
@@ -29,9 +39,10 @@ retail files, helper dumps, or platform-specific discovery internals.
 
 ## Alpha Implementation Gates
 
-Encrypted-input readiness is not continuous expansion polish. The alpha readiness milestone may still avoid a
-production support claim for a specific encrypted commercial variant, but it
-must ship the core mechanisms that make owned encrypted games actionable:
+Encrypted-input readiness is not continuous expansion polish. The alpha
+readiness milestone may still avoid a production support claim for a specific
+encrypted commercial variant, but it must ship the core mechanisms that make
+owned encrypted games actionable and make later production adapters accountable:
 
 1. **Key-profile boundary**: complete in `KAIFUU-014`. Profiles name key
    requirements and stable `secretRef` pointers without raw key material.
@@ -58,7 +69,7 @@ must ship the core mechanisms that make owned encrypted games actionable:
    `KAIFUU-038` through `KAIFUU-041`. These slices decide exact adapter/helper
    splits for Siglus, KiriKiri/XP3, RPG Maker MV/MZ encrypted assets, Wolf RPG
    Editor, and BGI/Ethornell.
-9. **Encrypted readiness gate**: required in `KAIFUU-042`. alpha readiness cannot
+9. **Encrypted readiness gate**: required in `KAIFUU-042`. Alpha readiness cannot
    pass unless the public fixture lane and private-local lane are both
    accounted for with safe evidence and no universal-decryption overclaim.
 

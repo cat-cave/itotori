@@ -69,13 +69,15 @@ profiles for packed/encrypted engines.
 Ren'Py is a useful reference/null-key adapter, but it is not an alpha
 readiness driver for Japanese indie backlog coverage. SiglusEngine, Unity,
 Unreal, Godot, binary VN engines, OCR for image-only text, voice/audio
-localization, and commercial-grade launcher automation are not production alpha
-adapters. Encrypted corpus triage, archive/encryption detection, key-profile
-schema, local-only key material policy, platform-assisted helper boundaries,
-redaction tests, layered access preflight, and engine-specific readiness
-profiles are still alpha requirements because they determine whether Kaifuu can
-be useful on owned games without leaking keys or private assets. See
-[kaifuu-key-discovery.md](kaifuu-key-discovery.md).
+localization, and commercial-grade launcher automation are not required as
+first-project production adapters. That is a sequencing statement, not a product
+ceiling. Kaifuu's long-term goal is to legitimately decrypt, extract, patch, and
+validate owned games across supported engine variants. Alpha encrypted corpus
+triage, archive/encryption detection, key-profile schema, local-only key
+material policy, platform-assisted helper boundaries, redaction tests, layered
+access preflight, and engine-specific readiness profiles are required because
+they make that production support safe to build without leaking keys or private
+assets. See [kaifuu-key-discovery.md](kaifuu-key-discovery.md).
 
 ## Fixture And Corpus Requirements
 
@@ -337,7 +339,9 @@ localization project unless an owner promotes them through the DAG:
   Ace/RGSS3 patching, Unity, Unreal, Godot, packed Ren'Py projects, and binary
   VN formats. Alpha still includes layered access modeling, encrypted-input
   detection, key-profile policy, helper boundaries, and local encrypted corpus
-  readiness.
+  readiness. Once Kaifuu claims a specific engine variant and capability level,
+  failures inside that declared support profile should be treated as bugs or
+  compatibility regressions, not as new feature requests.
 - Stronger Utsushi evidence: E3 replay review, E4 reference comparison,
   browser/WASM playback, remote Windows probe hosts, and GPU/native capture
   matrices.
