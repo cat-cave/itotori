@@ -2,10 +2,11 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { bootstrapLocalUser } from "./authorization.js";
 import { withDatabase } from "./connection.js";
 
 export async function migrate(databaseUrl?: string): Promise<void> {
-  await withDatabase(async ({ pool }) => {
+  await withDatabase(async ({ db, pool }) => {
     await pool.query(`
       create table if not exists itotori_schema_migrations (
         migration_id text primary key,
@@ -44,6 +45,8 @@ export async function migrate(databaseUrl?: string): Promise<void> {
         client.release();
       }
     }
+
+    await bootstrapLocalUser(db);
   }, databaseUrl);
 }
 
@@ -51,6 +54,10 @@ const migrations = [
   {
     id: "0001_hello_world",
     file: "0001_hello_world.sql",
+  },
+  {
+    id: "0002_permissions",
+    file: "0002_permissions.sql",
   },
 ] as const;
 

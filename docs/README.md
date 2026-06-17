@@ -11,6 +11,8 @@ The MVP definition of done and release gate matrix live in
 [mvp-definition-of-done.md](mvp-definition-of-done.md).
 Toolchain upgrade policy lives in [toolchain-policy.md](toolchain-policy.md).
 Testing conventions live in [testing-standard.md](testing-standard.md).
+Itotori permission gates and the MVP local-user baseline are documented in
+[permissions.md](permissions.md).
 Kaifuu engine fixture sourcing, reference citation, and unsupported variant
 policy lives in [kaifuu-fixture-policy.md](kaifuu-fixture-policy.md).
 Affected detection and CI cache rules live in

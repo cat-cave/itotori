@@ -1,4 +1,4 @@
-import { integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { integer, pgTable, primaryKey, text, timestamp } from "drizzle-orm/pg-core";
 
 export const projectStatusValues = {
   imported: "imported",
@@ -15,6 +15,24 @@ export const helloWorldFinalStatusValues = {
 
 export type HelloWorldFinalStatus =
   (typeof helloWorldFinalStatusValues)[keyof typeof helloWorldFinalStatusValues];
+
+export const users = pgTable("itotori_users", {
+  userId: text("user_id").primaryKey(),
+  displayName: text("display_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const userPermissionGrants = pgTable(
+  "itotori_user_permission_grants",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.userId, { onDelete: "cascade" }),
+    permission: text("permission").notNull(),
+    grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.permission] })],
+);
 
 export const projects = pgTable("itotori_projects", {
   projectId: text("project_id").primaryKey(),

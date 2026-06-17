@@ -1,10 +1,56 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
+import {
+  allPermissions,
+  localUserId,
+  permissionValues,
+  type AuthorizationActor,
+} from "../src/authorization.js";
 import { createDatabaseContext } from "../src/connection.js";
 import { migrate } from "../src/migrations.js";
 import {
   HelloWorldRepository,
   type ProjectRecord,
 } from "../src/repositories/hello-world-repository.js";
+import { userPermissionGrants } from "../src/schema.js";
+
+const localActor: AuthorizationActor = { userId: localUserId };
+
+function projectFixture(): ProjectRecord {
+  return {
+    projectId: "project-test",
+    localeBranchId: "locale-test",
+    targetLocale: "en-US",
+    drafts: { "bridge-unit-test": "Hello, {player}." },
+    bridge: {
+      schemaVersion: "0.1.0",
+      bridgeId: "bridge-test",
+      sourceBundleHash: "hash-test",
+      sourceLocale: "ja-JP",
+      extractorName: "kaifuu-fixture",
+      extractorVersion: "0.0.0",
+      units: [
+        {
+          bridgeUnitId: "bridge-unit-test",
+          sourceUnitKey: "hello.scene.001.line.001",
+          occurrenceId: "occurrence-1",
+          sourceHash: "source-hash",
+          sourceLocale: "ja-JP",
+          sourceText: "こんにちは、{player}。",
+          textSurface: "dialogue",
+          protectedSpans: [
+            { kind: "placeholder", raw: "{player}", start: 6, end: 14, preserveMode: "exact" },
+          ],
+          patchRef: {
+            assetId: "source.json",
+            writeMode: "replace",
+            sourceUnitKey: "hello.scene.001.line.001",
+          },
+        },
+      ],
+    },
+  };
+}
 
 describe("HelloWorldRepository", () => {
   it("persists and reads hello-world status against Postgres", async () => {
@@ -16,44 +62,12 @@ describe("HelloWorldRepository", () => {
     const context = createDatabaseContext(process.env.DATABASE_URL);
     try {
       const repo = new HelloWorldRepository(context.db);
-      await repo.reset();
-      const project: ProjectRecord = {
-        projectId: "project-test",
-        localeBranchId: "locale-test",
-        targetLocale: "en-US",
-        drafts: { "bridge-unit-test": "Hello, {player}." },
-        bridge: {
-          schemaVersion: "0.1.0",
-          bridgeId: "bridge-test",
-          sourceBundleHash: "hash-test",
-          sourceLocale: "ja-JP",
-          extractorName: "kaifuu-fixture",
-          extractorVersion: "0.0.0",
-          units: [
-            {
-              bridgeUnitId: "bridge-unit-test",
-              sourceUnitKey: "hello.scene.001.line.001",
-              occurrenceId: "occurrence-1",
-              sourceHash: "source-hash",
-              sourceLocale: "ja-JP",
-              sourceText: "こんにちは、{player}。",
-              textSurface: "dialogue",
-              protectedSpans: [
-                { kind: "placeholder", raw: "{player}", start: 6, end: 14, preserveMode: "exact" },
-              ],
-              patchRef: {
-                assetId: "source.json",
-                writeMode: "replace",
-                sourceUnitKey: "hello.scene.001.line.001",
-              },
-            },
-          ],
-        },
-      };
+      await repo.reset(localActor);
+      const project = projectFixture();
 
-      await repo.saveImportedProject(project);
-      await repo.saveDrafts(project);
-      await repo.savePatchExport(project, {
+      await repo.saveImportedProject(localActor, project);
+      await repo.saveDrafts(localActor, project);
+      await repo.savePatchExport(localActor, project, {
         schemaVersion: "0.1.0",
         patchExportId: "patch-test",
         sourceBridgeId: "bridge-test",
@@ -72,6 +86,7 @@ describe("HelloWorldRepository", () => {
         ],
       });
       const status = await repo.saveRuntimeReport(
+        localActor,
         project,
         {
           schemaVersion: "0.1.0",
@@ -106,6 +121,46 @@ describe("HelloWorldRepository", () => {
       expect(status.unitCount).toBe(1);
       expect(status.translatedUnitCount).toBe(1);
       expect(status.runtimeReportId).toBe("runtime-test");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("bootstraps the MVP local user with every permission", async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL is required for DB-backed repository tests");
+    }
+
+    await migrate(process.env.DATABASE_URL);
+    const context = createDatabaseContext(process.env.DATABASE_URL);
+    try {
+      const grants = await context.db
+        .select({ permission: userPermissionGrants.permission })
+        .from(userPermissionGrants)
+        .where(eq(userPermissionGrants.userId, localUserId));
+
+      expect(new Set(grants.map((grant) => grant.permission))).toEqual(new Set(allPermissions));
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects repository mutations without the required permission", async () => {
+    if (!process.env.DATABASE_URL) {
+      throw new Error("DATABASE_URL is required for DB-backed repository tests");
+    }
+
+    await migrate(process.env.DATABASE_URL);
+    const context = createDatabaseContext(process.env.DATABASE_URL);
+    try {
+      const repo = new HelloWorldRepository(context.db);
+
+      await expect(
+        repo.saveImportedProject({ userId: "user-without-grants" }, projectFixture()),
+      ).rejects.toMatchObject({
+        name: "AuthorizationError",
+        permission: permissionValues.projectImport,
+      });
     } finally {
       await context.close();
     }

@@ -1226,6 +1226,90 @@
       ]
     },
     {
+      "id": "SHARED-013",
+      "title": "Permission-gate negative test matrix",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-008"],
+      "summary": "Expand authorization denial coverage from the current single repository mutation check to every mutation protected by the permission model.",
+      "deliverables": [
+        "Mutation-to-permission test matrix",
+        "Negative authorization tests for reset",
+        "Negative authorization tests for saveDrafts, savePatchExport, and saveRuntimeReport",
+        "Shared helper for asserting denied repository/API mutations"
+      ],
+      "acceptanceCriteria": [
+        "Every current permission-gated mutation has a test proving a user without the required permission is denied",
+        "Tests cover reset, saveDrafts, savePatchExport, saveRuntimeReport, and any other mutation gates present when the node is implemented",
+        "The matrix names each mutation, required permission, success fixture, and denial fixture",
+        "Adding a new permission-gated mutation without denial coverage fails a targeted test or checklist"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Only happy-path permission checks are tested",
+        "A newly added mutation bypasses denial coverage",
+        "Repository and API authorization behavior diverge"
+      ]
+    },
+    {
+      "id": "SHARED-014",
+      "title": "Permission constant and migration drift guard",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-008"],
+      "summary": "Prevent permission values from drifting between TypeScript constants and SQL migration check constraints by generating or verifying their consistency.",
+      "deliverables": [
+        "Documented permission source of truth",
+        "Generated SQL permission constraint or consistency verification script",
+        "Migration/constant drift test",
+        "Contributor guidance for adding permissions"
+      ],
+      "acceptanceCriteria": [
+        "There is one documented source of truth for permission values",
+        "SQL migration constraints are generated from or automatically checked against the TypeScript permission constants",
+        "A permission added to TypeScript without the corresponding migration constraint update fails verification",
+        "Contributor docs describe the required workflow for adding, renaming, or retiring permissions"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Permission value drift between code and migrations",
+        "Manual SQL check constraints missing new permissions",
+        "Hardening that rewrites historical migrations unsafely"
+      ]
+    },
+    {
       "id": "KAIFUU-001",
       "title": "Kaifuu adapter trait and game profile model",
       "status": "planned",
