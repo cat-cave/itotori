@@ -250,6 +250,115 @@ export const LOCALIZATION_QUALITY_CATEGORIES = [
 ] as const;
 export type LocalizationQualityCategoryV02 = (typeof LOCALIZATION_QUALITY_CATEGORIES)[number];
 
+export const LOCALIZATION_QUALITY_TAXONOMY_ID = "itotori-lqa-1" as const;
+export const LOCALIZATION_QUALITY_TAXONOMY_VERSION = "itotori-quality-taxonomy-0.1.0" as const;
+
+export const LOCALIZATION_QUALITY_SEVERITIES = ["critical", "major", "minor", "neutral"] as const;
+export type LocalizationQualitySeverityV02 = (typeof LOCALIZATION_QUALITY_SEVERITIES)[number];
+
+const LOCALIZATION_QUALITY_SEVERITY_WEIGHTS: Record<LocalizationQualitySeverityV02, number> = {
+  critical: 25,
+  major: 5,
+  minor: 1,
+  neutral: 0,
+};
+
+const BENCHMARK_NORMALIZED_PENALTY_TOLERANCE = 0.01;
+const RFC3339_INSTANT_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
+export const LOCALIZATION_ROOT_CAUSES = [
+  "source_content_defect",
+  "source_annotation_gap",
+  "style_guide_gap",
+  "glossary_policy_gap",
+  "prompt_or_context_pack_error",
+  "model_draft_error",
+  "human_edit_error",
+  "deterministic_qa_rule_error",
+  "patch_application_error",
+  "runtime_environment_or_i18n_limit",
+  "benchmark_seed",
+  "unknown_unadjudicated",
+] as const;
+export type LocalizationRootCauseV02 = (typeof LOCALIZATION_ROOT_CAUSES)[number];
+
+export const LOCALIZATION_ADJUDICATION_STATES = [
+  "unreviewed",
+  "confirmed",
+  "rejected_false_positive",
+  "duplicate",
+  "needs_more_context",
+  "intentional_or_accepted",
+  "fixed_verified",
+] as const;
+export type LocalizationAdjudicationStateV02 = (typeof LOCALIZATION_ADJUDICATION_STATES)[number];
+
+export const QUALITY_DETECTOR_KINDS = [
+  "deterministic_qa",
+  "llm_qa",
+  "human_review",
+  "runtime_probe",
+  "seeded_defect_oracle",
+  "patch_verify",
+  "schema_guard",
+] as const;
+export type QualityDetectorKindV02 = (typeof QUALITY_DETECTOR_KINDS)[number];
+
+export const BENCHMARK_SYSTEM_KINDS = [
+  "raw_mtl_baseline",
+  "itotori_draft",
+  "itotori_repaired",
+  "human_reference",
+  "deterministic_fixture",
+] as const;
+export type BenchmarkSystemKindV02 = (typeof BENCHMARK_SYSTEM_KINDS)[number];
+
+export const BENCHMARK_INPUT_KINDS = [
+  "public_fixture",
+  "private_local_corpus",
+  "synthetic_fixture",
+] as const;
+export type BenchmarkInputKindV02 = (typeof BENCHMARK_INPUT_KINDS)[number];
+
+export const BENCHMARK_PROVIDER_FAMILIES = [
+  "fake",
+  "recorded",
+  "openrouter",
+  "local-openai-compatible",
+  "external_mtl",
+  "local_tool",
+] as const;
+export type BenchmarkProviderFamilyV02 = (typeof BENCHMARK_PROVIDER_FAMILIES)[number];
+
+export const BENCHMARK_COST_KINDS = [
+  "billed",
+  "provider_estimate",
+  "local_estimate",
+  "zero",
+  "unknown",
+] as const;
+export type BenchmarkCostKindV02 = (typeof BENCHMARK_COST_KINDS)[number];
+
+export const BENCHMARK_TOKEN_COUNT_SOURCES = [
+  "provider_reported",
+  "estimated",
+  "deterministic_counter",
+  "unknown",
+] as const;
+export type BenchmarkTokenCountSourceV02 = (typeof BENCHMARK_TOKEN_COUNT_SOURCES)[number];
+
+export const BENCHMARK_RUN_STATUSES = ["passed", "failed", "partial"] as const;
+export type BenchmarkRunStatusV02 = (typeof BENCHMARK_RUN_STATUSES)[number];
+
+export const BENCHMARK_PROVIDER_RUN_STATUSES = [
+  "succeeded",
+  "failed",
+  "partial",
+  "skipped",
+] as const;
+export type BenchmarkProviderRunStatusV02 = (typeof BENCHMARK_PROVIDER_RUN_STATUSES)[number];
+
 export const TRIAGE_EVENT_KINDS = [
   "task_requested",
   "task_started",
@@ -1011,6 +1120,248 @@ type TriageBundleReferenceIndexV02 = {
   provenanceIds: ReadonlySet<Uuid7>;
 };
 
+export type BenchmarkArtifactRefV02 = {
+  artifactId: Uuid7;
+  artifactKind: string;
+  uri: string;
+  hash?: string;
+  mediaType?: string;
+};
+
+export type BenchmarkInputRefV02 = {
+  corpusRefId: string;
+  corpusKind: BenchmarkInputKindV02;
+  label: string;
+  manifestUri?: string;
+  manifestHash?: string;
+  sourceBundleHash?: string;
+  sourceLocale: Bcp47Locale;
+  targetLocale: Bcp47Locale;
+  engineProfile: string;
+  benchmarkSplit: string;
+  sourceUnitCount: number;
+  sourceCharacterCount: number;
+  publicContent: boolean;
+};
+
+export type BenchmarkToolVersionV02 = {
+  name: string;
+  version: string;
+  gitCommit?: string;
+};
+
+export type BenchmarkCommandLineV02 = {
+  commandId: string;
+  argv: string[];
+};
+
+export type BenchmarkComparedSystemV02 = {
+  systemId: string;
+  systemKind: BenchmarkSystemKindV02;
+  displayName: string;
+  generatedAt: string;
+  providerRunIds: Uuid7[];
+  promptPresetId?: string;
+  promptPresetVersion?: string;
+  outputArtifactRef?: BenchmarkArtifactRefV02;
+};
+
+export type BenchmarkProviderIdentityV02 = {
+  providerFamily: BenchmarkProviderFamilyV02;
+  endpointFamily: string;
+  providerName: string;
+  requestedModelId: string;
+  actualModelId: string;
+  upstreamProvider?: string;
+  routeSettingsHash?: string;
+};
+
+export type BenchmarkPromptIdentityV02 = {
+  promptPresetId: string;
+  promptTemplateVersion: string;
+  promptHash?: string;
+  remotePresetSlug?: string;
+  remotePresetVersion?: string;
+  remotePresetConfigHash?: string;
+};
+
+export type BenchmarkTokenUsageV02 = {
+  tokenCountSource: BenchmarkTokenCountSourceV02;
+  promptTokens?: number;
+  completionTokens?: number;
+  reasoningTokens?: number;
+  cachedInputTokens?: number;
+  totalTokens?: number;
+};
+
+export type BenchmarkCostAmountV02 = {
+  costKind: BenchmarkCostKindV02;
+  currency: "USD";
+  amountMicrosUsd?: number;
+  pricingSnapshotId?: string;
+};
+
+export type BenchmarkProviderRunV02 = {
+  providerRunId: Uuid7;
+  systemId: string;
+  taskKind: TriageTaskKindV02;
+  startedAt: string;
+  completedAt?: string;
+  latencyMs?: number;
+  status: BenchmarkProviderRunStatusV02;
+  provider: BenchmarkProviderIdentityV02;
+  prompt: BenchmarkPromptIdentityV02;
+  structuredOutputMode: string;
+  retryCount: number;
+  errorClasses: string[];
+  fallbackUsed: boolean;
+  fallbackPlan?: string[];
+  tokenUsage: BenchmarkTokenUsageV02;
+  cost: BenchmarkCostAmountV02;
+};
+
+export type BenchmarkCostLedgerTotalV02 = {
+  systemId: string;
+  totalMicrosUsd: number;
+};
+
+export type BenchmarkCostLedgerV02 = {
+  currency: "USD";
+  reportTotalMicrosUsd: number;
+  totalsBySystem: BenchmarkCostLedgerTotalV02[];
+  includesUnknownCost: boolean;
+};
+
+export type BenchmarkFindingRecordV02 = {
+  findingId: Uuid7;
+  systemId: string;
+  taxonomyId: typeof LOCALIZATION_QUALITY_TAXONOMY_ID;
+  taxonomyVersion: typeof LOCALIZATION_QUALITY_TAXONOMY_VERSION;
+  detectorKind: QualityDetectorKindV02;
+  category: LocalizationQualityCategoryV02;
+  qualitySubcategory?: string;
+  qualitySeverity: LocalizationQualitySeverityV02;
+  rootCause: LocalizationRootCauseV02;
+  adjudicationState: LocalizationAdjudicationStateV02;
+  affectedRefs: TriageSubjectRefV02[];
+  evidence: EvidenceRecordV02[];
+  provenance: ProvenanceRecordV02[];
+  seededDefectId?: string;
+  reviewerRationale?: string;
+};
+
+export type BenchmarkCountBucketV02<Bucket extends string = string> = {
+  bucket: Bucket;
+  count: number;
+};
+
+export type BenchmarkPenaltySummaryV02 = {
+  penaltyTotal: number;
+  penaltyPerThousandSourceChars: number;
+  penaltyPerHundredSourceUnits: number;
+};
+
+export type BenchmarkSeededDefectOracleV02 = {
+  seededDefectId: string;
+  fixtureOrCorpusRefId: string;
+  seedKind: string;
+  targetLocale: Bcp47Locale;
+  affectedRefs: TriageSubjectRefV02[];
+  category: LocalizationQualityCategoryV02;
+  qualitySubcategory?: string;
+  qualitySeverity: LocalizationQualitySeverityV02;
+  expectedRootCause: LocalizationRootCauseV02;
+  expectedDetectorKinds: QualityDetectorKindV02[];
+  matchedFindingIds: Uuid7[];
+  publicContent: boolean;
+};
+
+export type DeterministicQaResultV02 = {
+  deterministicQaRunId: Uuid7;
+  evaluatedSystemId: string;
+  checkName: string;
+  checkVersion: string;
+  startedAt: string;
+  completedAt?: string;
+  ruleCount: number;
+  passedRuleCount: number;
+  failedRuleCount: number;
+  findingIds: Uuid7[];
+  artifactRefs: BenchmarkArtifactRefV02[];
+};
+
+export type QaAgentMetricsV02 = {
+  seededRecall: number;
+  seededPrecision: number;
+  f1: number;
+  categoryAccuracy: number;
+  qualitySeverityAccuracy: number;
+  rootCauseAccuracy: number;
+  criticalRecall: number;
+  unscorableRate: number;
+  humanConfirmedPrecision?: number;
+  findingsEmitted: number;
+  scorableFindings: number;
+  adjudicatedFindings: number;
+};
+
+export type QaAgentEvaluationV02 = {
+  qaAgentEvaluationId: Uuid7;
+  qaAgentId: string;
+  qaAgentVersion: string;
+  evaluatedSystemId: string;
+  providerRunIds: Uuid7[];
+  findingIds: Uuid7[];
+  metrics: QaAgentMetricsV02;
+  limitations: string[];
+};
+
+export type HumanEvaluationResultV02 = {
+  humanEvaluationId: Uuid7;
+  reviewSessionId: Uuid7;
+  evaluatedSystemIds: string[];
+  reviewerCount: number;
+  sampleUnitCount: number;
+  sampleSourceCharacterCount: number;
+  blindReview: boolean;
+  adjudicatedFindingIds: Uuid7[];
+  reviewerAgreementNotes?: string;
+};
+
+export type BenchmarkReportV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  benchmarkRunId: Uuid7;
+  taxonomyId: typeof LOCALIZATION_QUALITY_TAXONOMY_ID;
+  taxonomyVersion: typeof LOCALIZATION_QUALITY_TAXONOMY_VERSION;
+  createdAt: string;
+  benchmarkName: string;
+  status: BenchmarkRunStatusV02;
+  fixtureOrCorpusRefs: BenchmarkInputRefV02[];
+  sourceLocale: Bcp47Locale;
+  targetLocale: Bcp47Locale;
+  engineProfile: string;
+  gitCommit: string;
+  bridgeSchemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  deterministicSeed?: string;
+  toolVersions: BenchmarkToolVersionV02[];
+  commandLines: BenchmarkCommandLineV02[];
+  systemsCompared: BenchmarkComparedSystemV02[];
+  providerModelCostRecords: BenchmarkProviderRunV02[];
+  costLedger: BenchmarkCostLedgerV02;
+  seededDefectOracle: BenchmarkSeededDefectOracleV02[];
+  findingRecords: BenchmarkFindingRecordV02[];
+  countsByQualitySeverity: BenchmarkCountBucketV02<LocalizationQualitySeverityV02>[];
+  countsByCategory: BenchmarkCountBucketV02<LocalizationQualityCategoryV02>[];
+  countsByRootCause: BenchmarkCountBucketV02<LocalizationRootCauseV02>[];
+  countsByDetectorKind: BenchmarkCountBucketV02<QualityDetectorKindV02>[];
+  countsByAdjudicationState: BenchmarkCountBucketV02<LocalizationAdjudicationStateV02>[];
+  penaltySummary: BenchmarkPenaltySummaryV02;
+  deterministicQaResults: DeterministicQaResultV02[];
+  qaAgentEvaluations: QaAgentEvaluationV02[];
+  humanEvaluationResults: HumanEvaluationResultV02[];
+  knownBlindSpots: string[];
+};
+
 export type BridgeBundleV02 = {
   schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
   bridgeId: Uuid7;
@@ -1273,6 +1624,315 @@ export function assertTriageBundleV02(value: unknown): asserts value is TriageBu
   assertTriageBundleReferencesV02(triageEvents, triageTasks, triageFindings, referenceIndex);
 }
 
+export function assertBenchmarkReportV02(value: unknown): asserts value is BenchmarkReportV02 {
+  assertNoConfidenceFields(value, "BenchmarkReportV02");
+  const report = asRecord(value, "BenchmarkReportV02");
+  assertEqual(report.schemaVersion, BRIDGE_SCHEMA_VERSION_V02, "BenchmarkReportV02.schemaVersion");
+  assertUuid7(report.benchmarkRunId, "BenchmarkReportV02.benchmarkRunId");
+  assertEqual(report.taxonomyId, LOCALIZATION_QUALITY_TAXONOMY_ID, "BenchmarkReportV02.taxonomyId");
+  assertEqual(
+    report.taxonomyVersion,
+    LOCALIZATION_QUALITY_TAXONOMY_VERSION,
+    "BenchmarkReportV02.taxonomyVersion",
+  );
+  assertRfc3339Instant(report.createdAt, "BenchmarkReportV02.createdAt");
+  assertString(report.benchmarkName, "BenchmarkReportV02.benchmarkName");
+  assertEnum(report.status, BENCHMARK_RUN_STATUSES, "BenchmarkReportV02.status");
+  assertString(report.sourceLocale, "BenchmarkReportV02.sourceLocale");
+  assertString(report.targetLocale, "BenchmarkReportV02.targetLocale");
+  assertString(report.engineProfile, "BenchmarkReportV02.engineProfile");
+  assertString(report.gitCommit, "BenchmarkReportV02.gitCommit");
+  assertEqual(
+    report.bridgeSchemaVersion,
+    BRIDGE_SCHEMA_VERSION_V02,
+    "BenchmarkReportV02.bridgeSchemaVersion",
+  );
+  assertOptionalString(report.deterministicSeed, "BenchmarkReportV02.deterministicSeed");
+
+  const inputRefs = asArray(report.fixtureOrCorpusRefs, "BenchmarkReportV02.fixtureOrCorpusRefs");
+  if (inputRefs.length === 0) {
+    throw new Error("BenchmarkReportV02.fixtureOrCorpusRefs must contain at least one ref");
+  }
+  const inputRefIds = new Set<string>();
+  let totalSourceUnitCount = 0;
+  let totalSourceCharacterCount = 0;
+  for (const [index, inputRef] of inputRefs.entries()) {
+    const label = `BenchmarkReportV02.fixtureOrCorpusRefs[${index}]`;
+    assertBenchmarkInputRefV02(inputRef, label);
+    if (inputRefIds.has(inputRef.corpusRefId)) {
+      throw new Error(`${label}.corpusRefId must be unique within fixtureOrCorpusRefs`);
+    }
+    inputRefIds.add(inputRef.corpusRefId);
+    totalSourceUnitCount += inputRef.sourceUnitCount;
+    totalSourceCharacterCount += inputRef.sourceCharacterCount;
+  }
+
+  const toolVersions = asArray(report.toolVersions, "BenchmarkReportV02.toolVersions");
+  for (const [index, toolVersion] of toolVersions.entries()) {
+    assertBenchmarkToolVersionV02(toolVersion, `BenchmarkReportV02.toolVersions[${index}]`);
+  }
+
+  const commandLines = asArray(report.commandLines, "BenchmarkReportV02.commandLines");
+  for (const [index, commandLine] of commandLines.entries()) {
+    assertBenchmarkCommandLineV02(commandLine, `BenchmarkReportV02.commandLines[${index}]`);
+  }
+
+  const systemsInput = asArray(report.systemsCompared, "BenchmarkReportV02.systemsCompared");
+  if (systemsInput.length === 0) {
+    throw new Error("BenchmarkReportV02.systemsCompared must contain at least one system");
+  }
+  const systemIds = new Set<string>();
+  const declaredProviderRunIds = new Set<Uuid7>();
+  for (const [index, system] of systemsInput.entries()) {
+    const label = `BenchmarkReportV02.systemsCompared[${index}]`;
+    assertBenchmarkComparedSystemV02(system, label);
+    if (systemIds.has(system.systemId)) {
+      throw new Error(`${label}.systemId must be unique within systemsCompared`);
+    }
+    systemIds.add(system.systemId);
+    for (const providerRunId of system.providerRunIds) {
+      declaredProviderRunIds.add(providerRunId);
+    }
+  }
+
+  const providerRunsInput = asArray(
+    report.providerModelCostRecords,
+    "BenchmarkReportV02.providerModelCostRecords",
+  );
+  const providerRunIds = new Set<Uuid7>();
+  const llmQaProviderRunIds = new Set<Uuid7>();
+  const costTotalsBySystem = new Map<string, number>();
+  let reportTotalMicrosUsd = 0;
+  let includesUnknownCost = false;
+  for (const [index, providerRun] of providerRunsInput.entries()) {
+    const label = `BenchmarkReportV02.providerModelCostRecords[${index}]`;
+    assertBenchmarkProviderRunV02(providerRun, label);
+    if (providerRunIds.has(providerRun.providerRunId)) {
+      throw new Error(`${label}.providerRunId must be unique within providerModelCostRecords`);
+    }
+    providerRunIds.add(providerRun.providerRunId);
+    if (providerRun.taskKind === "llm_qa") {
+      llmQaProviderRunIds.add(providerRun.providerRunId);
+    }
+    assertKnownStringRefV02(providerRun.systemId, `${label}.systemId`, "system", systemIds);
+    if (providerRun.cost.costKind === "unknown") {
+      includesUnknownCost = true;
+      continue;
+    }
+    const amountMicrosUsd = providerRun.cost.amountMicrosUsd ?? 0;
+    reportTotalMicrosUsd += amountMicrosUsd;
+    costTotalsBySystem.set(
+      providerRun.systemId,
+      (costTotalsBySystem.get(providerRun.systemId) ?? 0) + amountMicrosUsd,
+    );
+  }
+  for (const providerRunId of declaredProviderRunIds) {
+    if (!providerRunIds.has(providerRunId)) {
+      throw new Error(
+        `BenchmarkReportV02.systemsCompared providerRunId ${providerRunId} must reference providerModelCostRecords`,
+      );
+    }
+  }
+  assertBenchmarkCostLedgerV02(
+    report.costLedger,
+    "BenchmarkReportV02.costLedger",
+    systemIds,
+    reportTotalMicrosUsd,
+    costTotalsBySystem,
+    includesUnknownCost,
+  );
+
+  const seededDefectOracle = asArray(
+    report.seededDefectOracle,
+    "BenchmarkReportV02.seededDefectOracle",
+  );
+  const seededDefectIds = new Set<string>();
+  for (const [index, seed] of seededDefectOracle.entries()) {
+    const label = `BenchmarkReportV02.seededDefectOracle[${index}]`;
+    assertBenchmarkSeededDefectOracleV02(seed, label);
+    assertKnownStringRefV02(
+      seed.fixtureOrCorpusRefId,
+      `${label}.fixtureOrCorpusRefId`,
+      "fixtureOrCorpusRef",
+      inputRefIds,
+    );
+    if (seededDefectIds.has(seed.seededDefectId)) {
+      throw new Error(`${label}.seededDefectId must be unique within seededDefectOracle`);
+    }
+    seededDefectIds.add(seed.seededDefectId);
+  }
+
+  const findingRecords = asArray(report.findingRecords, "BenchmarkReportV02.findingRecords");
+  const findingIds = new Set<Uuid7>();
+  const findingQualitySeverities: LocalizationQualitySeverityV02[] = [];
+  const findingCategories: LocalizationQualityCategoryV02[] = [];
+  const findingRootCauses: LocalizationRootCauseV02[] = [];
+  const findingDetectorKinds: QualityDetectorKindV02[] = [];
+  const findingAdjudicationStates: LocalizationAdjudicationStateV02[] = [];
+  const llmQaFindingIds = new Set<Uuid7>();
+  for (const [index, finding] of findingRecords.entries()) {
+    const label = `BenchmarkReportV02.findingRecords[${index}]`;
+    assertBenchmarkFindingRecordV02(finding, label);
+    assertKnownStringRefV02(finding.systemId, `${label}.systemId`, "system", systemIds);
+    if (findingIds.has(finding.findingId)) {
+      throw new Error(`${label}.findingId must be unique within findingRecords`);
+    }
+    if (finding.seededDefectId !== undefined && !seededDefectIds.has(finding.seededDefectId)) {
+      throw new Error(`${label}.seededDefectId must reference seededDefectOracle`);
+    }
+    findingIds.add(finding.findingId);
+    findingQualitySeverities.push(finding.qualitySeverity);
+    findingCategories.push(finding.category);
+    findingRootCauses.push(finding.rootCause);
+    findingDetectorKinds.push(finding.detectorKind);
+    findingAdjudicationStates.push(finding.adjudicationState);
+    if (finding.detectorKind === "llm_qa") {
+      llmQaFindingIds.add(finding.findingId);
+    }
+  }
+
+  for (const [index, seed] of (seededDefectOracle as BenchmarkSeededDefectOracleV02[]).entries()) {
+    for (const [matchIndex, findingId] of seed.matchedFindingIds.entries()) {
+      if (!findingIds.has(findingId)) {
+        throw new Error(
+          `BenchmarkReportV02.seededDefectOracle[${index}].matchedFindingIds[${matchIndex}] must reference findingRecords`,
+        );
+      }
+    }
+  }
+
+  assertCountBucketsMatchV02(
+    findingQualitySeverities,
+    assertBenchmarkCountBucketsV02(
+      report.countsByQualitySeverity,
+      LOCALIZATION_QUALITY_SEVERITIES,
+      "BenchmarkReportV02.countsByQualitySeverity",
+    ),
+    "BenchmarkReportV02.countsByQualitySeverity",
+  );
+  assertCountBucketsMatchV02(
+    findingCategories,
+    assertBenchmarkCountBucketsV02(
+      report.countsByCategory,
+      LOCALIZATION_QUALITY_CATEGORIES,
+      "BenchmarkReportV02.countsByCategory",
+    ),
+    "BenchmarkReportV02.countsByCategory",
+  );
+  assertCountBucketsMatchV02(
+    findingRootCauses,
+    assertBenchmarkCountBucketsV02(
+      report.countsByRootCause,
+      LOCALIZATION_ROOT_CAUSES,
+      "BenchmarkReportV02.countsByRootCause",
+    ),
+    "BenchmarkReportV02.countsByRootCause",
+  );
+  assertCountBucketsMatchV02(
+    findingDetectorKinds,
+    assertBenchmarkCountBucketsV02(
+      report.countsByDetectorKind,
+      QUALITY_DETECTOR_KINDS,
+      "BenchmarkReportV02.countsByDetectorKind",
+    ),
+    "BenchmarkReportV02.countsByDetectorKind",
+  );
+  assertCountBucketsMatchV02(
+    findingAdjudicationStates,
+    assertBenchmarkCountBucketsV02(
+      report.countsByAdjudicationState,
+      LOCALIZATION_ADJUDICATION_STATES,
+      "BenchmarkReportV02.countsByAdjudicationState",
+    ),
+    "BenchmarkReportV02.countsByAdjudicationState",
+  );
+
+  assertBenchmarkPenaltySummaryV02(
+    report.penaltySummary,
+    "BenchmarkReportV02.penaltySummary",
+    findingQualitySeverities,
+    totalSourceCharacterCount,
+    totalSourceUnitCount,
+  );
+
+  const deterministicQaResults = asArray(
+    report.deterministicQaResults,
+    "BenchmarkReportV02.deterministicQaResults",
+  );
+  for (const [index, result] of deterministicQaResults.entries()) {
+    const label = `BenchmarkReportV02.deterministicQaResults[${index}]`;
+    assertDeterministicQaResultV02(result, label);
+    assertKnownStringRefV02(
+      result.evaluatedSystemId,
+      `${label}.evaluatedSystemId`,
+      "system",
+      systemIds,
+    );
+    assertKnownUuid7RefsV02(result.findingIds, `${label}.findingIds`, "finding", findingIds);
+  }
+
+  const qaAgentEvaluations = asArray(
+    report.qaAgentEvaluations,
+    "BenchmarkReportV02.qaAgentEvaluations",
+  );
+  const qaAgentProviderRunIds = new Set<Uuid7>();
+  const qaAgentFindingIds = new Set<Uuid7>();
+  for (const [index, evaluation] of qaAgentEvaluations.entries()) {
+    const label = `BenchmarkReportV02.qaAgentEvaluations[${index}]`;
+    assertQaAgentEvaluationV02(evaluation, label);
+    assertKnownStringRefV02(
+      evaluation.evaluatedSystemId,
+      `${label}.evaluatedSystemId`,
+      "system",
+      systemIds,
+    );
+    assertKnownUuid7RefsV02(
+      evaluation.providerRunIds,
+      `${label}.providerRunIds`,
+      "providerRun",
+      providerRunIds,
+    );
+    assertKnownUuid7RefsV02(evaluation.findingIds, `${label}.findingIds`, "finding", findingIds);
+    for (const providerRunId of evaluation.providerRunIds) {
+      qaAgentProviderRunIds.add(providerRunId);
+    }
+    for (const findingId of evaluation.findingIds) {
+      qaAgentFindingIds.add(findingId);
+    }
+  }
+  assertQaAgentCoverageV02(
+    llmQaProviderRunIds,
+    llmQaFindingIds,
+    qaAgentProviderRunIds,
+    qaAgentFindingIds,
+  );
+
+  const humanEvaluationResults = asArray(
+    report.humanEvaluationResults,
+    "BenchmarkReportV02.humanEvaluationResults",
+  );
+  for (const [index, evaluation] of humanEvaluationResults.entries()) {
+    const label = `BenchmarkReportV02.humanEvaluationResults[${index}]`;
+    assertHumanEvaluationResultV02(evaluation, label);
+    for (const [systemIndex, systemId] of evaluation.evaluatedSystemIds.entries()) {
+      assertKnownStringRefV02(
+        systemId,
+        `${label}.evaluatedSystemIds[${systemIndex}]`,
+        "system",
+        systemIds,
+      );
+    }
+    assertKnownUuid7RefsV02(
+      evaluation.adjudicatedFindingIds,
+      `${label}.adjudicatedFindingIds`,
+      "finding",
+      findingIds,
+    );
+  }
+
+  assertStringArray(report.knownBlindSpots, "BenchmarkReportV02.knownBlindSpots");
+}
+
 export function assertPatchExport(value: unknown): asserts value is PatchExport {
   const patch = asRecord(value, "PatchExport");
   assertEqual(patch.schemaVersion, "0.1.0", "PatchExport.schemaVersion");
@@ -1299,7 +1959,7 @@ export function assertPatchExportV02(value: unknown): asserts value is PatchExpo
   assertString(patch.targetLocale, "PatchExportV02.targetLocale");
   assertHashStrategyV02(patch.hashStrategy, "PatchExportV02.hashStrategy");
   assertOptionalHashStringV02(patch.patchExportHash, "PatchExportV02.patchExportHash");
-  assertOptionalString(patch.generatedAt, "PatchExportV02.generatedAt");
+  assertOptionalRfc3339Instant(patch.generatedAt, "PatchExportV02.generatedAt");
   const entries = asArray(patch.entries, "PatchExportV02.entries");
   const entryKeys = new Set<string>();
   for (const [index, entry] of entries.entries()) {
@@ -1382,7 +2042,7 @@ export function assertDeltaPackageMetadataV02(
   );
   assertString(metadata.targetLocale, "DeltaPackageMetadataV02.targetLocale");
   assertHashStrategyV02(metadata.hashStrategy, "DeltaPackageMetadataV02.hashStrategy");
-  assertOptionalString(metadata.createdAt, "DeltaPackageMetadataV02.createdAt");
+  assertOptionalRfc3339Instant(metadata.createdAt, "DeltaPackageMetadataV02.createdAt");
 }
 
 export function evaluatePatchExportCompatibilityV02(
@@ -1503,7 +2163,7 @@ export function assertRuntimeEvidenceReportV02(
     "RuntimeEvidenceReportV02",
   );
   assertEnum(report.status, ["passed", "failed"] as const, "RuntimeEvidenceReportV02.status");
-  assertString(report.createdAt, "RuntimeEvidenceReportV02.createdAt");
+  assertRfc3339Instant(report.createdAt, "RuntimeEvidenceReportV02.createdAt");
 
   const traceEvents = asArray(report.traceEvents, "RuntimeEvidenceReportV02.traceEvents");
   for (const [index, event] of traceEvents.entries()) {
@@ -2264,7 +2924,7 @@ function assertSourceRevisionV02(
   if (revision.revisionKind === "content_hash") {
     assertHashStringV02(revision.value, `${label}.value`);
   }
-  assertOptionalString(revision.createdAt, `${label}.createdAt`);
+  assertOptionalRfc3339Instant(revision.createdAt, `${label}.createdAt`);
 }
 
 function assertSourceGameRevisionV02(
@@ -2691,7 +3351,7 @@ function assertTriageEventV02(value: unknown, label: string): asserts value is T
   const event = asRecord(value, label);
   assertUuid7(event.eventId, `${label}.eventId`);
   assertEnum(event.eventKind, TRIAGE_EVENT_KINDS, `${label}.eventKind`);
-  assertString(event.occurredAt, `${label}.occurredAt`);
+  assertRfc3339Instant(event.occurredAt, `${label}.occurredAt`);
   assertTriageActorV02(event.actor, `${label}.actor`);
   assertOptionalUuid7(event.taskId, `${label}.taskId`);
   assertOptionalUuid7(event.findingId, `${label}.findingId`);
@@ -2707,7 +3367,7 @@ function assertTriageTaskV02(value: unknown, label: string): asserts value is Tr
   const task = asRecord(value, label);
   assertUuid7(task.taskId, `${label}.taskId`);
   assertEnum(task.taskKind, TRIAGE_TASK_KINDS, `${label}.taskKind`);
-  assertString(task.createdAt, `${label}.createdAt`);
+  assertRfc3339Instant(task.createdAt, `${label}.createdAt`);
   assertString(task.summary, `${label}.summary`);
   assertOptionalUuid7(task.createdByEventId, `${label}.createdByEventId`);
   assertTriageSubjectRefsV02(task.inputRefs, `${label}.inputRefs`);
@@ -2730,7 +3390,7 @@ function assertFindingRecordV02(value: unknown, label: string): asserts value is
   assertString(finding.title, `${label}.title`);
   assertString(finding.description, `${label}.description`);
   assertString(finding.impact, `${label}.impact`);
-  assertString(finding.createdAt, `${label}.createdAt`);
+  assertRfc3339Instant(finding.createdAt, `${label}.createdAt`);
   assertOptionalUuid7(finding.reportedByTaskId, `${label}.reportedByTaskId`);
   assertOptionalUuid7(finding.firstSeenEventId, `${label}.firstSeenEventId`);
   assertTriageSubjectRefsV02(finding.affectedRefs, `${label}.affectedRefs`);
@@ -2843,7 +3503,7 @@ function assertProvenanceRecordV02(
         assertSourceLocationV02(provenance.sourceLocation, `${label}.sourceLocation`);
       }
       assertOptionalString(provenance.annotationText, `${label}.annotationText`);
-      assertOptionalString(provenance.observedAt, `${label}.observedAt`);
+      assertOptionalRfc3339Instant(provenance.observedAt, `${label}.observedAt`);
       break;
     case "style_guide":
       assertUuid7(provenance.styleGuideId, `${label}.styleGuideId`);
@@ -3089,6 +3749,550 @@ function assertFindingEvidenceProvenanceV02(
   }
 }
 
+function assertBenchmarkInputRefV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkInputRefV02 {
+  const inputRef = asRecord(value, label);
+  assertString(inputRef.corpusRefId, `${label}.corpusRefId`);
+  assertEnum(inputRef.corpusKind, BENCHMARK_INPUT_KINDS, `${label}.corpusKind`);
+  assertString(inputRef.label, `${label}.label`);
+  if (inputRef.manifestUri !== undefined) {
+    assertPortableArtifactUriV02(inputRef.manifestUri, `${label}.manifestUri`);
+  }
+  assertOptionalHashStringV02(inputRef.manifestHash, `${label}.manifestHash`);
+  assertOptionalHashStringV02(inputRef.sourceBundleHash, `${label}.sourceBundleHash`);
+  assertString(inputRef.sourceLocale, `${label}.sourceLocale`);
+  assertString(inputRef.targetLocale, `${label}.targetLocale`);
+  assertString(inputRef.engineProfile, `${label}.engineProfile`);
+  assertString(inputRef.benchmarkSplit, `${label}.benchmarkSplit`);
+  assertPositiveInteger(inputRef.sourceUnitCount, `${label}.sourceUnitCount`);
+  assertPositiveInteger(inputRef.sourceCharacterCount, `${label}.sourceCharacterCount`);
+  assertBoolean(inputRef.publicContent, `${label}.publicContent`);
+  if (inputRef.corpusKind === "private_local_corpus" && inputRef.publicContent) {
+    throw new Error(`${label}.publicContent must be false for private_local_corpus`);
+  }
+}
+
+function assertBenchmarkToolVersionV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkToolVersionV02 {
+  const toolVersion = asRecord(value, label);
+  assertString(toolVersion.name, `${label}.name`);
+  assertString(toolVersion.version, `${label}.version`);
+  assertOptionalString(toolVersion.gitCommit, `${label}.gitCommit`);
+}
+
+function assertBenchmarkCommandLineV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkCommandLineV02 {
+  const commandLine = asRecord(value, label);
+  assertString(commandLine.commandId, `${label}.commandId`);
+  const argv = asArray(commandLine.argv, `${label}.argv`);
+  if (argv.length === 0) {
+    throw new Error(`${label}.argv must contain at least one command token`);
+  }
+  for (const [index, token] of argv.entries()) {
+    assertString(token, `${label}.argv[${index}]`);
+  }
+}
+
+function assertBenchmarkComparedSystemV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkComparedSystemV02 {
+  const system = asRecord(value, label);
+  assertString(system.systemId, `${label}.systemId`);
+  assertEnum(system.systemKind, BENCHMARK_SYSTEM_KINDS, `${label}.systemKind`);
+  assertString(system.displayName, `${label}.displayName`);
+  assertRfc3339Instant(system.generatedAt, `${label}.generatedAt`);
+  assertUuid7Array(system.providerRunIds, `${label}.providerRunIds`);
+  assertOptionalString(system.promptPresetId, `${label}.promptPresetId`);
+  assertOptionalString(system.promptPresetVersion, `${label}.promptPresetVersion`);
+  if (system.outputArtifactRef !== undefined) {
+    assertBenchmarkArtifactRefV02(system.outputArtifactRef, `${label}.outputArtifactRef`);
+  }
+  if (system.providerRunIds.length > 0 && system.promptPresetId === undefined) {
+    throw new Error(`${label}.promptPresetId is required when providerRunIds are present`);
+  }
+}
+
+function assertBenchmarkArtifactRefV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkArtifactRefV02 {
+  const ref = asRecord(value, label);
+  assertUuid7(ref.artifactId, `${label}.artifactId`);
+  assertString(ref.artifactKind, `${label}.artifactKind`);
+  assertPortableArtifactUriV02(ref.uri, `${label}.uri`);
+  assertOptionalHashStringV02(ref.hash, `${label}.hash`);
+  assertOptionalString(ref.mediaType, `${label}.mediaType`);
+}
+
+function assertBenchmarkProviderRunV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkProviderRunV02 {
+  const run = asRecord(value, label);
+  assertUuid7(run.providerRunId, `${label}.providerRunId`);
+  assertString(run.systemId, `${label}.systemId`);
+  assertEnum(run.taskKind, TRIAGE_TASK_KINDS, `${label}.taskKind`);
+  assertStartedCompletedInstantsV02(run.startedAt, run.completedAt, label);
+  if (run.latencyMs !== undefined) {
+    assertNonNegativeInteger(run.latencyMs, `${label}.latencyMs`);
+  }
+  assertEnum(run.status, BENCHMARK_PROVIDER_RUN_STATUSES, `${label}.status`);
+  assertBenchmarkProviderIdentityV02(run.provider, `${label}.provider`);
+  assertBenchmarkPromptIdentityV02(run.prompt, `${label}.prompt`);
+  assertString(run.structuredOutputMode, `${label}.structuredOutputMode`);
+  assertNonNegativeInteger(run.retryCount, `${label}.retryCount`);
+  assertStringArray(run.errorClasses, `${label}.errorClasses`);
+  assertBoolean(run.fallbackUsed, `${label}.fallbackUsed`);
+  if (run.fallbackPlan !== undefined) {
+    assertStringArray(run.fallbackPlan, `${label}.fallbackPlan`);
+  }
+  assertBenchmarkTokenUsageV02(run.tokenUsage, `${label}.tokenUsage`);
+  assertBenchmarkCostAmountV02(run.cost, `${label}.cost`);
+  if (run.status === "failed" && run.errorClasses.length === 0) {
+    throw new Error(`${label}.errorClasses must explain failed provider runs`);
+  }
+}
+
+function assertBenchmarkProviderIdentityV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkProviderIdentityV02 {
+  const provider = asRecord(value, label);
+  assertEnum(provider.providerFamily, BENCHMARK_PROVIDER_FAMILIES, `${label}.providerFamily`);
+  assertString(provider.endpointFamily, `${label}.endpointFamily`);
+  assertString(provider.providerName, `${label}.providerName`);
+  assertString(provider.requestedModelId, `${label}.requestedModelId`);
+  assertString(provider.actualModelId, `${label}.actualModelId`);
+  assertOptionalString(provider.upstreamProvider, `${label}.upstreamProvider`);
+  assertOptionalHashStringV02(provider.routeSettingsHash, `${label}.routeSettingsHash`);
+}
+
+function assertBenchmarkPromptIdentityV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkPromptIdentityV02 {
+  const prompt = asRecord(value, label);
+  assertString(prompt.promptPresetId, `${label}.promptPresetId`);
+  assertString(prompt.promptTemplateVersion, `${label}.promptTemplateVersion`);
+  assertOptionalHashStringV02(prompt.promptHash, `${label}.promptHash`);
+  assertOptionalString(prompt.remotePresetSlug, `${label}.remotePresetSlug`);
+  assertOptionalString(prompt.remotePresetVersion, `${label}.remotePresetVersion`);
+  assertOptionalHashStringV02(prompt.remotePresetConfigHash, `${label}.remotePresetConfigHash`);
+}
+
+function assertBenchmarkTokenUsageV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkTokenUsageV02 {
+  const usage = asRecord(value, label);
+  assertEnum(usage.tokenCountSource, BENCHMARK_TOKEN_COUNT_SOURCES, `${label}.tokenCountSource`);
+  assertOptionalNonNegativeInteger(usage.promptTokens, `${label}.promptTokens`);
+  assertOptionalNonNegativeInteger(usage.completionTokens, `${label}.completionTokens`);
+  assertOptionalNonNegativeInteger(usage.reasoningTokens, `${label}.reasoningTokens`);
+  assertOptionalNonNegativeInteger(usage.cachedInputTokens, `${label}.cachedInputTokens`);
+  assertOptionalNonNegativeInteger(usage.totalTokens, `${label}.totalTokens`);
+  if (usage.tokenCountSource === "unknown" && usage.totalTokens !== undefined) {
+    throw new Error(`${label}.totalTokens must be omitted when tokenCountSource is unknown`);
+  }
+  if (usage.tokenCountSource !== "unknown" && usage.totalTokens === undefined) {
+    throw new Error(`${label}.totalTokens is required unless tokenCountSource is unknown`);
+  }
+  const countedTotal =
+    (usage.promptTokens ?? 0) + (usage.completionTokens ?? 0) + (usage.reasoningTokens ?? 0);
+  if (usage.totalTokens !== undefined && countedTotal > usage.totalTokens) {
+    throw new Error(`${label}.totalTokens must be at least prompt + completion + reasoning tokens`);
+  }
+}
+
+function assertBenchmarkCostAmountV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkCostAmountV02 {
+  const cost = asRecord(value, label);
+  assertEnum(cost.costKind, BENCHMARK_COST_KINDS, `${label}.costKind`);
+  assertEqual(cost.currency, "USD", `${label}.currency`);
+  assertOptionalNonNegativeInteger(cost.amountMicrosUsd, `${label}.amountMicrosUsd`);
+  assertOptionalString(cost.pricingSnapshotId, `${label}.pricingSnapshotId`);
+  if (cost.costKind === "unknown" && cost.amountMicrosUsd !== undefined) {
+    throw new Error(`${label}.amountMicrosUsd must be omitted when costKind is unknown`);
+  }
+  if (cost.costKind !== "unknown" && cost.amountMicrosUsd === undefined) {
+    throw new Error(`${label}.amountMicrosUsd is required unless costKind is unknown`);
+  }
+  if (cost.costKind === "zero" && cost.amountMicrosUsd !== 0) {
+    throw new Error(`${label}.amountMicrosUsd must be 0 when costKind is zero`);
+  }
+}
+
+function assertBenchmarkCostLedgerV02(
+  value: unknown,
+  label: string,
+  systemIds: ReadonlySet<string>,
+  expectedReportTotalMicrosUsd: number,
+  expectedTotalsBySystem: ReadonlyMap<string, number>,
+  expectedIncludesUnknownCost: boolean,
+): asserts value is BenchmarkCostLedgerV02 {
+  const ledger = asRecord(value, label);
+  assertEqual(ledger.currency, "USD", `${label}.currency`);
+  assertNonNegativeInteger(ledger.reportTotalMicrosUsd, `${label}.reportTotalMicrosUsd`);
+  if (ledger.reportTotalMicrosUsd !== expectedReportTotalMicrosUsd) {
+    throw new Error(`${label}.reportTotalMicrosUsd must equal providerModelCostRecords total`);
+  }
+  assertBoolean(ledger.includesUnknownCost, `${label}.includesUnknownCost`);
+  if (ledger.includesUnknownCost !== expectedIncludesUnknownCost) {
+    throw new Error(`${label}.includesUnknownCost must match providerModelCostRecords`);
+  }
+  const totals = asArray(ledger.totalsBySystem, `${label}.totalsBySystem`);
+  const seenSystemIds = new Set<string>();
+  for (const [index, total] of totals.entries()) {
+    const totalLabel = `${label}.totalsBySystem[${index}]`;
+    assertBenchmarkCostLedgerTotalV02(total, totalLabel);
+    assertKnownStringRefV02(total.systemId, `${totalLabel}.systemId`, "system", systemIds);
+    if (seenSystemIds.has(total.systemId)) {
+      throw new Error(`${totalLabel}.systemId must be unique within totalsBySystem`);
+    }
+    seenSystemIds.add(total.systemId);
+    const expectedTotal = expectedTotalsBySystem.get(total.systemId) ?? 0;
+    if (total.totalMicrosUsd !== expectedTotal) {
+      throw new Error(`${totalLabel}.totalMicrosUsd must equal providerModelCostRecords total`);
+    }
+  }
+  for (const [systemId, expectedTotal] of expectedTotalsBySystem) {
+    if (expectedTotal > 0 && !seenSystemIds.has(systemId)) {
+      throw new Error(`${label}.totalsBySystem must include system ${systemId}`);
+    }
+  }
+}
+
+function assertBenchmarkCostLedgerTotalV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkCostLedgerTotalV02 {
+  const total = asRecord(value, label);
+  assertString(total.systemId, `${label}.systemId`);
+  assertNonNegativeInteger(total.totalMicrosUsd, `${label}.totalMicrosUsd`);
+}
+
+function assertBenchmarkSeededDefectOracleV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkSeededDefectOracleV02 {
+  const seed = asRecord(value, label);
+  assertString(seed.seededDefectId, `${label}.seededDefectId`);
+  assertString(seed.fixtureOrCorpusRefId, `${label}.fixtureOrCorpusRefId`);
+  assertString(seed.seedKind, `${label}.seedKind`);
+  assertString(seed.targetLocale, `${label}.targetLocale`);
+  assertTriageSubjectRefsV02(seed.affectedRefs, `${label}.affectedRefs`);
+  assertEnum(seed.category, LOCALIZATION_QUALITY_CATEGORIES, `${label}.category`);
+  assertOptionalString(seed.qualitySubcategory, `${label}.qualitySubcategory`);
+  assertEnum(seed.qualitySeverity, LOCALIZATION_QUALITY_SEVERITIES, `${label}.qualitySeverity`);
+  assertEnum(seed.expectedRootCause, LOCALIZATION_ROOT_CAUSES, `${label}.expectedRootCause`);
+  const expectedDetectorKinds = asArray(
+    seed.expectedDetectorKinds,
+    `${label}.expectedDetectorKinds`,
+  );
+  if (expectedDetectorKinds.length === 0) {
+    throw new Error(`${label}.expectedDetectorKinds must contain at least one detector kind`);
+  }
+  for (const [index, detectorKind] of expectedDetectorKinds.entries()) {
+    assertEnum(detectorKind, QUALITY_DETECTOR_KINDS, `${label}.expectedDetectorKinds[${index}]`);
+  }
+  assertUuid7Array(seed.matchedFindingIds, `${label}.matchedFindingIds`);
+  assertBoolean(seed.publicContent, `${label}.publicContent`);
+}
+
+function assertBenchmarkFindingRecordV02(
+  value: unknown,
+  label: string,
+): asserts value is BenchmarkFindingRecordV02 {
+  const finding = asRecord(value, label);
+  assertUuid7(finding.findingId, `${label}.findingId`);
+  assertString(finding.systemId, `${label}.systemId`);
+  assertEqual(finding.taxonomyId, LOCALIZATION_QUALITY_TAXONOMY_ID, `${label}.taxonomyId`);
+  assertEqual(
+    finding.taxonomyVersion,
+    LOCALIZATION_QUALITY_TAXONOMY_VERSION,
+    `${label}.taxonomyVersion`,
+  );
+  assertEnum(finding.detectorKind, QUALITY_DETECTOR_KINDS, `${label}.detectorKind`);
+  assertEnum(finding.category, LOCALIZATION_QUALITY_CATEGORIES, `${label}.category`);
+  assertOptionalString(finding.qualitySubcategory, `${label}.qualitySubcategory`);
+  assertEnum(finding.qualitySeverity, LOCALIZATION_QUALITY_SEVERITIES, `${label}.qualitySeverity`);
+  assertEnum(finding.rootCause, LOCALIZATION_ROOT_CAUSES, `${label}.rootCause`);
+  assertEnum(
+    finding.adjudicationState,
+    LOCALIZATION_ADJUDICATION_STATES,
+    `${label}.adjudicationState`,
+  );
+  assertTriageSubjectRefsV02(finding.affectedRefs, `${label}.affectedRefs`);
+  assertEvidenceArrayV02(finding.evidence, `${label}.evidence`);
+  assertProvenanceArrayV02(finding.provenance, `${label}.provenance`);
+  assertBenchmarkFindingEvidenceProvenanceV02(finding as BenchmarkFindingRecordV02, label);
+  assertOptionalString(finding.seededDefectId, `${label}.seededDefectId`);
+  assertOptionalString(finding.reviewerRationale, `${label}.reviewerRationale`);
+  if (
+    finding.rootCause === "unknown_unadjudicated" &&
+    finding.adjudicationState !== "unreviewed" &&
+    finding.adjudicationState !== "needs_more_context"
+  ) {
+    throw new Error(`${label}.rootCause cannot be unknown_unadjudicated after adjudication`);
+  }
+}
+
+function assertBenchmarkFindingEvidenceProvenanceV02(
+  finding: BenchmarkFindingRecordV02,
+  label: string,
+): void {
+  const provenanceIds = new Set(finding.provenance.map((record) => record.provenanceId));
+  for (const [evidenceIndex, evidence] of finding.evidence.entries()) {
+    const evidenceLabel = `${label}.evidence[${evidenceIndex}]`;
+    if (evidence.provenanceIds.length === 0) {
+      throw new Error(`${evidenceLabel}.provenanceIds must contain at least one provenance id`);
+    }
+    for (const [provenanceIndex, provenanceId] of evidence.provenanceIds.entries()) {
+      if (!provenanceIds.has(provenanceId)) {
+        throw new Error(
+          `${evidenceLabel}.provenanceIds[${provenanceIndex}] must reference provenance on the same finding`,
+        );
+      }
+    }
+  }
+}
+
+function assertBenchmarkCountBucketsV02<T extends string>(
+  value: unknown,
+  allowedBuckets: readonly T[],
+  label: string,
+): BenchmarkCountBucketV02<T>[] {
+  const records = asArray(value, label);
+  const buckets: BenchmarkCountBucketV02<T>[] = [];
+  const seenBuckets = new Set<T>();
+  for (const [index, record] of records.entries()) {
+    const bucketLabel = `${label}[${index}]`;
+    const bucketRecord = asRecord(record, bucketLabel);
+    assertEnum(bucketRecord.bucket, allowedBuckets, `${bucketLabel}.bucket`);
+    assertNonNegativeInteger(bucketRecord.count, `${bucketLabel}.count`);
+    if (seenBuckets.has(bucketRecord.bucket)) {
+      throw new Error(`${bucketLabel}.bucket must be unique within ${label}`);
+    }
+    seenBuckets.add(bucketRecord.bucket);
+    buckets.push({
+      bucket: bucketRecord.bucket,
+      count: bucketRecord.count,
+    });
+  }
+  return buckets;
+}
+
+function assertCountBucketsMatchV02<T extends string>(
+  actualValues: readonly T[],
+  buckets: readonly BenchmarkCountBucketV02<T>[],
+  label: string,
+): void {
+  const actualCounts = new Map<T, number>();
+  for (const value of actualValues) {
+    actualCounts.set(value, (actualCounts.get(value) ?? 0) + 1);
+  }
+  const reportedBuckets = new Set<T>();
+  for (const bucket of buckets) {
+    reportedBuckets.add(bucket.bucket);
+    const actualCount = actualCounts.get(bucket.bucket) ?? 0;
+    if (bucket.count !== actualCount) {
+      throw new Error(`${label}.${bucket.bucket} count must match findingRecords`);
+    }
+  }
+  for (const [bucket, actualCount] of actualCounts) {
+    if (actualCount > 0 && !reportedBuckets.has(bucket)) {
+      throw new Error(`${label} must include bucket ${bucket}`);
+    }
+  }
+}
+
+function assertBenchmarkPenaltySummaryV02(
+  value: unknown,
+  label: string,
+  qualitySeverities: readonly LocalizationQualitySeverityV02[],
+  totalSourceCharacterCount: number,
+  totalSourceUnitCount: number,
+): asserts value is BenchmarkPenaltySummaryV02 {
+  const summary = asRecord(value, label);
+  assertNonNegativeNumber(summary.penaltyTotal, `${label}.penaltyTotal`);
+  assertNonNegativeNumber(
+    summary.penaltyPerThousandSourceChars,
+    `${label}.penaltyPerThousandSourceChars`,
+  );
+  assertNonNegativeNumber(
+    summary.penaltyPerHundredSourceUnits,
+    `${label}.penaltyPerHundredSourceUnits`,
+  );
+  const expectedPenaltyTotal = qualitySeverities.reduce(
+    (total, severity) => total + LOCALIZATION_QUALITY_SEVERITY_WEIGHTS[severity],
+    0,
+  );
+  if (summary.penaltyTotal !== expectedPenaltyTotal) {
+    throw new Error(
+      `${label}.penaltyTotal must match findingRecords qualitySeverity weights from ${LOCALIZATION_QUALITY_TAXONOMY_ID}`,
+    );
+  }
+  assertNumberWithinTolerance(
+    summary.penaltyPerThousandSourceChars,
+    (expectedPenaltyTotal / totalSourceCharacterCount) * 1000,
+    BENCHMARK_NORMALIZED_PENALTY_TOLERANCE,
+    `${label}.penaltyPerThousandSourceChars`,
+    "findingRecords qualitySeverity weights normalized by fixtureOrCorpusRefs.sourceCharacterCount",
+  );
+  assertNumberWithinTolerance(
+    summary.penaltyPerHundredSourceUnits,
+    (expectedPenaltyTotal / totalSourceUnitCount) * 100,
+    BENCHMARK_NORMALIZED_PENALTY_TOLERANCE,
+    `${label}.penaltyPerHundredSourceUnits`,
+    "findingRecords qualitySeverity weights normalized by fixtureOrCorpusRefs.sourceUnitCount",
+  );
+}
+
+function assertDeterministicQaResultV02(
+  value: unknown,
+  label: string,
+): asserts value is DeterministicQaResultV02 {
+  const result = asRecord(value, label);
+  assertUuid7(result.deterministicQaRunId, `${label}.deterministicQaRunId`);
+  assertString(result.evaluatedSystemId, `${label}.evaluatedSystemId`);
+  assertString(result.checkName, `${label}.checkName`);
+  assertString(result.checkVersion, `${label}.checkVersion`);
+  assertStartedCompletedInstantsV02(result.startedAt, result.completedAt, label);
+  assertNonNegativeInteger(result.ruleCount, `${label}.ruleCount`);
+  assertNonNegativeInteger(result.passedRuleCount, `${label}.passedRuleCount`);
+  assertNonNegativeInteger(result.failedRuleCount, `${label}.failedRuleCount`);
+  if (result.passedRuleCount + result.failedRuleCount !== result.ruleCount) {
+    throw new Error(`${label}.passedRuleCount plus failedRuleCount must equal ruleCount`);
+  }
+  assertUuid7Array(result.findingIds, `${label}.findingIds`);
+  const artifactRefs = asArray(result.artifactRefs, `${label}.artifactRefs`);
+  for (const [index, artifactRef] of artifactRefs.entries()) {
+    assertBenchmarkArtifactRefV02(artifactRef, `${label}.artifactRefs[${index}]`);
+  }
+}
+
+function assertQaAgentEvaluationV02(
+  value: unknown,
+  label: string,
+): asserts value is QaAgentEvaluationV02 {
+  const evaluation = asRecord(value, label);
+  assertUuid7(evaluation.qaAgentEvaluationId, `${label}.qaAgentEvaluationId`);
+  assertString(evaluation.qaAgentId, `${label}.qaAgentId`);
+  assertString(evaluation.qaAgentVersion, `${label}.qaAgentVersion`);
+  assertString(evaluation.evaluatedSystemId, `${label}.evaluatedSystemId`);
+  assertUuid7Array(evaluation.providerRunIds, `${label}.providerRunIds`);
+  assertUuid7Array(evaluation.findingIds, `${label}.findingIds`);
+  assertQaAgentMetricsV02(evaluation.metrics, `${label}.metrics`);
+  assertStringArray(evaluation.limitations, `${label}.limitations`);
+}
+
+function assertQaAgentMetricsV02(
+  value: unknown,
+  label: string,
+): asserts value is QaAgentMetricsV02 {
+  const metrics = asRecord(value, label);
+  assertRatio(metrics.seededRecall, `${label}.seededRecall`);
+  assertRatio(metrics.seededPrecision, `${label}.seededPrecision`);
+  assertRatio(metrics.f1, `${label}.f1`);
+  assertRatio(metrics.categoryAccuracy, `${label}.categoryAccuracy`);
+  assertRatio(metrics.qualitySeverityAccuracy, `${label}.qualitySeverityAccuracy`);
+  assertRatio(metrics.rootCauseAccuracy, `${label}.rootCauseAccuracy`);
+  assertRatio(metrics.criticalRecall, `${label}.criticalRecall`);
+  assertRatio(metrics.unscorableRate, `${label}.unscorableRate`);
+  if (metrics.humanConfirmedPrecision !== undefined) {
+    assertRatio(metrics.humanConfirmedPrecision, `${label}.humanConfirmedPrecision`);
+  }
+  assertNonNegativeInteger(metrics.findingsEmitted, `${label}.findingsEmitted`);
+  assertNonNegativeInteger(metrics.scorableFindings, `${label}.scorableFindings`);
+  assertNonNegativeInteger(metrics.adjudicatedFindings, `${label}.adjudicatedFindings`);
+  if (metrics.scorableFindings > metrics.findingsEmitted) {
+    throw new Error(`${label}.scorableFindings must not exceed findingsEmitted`);
+  }
+  if (metrics.adjudicatedFindings > metrics.findingsEmitted) {
+    throw new Error(`${label}.adjudicatedFindings must not exceed findingsEmitted`);
+  }
+}
+
+function assertHumanEvaluationResultV02(
+  value: unknown,
+  label: string,
+): asserts value is HumanEvaluationResultV02 {
+  const evaluation = asRecord(value, label);
+  assertUuid7(evaluation.humanEvaluationId, `${label}.humanEvaluationId`);
+  assertUuid7(evaluation.reviewSessionId, `${label}.reviewSessionId`);
+  const evaluatedSystemIds = asArray(evaluation.evaluatedSystemIds, `${label}.evaluatedSystemIds`);
+  if (evaluatedSystemIds.length === 0) {
+    throw new Error(`${label}.evaluatedSystemIds must contain at least one system id`);
+  }
+  for (const [index, systemId] of evaluatedSystemIds.entries()) {
+    assertString(systemId, `${label}.evaluatedSystemIds[${index}]`);
+  }
+  assertPositiveInteger(evaluation.reviewerCount, `${label}.reviewerCount`);
+  assertPositiveInteger(evaluation.sampleUnitCount, `${label}.sampleUnitCount`);
+  assertPositiveInteger(
+    evaluation.sampleSourceCharacterCount,
+    `${label}.sampleSourceCharacterCount`,
+  );
+  assertBoolean(evaluation.blindReview, `${label}.blindReview`);
+  assertUuid7Array(evaluation.adjudicatedFindingIds, `${label}.adjudicatedFindingIds`);
+  assertOptionalString(evaluation.reviewerAgreementNotes, `${label}.reviewerAgreementNotes`);
+}
+
+function assertQaAgentCoverageV02(
+  llmQaProviderRunIds: ReadonlySet<Uuid7>,
+  llmQaFindingIds: ReadonlySet<Uuid7>,
+  qaAgentProviderRunIds: ReadonlySet<Uuid7>,
+  qaAgentFindingIds: ReadonlySet<Uuid7>,
+): void {
+  for (const providerRunId of llmQaProviderRunIds) {
+    if (!qaAgentProviderRunIds.has(providerRunId)) {
+      throw new Error(
+        `BenchmarkReportV02.qaAgentEvaluations.providerRunIds must cover llm_qa providerModelCostRecords run ${providerRunId}`,
+      );
+    }
+  }
+  for (const findingId of llmQaFindingIds) {
+    if (!qaAgentFindingIds.has(findingId)) {
+      throw new Error(
+        `BenchmarkReportV02.qaAgentEvaluations.findingIds must cover llm_qa findingRecords finding ${findingId}`,
+      );
+    }
+  }
+}
+
+function assertKnownStringRefV02(
+  id: string,
+  label: string,
+  targetName: string,
+  knownIds: ReadonlySet<string>,
+): void {
+  if (!knownIds.has(id)) {
+    throw new Error(`${label} must reference an existing ${targetName}`);
+  }
+}
+
+function assertKnownUuid7RefsV02(
+  ids: readonly Uuid7[],
+  label: string,
+  targetName: string,
+  knownIds: ReadonlySet<Uuid7>,
+): void {
+  for (const [index, id] of ids.entries()) {
+    if (!knownIds.has(id)) {
+      throw new Error(`${label}[${index}] must reference an existing ${targetName}`);
+    }
+  }
+}
+
 function assertExtractor(value: unknown, label: string): void {
   const extractor = asRecord(value, label);
   assertString(extractor.name, `${label}.name`);
@@ -3126,6 +4330,75 @@ function assertOptionalString(value: unknown, label: string): asserts value is s
   if (value !== undefined) {
     assertString(value, label);
   }
+}
+
+function assertRfc3339Instant(value: unknown, label: string): asserts value is string {
+  assertString(value, label);
+  const match = RFC3339_INSTANT_PATTERN.exec(value);
+  if (match === null) {
+    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+  }
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, offsetText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  if (offsetText === undefined) {
+    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+  }
+  if (
+    month < 1 ||
+    month > 12 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    !isValidCalendarDate(year, month, day)
+  ) {
+    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+  }
+  if (offsetText !== "Z") {
+    const offsetHour = Number(offsetText.slice(1, 3));
+    const offsetMinute = Number(offsetText.slice(4, 6));
+    if (offsetHour > 23 || offsetMinute > 59) {
+      throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+    }
+  }
+  if (!Number.isFinite(Date.parse(value))) {
+    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+  }
+}
+
+function assertOptionalRfc3339Instant(
+  value: unknown,
+  label: string,
+): asserts value is string | undefined {
+  if (value !== undefined) {
+    assertRfc3339Instant(value, label);
+  }
+}
+
+function assertStartedCompletedInstantsV02(
+  startedAt: unknown,
+  completedAt: unknown,
+  label: string,
+): void {
+  assertRfc3339Instant(startedAt, `${label}.startedAt`);
+  assertOptionalRfc3339Instant(completedAt, `${label}.completedAt`);
+  if (completedAt !== undefined && Date.parse(completedAt) < Date.parse(startedAt)) {
+    throw new Error(`${label}.completedAt must not be before ${label}.startedAt`);
+  }
+}
+
+function isValidCalendarDate(year: number, month: number, day: number): boolean {
+  const daysInMonth = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= (daysInMonth[month - 1] ?? 0);
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 }
 
 function assertOptionalHashStringV02(
@@ -3188,6 +4461,39 @@ function assertEnum<T extends string>(
 function assertNonNegativeInteger(value: unknown, label: string): asserts value is number {
   if (!Number.isInteger(value) || (value as number) < 0) {
     throw new Error(`${label} must be a non-negative integer`);
+  }
+}
+
+function assertOptionalNonNegativeInteger(
+  value: unknown,
+  label: string,
+): asserts value is number | undefined {
+  if (value !== undefined) {
+    assertNonNegativeInteger(value, label);
+  }
+}
+
+function assertNonNegativeNumber(value: unknown, label: string): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative number`);
+  }
+}
+
+function assertNumberWithinTolerance(
+  value: number,
+  expected: number,
+  tolerance: number,
+  label: string,
+  expectation: string,
+): void {
+  if (Math.abs(value - expected) > tolerance) {
+    throw new Error(`${label} must match ${expectation}`);
+  }
+}
+
+function assertRatio(value: unknown, label: string): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`${label} must be a number between 0 and 1`);
   }
 }
 

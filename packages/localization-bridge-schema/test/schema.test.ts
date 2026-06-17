@@ -4,6 +4,7 @@ import {
   assertAssetPolicyBundleV02,
   assertBridgeBundle,
   assertBridgeBundleV02,
+  assertBenchmarkReportV02,
   assertDeltaPackageMetadataV02,
   assertPatchExport,
   assertPatchExportV02,
@@ -45,6 +46,12 @@ function runtimeEvidenceV02Example(): Record<string, unknown> {
 function assetPolicyV02Example(): Record<string, unknown> {
   return JSON.parse(
     readFileSync(new URL("./examples/asset-policy-v0.2.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+function benchmarkReportV02Example(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL("./examples/benchmark-report-v0.2.json", import.meta.url), "utf8"),
   ) as Record<string, unknown>;
 }
 
@@ -182,6 +189,7 @@ describe("localization bridge schema guards", () => {
   it("has explicit validation expectations for each top-level example fixture", () => {
     const expectedTopLevelFixtures = new Set([
       "asset-policy-v0.2.json",
+      "benchmark-report-v0.2.json",
       "bridge-v0.2.json",
       "runtime-evidence-v0.2.json",
       "triage-v0.2.json",
@@ -213,6 +221,11 @@ describe("localization bridge schema guards", () => {
       path: "./examples/runtime-evidence-v0.2.json",
       kind: "runtime-evidence-v0.2",
       assertValid: assertRuntimeEvidenceReportV02,
+    },
+    {
+      path: "./examples/benchmark-report-v0.2.json",
+      kind: "benchmark-report-v0.2",
+      assertValid: assertBenchmarkReportV02,
     },
   ])("validates committed $kind example fixture", ({ path, assertValid }) => {
     expect(() => assertValid(exampleFixture(path))).not.toThrow();
@@ -258,6 +271,82 @@ describe("localization bridge schema guards", () => {
     const speakerStates = units.map((unit) => unit.speaker?.knowledgeState).filter(Boolean);
     expect(speakerStates).toContain("parser_unknown");
     expect(speakerStates).toContain("reader_unknown");
+  });
+
+  it("keeps raw MTL baselines in the benchmark report schema", () => {
+    const report = benchmarkReportV02Example();
+
+    expect(() => assertBenchmarkReportV02(report)).not.toThrow();
+    expect(report.systemsCompared).toContainEqual(
+      expect.objectContaining({
+        systemId: "raw-mtl-baseline",
+        systemKind: "raw_mtl_baseline",
+      }),
+    );
+  });
+
+  it("rejects benchmark provider records without prompt preset identity", () => {
+    const report = benchmarkReportV02Example();
+    const providerRecords = report.providerModelCostRecords as Array<Record<string, unknown>>;
+    const firstProviderRecord = providerRecords[0];
+    expect(firstProviderRecord).toBeDefined();
+    delete (firstProviderRecord.prompt as Record<string, unknown>).promptPresetId;
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(/promptPresetId/);
+  });
+
+  it("rejects benchmark reports with llm_qa provider runs but no QA-agent evaluation", () => {
+    const report = benchmarkReportV02Example();
+    report.qaAgentEvaluations = [];
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /qaAgentEvaluations\.providerRunIds.*llm_qa providerModelCostRecords/,
+    );
+  });
+
+  it("rejects benchmark reports whose QA-agent evaluations omit llm_qa findings", () => {
+    const report = benchmarkReportV02Example();
+    const qaAgentEvaluations = report.qaAgentEvaluations as Array<Record<string, unknown>>;
+    const firstEvaluation = asTestRecord(qaAgentEvaluations[0], "first QA-agent evaluation");
+    firstEvaluation.findingIds = [];
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /qaAgentEvaluations\.findingIds.*llm_qa findingRecords/,
+    );
+  });
+
+  it("rejects benchmark penalty totals that do not match taxonomy severity weights", () => {
+    const report = benchmarkReportV02Example();
+    const penaltySummary = asTestRecord(report.penaltySummary, "benchmark penalty summary");
+    penaltySummary.penaltyTotal = 5;
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(/penaltyTotal.*qualitySeverity weights/);
+  });
+
+  it("rejects benchmark normalized penalties that do not match source-size denominators", () => {
+    const report = benchmarkReportV02Example();
+    const penaltySummary = asTestRecord(report.penaltySummary, "benchmark penalty summary");
+    penaltySummary.penaltyPerThousandSourceChars = 0;
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /penaltyPerThousandSourceChars.*sourceCharacterCount/,
+    );
+  });
+
+  it("rejects benchmark timestamps that are not RFC3339 instants", () => {
+    const report = benchmarkReportV02Example();
+    report.createdAt = "not a timestamp";
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(/createdAt.*RFC3339/);
+  });
+
+  it("rejects benchmark records whose completedAt precedes startedAt", () => {
+    const report = benchmarkReportV02Example();
+    const providerRecords = report.providerModelCostRecords as Array<Record<string, unknown>>;
+    const firstProviderRecord = asTestRecord(providerRecords[0], "first provider record");
+    firstProviderRecord.completedAt = "2026-06-17T15:00:09.000Z";
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(/completedAt.*startedAt/);
   });
 
   it("rejects v0.2 bridge ids that are not UUID7", () => {
