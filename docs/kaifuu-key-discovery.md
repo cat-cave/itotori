@@ -52,7 +52,8 @@ delta apply on public-safe fixture data:
    classifies encrypted, packed, protected, helper-required, missing-key, and
    unknown-variant signals before adapters claim extraction support.
 3. **Redaction/error enforcement**: required in `KAIFUU-035`. Helper, profile,
-   CLI, report, and adapter failures must be safe to persist and triage.
+   CLI, report, layered access preflight, and adapter failures must be safe to
+   persist and triage.
 4. **Local key resolver**: required in `KAIFUU-050`. `local-secret:`,
    `os-keychain:`, `secret-manager:`, and `prompt:` refs need a shared resolver
    and local-only secret store abstraction before helpers or private triage can
@@ -263,10 +264,19 @@ Required stable semantic errors include:
 - `kaifuu.helper_unavailable`
 - `kaifuu.key_validation_failed`
 - `kaifuu.protected_executable_unsupported`
+- `kaifuu.unsupported_layered_transform`
+- `kaifuu.missing_capability.container`
+- `kaifuu.missing_capability.crypto`
+- `kaifuu.missing_capability.codec`
+- `kaifuu.missing_capability.patch_back`
 - `kaifuu.secret_redacted`
 - `kaifuu.unsupported_variant.encrypted`
 - `kaifuu.unsupported_variant.packed`
 - `kaifuu.unknown_engine_variant`
+
+Layered access preflight failures use these same stable errors before any patch
+writer runs. Missing container, crypto, codec, or patch-back support is a
+capability failure, not a parser panic, partial patch, or raw helper exception.
 
 Key validation may record proof hashes, decrypted header class, byte counts,
 tool version, and aggregate readiness status. It must not record decrypted

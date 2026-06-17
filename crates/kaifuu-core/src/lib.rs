@@ -22,6 +22,11 @@ pub const SEMANTIC_KEY_VALIDATION_FAILED: &str = "kaifuu.key_validation_failed";
 pub const SEMANTIC_SECRET_REDACTED: &str = "kaifuu.secret_redacted";
 pub const SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED: &str =
     "kaifuu.protected_executable_unsupported";
+pub const SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM: &str = "kaifuu.unsupported_layered_transform";
+pub const SEMANTIC_MISSING_CONTAINER_CAPABILITY: &str = "kaifuu.missing_capability.container";
+pub const SEMANTIC_MISSING_CRYPTO_CAPABILITY: &str = "kaifuu.missing_capability.crypto";
+pub const SEMANTIC_MISSING_CODEC_CAPABILITY: &str = "kaifuu.missing_capability.codec";
+pub const SEMANTIC_MISSING_PATCH_BACK_CAPABILITY: &str = "kaifuu.missing_capability.patch_back";
 pub const SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED: &str = "kaifuu.unsupported_variant.encrypted";
 pub const SEMANTIC_UNSUPPORTED_VARIANT_PACKED: &str = "kaifuu.unsupported_variant.packed";
 pub const SEMANTIC_UNKNOWN_ENGINE_VARIANT: &str = "kaifuu.unknown_engine_variant";
@@ -148,6 +153,10 @@ pub enum Capability {
     DeltaPatching,
     EncryptedInput,
     KeyProfile,
+    ContainerAccess,
+    CryptoAccess,
+    CodecAccess,
+    PatchBack,
     RuntimeVm,
 }
 
@@ -269,6 +278,17 @@ pub struct DetectionEvidence {
     pub detail: String,
 }
 
+impl DetectionEvidence {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            path: redact_asset_ref_for_report(&self.path),
+            kind: redact_for_log_or_report(&self.kind),
+            status: self.status.clone(),
+            detail: redact_for_log_or_report(&self.detail),
+        }
+    }
+}
+
 impl DetectionResult {
     pub fn normalize(&mut self) {
         self.evidence
@@ -281,6 +301,29 @@ impl DetectionResult {
                 report.limitation.clone(),
             )
         });
+    }
+
+    pub fn redacted_for_report(&self) -> Self {
+        let mut result = self.clone();
+        result.adapter_id = redact_for_log_or_report(&result.adapter_id);
+        result.engine_family = result
+            .engine_family
+            .as_deref()
+            .map(redact_for_log_or_report);
+        result.engine_version = result
+            .engine_version
+            .as_deref()
+            .map(redact_for_log_or_report);
+        result.detected_variant = result
+            .detected_variant
+            .as_deref()
+            .map(redact_for_log_or_report);
+        result.evidence = result
+            .evidence
+            .iter()
+            .map(DetectionEvidence::redacted_for_report)
+            .collect();
+        result
     }
 }
 
@@ -307,6 +350,10 @@ pub struct DetectionReport {
 
 impl DetectionReport {
     pub fn from_results(game_dir: &Path, detections: Vec<DetectionResult>) -> Self {
+        let detections = detections
+            .into_iter()
+            .map(|detection| detection.redacted_for_report())
+            .collect::<Vec<_>>();
         let archive_detection = ArchiveDetectionReport::scan(game_dir);
         let adapter_matched = detections.iter().any(|detection| detection.detected);
         let archive_matched = archive_detection.status == ArchiveDetectionStatus::Matched;
@@ -2700,6 +2747,16 @@ pub enum SemanticErrorCode {
     SecretRedacted,
     #[serde(rename = "kaifuu.protected_executable_unsupported")]
     ProtectedExecutableUnsupported,
+    #[serde(rename = "kaifuu.unsupported_layered_transform")]
+    UnsupportedLayeredTransform,
+    #[serde(rename = "kaifuu.missing_capability.container")]
+    MissingContainerCapability,
+    #[serde(rename = "kaifuu.missing_capability.crypto")]
+    MissingCryptoCapability,
+    #[serde(rename = "kaifuu.missing_capability.codec")]
+    MissingCodecCapability,
+    #[serde(rename = "kaifuu.missing_capability.patch_back")]
+    MissingPatchBackCapability,
     #[serde(rename = "kaifuu.unsupported_variant.encrypted")]
     UnsupportedVariantEncrypted,
     #[serde(rename = "kaifuu.unsupported_variant.packed")]
@@ -2717,6 +2774,11 @@ impl SemanticErrorCode {
             Self::KeyValidationFailed => SEMANTIC_KEY_VALIDATION_FAILED,
             Self::SecretRedacted => SEMANTIC_SECRET_REDACTED,
             Self::ProtectedExecutableUnsupported => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
+            Self::UnsupportedLayeredTransform => SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM,
+            Self::MissingContainerCapability => SEMANTIC_MISSING_CONTAINER_CAPABILITY,
+            Self::MissingCryptoCapability => SEMANTIC_MISSING_CRYPTO_CAPABILITY,
+            Self::MissingCodecCapability => SEMANTIC_MISSING_CODEC_CAPABILITY,
+            Self::MissingPatchBackCapability => SEMANTIC_MISSING_PATCH_BACK_CAPABILITY,
             Self::UnsupportedVariantEncrypted => SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED,
             Self::UnsupportedVariantPacked => SEMANTIC_UNSUPPORTED_VARIANT_PACKED,
             Self::UnknownEngineVariant => SEMANTIC_UNKNOWN_ENGINE_VARIANT,
@@ -3027,6 +3089,99 @@ fn is_sha256_ref(value: &str) -> bool {
         && hash
             .chars()
             .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
+}
+
+pub fn redact_for_log_or_report(text: &str) -> String {
+    if text_requires_redaction(text) {
+        format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)
+    } else {
+        text.to_string()
+    }
+}
+
+fn redact_asset_ref_for_report(asset_ref: &str) -> String {
+    if asset_ref_requires_redaction(asset_ref) {
+        format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)
+    } else {
+        asset_ref.to_string()
+    }
+}
+
+fn text_requires_redaction(text: &str) -> bool {
+    let text = text.trim();
+    text_contains_local_absolute_path(text)
+        || text_contains_raw_key_material(text)
+        || text_contains_forbidden_private_payload(text)
+        || text_contains_sensitive_filename(text)
+}
+
+fn asset_ref_requires_redaction(asset_ref: &str) -> bool {
+    if text_requires_redaction(asset_ref) {
+        return true;
+    }
+    let path_part = asset_ref.split('#').next().unwrap_or(asset_ref);
+    path_part.contains(['/', '\\']) && safe_relative_path_parts(path_part).is_err()
+}
+
+fn text_contains_local_absolute_path(text: &str) -> bool {
+    text.split_whitespace()
+        .map(trim_token_punctuation)
+        .any(|token| {
+            !token.is_empty()
+                && (is_local_absolute_path(token) || path_has_windows_drive_prefix_component(token))
+        })
+}
+
+fn text_contains_raw_key_material(text: &str) -> bool {
+    if looks_like_raw_key_material(text) {
+        return true;
+    }
+    text.split(|character: char| {
+        !(character.is_ascii_alphanumeric() || matches!(character, '+' | '/' | '=' | '-' | '_'))
+    })
+    .any(looks_like_raw_key_material)
+}
+
+fn text_contains_forbidden_private_payload(text: &str) -> bool {
+    let normalized = text.to_ascii_lowercase();
+    [
+        "helper dump",
+        "memory dump",
+        "register dump",
+        "raw helper log",
+        "decrypted script",
+        "decrypted text",
+        "private script",
+        "private translated",
+        "raw key",
+    ]
+    .iter()
+    .any(|needle| normalized.contains(needle))
+}
+
+fn text_contains_sensitive_filename(text: &str) -> bool {
+    text.split_whitespace()
+        .map(trim_token_punctuation)
+        .any(|token| {
+            let lower = token.to_ascii_lowercase();
+            let looks_like_file = lower.contains('.')
+                && lower
+                    .rsplit_once('.')
+                    .is_some_and(|(_, extension)| extension.len() <= 8);
+            looks_like_file
+                && ["private", "spoiler", "route", "ending", "true-end"]
+                    .iter()
+                    .any(|needle| lower.contains(needle))
+        })
+}
+
+fn trim_token_punctuation(token: &str) -> &str {
+    token.trim_matches(|character: char| {
+        matches!(
+            character,
+            '"' | '\'' | '`' | ',' | ';' | ':' | '(' | ')' | '[' | ']' | '{' | '}'
+        )
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -5019,7 +5174,7 @@ pub struct GoldenRoundTripReport {
 
 impl GoldenRoundTripReport {
     pub fn stable_json(&self) -> KaifuuResult<String> {
-        stable_json(self)
+        stable_json(&self.redacted_for_report())
     }
 }
 
@@ -5062,6 +5217,205 @@ pub struct AdapterFailure {
     pub required_capability: Option<Capability>,
     pub support_boundary: String,
     pub remediation: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LayeredAccessStage {
+    Container,
+    Crypto,
+    Codec,
+    PatchBack,
+}
+
+impl LayeredAccessStage {
+    pub fn required_capability(self) -> Capability {
+        match self {
+            Self::Container => Capability::ContainerAccess,
+            Self::Crypto => Capability::CryptoAccess,
+            Self::Codec => Capability::CodecAccess,
+            Self::PatchBack => Capability::PatchBack,
+        }
+    }
+
+    pub fn missing_capability_error(self) -> SemanticErrorCode {
+        match self {
+            Self::Container => SemanticErrorCode::MissingContainerCapability,
+            Self::Crypto => SemanticErrorCode::MissingCryptoCapability,
+            Self::Codec => SemanticErrorCode::MissingCodecCapability,
+            Self::PatchBack => SemanticErrorCode::MissingPatchBackCapability,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayeredAccessPreflightFailureKind {
+    MissingCapability,
+    UnsupportedTransform,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LayeredAccessPreflightRequirement {
+    pub stage: LayeredAccessStage,
+    pub failure_kind: LayeredAccessPreflightFailureKind,
+    pub asset_ref: Option<String>,
+    pub transform_id: Option<String>,
+    pub support_boundary: String,
+    pub remediation: Option<String>,
+}
+
+impl LayeredAccessPreflightRequirement {
+    pub fn missing_capability(
+        stage: LayeredAccessStage,
+        asset_ref: impl Into<String>,
+        support_boundary: impl Into<String>,
+    ) -> Self {
+        Self {
+            stage,
+            failure_kind: LayeredAccessPreflightFailureKind::MissingCapability,
+            asset_ref: Some(asset_ref.into()),
+            transform_id: None,
+            support_boundary: support_boundary.into(),
+            remediation: Some(remediation_for_layered_stage(stage).to_string()),
+        }
+    }
+
+    pub fn unsupported_transform(
+        stage: LayeredAccessStage,
+        transform_id: impl Into<String>,
+        asset_ref: impl Into<String>,
+        support_boundary: impl Into<String>,
+    ) -> Self {
+        Self {
+            stage,
+            failure_kind: LayeredAccessPreflightFailureKind::UnsupportedTransform,
+            asset_ref: Some(asset_ref.into()),
+            transform_id: Some(transform_id.into()),
+            support_boundary: support_boundary.into(),
+            remediation: Some(
+                "choose a supported layered transform or add a readiness profile before patching"
+                    .to_string(),
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayeredAccessPreflightReport {
+    pub schema_version: String,
+    pub adapter_id: String,
+    pub engine: String,
+    pub detected_variant: String,
+    pub status: OperationStatus,
+    pub failures: Vec<AdapterFailure>,
+}
+
+impl LayeredAccessPreflightReport {
+    pub fn from_requirements(
+        adapter_id: impl Into<String>,
+        engine: impl Into<String>,
+        detected_variant: impl Into<String>,
+        requirements: Vec<LayeredAccessPreflightRequirement>,
+    ) -> Self {
+        let adapter_id = adapter_id.into();
+        let engine = engine.into();
+        let detected_variant = detected_variant.into();
+        let failures = requirements
+            .into_iter()
+            .map(|requirement| {
+                requirement.to_adapter_failure(&adapter_id, &engine, &detected_variant)
+            })
+            .collect::<Vec<_>>();
+        Self {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            adapter_id,
+            engine,
+            detected_variant,
+            status: if failures.is_empty() {
+                OperationStatus::Passed
+            } else {
+                OperationStatus::Failed
+            },
+            failures,
+        }
+        .redacted_for_report()
+    }
+
+    pub fn redacted_for_report(&self) -> Self {
+        let mut report = self.clone();
+        report.adapter_id = redact_for_log_or_report(&report.adapter_id);
+        report.engine = redact_for_log_or_report(&report.engine);
+        report.detected_variant = redact_for_log_or_report(&report.detected_variant);
+        report.failures = report
+            .failures
+            .iter()
+            .map(AdapterFailure::redacted_for_report)
+            .collect();
+        report
+    }
+
+    pub fn stable_json(&self) -> KaifuuResult<String> {
+        stable_json(&self.redacted_for_report())
+    }
+}
+
+impl LayeredAccessPreflightRequirement {
+    fn to_adapter_failure(
+        &self,
+        adapter: &str,
+        engine: &str,
+        detected_variant: &str,
+    ) -> AdapterFailure {
+        let mut params = AdapterFailureSemanticParams::new(
+            match self.failure_kind {
+                LayeredAccessPreflightFailureKind::MissingCapability => {
+                    self.stage.missing_capability_error()
+                }
+                LayeredAccessPreflightFailureKind::UnsupportedTransform => {
+                    SemanticErrorCode::UnsupportedLayeredTransform
+                }
+            },
+            adapter,
+            &self.support_boundary,
+        )
+        .engine(engine)
+        .detected_variant(detected_variant)
+        .required_capability(self.stage.required_capability());
+        if let Some(asset_ref) = &self.asset_ref {
+            params = params.asset_ref(asset_ref);
+        }
+        if let Some(remediation) = &self.remediation {
+            params = params.remediation(remediation);
+        }
+        if let Some(transform_id) = &self.transform_id {
+            params = params.remediation(format!(
+                "{}; unsupported transform: {}",
+                self.remediation
+                    .as_deref()
+                    .unwrap_or("add layered access support"),
+                redact_for_log_or_report(transform_id)
+            ));
+        }
+        AdapterFailure::semantic(params)
+    }
+}
+
+fn remediation_for_layered_stage(stage: LayeredAccessStage) -> &'static str {
+    match stage {
+        LayeredAccessStage::Container => {
+            "provide a supported container/archive transform before extraction or patching"
+        }
+        LayeredAccessStage::Crypto => {
+            "provide supported crypto parameters and resolved key material before extraction or patching"
+        }
+        LayeredAccessStage::Codec => {
+            "provide a supported codec/decompile transform before normalizing text"
+        }
+        LayeredAccessStage::PatchBack => {
+            "provide a supported patch-back transform before writing patched output"
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -5132,6 +5486,39 @@ impl AdapterFailure {
             support_boundary: params.support_boundary,
             remediation: params.remediation,
         }
+        .redacted_for_report()
+    }
+
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            error_code: redact_for_log_or_report(&self.error_code),
+            adapter: redact_for_log_or_report(&self.adapter),
+            engine: self.engine.as_deref().map(redact_for_log_or_report),
+            detected_variant: self
+                .detected_variant
+                .as_deref()
+                .map(redact_for_log_or_report),
+            asset_ref: self.asset_ref.as_deref().map(redact_asset_ref_for_report),
+            required_capability: self.required_capability.clone(),
+            support_boundary: redact_for_log_or_report(&self.support_boundary),
+            remediation: self.remediation.as_deref().map(redact_for_log_or_report),
+        }
+    }
+
+    pub fn is_preflight_blocking(&self) -> bool {
+        matches!(
+            self.error_code.as_str(),
+            SEMANTIC_MISSING_KEY_PROFILE
+                | SEMANTIC_MISSING_KEY_MATERIAL
+                | SEMANTIC_HELPER_UNAVAILABLE
+                | SEMANTIC_KEY_VALIDATION_FAILED
+                | SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED
+                | SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM
+                | SEMANTIC_MISSING_CONTAINER_CAPABILITY
+                | SEMANTIC_MISSING_CRYPTO_CAPABILITY
+                | SEMANTIC_MISSING_CODEC_CAPABILITY
+                | SEMANTIC_MISSING_PATCH_BACK_CAPABILITY
+        )
     }
 
     pub fn missing_key_profile(
@@ -5216,6 +5603,142 @@ impl AdapterFailure {
             .required_capability(Capability::KeyProfile)
             .remediation("replace or revalidate the local key material"),
         )
+    }
+
+    pub fn protected_executable_unsupported(
+        adapter: impl Into<String>,
+        engine: impl Into<String>,
+        detected_variant: impl Into<String>,
+        support_boundary: impl Into<String>,
+    ) -> Self {
+        Self::semantic(
+            AdapterFailureSemanticParams::new(
+                SemanticErrorCode::ProtectedExecutableUnsupported,
+                adapter,
+                support_boundary,
+            )
+            .engine(engine)
+            .detected_variant(detected_variant)
+            .required_capability(Capability::KeyProfile)
+            .remediation("use a helper that supports this protected executable boundary"),
+        )
+    }
+
+    pub fn secret_redacted(
+        adapter: impl Into<String>,
+        engine: impl Into<String>,
+        detected_variant: impl Into<String>,
+        asset_ref: impl Into<String>,
+        support_boundary: impl Into<String>,
+    ) -> Self {
+        Self::semantic(
+            AdapterFailureSemanticParams::new(
+                SemanticErrorCode::SecretRedacted,
+                adapter,
+                support_boundary,
+            )
+            .engine(engine)
+            .detected_variant(detected_variant)
+            .asset_ref(asset_ref)
+            .remediation("inspect the redacted local-only evidence on the runner"),
+        )
+    }
+}
+
+impl PatchResult {
+    pub fn redacted_for_report(&self) -> Self {
+        let mut result = self.clone();
+        result.failures = result
+            .failures
+            .iter()
+            .map(AdapterFailure::redacted_for_report)
+            .collect();
+        result
+    }
+
+    pub fn has_preflight_blocking_failure(&self) -> bool {
+        self.failures
+            .iter()
+            .any(AdapterFailure::is_preflight_blocking)
+    }
+
+    pub fn failure_codes(&self) -> Vec<String> {
+        self.failures
+            .iter()
+            .map(|failure| failure.error_code.clone())
+            .collect()
+    }
+}
+
+impl VerificationResult {
+    pub fn redacted_for_report(&self) -> Self {
+        let mut result = self.clone();
+        result.failures = result
+            .failures
+            .iter()
+            .map(AdapterFailure::redacted_for_report)
+            .collect();
+        result
+    }
+}
+
+impl GoldenRoundTripReport {
+    pub fn redacted_for_report(&self) -> Self {
+        let mut report = self.clone();
+        report.phases = report
+            .phases
+            .iter()
+            .map(GoldenPhaseReport::redacted_for_report)
+            .collect();
+        report.failures = report
+            .failures
+            .iter()
+            .map(GoldenFailure::redacted_for_report)
+            .collect();
+        report
+    }
+}
+
+impl GoldenPhaseReport {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            phase: redact_for_log_or_report(&self.phase),
+            status: self.status.clone(),
+            details: redact_for_log_or_report(&self.details),
+            asset_ref: self.asset_ref.as_deref().map(redact_asset_ref_for_report),
+            source_unit_key: self
+                .source_unit_key
+                .as_deref()
+                .map(redact_for_log_or_report),
+            support_boundary: self
+                .support_boundary
+                .as_deref()
+                .map(redact_for_log_or_report),
+            expected: self.expected.as_deref().map(redact_for_log_or_report),
+            actual: self.actual.as_deref().map(redact_for_log_or_report),
+        }
+    }
+}
+
+impl GoldenFailure {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            code: redact_for_log_or_report(&self.code),
+            phase: redact_for_log_or_report(&self.phase),
+            adapter_id: redact_for_log_or_report(&self.adapter_id),
+            message: redact_for_log_or_report(&self.message),
+            asset_ref: self.asset_ref.as_deref().map(redact_asset_ref_for_report),
+            source_unit_key: self
+                .source_unit_key
+                .as_deref()
+                .map(redact_for_log_or_report),
+            support_boundary: self
+                .support_boundary
+                .as_deref()
+                .map(redact_for_log_or_report),
+            expected: self.expected.as_deref().map(redact_for_log_or_report),
+            actual: self.actual.as_deref().map(redact_for_log_or_report),
+        }
     }
 }
 
@@ -6068,7 +6591,11 @@ fn record_adapter_failures(
         return;
     }
 
-    for failure in &patch_result.failures {
+    for failure in patch_result
+        .failures
+        .iter()
+        .map(AdapterFailure::redacted_for_report)
+    {
         let asset_ref = failure.asset_ref.clone();
         record_golden_failure(
             report,
@@ -6202,7 +6729,11 @@ fn report_verify_phase(
                     },
                 );
             } else {
-                for failure in verify.failures {
+                for failure in verify
+                    .failures
+                    .iter()
+                    .map(AdapterFailure::redacted_for_report)
+                {
                     let asset_ref = failure.asset_ref.clone();
                     record_golden_failure(
                         report,
@@ -7613,6 +8144,11 @@ mod tests {
                 SemanticErrorCode::KeyValidationFailed,
                 SemanticErrorCode::SecretRedacted,
                 SemanticErrorCode::ProtectedExecutableUnsupported,
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                SemanticErrorCode::MissingContainerCapability,
+                SemanticErrorCode::MissingCryptoCapability,
+                SemanticErrorCode::MissingCodecCapability,
+                SemanticErrorCode::MissingPatchBackCapability,
                 SemanticErrorCode::UnsupportedVariantEncrypted,
             ],
         }]);
@@ -7628,6 +8164,11 @@ mod tests {
                 "kaifuu.key_validation_failed",
                 "kaifuu.secret_redacted",
                 "kaifuu.protected_executable_unsupported",
+                "kaifuu.unsupported_layered_transform",
+                "kaifuu.missing_capability.container",
+                "kaifuu.missing_capability.crypto",
+                "kaifuu.missing_capability.codec",
+                "kaifuu.missing_capability.patch_back",
                 "kaifuu.unsupported_variant.encrypted"
             ])
         );
@@ -7677,6 +8218,108 @@ mod tests {
             .error_code,
             SEMANTIC_KEY_VALIDATION_FAILED
         );
+        assert_eq!(
+            AdapterFailure::protected_executable_unsupported(
+                "kaifuu.kirikiri",
+                "kirikiri",
+                "xp3-protected-executable",
+                "protected executable helper cannot analyze this fixture"
+            )
+            .error_code,
+            SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED
+        );
+        assert_eq!(
+            AdapterFailure::secret_redacted(
+                "kaifuu.siglus",
+                "siglus",
+                "scene-pck-secondary-key",
+                "helper-evidence",
+                "helper output included secret-bearing fields"
+            )
+            .error_code,
+            SEMANTIC_SECRET_REDACTED
+        );
+    }
+
+    #[test]
+    fn layered_access_preflight_reports_stable_redacted_failures() {
+        let raw_key = "00112233445566778899aabbccddeeff";
+        let report = LayeredAccessPreflightReport::from_requirements(
+            "kaifuu.private-adapter",
+            "kirikiri",
+            "xp3-encrypted-protected",
+            vec![
+                LayeredAccessPreflightRequirement::missing_capability(
+                    LayeredAccessStage::Container,
+                    "private-route-name/ending.ks",
+                    "missing XP3 container transform for /home/dev/Private Route Spoiler Game/data.xp3",
+                ),
+                LayeredAccessPreflightRequirement::missing_capability(
+                    LayeredAccessStage::Crypto,
+                    "Scene.pck",
+                    format!("raw key {raw_key} was not resolved"),
+                ),
+                LayeredAccessPreflightRequirement::missing_capability(
+                    LayeredAccessStage::Codec,
+                    "script.bin",
+                    "codec support has no helper dump or decrypted text evidence",
+                ),
+                LayeredAccessPreflightRequirement::missing_capability(
+                    LayeredAccessStage::PatchBack,
+                    "patch-back-target",
+                    "patch-back writer is absent for this container",
+                ),
+                LayeredAccessPreflightRequirement::unsupported_transform(
+                    LayeredAccessStage::Crypto,
+                    "helper dump from private executable",
+                    "Gameexe.dat",
+                    "requested transform is not in the alpha readiness profile",
+                ),
+            ],
+        );
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        let codes = report
+            .failures
+            .iter()
+            .map(|failure| failure.error_code.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            codes,
+            vec![
+                SEMANTIC_MISSING_CONTAINER_CAPABILITY,
+                SEMANTIC_MISSING_CRYPTO_CAPABILITY,
+                SEMANTIC_MISSING_CODEC_CAPABILITY,
+                SEMANTIC_MISSING_PATCH_BACK_CAPABILITY,
+                SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM,
+            ]
+        );
+        assert!(
+            report
+                .failures
+                .iter()
+                .all(AdapterFailure::is_preflight_blocking)
+        );
+        assert!(
+            report.failures.iter().any(|failure| {
+                failure.required_capability == Some(Capability::ContainerAccess)
+            })
+        );
+        assert!(
+            report
+                .failures
+                .iter()
+                .any(|failure| { failure.required_capability == Some(Capability::PatchBack) })
+        );
+
+        let serialized = report.stable_json().unwrap();
+        assert!(!serialized.contains(raw_key));
+        assert!(!serialized.contains("/home/dev"));
+        assert!(!serialized.contains("Private Route Spoiler Game"));
+        assert!(!serialized.contains("private-route-name"));
+        assert!(!serialized.contains("helper dump"));
+        assert!(!serialized.contains("decrypted text"));
+        assert!(serialized.contains(SEMANTIC_SECRET_REDACTED));
     }
 
     #[test]

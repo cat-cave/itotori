@@ -4,13 +4,14 @@ use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
     DetectionResult, EngineAdapter, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
     GoldenHarnessRequest, KaifuuResult, PatchExport, PatchRequest, ProfileRequest, VerifyRequest,
-    atomic_write_text, read_json, run_round_trip_golden, validate_profile_value, write_json,
+    atomic_write_text, read_json, redact_for_log_or_report, run_round_trip_golden,
+    validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
 fn main() {
     if let Err(error) = run() {
-        eprintln!("{error}");
+        eprintln!("{}", redact_for_log_or_report(&error.to_string()));
         std::process::exit(1);
     }
 }
@@ -75,17 +76,28 @@ fn run_with_args_and_registry(
             let output = PathBuf::from(flag(&args, "--output")?);
             let patch_export: PatchExport = read_json(&patch)?;
             let adapter = registered_adapter_for_game(registry, &game_dir)?;
-            let result = adapter.patch(PatchRequest {
-                game_dir: &game_dir,
-                patch_export: &patch_export,
-                output_dir: &output,
-            })?;
+            let result = adapter
+                .patch(PatchRequest {
+                    game_dir: &game_dir,
+                    patch_export: &patch_export,
+                    output_dir: &output,
+                })?
+                .redacted_for_report();
             let failed = result.status == kaifuu_core::OperationStatus::Failed;
+            if failed && result.has_preflight_blocking_failure() {
+                return Err(format!(
+                    "patch preflight failed: {}",
+                    result.failure_codes().join(", ")
+                )
+                .into());
+            }
             write_json(&output.join("patch-result.json"), &result)?;
             if failed {
                 return Err(format!(
                     "patch failed; see {}",
-                    output.join("patch-result.json").display()
+                    redact_for_log_or_report(
+                        &output.join("patch-result.json").display().to_string()
+                    )
                 )
                 .into());
             }
@@ -114,12 +126,12 @@ fn run_with_args_and_registry(
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let output = flag_optional(&args, "--output").unwrap_or("verify-result.json");
             let adapter = registered_adapter_for_game(registry, &game_dir)?;
-            write_json(
-                &PathBuf::from(output),
-                &adapter.verify(VerifyRequest {
+            let result = adapter
+                .verify(VerifyRequest {
                     game_dir: &game_dir,
-                })?,
-            )?;
+                })?
+                .redacted_for_report();
+            write_json(&PathBuf::from(output), &result)?;
         }
         Some("golden") => {
             run_golden_command(&args, registry)?;
@@ -183,12 +195,13 @@ fn run_golden_command(
             translated_source_bridge: translated_source_bridge.as_ref(),
         },
     )?;
+    let report = report.redacted_for_report();
     let failed = report.status == kaifuu_core::OperationStatus::Failed;
     write_json(&output, &report)?;
     if failed {
         return Err(format!(
             "golden round-trip failed; report written to {}",
-            output.display()
+            redact_for_log_or_report(&output.display().to_string())
         )
         .into());
     }
@@ -249,9 +262,13 @@ fn detect_registered_adapter(
     registry: &AdapterRegistry,
     game_dir: &Path,
 ) -> KaifuuResult<DetectionResult> {
-    registry
-        .detect(game_dir)?
-        .ok_or_else(|| format!("no registered adapter detected {}", game_dir.display()).into())
+    registry.detect(game_dir)?.ok_or_else(|| {
+        format!(
+            "no registered adapter detected {}",
+            redact_for_log_or_report(&game_dir.display().to_string())
+        )
+        .into()
+    })
 }
 
 fn registered_adapter_for_game<'a>(
@@ -311,10 +328,11 @@ mod tests {
         AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
         CapabilityReport, CapabilityStatus, DetectRequest, DetectionEvidence,
         DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult,
-        GoldenAssertionStatus, GoldenRoundTripReport, OperationStatus, PatchExportEntry, PatchRef,
-        PatchResult, ProfileRequirement, ProtectedSpanMapping, REDACTED_DETECTION_GAME_DIR,
-        RequirementCategory, RequirementStatus, SemanticErrorCode, TextSurface, VerificationResult,
-        content_hash, deterministic_id, read_json,
+        GoldenAssertionStatus, GoldenRoundTripReport, LayeredAccessPreflightReport,
+        LayeredAccessPreflightRequirement, LayeredAccessStage, OperationStatus, PatchExportEntry,
+        PatchRef, PatchResult, ProfileRequirement, ProtectedSpanMapping,
+        REDACTED_DETECTION_GAME_DIR, RequirementCategory, RequirementStatus, SemanticErrorCode,
+        TextSurface, VerificationResult, content_hash, deterministic_id, read_json,
     };
     use std::cell::RefCell;
     use std::collections::BTreeMap;
@@ -617,6 +635,107 @@ mod tests {
         registry
     }
 
+    struct PreflightBlockingAdapter;
+
+    impl EngineAdapter for PreflightBlockingAdapter {
+        fn id(&self) -> &'static str {
+            "kaifuu.test.preflight"
+        }
+
+        fn name(&self) -> &'static str {
+            "Kaifuu preflight failure test adapter"
+        }
+
+        fn capabilities(&self) -> AdapterCapabilities {
+            AdapterCapabilities::new(
+                self.id(),
+                vec![
+                    CapabilityReport::supported(Capability::Detection),
+                    CapabilityReport::supported(Capability::Patching),
+                    CapabilityReport::requires_user_input(
+                        Capability::ContainerAccess,
+                        "synthetic preflight requires container support",
+                    ),
+                    CapabilityReport::requires_user_input(
+                        Capability::CryptoAccess,
+                        "synthetic preflight requires crypto support",
+                    ),
+                ],
+            )
+        }
+
+        fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+            Ok(DetectionResult {
+                adapter_id: self.id().to_string(),
+                detected: true,
+                engine_family: Some("preflight-test".to_string()),
+                engine_version: None,
+                detected_variant: Some("layered-access-test".to_string()),
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: self.capabilities().reports,
+            })
+        }
+
+        fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+            Err("profile is not used by the preflight test".into())
+        }
+
+        fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+            Err("list_assets is not used by the preflight test".into())
+        }
+
+        fn asset_inventory(
+            &self,
+            _request: AssetInventoryRequest<'_>,
+        ) -> KaifuuResult<AssetInventoryManifest> {
+            Err("asset_inventory is not used by the preflight test".into())
+        }
+
+        fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+            Err("extract is not used by the preflight test".into())
+        }
+
+        fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+            let raw_key = "00112233445566778899aabbccddeeff";
+            let preflight = LayeredAccessPreflightReport::from_requirements(
+                self.id(),
+                "preflight-test",
+                "layered-access-test",
+                vec![
+                    LayeredAccessPreflightRequirement::missing_capability(
+                        LayeredAccessStage::Container,
+                        "private-route-name/ending.ks",
+                        "container helper unavailable for /home/dev/Private Route Spoiler Game/data.xp3",
+                    ),
+                    LayeredAccessPreflightRequirement::missing_capability(
+                        LayeredAccessStage::Crypto,
+                        "Scene.pck",
+                        format!("helper dump included unresolved raw key {raw_key}"),
+                    ),
+                ],
+            );
+            Ok(PatchResult {
+                schema_version: "0.1.0".to_string(),
+                patch_result_id: deterministic_id("patch-result", 77),
+                patch_export_id: request.patch_export.patch_export_id.clone(),
+                status: OperationStatus::Failed,
+                output_hash: content_hash("preflight failed without output"),
+                failures: preflight.failures,
+            })
+        }
+
+        fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+            Err("verify is not used by the preflight test".into())
+        }
+    }
+
+    fn preflight_registry() -> AdapterRegistry {
+        let mut registry = AdapterRegistry::new();
+        registry.register(PreflightBlockingAdapter);
+        registry
+    }
+
     fn assert_calls(calls: &Rc<RefCell<Vec<&'static str>>>, expected: &[&'static str]) {
         assert_eq!(calls.borrow().as_slice(), expected);
         calls.borrow_mut().clear();
@@ -668,6 +787,8 @@ mod tests {
         assert_eq!(detection_json["engineFamily"], "registry-test");
         assert_eq!(detection_json["engineVersion"], "9.9.9");
         assert_eq!(detection_json["detectedVariant"], "injected-adapter");
+        let serialized_detection_text = fs::read_to_string(&detect_path).unwrap();
+        assert!(!serialized_detection_text.contains(&game_dir.display().to_string()));
         assert_calls(&calls, &["detect"]);
 
         let profile_path = root.join("profile.json");
@@ -1017,6 +1138,57 @@ mod tests {
         let patch_result: PatchResult = read_json(&patched_dir.join("patch-result.json")).unwrap();
         assert_eq!(patch_result.status, OperationStatus::Failed);
         assert!(!patched_dir.join("source.json").exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_command_preflight_failure_is_redacted_and_writes_no_output() {
+        let root = temp_dir("patch-preflight-redaction");
+        let game_dir = root.join("Private Route Spoiler Game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let patch_export = PatchExport {
+            patch_export_id: deterministic_id("patch", 77),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![],
+        };
+        let patch_export_path = root.join("patch-export.json");
+        write_json(&patch_export_path, &patch_export).unwrap();
+        let output_dir = root.join("patched-output");
+        let registry = preflight_registry();
+
+        let result = run_with_args_and_registry(
+            [
+                "patch",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+            &registry,
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("patch preflight failed"), "{error}");
+        assert!(
+            error.contains(kaifuu_core::SEMANTIC_MISSING_CONTAINER_CAPABILITY),
+            "{error}"
+        );
+        assert!(
+            error.contains(kaifuu_core::SEMANTIC_MISSING_CRYPTO_CAPABILITY),
+            "{error}"
+        );
+        assert!(!error.contains("00112233445566778899aabbccddeeff"));
+        assert!(!error.contains("/home/dev"));
+        assert!(!error.contains("Private Route Spoiler Game"));
+        assert!(!error.contains("private-route-name"));
+        assert!(!error.contains("helper dump"));
+        assert!(!output_dir.exists());
 
         let _ = fs::remove_dir_all(root);
     }

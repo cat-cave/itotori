@@ -218,23 +218,30 @@ detect them:
 - `remediation`: user action, such as "extract archive first", "provide a key
   profile", or "use plaintext .rpy sources".
 
-| Error code                                | Use when                                                                   |
-| ----------------------------------------- | -------------------------------------------------------------------------- |
-| `kaifuu.unsupported_variant.encrypted`    | Input is encrypted, protected, or requires unsupported key discovery.      |
-| `kaifuu.unsupported_variant.compiled`     | Input is compiled bytecode or binary script the adapter cannot rebuild.    |
-| `kaifuu.unsupported_variant.packed`       | Input is inside an archive or bundle that this adapter does not unpack.    |
-| `kaifuu.missing_capability.key_profile`   | The adapter can parse with user-provided keys, but no key profile exists.  |
-| `kaifuu.missing_key_material`             | A key profile exists, but required local key material cannot be resolved.  |
-| `kaifuu.helper_unavailable`               | The requested local, Wine, Windows, or remote helper is not available.     |
-| `kaifuu.key_validation_failed`            | Supplied or discovered key material fails deterministic local validation.  |
-| `kaifuu.protected_executable_unsupported` | Helper analysis detected protection that the current helper cannot handle. |
-| `kaifuu.secret_redacted`                  | A result intentionally omitted secret-bearing fields from logs or reports. |
-| `kaifuu.unsupported_variant.obfuscated`   | Input is intentionally obfuscated or generated beyond the support scope.   |
-| `kaifuu.unsupported_surface.asset_text`   | A visible text surface is detected but patching that asset type is absent. |
-| `kaifuu.unknown_engine_variant`           | The fingerprint is close to an engine family but not a profiled variant.   |
+| Error code                                | Use when                                                                     |
+| ----------------------------------------- | ---------------------------------------------------------------------------- |
+| `kaifuu.unsupported_variant.encrypted`    | Input is encrypted, protected, or requires unsupported key discovery.        |
+| `kaifuu.unsupported_variant.compiled`     | Input is compiled bytecode or binary script the adapter cannot rebuild.      |
+| `kaifuu.unsupported_variant.packed`       | Input is inside an archive or bundle that this adapter does not unpack.      |
+| `kaifuu.missing_capability.key_profile`   | The adapter can parse with user-provided keys, but no key profile exists.    |
+| `kaifuu.missing_key_material`             | A key profile exists, but required local key material cannot be resolved.    |
+| `kaifuu.helper_unavailable`               | The requested local, Wine, Windows, or remote helper is not available.       |
+| `kaifuu.key_validation_failed`            | Supplied or discovered key material fails deterministic local validation.    |
+| `kaifuu.protected_executable_unsupported` | Helper analysis detected protection that the current helper cannot handle.   |
+| `kaifuu.secret_redacted`                  | A result intentionally omitted secret-bearing fields from logs or reports.   |
+| `kaifuu.unsupported_layered_transform`    | A required container, crypto, codec, or patch-back transform is unsupported. |
+| `kaifuu.missing_capability.container`     | The surface requires archive/container support that is not available.        |
+| `kaifuu.missing_capability.crypto`        | The surface requires encryption/obfuscation support that is not available.   |
+| `kaifuu.missing_capability.codec`         | The surface requires decode/decompile support that is not available.         |
+| `kaifuu.missing_capability.patch_back`    | The surface can be read, but no safe patch-back writer is available.         |
+| `kaifuu.unsupported_variant.obfuscated`   | Input is intentionally obfuscated or generated beyond the support scope.     |
+| `kaifuu.unsupported_surface.asset_text`   | A visible text surface is detected but patching that asset type is absent.   |
+| `kaifuu.unknown_engine_variant`           | The fingerprint is close to an engine family but not a profiled variant.     |
 
 Extraction may still emit partial capability reports if no files are modified.
-Patching must fail before writing output when a required source asset is an
+Patching must fail before writing output when layered access preflight reports
+missing key material, helper capability, container support, crypto support,
+codec support, patch-back capability, or a required source asset that is an
 unsupported encrypted, compiled, or packed variant. Unsupported means outside
 the declared adapter profile. Once Kaifuu claims a specific engine family,
 variant, container, crypto, codec, and patch-back capability, a failure inside
