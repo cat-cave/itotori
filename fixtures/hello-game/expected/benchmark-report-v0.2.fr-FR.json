@@ -1,0 +1,208 @@
+{
+  "benchmarkName": "hello-game public fixture protected span seed",
+  "benchmarkRunId": "019ed012-0000-7000-8000-000000000906",
+  "bridgeSchemaVersion": "0.2.0",
+  "commandLines": [
+    {
+      "argv": ["pnpm", "--filter", "@itotori/localization-bridge-schema", "test"],
+      "commandId": "validate-public-golden-artifacts"
+    }
+  ],
+  "costLedger": {
+    "currency": "USD",
+    "includesUnknownCost": false,
+    "reportTotalMicrosUsd": 0,
+    "totalsBySystem": []
+  },
+  "countsByAdjudicationState": [
+    {
+      "bucket": "confirmed",
+      "count": 1
+    }
+  ],
+  "countsByCategory": [
+    {
+      "bucket": "protected_content",
+      "count": 1
+    }
+  ],
+  "countsByDetectorKind": [
+    {
+      "bucket": "deterministic_qa",
+      "count": 1
+    }
+  ],
+  "countsByQualitySeverity": [
+    {
+      "bucket": "minor",
+      "count": 1
+    }
+  ],
+  "countsByRootCause": [
+    {
+      "bucket": "benchmark_seed",
+      "count": 1
+    }
+  ],
+  "createdAt": "2026-06-17T15:00:00.000Z",
+  "deterministicQaResults": [
+    {
+      "artifactRefs": [
+        {
+          "artifactId": "019ed012-0000-7000-8000-000000001602",
+          "artifactKind": "finding",
+          "mediaType": "application/json",
+          "uri": "fixtures/hello-game/expected/finding-v0.2.fr-FR.json"
+        }
+      ],
+      "checkName": "protected-span-preservation",
+      "checkVersion": "0.2.0",
+      "completedAt": "2026-06-17T15:00:15.050Z",
+      "deterministicQaRunId": "019ed012-0000-7000-8000-000000001601",
+      "evaluatedSystemId": "raw-mtl-baseline",
+      "failedRuleCount": 1,
+      "findingIds": ["019ed012-0000-7000-8000-000000001401"],
+      "passedRuleCount": 0,
+      "ruleCount": 1,
+      "startedAt": "2026-06-17T15:00:15.000Z"
+    }
+  ],
+  "deterministicSeed": "hello-game-public-shared-012",
+  "engineProfile": "kaifuu-fixture-public-golden",
+  "findingRecords": [
+    {
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "label": "hello.scene.001.line.002",
+          "subjectId": "019ed012-0000-7000-8000-000000000402",
+          "subjectKind": "bridge_unit"
+        }
+      ],
+      "category": "protected_content",
+      "detectorKind": "deterministic_qa",
+      "evidence": [
+        {
+          "evidenceId": "019ed012-0000-7000-8000-000000001402",
+          "evidenceKind": "text_excerpt",
+          "expectedValue": "On voit la lumiere du Yorishiro<wait=30>.",
+          "observedValue": "On voit la lumiere du Yorishiro.",
+          "provenanceIds": ["019ed012-0000-7000-8000-000000001403"],
+          "summary": "Seeded raw-baseline text omits the control markup that appears in the source unit."
+        }
+      ],
+      "findingId": "019ed012-0000-7000-8000-000000001401",
+      "provenance": [
+        {
+          "artifactRef": {
+            "artifactId": "019ed012-0000-7000-8000-000000001305",
+            "artifactKind": "benchmark-seed",
+            "uri": "fixtures/hello-game/expected/benchmark-report-v0.2.fr-FR.json"
+          },
+          "checkId": "019ed012-0000-7000-8000-000000001304",
+          "checkName": "protected-span-preservation",
+          "checkVersion": "0.2.0",
+          "provenanceId": "019ed012-0000-7000-8000-000000001403",
+          "provenanceKind": "deterministic_check"
+        }
+      ],
+      "qualitySeverity": "minor",
+      "qualitySubcategory": "protected_span_preservation",
+      "reviewerRationale": "Public seeded defect intentionally removes <wait=30> to verify deterministic QA accounting.",
+      "rootCause": "benchmark_seed",
+      "seededDefectId": "hello-game-control-markup-loss",
+      "systemId": "raw-mtl-baseline",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0"
+    }
+  ],
+  "fixtureOrCorpusRefs": [
+    {
+      "benchmarkSplit": "public-smoke",
+      "corpusKind": "public_fixture",
+      "corpusRefId": "hello-game-public",
+      "engineProfile": "kaifuu-fixture-public-golden",
+      "label": "Hello Game public fixture",
+      "manifestUri": "fixtures/public/hello-game.manifest.json",
+      "publicContent": true,
+      "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+      "sourceCharacterCount": 84,
+      "sourceLocale": "ja-JP",
+      "sourceUnitCount": 11,
+      "targetLocale": "fr-FR"
+    }
+  ],
+  "gitCommit": "0000000000000000000000000000000000000000",
+  "humanEvaluationResults": [],
+  "knownBlindSpots": [
+    "Public smoke benchmark covers one seeded protected-span defect and does not claim broad translation quality coverage."
+  ],
+  "penaltySummary": {
+    "penaltyPerHundredSourceUnits": 9.090909090909092,
+    "penaltyPerThousandSourceChars": 11.904761904761905,
+    "penaltyTotal": 1
+  },
+  "providerModelCostRecords": [],
+  "qaAgentEvaluations": [],
+  "schemaVersion": "0.2.0",
+  "seededDefectOracle": [
+    {
+      "affectedRefs": [
+        {
+          "label": "hello.scene.001.line.002",
+          "subjectId": "019ed012-0000-7000-8000-000000000402",
+          "subjectKind": "bridge_unit"
+        }
+      ],
+      "category": "protected_content",
+      "expectedDetectorKinds": ["deterministic_qa"],
+      "expectedRootCause": "benchmark_seed",
+      "fixtureOrCorpusRefId": "hello-game-public",
+      "matchedFindingIds": ["019ed012-0000-7000-8000-000000001401"],
+      "publicContent": true,
+      "qualitySeverity": "minor",
+      "qualitySubcategory": "protected_span_preservation",
+      "seedKind": "protected-span-removal",
+      "seededDefectId": "hello-game-control-markup-loss",
+      "targetLocale": "fr-FR"
+    }
+  ],
+  "sourceLocale": "ja-JP",
+  "status": "passed",
+  "systemsCompared": [
+    {
+      "displayName": "Raw seeded baseline",
+      "generatedAt": "2026-06-17T15:00:05.000Z",
+      "providerRunIds": [],
+      "systemId": "raw-mtl-baseline",
+      "systemKind": "raw_mtl_baseline"
+    },
+    {
+      "displayName": "Public golden fr-FR patch",
+      "generatedAt": "2026-06-17T15:00:10.000Z",
+      "outputArtifactRef": {
+        "artifactId": "019ed012-0000-7000-8000-000000001501",
+        "artifactKind": "patch-export",
+        "hash": "sha256:9e83ab1404ebc6255776949d71a768a68f2d7ca0ef522817550aba9824c92359",
+        "mediaType": "application/json",
+        "uri": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json"
+      },
+      "providerRunIds": [],
+      "systemId": "public-golden-fr-fr",
+      "systemKind": "deterministic_fixture"
+    }
+  ],
+  "targetLocale": "fr-FR",
+  "taxonomyId": "itotori-lqa-1",
+  "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+  "toolVersions": [
+    {
+      "name": "@itotori/localization-bridge-schema",
+      "version": "0.0.0"
+    },
+    {
+      "name": "kaifuu-fixture-public-golden",
+      "version": "0.2.0"
+    }
+  ]
+}

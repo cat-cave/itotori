@@ -1,0 +1,51 @@
+{
+  "compatibilityNotes": [
+    "Standalone public finding uses only synthetic hello-game fixture text.",
+    "The finding documents seeded raw-baseline behavior for future benchmark regression tests; it is not a claim about the passing golden patch export."
+  ],
+  "finding": {
+    "affectedRefs": [
+      {
+        "label": "hello.scene.001.line.002",
+        "subjectId": "019ed012-0000-7000-8000-000000000402",
+        "subjectKind": "bridge_unit"
+      }
+    ],
+    "causalLinks": [],
+    "createdAt": "2026-06-17T00:00:00.000Z",
+    "description": "The public benchmark seed records a raw-baseline output that drops the protected <wait=30> control markup for the second dialogue unit.",
+    "evidence": [
+      {
+        "evidenceId": "019ed012-0000-7000-8000-000000001302",
+        "evidenceKind": "text_excerpt",
+        "expectedValue": "On voit la lumiere du Yorishiro<wait=30>.",
+        "observedValue": "On voit la lumiere du Yorishiro.",
+        "provenanceIds": ["019ed012-0000-7000-8000-000000001303"],
+        "summary": "Seeded raw-baseline text omits the control markup that appears in the source unit."
+      }
+    ],
+    "findingId": "019ed012-0000-7000-8000-000000001301",
+    "findingKind": "protected_span_issue",
+    "impact": "Future QA and benchmark regression tests can prove protected span detectors flag the seeded defect before patch export is accepted.",
+    "provenance": [
+      {
+        "artifactRef": {
+          "artifactId": "019ed012-0000-7000-8000-000000001305",
+          "artifactKind": "benchmark-seed",
+          "uri": "fixtures/hello-game/expected/benchmark-report-v0.2.fr-FR.json"
+        },
+        "checkId": "019ed012-0000-7000-8000-000000001304",
+        "checkName": "protected-span-preservation",
+        "checkVersion": "0.2.0",
+        "provenanceId": "019ed012-0000-7000-8000-000000001303",
+        "provenanceKind": "deterministic_check"
+      }
+    ],
+    "qualityCategory": "protected_content",
+    "severity": "P2",
+    "title": "Seeded raw-baseline control markup loss"
+  },
+  "findingFixtureId": "019ed012-0000-7000-8000-000000000905",
+  "schemaVersion": "0.2.0",
+  "sourceTriageBundleId": "019ed012-0000-7000-8000-000000001300"
+}
