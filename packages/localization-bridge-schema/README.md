@@ -138,7 +138,8 @@ v0.2 source identity is deterministic and explicit:
   source assets use `bytes` normalization for binary content.
 - v0.2 hash strings are canonical lowercase SHA-256 digests in the form
   `sha256:` plus 64 hex characters.
-- Patch compatibility is decided per `sourceUnitKey` by
+- Patch compatibility is decided per `sourceUnitKey` by the current
+  `bridgeUnitId` selected for that source unit and
   `PatchExportV02.entries[].sourceHash`. A changed bundle hash is reported for
   traceability but does not invalidate units whose unit-level source hash still
   matches.
@@ -147,6 +148,9 @@ Patch application must not silently apply stale entries. Use
 `evaluatePatchExportCompatibilityV02` before applying a v0.2 patch export. A
 source typo should produce `source_hash_mismatch` only for the affected unit,
 with both `expectedSourceHash` and `actualSourceHash` present in the report.
+When a patch entry names a different bridge unit than the current unit for its
+`sourceUnitKey`, the report uses `bridge_unit_id_mismatch` and includes
+`actualBridgeUnitId`.
 
 Delta package metadata uses `DeltaPackageMetadataV02` to trace the package back
 to the source bridge, source bundle revision, generated patch export id/hash,

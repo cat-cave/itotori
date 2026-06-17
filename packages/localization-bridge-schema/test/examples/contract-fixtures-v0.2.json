@@ -49,6 +49,11 @@
       "description": "Patch result with explicit source compatibility details."
     },
     {
+      "kind": "patch-result-v0.2",
+      "path": "./patch-result-v0.2-bridge-unit-id-mismatch.json",
+      "description": "Patch result proving bridge unit id mismatches are incompatible even when source hashes match."
+    },
+    {
       "kind": "permission-local-user-v0.2",
       "path": "./permission-local-user-v0.2.json",
       "description": "MVP local user permission fixture."

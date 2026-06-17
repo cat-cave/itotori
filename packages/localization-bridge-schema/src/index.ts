@@ -488,6 +488,7 @@ export const PATCH_INCOMPATIBILITY_REASONS_V02 = [
   "source_hash_mismatch",
   "missing_source_unit",
   "duplicate_source_unit_key",
+  "bridge_unit_id_mismatch",
 ] as const;
 export type PatchIncompatibilityReasonV02 = (typeof PATCH_INCOMPATIBILITY_REASONS_V02)[number];
 
@@ -1437,6 +1438,7 @@ export type PatchExportV02 = {
 export type UnitSourceCompatibilityV02 = {
   entryId: Uuid7;
   bridgeUnitId: Uuid7;
+  actualBridgeUnitId?: Uuid7;
   sourceUnitKey: string;
   status: PatchCompatibilityStatusV02;
   expectedSourceHash: string;
@@ -2373,6 +2375,17 @@ export function evaluatePatchExportCompatibilityV02(
         ...base,
         status: "incompatible",
         reason: "missing_source_unit",
+      });
+      continue;
+    }
+
+    if (currentUnit.bridgeUnitId !== entry.bridgeUnitId) {
+      incompatibleUnits.push({
+        ...base,
+        status: "incompatible",
+        actualBridgeUnitId: currentUnit.bridgeUnitId,
+        actualSourceHash: currentUnit.sourceHash,
+        reason: "bridge_unit_id_mismatch",
       });
       continue;
     }
@@ -3594,6 +3607,7 @@ function assertUnitSourceCompatibilityV02(
   const unit = asRecord(value, label);
   assertUuid7(unit.entryId, `${label}.entryId`);
   assertUuid7(unit.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertOptionalUuid7(unit.actualBridgeUnitId, `${label}.actualBridgeUnitId`);
   assertString(unit.sourceUnitKey, `${label}.sourceUnitKey`);
   assertEnum(unit.status, PATCH_COMPATIBILITY_STATUSES_V02, `${label}.status`);
   assertHashStringV02(unit.expectedSourceHash, `${label}.expectedSourceHash`);
@@ -3606,6 +3620,15 @@ function assertUnitSourceCompatibilityV02(
   }
   if (unit.status === "compatible" && unit.reason !== undefined) {
     throw new Error(`${label}.reason is only valid for incompatible units`);
+  }
+  if (unit.reason === "bridge_unit_id_mismatch" && unit.actualBridgeUnitId === undefined) {
+    throw new Error(`${label}.actualBridgeUnitId is required for bridge_unit_id_mismatch`);
+  }
+  if (unit.reason !== "bridge_unit_id_mismatch" && unit.actualBridgeUnitId !== undefined) {
+    throw new Error(`${label}.actualBridgeUnitId is only valid for bridge_unit_id_mismatch`);
+  }
+  if (unit.actualBridgeUnitId !== undefined && unit.actualBridgeUnitId === unit.bridgeUnitId) {
+    throw new Error(`${label}.actualBridgeUnitId must differ from ${label}.bridgeUnitId`);
   }
 }
 

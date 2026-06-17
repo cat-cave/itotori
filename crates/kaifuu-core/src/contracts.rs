@@ -1457,7 +1457,16 @@ fn validate_patch_source_compatibility_report_v02(
 fn validate_unit_source_compatibility(value: &Value, label: &str) -> BridgeContractResult<String> {
     let unit = as_record(value, label)?;
     assert_required_uuid7(unit, "entryId", &format!("{label}.entryId"))?;
-    assert_required_uuid7(unit, "bridgeUnitId", &format!("{label}.bridgeUnitId"))?;
+    let bridge_unit_id =
+        assert_required_uuid7(unit, "bridgeUnitId", &format!("{label}.bridgeUnitId"))?;
+    let actual_bridge_unit_id = match unit.get("actualBridgeUnitId") {
+        Some(value) => {
+            let value = string_value(value, &format!("{label}.actualBridgeUnitId"))?;
+            assert_uuid7(value, &format!("{label}.actualBridgeUnitId"))?;
+            Some(value)
+        }
+        None => None,
+    };
     assert_required_string(unit, "sourceUnitKey", &format!("{label}.sourceUnitKey"))?;
     let status = assert_required_one_of(
         unit,
@@ -1473,7 +1482,7 @@ fn validate_unit_source_compatibility(value: &Value, label: &str) -> BridgeContr
     if let Some(actual_hash) = unit.get("actualSourceHash") {
         assert_hash_value(actual_hash, &format!("{label}.actualSourceHash"))?;
     }
-    if let Some(reason) = unit.get("reason") {
+    let reason = if let Some(reason) = unit.get("reason") {
         let reason = string_value(reason, &format!("{label}.reason"))?;
         assert_one_of(
             reason,
@@ -1481,16 +1490,35 @@ fn validate_unit_source_compatibility(value: &Value, label: &str) -> BridgeContr
                 "source_hash_mismatch",
                 "missing_source_unit",
                 "duplicate_source_unit_key",
+                "bridge_unit_id_mismatch",
             ],
             &format!("{label}.reason"),
         )?;
-    }
-    if status == "incompatible" && unit.get("reason").is_none() {
+        Some(reason)
+    } else {
+        None
+    };
+    if status == "incompatible" && reason.is_none() {
         return error(format!("{label}.reason is required for incompatible units"));
     }
-    if status == "compatible" && unit.get("reason").is_some() {
+    if status == "compatible" && reason.is_some() {
         return error(format!(
             "{label}.reason is only valid for incompatible units"
+        ));
+    }
+    if reason == Some("bridge_unit_id_mismatch") && actual_bridge_unit_id.is_none() {
+        return error(format!(
+            "{label}.actualBridgeUnitId is required for bridge_unit_id_mismatch"
+        ));
+    }
+    if reason != Some("bridge_unit_id_mismatch") && actual_bridge_unit_id.is_some() {
+        return error(format!(
+            "{label}.actualBridgeUnitId is only valid for bridge_unit_id_mismatch"
+        ));
+    }
+    if actual_bridge_unit_id == Some(bridge_unit_id) {
+        return error(format!(
+            "{label}.actualBridgeUnitId must differ from {label}.bridgeUnitId"
         ));
     }
     Ok(status.to_string())

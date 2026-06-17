@@ -720,6 +720,39 @@ describe("localization bridge schema guards", () => {
     expect(report.incompatibleUnits).toEqual([]);
   });
 
+  it("reports a bridge unit id mismatch as incompatible even when source keys and hashes match", () => {
+    const bridge = bridgeV02Example();
+    const patchExport = patchExportV02Example(bridge);
+    const units = bridgeV02Units(bridge);
+    const firstUnit = asTestRecord(units[0], "first v0.2 unit");
+    const secondUnit = asTestRecord(units[1], "second v0.2 unit");
+    const entries = patchExport.entries as Array<Record<string, unknown>>;
+    const firstEntry = asTestRecord(entries[0], "first v0.2 patch export entry");
+    firstEntry.bridgeUnitId = secondUnit.bridgeUnitId;
+
+    const report = evaluatePatchExportCompatibilityV02(patchExport, bridge);
+
+    expect(report.status).toBe("incompatible");
+    expect(report.sourceBundleHashMatches).toBe(true);
+    expect(report.incompatibleUnits).toEqual([
+      expect.objectContaining({
+        bridgeUnitId: secondUnit.bridgeUnitId,
+        actualBridgeUnitId: firstUnit.bridgeUnitId,
+        sourceUnitKey: firstUnit.sourceUnitKey,
+        expectedSourceHash: firstUnit.sourceHash,
+        actualSourceHash: firstUnit.sourceHash,
+        reason: "bridge_unit_id_mismatch",
+      }),
+    ]);
+    expect(report.compatibleUnits).toEqual([
+      expect.objectContaining({
+        bridgeUnitId: secondUnit.bridgeUnitId,
+        sourceUnitKey: secondUnit.sourceUnitKey,
+        status: "compatible",
+      }),
+    ]);
+  });
+
   it("reports a missing source unit without invalidating unrelated compatible units", () => {
     const bridge = bridgeV02Example();
     const patchExport = patchExportV02Example(bridge);
@@ -896,6 +929,28 @@ describe("localization bridge schema guards", () => {
         sourceCompatibility: compatibleWithReason,
       }),
     ).toThrow(/reason is only valid/);
+
+    const bridgeUnitMismatchWithoutActual = cloneRecord(report);
+    bridgeUnitMismatchWithoutActual.status = "incompatible";
+    const mismatchCompatibleUnits =
+      bridgeUnitMismatchWithoutActual.compatibleUnits as Array<Record<string, unknown>>;
+    const mismatchUnit = asTestRecord(
+      mismatchCompatibleUnits.shift(),
+      "bridge unit mismatch compatibility unit",
+    );
+    mismatchUnit.status = "incompatible";
+    mismatchUnit.reason = "bridge_unit_id_mismatch";
+    bridgeUnitMismatchWithoutActual.incompatibleUnits = [mismatchUnit];
+    expect(() =>
+      assertPatchResultV02({
+        schemaVersion: "0.2.0",
+        patchResultId: "019ed001-0000-7000-8000-000000000959",
+        patchExportId: patchExport.patchExportId,
+        status: "incompatible_source",
+        failures: ["incompatible_source"],
+        sourceCompatibility: bridgeUnitMismatchWithoutActual,
+      }),
+    ).toThrow(/actualBridgeUnitId is required/);
 
     const mismatchedBundleFlag = cloneRecord(report);
     mismatchedBundleFlag.sourceBundleHashMatches = false;
