@@ -2350,7 +2350,7 @@
     {
       "id": "KAIFUU-014",
       "title": "Encryption and key profile boundary",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu"],
@@ -2387,6 +2387,9 @@
           "value": "Secret redaction tests"
         }
       ],
+      "owner": "codex-wave11",
+      "branch": "spec/kaifuu-014",
+      "worktree": "/tmp/itotori-spec-kaifuu-014",
       "auditFocus": ["Accidental key leakage", "Platform coupling", "Blocking unencrypted engines"]
     },
     {
@@ -3487,7 +3490,7 @@
     {
       "id": "KAIFUU-020",
       "title": "Engine adapter development playbook",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "universal"],
@@ -3519,6 +3522,9 @@
           "value": "just roadmap-ready"
         }
       ],
+      "owner": "codex-wave11",
+      "branch": "spec/kaifuu-020",
+      "worktree": "/tmp/itotori-spec-kaifuu-020",
       "auditFocus": [
         "Playbook too vague",
         "Unsafe remote execution assumptions",
@@ -3872,7 +3878,7 @@
     {
       "id": "ITOTORI-010",
       "title": "Model registry, presets, and cost ledger",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -3905,6 +3911,9 @@
           "value": "Benchmark report fixture"
         }
       ],
+      "owner": "codex-wave11",
+      "branch": "spec/itotori-010",
+      "worktree": "/tmp/itotori-spec-itotori-010",
       "auditFocus": ["Cost undercounting", "Untracked fallback model changes", "Preset drift"]
     },
     {
