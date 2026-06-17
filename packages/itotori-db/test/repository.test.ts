@@ -16,7 +16,22 @@ import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
-import { userPermissionGrants } from "../src/schema.js";
+import {
+  feedbackContextStatusValues,
+  feedbackReportStatusValues,
+  feedbackTriageLabelValues,
+  feedbackTypeValues,
+  ItotoriFeedbackRepository,
+  type ManualFeedbackImportInput,
+} from "../src/repositories/feedback-repository.js";
+import {
+  artifacts,
+  events,
+  feedbackReportEvidence,
+  feedbackReports,
+  feedbackSources,
+  userPermissionGrants,
+} from "../src/schema.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
@@ -55,6 +70,53 @@ function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriP
     },
   };
   return { ...project, ...overrides };
+}
+
+function manualFeedbackFixture(
+  overrides: Partial<ManualFeedbackImportInput> = {},
+): ManualFeedbackImportInput {
+  return {
+    projectId: "project-test",
+    localeBranchId: "locale-en-us",
+    sourceBundleId: "bridge-test",
+    targetLocale: "en-US",
+    feedbackSource: {
+      sourceKind: "manual_playtest",
+      label: "Manual playtest fixture",
+      sourceChannel: "fixture",
+      privacyReviewState: "reviewed",
+    },
+    feedbackType: feedbackTypeValues.stylePreference,
+    reporter: { role: "playtester", displayName: "Fixture reviewer" },
+    reporterNote: "The protagonist sounds too formal in this line.",
+    lineReference: {
+      bridgeUnitId: "bridge-unit-test",
+      sourceUnitKey: "hello.scene.001.line.001",
+      path: "source.json",
+      line: 1,
+    },
+    attachments: [
+      {
+        attachmentKind: "screenshot",
+        artifactId: "feedback-screenshot-1",
+        uri: "fixture://feedback/screenshot/formal-tone",
+        hash: "sha256:feedback-screenshot-1",
+        caption: "message window with formal protagonist line",
+        capturePosition: "hello.scene.001:frame001",
+        evidenceTier: "E2",
+      },
+      {
+        attachmentKind: "save_context",
+        contextToken: "fixture-save-before-line",
+        routeRef: "hello-route",
+        sceneRef: "hello.scene.001",
+      },
+    ],
+    privacyClassification: "internal",
+    redactionState: "reviewed",
+    reportedAt: "2026-06-17T00:00:00.000Z",
+    ...overrides,
+  };
 }
 
 describe("ItotoriProjectRepository", () => {
@@ -231,6 +293,240 @@ describe("ItotoriProjectRepository", () => {
       expect(status.findingCount).toBe(1);
       expect(status.localeBranches[0]?.openFindingCount).toBe(1);
       expect(status.artifactCount).toBe(1);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("imports contextual manual feedback with line, screenshot, save context, and note", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      const feedbackRepo = new ItotoriFeedbackRepository(context.db);
+      await repo.reset(localActor);
+      await repo.importSourceBundle(localActor, projectFixture());
+
+      const result = await feedbackRepo.importManualFeedback(localActor, manualFeedbackFixture());
+
+      expect(result).toMatchObject({
+        duplicate: false,
+        reportCount: 1,
+        triageLabel: feedbackTriageLabelValues.styleDisputeCandidate,
+        reportStatus: feedbackReportStatusValues.open,
+        contextStatus: feedbackContextStatusValues.contextualized,
+      });
+
+      const report = await context.db
+        .select()
+        .from(feedbackReports)
+        .where(eq(feedbackReports.feedbackReportId, result.feedbackReportId))
+        .limit(1);
+      expect(report[0]).toMatchObject({
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        bridgeUnitId: "bridge-unit-test",
+        feedbackType: feedbackTypeValues.stylePreference,
+        reporterRole: "playtester",
+        reporterNote: "The protagonist sounds too formal in this line.",
+        reportCount: 1,
+      });
+      expect(report[0]?.lineReference).toMatchObject({
+        sourceUnitKey: "hello.scene.001.line.001",
+        path: "source.json",
+        line: 1,
+      });
+      expect(report[0]?.attachmentSummary).toMatchObject({
+        counts: {
+          screenshot: 1,
+          save_context: 1,
+        },
+        artifactIds: ["feedback-screenshot-1"],
+      });
+
+      const source = await context.db
+        .select()
+        .from(feedbackSources)
+        .where(eq(feedbackSources.feedbackSourceId, result.feedbackSourceId))
+        .limit(1);
+      expect(source[0]).toMatchObject({
+        projectId: "project-test",
+        sourceKind: "manual_playtest",
+        label: "Manual playtest fixture",
+      });
+
+      const evidence = await context.db
+        .select()
+        .from(feedbackReportEvidence)
+        .where(eq(feedbackReportEvidence.feedbackReportId, result.feedbackReportId));
+      expect(evidence).toHaveLength(1);
+      expect(evidence[0]?.attachments).toHaveLength(2);
+      expect(evidence[0]?.contextSignals).toMatchObject({
+        lineReference: { bridgeUnitId: "bridge-unit-test" },
+      });
+
+      const linkedArtifact = await context.db
+        .select()
+        .from(artifacts)
+        .where(eq(artifacts.artifactId, "feedback-screenshot-1"))
+        .limit(1);
+      expect(linkedArtifact[0]).toMatchObject({
+        artifactKind: "feedback_screenshot",
+        bridgeUnitId: "bridge-unit-test",
+      });
+      expect(linkedArtifact[0]?.metadata).toMatchObject({
+        feedbackReportId: result.feedbackReportId,
+        feedbackEvidenceId: result.feedbackEvidenceId,
+      });
+
+      const importedEvent = await context.db
+        .select()
+        .from(events)
+        .where(eq(events.eventKind, "feedback_report_imported"))
+        .limit(1);
+      expect(importedEvent[0]?.payload).toMatchObject({
+        duplicate: false,
+        triageLabel: feedbackTriageLabelValues.styleDisputeCandidate,
+        reportCount: 1,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("keeps feedback without source or context in needs_context", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      const feedbackRepo = new ItotoriFeedbackRepository(context.db);
+      await repo.reset(localActor);
+      await repo.importSourceBundle(localActor, projectFixture());
+
+      const result = await feedbackRepo.importManualFeedback(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        targetLocale: "en-US",
+        feedbackType: feedbackTypeValues.objectiveDefect,
+        reporter: { role: "playtester" },
+        reporterNote: "Something looked wrong, but I forgot where.",
+        reportedAt: "2026-06-17T00:00:00.000Z",
+      });
+
+      expect(result).toMatchObject({
+        contextStatus: feedbackContextStatusValues.needsContext,
+        reportStatus: feedbackReportStatusValues.needsContext,
+        triageLabel: feedbackTriageLabelValues.needsContext,
+      });
+
+      const report = await context.db
+        .select()
+        .from(feedbackReports)
+        .where(eq(feedbackReports.feedbackReportId, result.feedbackReportId))
+        .limit(1);
+      expect(report[0]).toMatchObject({
+        feedbackType: feedbackTypeValues.objectiveDefect,
+        reportStatus: feedbackReportStatusValues.needsContext,
+        triageLabel: feedbackTriageLabelValues.needsContext,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("labels style preferences separately from objective defect candidates", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      const feedbackRepo = new ItotoriFeedbackRepository(context.db);
+      await repo.reset(localActor);
+      await repo.importSourceBundle(localActor, projectFixture());
+
+      const style = await feedbackRepo.importManualFeedback(
+        localActor,
+        manualFeedbackFixture({ reporterNote: "The protagonist should sound harsher here." }),
+      );
+      const objective = await feedbackRepo.importManualFeedback(
+        localActor,
+        manualFeedbackFixture({
+          feedbackType: feedbackTypeValues.objectiveDefect,
+          reporterNote: "The line has a typo in the player-facing text.",
+          attachments: [
+            {
+              attachmentKind: "screenshot",
+              artifactId: "feedback-screenshot-typo",
+              uri: "fixture://feedback/screenshot/typo",
+              capturePosition: "hello.scene.001:frame002",
+            },
+          ],
+        }),
+      );
+
+      expect(style.triageLabel).toBe(feedbackTriageLabelValues.styleDisputeCandidate);
+      expect(objective.triageLabel).toBe(feedbackTriageLabelValues.objectiveDefectCandidate);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("aggregates duplicate manual feedback evidence under one canonical report", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      const feedbackRepo = new ItotoriFeedbackRepository(context.db);
+      await repo.reset(localActor);
+      await repo.importSourceBundle(localActor, projectFixture());
+
+      const first = await feedbackRepo.importManualFeedback(
+        localActor,
+        manualFeedbackFixture({ feedbackReportId: "feedback-formal-tone" }),
+      );
+      const second = await feedbackRepo.importManualFeedback(
+        localActor,
+        manualFeedbackFixture({
+          feedbackReportId: "feedback-formal-tone-copy",
+          feedbackEvidenceId: "feedback-formal-tone-evidence-2",
+          reporter: { role: "playtester", displayName: "Second fixture reviewer" },
+          attachments: [
+            {
+              attachmentKind: "screenshot",
+              artifactId: "feedback-screenshot-duplicate",
+              uri: "fixture://feedback/screenshot/formal-tone-2",
+              hash: "sha256:feedback-screenshot-duplicate",
+              caption: "same formal tone issue from another frame",
+              capturePosition: "hello.scene.001:frame003",
+            },
+          ],
+          reportedAt: "2026-06-17T00:05:00.000Z",
+        }),
+      );
+
+      expect(second).toMatchObject({
+        duplicate: true,
+        feedbackReportId: first.feedbackReportId,
+        reportCount: 2,
+      });
+
+      const reports = await context.db
+        .select()
+        .from(feedbackReports)
+        .where(eq(feedbackReports.dedupeKey, first.dedupeKey));
+      expect(reports).toHaveLength(1);
+      expect(reports[0]?.reportCount).toBe(2);
+
+      const evidence = await context.db
+        .select()
+        .from(feedbackReportEvidence)
+        .where(eq(feedbackReportEvidence.feedbackReportId, first.feedbackReportId));
+      expect(evidence).toHaveLength(2);
+
+      const duplicateEvent = await context.db
+        .select()
+        .from(events)
+        .where(eq(events.eventKind, "feedback_report_duplicate_aggregated"))
+        .limit(1);
+      expect(duplicateEvent[0]?.payload).toMatchObject({
+        duplicate: true,
+        reportCount: 2,
+      });
     } finally {
       await context.close();
     }

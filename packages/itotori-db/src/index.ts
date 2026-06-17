@@ -26,3 +26,30 @@ export type {
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
 } from "./repositories/project-repository.js";
+export {
+  deriveFeedbackDedupeKey,
+  feedbackContextStatusValues,
+  feedbackReportStatusValues,
+  feedbackSourceKindValues,
+  feedbackTriageLabelValues,
+  feedbackTypeValues,
+  ItotoriFeedbackRepository,
+} from "./repositories/feedback-repository.js";
+export type {
+  FeedbackContextStatus,
+  FeedbackReporter,
+  FeedbackReportStatus,
+  FeedbackSourceKind,
+  FeedbackTriageLabel,
+  FeedbackType,
+  ItotoriFeedbackRepositoryPort,
+  ManualFeedbackAttachment,
+  ManualFeedbackContextAttachment,
+  ManualFeedbackImportInput,
+  ManualFeedbackImportResult,
+  ManualFeedbackLineReference,
+  ManualFeedbackRuntimeArtifactAttachment,
+  ManualFeedbackSaveContextAttachment,
+  ManualFeedbackScreenshotAttachment,
+  ManualFeedbackSourceInput,
+} from "./repositories/feedback-repository.js";

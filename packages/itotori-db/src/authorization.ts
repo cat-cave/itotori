@@ -7,6 +7,7 @@ export const permissionValues = {
   draftWrite: "draft.write",
   patchExport: "patch.export",
   runtimeIngest: "runtime.ingest",
+  feedbackImport: "feedback.import",
   systemReset: "system.reset",
 } as const;
 
@@ -17,6 +18,7 @@ export const allPermissions = [
   permissionValues.draftWrite,
   permissionValues.patchExport,
   permissionValues.runtimeIngest,
+  permissionValues.feedbackImport,
   permissionValues.systemReset,
 ] as const satisfies readonly Permission[];
 
