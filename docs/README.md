@@ -17,3 +17,6 @@ The implementation roadmap lives in [spec-dag.md](spec-dag.md) and
 [agent worktree lifecycle](worktree-lifecycle.md).
 Provider credentials, routing, logging, and recording policy is defined in
 [ADR 0002](adrs/0002-provider-routing-and-recording.md).
+Itotori's product workflow, human decision queue, style-guide conversation, and
+feedback escalation policy are defined in
+[itotori-product-workflow.md](itotori-product-workflow.md).
