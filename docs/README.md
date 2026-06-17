@@ -9,6 +9,8 @@ These docs describe the monorepo as a three-project suite:
 Start with [hello-world.md](hello-world.md), then read [architecture.md](architecture.md).
 Toolchain upgrade policy lives in [toolchain-policy.md](toolchain-policy.md).
 Testing conventions live in [testing-standard.md](testing-standard.md).
+Itotori permission gates and the MVP local-user baseline are documented in
+[permissions.md](permissions.md).
 Kaifuu engine fixture sourcing, reference citation, and unsupported variant
 policy lives in [kaifuu-fixture-policy.md](kaifuu-fixture-policy.md).
 Affected detection and CI cache rules live in

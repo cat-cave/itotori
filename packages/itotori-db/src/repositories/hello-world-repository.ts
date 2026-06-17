@@ -6,6 +6,12 @@ import type {
 } from "@itotori/localization-bridge-schema";
 import type { ItotoriDatabase } from "../connection.js";
 import {
+  type AuthorizationActor,
+  bootstrapLocalUser,
+  permissionValues,
+  requirePermission,
+} from "../authorization.js";
+import {
   bridgeUnits,
   helloWorldFinalStatusValues,
   helloWorldRuns,
@@ -45,13 +51,16 @@ export type HelloDashboardStatus = {
 export class HelloWorldRepository {
   constructor(private readonly db: ItotoriDatabase) {}
 
-  async reset(): Promise<void> {
+  async reset(actor: AuthorizationActor): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.systemReset);
     await this.db.execute(
       sql`truncate ${helloWorldRuns}, ${runtimeReports}, ${patchExports}, ${bridgeUnits}, ${projects} restart identity cascade`,
     );
+    await bootstrapLocalUser(this.db);
   }
 
-  async saveImportedProject(project: ProjectRecord): Promise<void> {
+  async saveImportedProject(actor: AuthorizationActor, project: ProjectRecord): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.projectImport);
     await this.db.transaction(async (tx) => {
       await tx
         .insert(projects)
@@ -101,7 +110,8 @@ export class HelloWorldRepository {
     });
   }
 
-  async saveDrafts(project: ProjectRecord): Promise<void> {
+  async saveDrafts(actor: AuthorizationActor, project: ProjectRecord): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.draftWrite);
     await this.db.transaction(async (tx) => {
       await tx
         .update(projects)
@@ -124,7 +134,12 @@ export class HelloWorldRepository {
     });
   }
 
-  async savePatchExport(project: ProjectRecord, patchExport: PatchExport): Promise<void> {
+  async savePatchExport(
+    actor: AuthorizationActor,
+    project: ProjectRecord,
+    patchExport: PatchExport,
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.patchExport);
     await this.db.transaction(async (tx) => {
       await tx
         .insert(patchExports)
@@ -149,10 +164,12 @@ export class HelloWorldRepository {
   }
 
   async saveRuntimeReport(
+    actor: AuthorizationActor,
     project: ProjectRecord,
     runtimeReport: RuntimeVerificationReport,
     patchResultId: string,
   ): Promise<HelloDashboardStatus> {
+    await requirePermission(this.db, actor, permissionValues.runtimeIngest);
     await this.db.transaction(async (tx) => {
       await tx
         .insert(runtimeReports)

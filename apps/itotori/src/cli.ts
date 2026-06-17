@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import {
   HelloWorldRepository,
+  bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
   migrate,
@@ -12,6 +13,7 @@ import {
   assertBridgeBundle,
   assertRuntimeVerificationReport,
 } from "@itotori/localization-bridge-schema";
+import { localUserActor } from "./auth.js";
 
 type ProjectState = {
   projectId: string;
@@ -37,7 +39,7 @@ async function main(): Promise<void> {
       await migrate(databaseUrlFromEnv());
       break;
     case "db-reset":
-      await withRepository((repo) => repo.reset());
+      await withRepository((repo) => repo.reset(localUserActor));
       break;
     case "dashboard-status":
       await runDashboardStatus();
@@ -78,7 +80,7 @@ async function runImport(): Promise<void> {
     drafts: {},
   };
   writeJson(projectPath, project);
-  await withRepository((repo) => repo.saveImportedProject(project));
+  await withRepository((repo) => repo.saveImportedProject(localUserActor, project));
 }
 
 async function runDraft(): Promise<void> {
@@ -90,7 +92,7 @@ async function runDraft(): Promise<void> {
     project.drafts[unit.bridgeUnitId] = fakeTranslate(unit.sourceText);
   }
   writeJson(projectPath, project);
-  await withRepository((repo) => repo.saveDrafts(project));
+  await withRepository((repo) => repo.saveDrafts(localUserActor, project));
 }
 
 async function runExportPatch(): Promise<void> {
@@ -132,7 +134,7 @@ async function runExportPatch(): Promise<void> {
   project.patchExport = patchExport;
   writeJson(projectPath, project);
   writeJson(outputPath, patchExport);
-  await withRepository((repo) => repo.savePatchExport(project, patchExport));
+  await withRepository((repo) => repo.savePatchExport(localUserActor, project, patchExport));
 }
 
 async function runIngestRuntime(): Promise<void> {
@@ -144,7 +146,7 @@ async function runIngestRuntime(): Promise<void> {
   assertRuntimeVerificationReport(report);
   project.runtimeReport = report;
   const dashboard = await withRepository((repo) =>
-    repo.saveRuntimeReport(project, report, id("patch-result", 1)),
+    repo.saveRuntimeReport(localUserActor, project, report, id("patch-result", 1)),
   );
   writeJson(projectPath, project);
   writeJson(outputPath, {
@@ -189,6 +191,7 @@ function writeJson(path: string, value: unknown): void {
 async function withRepository<T>(fn: (repository: HelloWorldRepository) => Promise<T>): Promise<T> {
   const context = createDatabaseContext();
   try {
+    await bootstrapLocalUser(context.db);
     return await fn(new HelloWorldRepository(context.db));
   } finally {
     await context.close();

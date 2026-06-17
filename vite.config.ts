@@ -1,6 +1,12 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@itotori/db": fileURLToPath(new URL("./packages/itotori-db/src/index.ts", import.meta.url)),
+    },
+  },
   run: {
     tasks: {
       "schema:check": {
