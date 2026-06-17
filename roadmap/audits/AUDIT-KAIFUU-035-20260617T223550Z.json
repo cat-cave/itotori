@@ -1,0 +1,87 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-035-20260617T223550Z",
+  "generatedAt": "2026-06-17T22:35:50Z",
+  "spec": {
+    "id": "KAIFUU-035",
+    "title": "Safe redaction and error boundary contract",
+    "branch": "spec/kaifuu-035",
+    "worktree": "/tmp/itotori-spec-kaifuu-035",
+    "commit": "c8c47f31fed40acfea189dddb7652d364567a8ff"
+  },
+  "auditor": {
+    "name": "sagan-the-4th",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 findings after report redaction and golden preflight repairs. The remaining promotion race is non-blocking and is already covered by KAIFUU-074.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-035-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-035-F001",
+      "severity": "P2",
+      "title": "Patch promotion still uses exists-then-rename no-clobber behavior",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "line": 371,
+          "symbol": "promote_patch_staging_dir"
+        },
+        {
+          "path": "roadmap/spec-dag.json",
+          "line": 3590,
+          "symbol": "KAIFUU-074"
+        }
+      ],
+      "description": "The patch promotion helper still checks whether the output exists before renaming the staging directory, which leaves a possible race with concurrent output creation on platforms whose rename semantics may clobber or otherwise differ.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit confirmed the remaining issue is covered by the planned KAIFUU-074 no-clobber promotion hardening node."
+        },
+        {
+          "kind": "command",
+          "detail": "cargo test -p kaifuu-cli passed with existing promotion failure coverage."
+        }
+      ],
+      "impact": "A concurrent writer could make patch promotion behavior less deterministic until KAIFUU-074 replaces exists-then-rename with a stricter no-clobber promotion boundary.",
+      "actionableAcceptanceCriteria": [
+        "KAIFUU-074 hardens both delta apply and patch staging promotion against exists-then-rename races.",
+        "KAIFUU-074 includes concurrent output-path tests for the CLI patch promotion path."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-074",
+          "acceptanceCriteria": [
+            "CLI patch promotion never replaces an existing output path after preflight through an exists-then-rename race",
+            "Concurrent output-path tests cover both delta apply and patch staging promotion paths"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli"
+            }
+          ],
+          "auditFocus": ["Patch staging promotion races", "Delta apply and patch command parity"],
+          "notes": "KAIFUU-074 already covers the no-clobber promotion class; this audit appends the patch-command path explicitly."
+        }
+      }
+    }
+  ]
+}

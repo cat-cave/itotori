@@ -2982,7 +2982,7 @@
     {
       "id": "KAIFUU-035",
       "title": "Safe redaction and helper error boundaries",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared"],
@@ -3019,10 +3019,7 @@
         "Secret leakage",
         "Untriageable helper or layered-preflight failures",
         "Over-redaction that hides actionable remediation"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/kaifuu-035",
-      "worktree": "/tmp/itotori-spec-kaifuu-035"
+      ]
     },
     {
       "id": "KAIFUU-036",
@@ -3609,7 +3606,9 @@
         "Delta apply never replaces an existing output path after preflight through an exists-then-rename race",
         "Concurrent empty directory, existing file, and symlink-like platform cases have deterministic semantic errors or safe success behavior",
         "Tests cover Unix and Windows semantics where the standard library differs",
-        "Failed promotion leaves source and existing output untouched"
+        "Failed promotion leaves source and existing output untouched",
+        "CLI patch promotion never replaces an existing output path after preflight through an exists-then-rename race",
+        "Concurrent output-path tests cover both delta apply and patch staging promotion paths"
       ],
       "verification": [
         {
@@ -3628,7 +3627,9 @@
       "auditFocus": [
         "Output clobber race",
         "Platform-specific rename semantics",
-        "Partial apply cleanup"
+        "Partial apply cleanup",
+        "Patch staging promotion races",
+        "Delta apply and patch command parity"
       ]
     },
     {
