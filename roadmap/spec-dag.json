@@ -352,7 +352,7 @@
       "dependsOn": ["UNIV-001", "UNIV-006"],
       "summary": "Define and script the branch/worktree lifecycle used by the orchestrator: claim node, plan, implement, audit, repair, merge, and mark complete.",
       "deliverables": [
-        "docs/agent-orchestration.md",
+        "docs/worktree-lifecycle.md",
         "Worktree naming convention",
         "Audit severity rules",
         "Merge checklist"

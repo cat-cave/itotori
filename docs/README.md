@@ -13,6 +13,7 @@ Affected detection and CI cache rules live in
 [ci-cache-and-affected.md](ci-cache-and-affected.md).
 The implementation roadmap lives in [spec-dag.md](spec-dag.md) and
 `roadmap/spec-dag.json`. Agent-led implementation should also follow
-[orchestration-operating-model.md](orchestration-operating-model.md).
+[orchestration-operating-model.md](orchestration-operating-model.md) and the
+[agent worktree lifecycle](worktree-lifecycle.md).
 Provider credentials, routing, logging, and recording policy is defined in
 [ADR 0002](adrs/0002-provider-routing-and-recording.md).
