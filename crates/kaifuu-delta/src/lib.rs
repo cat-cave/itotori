@@ -29,7 +29,7 @@ pub fn create_delta(original_dir: &Path, patched_dir: &Path) -> KaifuuResult<Val
 }
 
 pub fn apply_delta(game_dir: &Path, delta_path: &Path, output_dir: &Path) -> KaifuuResult<Value> {
-    let delta = read_json(delta_path)?;
+    let delta: Value = read_json(delta_path)?;
     let original_hash = delta["original"]["hash"]
         .as_str()
         .ok_or("delta missing original hash")?;
