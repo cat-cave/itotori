@@ -4220,7 +4220,14 @@ fn report_translated_patch(
         return Ok(());
     }
 
-    let patch_export = match patch_export_for_adapter(patch_export_value, &extraction.bridge) {
+    let v02_source_compatibility_checked = patch_export_value["schemaVersion"].as_str()
+        != Some(BRIDGE_SCHEMA_VERSION_V02)
+        || translated_source_bridge.is_some();
+    let patch_export = match patch_export_for_adapter(
+        patch_export_value,
+        &extraction.bridge,
+        v02_source_compatibility_checked,
+    ) {
         Ok(patch_export) => patch_export,
         Err(error) => {
             record_golden_failure(
@@ -4300,19 +4307,21 @@ fn report_v02_source_compatibility(
     source_bridge: Option<&Value>,
 ) {
     let Some(source_bridge) = source_bridge else {
-        report.phases.push(GoldenPhaseReport {
+        record_golden_failure(report, GoldenFailure {
+            code: "translated_source_bridge_required".to_string(),
             phase: "translated_source_compatibility".to_string(),
-            status: GoldenAssertionStatus::Skipped,
-            details: "no v0.2 source bridge was provided for translated patch source-hash compatibility"
-                .to_string(),
+            adapter_id: adapter_id.to_string(),
+            message:
+                "translated v0.2 patch exports require the source bridge used to create them"
+                    .to_string(),
             asset_ref: None,
             source_unit_key: None,
             support_boundary: Some(
-                "v0.2 source compatibility requires the source bridge artifact used to create the patch export"
+                "v0.2 translated patch source compatibility cannot be checked without --translated-source-bridge"
                     .to_string(),
             ),
-            expected: None,
-            actual: None,
+            expected: Some("source bridge artifact".to_string()),
+            actual: Some("missing source bridge".to_string()),
         });
         return;
     };
@@ -4485,9 +4494,18 @@ fn v02_bridge_units_by_key(
     Ok(units_by_key)
 }
 
-fn patch_export_for_adapter(value: &Value, bridge: &BridgeBundle) -> KaifuuResult<PatchExport> {
+fn patch_export_for_adapter(
+    value: &Value,
+    bridge: &BridgeBundle,
+    v02_source_compatibility_checked: bool,
+) -> KaifuuResult<PatchExport> {
     if value["schemaVersion"].as_str() != Some(BRIDGE_SCHEMA_VERSION_V02) {
         return PatchExport::from_value(value);
+    }
+    if !v02_source_compatibility_checked {
+        return Err(
+            "v0.2 translated patch conversion requires checked source bridge compatibility".into(),
+        );
     }
 
     let units_by_key = bridge

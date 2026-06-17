@@ -1792,6 +1792,47 @@ mod tests {
     }
 
     #[test]
+    fn round_trip_golden_harness_requires_source_bridge_for_v02_source_hash_compatibility() {
+        let fixture_dir = public_fixture_dir();
+        let work_dir = temp_dir("golden-public-v02-stale-no-bridge");
+        let mut patch_export: Value =
+            read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
+        patch_export["entries"][0]["sourceHash"] =
+            json!("sha256:0000000000000000000000000000000000000000000000000000000000000000");
+
+        let report = run_round_trip_golden(
+            &registry(),
+            GoldenHarnessRequest {
+                game_dir: &fixture_dir,
+                work_dir: &work_dir,
+                adapter_id: Some(FIXTURE_ADAPTER_ID),
+                byte_equivalence: GoldenByteEquivalenceMode::Unsupported {
+                    support_boundary:
+                        "fixture adapter rewrites source.json as pretty JSON and writes targetText fields"
+                            .to_string(),
+                },
+                translated_patch_export: Some(&patch_export),
+                translated_source_bridge: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        let failure = report
+            .failures
+            .iter()
+            .find(|failure| failure.code == "translated_source_bridge_required")
+            .expect("missing source bridge failure");
+        assert_eq!(failure.phase, "translated_source_compatibility");
+        assert_eq!(failure.actual.as_deref(), Some("missing source bridge"));
+        assert!(!report.phases.iter().any(|phase| {
+            phase.phase == "translated_patch_conversion" || phase.phase == "translated_patch"
+        }));
+        assert!(!work_dir.join("translated-patch/source.json").exists());
+        let _ = fs::remove_dir_all(work_dir);
+    }
+
+    #[test]
     fn unmatched_patch_source_unit_key_fails_without_full_pass() {
         let game_dir = temp_game("unmatched-key");
         let adapter = FixtureAdapter;

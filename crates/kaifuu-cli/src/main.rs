@@ -930,6 +930,53 @@ mod tests {
     }
 
     #[test]
+    fn golden_command_returns_error_for_v02_translated_patch_without_source_bridge() {
+        let root = temp_dir("golden-public-translated-no-source-bridge");
+        let fixture_dir = public_fixture_dir();
+        let mut patch_export: serde_json::Value =
+            read_json(&fixture_dir.join("expected/patch-export-v0.2.fr-FR.json")).unwrap();
+        patch_export["entries"][0]["sourceHash"] = serde_json::json!(
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        );
+        let patch_path = root.join("stale-patch-export.json");
+        write_json(&patch_path, &patch_export).unwrap();
+        let report_path = root.join("golden-report.json");
+        let work_dir = root.join("golden-work");
+
+        let result = run_with_args(
+            [
+                "golden",
+                fixture_dir.to_str().unwrap(),
+                "--adapter",
+                kaifuu_engine_fixture::FIXTURE_ADAPTER_ID,
+                "--translated-patch",
+                patch_path.to_str().unwrap(),
+                "--work-dir",
+                work_dir.to_str().unwrap(),
+                "--output",
+                report_path.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        assert!(result.is_err());
+        let report: GoldenRoundTripReport = read_json(&report_path).unwrap();
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.failures.iter().any(|failure| {
+            failure.phase == "translated_source_compatibility"
+                && failure.code == "translated_source_bridge_required"
+                && failure.actual.as_deref() == Some("missing source bridge")
+        }));
+        assert!(!report.phases.iter().any(|phase| {
+            phase.phase == "translated_patch_conversion" || phase.phase == "translated_patch"
+        }));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn golden_command_returns_error_and_report_for_translated_patch_failure() {
         let root = temp_dir("golden-public-translated-failure");
         let fixture_dir = public_fixture_dir();
