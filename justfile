@@ -14,6 +14,7 @@ check:
     pnpm exec vp check
     node scripts/spec-dag.mjs validate
     just fixtures-validate
+    node scripts/verify-toolchain-policy.mjs
     pnpm exec vp run ts:typecheck
     cargo fmt --check
     cargo check --workspace
@@ -96,7 +97,10 @@ roadmap-pop:
 
 upgrade:
     corepack enable
-    corepack prepare pnpm@latest --activate
+    node scripts/update-node-version.mjs
+    corepack use pnpm@latest
+    node scripts/sync-pnpm-engine.mjs
     pnpm update --latest --recursive
     rustup update stable
     cargo update
+    node scripts/verify-toolchain-policy.mjs
