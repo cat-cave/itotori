@@ -11,6 +11,8 @@ import type {
   RuntimeEvidenceReportV02,
   RuntimeVerificationReport,
 } from "@itotori/localization-bridge-schema";
+import { FakeModelProvider } from "../providers/fake.js";
+import type { ModelProvider } from "../providers/types.js";
 
 export type ProjectState = ItotoriProjectRecord & { bridge: BridgeBundle };
 export type RuntimeReportInput = RuntimeVerificationReport | RuntimeEvidenceReportV02;
@@ -48,6 +50,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
   constructor(
     private readonly repository: ItotoriProjectRepositoryPort,
     private readonly actor: AuthorizationActor,
+    private readonly draftModelProvider: ModelProvider = new FakeModelProvider(),
   ) {}
 
   async reset(): Promise<void> {
@@ -81,7 +84,31 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       drafts: { ...project.drafts },
     };
     for (const unit of nextProject.bridge.units) {
-      nextProject.drafts[unit.bridgeUnitId] = fakeTranslate(unit.sourceText);
+      const result = await this.draftModelProvider.invoke({
+        taskKind: "draft_translation",
+        modelId: this.draftModelProvider.descriptor.defaultModelId,
+        inputClassification: "private_corpus",
+        messages: [
+          {
+            role: "system",
+            content:
+              "Draft a localized target string. Preserve protected spans exactly and return only the target text.",
+          },
+          {
+            role: "user",
+            content: JSON.stringify({
+              sourceLocale: unit.sourceLocale,
+              targetLocale: locale,
+              sourceText: unit.sourceText,
+              protectedSpans: unit.protectedSpans.map((span) => span.raw),
+            }),
+          },
+        ],
+      });
+      if (result.content === null) {
+        throw new Error(`draft provider returned no text for ${unit.bridgeUnitId}`);
+      }
+      nextProject.drafts[unit.bridgeUnitId] = result.content;
     }
     await this.repository.saveDrafts(this.actor, nextProject);
     return nextProject;
@@ -156,13 +183,6 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       },
     };
   }
-}
-
-function fakeTranslate(sourceText: string): string {
-  if (sourceText === "こんにちは、{player}。") {
-    return "Hello, {player}.";
-  }
-  return `[en-US] ${sourceText}`;
 }
 
 function id(kind: string, n: number): string {
