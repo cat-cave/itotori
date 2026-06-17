@@ -686,6 +686,46 @@
       "auditFocus": ["Slow CI", "Meaningless mutation thresholds", "Untested critical invariants"]
     },
     {
+      "id": "UNIV-012",
+      "title": "Harden exact upgrade recipe verification",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["universal"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["UNIV-007"],
+      "summary": "Harden the toolchain policy verifier so exact just upgrade command comparisons cannot silently accept ignored-error prefixes such as -corepack use pnpm@latest.",
+      "deliverables": [
+        "scripts/verify-toolchain-policy.mjs ignored-error prefix handling",
+        "Negative verifier fixture for a just upgrade command with a leading - prefix",
+        "Verifier diagnostics that name ignored-error prefixes when exact upgrade commands are checked"
+      ],
+      "acceptanceCriteria": [
+        "The verifier rejects or explicitly flags exact upgrade commands that use just ignored-error prefixes",
+        "A fixture containing -corepack use pnpm@latest fails verification instead of passing after prefix stripping",
+        "The current canonical just upgrade recipe remains accepted without ignored-error prefixes"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs ready"
+        },
+        {
+          "type": "manual",
+          "value": "Toolchain verifier fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Ignored command failures",
+        "False-positive upgrade verification",
+        "Just recipe prefix handling"
+      ]
+    },
+    {
       "id": "SHARED-001",
       "title": "Bridge schema v0.2 domain model",
       "status": "planned",
