@@ -31,6 +31,7 @@ name = "kaifuu-delta"
 version = "0.0.0"
 dependencies = [
  "kaifuu-core",
+ "serde",
  "serde_json",
 ]
 

@@ -905,6 +905,72 @@ mod tests {
     }
 
     #[test]
+    fn diff_apply_commands_round_trip_v02_delta_package() {
+        let root = temp_dir("diff-apply-v02");
+        let game_dir = temp_game(&root);
+        write_fixture_file(&game_dir, "readme.txt", b"same\n");
+
+        let patched_dir = root.join("patched");
+        fs::create_dir_all(&patched_dir).unwrap();
+        write_fixture_file(
+            &patched_dir,
+            "source.json",
+            br#"{"units":[{"targetText":"Hello, {player}."}]}"#,
+        );
+        write_fixture_file(&patched_dir, "readme.txt", b"same\n");
+        write_fixture_file(&patched_dir, "extra.txt", b"new\n");
+        write_fixture_file(&patched_dir, "patch-result.json", b"cli artifact\n");
+
+        let delta_path = root.join("hello.kaifuu");
+        run_cli(&[
+            "diff",
+            game_dir.to_str().unwrap(),
+            patched_dir.to_str().unwrap(),
+            "--output",
+            delta_path.to_str().unwrap(),
+        ]);
+        let delta: serde_json::Value = read_json(&delta_path).unwrap();
+        assert_eq!(delta["schemaVersion"], "0.2.0");
+        let changed_paths = delta["changedEntries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["path"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(changed_paths, vec!["extra.txt", "source.json"]);
+
+        let output_dir = root.join("applied");
+        run_cli(&[
+            "apply",
+            game_dir.to_str().unwrap(),
+            "--patch",
+            delta_path.to_str().unwrap(),
+            "--output",
+            output_dir.to_str().unwrap(),
+        ]);
+
+        let apply_result: serde_json::Value =
+            read_json(&output_dir.join("patch-result.json")).unwrap();
+        assert_eq!(apply_result["status"], "passed");
+        assert_eq!(apply_result["changedFileCount"], 2);
+        assert!(
+            fs::read_to_string(output_dir.join("source.json"))
+                .unwrap()
+                .contains("Hello, {player}.")
+        );
+        assert_eq!(
+            fs::read_to_string(output_dir.join("readme.txt")).unwrap(),
+            "same\n"
+        );
+        assert_eq!(
+            fs::read_to_string(output_dir.join("extra.txt")).unwrap(),
+            "new\n"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn patch_command_returns_error_when_adapter_reports_failed_patch_result() {
         let root = temp_dir("patch-failed-exit");
         let game_dir = temp_game(&root);
