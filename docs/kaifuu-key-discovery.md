@@ -27,6 +27,41 @@ extraction/patching as pure adapter work.
 This lets Kaifuu support commercial local workflows without committing keys,
 retail files, helper dumps, or platform-specific discovery internals.
 
+## MVP Implementation Gates
+
+Encrypted-input readiness is not post-MVP polish. The MVP may still avoid a
+production support claim for a specific encrypted commercial variant, but it
+must ship the core mechanisms that make owned encrypted games actionable:
+
+1. **Key-profile boundary**: complete in `KAIFUU-014`. Profiles name key
+   requirements and stable `secretRef` pointers without raw key material.
+2. **Archive/encryption detection**: complete in `KAIFUU-034`. Detection
+   classifies encrypted, packed, protected, helper-required, missing-key, and
+   unknown-variant signals before adapters claim extraction support.
+3. **Redaction/error enforcement**: required in `KAIFUU-035`. Helper, profile,
+   CLI, report, and adapter failures must be safe to persist and triage.
+4. **Local key resolver**: required in `KAIFUU-050`. `local-secret:`,
+   `os-keychain:`, `secret-manager:`, and `prompt:` refs need a shared resolver
+   and local-only secret store abstraction before helpers or private triage can
+   be trusted.
+5. **Synthetic encrypted fixtures**: required in `KAIFUU-051`. Public CI needs
+   generated encrypted/key-required cases with public fixture keys so redaction,
+   validation, helper-unavailable, and missing-key behavior is tested without
+   private games.
+6. **Private-local corpus triage**: required in `KAIFUU-036`. Owned encrypted
+   corpora get first-class local readiness reports while staying absent from
+   public CI.
+7. **Platform-assisted helper harness**: required in `KAIFUU-037`. Static,
+   known-key import, Wine/Windows, remote Windows, and manual-entry helpers use
+   one structured result contract and never live inside pure adapters.
+8. **Engine-specific encrypted slices**: required in `KAIFUU-015` and
+   `KAIFUU-038` through `KAIFUU-041`. These slices decide exact adapter/helper
+   splits for Siglus, KiriKiri/XP3, RPG Maker MV/MZ encrypted assets, Wolf RPG
+   Editor, and BGI/Ethornell.
+9. **Encrypted readiness gate**: required in `KAIFUU-042`. MVP release cannot
+   pass unless the public fixture lane and private-local lane are both
+   accounted for with safe evidence and no universal-decryption overclaim.
+
 ## Key Profile Shape
 
 The executable v0.1 profile contract is engine-agnostic and strict enough for

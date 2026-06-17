@@ -22,6 +22,9 @@ Kaifuu engine fixture sourcing, reference citation, and unsupported variant
 policy lives in [kaifuu-fixture-policy.md](kaifuu-fixture-policy.md).
 Kaifuu archive, encryption, key, helper, and unknown-variant detector rows are
 documented in [kaifuu-detection-matrix.md](kaifuu-detection-matrix.md).
+Kaifuu encrypted-engine research and MVP key-discovery implications are
+summarized in
+[kaifuu-encrypted-engine-research.md](kaifuu-encrypted-engine-research.md).
 The repeatable workflow for adding new Kaifuu engine adapters lives in
 [kaifuu-engine-playbook.md](kaifuu-engine-playbook.md).
 Kaifuu encoding, normalization, atomic output, traversal, rollback, and
