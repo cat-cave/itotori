@@ -40,9 +40,11 @@ retail files, helper dumps, or platform-specific discovery internals.
 ## Alpha Implementation Gates
 
 Encrypted-input readiness is not continuous expansion polish. The alpha
-readiness milestone may still avoid a production support claim for a specific
-encrypted commercial variant, but it must ship the core mechanisms that make
-owned encrypted games actionable and make later production adapters accountable:
+readiness milestone may still avoid broad production support claims for
+commercial variants, but it must ship the core mechanisms that make owned
+encrypted games actionable, plus one declared encrypted-profile vertical that
+proves detect, key/profile resolution, extraction, trivial patching, verify, and
+delta apply on public-safe fixture data:
 
 1. **Key-profile boundary**: complete in `KAIFUU-014`. Profiles name key
    requirements and stable `secretRef` pointers without raw key material.
@@ -65,13 +67,25 @@ owned encrypted games actionable and make later production adapters accountable:
 7. **Platform-assisted helper harness**: required in `KAIFUU-037`. Static,
    known-key import, Wine/Windows, remote Windows, and manual-entry helpers use
    one structured result contract and never live inside pure adapters.
-8. **Engine-specific encrypted slices**: required in `KAIFUU-015` and
-   `KAIFUU-038` through `KAIFUU-041`. These slices decide exact adapter/helper
-   splits for Siglus, KiriKiri/XP3, RPG Maker MV/MZ encrypted assets, Wolf RPG
-   Editor, and BGI/Ethornell.
-9. **Encrypted readiness gate**: required in `KAIFUU-042`. Alpha readiness cannot
-   pass unless the public fixture lane and private-local lane are both
-   accounted for with safe evidence and no universal-decryption overclaim.
+8. **Helper execution and allowlist policy**: required in `KAIFUU-064` and
+   `KAIFUU-066`. Wine/Windows helper execution must be bounded, redacted,
+   versioned, hash-pinned, and unable to run arbitrary commands.
+9. **Private-local key-hunting run workflow**: required in `KAIFUU-067`. Owned
+   corpora can be scanned, attempted, validated, skipped, or failed through a
+   redacted local-only workflow while public CI uses stub fixtures.
+10. **Engine-specific encrypted slices**: required in `KAIFUU-015`,
+    `KAIFUU-038` through `KAIFUU-041`, and the split adapter nodes
+    `KAIFUU-068` through `KAIFUU-073`. These slices implement exact
+    adapter/helper boundaries for Siglus, KiriKiri/XP3, RPG Maker MV/MZ
+    encrypted assets, Wolf RPG Editor, and BGI/Ethornell.
+11. **Encrypted readiness gate**: required in `KAIFUU-042`. Alpha readiness cannot
+    pass unless the public fixture lane and private-local lane are both
+    accounted for with safe evidence and no universal-decryption overclaim.
+12. **First encrypted-profile vertical**: required in `ALPHA-006`. The current
+    declared vertical is a synthetic KiriKiri/XP3 profile that runs detect,
+    key/profile resolution, extract, trivial patch, verify, and `.kaifuu` delta
+    apply without leaking keys, private paths, helper dumps, or decrypted private
+    text.
 
 ## Key Profile Shape
 
@@ -181,20 +195,21 @@ single decryption flag.
   for a crypt scheme or game-specific option for encrypted archives. KrkrExtract
   shows the practical Windows-oriented runtime/patch workflow, including
   universal dump and patch paths, while warning that protected executables and
-  bypass conflicts are hard. alpha needs XP3/archive detection, local helper
-  boundaries, and a KiriKiri encrypted research slice; production encrypted-XP3
-  patch support is a later adapter claim.
+  bypass conflicts are hard. Alpha needs XP3/archive detection, local helper
+  boundaries, and one profiled encrypted XP3 extract/patch/verify vertical.
+  Broader production encrypted-XP3 support remains scoped per declared profile.
 - **SiglusEngine**: Siglus tools center on `Scene.pck`, `Gameexe.dat`, and a
   game-specific secondary key. Practical paths include static extraction,
-  dynamic extraction, and known-key databases. alpha needs the key-profile
-  boundary, static/dynamic helper result shape, and redaction tests before any
-  production Siglus adapter claim.
+  dynamic extraction, and known-key databases. Alpha needs the key-profile
+  boundary, static helper adapter, known-key Scene/Gameexe smoke, and redaction
+  tests before any broader production Siglus adapter claim.
 - **RPG Maker MV/MZ**: built-in asset encryption commonly exposes key recovery
   through `System.json` or encrypted image files. Some image restoration can be
-  possible without a key, while audio needs one. alpha adapter support can remain
-  JSON-text-first, but encrypted asset detection and key-profile handling belong
-  in alpha readiness because text-bearing images and media metadata are localization
-  surfaces.
+  possible without a key, while audio needs one. Alpha adapter support remains
+  JSON-text-first for the main vertical, but encrypted asset detection,
+  key-profile handling, and a trivial encrypted-asset replacement patch belong
+  in alpha readiness because text-bearing images and media metadata are
+  localization surfaces.
 - **Wolf RPG Editor**: Wolf tools show `.wolf` archive decryption, broad
   extension handling, automatic key detection, and Pro protection-key
   detection. alpha needs archive/protection detection and a helper research slice;

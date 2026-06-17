@@ -85,9 +85,12 @@ decision-making. The roadmap contains executable Rust-port specs:
 - `UTSUSHI-026` through `UTSUSHI-030` build the conformance layer: profile and
   result schemas, trace and branch checks, snapshot checks, capture and
   recording artifact checks, and Itotori ingestion fixtures.
-- `UTSUSHI-031` through `UTSUSHI-048` create engine-specific executable slices
-  for RPG Maker MV/MZ, Siglus, KiriKiri/KAG, Ren'Py, Wolf RPG Editor, and
-  BGI/Ethornell.
+- `UTSUSHI-031` through `UTSUSHI-061` create engine-specific executable slices
+  for RPG Maker MV/MZ, Siglus, KiriKiri/KAG, Ren'Py, Wolf RPG Editor,
+  BGI/Ethornell, TyranoScript, RPG Maker VX Ace/RGSS3, and bounded Unity
+  capture profiles. The later nodes also add a shared runtime observation hook
+  protocol, a Siglus WASM split, focused Siglus opcode packs, and reference
+  runtime trace/capture recording.
 
 Each engine-port slice must produce code, fixtures, conformance output, and a
 subsystem coverage map tied to tests. A worker can research an engine deeply,

@@ -1,5 +1,10 @@
 # Cross-Source Localization Research Engine — Design & Roadmap Mapping
 
+**Status:** Historical research input. The canonical executable plan is
+`roadmap/spec-dag.json`; older MVP and post-MVP wording here is preserved only
+as research context until `UNIV-015` completes the full research-to-DAG
+crosswalk.
+
 **Status:** A temporary Python pipeline exists today under [`/research`](../../research)
 and is producing real data. This document specifies the **full feature set** so the work
 can be promoted into the monorepo as a first-class Rust subsystem (DB + migrations + core

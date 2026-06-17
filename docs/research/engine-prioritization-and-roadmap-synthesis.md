@@ -1,5 +1,10 @@
 # Engine Prioritization & Roadmap Synthesis
 
+**Status:** Historical research input. The canonical executable plan is
+`roadmap/spec-dag.json`; where this document says MVP or proposes nodes, read it
+as the research framing that informed later alpha-readiness DAG updates until
+`UNIV-015` completes the full research-to-DAG crosswalk.
+
 **Written:** 2026-06-17 (interim — enrichment crawl still running; market/VNDB/EGS data is final)
 
 This is the capstone report. It fuses three evidence streams into one set of
@@ -7,8 +12,10 @@ recommendations for **what engines to prioritize, what capabilities to build, an
 to add to the monorepo (itotori / kaifuu / utsushi / shared)** — including **proposed**
 DAG nodes and roadmap adjustments.
 
-> **Note:** No `roadmap/spec-dag.json` edits are made here. All DAG nodes below are
-> _proposals_ for after the research phase closes, per the standing rule.
+> **Superseded note:** This report originally made no direct
+> `roadmap/spec-dag.json` edits. Several proposals below have since been adopted
+> or split into live DAG nodes. Treat the node lists as historical proposal
+> context until `UNIV-015` writes the complete research-to-DAG crosswalk.
 
 The three streams:
 

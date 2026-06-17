@@ -58,13 +58,13 @@ the identity/null-key case of container, crypto, and codec stages. Alpha
 evidence must therefore include both positive adapter support and readiness
 profiles for packed/encrypted engines.
 
-| Engine id                          | Alpha role                                                | Required alpha support                                                                                                                                                                                                                                                       | Runtime evidence bar                                                                    | Not required before first real project                                                                                       |
-| ---------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `synthetic-json`                   | Public CI control and contract proof                      | `fixtures/hello-game` extraction, drafting, patching, `.kaifuu` delta, apply, verify, Utsushi trace, Utsushi capture, dashboard status                                                                                                                                       | E2 frame capture in CI                                                                  | Real-engine support claim                                                                                                    |
-| `rpg-maker-mv-mz-json`             | First positive real-engine vertical slice and demo anchor | RPG Maker MV/MZ JSON project data for map events, common events, choices, database text, UI-like terms, plugin-profiled text, control-code protected spans, patching, verify, delta package, asset inventory, encrypted media detection, and key-profile diagnostics         | E1 trace or E2 capture when the probe can launch/capture; report must state limitations | XP/VX/Ace production patching, full encrypted media patching, plugin-owned dynamic text not represented in profiled fixtures |
-| `tyranoscript-null-key`            | High-reach plaintext/null-key breadth proof               | Plaintext TyranoScript scenarios as identity container, null-key crypto, script codec pipeline; dialogue, choices, labels, jumps, variables, comments, common tags, protected spans, patching, verify, and capability errors for packed/mobile/encrypted/custom-plugin cases | E0 static evidence required; E1 route/text probe when available                         | Browser/mobile packed builds, encrypted assets, arbitrary plugin semantics                                                   |
-| `kirikiri-xp3-readiness`           | High-value packed/encrypted VN readiness proof            | Capability-leveled XP3 detection and readiness profiles for plaintext KAG, packed XP3, encrypted XP3, protected executable, helper-required, universal dump, and universal patch workflows                                                                                   | E0 readiness evidence required; E1 trace probe only when already extracted/plaintext    | Production encrypted `.xp3` extraction/patching unless separately proven by exact fixtures and helper evidence               |
-| `rpg-maker-vx-ace-rgss3-readiness` | Local-backlog packed/binary readiness proof               | RGSSAD/Ruby Marshal readiness record, binary patcher requirements, fixture strategy, and future adapter split for VX Ace/RGSS3 local backlog titles                                                                                                                          | E0 readiness evidence                                                                   | Production RGSS3 extraction/patching until binary patcher and fixtures prove it                                              |
+| Engine id                          | Alpha role                                                                  | Required alpha support                                                                                                                                                                                                                                                                                                            | Runtime evidence bar                                                                    | Not required before first real project                                                                                       |
+| ---------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `synthetic-json`                   | Public CI control and contract proof                                        | `fixtures/hello-game` extraction, drafting, patching, `.kaifuu` delta, apply, verify, Utsushi trace, Utsushi capture, dashboard status                                                                                                                                                                                            | E2 frame capture in CI                                                                  | Real-engine support claim                                                                                                    |
+| `rpg-maker-mv-mz-json`             | First positive real-engine vertical slice and demo anchor                   | RPG Maker MV/MZ JSON project data for map events, common events, choices, database text, UI-like terms, plugin-profiled text, control-code protected spans, patching, verify, delta package, asset inventory, encrypted media detection, and key-profile diagnostics                                                              | E1 trace or E2 capture when the probe can launch/capture; report must state limitations | XP/VX/Ace production patching, full encrypted media patching, plugin-owned dynamic text not represented in profiled fixtures |
+| `tyranoscript-null-key`            | High-reach plaintext/null-key breadth proof                                 | Plaintext TyranoScript scenarios as identity container, null-key crypto, script codec pipeline; dialogue, choices, labels, jumps, variables, comments, common tags, protected spans, patching, verify, and capability errors for packed/mobile/encrypted/custom-plugin cases                                                      | E0 static evidence required; E1 route/text probe when available                         | Browser/mobile packed builds, encrypted assets, arbitrary plugin semantics                                                   |
+| `kirikiri-xp3-readiness`           | High-value packed/encrypted VN readiness and first encrypted vertical proof | Capability-leveled XP3 detection and readiness profiles for plaintext KAG, packed XP3, encrypted XP3, protected executable, helper-required, universal dump, and universal patch workflows; one declared synthetic encrypted XP3 profile must run detect, key/profile resolution, extract, trivial patch, verify, and delta apply | E0 readiness evidence required; E1 trace probe only when already extracted/plaintext    | Broad production encrypted `.xp3` extraction/patching beyond the first declared profile                                      |
+| `rpg-maker-vx-ace-rgss3-readiness` | Local-backlog packed/binary readiness proof                                 | RGSSAD/Ruby Marshal readiness record, binary patcher requirements, fixture strategy, and future adapter split for VX Ace/RGSS3 local backlog titles                                                                                                                                                                               | E0 readiness evidence                                                                   | Production RGSS3 extraction/patching until binary patcher and fixtures prove it                                              |
 
 Ren'Py is a useful reference/null-key adapter, but it is not an alpha
 readiness driver for Japanese indie backlog coverage. SiglusEngine, Unity,
@@ -75,9 +75,10 @@ ceiling. Kaifuu's long-term goal is to legitimately decrypt, extract, patch, and
 validate owned games across supported engine variants. Alpha encrypted corpus
 triage, archive/encryption detection, key-profile schema, local-only key
 material policy, platform-assisted helper boundaries, redaction tests, layered
-access preflight, and engine-specific readiness profiles are required because
-they make that production support safe to build without leaking keys or private
-assets. See [kaifuu-key-discovery.md](kaifuu-key-discovery.md).
+access preflight, engine-specific readiness profiles, and one encrypted-profile
+vertical are required because they make that production support safe to build
+without leaking keys or private assets. See
+[kaifuu-key-discovery.md](kaifuu-key-discovery.md).
 
 ## Fixture And Corpus Requirements
 
@@ -98,6 +99,9 @@ Required public fixtures:
 - Synthetic public detector/readiness fixtures for KiriKiri/XP3 and RGSS3/VX
   Ace that prove capability levels, missing-key/helper-required outcomes, and
   unsupported patch paths without retail bytes.
+- A synthetic public encrypted XP3 fixture with fixture-only key material for
+  the first declared encrypted-profile vertical: detect, key/profile resolution,
+  extract, trivial patch, verify, and `.kaifuu` delta apply.
 - Seeded-defect fixture data that can produce known deterministic QA findings
   and QA-agent evaluation results without exposing private source text.
 
@@ -221,6 +225,7 @@ stable when editing this document.
 | `ALPHA-CHECK-017` | Non-goals                 | Known non-goals section in this document and alpha summary                                                                                 | Exclusions are visible before demo and alpha review                                                                                                                                | Yes                                |
 | `ALPHA-CHECK-018` | Encrypted local readiness | Kaifuu key discovery docs, redaction tests, detector fixtures, and private-local encrypted readiness report when local corpora are present | Public CI uses only public fixtures; local encrypted validation produces safe aggregate evidence with no raw keys, private assets, helper dumps, decrypted scripts, or local paths | Yes                                |
 | `ALPHA-CHECK-019` | Real LLM proof            | Recorded or explicitly opted-in live provider run artifacts                                                                                | Structured outputs, retries, provider/model metadata, token/cost accounting, and QA-agent output are exercised with real LLM responses before a full-game project begins           | Yes                                |
+| `ALPHA-CHECK-020` | Encrypted patch vertical  | `ALPHA-006` artifacts for the declared synthetic encrypted XP3 profile                                                                     | Kaifuu runs detect, key/profile resolution, extract, trivial patch, verify, and `.kaifuu` delta apply without leaking keys, helper dumps, private paths, or decrypted private text | Yes                                |
 
 ## Validation Checks
 
@@ -267,33 +272,36 @@ documented private-local prerequisites optional.
 4. Run or open at least one recorded or live-provider proof that exercises real
    LLM response parsing, structured output validation, retries, cost accounting,
    deterministic QA, and QA-agent findings.
-5. If private-local encrypted corpora are present, run the encrypted readiness
+5. Run the encrypted-profile vertical on the synthetic XP3 fixture. Show
+   archive/encryption detection, key/profile resolution, extraction, trivial
+   patch, verify, `.kaifuu` delta apply, and redacted failure paths.
+6. If private-local encrypted corpora are present, run the encrypted readiness
    lane. Show archive/encryption detection, redacted key-profile ids, helper
    availability, validation proof hashes, semantic failures for unsupported
    protected variants, and confirm no raw keys or private assets appear in
    logs/reports.
-6. Open the dashboard workbench. Show project import status, locale branch
+7. Open the dashboard workbench. Show project import status, locale branch
    policy, draft/QA run status, runtime evidence, patch/delta status, and cost
    panels.
-7. Open one export blocker or style/glossary decision. Show source, draft,
+8. Open one export blocker or style/glossary decision. Show source, draft,
    context, findings, evidence, impact, options, and consequences before taking
    action.
-8. Submit one feedback item or correction from runtime/playable review, triage
+9. Submit one feedback item or correction from runtime/playable review, triage
    it, apply the repair, rerun affected work, and show the updated patch output.
-9. Run or open the engine readiness matrix for RPG Maker MV/MZ, TyranoScript,
-   KiriKiri/XP3, and RPG Maker VX Ace/RGSS3. Show that Kaifuu distinguishes
-   positive patch support from readiness-only packed/encrypted profiles while
-   Itotori remains engine-agnostic.
-10. Open `alpha-readiness-benchmark-report`,
+10. Run or open the engine readiness matrix for RPG Maker MV/MZ, TyranoScript,
+    KiriKiri/XP3, and RPG Maker VX Ace/RGSS3. Show that Kaifuu distinguishes
+    positive patch support from readiness-only packed/encrypted profiles while
+    Itotori remains engine-agnostic.
+11. Open `alpha-readiness-benchmark-report`,
     `alpha-readiness-quality-report`, `alpha-readiness-cost-report`, and
     `alpha-readiness-runtime-evidence-report`. Point out raw MTL baseline,
     Itotori draft results, QA-agent evaluation, seeded-defect metrics,
     token/cost data, provider/model metadata, fixture hashes, evidence tiers,
     and limitations.
-11. Show the `alpha-readiness-summary` wording and confirm it does not claim
+12. Show the `alpha-readiness-summary` wording and confirm it does not claim
     guaranteed price, engine-perfect fidelity, or broad commercial game
     support.
-12. End with the readiness check matrix and mark each `ALPHA-CHECK-*` row pass,
+13. End with the readiness check matrix and mark each `ALPHA-CHECK-*` row pass,
     fail, or waived with owner and follow-up.
 
 ## Known Non-Goals
@@ -334,14 +342,16 @@ These exclusions apply to the alpha readiness milestone:
 These are useful after alpha readiness but must not block the first real
 localization project unless an owner promotes them through the DAG:
 
-- More production adapters and variants: production SiglusEngine extraction and
-  patching, production encrypted KiriKiri/XP3 patching, production RPG Maker VX
+- More production adapters and variants: broader production SiglusEngine
+  extraction and patching beyond the alpha known-key smoke, encrypted KiriKiri
+  XP3 variants beyond the first declared profile, production RPG Maker VX
   Ace/RGSS3 patching, Unity, Unreal, Godot, packed Ren'Py projects, and binary
   VN formats. Alpha still includes layered access modeling, encrypted-input
-  detection, key-profile policy, helper boundaries, and local encrypted corpus
-  readiness. Once Kaifuu claims a specific engine variant and capability level,
-  failures inside that declared support profile should be treated as bugs or
-  compatibility regressions, not as new feature requests.
+  detection, key-profile policy, helper boundaries, local encrypted corpus
+  readiness, and one encrypted-profile patch vertical. Once Kaifuu claims a
+  specific engine variant and capability level, failures inside that declared
+  support profile should be treated as bugs or compatibility regressions, not as
+  new feature requests.
 - Stronger Utsushi evidence: E3 replay review, E4 reference comparison,
   browser/WASM playback, remote Windows probe hosts, and GPU/native capture
   matrices.

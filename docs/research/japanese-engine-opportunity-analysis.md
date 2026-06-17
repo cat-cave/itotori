@@ -1,5 +1,10 @@
 # Japanese VN/RPG Engine & Untranslated-Game Opportunity Analysis
 
+**Status:** Historical research input. The canonical executable plan is
+`roadmap/spec-dag.json`; older MVP and post-MVP wording here is preserved only
+as research context until `UNIV-015` completes the full research-to-DAG
+crosswalk.
+
 **Purpose:** Reframe Kaifuu adapter priorities using real catalog data rather than
 reputation. The point of this analysis is _opportunity discovery_ — it deliberately
 challenges the current MVP/roadmap ordering where the evidence warrants.

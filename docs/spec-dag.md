@@ -120,6 +120,13 @@ represents a meaningful scheduler lane, then update both the schema and this doc
 
 ## Priority Semantics
 
+`target` is the delivery horizon. `priority` is the blocking strength. A node
+with `target: alpha` and `priority: P2` is alpha-adjacent work that should stay
+visible near the milestone, but it does not block alpha readiness unless a
+separate `P1` milestone node depends on it. All non-complete `P1` alpha nodes
+must be ancestors of the final alpha readiness node so the graph cannot hide a
+required blocker off to the side.
+
 `P0` means the current work cannot merge if it fails. These are core
 orchestration, data integrity, or hard alpha-readiness blocker issues.
 

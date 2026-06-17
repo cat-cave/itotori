@@ -75,4 +75,9 @@ counts both MV-style `.rpgmvp`/`.rpgmvm`/`.rpgmvo` files and MZ-style
 
 `profile init` writes stable JSON profiles. Profiles include assets, capability reports, and explicit requirements for files, platform constraints, and secret keys. Secret requirements use placeholders only; actual secret values must stay out of profile files. The fixture engine marks decryption keys as `not_required`, so missing-key handling does not block unencrypted games.
 Key-bearing profiles use top-level `sourceFingerprint`, `keyRequirements`, `archiveParameters`, and `helperEvidence` fields. Required keys are referenced only through local `secretRef` ids, while adapter capability output may declare `keyRequirements` for encrypted variants without coupling pure extraction or patching to helper execution.
-Encrypted game readiness is not deferred wholesale: local-only key profiles, helper boundaries, detector diagnostics, and redaction policy are tracked in [kaifuu-key-discovery.md](kaifuu-key-discovery.md), while broad production support for every protected commercial variant remains scoped per adapter.
+Encrypted game support is not deferred wholesale: local-only key profiles,
+helper boundaries, detector diagnostics, redaction policy, and the first
+encrypted-profile extract/patch/verify vertical are tracked in
+[kaifuu-key-discovery.md](kaifuu-key-discovery.md). Broad production support for
+every protected commercial variant remains scoped per adapter, but failures
+inside a declared support profile are compatibility bugs, not feature requests.
