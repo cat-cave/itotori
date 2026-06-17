@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/docs/localization-quality-taxonomy.schema.json",
+  "title": "Itotori Localization Quality Taxonomy",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "taxonomyId",
+    "decisionAdr",
+    "qualitySeverities",
+    "categories",
+    "rootCauses",
+    "seededDefectKinds",
+    "adjudicationStates",
+    "qaAgentFindingFields",
+    "benchmarkReportFields",
+    "metrics"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "schemaVersion": {
+      "const": "itotori-quality-taxonomy-0.1.0"
+    },
+    "taxonomyId": {
+      "const": "itotori-lqa-1"
+    },
+    "decisionAdr": {
+      "type": "string",
+      "minLength": 1
+    },
+    "basis": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/reference"
+      }
+    },
+    "dagSeveritySeparation": {
+      "type": "object",
+      "required": ["triageSeverityField", "qualitySeverityField", "rule"],
+      "additionalProperties": false,
+      "properties": {
+        "triageSeverityField": { "type": "string", "minLength": 1 },
+        "qualitySeverityField": { "type": "string", "minLength": 1 },
+        "rule": { "type": "string", "minLength": 1 }
+      }
+    },
+    "qualitySeverities": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "$ref": "#/$defs/qualitySeverity"
+      }
+    },
+    "categories": {
+      "type": "array",
+      "minItems": 8,
+      "items": {
+        "$ref": "#/$defs/category"
+      }
+    },
+    "rootCauses": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/idDescription"
+      }
+    },
+    "seededDefectKinds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/seededDefectKind"
+      }
+    },
+    "adjudicationStates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/idDescription"
+      }
+    },
+    "qaAgentFindingFields": {
+      "$ref": "#/$defs/fieldPolicy"
+    },
+    "benchmarkReportFields": {
+      "$ref": "#/$defs/fieldPolicy"
+    },
+    "metrics": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/idDescription"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "reference": {
+      "type": "object",
+      "required": ["label", "url"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "minLength": 1 }
+      }
+    },
+    "idDescription": {
+      "type": "object",
+      "required": ["id", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "qualitySeverity": {
+      "type": "object",
+      "required": ["id", "weight", "blocksExportByDefault", "description"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "enum": ["critical", "major", "minor", "neutral"]
+        },
+        "weight": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocksExportByDefault": {
+          "type": "boolean"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "category": {
+      "type": "object",
+      "required": ["id", "mqmAnchor", "description", "subcategories"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "mqmAnchor": { "type": "string", "minLength": 1 },
+        "description": { "type": "string", "minLength": 1 },
+        "subcategories": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/idDescription" }
+        }
+      }
+    },
+    "seededDefectKind": {
+      "type": "object",
+      "required": [
+        "id",
+        "category",
+        "subcategory",
+        "defaultQualitySeverity",
+        "expectedDetectorKinds",
+        "expectedRootCause",
+        "description"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "category": { "$ref": "#/$defs/id" },
+        "subcategory": { "$ref": "#/$defs/id" },
+        "defaultQualitySeverity": {
+          "type": "string",
+          "enum": ["critical", "major", "minor", "neutral"]
+        },
+        "expectedDetectorKinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "expectedRootCause": { "$ref": "#/$defs/id" },
+        "description": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fieldPolicy": {
+      "type": "object",
+      "required": ["required", "recommended", "forbidden"],
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "recommended": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "forbidden": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}
