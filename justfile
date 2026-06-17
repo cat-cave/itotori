@@ -13,9 +13,13 @@ dashboard:
 check:
     pnpm exec vp check
     node scripts/spec-dag.mjs validate
+    just fixtures-validate
     pnpm exec vp run ts:typecheck
     cargo fmt --check
     cargo check --workspace
+
+fixtures-validate:
+    pnpm exec node fixtures/validate-public-manifests.mjs
 
 test:
     pnpm exec vp run ts:test

@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/fixtures/public/manifest.schema.json",
+  "title": "Itotori Public Fixture Manifest",
+  "type": "object",
+  "required": ["$schema", "schemaVersion", "fixture", "files", "aggregateStats"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "fixture": {
+      "type": "object",
+      "required": [
+        "id",
+        "title",
+        "kind",
+        "summary",
+        "sourceLocale",
+        "publicRedistribution",
+        "license",
+        "provenance"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["synthetic", "public-domain", "open-license"]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sourceLocale": {
+          "type": "string",
+          "pattern": "^[a-z]{2,3}(-[A-Z0-9]{2,8})*$"
+        },
+        "targetLocales": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Z0-9]{2,8})*$"
+          }
+        },
+        "publicRedistribution": {
+          "const": "allowed"
+        },
+        "license": {
+          "type": "object",
+          "required": ["spdx", "evidence"],
+          "additionalProperties": false,
+          "properties": {
+            "spdx": {
+              "type": "string",
+              "minLength": 1
+            },
+            "evidence": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "required": ["creationMethod", "rawAssetPolicy"],
+          "additionalProperties": false,
+          "properties": {
+            "author": {
+              "type": "string",
+              "minLength": 1
+            },
+            "creationMethod": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rawAssetPolicy": {
+              "const": "contains-no-copyrighted-game-assets"
+            }
+          }
+        }
+      }
+    },
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["path", "role", "mediaType", "sha256", "bytes", "redistributable"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^fixtures/(?!private-local/)(?!.*\\.\\.)[A-Za-z0-9._/-]+$"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "source-game",
+              "bridge-bundle",
+              "expected-output",
+              "runtime-evidence",
+              "benchmark-input",
+              "metadata",
+              "asset"
+            ]
+          },
+          "mediaType": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "redistributable": {
+            "const": true
+          }
+        }
+      }
+    },
+    "aggregateStats": {
+      "type": "object",
+      "required": ["files", "textUnits", "sourceTextUtf16CodeUnits", "protectedSpans"],
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "textUnits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceTextUtf16CodeUnits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "protectedSpans": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceLocales": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Z0-9]{2,8})*$"
+          }
+        },
+        "targetLocales": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z]{2,3}(-[A-Z0-9]{2,8})*$"
+          }
+        },
+        "engineKinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "benchmarkUse": {
+      "type": "object",
+      "required": ["allowedInPublicCi", "allowedInPublicReports", "reportingLabel"],
+      "additionalProperties": false,
+      "properties": {
+        "allowedInPublicCi": {
+          "const": true
+        },
+        "allowedInPublicReports": {
+          "const": true
+        },
+        "reportingLabel": {
+          "type": "string",
+          "pattern": "^public:[a-z0-9][a-z0-9._-]*$"
+        }
+      }
+    }
+  }
+}

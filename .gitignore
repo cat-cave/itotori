@@ -9,4 +9,5 @@ web-dist/
 .tmp/
 coverage/
 *.log
+# Local-only purchased-game corpora and private benchmark inputs.
 fixtures/private-local/

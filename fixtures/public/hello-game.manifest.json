@@ -1,0 +1,47 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "hello-game",
+    "title": "Hello Fixture",
+    "kind": "synthetic",
+    "summary": "Minimal synthetic game source used by the hello-world localization loop.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["en-US"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Synthetic fixture text and metadata authored for repository tests; no third-party raw assets."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic dialogue fixture for CI and documentation.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/hello-game/source.json",
+      "role": "source-game",
+      "mediaType": "application/json",
+      "sha256": "28e0a6306f64ba1a5ff0a56c7039932f924959cd878394a5987b49a2aa50f213",
+      "bytes": 441,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 1,
+    "textUnits": 1,
+    "sourceTextUtf16CodeUnits": 15,
+    "protectedSpans": 1,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["en-US"],
+    "engineKinds": ["synthetic-json"],
+    "notes": "The source text contains one protected placeholder span."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:hello-game"
+  }
+}
