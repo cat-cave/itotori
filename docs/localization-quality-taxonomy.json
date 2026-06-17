@@ -548,6 +548,7 @@
       "countsByQualitySeverity",
       "countsByCategory",
       "countsByRootCause",
+      "countsByDetectorKind",
       "countsByAdjudicationState",
       "qaAgentMetrics"
     ],

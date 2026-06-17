@@ -220,10 +220,40 @@ names are illustrative and should be refined by schema work.
     "findings": [
       {
         "findingId": "finding_...",
-        "severity": "P1",
+        "taxonomyId": "itotori-lqa-1",
+        "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+        "detectorKind": "llm_qa",
+        "subjectRefs": {
+          "surfaceIds": ["surface_..."],
+          "spanIds": ["span_..."],
+          "runtimeEvidenceIds": ["runtime_report_..."]
+        },
+        "referenceRefs": {
+          "styleRuleIds": ["style_rule_hero_voice"],
+          "sceneRefs": ["scene_..."],
+          "speakerRefs": ["speaker_..."]
+        },
         "category": "style",
-        "evidenceRefs": ["style_rule_hero_voice", "surface_..."],
-        "rootCause": "style_policy_ambiguity"
+        "subcategory": "style_guide_violation",
+        "qualitySeverity": "major",
+        "rootCause": "style_guide_gap",
+        "evidence": {
+          "expected": {
+            "styleRuleId": "style_rule_hero_voice",
+            "summary": "Protagonist lines use the direct voice rule."
+          },
+          "observed": {
+            "surfaceId": "surface_...",
+            "summary": "Draft shifts into a softened voice that conflicts with the rule."
+          },
+          "artifactRefs": ["screenshot_...", "qa_run_..."],
+          "provenance": {
+            "detectorRunRef": "qa_run_...",
+            "evidenceTier": "E2"
+          }
+        },
+        "adjudicationState": "confirmed",
+        "reviewerRationale": "Runtime capture and the current style rule show the draft violates the protagonist voice policy."
       }
     ],
     "agentRunRefs": ["qa_run_..."],
