@@ -4,7 +4,8 @@ The implementation roadmap is a directed acyclic graph of PR-sized specs in
 `roadmap/spec-dag.json`. The graph is intentionally machine-readable because the
 expected development mode is orchestration by an agent that can claim ready
 nodes, launch planning and implementation workers, run audits, and merge only
-when the spec is actually complete.
+when the spec is actually complete. The central orchestrator operating contract
+is documented in [orchestration-operating-model.md](orchestration-operating-model.md).
 
 ## Commands
 
@@ -68,6 +69,11 @@ P1 risk.
 
 ## Orchestration Lifecycle
 
+The short lifecycle below is a summary. Use
+[orchestration-operating-model.md](orchestration-operating-model.md) as the
+authoritative operating model for orchestrator responsibilities, delegation,
+provider policy, cost discipline, and worktree hygiene.
+
 1. Run `just roadmap-ready` or `node scripts/spec-dag.mjs pop --json`.
 2. Claim one ready node by moving it to `in_progress` in a branch or worktree.
 3. Launch a spec-planning agent to turn the node into an implementation plan.
@@ -76,13 +82,16 @@ P1 risk.
 5. Run local checks required by the node's `verification` list.
 6. Launch audit agents for architecture, correctness, tests, performance, and
    UX where relevant.
-7. Repair all P0/P1 audit findings and re-audit.
+7. For P0/P1 audit findings, create a repair plan, assign worker
+   implementation, and re-audit.
 8. Convert P2/P3 findings into new DAG nodes or add them to existing planned
-   nodes.
+   nodes unless they are cheap, explicitly assigned to a worker before merge,
+   and recorded durably in a tracked and committed branch note file, audit
+   report artifact, DAG node/update, PR comment/description, or commit message.
 9. Merge only after CI is green, P0/P1 findings are gone, acceptance criteria
    are met, and the orchestrator trusts the result.
-10. Mark the node `complete` in a follow-up DAG update or in the same merge when
-    the completed implementation and DAG state are inseparable.
+10. After the implementation is merged into `main`, mark the node `complete`
+    only when the merged result is verified and audit-clean for P0/P1.
 
 ## Parallelism
 
@@ -129,9 +138,14 @@ When adding a node:
 
 When an audit finds issues:
 
-- P0/P1: repair in the active spec branch, then re-audit.
+- P0/P1: create a repair plan, assign worker implementation in the active spec
+  branch, then re-audit.
 - P2/P3: add a new planned node or amend an existing planned node with the
-  finding's acceptance criteria.
+  finding's acceptance criteria unless the finding is cheap and explicitly
+  assigned to a worker before merge with a durable disposition record in an
+  audit report artifact, DAG node/update, tracked and committed branch note
+  file, PR comment/description, or commit message.
 
 Do not mark a node complete because the code was written. Mark it complete only
-after the implementation is merged, verified, and audit-clean for P0/P1.
+after the implementation is merged into `main`, verified, and audit-clean for
+P0/P1.
