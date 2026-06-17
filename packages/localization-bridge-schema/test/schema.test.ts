@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   assertBridgeBundle,
@@ -31,6 +31,13 @@ function triageV02Example(): Record<string, unknown> {
   return JSON.parse(
     readFileSync(new URL("./examples/triage-v0.2.json", import.meta.url), "utf8"),
   ) as Record<string, unknown>;
+}
+
+function exampleFixture(path: string): Record<string, unknown> {
+  return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as Record<
+    string,
+    unknown
+  >;
 }
 
 function bridgeV02Units(bridge: Record<string, unknown>): Array<Record<string, unknown>> {
@@ -77,6 +84,47 @@ function asTestRecord(value: unknown, label: string): Record<string, unknown> {
 }
 
 describe("localization bridge schema guards", () => {
+  it("has explicit validation expectations for each top-level example fixture", () => {
+    const expectedTopLevelFixtures = new Set(["bridge-v0.2.json", "triage-v0.2.json"]);
+    const topLevelFixtures = readdirSync(new URL("./examples", import.meta.url)).filter((entry) =>
+      entry.endsWith(".json"),
+    );
+
+    expect(new Set(topLevelFixtures)).toEqual(expectedTopLevelFixtures);
+  });
+
+  it.each([
+    {
+      path: "./examples/bridge-v0.2.json",
+      kind: "bridge-v0.2",
+      assertValid: assertBridgeBundleV02,
+    },
+    {
+      path: "./examples/triage-v0.2.json",
+      kind: "triage-v0.2",
+      assertValid: assertTriageBundleV02,
+    },
+  ])("validates committed $kind example fixture", ({ path, assertValid }) => {
+    expect(() => assertValid(exampleFixture(path))).not.toThrow();
+  });
+
+  it.each([
+    {
+      path: "./examples/invalid/bridge-v0.2-dangling-asset-ref.json",
+      semanticError: /sourceAssetRef\.assetId.*asset/,
+    },
+    {
+      path: "./examples/invalid/bridge-v0.2-malformed-hash.json",
+      semanticError: /canonical sha256 hash string/,
+    },
+    {
+      path: "./examples/invalid/bridge-v0.2-schema-version-0.1.json",
+      semanticError: /schemaVersion must be 0\.2\.0/,
+    },
+  ])("rejects invalid committed bridge fixture $path", ({ path, semanticError }) => {
+    expect(() => assertBridgeBundleV02(exampleFixture(path))).toThrow(semanticError);
+  });
+
   it("accepts minimal valid bridge bundles", () => {
     expect(() =>
       assertBridgeBundle({
