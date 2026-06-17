@@ -724,16 +724,16 @@ fn detect_siglus(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         } else {
             "gameexe-dat-without-scene-pck"
         },
-        signals: detected
-            .then(|| {
-                vec![
-                    ArchiveDetectionSignal::Packed,
-                    ArchiveDetectionSignal::Encrypted,
-                    ArchiveDetectionSignal::MissingKey,
-                    ArchiveDetectionSignal::HelperRequired,
-                ]
-            })
-            .unwrap_or_default(),
+        signals: if detected {
+            vec![
+                ArchiveDetectionSignal::Packed,
+                ArchiveDetectionSignal::Encrypted,
+                ArchiveDetectionSignal::MissingKey,
+                ArchiveDetectionSignal::HelperRequired,
+            ]
+        } else {
+            Vec::new()
+        },
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::FileName,
@@ -783,14 +783,14 @@ fn detect_rpg_maker_mv_mz(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         engine_family: ArchiveEngineFamily::RpgMakerMvMz,
         detected,
         detected_variant: "mv-mz-encrypted-asset-signals",
-        signals: detected
-            .then(|| {
-                vec![
-                    ArchiveDetectionSignal::Encrypted,
-                    ArchiveDetectionSignal::MissingKey,
-                ]
-            })
-            .unwrap_or_default(),
+        signals: if detected {
+            vec![
+                ArchiveDetectionSignal::Encrypted,
+                ArchiveDetectionSignal::MissingKey,
+            ]
+        } else {
+            Vec::new()
+        },
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::FileExtension,
@@ -958,9 +958,11 @@ fn detect_renpy(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         } else {
             "rpyc-compiled-script"
         },
-        signals: detected
-            .then(|| vec![ArchiveDetectionSignal::Packed])
-            .unwrap_or_default(),
+        signals: if detected {
+            vec![ArchiveDetectionSignal::Packed]
+        } else {
+            Vec::new()
+        },
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::FileExtension,
@@ -1001,9 +1003,11 @@ fn detect_unknown_archive_variant(scan: &ArchiveDetectionScan) -> ArchiveDetecti
         engine_family: ArchiveEngineFamily::Unknown,
         detected,
         detected_variant: "unprofiled-archive-like-input",
-        signals: detected
-            .then(|| vec![ArchiveDetectionSignal::UnknownVariant])
-            .unwrap_or_default(),
+        signals: if detected {
+            vec![ArchiveDetectionSignal::UnknownVariant]
+        } else {
+            Vec::new()
+        },
         evidence: vec![evidence(
             ArchiveEvidenceType::AggregateCount,
             "*.pak|*.bundle|*.bin|unprofiled *.dat|*.pck|*.arc",
