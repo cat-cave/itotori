@@ -7,4 +7,5 @@ repository.workspace = true
 
 [dependencies]
 kaifuu-core = { path = "../kaifuu-core" }
+serde.workspace = true
 serde_json.workspace = true

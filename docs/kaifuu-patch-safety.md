@@ -101,7 +101,8 @@ atomic, the adapter must either:
 Silent partial success is forbidden. A patch result may report `passed` only
 when every validated patch entry was applied exactly once and every expected
 output was written. Unsupported multi-entry delta packages must fail before the
-first output write.
+first output write; supported multi-entry delta packages must stage the complete
+target tree before publishing it.
 
 ## Current Guardrails
 
@@ -111,8 +112,9 @@ The fixture implementation enforces a small subset of this policy:
 - Fixture patching validates duplicate source keys, duplicate patch entries,
   unmatched keys, stale source hashes, and full entry application before
   writing `source.json`.
-- Fixture `.kaifuu` delta application rejects path traversal and rejects
-  multi-entry packages instead of silently applying a partial package.
+- Fixture `.kaifuu` delta application rejects path traversal, validates source
+  compatibility before writing output, and applies supported multi-entry
+  packages through a staged target tree.
 - Profile validation rejects unsafe asset paths in profile asset records.
 
 Future engine adapters must extend these guardrails with encoding-specific
