@@ -64,7 +64,9 @@
           "end": 36,
           "preserveMode": "exact",
           "parsedName": "wait",
-          "arguments": ["30"]
+          "arguments": [
+            "30"
+          ]
         }
       ],
       "patchRef": {
