@@ -1,4 +1,4 @@
-import { createServer } from "node:http";
+import { createServer, type IncomingMessage } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { extname, join } from "node:path";
@@ -24,15 +24,27 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
     if (isItotoriApiPath(url.pathname)) {
       try {
+        const body = await readJsonRequestBody(request);
         const apiResponse = await serviceFactory((services) =>
-          handleItotoriApiRequest(url.pathname, services.projectWorkflow),
+          handleItotoriApiRequest(
+            {
+              method: request.method ?? "GET",
+              pathname: url.pathname,
+              body,
+            },
+            services,
+          ),
         );
         response.writeHead(apiResponse.statusCode, { "content-type": "application/json" });
         response.end(JSON.stringify(apiResponse.body));
       } catch (error) {
-        response.writeHead(500, { "content-type": "application/json" });
+        const statusCode = error instanceof SyntaxError ? 400 : 500;
+        response.writeHead(statusCode, { "content-type": "application/json" });
         response.end(
-          JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+          JSON.stringify({
+            error: error instanceof Error ? error.message : String(error),
+            code: error instanceof SyntaxError ? "bad_request" : "internal_error",
+          }),
         );
       }
       return;
@@ -48,6 +60,20 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
       response.end("not found");
     }
   });
+}
+
+async function readJsonRequestBody(request: IncomingMessage): Promise<unknown> {
+  if (request.method === "GET" || request.method === "HEAD") {
+    return undefined;
+  }
+  let rawBody = "";
+  for await (const chunk of request) {
+    rawBody += chunk;
+  }
+  if (rawBody.trim().length === 0) {
+    return undefined;
+  }
+  return JSON.parse(rawBody) as unknown;
 }
 
 function databaseOptions(options: DashboardServerOptions) {

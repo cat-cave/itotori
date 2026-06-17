@@ -1,4 +1,5 @@
 import type { ProjectDashboardStatus } from "@itotori/db";
+import { assertProjectDashboardStatus } from "./api-schema.js";
 
 export async function fetchProjectStatus(
   endpoint = "/api/projects/status",
@@ -10,7 +11,9 @@ export async function fetchProjectStatus(
   if (!response.ok) {
     throw new Error(`failed to load project status: ${response.status}`);
   }
-  return (await response.json()) as ProjectDashboardStatus;
+  const status = await response.json();
+  assertProjectDashboardStatus(status);
+  return status;
 }
 
 export async function renderDashboard(

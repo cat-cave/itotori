@@ -147,6 +147,19 @@ function servicesFixture(): ItotoriCliServices {
           dashboard: dashboardStatusFixture,
         },
       })),
+      recordFinding: vi.fn(async () => ({ findingId: "finding-1", status: "open" })),
+      recordDecision: vi.fn(async () => ({
+        decisionId: "019ed004-0000-7000-8000-000000000201",
+        eventKind: "triage_decision_recorded",
+        recorded: true,
+      })),
+      recordBenchmarkReport: vi.fn(async () => ({
+        benchmarkRunId: "019ed006-0000-7000-8000-00000000f001",
+        artifactId: "019ed006-0000-7000-8000-00000000f001",
+        status: "passed",
+        systemCount: 1,
+        findingCount: 0,
+      })),
     },
     manualFeedback: {
       importManualFeedback: vi.fn(async () => manualFeedbackResultFixture),
