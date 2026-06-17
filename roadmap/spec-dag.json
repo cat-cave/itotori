@@ -344,7 +344,7 @@
     {
       "id": "UNIV-003",
       "title": "Agent worktree lifecycle playbook",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["universal"],
@@ -381,7 +381,7 @@
     {
       "id": "UNIV-004",
       "title": "Affected task detection and CI cache hardening",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["universal"],
@@ -536,7 +536,7 @@
     {
       "id": "UNIV-008",
       "title": "BDD and fixture-driven testing standard",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["universal", "shared"],
@@ -3438,7 +3438,7 @@
     {
       "id": "ITOTORI-031",
       "title": "Provider credentials, routing, and recording policy",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
