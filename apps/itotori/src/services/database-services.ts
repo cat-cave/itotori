@@ -1,0 +1,52 @@
+import {
+  ItotoriFeedbackRepository,
+  ItotoriProjectRepository,
+  bootstrapLocalUser,
+  createDatabaseContext,
+  databaseUrlFromEnv,
+  migrate,
+} from "@itotori/db";
+import { localUserActor } from "../auth.js";
+import { ManualFeedbackImportService, type ManualFeedbackImportPort } from "../manual-feedback.js";
+import {
+  ItotoriProjectWorkflowService,
+  type ItotoriProjectWorkflowPort,
+} from "./project-workflow.js";
+
+export type ItotoriApplicationServices = {
+  projectWorkflow: ItotoriProjectWorkflowPort;
+  manualFeedback: ManualFeedbackImportPort;
+};
+
+export type ItotoriServiceFactory = <T>(
+  callback: (services: ItotoriApplicationServices) => Promise<T>,
+) => Promise<T>;
+
+export type DatabaseServiceOptions = {
+  databaseUrl?: string;
+  bootstrapLocalUser?: boolean;
+};
+
+export async function migrateItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {
+  await migrate(databaseUrl);
+}
+
+export async function withDatabaseItotoriServices<T>(
+  options: DatabaseServiceOptions,
+  callback: (services: ItotoriApplicationServices) => Promise<T>,
+): Promise<T> {
+  const context = createDatabaseContext(options.databaseUrl);
+  try {
+    if (options.bootstrapLocalUser ?? true) {
+      await bootstrapLocalUser(context.db);
+    }
+    const projectRepository = new ItotoriProjectRepository(context.db);
+    const feedbackRepository = new ItotoriFeedbackRepository(context.db);
+    return await callback({
+      projectWorkflow: new ItotoriProjectWorkflowService(projectRepository, localUserActor),
+      manualFeedback: new ManualFeedbackImportService(feedbackRepository, localUserActor),
+    });
+  } finally {
+    await context.close();
+  }
+}
