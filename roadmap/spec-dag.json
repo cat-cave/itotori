@@ -146,7 +146,7 @@
     {
       "id": "ITOTORI-000",
       "title": "Product workflow and HITL UX spec",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -183,7 +183,7 @@
     {
       "id": "KAIFUU-000",
       "title": "Engine fixture sourcing and reference implementation policy",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "universal"],
@@ -306,7 +306,7 @@
     {
       "id": "UNIV-002",
       "title": "GitHub issue sync for DAG nodes",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["universal"],
