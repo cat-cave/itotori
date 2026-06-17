@@ -19,6 +19,12 @@ Validate public manifests with:
 pnpm exec node fixtures/validate-public-manifests.mjs
 ```
 
+Regenerate the public Kaifuu round-trip report with:
+
+```sh
+cargo run -p kaifuu-cli -- golden fixtures/hello-game --adapter kaifuu.fixture --translated-patch fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json --translated-source-bridge fixtures/hello-game/expected/bridge-v0.2.json --work-dir .tmp/kaifuu-golden-fixture --output fixtures/hello-game/expected/round-trip-golden-report-v0.1.json
+```
+
 Verify private corpus files stay untracked with:
 
 ```sh
