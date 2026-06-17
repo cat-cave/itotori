@@ -3,6 +3,14 @@ import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
+import {
+  createIssueSyncPlan,
+  issuesFromPayload,
+  issueSyncLabelTaxonomy,
+  issueSyncManagedLabelPrefixes,
+  normalizeExistingIssues,
+  renderIssueSyncDryRun,
+} from "./spec-dag-issues.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const dagPath = resolve(root, "roadmap/spec-dag.json");
@@ -81,9 +89,12 @@ switch (command) {
   case "graph":
     printDotGraph(dag);
     break;
+  case "sync-issues":
+    printIssueSync(dag, args);
+    break;
   default:
     console.error(
-      "usage: spec-dag <validate|validate-audit-report|ready|pop|show|graph> [options]",
+      "usage: spec-dag <validate|validate-audit-report|ready|pop|show|graph|sync-issues> [options]",
     );
     process.exit(1);
 }
@@ -826,6 +837,141 @@ function printDotGraph(value) {
     }
   }
   console.log("}");
+}
+
+function printIssueSync(value, args) {
+  const options = parseIssueSyncArgs(args);
+  if (options.help) {
+    printIssueSyncUsage();
+    return;
+  }
+  if (options.apply && options.dryRun) {
+    console.error("sync-issues accepts either --dry-run or --apply, not both");
+    process.exit(1);
+  }
+  if (options.apply) {
+    console.error(
+      "sync-issues --apply is intentionally not implemented in this offline-safe command.",
+    );
+    console.error(
+      "No GitHub writes were attempted. Future apply support must require --apply and a repository target.",
+    );
+    process.exit(2);
+  }
+
+  let nodes = filterNodes(value.nodes, args);
+  if (options.nodeId) {
+    nodes = nodes.filter((node) => node.id === options.nodeId);
+    if (nodes.length === 0) {
+      console.error(`unknown node ${options.nodeId}`);
+      process.exit(1);
+    }
+  }
+
+  const existingIssues = loadExistingIssues(options.existingIssuesPath);
+  const normalizedExistingIssues = normalizeExistingIssues(existingIssues);
+  if (normalizedExistingIssues.duplicateNodeIds.length > 0) {
+    console.error(
+      `existing issue export contains duplicate DAG node markers: ${normalizedExistingIssues.duplicateNodeIds.join(", ")}`,
+    );
+    process.exit(1);
+  }
+
+  const plan = createIssueSyncPlan({ ...value, nodes }, { existingIssues });
+  if (options.json) {
+    console.log(
+      JSON.stringify(
+        {
+          mode: "dry-run",
+          writes: 0,
+          defaultMutating: false,
+          labelTaxonomy: issueSyncLabelTaxonomy,
+          managedLabelPrefixes: issueSyncManagedLabelPrefixes,
+          plan,
+        },
+        null,
+        2,
+      ),
+    );
+    return;
+  }
+
+  console.log(renderIssueSyncDryRun(plan, { includeBody: options.includeBody }));
+}
+
+function parseIssueSyncArgs(args) {
+  const booleanFlags = new Set(["--dry-run", "--apply", "--json", "--include-body", "--help"]);
+  const valueFlags = new Set([
+    "--existing-issues",
+    "--node",
+    "--project",
+    "--target",
+    "--priority",
+  ]);
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (booleanFlags.has(arg)) {
+      continue;
+    }
+    if (valueFlags.has(arg)) {
+      const value = args[index + 1];
+      if (!value || value.startsWith("--")) {
+        console.error(`${arg} requires a value`);
+        process.exit(1);
+      }
+      index += 1;
+      continue;
+    }
+    console.error(`unknown sync-issues option ${arg}`);
+    process.exit(1);
+  }
+
+  return {
+    apply: args.includes("--apply"),
+    dryRun: args.includes("--dry-run"),
+    existingIssuesPath: flag(args, "--existing-issues"),
+    help: args.includes("--help"),
+    includeBody: args.includes("--include-body"),
+    json: args.includes("--json"),
+    nodeId: flag(args, "--node"),
+  };
+}
+
+function printIssueSyncUsage() {
+  console.log(`usage: spec-dag sync-issues [--dry-run] [--json] [--include-body] [filters]
+
+Creates a deterministic local GitHub issue sync plan from roadmap/spec-dag.json.
+The default mode is dry-run and performs no GitHub writes.
+
+Options:
+  --dry-run                 render the non-mutating plan explicitly
+  --apply                   reserved explicit write mode; currently refuses safely
+  --json                    render a machine-readable plan including issue bodies
+  --include-body            include rendered issue bodies in text dry-run output
+  --existing-issues FILE    local JSON issue export used to update instead of create
+  --node NODE-ID            restrict output to one DAG node
+  --project NAME            restrict by project
+  --target NAME             restrict by target
+  --priority NAME           restrict by priority`);
+}
+
+function loadExistingIssues(path) {
+  if (!path) {
+    return [];
+  }
+  let payload;
+  try {
+    payload = loadJson(resolve(process.cwd(), path));
+  } catch (error) {
+    console.error(`existing issue export ${path} failed to load: ${error.message}`);
+    process.exit(1);
+  }
+  const issues = issuesFromPayload(payload);
+  if (!Array.isArray(payload) && (!isRecord(payload) || !Array.isArray(payload.issues))) {
+    console.error("existing issue export must be an array or an object with an issues array");
+    process.exit(1);
+  }
+  return issues;
 }
 
 function filterNodes(nodes, args) {

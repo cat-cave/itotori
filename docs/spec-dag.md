@@ -15,11 +15,63 @@ just roadmap-ready
 just roadmap-pop
 node scripts/spec-dag.mjs show ITOTORI-019
 node scripts/spec-dag.mjs ready --project kaifuu --target mvp --json
+node scripts/spec-dag.mjs sync-issues --dry-run
 node scripts/spec-dag.mjs graph > .tmp/spec-dag.dot
 ```
 
 `just check` also runs `node scripts/spec-dag.mjs validate`, so broken node ids,
 missing dependencies, invalid priorities, and cycles fail CI.
+
+## GitHub Issue Sync
+
+`node scripts/spec-dag.mjs sync-issues` renders a deterministic GitHub issue
+sync plan from `roadmap/spec-dag.json`. The command is non-mutating by default:
+running it without flags is equivalent to `--dry-run`, and it performs no
+GitHub reads or writes. `--apply` is reserved for a future live writer and
+currently refuses safely after validation.
+
+Useful local modes:
+
+```sh
+node scripts/spec-dag.mjs sync-issues --dry-run
+node scripts/spec-dag.mjs sync-issues --dry-run --node UNIV-002 --include-body
+node scripts/spec-dag.mjs sync-issues --dry-run --json
+node scripts/spec-dag.mjs sync-issues --dry-run --existing-issues .tmp/github-issues.json
+```
+
+The optional `--existing-issues` file must be local JSON, either an array of
+issue objects or an object with an `issues` array. It is used only for
+deterministic matching. The matcher updates instead of creates when an existing
+issue has the hidden body marker `<!-- spec-dag-node: NODE-ID -->` or a title
+that starts with `[NODE-ID]`. Duplicate markers in that local export fail the
+dry run because a live writer would not know which issue to update.
+
+Every rendered issue body starts with:
+
+```md
+<!-- spec-dag-node: UNIV-002 -->
+<!-- spec-dag-sync-version: 1 -->
+```
+
+The visible body includes the node summary, status, priority, target, projects,
+parallel group, dependencies, deliverables, acceptance criteria, verification,
+and audit focus. Completed nodes render acceptance criteria as checked boxes;
+all other statuses render unchecked boxes.
+
+The managed label taxonomy is:
+
+| Label form                | Meaning                        |
+| ------------------------- | ------------------------------ |
+| `spec-dag`                | Issue is managed from the DAG. |
+| `dag/priority:P1`         | Node priority.                 |
+| `dag/status:planned`      | Node lifecycle status.         |
+| `dag/target:mvp`          | Delivery target.               |
+| `dag/project:universal`   | Owning project or surface.     |
+| `dag/group:roadmap-infra` | Scheduler parallel group lane. |
+
+A future live writer must manage only the `spec-dag` label and labels with the
+`dag/priority:`, `dag/status:`, `dag/target:`, `dag/project:`, and `dag/group:`
+prefixes. Human labels outside that taxonomy must be preserved.
 
 ## Node Shape
 

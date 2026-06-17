@@ -206,6 +206,13 @@ Create a plan that names:
 Plans may live in a PR description, issue comment, audit artifact, or tracked
 branch note. They must not live only in chat.
 
+When GitHub issues are used as durable planning records, derive them from the
+DAG with `node scripts/spec-dag.mjs sync-issues --dry-run` first. The default
+sync command is non-mutating and does not call GitHub. A live issue writer must
+require an explicit `--apply` flag, preserve non-DAG human labels, and keep the
+rendered `<!-- spec-dag-node: NODE-ID -->` marker in every issue body so repeat
+syncs update the same issue instead of creating duplicates.
+
 ### 3. Implement
 
 Implementation workers write only in their assigned worktree and scope.
