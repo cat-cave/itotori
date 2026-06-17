@@ -815,7 +815,7 @@
     {
       "id": "SHARED-003",
       "title": "Multi-surface public bridge fixture corpus",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "kaifuu", "itotori", "utsushi"],
@@ -852,7 +852,10 @@
         "Fixture realism",
         "Surface coverage",
         "No engine-specific leakage into Itotori"
-      ]
+      ],
+      "owner": "orchestrator-wave8",
+      "branch": "spec/shared-003",
+      "worktree": "/tmp/itotori-spec-shared-003"
     },
     {
       "id": "SHARED-004",
@@ -1095,7 +1098,7 @@
     {
       "id": "SHARED-010",
       "title": "Full contract validation",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
@@ -1141,7 +1144,10 @@
         "Divergent TS/Rust assumptions",
         "Missing contract fixtures",
         "Ambiguous schema version behavior"
-      ]
+      ],
+      "owner": "orchestrator-wave8",
+      "branch": "spec/shared-010",
+      "worktree": "/tmp/itotori-spec-shared-010"
     },
     {
       "id": "SHARED-011",
@@ -2237,7 +2243,7 @@
     {
       "id": "KAIFUU-021",
       "title": "Asset inventory and non-text surface extraction",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "shared"],
@@ -2273,7 +2279,10 @@
         "Asset surface blind spots",
         "Overclaiming patch support",
         "Engine-specific manifest leakage"
-      ]
+      ],
+      "owner": "orchestrator-wave8",
+      "branch": "spec/kaifuu-021",
+      "worktree": "/tmp/itotori-spec-kaifuu-021"
     },
     {
       "id": "KAIFUU-022",
@@ -2584,7 +2593,7 @@
     {
       "id": "ITOTORI-002",
       "title": "Repository and service layer split",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -2616,7 +2625,10 @@
           "value": "just check"
         }
       ],
-      "auditFocus": ["Leaky abstractions", "Over-broad services", "Unmockable code paths"]
+      "auditFocus": ["Leaky abstractions", "Over-broad services", "Unmockable code paths"],
+      "owner": "orchestrator-wave8",
+      "branch": "spec/itotori-002",
+      "worktree": "/tmp/itotori-spec-itotori-002"
     },
     {
       "id": "ITOTORI-003",
@@ -4232,7 +4244,7 @@
     {
       "id": "UTSUSHI-002",
       "title": "Fixture runtime on adapter architecture",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["utsushi"],
@@ -4264,7 +4276,10 @@
           "value": "just hello"
         }
       ],
-      "auditFocus": ["Baseline regression", "Trait ergonomics", "Unclear approximation reporting"]
+      "auditFocus": ["Baseline regression", "Trait ergonomics", "Unclear approximation reporting"],
+      "owner": "orchestrator-wave8",
+      "branch": "spec/utsushi-002",
+      "worktree": "/tmp/itotori-spec-utsushi-002"
     },
     {
       "id": "UTSUSHI-003",
