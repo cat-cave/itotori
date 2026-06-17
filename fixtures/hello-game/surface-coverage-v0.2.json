@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "0.2.0",
+  "fixtureId": "hello-game",
+  "sourceGame": {
+    "path": "fixtures/hello-game/source.json",
+    "gameId": "hello-fixture",
+    "gameVersion": "0.2.0",
+    "sourceLocale": "ja-JP"
+  },
+  "localeBranches": [
+    {
+      "localeBranchId": "019ed003-0000-7000-8000-000000000101",
+      "branchKey": "en-us-ci",
+      "targetLocale": "en-US"
+    },
+    {
+      "localeBranchId": "019ed003-0000-7000-8000-000000000102",
+      "branchKey": "fr-fr-review",
+      "targetLocale": "fr-FR"
+    }
+  ],
+  "expectedBridgeBundles": [
+    {
+      "schemaVersion": "0.1.0",
+      "path": "fixtures/hello-game/expected/bridge-v0.1.json",
+      "producer": "kaifuu-fixture"
+    }
+  ],
+  "surfaces": [
+    {
+      "surfaceKind": "dialogue",
+      "unitCount": 2,
+      "unitKeys": ["hello.scene.001.line.001", "hello.scene.001.line.002"],
+      "coveragePurpose": "Dialogue text with speaker attribution and protected inline text."
+    },
+    {
+      "surfaceKind": "speaker_name",
+      "unitCount": 1,
+      "unitKeys": ["hello.scene.001.name.mira"],
+      "coveragePurpose": "Nameplate text tied to the glossary term for the same character."
+    },
+    {
+      "surfaceKind": "choice_label",
+      "unitCount": 2,
+      "unitKeys": ["hello.scene.001.choice.open", "hello.scene.001.choice.wait"],
+      "coveragePurpose": "Branching choice labels for route/options coverage."
+    },
+    {
+      "surfaceKind": "ui_label",
+      "unitCount": 1,
+      "unitKeys": ["ui.menu.inventory"],
+      "coveragePurpose": "Short menu text with constrained layout expectations."
+    },
+    {
+      "surfaceKind": "tutorial_text",
+      "unitCount": 1,
+      "unitKeys": ["tutorial.inspect"],
+      "coveragePurpose": "Instructional text with input-placeholder preservation."
+    },
+    {
+      "surfaceKind": "database_entry",
+      "unitCount": 2,
+      "unitKeys": ["database.items.silver-key.name", "database.glossary.yorishiro.term"],
+      "coveragePurpose": "Item text and glossary-like term text from database surfaces."
+    },
+    {
+      "surfaceKind": "image_text",
+      "unitCount": 1,
+      "unitKeys": ["image.sign-caution.region-0"],
+      "coveragePurpose": "Image text metadata with an editable region and OCR hint."
+    },
+    {
+      "surfaceKind": "metadata_text",
+      "unitCount": 1,
+      "unitKeys": ["metadata.package.tagline"],
+      "coveragePurpose": "Package-facing metadata text."
+    }
+  ],
+  "protectedSpanCoverage": [
+    {
+      "spanKind": "placeholder",
+      "raw": "{player}",
+      "unitKey": "hello.scene.001.line.001"
+    },
+    {
+      "spanKind": "placeholder",
+      "raw": "{confirm}",
+      "unitKey": "tutorial.inspect"
+    },
+    {
+      "spanKind": "control_markup",
+      "raw": "<wait=30>",
+      "unitKey": "hello.scene.001.line.002"
+    }
+  ],
+  "glossaryCoverage": [
+    {
+      "termKey": "character/mira",
+      "sourceText": "ミラ",
+      "surfaceKinds": ["speaker_name"]
+    },
+    {
+      "termKey": "lore/yorishiro",
+      "sourceText": "依代",
+      "surfaceKinds": ["dialogue", "database_entry"]
+    }
+  ],
+  "outOfScope": [
+    "Patch export golden files are owned by later full-system artifact specs.",
+    "Runtime report breadth is owned by later Utsushi runtime evidence specs."
+  ]
+}

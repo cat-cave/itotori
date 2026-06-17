@@ -23,4 +23,8 @@ Expected final line:
 status=hello_world_passed
 ```
 
-The fixture source text is `こんにちは、{player}。`; the fake provider outputs `Hello, {player}.` and the deterministic checks preserve the `{player}` protected span.
+The fixture source includes dialogue, speaker names, choices, UI labels,
+tutorial text, database/glossary-like terms, image text, and metadata text. The
+first dialogue unit remains `こんにちは、{player}。`; the fake provider outputs
+`Hello, {player}.`, and deterministic checks preserve protected placeholders and
+inline control markup across the expanded fixture.

@@ -527,6 +527,15 @@ pub fn registry() -> kaifuu_core::AdapterRegistry {
 mod tests {
     use super::*;
     use kaifuu_core::PatchExport;
+    use std::collections::{BTreeMap, BTreeSet};
+
+    fn repo_root() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    fn public_fixture_dir() -> std::path::PathBuf {
+        repo_root().join("fixtures/hello-game")
+    }
 
     fn temp_game(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -576,6 +585,117 @@ mod tests {
                 target_text: "Hello, {player}.".to_string(),
                 protected_spans: extraction.bridge.units[0].protected_spans.clone(),
             }],
+        }
+    }
+
+    #[test]
+    fn extracts_multi_surface_public_fixture_to_golden_bridge_snapshot() {
+        let fixture_dir = public_fixture_dir();
+        let extraction = FixtureAdapter
+            .extract(ExtractRequest {
+                game_dir: &fixture_dir,
+            })
+            .unwrap();
+        let actual = format!(
+            "{}\n",
+            serde_json::to_string_pretty(&extraction.bridge).unwrap()
+        );
+        let expected =
+            fs::read_to_string(repo_root().join("fixtures/hello-game/expected/bridge-v0.1.json"))
+                .unwrap();
+
+        assert_eq!(actual, expected);
+        assert_eq!(extraction.bridge.units.len(), 11);
+
+        let surfaces = extraction
+            .bridge
+            .units
+            .iter()
+            .map(|unit| unit.text_surface.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(surfaces.len() >= 5);
+        for required in [
+            "dialogue",
+            "speaker_name",
+            "choice_label",
+            "ui_label",
+            "tutorial_text",
+            "database_entry",
+            "image_text",
+        ] {
+            assert!(surfaces.contains(required), "missing surface {required}");
+        }
+
+        let span_kinds = extraction
+            .bridge
+            .units
+            .iter()
+            .flat_map(|unit| unit.protected_spans.iter())
+            .map(|span| span.kind.as_str())
+            .collect::<BTreeSet<_>>();
+        assert!(span_kinds.contains("placeholder"));
+        assert!(span_kinds.contains("control_markup"));
+    }
+
+    #[test]
+    fn public_fixture_surface_coverage_matrix_matches_source() {
+        let fixture_dir = public_fixture_dir();
+        let source: Value =
+            serde_json::from_str(&fs::read_to_string(fixture_dir.join("source.json")).unwrap())
+                .unwrap();
+        let matrix: Value = serde_json::from_str(
+            &fs::read_to_string(fixture_dir.join("surface-coverage-v0.2.json")).unwrap(),
+        )
+        .unwrap();
+
+        let target_locales = source["targetLocales"].as_array().unwrap();
+        let locale_branches = source["localeBranches"].as_array().unwrap();
+        assert!(target_locales.len() >= 2);
+        assert!(locale_branches.len() >= 2);
+        assert_eq!(
+            matrix["localeBranches"].as_array().unwrap().len(),
+            locale_branches.len()
+        );
+
+        let mut source_surface_units = BTreeMap::<String, Vec<String>>::new();
+        for unit in source["units"].as_array().unwrap() {
+            let surface = unit["textSurface"].as_str().unwrap().to_string();
+            let key = unit["sourceUnitKey"].as_str().unwrap().to_string();
+            source_surface_units.entry(surface).or_default().push(key);
+        }
+
+        let mut matrix_surface_units = BTreeMap::<String, Vec<String>>::new();
+        for surface in matrix["surfaces"].as_array().unwrap() {
+            let surface_kind = surface["surfaceKind"].as_str().unwrap().to_string();
+            let unit_keys = surface["unitKeys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|key| key.as_str().unwrap().to_string())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                surface["unitCount"].as_u64().unwrap() as usize,
+                unit_keys.len()
+            );
+            matrix_surface_units.insert(surface_kind, unit_keys);
+        }
+        assert_eq!(matrix_surface_units, source_surface_units);
+
+        let span_kinds = matrix["protectedSpanCoverage"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|span| span["spanKind"].as_str().unwrap())
+            .collect::<BTreeSet<_>>();
+        assert!(span_kinds.contains("placeholder"));
+        assert!(span_kinds.contains("control_markup"));
+
+        for bundle in matrix["expectedBridgeBundles"].as_array().unwrap() {
+            let path = bundle["path"].as_str().unwrap();
+            assert!(
+                repo_root().join(path).is_file(),
+                "missing expected bundle {path}"
+            );
         }
     }
 

@@ -1,7 +1,67 @@
 {
+  "schemaVersion": "0.2.0",
   "gameId": "hello-fixture",
+  "gameVersion": "0.2.0",
   "title": "Hello Fixture",
   "sourceLocale": "ja-JP",
+  "targetLocales": ["en-US", "fr-FR"],
+  "localeBranches": [
+    {
+      "localeBranchId": "019ed003-0000-7000-8000-000000000101",
+      "branchKey": "en-us-ci",
+      "targetLocale": "en-US",
+      "policy": "localize"
+    },
+    {
+      "localeBranchId": "019ed003-0000-7000-8000-000000000102",
+      "branchKey": "fr-fr-review",
+      "targetLocale": "fr-FR",
+      "policy": "localize"
+    }
+  ],
+  "glossary": [
+    {
+      "termKey": "character/mira",
+      "sourceText": "ミラ",
+      "policyAction": "romanize",
+      "targetLocales": ["en-US", "fr-FR"],
+      "targetText": "Mira"
+    },
+    {
+      "termKey": "lore/yorishiro",
+      "sourceText": "依代",
+      "policyAction": "localize",
+      "targetLocales": ["en-US", "fr-FR"],
+      "notes": "Synthetic lore term used to prove glossary-like database text coverage."
+    }
+  ],
+  "assets": [
+    {
+      "assetKey": "script/prologue",
+      "assetKind": "script",
+      "path": "scenario/prologue.fixture.json"
+    },
+    {
+      "assetKey": "ui/menu",
+      "assetKind": "ui_texture",
+      "path": "ui/menu.fixture.json"
+    },
+    {
+      "assetKey": "database/items",
+      "assetKind": "database",
+      "path": "data/items.fixture.json"
+    },
+    {
+      "assetKey": "image/sign-caution",
+      "assetKind": "image",
+      "path": "images/sign-caution.fixture.json"
+    },
+    {
+      "assetKey": "metadata/package",
+      "assetKind": "metadata",
+      "path": "package.fixture.json"
+    }
+  ],
   "units": [
     {
       "sourceUnitKey": "hello.scene.001.line.001",
@@ -16,6 +76,101 @@
           "end": 14
         }
       ]
+    },
+    {
+      "sourceUnitKey": "hello.scene.001.name.mira",
+      "speaker": "ミラ",
+      "textSurface": "speaker_name",
+      "sourceText": "ミラ",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "hello.scene.001.line.002",
+      "speaker": "ミラ",
+      "textSurface": "dialogue",
+      "sourceText": "依代の灯りが見える<wait=30>。",
+      "protectedSpans": [
+        {
+          "kind": "control_markup",
+          "raw": "<wait=30>",
+          "start": 9,
+          "end": 18
+        }
+      ]
+    },
+    {
+      "sourceUnitKey": "hello.scene.001.choice.open",
+      "speaker": "",
+      "textSurface": "choice_label",
+      "sourceText": "門を開ける",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "hello.scene.001.choice.wait",
+      "speaker": "",
+      "textSurface": "choice_label",
+      "sourceText": "朝まで待つ",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "ui.menu.inventory",
+      "speaker": "",
+      "textSurface": "ui_label",
+      "sourceText": "持ち物",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "tutorial.inspect",
+      "speaker": "",
+      "textSurface": "tutorial_text",
+      "sourceText": "調べるには{confirm}を押してください。",
+      "protectedSpans": [
+        {
+          "kind": "placeholder",
+          "raw": "{confirm}",
+          "start": 5,
+          "end": 14
+        }
+      ]
+    },
+    {
+      "sourceUnitKey": "database.items.silver-key.name",
+      "speaker": "",
+      "textSurface": "database_entry",
+      "sourceText": "銀の鍵",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "database.glossary.yorishiro.term",
+      "speaker": "",
+      "textSurface": "database_entry",
+      "sourceText": "依代",
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "image.sign-caution.region-0",
+      "speaker": "",
+      "textSurface": "image_text",
+      "sourceText": "注意",
+      "imageText": {
+        "assetKey": "image/sign-caution",
+        "region": {
+          "x": 24,
+          "y": 18,
+          "width": 180,
+          "height": 48
+        },
+        "ocrText": "注意",
+        "replacementMode": "redraw_region"
+      },
+      "protectedSpans": []
+    },
+    {
+      "sourceUnitKey": "metadata.package.tagline",
+      "speaker": "",
+      "textSurface": "metadata_text",
+      "sourceText": "夕暮れの門",
+      "protectedSpans": []
     }
   ]
 }
