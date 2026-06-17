@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "0.2.0",
+  "triageBundleId": "019ed002-0000-7000-8000-00000000f001",
+  "events": [],
+  "tasks": [],
+  "findings": [
+    {
+      "findingId": "019ed002-0000-7000-8000-00000000f301",
+      "findingKind": "source_annotation_issue",
+      "severity": "P1",
+      "qualityCategory": "accuracy",
+      "title": "Dangling provenance",
+      "description": "Evidence references provenance that is not present in the bundle.",
+      "impact": "The finding cannot be audited back to source evidence.",
+      "createdAt": "2026-06-17T00:00:00.000Z",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed001-0000-7000-8000-000000000201"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed002-0000-7000-8000-00000000f401",
+          "evidenceKind": "validator_message",
+          "summary": "Invalid fixture points evidence at missing provenance.",
+          "provenanceIds": ["019ed002-0000-7000-8000-00000000ffff"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-00000000f501",
+          "provenanceKind": "source_annotation",
+          "bridgeUnitId": "019ed001-0000-7000-8000-000000000201"
+        }
+      ],
+      "causalLinks": []
+    }
+  ]
+}

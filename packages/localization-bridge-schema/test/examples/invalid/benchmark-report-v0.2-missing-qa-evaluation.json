@@ -1,0 +1,181 @@
+{
+  "schemaVersion": "0.2.0",
+  "benchmarkRunId": "019ed006-0000-7000-8000-00000000f001",
+  "taxonomyId": "itotori-lqa-1",
+  "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "benchmarkName": "invalid missing QA evaluation fixture",
+  "status": "failed",
+  "fixtureOrCorpusRefs": [
+    {
+      "corpusRefId": "hello-game",
+      "corpusKind": "public_fixture",
+      "label": "Hello Game",
+      "manifestUri": "fixtures/public/hello-game.manifest.json",
+      "manifestHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "sourceBundleHash": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+      "sourceLocale": "en-US",
+      "targetLocale": "fr-FR",
+      "engineProfile": "kaifuu-fixture",
+      "benchmarkSplit": "invalid-contract",
+      "sourceUnitCount": 1,
+      "sourceCharacterCount": 100,
+      "publicContent": true
+    }
+  ],
+  "sourceLocale": "en-US",
+  "targetLocale": "fr-FR",
+  "engineProfile": "kaifuu-fixture",
+  "gitCommit": "0000000000000000000000000000000000000000",
+  "bridgeSchemaVersion": "0.2.0",
+  "deterministicSeed": "shared-010-invalid",
+  "toolVersions": [
+    {
+      "name": "itotori",
+      "version": "0.0.0"
+    }
+  ],
+  "commandLines": [
+    {
+      "commandId": "benchmark",
+      "argv": ["itotori", "benchmark"]
+    }
+  ],
+  "systemsCompared": [
+    {
+      "systemId": "itotori-draft",
+      "systemKind": "itotori_draft",
+      "displayName": "Itotori draft",
+      "generatedAt": "2026-06-17T00:00:01.000Z",
+      "providerRunIds": ["019ed006-0000-7000-8000-00000000f101"],
+      "promptPresetId": "qa-v1",
+      "promptPresetVersion": "0.2.0"
+    }
+  ],
+  "providerModelCostRecords": [
+    {
+      "providerRunId": "019ed006-0000-7000-8000-00000000f101",
+      "systemId": "itotori-draft",
+      "taskKind": "llm_qa",
+      "startedAt": "2026-06-17T00:00:01.000Z",
+      "completedAt": "2026-06-17T00:00:02.000Z",
+      "latencyMs": 1000,
+      "status": "succeeded",
+      "provider": {
+        "providerFamily": "fake",
+        "endpointFamily": "offline",
+        "providerName": "fixture",
+        "requestedModelId": "fixture-qa",
+        "actualModelId": "fixture-qa"
+      },
+      "prompt": {
+        "promptPresetId": "qa-v1",
+        "promptTemplateVersion": "0.2.0",
+        "promptHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "structuredOutputMode": "json_schema",
+      "retryCount": 0,
+      "errorClasses": [],
+      "fallbackUsed": false,
+      "tokenUsage": {
+        "tokenCountSource": "deterministic_counter",
+        "promptTokens": 10,
+        "completionTokens": 5,
+        "totalTokens": 15
+      },
+      "cost": {
+        "costKind": "zero",
+        "currency": "USD",
+        "amountMicrosUsd": 0
+      }
+    }
+  ],
+  "costLedger": {
+    "currency": "USD",
+    "reportTotalMicrosUsd": 0,
+    "totalsBySystem": [
+      {
+        "systemId": "itotori-draft",
+        "totalMicrosUsd": 0
+      }
+    ],
+    "includesUnknownCost": false
+  },
+  "seededDefectOracle": [],
+  "findingRecords": [
+    {
+      "findingId": "019ed006-0000-7000-8000-00000000f301",
+      "systemId": "itotori-draft",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "llm_qa",
+      "category": "accuracy",
+      "qualitySeverity": "major",
+      "rootCause": "model_draft_error",
+      "adjudicationState": "unreviewed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed001-0000-7000-8000-000000000201"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed006-0000-7000-8000-00000000f401",
+          "evidenceKind": "validator_message",
+          "summary": "QA agent reported an accuracy issue.",
+          "provenanceIds": ["019ed006-0000-7000-8000-00000000f501"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed006-0000-7000-8000-00000000f501",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed006-0000-7000-8000-00000000f601",
+          "provider": "fixture",
+          "model": "fixture-qa",
+          "outputHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ]
+    }
+  ],
+  "countsByQualitySeverity": [
+    {
+      "bucket": "major",
+      "count": 1
+    }
+  ],
+  "countsByCategory": [
+    {
+      "bucket": "accuracy",
+      "count": 1
+    }
+  ],
+  "countsByRootCause": [
+    {
+      "bucket": "model_draft_error",
+      "count": 1
+    }
+  ],
+  "countsByDetectorKind": [
+    {
+      "bucket": "llm_qa",
+      "count": 1
+    }
+  ],
+  "countsByAdjudicationState": [
+    {
+      "bucket": "unreviewed",
+      "count": 1
+    }
+  ],
+  "penaltySummary": {
+    "penaltyTotal": 5,
+    "penaltyPerThousandSourceChars": 50,
+    "penaltyPerHundredSourceUnits": 500
+  },
+  "deterministicQaResults": [],
+  "qaAgentEvaluations": [],
+  "humanEvaluationResults": [],
+  "knownBlindSpots": []
+}

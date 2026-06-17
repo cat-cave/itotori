@@ -1,0 +1,152 @@
+{
+  "schemaVersion": "0.2.0",
+  "reportId": "019ed010-0000-7000-8000-000000000011",
+  "generatedAt": "2026-06-17T00:00:00.000Z",
+  "suiteManifestPath": "./contract-fixtures-v0.2.json",
+  "sourceOfTruth": "packages/localization-bridge-schema/src/index.ts",
+  "typescriptCommand": ["pnpm", "--filter", "@itotori/localization-bridge-schema", "test"],
+  "rustCommand": ["cargo", "test", "-p", "kaifuu-core", "shared_contract_fixture_suite"],
+  "overallStatus": "compatible",
+  "coverage": [
+    {
+      "kind": "asset-policy-v0.2",
+      "typescriptValidator": "assertAssetPolicyBundleV02",
+      "rustValidator": "validate_asset_policy_bundle_v02",
+      "validFixtures": ["./asset-policy-v0.2.json"],
+      "invalidFixtures": ["./invalid/asset-policy-v0.2-dangling-patch-ref.json"],
+      "status": "compatible"
+    },
+    {
+      "kind": "benchmark-report-v0.2",
+      "typescriptValidator": "assertBenchmarkReportV02",
+      "rustValidator": "validate_benchmark_report_v02",
+      "validFixtures": ["./benchmark-report-v0.2.json"],
+      "invalidFixtures": ["./invalid/benchmark-report-v0.2-missing-qa-evaluation.json"],
+      "status": "compatible"
+    },
+    {
+      "kind": "bridge-v0.2",
+      "typescriptValidator": "assertBridgeBundleV02",
+      "rustValidator": "BridgeBundleV02::validate_json",
+      "validFixtures": ["./bridge-v0.2.json"],
+      "invalidFixtures": [
+        "./invalid/bridge-v0.2-dangling-asset-ref.json",
+        "./invalid/bridge-v0.2-malformed-hash.json",
+        "./invalid/bridge-v0.2-schema-version-0.1.json"
+      ],
+      "status": "compatible"
+    },
+    {
+      "kind": "contract-compatibility-v0.2",
+      "typescriptValidator": "assertContractCompatibilityReportV02",
+      "rustValidator": "validate_contract_compatibility_report_v02",
+      "validFixtures": ["./contract-compatibility-v0.2.json"],
+      "invalidFixtures": [],
+      "status": "compatible"
+    },
+    {
+      "kind": "contract-fixtures-v0.2",
+      "typescriptValidator": "assertContractFixtureManifestV02",
+      "rustValidator": "validate_contract_fixture_manifest_v02",
+      "validFixtures": ["./contract-fixtures-v0.2.json"],
+      "invalidFixtures": [],
+      "status": "compatible"
+    },
+    {
+      "kind": "delta-package-v0.2",
+      "typescriptValidator": "assertDeltaPackageMetadataV02",
+      "rustValidator": "validate_delta_package_metadata_v02",
+      "validFixtures": ["./delta-package-v0.2.json"],
+      "invalidFixtures": ["./invalid/delta-package-v0.2-source-revision-mismatch.json"],
+      "status": "compatible"
+    },
+    {
+      "kind": "finding-v0.2",
+      "typescriptValidator": "assertFindingRecordFixtureV02",
+      "rustValidator": "validate_finding_record_fixture_v02",
+      "validFixtures": ["./finding-v0.2.json"],
+      "invalidFixtures": ["./invalid/finding-v0.2-empty-evidence.json"],
+      "status": "compatible"
+    },
+    {
+      "kind": "patch-export-v0.2",
+      "typescriptValidator": "assertPatchExportV02",
+      "rustValidator": "validate_patch_export_v02",
+      "validFixtures": ["./patch-export-v0.2.json"],
+      "invalidFixtures": ["./invalid/patch-export-v0.2-duplicate-entry.json"],
+      "status": "compatible"
+    },
+    {
+      "kind": "patch-result-v0.2",
+      "typescriptValidator": "assertPatchResultV02",
+      "rustValidator": "validate_patch_result_v02",
+      "validFixtures": [
+        "./patch-result-v0.2.json",
+        "./patch-result-v0.2-bridge-unit-id-mismatch.json"
+      ],
+      "invalidFixtures": ["./invalid/patch-result-v0.2-incompatible-status.json"],
+      "status": "compatible"
+    },
+    {
+      "kind": "permission-local-user-v0.2",
+      "typescriptValidator": "assertPermissionLocalUserFixtureV02",
+      "rustValidator": "validate_permission_local_user_fixture_v02",
+      "validFixtures": ["./permission-local-user-v0.2.json"],
+      "invalidFixtures": ["./invalid/permission-local-user-v0.2-missing-grant.json"],
+      "status": "compatible"
+    },
+    {
+      "kind": "runtime-evidence-v0.2",
+      "typescriptValidator": "assertRuntimeEvidenceReportV02",
+      "rustValidator": "validate_runtime_evidence_report_v02",
+      "validFixtures": ["./runtime-evidence-v0.2.json"],
+      "invalidFixtures": ["./invalid/runtime-evidence-v0.2-overclaimed-fidelity.json"],
+      "status": "compatible"
+    },
+    {
+      "kind": "triage-v0.2",
+      "typescriptValidator": "assertTriageBundleV02",
+      "rustValidator": "validate_triage_bundle_v02",
+      "validFixtures": ["./triage-v0.2.json"],
+      "invalidFixtures": ["./invalid/triage-v0.2-dangling-provenance.json"],
+      "status": "compatible"
+    }
+  ],
+  "crossContractRefs": [
+    {
+      "from": "./patch-export-v0.2.json",
+      "to": "./bridge-v0.2.json",
+      "rule": "sourceBridgeId, sourceBundleHash, sourceBundleRevision, hashStrategy, and patch entry source hashes match the bridge fixture."
+    },
+    {
+      "from": "./patch-result-v0.2.json",
+      "to": "./patch-export-v0.2.json",
+      "rule": "patchResultId carries a sourceCompatibility report for the same patchExportId."
+    },
+    {
+      "from": "./patch-result-v0.2-bridge-unit-id-mismatch.json",
+      "to": "./bridge-v0.2.json",
+      "rule": "bridge_unit_id_mismatch reports the selected bridge unit id with actualBridgeUnitId and keeps the result incompatible."
+    },
+    {
+      "from": "./delta-package-v0.2.json",
+      "to": "./patch-export-v0.2.json",
+      "rule": "generatedPatchExportId and generatedPatchExportHash trace the delta to the patch export fixture."
+    },
+    {
+      "from": "./runtime-evidence-v0.2.json",
+      "to": "./bridge-v0.2.json",
+      "rule": "runtime bridgeUnitRef values use bridge unit ids and source unit keys from the bridge fixture."
+    },
+    {
+      "from": "./permission-local-user-v0.2.json",
+      "to": "docs/permissions.md",
+      "rule": "local-user has the full MVP permission grant set, including feedback.import."
+    }
+  ],
+  "notes": [
+    "TypeScript schema source remains the hand-edited authority; Rust validators are downstream parity checks.",
+    "Invalid fixtures are committed and must fail with semantic error text in both languages.",
+    "The permission-local-user fixture is validated with the same manifest as bridge, patch, delta, runtime, benchmark, asset-policy, and finding contracts."
+  ]
+}

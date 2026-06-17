@@ -72,12 +72,15 @@ Do not collapse unknown speakers into a single string or boolean.
   confused with text normalization.
 - v0.2 patch exports carry source game/profile, source bundle revision, and
   per-entry source hash/revision metadata. Patch application compatibility is
-  decided by `sourceUnitKey` plus unit-level `sourceHash`. A bundle hash change
-  must be reported for traceability, but it must not invalidate unchanged units
-  whose unit hash still matches.
+  decided by `sourceUnitKey`, the current `bridgeUnitId` selected for that
+  source unit, and unit-level `sourceHash`. A bundle hash change must be
+  reported for traceability, but it must not invalidate unchanged units whose
+  unit hash still matches.
 - `evaluatePatchExportCompatibilityV02` returns compatible and incompatible
   unit lists. `source_hash_mismatch` includes both expected and actual source
-  hashes so stale patches cannot pass silently.
+  hashes so stale patches cannot pass silently. `bridge_unit_id_mismatch`
+  includes `actualBridgeUnitId` so a patch entry cannot pass by source key and
+  hash while naming another bridge unit.
 - `PatchResultV02.status: "incompatible_source"` requires a
   `sourceCompatibility` report. Use it when patch application rejects or skips
   stale entries.

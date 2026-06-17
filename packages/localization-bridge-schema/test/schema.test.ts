@@ -5,10 +5,15 @@ import {
   assertBridgeBundle,
   assertBridgeBundleV02,
   assertBenchmarkReportV02,
+  assertContractCompatibilityReportV02,
+  assertContractFixtureManifestV02,
+  assertContractFixtureV02,
   assertDeltaPackageMetadataV02,
+  assertFindingRecordFixtureV02,
   assertPatchExport,
   assertPatchExportV02,
   assertPatchResultV02,
+  assertPermissionLocalUserFixtureV02,
   assertRuntimeEvidenceReportV02,
   assertRuntimeReport,
   assertRuntimeVerificationReport,
@@ -52,6 +57,48 @@ function assetPolicyV02Example(): Record<string, unknown> {
 function benchmarkReportV02Example(): Record<string, unknown> {
   return JSON.parse(
     readFileSync(new URL("./examples/benchmark-report-v0.2.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+function contractFixtureManifestV02Example(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL("./examples/contract-fixtures-v0.2.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+function contractCompatibilityReportV02Example(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL("./examples/contract-compatibility-v0.2.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+function patchExportFixtureV02Example(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL("./examples/patch-export-v0.2.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+function patchResultFixtureV02Example(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL("./examples/patch-result-v0.2.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+function deltaPackageFixtureV02Example(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL("./examples/delta-package-v0.2.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+function findingFixtureV02Example(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL("./examples/finding-v0.2.json", import.meta.url), "utf8"),
+  ) as Record<string, unknown>;
+}
+
+function permissionLocalUserFixtureV02Example(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(new URL("./examples/permission-local-user-v0.2.json", import.meta.url), "utf8"),
   ) as Record<string, unknown>;
 }
 
@@ -187,13 +234,14 @@ function assetPolicyAssetRevision(
 
 describe("localization bridge schema guards", () => {
   it("has explicit validation expectations for each top-level example fixture", () => {
-    const expectedTopLevelFixtures = new Set([
-      "asset-policy-v0.2.json",
-      "benchmark-report-v0.2.json",
-      "bridge-v0.2.json",
-      "runtime-evidence-v0.2.json",
-      "triage-v0.2.json",
-    ]);
+    const manifest = contractFixtureManifestV02Example();
+    assertContractFixtureManifestV02(manifest);
+    const expectedTopLevelFixtures = new Set(
+      (manifest.validFixtures as Array<{ path: string }>)
+        .map((fixture) => fixture.path)
+        .filter((path) => path.startsWith("./") && !path.startsWith("./invalid/"))
+        .map((path) => path.slice(2)),
+    );
     const topLevelFixtures = readdirSync(new URL("./examples", import.meta.url)).filter((entry) =>
       entry.endsWith(".json"),
     );
@@ -201,34 +249,36 @@ describe("localization bridge schema guards", () => {
     expect(new Set(topLevelFixtures)).toEqual(expectedTopLevelFixtures);
   });
 
-  it.each([
-    {
-      path: "./examples/asset-policy-v0.2.json",
-      kind: "asset-policy-v0.2",
-      assertValid: assertAssetPolicyBundleV02,
-    },
-    {
-      path: "./examples/bridge-v0.2.json",
-      kind: "bridge-v0.2",
-      assertValid: assertBridgeBundleV02,
-    },
-    {
-      path: "./examples/triage-v0.2.json",
-      kind: "triage-v0.2",
-      assertValid: assertTriageBundleV02,
-    },
-    {
-      path: "./examples/runtime-evidence-v0.2.json",
-      kind: "runtime-evidence-v0.2",
-      assertValid: assertRuntimeEvidenceReportV02,
-    },
-    {
-      path: "./examples/benchmark-report-v0.2.json",
-      kind: "benchmark-report-v0.2",
-      assertValid: assertBenchmarkReportV02,
-    },
-  ])("validates committed $kind example fixture", ({ path, assertValid }) => {
-    expect(() => assertValid(exampleFixture(path))).not.toThrow();
+  it("validates every committed contract fixture listed in the manifest", () => {
+    const manifest = contractFixtureManifestV02Example();
+    assertContractFixtureManifestV02(manifest);
+
+    for (const fixture of manifest.validFixtures as Array<{ kind: string; path: string }>) {
+      expect(() =>
+        assertContractFixtureV02(fixture.kind, exampleFixture(`./examples/${fixture.path.slice(2)}`)),
+      ).not.toThrow();
+    }
+  });
+
+  it("rejects every invalid contract fixture listed in the manifest with semantic errors", () => {
+    const manifest = contractFixtureManifestV02Example();
+    assertContractFixtureManifestV02(manifest);
+
+    for (const fixture of manifest.invalidFixtures as Array<{
+      kind: string;
+      path: string;
+      expectedSemanticError: string;
+    }>) {
+      expect(() =>
+        assertContractFixtureV02(fixture.kind, exampleFixture(`./examples/${fixture.path.slice(2)}`)),
+      ).toThrow(new RegExp(fixture.expectedSemanticError));
+    }
+  });
+
+  it("validates the committed contract compatibility report", () => {
+    const report = contractCompatibilityReportV02Example();
+
+    expect(() => assertContractCompatibilityReportV02(report)).not.toThrow();
   });
 
   it.each([
@@ -597,6 +647,12 @@ describe("localization bridge schema guards", () => {
     expect(() => assertPatchExportV02(patchExport)).not.toThrow();
   });
 
+  it("accepts the committed v0.2 patch export, patch result, and delta metadata fixtures", () => {
+    expect(() => assertPatchExportV02(patchExportFixtureV02Example())).not.toThrow();
+    expect(() => assertPatchResultV02(patchResultFixtureV02Example())).not.toThrow();
+    expect(() => assertDeltaPackageMetadataV02(deltaPackageFixtureV02Example())).not.toThrow();
+  });
+
   it("rejects v0.2 patch exports without unit source revisions", () => {
     const bridge = bridgeV02Example();
     const patchExport = patchExportV02Example(bridge);
@@ -662,6 +718,39 @@ describe("localization bridge schema guards", () => {
     expect(report.sourceBundleHashMatches).toBe(true);
     expect(report.compatibleUnits).toHaveLength(2);
     expect(report.incompatibleUnits).toEqual([]);
+  });
+
+  it("reports a bridge unit id mismatch as incompatible even when source keys and hashes match", () => {
+    const bridge = bridgeV02Example();
+    const patchExport = patchExportV02Example(bridge);
+    const units = bridgeV02Units(bridge);
+    const firstUnit = asTestRecord(units[0], "first v0.2 unit");
+    const secondUnit = asTestRecord(units[1], "second v0.2 unit");
+    const entries = patchExport.entries as Array<Record<string, unknown>>;
+    const firstEntry = asTestRecord(entries[0], "first v0.2 patch export entry");
+    firstEntry.bridgeUnitId = secondUnit.bridgeUnitId;
+
+    const report = evaluatePatchExportCompatibilityV02(patchExport, bridge);
+
+    expect(report.status).toBe("incompatible");
+    expect(report.sourceBundleHashMatches).toBe(true);
+    expect(report.incompatibleUnits).toEqual([
+      expect.objectContaining({
+        bridgeUnitId: secondUnit.bridgeUnitId,
+        actualBridgeUnitId: firstUnit.bridgeUnitId,
+        sourceUnitKey: firstUnit.sourceUnitKey,
+        expectedSourceHash: firstUnit.sourceHash,
+        actualSourceHash: firstUnit.sourceHash,
+        reason: "bridge_unit_id_mismatch",
+      }),
+    ]);
+    expect(report.compatibleUnits).toEqual([
+      expect.objectContaining({
+        bridgeUnitId: secondUnit.bridgeUnitId,
+        sourceUnitKey: secondUnit.sourceUnitKey,
+        status: "compatible",
+      }),
+    ]);
   });
 
   it("reports a missing source unit without invalidating unrelated compatible units", () => {
@@ -841,6 +930,28 @@ describe("localization bridge schema guards", () => {
       }),
     ).toThrow(/reason is only valid/);
 
+    const bridgeUnitMismatchWithoutActual = cloneRecord(report);
+    bridgeUnitMismatchWithoutActual.status = "incompatible";
+    const mismatchCompatibleUnits =
+      bridgeUnitMismatchWithoutActual.compatibleUnits as Array<Record<string, unknown>>;
+    const mismatchUnit = asTestRecord(
+      mismatchCompatibleUnits.shift(),
+      "bridge unit mismatch compatibility unit",
+    );
+    mismatchUnit.status = "incompatible";
+    mismatchUnit.reason = "bridge_unit_id_mismatch";
+    bridgeUnitMismatchWithoutActual.incompatibleUnits = [mismatchUnit];
+    expect(() =>
+      assertPatchResultV02({
+        schemaVersion: "0.2.0",
+        patchResultId: "019ed001-0000-7000-8000-000000000959",
+        patchExportId: patchExport.patchExportId,
+        status: "incompatible_source",
+        failures: ["incompatible_source"],
+        sourceCompatibility: bridgeUnitMismatchWithoutActual,
+      }),
+    ).toThrow(/actualBridgeUnitId is required/);
+
     const mismatchedBundleFlag = cloneRecord(report);
     mismatchedBundleFlag.sourceBundleHashMatches = false;
     expect(() =>
@@ -922,6 +1033,15 @@ describe("localization bridge schema guards", () => {
     expect(findings.map((finding) => finding.severity)).toContain("P0");
     expect(findings.map((finding) => finding.qualityCategory)).toContain("style");
     expect(findings.some((finding) => finding.severity === finding.qualityCategory)).toBe(false);
+  });
+
+  it("accepts the standalone v0.2 finding and local-user permission fixtures", () => {
+    const finding = findingFixtureV02Example();
+    const permission = permissionLocalUserFixtureV02Example();
+
+    expect(() => assertFindingRecordFixtureV02(finding)).not.toThrow();
+    expect(() => assertPermissionLocalUserFixtureV02(permission)).not.toThrow();
+    expect(permission.grants).toContain("feedback.import");
   });
 
   it("rejects triage findings that use confidence instead of evidence", () => {

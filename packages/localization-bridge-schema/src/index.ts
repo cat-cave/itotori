@@ -488,8 +488,39 @@ export const PATCH_INCOMPATIBILITY_REASONS_V02 = [
   "source_hash_mismatch",
   "missing_source_unit",
   "duplicate_source_unit_key",
+  "bridge_unit_id_mismatch",
 ] as const;
 export type PatchIncompatibilityReasonV02 = (typeof PATCH_INCOMPATIBILITY_REASONS_V02)[number];
+
+export const ITOTORI_PERMISSION_VALUES_V02 = [
+  "project.import",
+  "draft.write",
+  "patch.export",
+  "runtime.ingest",
+  "feedback.import",
+  "system.reset",
+] as const;
+export type ItotoriPermissionV02 = (typeof ITOTORI_PERMISSION_VALUES_V02)[number];
+
+export const CONTRACT_FIXTURE_KINDS_V02 = [
+  "asset-policy-v0.2",
+  "benchmark-report-v0.2",
+  "bridge-v0.2",
+  "contract-compatibility-v0.2",
+  "contract-fixtures-v0.2",
+  "delta-package-v0.2",
+  "finding-v0.2",
+  "patch-export-v0.2",
+  "patch-result-v0.2",
+  "permission-local-user-v0.2",
+  "runtime-evidence-v0.2",
+  "triage-v0.2",
+] as const;
+export type ContractFixtureKindV02 = (typeof CONTRACT_FIXTURE_KINDS_V02)[number];
+
+export const CONTRACT_COMPATIBILITY_STATUSES_V02 = ["compatible", "incompatible"] as const;
+export type ContractCompatibilityStatusV02 =
+  (typeof CONTRACT_COMPATIBILITY_STATUSES_V02)[number];
 
 export const RUNTIME_EXPECTATION_KINDS = [
   "trace_text",
@@ -1407,6 +1438,7 @@ export type PatchExportV02 = {
 export type UnitSourceCompatibilityV02 = {
   entryId: Uuid7;
   bridgeUnitId: Uuid7;
+  actualBridgeUnitId?: Uuid7;
   sourceUnitKey: string;
   status: PatchCompatibilityStatusV02;
   expectedSourceHash: string;
@@ -1471,6 +1503,72 @@ export type DeltaPackageMetadataV02 = {
   targetLocale: Bcp47Locale;
   hashStrategy: HashStrategyV02;
   createdAt?: string;
+};
+
+export type FindingRecordFixtureV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  findingFixtureId: Uuid7;
+  sourceTriageBundleId?: Uuid7;
+  finding: FindingRecordV02;
+  compatibilityNotes: string[];
+};
+
+export type PermissionLocalUserFixtureV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  permissionFixtureId: Uuid7;
+  user: {
+    userId: "local-user";
+    displayName: "Local user";
+  };
+  grants: ItotoriPermissionV02[];
+  compatibilityNotes: string[];
+};
+
+export type ContractFixtureManifestEntryV02 = {
+  kind: ContractFixtureKindV02;
+  path: string;
+  description: string;
+};
+
+export type InvalidContractFixtureManifestEntryV02 = ContractFixtureManifestEntryV02 & {
+  expectedSemanticError: string;
+};
+
+export type ContractFixtureManifestV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  suiteId: Uuid7;
+  generatedAt: string;
+  validFixtures: ContractFixtureManifestEntryV02[];
+  invalidFixtures: InvalidContractFixtureManifestEntryV02[];
+};
+
+export type ContractCompatibilityCoverageV02 = {
+  kind: ContractFixtureKindV02;
+  typescriptValidator: string;
+  rustValidator: string;
+  validFixtures: string[];
+  invalidFixtures: string[];
+  status: ContractCompatibilityStatusV02;
+};
+
+export type ContractCompatibilityCrossRefV02 = {
+  from: string;
+  to: string;
+  rule: string;
+};
+
+export type ContractCompatibilityReportV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  reportId: Uuid7;
+  generatedAt: string;
+  suiteManifestPath: string;
+  sourceOfTruth: string;
+  typescriptCommand: string[];
+  rustCommand: string[];
+  overallStatus: ContractCompatibilityStatusV02;
+  coverage: ContractCompatibilityCoverageV02[];
+  crossContractRefs: ContractCompatibilityCrossRefV02[];
+  notes: string[];
 };
 
 export function assertBridgeBundle(value: unknown): asserts value is BridgeBundle {
@@ -2045,6 +2143,196 @@ export function assertDeltaPackageMetadataV02(
   assertOptionalRfc3339Instant(metadata.createdAt, "DeltaPackageMetadataV02.createdAt");
 }
 
+export function assertFindingRecordFixtureV02(
+  value: unknown,
+): asserts value is FindingRecordFixtureV02 {
+  assertNoConfidenceFields(value, "FindingRecordFixtureV02");
+  const fixture = asRecord(value, "FindingRecordFixtureV02");
+  assertEqual(
+    fixture.schemaVersion,
+    BRIDGE_SCHEMA_VERSION_V02,
+    "FindingRecordFixtureV02.schemaVersion",
+  );
+  assertUuid7(fixture.findingFixtureId, "FindingRecordFixtureV02.findingFixtureId");
+  assertOptionalUuid7(fixture.sourceTriageBundleId, "FindingRecordFixtureV02.sourceTriageBundleId");
+  assertFindingRecordV02(fixture.finding, "FindingRecordFixtureV02.finding");
+  assertFindingRecordEvidenceReferencesOwnProvenanceV02(
+    fixture.finding,
+    "FindingRecordFixtureV02.finding",
+  );
+  assertStringArray(fixture.compatibilityNotes, "FindingRecordFixtureV02.compatibilityNotes");
+}
+
+export function assertPermissionLocalUserFixtureV02(
+  value: unknown,
+): asserts value is PermissionLocalUserFixtureV02 {
+  const fixture = asRecord(value, "PermissionLocalUserFixtureV02");
+  assertEqual(
+    fixture.schemaVersion,
+    BRIDGE_SCHEMA_VERSION_V02,
+    "PermissionLocalUserFixtureV02.schemaVersion",
+  );
+  assertUuid7(fixture.permissionFixtureId, "PermissionLocalUserFixtureV02.permissionFixtureId");
+  const user = asRecord(fixture.user, "PermissionLocalUserFixtureV02.user");
+  assertEqual(user.userId, "local-user", "PermissionLocalUserFixtureV02.user.userId");
+  assertEqual(user.displayName, "Local user", "PermissionLocalUserFixtureV02.user.displayName");
+  const grants = assertEnumArrayV02(
+    fixture.grants,
+    ITOTORI_PERMISSION_VALUES_V02,
+    "PermissionLocalUserFixtureV02.grants",
+  );
+  assertExactStringSetV02(
+    grants,
+    ITOTORI_PERMISSION_VALUES_V02,
+    "PermissionLocalUserFixtureV02.grants",
+  );
+  assertStringArray(fixture.compatibilityNotes, "PermissionLocalUserFixtureV02.compatibilityNotes");
+}
+
+export function assertContractFixtureManifestV02(
+  value: unknown,
+): asserts value is ContractFixtureManifestV02 {
+  const manifest = asRecord(value, "ContractFixtureManifestV02");
+  assertEqual(
+    manifest.schemaVersion,
+    BRIDGE_SCHEMA_VERSION_V02,
+    "ContractFixtureManifestV02.schemaVersion",
+  );
+  assertUuid7(manifest.suiteId, "ContractFixtureManifestV02.suiteId");
+  assertRfc3339Instant(manifest.generatedAt, "ContractFixtureManifestV02.generatedAt");
+  const validFixtures = asArray(
+    manifest.validFixtures,
+    "ContractFixtureManifestV02.validFixtures",
+  );
+  const invalidFixtures = asArray(
+    manifest.invalidFixtures,
+    "ContractFixtureManifestV02.invalidFixtures",
+  );
+  const paths = new Set<string>();
+  const validKinds = new Set<ContractFixtureKindV02>();
+  for (const [index, fixture] of validFixtures.entries()) {
+    const label = `ContractFixtureManifestV02.validFixtures[${index}]`;
+    assertContractFixtureManifestEntryV02(fixture, label);
+    validKinds.add(fixture.kind);
+    assertUniqueFixturePathV02(fixture.path, label, paths);
+  }
+  for (const [index, fixture] of invalidFixtures.entries()) {
+    const label = `ContractFixtureManifestV02.invalidFixtures[${index}]`;
+    assertInvalidContractFixtureManifestEntryV02(fixture, label);
+    assertString(fixture.expectedSemanticError, `${label}.expectedSemanticError`);
+    assertUniqueFixturePathV02(fixture.path, label, paths);
+  }
+  assertExactStringSetV02(
+    [...validKinds],
+    CONTRACT_FIXTURE_KINDS_V02,
+    "ContractFixtureManifestV02.validFixtures.kind",
+  );
+}
+
+export function assertContractCompatibilityReportV02(
+  value: unknown,
+): asserts value is ContractCompatibilityReportV02 {
+  const report = asRecord(value, "ContractCompatibilityReportV02");
+  assertEqual(
+    report.schemaVersion,
+    BRIDGE_SCHEMA_VERSION_V02,
+    "ContractCompatibilityReportV02.schemaVersion",
+  );
+  assertUuid7(report.reportId, "ContractCompatibilityReportV02.reportId");
+  assertRfc3339Instant(report.generatedAt, "ContractCompatibilityReportV02.generatedAt");
+  assertContractFixturePathV02(
+    report.suiteManifestPath,
+    "ContractCompatibilityReportV02.suiteManifestPath",
+  );
+  assertString(report.sourceOfTruth, "ContractCompatibilityReportV02.sourceOfTruth");
+  assertCommandTokensV02(report.typescriptCommand, "ContractCompatibilityReportV02.typescriptCommand");
+  assertCommandTokensV02(report.rustCommand, "ContractCompatibilityReportV02.rustCommand");
+  assertEnum(
+    report.overallStatus,
+    CONTRACT_COMPATIBILITY_STATUSES_V02,
+    "ContractCompatibilityReportV02.overallStatus",
+  );
+
+  const coverage = asArray(report.coverage, "ContractCompatibilityReportV02.coverage");
+  const coveredKinds = new Set<ContractFixtureKindV02>();
+  for (const [index, entry] of coverage.entries()) {
+    const label = `ContractCompatibilityReportV02.coverage[${index}]`;
+    assertContractCompatibilityCoverageV02(entry, label);
+    if (coveredKinds.has(entry.kind)) {
+      throw new Error(`${label}.kind must be unique within ContractCompatibilityReportV02.coverage`);
+    }
+    coveredKinds.add(entry.kind);
+    if (report.overallStatus === "compatible" && entry.status !== "compatible") {
+      throw new Error(`${label}.status must be compatible when overallStatus is compatible`);
+    }
+  }
+  assertExactStringSetV02(
+    [...coveredKinds],
+    CONTRACT_FIXTURE_KINDS_V02,
+    "ContractCompatibilityReportV02.coverage.kind",
+  );
+
+  const crossRefs = asArray(
+    report.crossContractRefs,
+    "ContractCompatibilityReportV02.crossContractRefs",
+  );
+  for (const [index, ref] of crossRefs.entries()) {
+    const label = `ContractCompatibilityReportV02.crossContractRefs[${index}]`;
+    const crossRef = asRecord(ref, label);
+    assertString(crossRef.from, `${label}.from`);
+    assertString(crossRef.to, `${label}.to`);
+    assertString(crossRef.rule, `${label}.rule`);
+  }
+  if (!crossRefs.some((ref) => asRecord(ref, "crossContractRef").from === "./permission-local-user-v0.2.json")) {
+    throw new Error(
+      "ContractCompatibilityReportV02.crossContractRefs must document permission-local-user-v0.2.json",
+    );
+  }
+  assertStringArray(report.notes, "ContractCompatibilityReportV02.notes");
+}
+
+export function assertContractFixtureV02(kind: string, value: unknown): void {
+  assertEnum(kind, CONTRACT_FIXTURE_KINDS_V02, "ContractFixtureV02.kind");
+  switch (kind) {
+    case "asset-policy-v0.2":
+      assertAssetPolicyBundleV02(value);
+      return;
+    case "benchmark-report-v0.2":
+      assertBenchmarkReportV02(value);
+      return;
+    case "bridge-v0.2":
+      assertBridgeBundleV02(value);
+      return;
+    case "contract-compatibility-v0.2":
+      assertContractCompatibilityReportV02(value);
+      return;
+    case "contract-fixtures-v0.2":
+      assertContractFixtureManifestV02(value);
+      return;
+    case "delta-package-v0.2":
+      assertDeltaPackageMetadataV02(value);
+      return;
+    case "finding-v0.2":
+      assertFindingRecordFixtureV02(value);
+      return;
+    case "patch-export-v0.2":
+      assertPatchExportV02(value);
+      return;
+    case "patch-result-v0.2":
+      assertPatchResultV02(value);
+      return;
+    case "permission-local-user-v0.2":
+      assertPermissionLocalUserFixtureV02(value);
+      return;
+    case "runtime-evidence-v0.2":
+      assertRuntimeEvidenceReportV02(value);
+      return;
+    case "triage-v0.2":
+      assertTriageBundleV02(value);
+      return;
+  }
+}
+
 export function evaluatePatchExportCompatibilityV02(
   patchExport: unknown,
   bridgeBundle: unknown,
@@ -2087,6 +2375,17 @@ export function evaluatePatchExportCompatibilityV02(
         ...base,
         status: "incompatible",
         reason: "missing_source_unit",
+      });
+      continue;
+    }
+
+    if (currentUnit.bridgeUnitId !== entry.bridgeUnitId) {
+      incompatibleUnits.push({
+        ...base,
+        status: "incompatible",
+        actualBridgeUnitId: currentUnit.bridgeUnitId,
+        actualSourceHash: currentUnit.sourceHash,
+        reason: "bridge_unit_id_mismatch",
       });
       continue;
     }
@@ -3308,6 +3607,7 @@ function assertUnitSourceCompatibilityV02(
   const unit = asRecord(value, label);
   assertUuid7(unit.entryId, `${label}.entryId`);
   assertUuid7(unit.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertOptionalUuid7(unit.actualBridgeUnitId, `${label}.actualBridgeUnitId`);
   assertString(unit.sourceUnitKey, `${label}.sourceUnitKey`);
   assertEnum(unit.status, PATCH_COMPATIBILITY_STATUSES_V02, `${label}.status`);
   assertHashStringV02(unit.expectedSourceHash, `${label}.expectedSourceHash`);
@@ -3320,6 +3620,15 @@ function assertUnitSourceCompatibilityV02(
   }
   if (unit.status === "compatible" && unit.reason !== undefined) {
     throw new Error(`${label}.reason is only valid for incompatible units`);
+  }
+  if (unit.reason === "bridge_unit_id_mismatch" && unit.actualBridgeUnitId === undefined) {
+    throw new Error(`${label}.actualBridgeUnitId is required for bridge_unit_id_mismatch`);
+  }
+  if (unit.reason !== "bridge_unit_id_mismatch" && unit.actualBridgeUnitId !== undefined) {
+    throw new Error(`${label}.actualBridgeUnitId is only valid for bridge_unit_id_mismatch`);
+  }
+  if (unit.actualBridgeUnitId !== undefined && unit.actualBridgeUnitId === unit.bridgeUnitId) {
+    throw new Error(`${label}.actualBridgeUnitId must differ from ${label}.bridgeUnitId`);
   }
 }
 
@@ -3375,7 +3684,10 @@ function assertTriageTaskV02(value: unknown, label: string): asserts value is Tr
   assertCausalLinksV02(task.causalLinks, `${label}.causalLinks`);
 }
 
-function assertFindingRecordV02(value: unknown, label: string): asserts value is FindingRecordV02 {
+export function assertFindingRecordV02(
+  value: unknown,
+  label: string,
+): asserts value is FindingRecordV02 {
   const finding = asRecord(value, label);
   assertUuid7(finding.findingId, `${label}.findingId`);
   assertEnum(finding.findingKind, FINDING_KINDS, `${label}.findingKind`);
@@ -3744,6 +4056,26 @@ function assertFindingEvidenceProvenanceV02(
       }
       if (!findingProvenanceIds.has(provenanceId)) {
         throw new Error(`${provenanceLabel} must reference provenance on the same finding`);
+      }
+    }
+  }
+}
+
+function assertFindingRecordEvidenceReferencesOwnProvenanceV02(
+  finding: FindingRecordV02,
+  label: string,
+): void {
+  const provenanceIds = new Set(finding.provenance.map((record) => record.provenanceId));
+  for (const [evidenceIndex, evidence] of finding.evidence.entries()) {
+    const evidenceLabel = `${label}.evidence[${evidenceIndex}]`;
+    if (evidence.provenanceIds.length === 0) {
+      throw new Error(`${evidenceLabel}.provenanceIds must contain at least one provenance id`);
+    }
+    for (const [provenanceIndex, provenanceId] of evidence.provenanceIds.entries()) {
+      if (!provenanceIds.has(provenanceId)) {
+        throw new Error(
+          `${evidenceLabel}.provenanceIds[${provenanceIndex}] must reference provenance on the same finding`,
+        );
       }
     }
   }
@@ -4289,6 +4621,116 @@ function assertKnownUuid7RefsV02(
   for (const [index, id] of ids.entries()) {
     if (!knownIds.has(id)) {
       throw new Error(`${label}[${index}] must reference an existing ${targetName}`);
+    }
+  }
+}
+
+function assertContractFixtureManifestEntryV02(
+  value: unknown,
+  label: string,
+): asserts value is ContractFixtureManifestEntryV02 {
+  const fixture = asRecord(value, label);
+  assertEnum(fixture.kind, CONTRACT_FIXTURE_KINDS_V02, `${label}.kind`);
+  assertContractFixturePathV02(fixture.path, `${label}.path`);
+  assertString(fixture.description, `${label}.description`);
+}
+
+function assertInvalidContractFixtureManifestEntryV02(
+  value: unknown,
+  label: string,
+): asserts value is InvalidContractFixtureManifestEntryV02 {
+  assertContractFixtureManifestEntryV02(value, label);
+  const fixture = asRecord(value, label);
+  assertString(fixture.expectedSemanticError, `${label}.expectedSemanticError`);
+}
+
+function assertContractCompatibilityCoverageV02(
+  value: unknown,
+  label: string,
+): asserts value is ContractCompatibilityCoverageV02 {
+  const coverage = asRecord(value, label);
+  assertEnum(coverage.kind, CONTRACT_FIXTURE_KINDS_V02, `${label}.kind`);
+  assertString(coverage.typescriptValidator, `${label}.typescriptValidator`);
+  assertString(coverage.rustValidator, `${label}.rustValidator`);
+  assertFixturePathArrayV02(coverage.validFixtures, `${label}.validFixtures`, true);
+  assertFixturePathArrayV02(coverage.invalidFixtures, `${label}.invalidFixtures`, false);
+  assertEnum(coverage.status, CONTRACT_COMPATIBILITY_STATUSES_V02, `${label}.status`);
+}
+
+function assertFixturePathArrayV02(value: unknown, label: string, requireNonEmpty: boolean): void {
+  const paths = asArray(value, label);
+  if (requireNonEmpty && paths.length === 0) {
+    throw new Error(`${label} must contain at least one fixture path`);
+  }
+  for (const [index, path] of paths.entries()) {
+    assertContractFixturePathV02(path, `${label}[${index}]`);
+  }
+}
+
+function assertContractFixturePathV02(value: unknown, label: string): asserts value is string {
+  assertString(value, label);
+  if (!value.startsWith("./")) {
+    throw new Error(`${label} must be a relative fixture path starting with ./`);
+  }
+  assertPortableArtifactUriV02(value, label);
+  if (value.includes("..") || value.includes("//") || !value.endsWith(".json")) {
+    throw new Error(`${label} must be a normalized JSON fixture path`);
+  }
+}
+
+function assertUniqueFixturePathV02(
+  path: string,
+  label: string,
+  seenPaths: Set<string>,
+): void {
+  if (seenPaths.has(path)) {
+    throw new Error(`${label}.path must be unique within the contract fixture manifest`);
+  }
+  seenPaths.add(path);
+}
+
+function assertCommandTokensV02(value: unknown, label: string): asserts value is string[] {
+  const tokens = asArray(value, label);
+  if (tokens.length === 0) {
+    throw new Error(`${label} must contain at least one command token`);
+  }
+  for (const [index, token] of tokens.entries()) {
+    assertString(token, `${label}[${index}]`);
+  }
+}
+
+function assertEnumArrayV02<T extends string>(
+  value: unknown,
+  allowedValues: readonly T[],
+  label: string,
+): T[] {
+  const array = asArray(value, label);
+  return array.map((entry, index) => {
+    assertEnum(entry, allowedValues, `${label}[${index}]`);
+    return entry;
+  });
+}
+
+function assertExactStringSetV02(
+  values: readonly string[],
+  expectedValues: readonly string[],
+  label: string,
+): void {
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (seen.has(value)) {
+      throw new Error(`${label} must not contain duplicate value ${value}`);
+    }
+    seen.add(value);
+  }
+  for (const expectedValue of expectedValues) {
+    if (!seen.has(expectedValue)) {
+      throw new Error(`${label} must include ${expectedValue}`);
+    }
+  }
+  for (const value of seen) {
+    if (!expectedValues.includes(value)) {
+      throw new Error(`${label} contains unsupported value ${value}`);
     }
   }
 }

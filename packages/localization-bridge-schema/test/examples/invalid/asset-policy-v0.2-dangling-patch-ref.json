@@ -1,0 +1,75 @@
+{
+  "schemaVersion": "0.2.0",
+  "assetPolicyBundleId": "019ed004-0000-7000-8000-00000000f001",
+  "sourceBridgeId": "019ed001-0000-7000-8000-000000000001",
+  "sourceBundleHash": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+  "sourceLocale": "en-US",
+  "localeBranch": {
+    "localeBranchId": "019ed004-0000-7000-8000-000000000010",
+    "targetLocale": "fr-FR"
+  },
+  "assets": [
+    {
+      "assetId": "019ed004-0000-7000-8000-00000000f101",
+      "assetKey": "image/sign-caution",
+      "assetKind": "image",
+      "sourceHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sourceRevision": {
+        "revisionId": "019ed004-0000-7000-8000-00000000f201",
+        "revisionKind": "content_hash",
+        "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "path": "images/sign-caution.png"
+    }
+  ],
+  "decisions": [
+    {
+      "assetPolicyDecisionId": "019ed004-0000-7000-8000-00000000f301",
+      "assetSurfaceKind": "image_text",
+      "sourceAssetRef": {
+        "assetId": "019ed004-0000-7000-8000-00000000f101",
+        "assetKey": "image/sign-caution"
+      },
+      "sourceLocation": {
+        "containerKey": "image/sign-caution",
+        "region": {
+          "x": 24,
+          "y": 18,
+          "width": 180,
+          "height": 48
+        }
+      },
+      "sourceText": "CAUTION",
+      "sourceHash": "sha256:0101010101010101010101010101010101010101010101010101010101010101",
+      "sourceRevision": {
+        "revisionId": "019ed004-0000-7000-8000-00000000f201",
+        "revisionKind": "content_hash",
+        "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "policyAction": "localize",
+      "targetText": "ATTENTION",
+      "policyReason": "Invalid fixture keeps the source asset valid but points patchRef at a missing asset.",
+      "textSourceKind": "manual_transcription",
+      "patchMode": "region_redraw_required",
+      "patchRef": {
+        "assetId": "019ed004-0000-7000-8000-00000000ffff",
+        "writeMode": "update_region",
+        "sourceRevision": {
+          "revisionId": "019ed004-0000-7000-8000-00000000f201",
+          "revisionKind": "content_hash",
+          "value": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "screenshot_region",
+        "region": {
+          "x": 24,
+          "y": 18,
+          "width": 180,
+          "height": 48
+        }
+      }
+    }
+  ],
+  "compatibilityNotes": []
+}

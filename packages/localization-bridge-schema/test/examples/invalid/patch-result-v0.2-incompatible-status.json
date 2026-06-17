@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.2.0",
+  "patchResultId": "019ed001-0000-7000-8000-00000000f950",
+  "patchExportId": "019ed001-0000-7000-8000-000000000901",
+  "status": "failed",
+  "failures": ["source_hash_mismatch"],
+  "sourceCompatibility": {
+    "schemaVersion": "0.2.0",
+    "patchExportId": "019ed001-0000-7000-8000-000000000901",
+    "sourceBridgeId": "019ed001-0000-7000-8000-000000000001",
+    "status": "incompatible",
+    "expectedSourceBundleHash": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+    "actualSourceBundleHash": "sha256:530752517d6fe6af8505a362c5da79a034a16bb1c73b9c3b4c2e5bd5c2a2c060",
+    "sourceBundleHashMatches": false,
+    "compatibleUnits": [],
+    "incompatibleUnits": [
+      {
+        "entryId": "019ed001-0000-7000-8000-000000000910",
+        "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+        "sourceUnitKey": "script/prologue#line-001",
+        "status": "incompatible",
+        "expectedSourceHash": "sha256:fa01799c693dbf37732740572dde0106c2d67bed57a5955528687642896968e1",
+        "actualSourceHash": "sha256:ee738430dc6b47e520cbf9de9a54130e50671aa69dfd4d05bc447a9cbb980ea3",
+        "reason": "source_hash_mismatch"
+      }
+    ]
+  }
+}

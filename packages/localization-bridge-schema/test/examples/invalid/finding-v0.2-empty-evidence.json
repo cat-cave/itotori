@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.2.0",
+  "findingFixtureId": "019ed002-0000-7000-8000-00000000f901",
+  "finding": {
+    "findingId": "019ed002-0000-7000-8000-00000000f902",
+    "findingKind": "style_guide_violation",
+    "severity": "P1",
+    "qualityCategory": "style",
+    "title": "Missing evidence",
+    "description": "This invalid fixture intentionally omits evidence records.",
+    "impact": "The validator must reject finding claims without evidence.",
+    "createdAt": "2026-06-17T00:00:00.000Z",
+    "affectedRefs": [
+      {
+        "subjectKind": "bridge_unit",
+        "subjectId": "019ed001-0000-7000-8000-000000000201"
+      }
+    ],
+    "evidence": [],
+    "provenance": [
+      {
+        "provenanceId": "019ed002-0000-7000-8000-00000000f904",
+        "provenanceKind": "style_guide",
+        "styleGuideId": "019ed002-0000-7000-8000-00000000f905",
+        "styleGuideVersionId": "019ed002-0000-7000-8000-00000000f906",
+        "ruleId": "fr-FR.formal-greeting"
+      }
+    ],
+    "causalLinks": []
+  },
+  "compatibilityNotes": []
+}

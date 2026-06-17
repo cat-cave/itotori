@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "0.2.0",
+  "runtimeReportId": "019ed003-0000-7000-8000-00000000f001",
+  "sourceBridgeId": "019ed001-0000-7000-8000-000000000001",
+  "sourceBundleHash": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+  "sourceLocale": "en-US",
+  "targetLocale": "fr-FR",
+  "adapterName": "utsushi-contract-example",
+  "adapterVersion": "0.2.0",
+  "fidelityTier": "layout_probe",
+  "evidenceTier": "E4",
+  "status": "passed",
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "traceEvents": [
+    {
+      "traceEventId": "019ed003-0000-7000-8000-00000000f101",
+      "eventKind": "text_observed",
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+        "sourceUnitKey": "script/prologue#line-001"
+      },
+      "frame": 12,
+      "observedText": "Bonjour, {player}."
+    }
+  ],
+  "branchEvents": [],
+  "captures": [],
+  "recordings": [],
+  "approximations": [
+    {
+      "approximationId": "019ed003-0000-7000-8000-00000000f701",
+      "approximationTier": "layout_probe",
+      "scope": "fixture layout",
+      "description": "Invalid fixture deliberately claims E4 on a layout probe.",
+      "affectedBridgeUnitRefs": [
+        {
+          "bridgeUnitId": "019ed001-0000-7000-8000-000000000201"
+        }
+      ],
+      "evidenceTierCeiling": "E2"
+    }
+  ],
+  "validationFindings": [],
+  "limitations": []
+}

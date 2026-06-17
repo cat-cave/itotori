@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "0.2.0",
+  "permissionFixtureId": "019ed007-0000-7000-8000-000000000001",
+  "user": {
+    "userId": "local-user",
+    "displayName": "Local user"
+  },
+  "grants": [
+    "project.import",
+    "draft.write",
+    "patch.export",
+    "runtime.ingest",
+    "feedback.import",
+    "system.reset"
+  ],
+  "compatibilityNotes": [
+    "The MVP local user fixture mirrors the bootstrap user documented in docs/permissions.md.",
+    "The grant list is exact so new MVP permissions require a fixture update."
+  ]
+}
