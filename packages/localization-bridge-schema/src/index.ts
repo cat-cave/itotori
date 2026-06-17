@@ -220,6 +220,17 @@ export const LOCALIZATION_QUALITY_TAXONOMY_VERSION = "itotori-quality-taxonomy-0
 export const LOCALIZATION_QUALITY_SEVERITIES = ["critical", "major", "minor", "neutral"] as const;
 export type LocalizationQualitySeverityV02 = (typeof LOCALIZATION_QUALITY_SEVERITIES)[number];
 
+const LOCALIZATION_QUALITY_SEVERITY_WEIGHTS: Record<LocalizationQualitySeverityV02, number> = {
+  critical: 25,
+  major: 5,
+  minor: 1,
+  neutral: 0,
+};
+
+const BENCHMARK_NORMALIZED_PENALTY_TOLERANCE = 0.01;
+const RFC3339_INSTANT_PATTERN =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
+
 export const LOCALIZATION_ROOT_CAUSES = [
   "source_content_defect",
   "source_annotation_gap",
@@ -1496,7 +1507,7 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
     LOCALIZATION_QUALITY_TAXONOMY_VERSION,
     "BenchmarkReportV02.taxonomyVersion",
   );
-  assertString(report.createdAt, "BenchmarkReportV02.createdAt");
+  assertRfc3339Instant(report.createdAt, "BenchmarkReportV02.createdAt");
   assertString(report.benchmarkName, "BenchmarkReportV02.benchmarkName");
   assertEnum(report.status, BENCHMARK_RUN_STATUSES, "BenchmarkReportV02.status");
   assertString(report.sourceLocale, "BenchmarkReportV02.sourceLocale");
@@ -1511,7 +1522,12 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
   assertOptionalString(report.deterministicSeed, "BenchmarkReportV02.deterministicSeed");
 
   const inputRefs = asArray(report.fixtureOrCorpusRefs, "BenchmarkReportV02.fixtureOrCorpusRefs");
+  if (inputRefs.length === 0) {
+    throw new Error("BenchmarkReportV02.fixtureOrCorpusRefs must contain at least one ref");
+  }
   const inputRefIds = new Set<string>();
+  let totalSourceUnitCount = 0;
+  let totalSourceCharacterCount = 0;
   for (const [index, inputRef] of inputRefs.entries()) {
     const label = `BenchmarkReportV02.fixtureOrCorpusRefs[${index}]`;
     assertBenchmarkInputRefV02(inputRef, label);
@@ -1519,6 +1535,8 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
       throw new Error(`${label}.corpusRefId must be unique within fixtureOrCorpusRefs`);
     }
     inputRefIds.add(inputRef.corpusRefId);
+    totalSourceUnitCount += inputRef.sourceUnitCount;
+    totalSourceCharacterCount += inputRef.sourceCharacterCount;
   }
 
   const toolVersions = asArray(report.toolVersions, "BenchmarkReportV02.toolVersions");
@@ -1554,6 +1572,7 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
     "BenchmarkReportV02.providerModelCostRecords",
   );
   const providerRunIds = new Set<Uuid7>();
+  const llmQaProviderRunIds = new Set<Uuid7>();
   const costTotalsBySystem = new Map<string, number>();
   let reportTotalMicrosUsd = 0;
   let includesUnknownCost = false;
@@ -1564,6 +1583,9 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
       throw new Error(`${label}.providerRunId must be unique within providerModelCostRecords`);
     }
     providerRunIds.add(providerRun.providerRunId);
+    if (providerRun.taskKind === "llm_qa") {
+      llmQaProviderRunIds.add(providerRun.providerRunId);
+    }
     assertKnownStringRefV02(providerRun.systemId, `${label}.systemId`, "system", systemIds);
     if (providerRun.cost.costKind === "unknown") {
       includesUnknownCost = true;
@@ -1619,6 +1641,7 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
   const findingRootCauses: LocalizationRootCauseV02[] = [];
   const findingDetectorKinds: QualityDetectorKindV02[] = [];
   const findingAdjudicationStates: LocalizationAdjudicationStateV02[] = [];
+  const llmQaFindingIds = new Set<Uuid7>();
   for (const [index, finding] of findingRecords.entries()) {
     const label = `BenchmarkReportV02.findingRecords[${index}]`;
     assertBenchmarkFindingRecordV02(finding, label);
@@ -1635,6 +1658,9 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
     findingRootCauses.push(finding.rootCause);
     findingDetectorKinds.push(finding.detectorKind);
     findingAdjudicationStates.push(finding.adjudicationState);
+    if (finding.detectorKind === "llm_qa") {
+      llmQaFindingIds.add(finding.findingId);
+    }
   }
 
   for (const [index, seed] of (seededDefectOracle as BenchmarkSeededDefectOracleV02[]).entries()) {
@@ -1693,7 +1719,13 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
     "BenchmarkReportV02.countsByAdjudicationState",
   );
 
-  assertBenchmarkPenaltySummaryV02(report.penaltySummary, "BenchmarkReportV02.penaltySummary");
+  assertBenchmarkPenaltySummaryV02(
+    report.penaltySummary,
+    "BenchmarkReportV02.penaltySummary",
+    findingQualitySeverities,
+    totalSourceCharacterCount,
+    totalSourceUnitCount,
+  );
 
   const deterministicQaResults = asArray(
     report.deterministicQaResults,
@@ -1715,6 +1747,8 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
     report.qaAgentEvaluations,
     "BenchmarkReportV02.qaAgentEvaluations",
   );
+  const qaAgentProviderRunIds = new Set<Uuid7>();
+  const qaAgentFindingIds = new Set<Uuid7>();
   for (const [index, evaluation] of qaAgentEvaluations.entries()) {
     const label = `BenchmarkReportV02.qaAgentEvaluations[${index}]`;
     assertQaAgentEvaluationV02(evaluation, label);
@@ -1731,7 +1765,19 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
       providerRunIds,
     );
     assertKnownUuid7RefsV02(evaluation.findingIds, `${label}.findingIds`, "finding", findingIds);
+    for (const providerRunId of evaluation.providerRunIds) {
+      qaAgentProviderRunIds.add(providerRunId);
+    }
+    for (const findingId of evaluation.findingIds) {
+      qaAgentFindingIds.add(findingId);
+    }
   }
+  assertQaAgentCoverageV02(
+    llmQaProviderRunIds,
+    llmQaFindingIds,
+    qaAgentProviderRunIds,
+    qaAgentFindingIds,
+  );
 
   const humanEvaluationResults = asArray(
     report.humanEvaluationResults,
@@ -1785,7 +1831,7 @@ export function assertPatchExportV02(value: unknown): asserts value is PatchExpo
   assertString(patch.targetLocale, "PatchExportV02.targetLocale");
   assertHashStrategyV02(patch.hashStrategy, "PatchExportV02.hashStrategy");
   assertOptionalHashStringV02(patch.patchExportHash, "PatchExportV02.patchExportHash");
-  assertOptionalString(patch.generatedAt, "PatchExportV02.generatedAt");
+  assertOptionalRfc3339Instant(patch.generatedAt, "PatchExportV02.generatedAt");
   const entries = asArray(patch.entries, "PatchExportV02.entries");
   const entryKeys = new Set<string>();
   for (const [index, entry] of entries.entries()) {
@@ -1868,7 +1914,7 @@ export function assertDeltaPackageMetadataV02(
   );
   assertString(metadata.targetLocale, "DeltaPackageMetadataV02.targetLocale");
   assertHashStrategyV02(metadata.hashStrategy, "DeltaPackageMetadataV02.hashStrategy");
-  assertOptionalString(metadata.createdAt, "DeltaPackageMetadataV02.createdAt");
+  assertOptionalRfc3339Instant(metadata.createdAt, "DeltaPackageMetadataV02.createdAt");
 }
 
 export function evaluatePatchExportCompatibilityV02(
@@ -1989,7 +2035,7 @@ export function assertRuntimeEvidenceReportV02(
     "RuntimeEvidenceReportV02",
   );
   assertEnum(report.status, ["passed", "failed"] as const, "RuntimeEvidenceReportV02.status");
-  assertString(report.createdAt, "RuntimeEvidenceReportV02.createdAt");
+  assertRfc3339Instant(report.createdAt, "RuntimeEvidenceReportV02.createdAt");
 
   const traceEvents = asArray(report.traceEvents, "RuntimeEvidenceReportV02.traceEvents");
   for (const [index, event] of traceEvents.entries()) {
@@ -2490,7 +2536,7 @@ function assertSourceRevisionV02(
   if (revision.revisionKind === "content_hash") {
     assertHashStringV02(revision.value, `${label}.value`);
   }
-  assertOptionalString(revision.createdAt, `${label}.createdAt`);
+  assertOptionalRfc3339Instant(revision.createdAt, `${label}.createdAt`);
 }
 
 function assertSourceGameRevisionV02(
@@ -2917,7 +2963,7 @@ function assertTriageEventV02(value: unknown, label: string): asserts value is T
   const event = asRecord(value, label);
   assertUuid7(event.eventId, `${label}.eventId`);
   assertEnum(event.eventKind, TRIAGE_EVENT_KINDS, `${label}.eventKind`);
-  assertString(event.occurredAt, `${label}.occurredAt`);
+  assertRfc3339Instant(event.occurredAt, `${label}.occurredAt`);
   assertTriageActorV02(event.actor, `${label}.actor`);
   assertOptionalUuid7(event.taskId, `${label}.taskId`);
   assertOptionalUuid7(event.findingId, `${label}.findingId`);
@@ -2933,7 +2979,7 @@ function assertTriageTaskV02(value: unknown, label: string): asserts value is Tr
   const task = asRecord(value, label);
   assertUuid7(task.taskId, `${label}.taskId`);
   assertEnum(task.taskKind, TRIAGE_TASK_KINDS, `${label}.taskKind`);
-  assertString(task.createdAt, `${label}.createdAt`);
+  assertRfc3339Instant(task.createdAt, `${label}.createdAt`);
   assertString(task.summary, `${label}.summary`);
   assertOptionalUuid7(task.createdByEventId, `${label}.createdByEventId`);
   assertTriageSubjectRefsV02(task.inputRefs, `${label}.inputRefs`);
@@ -2956,7 +3002,7 @@ function assertFindingRecordV02(value: unknown, label: string): asserts value is
   assertString(finding.title, `${label}.title`);
   assertString(finding.description, `${label}.description`);
   assertString(finding.impact, `${label}.impact`);
-  assertString(finding.createdAt, `${label}.createdAt`);
+  assertRfc3339Instant(finding.createdAt, `${label}.createdAt`);
   assertOptionalUuid7(finding.reportedByTaskId, `${label}.reportedByTaskId`);
   assertOptionalUuid7(finding.firstSeenEventId, `${label}.firstSeenEventId`);
   assertTriageSubjectRefsV02(finding.affectedRefs, `${label}.affectedRefs`);
@@ -3069,7 +3115,7 @@ function assertProvenanceRecordV02(
         assertSourceLocationV02(provenance.sourceLocation, `${label}.sourceLocation`);
       }
       assertOptionalString(provenance.annotationText, `${label}.annotationText`);
-      assertOptionalString(provenance.observedAt, `${label}.observedAt`);
+      assertOptionalRfc3339Instant(provenance.observedAt, `${label}.observedAt`);
       break;
     case "style_guide":
       assertUuid7(provenance.styleGuideId, `${label}.styleGuideId`);
@@ -3373,7 +3419,7 @@ function assertBenchmarkComparedSystemV02(
   assertString(system.systemId, `${label}.systemId`);
   assertEnum(system.systemKind, BENCHMARK_SYSTEM_KINDS, `${label}.systemKind`);
   assertString(system.displayName, `${label}.displayName`);
-  assertString(system.generatedAt, `${label}.generatedAt`);
+  assertRfc3339Instant(system.generatedAt, `${label}.generatedAt`);
   assertUuid7Array(system.providerRunIds, `${label}.providerRunIds`);
   assertOptionalString(system.promptPresetId, `${label}.promptPresetId`);
   assertOptionalString(system.promptPresetVersion, `${label}.promptPresetVersion`);
@@ -3405,8 +3451,7 @@ function assertBenchmarkProviderRunV02(
   assertUuid7(run.providerRunId, `${label}.providerRunId`);
   assertString(run.systemId, `${label}.systemId`);
   assertEnum(run.taskKind, TRIAGE_TASK_KINDS, `${label}.taskKind`);
-  assertString(run.startedAt, `${label}.startedAt`);
-  assertOptionalString(run.completedAt, `${label}.completedAt`);
+  assertStartedCompletedInstantsV02(run.startedAt, run.completedAt, label);
   if (run.latencyMs !== undefined) {
     assertNonNegativeInteger(run.latencyMs, `${label}.latencyMs`);
   }
@@ -3685,6 +3730,9 @@ function assertCountBucketsMatchV02<T extends string>(
 function assertBenchmarkPenaltySummaryV02(
   value: unknown,
   label: string,
+  qualitySeverities: readonly LocalizationQualitySeverityV02[],
+  totalSourceCharacterCount: number,
+  totalSourceUnitCount: number,
 ): asserts value is BenchmarkPenaltySummaryV02 {
   const summary = asRecord(value, label);
   assertNonNegativeNumber(summary.penaltyTotal, `${label}.penaltyTotal`);
@@ -3695,6 +3743,29 @@ function assertBenchmarkPenaltySummaryV02(
   assertNonNegativeNumber(
     summary.penaltyPerHundredSourceUnits,
     `${label}.penaltyPerHundredSourceUnits`,
+  );
+  const expectedPenaltyTotal = qualitySeverities.reduce(
+    (total, severity) => total + LOCALIZATION_QUALITY_SEVERITY_WEIGHTS[severity],
+    0,
+  );
+  if (summary.penaltyTotal !== expectedPenaltyTotal) {
+    throw new Error(
+      `${label}.penaltyTotal must match findingRecords qualitySeverity weights from ${LOCALIZATION_QUALITY_TAXONOMY_ID}`,
+    );
+  }
+  assertNumberWithinTolerance(
+    summary.penaltyPerThousandSourceChars,
+    (expectedPenaltyTotal / totalSourceCharacterCount) * 1000,
+    BENCHMARK_NORMALIZED_PENALTY_TOLERANCE,
+    `${label}.penaltyPerThousandSourceChars`,
+    "findingRecords qualitySeverity weights normalized by fixtureOrCorpusRefs.sourceCharacterCount",
+  );
+  assertNumberWithinTolerance(
+    summary.penaltyPerHundredSourceUnits,
+    (expectedPenaltyTotal / totalSourceUnitCount) * 100,
+    BENCHMARK_NORMALIZED_PENALTY_TOLERANCE,
+    `${label}.penaltyPerHundredSourceUnits`,
+    "findingRecords qualitySeverity weights normalized by fixtureOrCorpusRefs.sourceUnitCount",
   );
 }
 
@@ -3707,8 +3778,7 @@ function assertDeterministicQaResultV02(
   assertString(result.evaluatedSystemId, `${label}.evaluatedSystemId`);
   assertString(result.checkName, `${label}.checkName`);
   assertString(result.checkVersion, `${label}.checkVersion`);
-  assertString(result.startedAt, `${label}.startedAt`);
-  assertOptionalString(result.completedAt, `${label}.completedAt`);
+  assertStartedCompletedInstantsV02(result.startedAt, result.completedAt, label);
   assertNonNegativeInteger(result.ruleCount, `${label}.ruleCount`);
   assertNonNegativeInteger(result.passedRuleCount, `${label}.passedRuleCount`);
   assertNonNegativeInteger(result.failedRuleCount, `${label}.failedRuleCount`);
@@ -3789,6 +3859,28 @@ function assertHumanEvaluationResultV02(
   assertOptionalString(evaluation.reviewerAgreementNotes, `${label}.reviewerAgreementNotes`);
 }
 
+function assertQaAgentCoverageV02(
+  llmQaProviderRunIds: ReadonlySet<Uuid7>,
+  llmQaFindingIds: ReadonlySet<Uuid7>,
+  qaAgentProviderRunIds: ReadonlySet<Uuid7>,
+  qaAgentFindingIds: ReadonlySet<Uuid7>,
+): void {
+  for (const providerRunId of llmQaProviderRunIds) {
+    if (!qaAgentProviderRunIds.has(providerRunId)) {
+      throw new Error(
+        `BenchmarkReportV02.qaAgentEvaluations.providerRunIds must cover llm_qa providerModelCostRecords run ${providerRunId}`,
+      );
+    }
+  }
+  for (const findingId of llmQaFindingIds) {
+    if (!qaAgentFindingIds.has(findingId)) {
+      throw new Error(
+        `BenchmarkReportV02.qaAgentEvaluations.findingIds must cover llm_qa findingRecords finding ${findingId}`,
+      );
+    }
+  }
+}
+
 function assertKnownStringRefV02(
   id: string,
   label: string,
@@ -3850,6 +3942,75 @@ function assertOptionalString(value: unknown, label: string): asserts value is s
   if (value !== undefined) {
     assertString(value, label);
   }
+}
+
+function assertRfc3339Instant(value: unknown, label: string): asserts value is string {
+  assertString(value, label);
+  const match = RFC3339_INSTANT_PATTERN.exec(value);
+  if (match === null) {
+    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+  }
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, offsetText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  if (offsetText === undefined) {
+    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+  }
+  if (
+    month < 1 ||
+    month > 12 ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    !isValidCalendarDate(year, month, day)
+  ) {
+    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+  }
+  if (offsetText !== "Z") {
+    const offsetHour = Number(offsetText.slice(1, 3));
+    const offsetMinute = Number(offsetText.slice(4, 6));
+    if (offsetHour > 23 || offsetMinute > 59) {
+      throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+    }
+  }
+  if (!Number.isFinite(Date.parse(value))) {
+    throw new Error(`${label} must be a valid RFC3339 timestamp instant`);
+  }
+}
+
+function assertOptionalRfc3339Instant(
+  value: unknown,
+  label: string,
+): asserts value is string | undefined {
+  if (value !== undefined) {
+    assertRfc3339Instant(value, label);
+  }
+}
+
+function assertStartedCompletedInstantsV02(
+  startedAt: unknown,
+  completedAt: unknown,
+  label: string,
+): void {
+  assertRfc3339Instant(startedAt, `${label}.startedAt`);
+  assertOptionalRfc3339Instant(completedAt, `${label}.completedAt`);
+  if (completedAt !== undefined && Date.parse(completedAt) < Date.parse(startedAt)) {
+    throw new Error(`${label}.completedAt must not be before ${label}.startedAt`);
+  }
+}
+
+function isValidCalendarDate(year: number, month: number, day: number): boolean {
+  const daysInMonth = [31, isLeapYear(year) ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day >= 1 && day <= (daysInMonth[month - 1] ?? 0);
+}
+
+function isLeapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
 }
 
 function assertOptionalHashStringV02(
@@ -3927,6 +4088,18 @@ function assertOptionalNonNegativeInteger(
 function assertNonNegativeNumber(value: unknown, label: string): asserts value is number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw new Error(`${label} must be a non-negative number`);
+  }
+}
+
+function assertNumberWithinTolerance(
+  value: number,
+  expected: number,
+  tolerance: number,
+  label: string,
+  expectation: string,
+): void {
+  if (Math.abs(value - expected) > tolerance) {
+    throw new Error(`${label} must match ${expectation}`);
   }
 }
 

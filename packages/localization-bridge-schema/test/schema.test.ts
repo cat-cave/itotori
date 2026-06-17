@@ -261,6 +261,60 @@ describe("localization bridge schema guards", () => {
     expect(() => assertBenchmarkReportV02(report)).toThrow(/promptPresetId/);
   });
 
+  it("rejects benchmark reports with llm_qa provider runs but no QA-agent evaluation", () => {
+    const report = benchmarkReportV02Example();
+    report.qaAgentEvaluations = [];
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /qaAgentEvaluations\.providerRunIds.*llm_qa providerModelCostRecords/,
+    );
+  });
+
+  it("rejects benchmark reports whose QA-agent evaluations omit llm_qa findings", () => {
+    const report = benchmarkReportV02Example();
+    const qaAgentEvaluations = report.qaAgentEvaluations as Array<Record<string, unknown>>;
+    const firstEvaluation = asTestRecord(qaAgentEvaluations[0], "first QA-agent evaluation");
+    firstEvaluation.findingIds = [];
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /qaAgentEvaluations\.findingIds.*llm_qa findingRecords/,
+    );
+  });
+
+  it("rejects benchmark penalty totals that do not match taxonomy severity weights", () => {
+    const report = benchmarkReportV02Example();
+    const penaltySummary = asTestRecord(report.penaltySummary, "benchmark penalty summary");
+    penaltySummary.penaltyTotal = 5;
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(/penaltyTotal.*qualitySeverity weights/);
+  });
+
+  it("rejects benchmark normalized penalties that do not match source-size denominators", () => {
+    const report = benchmarkReportV02Example();
+    const penaltySummary = asTestRecord(report.penaltySummary, "benchmark penalty summary");
+    penaltySummary.penaltyPerThousandSourceChars = 0;
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /penaltyPerThousandSourceChars.*sourceCharacterCount/,
+    );
+  });
+
+  it("rejects benchmark timestamps that are not RFC3339 instants", () => {
+    const report = benchmarkReportV02Example();
+    report.createdAt = "not a timestamp";
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(/createdAt.*RFC3339/);
+  });
+
+  it("rejects benchmark records whose completedAt precedes startedAt", () => {
+    const report = benchmarkReportV02Example();
+    const providerRecords = report.providerModelCostRecords as Array<Record<string, unknown>>;
+    const firstProviderRecord = asTestRecord(providerRecords[0], "first provider record");
+    firstProviderRecord.completedAt = "2026-06-17T15:00:09.000Z";
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(/completedAt.*startedAt/);
+  });
+
   it("rejects v0.2 bridge ids that are not UUID7", () => {
     const bridge = bridgeV02Example();
     bridge.bridgeId = "not-a-uuid";
