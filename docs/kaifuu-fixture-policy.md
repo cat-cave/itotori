@@ -187,6 +187,10 @@ Required artifacts before adapter work starts:
   encrypted, compiled, packed, or unknown variants.
 - Synthetic encrypted/minimal archive fixtures with public test keys when an
   adapter or detector claims key-profile behavior.
+- Archive/encryption matrix fixtures may be temp-directory builders in Rust
+  tests when the committed bytes would otherwise imply real engine support.
+  They must use synthetic marker bytes and assert aggregate evidence output,
+  not raw source filenames, keys, decrypted text, helper dumps, or local paths.
 - Commands that run through the shared round-trip harness once KAIFUU-003
   exists, or adapter-local commands until that harness lands.
 

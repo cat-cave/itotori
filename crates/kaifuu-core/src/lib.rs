@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
-use std::io::{ErrorKind, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -10,6 +10,8 @@ use serde_json::Value;
 pub type KaifuuResult<T> = Result<T, Box<dyn std::error::Error>>;
 pub const PROFILE_SCHEMA_VERSION: &str = "0.1.0";
 pub const ASSET_INVENTORY_SCHEMA_VERSION: &str = "0.1.0";
+pub const ARCHIVE_DETECTION_SCHEMA_VERSION: &str = "0.1.0";
+pub const REDACTED_DETECTION_GAME_DIR: &str = "[redacted-local-game-dir]";
 
 pub const BRIDGE_SCHEMA_VERSION_V02: &str = "0.2.0";
 
@@ -21,6 +23,8 @@ pub const SEMANTIC_SECRET_REDACTED: &str = "kaifuu.secret_redacted";
 pub const SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED: &str =
     "kaifuu.protected_executable_unsupported";
 pub const SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED: &str = "kaifuu.unsupported_variant.encrypted";
+pub const SEMANTIC_UNSUPPORTED_VARIANT_PACKED: &str = "kaifuu.unsupported_variant.packed";
+pub const SEMANTIC_UNKNOWN_ENGINE_VARIANT: &str = "kaifuu.unknown_engine_variant";
 
 pub mod contracts;
 
@@ -296,26 +300,36 @@ pub struct DetectionReport {
     pub game_dir: String,
     pub status: DetectionReportStatus,
     pub detections: Vec<DetectionResult>,
+    #[serde(default)]
+    pub archive_detection: ArchiveDetectionReport,
     pub warnings: Vec<String>,
 }
 
 impl DetectionReport {
     pub fn from_results(game_dir: &Path, detections: Vec<DetectionResult>) -> Self {
-        let status = if detections.iter().any(|detection| detection.detected) {
+        let archive_detection = ArchiveDetectionReport::scan(game_dir);
+        let adapter_matched = detections.iter().any(|detection| detection.detected);
+        let archive_matched = archive_detection.status == ArchiveDetectionStatus::Matched;
+        let status = if adapter_matched || archive_matched {
             DetectionReportStatus::Matched
         } else {
             DetectionReportStatus::Unknown
         };
-        let warnings = if status == DetectionReportStatus::Unknown {
+        let warnings = if !adapter_matched && archive_matched {
+            vec![
+                "no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics".to_string(),
+            ]
+        } else if status == DetectionReportStatus::Unknown {
             vec!["no registered adapter matched this directory".to_string()]
         } else {
             vec![]
         };
         Self {
             schema_version: "0.1.0".to_string(),
-            game_dir: game_dir.display().to_string(),
+            game_dir: REDACTED_DETECTION_GAME_DIR.to_string(),
             status,
             detections,
+            archive_detection,
             warnings,
         }
     }
@@ -326,6 +340,868 @@ impl DetectionReport {
 pub enum DetectionReportStatus {
     Matched,
     Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveDetectionReport {
+    pub schema_version: String,
+    pub status: ArchiveDetectionStatus,
+    pub evidence_policy: String,
+    pub rows: Vec<ArchiveDetectionRow>,
+}
+
+impl Default for ArchiveDetectionReport {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
+impl ArchiveDetectionReport {
+    pub fn empty() -> Self {
+        Self {
+            schema_version: ARCHIVE_DETECTION_SCHEMA_VERSION.to_string(),
+            status: ArchiveDetectionStatus::Unknown,
+            evidence_policy: ARCHIVE_DETECTION_EVIDENCE_POLICY.to_string(),
+            rows: vec![],
+        }
+    }
+
+    pub fn scan(game_dir: &Path) -> Self {
+        let scan = ArchiveDetectionScan::collect(game_dir);
+        let mut rows = vec![
+            detect_kirikiri_xp3(&scan),
+            detect_siglus(&scan),
+            detect_rpg_maker_mv_mz(&scan),
+            detect_wolf_rpg_editor(&scan),
+            detect_bgi_ethornell(&scan),
+            detect_renpy(&scan),
+            detect_unknown_archive_variant(&scan),
+        ];
+        for row in &mut rows {
+            row.normalize();
+        }
+        let status = if rows.iter().any(|row| row.detected) {
+            ArchiveDetectionStatus::Matched
+        } else {
+            ArchiveDetectionStatus::Unknown
+        };
+        Self {
+            schema_version: ARCHIVE_DETECTION_SCHEMA_VERSION.to_string(),
+            status,
+            evidence_policy: ARCHIVE_DETECTION_EVIDENCE_POLICY.to_string(),
+            rows,
+        }
+    }
+}
+
+const ARCHIVE_DETECTION_EVIDENCE_POLICY: &str = "aggregate-only; no raw keys, helper dumps, decrypted text, local paths, or private source filenames are serialized";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArchiveDetectionStatus {
+    Matched,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveDetectionRow {
+    pub row_id: String,
+    pub engine_family: ArchiveEngineFamily,
+    pub detected: bool,
+    pub detected_variant: String,
+    pub signals: Vec<ArchiveDetectionSignal>,
+    pub evidence: Vec<ArchiveDetectionEvidence>,
+    pub requirements: Vec<ProfileRequirement>,
+    pub diagnostics: Vec<DetectionDiagnostic>,
+    pub capabilities: Vec<CapabilityReport>,
+    pub support_boundary: String,
+}
+
+impl ArchiveDetectionRow {
+    pub fn normalize(&mut self) {
+        self.signals
+            .sort_by_key(|signal| serde_json::to_string(signal).unwrap_or_default());
+        self.signals.dedup();
+        self.evidence.sort_by_key(|evidence| {
+            (
+                serde_json::to_string(&evidence.evidence_type).unwrap_or_default(),
+                evidence.pattern.clone(),
+                serde_json::to_string(&evidence.status).unwrap_or_default(),
+            )
+        });
+        self.requirements.sort_by_key(ProfileRequirement::sort_key);
+        self.diagnostics.sort_by_key(|diagnostic| {
+            (
+                diagnostic.code.to_string(),
+                serde_json::to_string(&diagnostic.signal).unwrap_or_default(),
+                diagnostic.support_boundary.clone(),
+            )
+        });
+        self.capabilities.sort_by_key(|report| {
+            (
+                serde_json::to_string(&report.capability).unwrap_or_default(),
+                serde_json::to_string(&report.status).unwrap_or_default(),
+                report.limitation.clone(),
+            )
+        });
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArchiveEngineFamily {
+    KiriKiriXp3,
+    Siglus,
+    RpgMakerMvMz,
+    WolfRpgEditor,
+    BgiEthornell,
+    #[serde(rename = "renpy")]
+    Renpy,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArchiveDetectionSignal {
+    Encrypted,
+    Packed,
+    Protected,
+    MissingKey,
+    HelperRequired,
+    UnknownVariant,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveDetectionEvidence {
+    pub evidence_type: ArchiveEvidenceType,
+    pub pattern: String,
+    pub status: EvidenceStatus,
+    pub count: u64,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArchiveEvidenceType {
+    FileExtension,
+    FileName,
+    FileMagic,
+    MetadataField,
+    AggregateCount,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectionDiagnostic {
+    pub code: SemanticErrorCode,
+    pub signal: ArchiveDetectionSignal,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_capability: Option<Capability>,
+    pub support_boundary: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remediation: Option<String>,
+}
+
+#[derive(Debug, Default)]
+struct ArchiveDetectionScan {
+    extensions: BTreeMap<String, u64>,
+    file_names: BTreeMap<String, u64>,
+    headers: Vec<Vec<u8>>,
+    rpg_maker_system_json_encryption_fields: u64,
+}
+
+impl ArchiveDetectionScan {
+    fn collect(game_dir: &Path) -> Self {
+        let mut scan = Self::default();
+        scan.visit_dir(game_dir, game_dir);
+        scan
+    }
+
+    fn visit_dir(&mut self, root: &Path, dir: &Path) {
+        let Ok(entries) = fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            if file_type.is_dir() {
+                self.visit_dir(root, &path);
+            } else if file_type.is_file() {
+                self.record_file(root, &path);
+            }
+        }
+    }
+
+    fn record_file(&mut self, root: &Path, path: &Path) {
+        if let Some(extension) = lower_path_component(path.extension()) {
+            *self.extensions.entry(extension).or_default() += 1;
+        }
+        if let Some(file_name) = lower_path_component(path.file_name()) {
+            *self.file_names.entry(file_name).or_default() += 1;
+        }
+        self.headers.push(read_header(path, 64));
+        if is_rpg_maker_system_json(root, path) && system_json_has_encryption_fields(path) {
+            self.rpg_maker_system_json_encryption_fields += 1;
+        }
+    }
+
+    fn extension_count(&self, extension: &str) -> u64 {
+        self.extensions.get(extension).copied().unwrap_or_default()
+    }
+
+    fn extension_counts(&self, extensions: &[&str]) -> u64 {
+        extensions
+            .iter()
+            .map(|extension| self.extension_count(extension))
+            .sum()
+    }
+
+    fn file_name_count(&self, file_name: &str) -> u64 {
+        self.file_names
+            .get(&file_name.to_ascii_lowercase())
+            .copied()
+            .unwrap_or_default()
+    }
+
+    fn header_count(&self, needle: &str) -> u64 {
+        self.headers
+            .iter()
+            .filter(|header| header_contains_ascii(header, needle))
+            .count() as u64
+    }
+
+    fn xp3_header_count(&self) -> u64 {
+        self.headers
+            .iter()
+            .filter(|header| header.starts_with(b"XP3"))
+            .count() as u64
+    }
+}
+
+fn lower_path_component(component: Option<&std::ffi::OsStr>) -> Option<String> {
+    component.map(|component| component.to_string_lossy().to_ascii_lowercase())
+}
+
+fn read_header(path: &Path, limit: usize) -> Vec<u8> {
+    let Ok(mut file) = File::open(path) else {
+        return vec![];
+    };
+    let mut buffer = vec![0; limit];
+    let Ok(read) = file.read(&mut buffer) else {
+        return vec![];
+    };
+    buffer.truncate(read);
+    buffer
+}
+
+fn header_contains_ascii(header: &[u8], needle: &str) -> bool {
+    String::from_utf8_lossy(header)
+        .to_ascii_lowercase()
+        .contains(&needle.to_ascii_lowercase())
+}
+
+fn is_rpg_maker_system_json(root: &Path, path: &Path) -> bool {
+    let Ok(relative_path) = path.strip_prefix(root) else {
+        return false;
+    };
+    let parts = relative_path
+        .components()
+        .filter_map(|component| {
+            component
+                .as_os_str()
+                .to_str()
+                .map(|part| part.to_ascii_lowercase())
+        })
+        .collect::<Vec<_>>();
+    parts.ends_with(&["data".to_string(), "system.json".to_string()])
+        || parts.ends_with(&[
+            "www".to_string(),
+            "data".to_string(),
+            "system.json".to_string(),
+        ])
+}
+
+fn system_json_has_encryption_fields(path: &Path) -> bool {
+    let Ok(text) = fs::read_to_string(path) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&text) else {
+        return false;
+    };
+    value
+        .get("hasEncryptedImages")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        || value
+            .get("hasEncryptedAudio")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+        || value
+            .get("encryptionKey")
+            .and_then(Value::as_str)
+            .is_some_and(|key| !key.trim().is_empty())
+}
+
+fn detect_kirikiri_xp3(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
+    let xp3_extension_count = scan.extension_count("xp3");
+    let xp3_header_count = scan.xp3_header_count();
+    let encrypted_marker_count = scan.header_count("kaifuu-xp3-encrypted")
+        + scan.header_count("xp3-encrypted")
+        + scan.header_count("xp3-crypt");
+    let detected = xp3_extension_count > 0 || xp3_header_count > 0;
+    let mut signals = if detected {
+        vec![ArchiveDetectionSignal::Packed]
+    } else {
+        vec![]
+    };
+    if encrypted_marker_count > 0 {
+        signals.extend([
+            ArchiveDetectionSignal::Encrypted,
+            ArchiveDetectionSignal::MissingKey,
+            ArchiveDetectionSignal::HelperRequired,
+        ]);
+    }
+    archive_row(ArchiveRowInput {
+        row_id: "kirikiri-xp3",
+        engine_family: ArchiveEngineFamily::KiriKiriXp3,
+        detected,
+        detected_variant: if encrypted_marker_count > 0 {
+            "xp3-encrypted-archive"
+        } else {
+            "xp3-archive"
+        },
+        signals,
+        evidence: vec![
+            evidence(
+                ArchiveEvidenceType::FileExtension,
+                "*.xp3",
+                xp3_extension_count,
+                "XP3 archive extension count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "XP3 header",
+                xp3_header_count,
+                "XP3 archive header count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "synthetic XP3 encryption marker",
+                encrypted_marker_count,
+                "Synthetic encrypted XP3 fixture marker count",
+            ),
+        ],
+        requirements: if encrypted_marker_count > 0 {
+            vec![secret_requirement(
+                "kirikiri-xp3-key-profile",
+                "encrypted XP3 variants require local key/profile evidence before pure adapters can proceed",
+                "KAIFUU_KIRIKIRI_XP3_KEY_PROFILE",
+            )]
+        } else {
+            vec![]
+        },
+        support_boundary: "Kaifuu detects XP3 archives and encrypted XP3 markers but does not claim XP3 extraction, decryption, or archive rebuild support in this matrix.",
+    })
+}
+
+fn detect_siglus(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
+    let scene_pck_count = scan.file_name_count("scene.pck");
+    let gameexe_dat_count = scan.file_name_count("gameexe.dat");
+    let detected = scene_pck_count > 0 || gameexe_dat_count > 0;
+    archive_row(ArchiveRowInput {
+        row_id: "siglus-scene-pck",
+        engine_family: ArchiveEngineFamily::Siglus,
+        detected,
+        detected_variant: if scene_pck_count > 0 && gameexe_dat_count > 0 {
+            "scene-pck-gameexe-dat"
+        } else if scene_pck_count > 0 {
+            "scene-pck-without-gameexe-dat"
+        } else {
+            "gameexe-dat-without-scene-pck"
+        },
+        signals: detected
+            .then(|| {
+                vec![
+                    ArchiveDetectionSignal::Packed,
+                    ArchiveDetectionSignal::Encrypted,
+                    ArchiveDetectionSignal::MissingKey,
+                    ArchiveDetectionSignal::HelperRequired,
+                ]
+            })
+            .unwrap_or_default(),
+        evidence: vec![
+            evidence(
+                ArchiveEvidenceType::FileName,
+                "Scene.pck",
+                scene_pck_count,
+                "Siglus scenario package marker count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileName,
+                "Gameexe.dat",
+                gameexe_dat_count,
+                "Siglus executable metadata marker count",
+            ),
+        ],
+        requirements: if detected {
+            vec![
+                file_requirement(
+                    "Scene.pck",
+                    scene_pck_count > 0,
+                    "Siglus detection expects aggregate evidence for Scene.pck",
+                ),
+                file_requirement(
+                    "Gameexe.dat",
+                    gameexe_dat_count > 0,
+                    "Siglus secondary-key workflows usually require Gameexe.dat evidence",
+                ),
+                secret_requirement(
+                    "siglus-secondary-key",
+                    "Siglus encrypted packages require a local secondary key reference",
+                    "KAIFUU_SIGLUS_SECONDARY_KEY",
+                ),
+            ]
+        } else {
+            vec![]
+        },
+        support_boundary: "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated.",
+    })
+}
+
+fn detect_rpg_maker_mv_mz(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
+    let encrypted_asset_count =
+        scan.extension_counts(&["rpgmvp", "rpgmvm", "rpgmvo", "png_", "m4a_", "ogg_"]);
+    let system_json_count = scan.rpg_maker_system_json_encryption_fields;
+    let detected = encrypted_asset_count > 0 || system_json_count > 0;
+    archive_row(ArchiveRowInput {
+        row_id: "rpg-maker-mv-mz-encrypted-assets",
+        engine_family: ArchiveEngineFamily::RpgMakerMvMz,
+        detected,
+        detected_variant: "mv-mz-encrypted-asset-signals",
+        signals: detected
+            .then(|| {
+                vec![
+                    ArchiveDetectionSignal::Encrypted,
+                    ArchiveDetectionSignal::MissingKey,
+                ]
+            })
+            .unwrap_or_default(),
+        evidence: vec![
+            evidence(
+                ArchiveEvidenceType::FileExtension,
+                "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_",
+                encrypted_asset_count,
+                "RPG Maker MV/MZ encrypted asset extension count",
+            ),
+            evidence(
+                ArchiveEvidenceType::MetadataField,
+                "data/System.json encryption fields",
+                system_json_count,
+                "System.json encryption flags or key-field presence count; key values are never serialized",
+            ),
+        ],
+        requirements: if detected {
+            vec![secret_requirement(
+                "rpg-maker-mv-mz-asset-key",
+                "encrypted RPG Maker MV/MZ assets require a local asset key reference",
+                "KAIFUU_RPG_MAKER_ASSET_KEY",
+            )]
+        } else {
+            vec![]
+        },
+        support_boundary: "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims.",
+    })
+}
+
+fn detect_wolf_rpg_editor(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
+    let wolf_archive_count = scan.extension_count("wolf");
+    let wolf_magic_count = scan.header_count("wolf");
+    let protected_marker_count =
+        scan.header_count("wolf-protected") + scan.header_count("protection-key");
+    let detected = wolf_archive_count > 0 || wolf_magic_count > 0;
+    let mut signals = if detected {
+        vec![
+            ArchiveDetectionSignal::Packed,
+            ArchiveDetectionSignal::Encrypted,
+            ArchiveDetectionSignal::MissingKey,
+            ArchiveDetectionSignal::HelperRequired,
+        ]
+    } else {
+        vec![]
+    };
+    if protected_marker_count > 0 {
+        signals.push(ArchiveDetectionSignal::Protected);
+    }
+    archive_row(ArchiveRowInput {
+        row_id: "wolf-rpg-editor-archives",
+        engine_family: ArchiveEngineFamily::WolfRpgEditor,
+        detected,
+        detected_variant: if protected_marker_count > 0 {
+            "wolf-protected-archive"
+        } else {
+            "wolf-archive"
+        },
+        signals,
+        evidence: vec![
+            evidence(
+                ArchiveEvidenceType::FileExtension,
+                "*.wolf",
+                wolf_archive_count,
+                "Wolf RPG Editor archive extension count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "WOLF header",
+                wolf_magic_count,
+                "Wolf archive/header marker count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "Wolf protection marker",
+                protected_marker_count,
+                "Synthetic Wolf protection-key marker count",
+            ),
+        ],
+        requirements: if detected {
+            vec![secret_requirement(
+                "wolf-rpg-editor-archive-key",
+                "Wolf RPG Editor protected archives require local key/helper evidence",
+                "KAIFUU_WOLF_ARCHIVE_KEY",
+            )]
+        } else {
+            vec![]
+        },
+        support_boundary: "Kaifuu detects Wolf RPG Editor archive and protection signals; archive decryption, binary database parsing, and rebuilds remain unsupported here.",
+    })
+}
+
+fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
+    let arc_extension_count = scan.extension_count("arc");
+    let buriko_header_count = scan.header_count("BURIKO ARC20");
+    let encrypted_marker_count =
+        scan.header_count("bgi-encrypted") + scan.header_count("ethornell-encrypted");
+    let detected = buriko_header_count > 0;
+    let mut signals = if detected {
+        vec![
+            ArchiveDetectionSignal::Packed,
+            ArchiveDetectionSignal::UnknownVariant,
+        ]
+    } else {
+        vec![]
+    };
+    if encrypted_marker_count > 0 {
+        signals.extend([
+            ArchiveDetectionSignal::Encrypted,
+            ArchiveDetectionSignal::MissingKey,
+        ]);
+    }
+    archive_row(ArchiveRowInput {
+        row_id: "bgi-ethornell-containers",
+        engine_family: ArchiveEngineFamily::BgiEthornell,
+        detected,
+        detected_variant: if encrypted_marker_count > 0 {
+            "buriko-arc20-encrypted-container"
+        } else {
+            "buriko-arc20-container"
+        },
+        signals,
+        evidence: vec![
+            evidence(
+                ArchiveEvidenceType::FileExtension,
+                "*.arc",
+                arc_extension_count,
+                "Generic .arc extension count; BGI classification requires BURIKO header evidence",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "BURIKO ARC20 header",
+                buriko_header_count,
+                "BGI/Ethornell archive header count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "BGI encrypted container marker",
+                encrypted_marker_count,
+                "Synthetic BGI/Ethornell encrypted-container marker count",
+            ),
+        ],
+        requirements: if encrypted_marker_count > 0 {
+            vec![secret_requirement(
+                "bgi-ethornell-container-key",
+                "encrypted BGI/Ethornell containers require local key/profile evidence",
+                "KAIFUU_BGI_CONTAINER_KEY",
+            )]
+        } else {
+            vec![]
+        },
+        support_boundary: "Kaifuu detects BGI/Ethornell container headers; script decoding, encrypted container handling, and repacking are not claimed by this matrix.",
+    })
+}
+
+fn detect_renpy(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
+    let rpa_count = scan.extension_count("rpa");
+    let rpyc_count = scan.extension_count("rpyc");
+    let detected = rpa_count > 0 || rpyc_count > 0;
+    archive_row(ArchiveRowInput {
+        row_id: "renpy-packed-inputs",
+        engine_family: ArchiveEngineFamily::Renpy,
+        detected,
+        detected_variant: if rpa_count > 0 && rpyc_count > 0 {
+            "rpa-archive-and-rpyc-compiled-script"
+        } else if rpa_count > 0 {
+            "rpa-archive"
+        } else {
+            "rpyc-compiled-script"
+        },
+        signals: detected
+            .then(|| vec![ArchiveDetectionSignal::Packed])
+            .unwrap_or_default(),
+        evidence: vec![
+            evidence(
+                ArchiveEvidenceType::FileExtension,
+                "*.rpa",
+                rpa_count,
+                "Ren'Py archive extension count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileExtension,
+                "*.rpyc",
+                rpyc_count,
+                "Ren'Py compiled script extension count",
+            ),
+        ],
+        requirements: vec![],
+        support_boundary: "Kaifuu detects Ren'Py packed or compiled inputs; plaintext .rpy handling, archive unpacking, and decompilation are separate support claims.",
+    })
+}
+
+fn detect_unknown_archive_variant(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
+    let unknown_count = scan
+        .extension_counts(&["pak", "bundle", "bin"])
+        .saturating_add(
+            scan.extension_count("dat")
+                .saturating_sub(scan.file_name_count("gameexe.dat")),
+        )
+        .saturating_add(
+            scan.extension_count("pck")
+                .saturating_sub(scan.file_name_count("scene.pck")),
+        )
+        .saturating_add(
+            scan.extension_count("arc")
+                .saturating_sub(scan.header_count("BURIKO ARC20")),
+        );
+    let detected = unknown_count > 0;
+    archive_row(ArchiveRowInput {
+        row_id: "unknown-archive-variant",
+        engine_family: ArchiveEngineFamily::Unknown,
+        detected,
+        detected_variant: "unprofiled-archive-like-input",
+        signals: detected
+            .then(|| vec![ArchiveDetectionSignal::UnknownVariant])
+            .unwrap_or_default(),
+        evidence: vec![evidence(
+            ArchiveEvidenceType::AggregateCount,
+            "*.pak|*.bundle|*.bin|unprofiled *.dat|*.pck|*.arc",
+            unknown_count,
+            "Archive-like files not covered by a profiled detector row",
+        )],
+        requirements: vec![],
+        support_boundary: "Kaifuu records unknown archive-like inputs as aggregate evidence only; no engine, extraction, or patching support is inferred.",
+    })
+}
+
+struct ArchiveRowInput {
+    row_id: &'static str,
+    engine_family: ArchiveEngineFamily,
+    detected: bool,
+    detected_variant: &'static str,
+    signals: Vec<ArchiveDetectionSignal>,
+    evidence: Vec<ArchiveDetectionEvidence>,
+    requirements: Vec<ProfileRequirement>,
+    support_boundary: &'static str,
+}
+
+fn archive_row(input: ArchiveRowInput) -> ArchiveDetectionRow {
+    let diagnostics = if input.detected {
+        diagnostics_for_signals(&input.signals, input.support_boundary)
+    } else {
+        vec![]
+    };
+    let capabilities = capabilities_for_archive_row(input.detected, &input.signals);
+    ArchiveDetectionRow {
+        row_id: input.row_id.to_string(),
+        engine_family: input.engine_family,
+        detected: input.detected,
+        detected_variant: input.detected_variant.to_string(),
+        signals: input.signals,
+        evidence: input.evidence,
+        requirements: input.requirements,
+        diagnostics,
+        capabilities,
+        support_boundary: input.support_boundary.to_string(),
+    }
+}
+
+fn evidence(
+    evidence_type: ArchiveEvidenceType,
+    pattern: impl Into<String>,
+    count: u64,
+    detail: impl Into<String>,
+) -> ArchiveDetectionEvidence {
+    ArchiveDetectionEvidence {
+        evidence_type,
+        pattern: pattern.into(),
+        status: if count > 0 {
+            EvidenceStatus::Matched
+        } else {
+            EvidenceStatus::Missing
+        },
+        count,
+        detail: detail.into(),
+    }
+}
+
+fn secret_requirement(
+    key: impl Into<String>,
+    description: impl Into<String>,
+    placeholder: impl Into<String>,
+) -> ProfileRequirement {
+    ProfileRequirement {
+        category: RequirementCategory::SecretKey,
+        key: key.into(),
+        status: RequirementStatus::Missing,
+        description: description.into(),
+        placeholder: Some(placeholder.into()),
+        secret: true,
+    }
+}
+
+fn file_requirement(
+    key: impl Into<String>,
+    satisfied: bool,
+    description: impl Into<String>,
+) -> ProfileRequirement {
+    ProfileRequirement {
+        category: RequirementCategory::File,
+        key: key.into(),
+        status: if satisfied {
+            RequirementStatus::Satisfied
+        } else {
+            RequirementStatus::Missing
+        },
+        description: description.into(),
+        placeholder: None,
+        secret: false,
+    }
+}
+
+fn capabilities_for_archive_row(
+    detected: bool,
+    signals: &[ArchiveDetectionSignal],
+) -> Vec<CapabilityReport> {
+    let mut capabilities = vec![CapabilityReport::supported(Capability::Detection)];
+    if detected {
+        capabilities.extend([
+            CapabilityReport::unsupported(
+                Capability::Extraction,
+                "archive/encryption matrix detection is not an extraction support claim",
+            ),
+            CapabilityReport::unsupported(
+                Capability::Patching,
+                "archive/encryption matrix detection does not rebuild, decrypt, or patch containers",
+            ),
+        ]);
+    }
+    if signals.contains(&ArchiveDetectionSignal::Encrypted) {
+        capabilities.push(CapabilityReport::unsupported(
+            Capability::EncryptedInput,
+            "encrypted input was detected, but decryption support is not claimed by the matrix",
+        ));
+    }
+    if signals.contains(&ArchiveDetectionSignal::MissingKey)
+        || signals.contains(&ArchiveDetectionSignal::HelperRequired)
+    {
+        capabilities.push(CapabilityReport::requires_user_input(
+            Capability::KeyProfile,
+            "recognized protected inputs require local secret refs or helper evidence before future pure adapter work can proceed",
+        ));
+    }
+    capabilities
+}
+
+fn diagnostics_for_signals(
+    signals: &[ArchiveDetectionSignal],
+    support_boundary: &str,
+) -> Vec<DetectionDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for signal in signals {
+        match signal {
+            ArchiveDetectionSignal::Encrypted => diagnostics.push(diagnostic(
+                SemanticErrorCode::UnsupportedVariantEncrypted,
+                ArchiveDetectionSignal::Encrypted,
+                Some(Capability::EncryptedInput),
+                support_boundary,
+                "provide a supported key profile only after an adapter explicitly supports this encrypted variant",
+            )),
+            ArchiveDetectionSignal::Packed => diagnostics.push(diagnostic(
+                SemanticErrorCode::UnsupportedVariantPacked,
+                ArchiveDetectionSignal::Packed,
+                Some(Capability::Extraction),
+                support_boundary,
+                "use already extracted/plaintext sources or wait for an adapter that claims this container",
+            )),
+            ArchiveDetectionSignal::Protected => diagnostics.push(diagnostic(
+                SemanticErrorCode::ProtectedExecutableUnsupported,
+                ArchiveDetectionSignal::Protected,
+                Some(Capability::KeyProfile),
+                support_boundary,
+                "use a local helper workflow that reports redacted protection evidence",
+            )),
+            ArchiveDetectionSignal::MissingKey => diagnostics.push(diagnostic(
+                SemanticErrorCode::MissingKeyMaterial,
+                ArchiveDetectionSignal::MissingKey,
+                Some(Capability::KeyProfile),
+                support_boundary,
+                "resolve local key material through a secret ref; do not persist raw keys",
+            )),
+            ArchiveDetectionSignal::HelperRequired => diagnostics.push(diagnostic(
+                SemanticErrorCode::HelperUnavailable,
+                ArchiveDetectionSignal::HelperRequired,
+                Some(Capability::KeyProfile),
+                support_boundary,
+                "run an explicitly enabled local helper or provide validated local key evidence",
+            )),
+            ArchiveDetectionSignal::UnknownVariant => diagnostics.push(diagnostic(
+                SemanticErrorCode::UnknownEngineVariant,
+                ArchiveDetectionSignal::UnknownVariant,
+                Some(Capability::Detection),
+                support_boundary,
+                "add a synthetic public detector fixture or private-local aggregate evidence before claiming support",
+            )),
+        }
+    }
+    diagnostics
+}
+
+fn diagnostic(
+    code: SemanticErrorCode,
+    signal: ArchiveDetectionSignal,
+    required_capability: Option<Capability>,
+    support_boundary: impl Into<String>,
+    remediation: impl Into<String>,
+) -> DetectionDiagnostic {
+    DetectionDiagnostic {
+        code,
+        signal,
+        required_capability,
+        support_boundary: support_boundary.into(),
+        remediation: Some(remediation.into()),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1822,6 +2698,10 @@ pub enum SemanticErrorCode {
     ProtectedExecutableUnsupported,
     #[serde(rename = "kaifuu.unsupported_variant.encrypted")]
     UnsupportedVariantEncrypted,
+    #[serde(rename = "kaifuu.unsupported_variant.packed")]
+    UnsupportedVariantPacked,
+    #[serde(rename = "kaifuu.unknown_engine_variant")]
+    UnknownEngineVariant,
 }
 
 impl SemanticErrorCode {
@@ -1834,6 +2714,8 @@ impl SemanticErrorCode {
             Self::SecretRedacted => SEMANTIC_SECRET_REDACTED,
             Self::ProtectedExecutableUnsupported => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
             Self::UnsupportedVariantEncrypted => SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED,
+            Self::UnsupportedVariantPacked => SEMANTIC_UNSUPPORTED_VARIANT_PACKED,
+            Self::UnknownEngineVariant => SEMANTIC_UNKNOWN_ENGINE_VARIANT,
         }
     }
 }
@@ -6082,6 +6964,228 @@ mod tests {
             error.contains(expected_error),
             "expected error containing {expected_error:?}, got: {error}"
         );
+    }
+
+    fn write_fixture_file(root: &Path, relative_path: &str, bytes: &[u8]) {
+        let path = root.join(relative_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, bytes).unwrap();
+    }
+
+    fn detected_archive_row<'a>(
+        report: &'a ArchiveDetectionReport,
+        row_id: &str,
+    ) -> &'a ArchiveDetectionRow {
+        let row = report
+            .rows
+            .iter()
+            .find(|row| row.row_id == row_id)
+            .unwrap_or_else(|| panic!("missing archive row {row_id}"));
+        assert!(row.detected, "{row_id} should be detected: {row:#?}");
+        row
+    }
+
+    #[test]
+    fn archive_detection_matrix_reports_requested_engine_families() {
+        let root = temp_dir("archive-matrix-families");
+        write_fixture_file(
+            &root,
+            "private-spoiler-route-name.xp3",
+            b"XP3\r\nKAIFUU-XP3-ENCRYPTED",
+        );
+        write_fixture_file(&root, "Scene.pck", b"siglus scene package");
+        write_fixture_file(&root, "Gameexe.dat", b"siglus metadata");
+        write_fixture_file(
+            &root,
+            "www/data/System.json",
+            br#"{
+  "hasEncryptedImages": true,
+  "hasEncryptedAudio": true,
+  "encryptionKey": "00112233445566778899aabbccddeeff"
+}"#,
+        );
+        write_fixture_file(&root, "img/pictures/title.rpgmvp", b"rpgmvp synthetic");
+        write_fixture_file(&root, "img/pictures/title.png_", b"mz image synthetic");
+        write_fixture_file(&root, "audio/bgm/theme.m4a_", b"mz audio synthetic");
+        write_fixture_file(&root, "audio/se/cursor.ogg_", b"mz audio synthetic");
+        write_fixture_file(
+            &root,
+            "Data.wolf",
+            b"WOLF RPG Editor synthetic WOLF-PROTECTED protection-key",
+        );
+        write_fixture_file(&root, "pack.arc", b"BURIKO ARC20\0BGI-ENCRYPTED synthetic");
+        write_fixture_file(&root, "game/archive.rpa", b"RenPy archive synthetic");
+        write_fixture_file(&root, "game/script.rpyc", b"RenPy bytecode synthetic");
+        write_fixture_file(&root, "mystery/private-route-name.pak", b"unknown archive");
+
+        let report = ArchiveDetectionReport::scan(&root);
+
+        assert_eq!(report.status, ArchiveDetectionStatus::Matched);
+        assert_eq!(
+            report
+                .rows
+                .iter()
+                .map(|row| row.row_id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "kirikiri-xp3",
+                "siglus-scene-pck",
+                "rpg-maker-mv-mz-encrypted-assets",
+                "wolf-rpg-editor-archives",
+                "bgi-ethornell-containers",
+                "renpy-packed-inputs",
+                "unknown-archive-variant",
+            ]
+        );
+
+        let kirikiri = detected_archive_row(&report, "kirikiri-xp3");
+        assert!(
+            kirikiri
+                .signals
+                .contains(&ArchiveDetectionSignal::Encrypted)
+        );
+        assert!(kirikiri.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::UnsupportedVariantEncrypted
+        }));
+
+        let siglus = detected_archive_row(&report, "siglus-scene-pck");
+        assert!(siglus.signals.contains(&ArchiveDetectionSignal::MissingKey));
+        assert!(
+            siglus
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == SemanticErrorCode::HelperUnavailable })
+        );
+
+        let rpg_maker = detected_archive_row(&report, "rpg-maker-mv-mz-encrypted-assets");
+        assert!(rpg_maker.evidence.iter().any(|evidence| {
+            evidence.pattern == "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 4
+        }));
+        assert!(rpg_maker.evidence.iter().any(|evidence| {
+            evidence.pattern == "data/System.json encryption fields"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+
+        let wolf = detected_archive_row(&report, "wolf-rpg-editor-archives");
+        assert!(wolf.signals.contains(&ArchiveDetectionSignal::Protected));
+        assert!(wolf.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::ProtectedExecutableUnsupported
+        }));
+
+        let bgi = detected_archive_row(&report, "bgi-ethornell-containers");
+        assert!(
+            bgi.signals
+                .contains(&ArchiveDetectionSignal::UnknownVariant)
+        );
+        assert!(
+            bgi.diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == SemanticErrorCode::UnknownEngineVariant })
+        );
+
+        let renpy = detected_archive_row(&report, "renpy-packed-inputs");
+        assert!(
+            renpy.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SemanticErrorCode::UnsupportedVariantPacked
+            })
+        );
+
+        let unknown = detected_archive_row(&report, "unknown-archive-variant");
+        assert!(
+            unknown
+                .signals
+                .contains(&ArchiveDetectionSignal::UnknownVariant)
+        );
+
+        let serialized = serde_json::to_string(&report).unwrap();
+        assert!(!serialized.contains("private-spoiler-route-name"));
+        assert!(!serialized.contains("private-route-name"));
+        assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
+        assert!(!serialized.contains("confidence"));
+        assert!(serialized.contains("aggregate-only"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn detection_report_status_matches_archive_only_inputs_without_adapter_claims() {
+        let root = temp_dir("archive-only-detection-report");
+        write_fixture_file(&root, "game/scripts.rpa", b"RenPy archive synthetic");
+        let report = DetectionReport::from_results(
+            &root,
+            vec![DetectionResult {
+                adapter_id: "kaifuu.fixture".to_string(),
+                detected: false,
+                engine_family: None,
+                engine_version: None,
+                detected_variant: None,
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: vec![],
+            }],
+        );
+
+        assert_eq!(report.status, DetectionReportStatus::Matched);
+        assert_eq!(
+            report.archive_detection.status,
+            ArchiveDetectionStatus::Matched
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| { warning.contains("no registered extraction adapter") })
+        );
+        let renpy = detected_archive_row(&report.archive_detection, "renpy-packed-inputs");
+        assert!(renpy.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Extraction
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn detection_report_redacts_absolute_game_dir_and_private_title() {
+        let root = temp_dir("private-detection-report");
+        let game_dir = root.join("Private Route Spoiler Game");
+        fs::create_dir_all(&game_dir).unwrap();
+        write_fixture_file(&game_dir, "img/pictures/spoiler-title.png_", b"encrypted");
+        let report = DetectionReport::from_results(
+            &game_dir,
+            vec![DetectionResult {
+                adapter_id: "kaifuu.fixture".to_string(),
+                detected: false,
+                engine_family: None,
+                engine_version: None,
+                detected_variant: None,
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: vec![],
+            }],
+        );
+
+        assert_eq!(report.game_dir, REDACTED_DETECTION_GAME_DIR);
+        let serialized = serde_json::to_string(&report).unwrap();
+        assert!(!serialized.contains(&game_dir.display().to_string()));
+        assert!(!serialized.contains("Private Route Spoiler Game"));
+        assert!(!serialized.contains("spoiler-title"));
+        let rpg_maker = detected_archive_row(
+            &report.archive_detection,
+            "rpg-maker-mv-mz-encrypted-assets",
+        );
+        assert!(rpg_maker.evidence.iter().any(|evidence| {
+            evidence.pattern == "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

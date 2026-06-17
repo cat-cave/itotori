@@ -304,16 +304,17 @@ fn flag_present(args: &[String], name: &str) -> bool {
 mod tests {
     use super::*;
     use kaifuu_core::{
-        ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterWarning, AssetInventoryAsset,
+        ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterWarning,
+        ArchiveDetectionSignal, ArchiveDetectionStatus, AssetInventoryAsset,
         AssetInventoryAssetKind, AssetInventoryAssetRef, AssetInventoryPatchMode,
         AssetInventorySurface, AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind,
         AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
         CapabilityReport, CapabilityStatus, DetectRequest, DetectionEvidence,
         DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult,
         GoldenAssertionStatus, GoldenRoundTripReport, OperationStatus, PatchExportEntry, PatchRef,
-        PatchResult, ProfileRequirement, ProtectedSpanMapping, RequirementCategory,
-        RequirementStatus, TextSurface, VerificationResult, content_hash, deterministic_id,
-        read_json,
+        PatchResult, ProfileRequirement, ProtectedSpanMapping, REDACTED_DETECTION_GAME_DIR,
+        RequirementCategory, RequirementStatus, SemanticErrorCode, TextSurface, VerificationResult,
+        content_hash, deterministic_id, read_json,
     };
     use std::cell::RefCell;
     use std::collections::BTreeMap;
@@ -369,6 +370,14 @@ mod tests {
 
     fn public_fixture_dir() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/hello-game")
+    }
+
+    fn write_fixture_file(root: &Path, relative_path: &str, bytes: &[u8]) {
+        let path = root.join(relative_path);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, bytes).unwrap();
     }
 
     fn run_cli(args: &[&str]) {
@@ -1125,6 +1134,85 @@ mod tests {
         assert!(!detection_json.contains_key("engineFamily"));
         assert!(!detection_json.contains_key("engineVersion"));
         assert!(!detection_json.contains_key("detectedVariant"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn detect_cli_writes_archive_detection_matrix_without_adapter_support_claim() {
+        let root = temp_dir("archive-detect");
+        let game_dir = root.join("Private Route Spoiler Game");
+        fs::create_dir_all(&game_dir).unwrap();
+        write_fixture_file(&game_dir, "game/scripts.rpa", b"RenPy archive synthetic");
+        write_fixture_file(
+            &game_dir,
+            "www/data/System.json",
+            br#"{
+  "hasEncryptedImages": true,
+  "encryptionKey": "00112233445566778899aabbccddeeff"
+}"#,
+        );
+        write_fixture_file(&game_dir, "img/pictures/private-title.rpgmvp", b"encrypted");
+        write_fixture_file(&game_dir, "img/pictures/private-title.png_", b"encrypted");
+        let detect_path = root.join("detect.json");
+
+        run_cli(&[
+            "detect",
+            game_dir.to_str().unwrap(),
+            "--output",
+            detect_path.to_str().unwrap(),
+        ]);
+
+        let detection_report: DetectionReport = read_json(&detect_path).unwrap();
+        assert_eq!(detection_report.game_dir, REDACTED_DETECTION_GAME_DIR);
+        assert_eq!(detection_report.status, DetectionReportStatus::Matched);
+        assert_eq!(
+            detection_report.archive_detection.status,
+            ArchiveDetectionStatus::Matched
+        );
+        assert!(!detection_report.detections[0].detected);
+        assert!(
+            detection_report
+                .warnings
+                .iter()
+                .any(|warning| { warning.contains("no registered extraction adapter") })
+        );
+
+        let rpg_maker = detection_report
+            .archive_detection
+            .rows
+            .iter()
+            .find(|row| row.row_id == "rpg-maker-mv-mz-encrypted-assets")
+            .unwrap();
+        assert!(rpg_maker.detected);
+        assert!(
+            rpg_maker
+                .signals
+                .contains(&ArchiveDetectionSignal::Encrypted)
+        );
+        assert!(rpg_maker.evidence.iter().any(|evidence| {
+            evidence.pattern == "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 2
+        }));
+        assert!(
+            rpg_maker
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == SemanticErrorCode::MissingKeyMaterial })
+        );
+        assert!(rpg_maker.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Extraction
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+
+        let serialized = fs::read_to_string(&detect_path).unwrap();
+        assert!(serialized.contains("\"archiveDetection\""));
+        assert!(!serialized.contains(&game_dir.display().to_string()));
+        assert!(!serialized.contains("Private Route Spoiler Game"));
+        assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
+        assert!(!serialized.contains("private-title"));
+        assert!(!serialized.contains("confidence"));
+
         let _ = fs::remove_dir_all(root);
     }
 

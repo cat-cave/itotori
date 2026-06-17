@@ -44,7 +44,18 @@ cargo run -p kaifuu-cli -- patch fixtures/hello-game --patch .tmp/hello-world/pa
 cargo run -p kaifuu-cli -- verify .tmp/hello-world/patched-game --output .tmp/hello-world/kaifuu-verify.json
 ```
 
-`detect` emits a deterministic detection report for every registered adapter. It reports evidence records such as matched or missing manifest files and returns `unknown` instead of failing when no adapter matches. Detection output does not include LLM-style confidence.
+`detect` emits a deterministic detection report for every registered adapter and
+an `archiveDetection` matrix from `kaifuu-core`. Adapter evidence reports
+matched or missing manifest files and returns `unknown` instead of failing when
+no adapter matches. The archive matrix covers KiriKiri/XP3, Siglus, RPG Maker
+MV/MZ encrypted assets, Wolf RPG Editor archives, BGI/Ethornell containers,
+Ren'Py packed inputs, and unknown archive-like variants. Matrix rows use
+aggregate evidence fields and semantic diagnostics; they do not claim
+extraction, decryption, decompilation, patching, or archive rebuild support.
+Detection output does not include LLM-style confidence, local absolute
+`gameDir` paths, or private game titles. RPG Maker encrypted asset detection
+counts both MV-style `.rpgmvp`/`.rpgmvm`/`.rpgmvo` files and MZ-style
+`.png_`/`.m4a_`/`.ogg_` files.
 
 `profile init` writes stable JSON profiles. Profiles include assets, capability reports, and explicit requirements for files, platform constraints, and secret keys. Secret requirements use placeholders only; actual secret values must stay out of profile files. The fixture engine marks decryption keys as `not_required`, so missing-key handling does not block unencrypted games.
 Key-bearing profiles use top-level `sourceFingerprint`, `keyRequirements`, `archiveParameters`, and `helperEvidence` fields. Required keys are referenced only through local `secretRef` ids, while adapter capability output may declare `keyRequirements` for encrypted variants without coupling pure extraction or patching to helper execution.

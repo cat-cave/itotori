@@ -20,6 +20,8 @@ human adjudication requirements are documented in
 [ADR 0003](adrs/0003-localization-quality-taxonomy.md).
 Kaifuu engine fixture sourcing, reference citation, and unsupported variant
 policy lives in [kaifuu-fixture-policy.md](kaifuu-fixture-policy.md).
+Kaifuu archive, encryption, key, helper, and unknown-variant detector rows are
+documented in [kaifuu-detection-matrix.md](kaifuu-detection-matrix.md).
 The repeatable workflow for adding new Kaifuu engine adapters lives in
 [kaifuu-engine-playbook.md](kaifuu-engine-playbook.md).
 Kaifuu encoding, normalization, atomic output, traversal, rollback, and

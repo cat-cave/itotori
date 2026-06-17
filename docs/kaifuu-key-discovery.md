@@ -137,6 +137,29 @@ safe to include in aggregate readiness reports.
   immediate MVP need is profile/container triage and encrypted/compressed
   boundary detection rather than assuming a universal key workflow.
 
+## Detection Matrix Surface
+
+`kaifuu detect` includes an `archiveDetection` matrix from `kaifuu-core`. The
+matrix is evidence for triage, not an extraction support claim. Rows cover
+KiriKiri/XP3, Siglus, RPG Maker MV/MZ encrypted assets, Wolf RPG Editor
+archives, BGI/Ethornell containers, Ren'Py packed inputs, and unknown
+archive-like variants.
+
+Matrix evidence is aggregate-only: extension counts, known neutral marker names,
+header classes, and metadata-field presence. It must not serialize raw keys,
+helper dumps, decrypted text, local paths, or concrete source filenames. RPG
+Maker encrypted asset detection counts MV-style `.rpgmvp`, `.rpgmvm`, and
+`.rpgmvo` files plus MZ-style `.png_`, `.m4a_`, and `.ogg_` files. `System.json`
+detection records that encryption fields exist; it never records the
+`encryptionKey` value. The top-level detection report keeps `gameDir` only as a
+redacted placeholder so private-local absolute paths and game titles do not
+leave the local machine through report artifacts.
+
+Rows emit stable diagnostics for encrypted, packed, protected, missing-key,
+helper-required, and unknown-variant cases. A matching row also reports
+unsupported extraction and patching capabilities unless a future adapter
+separately proves and documents support for that exact variant.
+
 ## Logging And Redaction
 
 No command, helper, adapter, report, panic, or dashboard state may print raw
@@ -160,6 +183,8 @@ Required stable semantic errors include:
 - `kaifuu.protected_executable_unsupported`
 - `kaifuu.secret_redacted`
 - `kaifuu.unsupported_variant.encrypted`
+- `kaifuu.unsupported_variant.packed`
+- `kaifuu.unknown_engine_variant`
 
 Key validation may record proof hashes, decrypted header class, byte counts,
 tool version, and aggregate readiness status. It must not record decrypted
