@@ -1,0 +1,170 @@
+import type {
+  AuthorizationActor,
+  ItotoriProjectRecord,
+  ItotoriProjectRepositoryPort,
+  ProjectDashboardStatus,
+  RuntimeDashboardStatus,
+} from "@itotori/db";
+import type {
+  BridgeBundle,
+  PatchExport,
+  RuntimeEvidenceReportV02,
+  RuntimeVerificationReport,
+} from "@itotori/localization-bridge-schema";
+
+export type ProjectState = ItotoriProjectRecord & { bridge: BridgeBundle };
+export type RuntimeReportInput = RuntimeVerificationReport | RuntimeEvidenceReportV02;
+
+export type RuntimeIngestResult = {
+  status: "hello_world_passed";
+  bridgeId: string;
+  localeBranchId: string;
+  patchExportId: string | undefined;
+  patchResultId: string;
+  runtimeReportId: string;
+  dashboard: ProjectDashboardStatus;
+};
+
+export interface ItotoriProjectWorkflowPort {
+  reset(): Promise<void>;
+  getDashboardStatus(): Promise<ProjectDashboardStatus>;
+  getRuntimeStatus(): Promise<RuntimeDashboardStatus>;
+  importBridge(bridge: BridgeBundle): Promise<ProjectState>;
+  draftProject(project: ProjectState, locale: string): Promise<ProjectState>;
+  exportPatch(project: ProjectState): Promise<{
+    project: ProjectState;
+    patchExport: PatchExport;
+  }>;
+  ingestRuntimeReport(
+    project: ProjectState,
+    runtimeReport: RuntimeReportInput,
+  ): Promise<{
+    project: ProjectState;
+    result: RuntimeIngestResult;
+  }>;
+}
+
+export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort {
+  constructor(
+    private readonly repository: ItotoriProjectRepositoryPort,
+    private readonly actor: AuthorizationActor,
+  ) {}
+
+  async reset(): Promise<void> {
+    await this.repository.reset(this.actor);
+  }
+
+  async getDashboardStatus(): Promise<ProjectDashboardStatus> {
+    return await this.repository.getDashboardStatus();
+  }
+
+  async getRuntimeStatus(): Promise<RuntimeDashboardStatus> {
+    return await this.repository.getRuntimeStatus();
+  }
+
+  async importBridge(bridge: BridgeBundle): Promise<ProjectState> {
+    const project: ProjectState = {
+      projectId: id("project", 1),
+      bridge,
+      localeBranchId: id("locale", 1),
+      targetLocale: "en-US",
+      drafts: {},
+    };
+    await this.repository.importSourceBundle(this.actor, project);
+    return project;
+  }
+
+  async draftProject(project: ProjectState, locale: string): Promise<ProjectState> {
+    const nextProject: ProjectState = {
+      ...project,
+      targetLocale: locale,
+      drafts: { ...project.drafts },
+    };
+    for (const unit of nextProject.bridge.units) {
+      nextProject.drafts[unit.bridgeUnitId] = fakeTranslate(unit.sourceText);
+    }
+    await this.repository.saveDrafts(this.actor, nextProject);
+    return nextProject;
+  }
+
+  async exportPatch(project: ProjectState): Promise<{
+    project: ProjectState;
+    patchExport: PatchExport;
+  }> {
+    const entries = project.bridge.units.map((unit, index) => {
+      const targetText = project.drafts[unit.bridgeUnitId];
+      if (!targetText) {
+        throw new Error(`missing draft for ${unit.bridgeUnitId}`);
+      }
+      for (const span of unit.protectedSpans) {
+        if (!targetText.includes(span.raw)) {
+          throw new Error(`draft for ${unit.bridgeUnitId} lost protected span ${span.raw}`);
+        }
+      }
+      return {
+        entryId: id("entry", index + 1),
+        bridgeUnitId: unit.bridgeUnitId,
+        sourceUnitKey: unit.sourceUnitKey,
+        sourceHash: unit.sourceHash,
+        targetText,
+        protectedSpanMappings: unit.protectedSpans.map((span) => ({
+          raw: span.raw,
+          targetStart: targetText.indexOf(span.raw),
+          targetEnd: targetText.indexOf(span.raw) + span.raw.length,
+        })),
+      };
+    });
+    const patchExport: PatchExport = {
+      schemaVersion: "0.1.0",
+      patchExportId: id("patch", 1),
+      sourceBridgeId: project.bridge.bridgeId,
+      sourceBundleHash: project.bridge.sourceBundleHash,
+      sourceLocale: project.bridge.sourceLocale,
+      targetLocale: project.targetLocale,
+      entries,
+    };
+    const nextProject: ProjectState = { ...project, patchExport };
+    await this.repository.savePatchExport(this.actor, nextProject, patchExport);
+    return { project: nextProject, patchExport };
+  }
+
+  async ingestRuntimeReport(
+    project: ProjectState,
+    runtimeReport: RuntimeReportInput,
+  ): Promise<{
+    project: ProjectState;
+    result: RuntimeIngestResult;
+  }> {
+    const patchResultId = id("patch-result", 1);
+    const nextProject: ProjectState = { ...project, runtimeReport };
+    const dashboard = await this.repository.saveRuntimeReport(
+      this.actor,
+      nextProject,
+      runtimeReport,
+      patchResultId,
+    );
+    return {
+      project: nextProject,
+      result: {
+        status: "hello_world_passed",
+        bridgeId: nextProject.bridge.bridgeId,
+        localeBranchId: nextProject.localeBranchId,
+        patchExportId: nextProject.patchExport?.patchExportId,
+        patchResultId,
+        runtimeReportId: runtimeReport.runtimeReportId,
+        dashboard,
+      },
+    };
+  }
+}
+
+function fakeTranslate(sourceText: string): string {
+  if (sourceText === "こんにちは、{player}。") {
+    return "Hello, {player}.";
+  }
+  return `[en-US] ${sourceText}`;
+}
+
+function id(kind: string, n: number): string {
+  return `019ed000-0000-7000-8000-${kind.replaceAll("-", "").padEnd(8, "0").slice(0, 8)}${String(n).padStart(4, "0")}`;
+}

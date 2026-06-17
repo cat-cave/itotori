@@ -2,35 +2,38 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { extname, join } from "node:path";
-import { ItotoriProjectRepository, createDatabaseContext } from "@itotori/db";
+import { handleItotoriApiRequest, isItotoriApiPath } from "./api-handlers.js";
+import {
+  withDatabaseItotoriServices,
+  type ItotoriServiceFactory,
+} from "./services/database-services.js";
 
 export type DashboardServerOptions = {
   databaseUrl?: string;
   port?: number;
+  serviceFactory?: ItotoriServiceFactory;
   webRoot?: URL;
 };
 
 export function createItotoriServer(options: DashboardServerOptions = {}) {
   const webRoot = options.webRoot ?? new URL("../web-dist/", import.meta.url);
+  const serviceFactory =
+    options.serviceFactory ??
+    ((callback) => withDatabaseItotoriServices(databaseOptions(options), callback));
   return createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
-    if (url.pathname === "/api/projects/status" || url.pathname === "/api/hello/status") {
-      const context = createDatabaseContext(options.databaseUrl);
+    if (isItotoriApiPath(url.pathname)) {
       try {
-        const repository = new ItotoriProjectRepository(context.db);
-        const status =
-          url.pathname === "/api/hello/status"
-            ? await repository.getRuntimeStatus()
-            : await repository.getDashboardStatus();
-        response.writeHead(200, { "content-type": "application/json" });
-        response.end(JSON.stringify(status));
+        const apiResponse = await serviceFactory((services) =>
+          handleItotoriApiRequest(url.pathname, services.projectWorkflow),
+        );
+        response.writeHead(apiResponse.statusCode, { "content-type": "application/json" });
+        response.end(JSON.stringify(apiResponse.body));
       } catch (error) {
         response.writeHead(500, { "content-type": "application/json" });
         response.end(
           JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
         );
-      } finally {
-        await context.close();
       }
       return;
     }
@@ -45,6 +48,12 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
       response.end("not found");
     }
   });
+}
+
+function databaseOptions(options: DashboardServerOptions) {
+  return options.databaseUrl === undefined
+    ? { bootstrapLocalUser: false }
+    : { databaseUrl: options.databaseUrl, bootstrapLocalUser: false };
 }
 
 export function startItotoriServer(options: DashboardServerOptions = {}) {

@@ -1,34 +1,25 @@
 import {
-  ItotoriFeedbackRepository,
-  bootstrapLocalUser,
-  createDatabaseContext,
+  type AuthorizationActor,
+  type ItotoriFeedbackRepositoryPort,
+  type ManualFeedbackImportInput,
   parseManualFeedbackImportInput,
   type ManualFeedbackImportResult,
 } from "@itotori/db";
 import { localUserActor } from "./auth.js";
 
+export interface ManualFeedbackImportPort {
+  importManualFeedback(input: unknown): Promise<ManualFeedbackImportResult>;
+}
+
 export class ManualFeedbackImportService {
   constructor(
-    private readonly repository: Pick<ItotoriFeedbackRepository, "importManualFeedback">,
+    private readonly repository: Pick<ItotoriFeedbackRepositoryPort, "importManualFeedback">,
+    private readonly actor: AuthorizationActor = localUserActor,
   ) {}
 
   async importManualFeedback(input: unknown): Promise<ManualFeedbackImportResult> {
-    return this.repository.importManualFeedback(
-      localUserActor,
-      parseManualFeedbackImportInput(input),
-    );
+    return this.repository.importManualFeedback(this.actor, parseManualFeedbackImportInput(input));
   }
 }
 
-export async function importManualFeedbackWithDatabase(
-  input: unknown,
-): Promise<ManualFeedbackImportResult> {
-  const context = createDatabaseContext();
-  try {
-    await bootstrapLocalUser(context.db);
-    const service = new ManualFeedbackImportService(new ItotoriFeedbackRepository(context.db));
-    return await service.importManualFeedback(input);
-  } finally {
-    await context.close();
-  }
-}
+export type { ManualFeedbackImportInput };

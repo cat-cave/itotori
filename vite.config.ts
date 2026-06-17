@@ -5,6 +5,9 @@ export default defineConfig({
   resolve: {
     alias: {
       "@itotori/db": fileURLToPath(new URL("./packages/itotori-db/src/index.ts", import.meta.url)),
+      "@itotori/localization-bridge-schema": fileURLToPath(
+        new URL("./packages/localization-bridge-schema/src/index.ts", import.meta.url),
+      ),
     },
   },
   run: {
