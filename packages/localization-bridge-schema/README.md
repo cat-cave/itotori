@@ -45,9 +45,33 @@ bundle.
 bridge bundle.
 `test/examples/benchmark-report-v0.2.json` is a benchmark report fixture, not a
 bridge bundle; it includes a raw MTL baseline as a normal compared system.
-Invalid bridge fixtures live under `test/examples/invalid/` and are expected to
-fail with semantic validation errors. Migration notes from v0.1 are in
+`test/examples/contract-fixtures-v0.2.json` is the manifest consumed by both
+TypeScript and Rust validation. It lists all committed valid fixtures and all
+committed invalid fixtures with the semantic error each invalid case must
+produce. `test/examples/contract-compatibility-v0.2.json` is the compatibility
+report for the full fixture suite.
+
+Invalid fixtures live under `test/examples/invalid/` and are expected to fail
+with semantic validation errors. Migration notes from v0.1 are in
 `MIGRATING-0.2.md`.
+
+## Full Contract Fixture Validation
+
+The SHARED-010 fixture suite covers bridge, patch export, patch result, delta
+metadata, runtime evidence, benchmark report, asset policy, triage/finding, and
+permission/local-user contracts. TypeScript remains the source of truth and Rust
+validates the same manifest as a downstream parity check.
+
+Use these commands for the cross-language contract gate:
+
+```sh
+just contract-validate
+pnpm --filter @itotori/localization-bridge-schema test
+cargo test -p kaifuu-core shared_contract_fixture_suite
+```
+
+`just schema` runs the TypeScript schema typecheck, tests, and build. Full PR
+verification should still run the workspace targets named by the spec.
 
 ## Asset Policy
 
@@ -200,12 +224,8 @@ contract authority. JSON Schema artifacts and Rust serde structs are downstream
 bindings that must validate against the same versioned fixtures; generated
 outputs should not be patched directly.
 
-The Rust compatibility scope for SHARED-002 is a focused v0.2 bridge bundle
-validator in `kaifuu-core`. It deserializes the shared `bridge-v0.2.json`
-fixture with serde and checks the same contract-critical semantics as the TS
-guard: schema version, UUID7 identifiers, canonical SHA-256 hashes, revision
-hash consistency, hash strategy scopes, asset reference integrity, patch refs,
-protected span byte ranges, speaker knowledge states, and policy record scopes.
-Runtime, patch, benchmark, and finding contracts are layered on top of this
-bridge compatibility check; the TypeScript guard remains the runtime evidence
-authority for SHARED-005.
+The Rust compatibility scope for SHARED-010 is the full manifest-driven fixture
+suite in `kaifuu-core::contracts`. It keeps `BridgeBundleV02::validate_json` for
+the bridge serde contract and adds Rust semantic validators for asset policy,
+benchmark, patch export/result, delta metadata, runtime evidence, standalone
+finding, contract manifest/report, and permission/local-user fixtures.

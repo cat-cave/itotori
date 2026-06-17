@@ -12,6 +12,8 @@ pub const PROFILE_SCHEMA_VERSION: &str = "0.1.0";
 
 pub const BRIDGE_SCHEMA_VERSION_V02: &str = "0.2.0";
 
+pub mod contracts;
+
 pub trait EngineAdapter {
     fn id(&self) -> &'static str;
     fn name(&self) -> &'static str;
@@ -1396,6 +1398,7 @@ impl BridgeAssetV02 {
                 "audio",
                 "video",
                 "ui_texture",
+                "font",
                 "database",
                 "metadata",
                 "text",
@@ -2622,6 +2625,34 @@ mod tests {
         bridge_fixture_value("packages/localization-bridge-schema/test/examples/bridge-v0.2.json")
     }
 
+    fn contract_fixture_manifest_v02_value() -> Value {
+        bridge_fixture_value(
+            "packages/localization-bridge-schema/test/examples/contract-fixtures-v0.2.json",
+        )
+    }
+
+    fn contract_example_fixture_value(manifest_path: &str) -> Value {
+        let relative_path = manifest_path
+            .strip_prefix("./")
+            .expect("manifest paths should be relative to examples");
+        bridge_fixture_value(&format!(
+            "packages/localization-bridge-schema/test/examples/{relative_path}"
+        ))
+    }
+
+    fn semantic_error_matches(error: &str, expected_pattern: &str) -> bool {
+        let simplified = expected_pattern
+            .replace("\\.", ".")
+            .replace("\\[", "[")
+            .replace("\\]", "]")
+            .replace("\\(", "(")
+            .replace("\\)", ")");
+        simplified
+            .split(".*")
+            .filter(|part| !part.is_empty())
+            .all(|part| error.contains(part))
+    }
+
     fn expect_bridge_v02_error(fixture: Value, expected_error: &str) {
         let error = BridgeBundleV02::validate_json(&fixture)
             .expect_err("invalid bridge fixture should fail Rust validation")
@@ -2760,6 +2791,59 @@ mod tests {
         assert_eq!(bundle.schema_version, BRIDGE_SCHEMA_VERSION_V02);
         assert_eq!(bundle.bridge_id, "019ed001-0000-7000-8000-000000000001");
         assert_eq!(bundle.units.len(), 12);
+    }
+
+    #[test]
+    fn shared_contract_fixture_suite_accepts_all_manifest_valid_fixtures() {
+        let manifest = contract_fixture_manifest_v02_value();
+        contracts::validate_shared_contract_fixture_v02("contract-fixtures-v0.2", &manifest)
+            .expect("contract fixture manifest should validate in Rust");
+
+        let valid_fixtures = manifest["validFixtures"]
+            .as_array()
+            .expect("manifest validFixtures should be an array");
+        for fixture in valid_fixtures {
+            let kind = fixture["kind"]
+                .as_str()
+                .expect("fixture kind should be a string");
+            let path = fixture["path"]
+                .as_str()
+                .expect("fixture path should be a string");
+            let value = contract_example_fixture_value(path);
+
+            contracts::validate_shared_contract_fixture_v02(kind, &value).unwrap_or_else(|error| {
+                panic!("{kind} fixture {path} failed Rust validation: {error}")
+            });
+        }
+    }
+
+    #[test]
+    fn shared_contract_fixture_suite_rejects_all_manifest_invalid_fixtures() {
+        let manifest = contract_fixture_manifest_v02_value();
+        let invalid_fixtures = manifest["invalidFixtures"]
+            .as_array()
+            .expect("manifest invalidFixtures should be an array");
+
+        for fixture in invalid_fixtures {
+            let kind = fixture["kind"]
+                .as_str()
+                .expect("fixture kind should be a string");
+            let path = fixture["path"]
+                .as_str()
+                .expect("fixture path should be a string");
+            let expected = fixture["expectedSemanticError"]
+                .as_str()
+                .expect("expected error should be a string");
+            let value = contract_example_fixture_value(path);
+
+            let error = contracts::validate_shared_contract_fixture_v02(kind, &value)
+                .expect_err("invalid contract fixture should fail Rust validation")
+                .to_string();
+            assert!(
+                semantic_error_matches(&error, expected),
+                "{kind} fixture {path} produced unexpected error. expected {expected:?}, got {error:?}"
+            );
+        }
     }
 
     #[test]

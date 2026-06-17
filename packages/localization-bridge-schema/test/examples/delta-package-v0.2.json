@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "0.2.0",
+  "deltaPackageId": "019ed001-0000-7000-8000-000000000960",
+  "sourceBridgeId": "019ed001-0000-7000-8000-000000000001",
+  "sourceGame": {
+    "gameId": "itotori-demo",
+    "gameVersion": "1.0.0",
+    "sourceProfileId": "kaifuu-fixture-default",
+    "sourceProfileRevision": {
+      "revisionId": "019ed001-0000-7000-8000-000000000111",
+      "revisionKind": "content_hash",
+      "value": "sha256:740db868d01d40e5077dcc39dc348897d5249928c479304a111068295d9d2732"
+    }
+  },
+  "sourceBundleHash": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+  "sourceBundleRevision": {
+    "revisionId": "019ed001-0000-7000-8000-000000000112",
+    "revisionKind": "content_hash",
+    "value": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647"
+  },
+  "generatedPatchExportId": "019ed001-0000-7000-8000-000000000901",
+  "generatedPatchExportHash": "sha256:8c8bd1092bba59430737fc36ec0ede41e36b8c94d7759a1313bcfc5aba94941a",
+  "targetLocale": "fr-FR",
+  "hashStrategy": {
+    "sourceProfile": {
+      "scope": "source_profile",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    },
+    "sourceBundle": {
+      "scope": "source_bundle",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    },
+    "sourceAsset": {
+      "scope": "source_asset",
+      "algorithm": "sha256",
+      "normalization": "bytes"
+    },
+    "sourceUnit": {
+      "scope": "source_unit",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"]
+    },
+    "patchExport": {
+      "scope": "patch_export",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    },
+    "deltaPackage": {
+      "scope": "delta_package",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    }
+  },
+  "createdAt": "2026-06-17T00:00:00.000Z"
+}

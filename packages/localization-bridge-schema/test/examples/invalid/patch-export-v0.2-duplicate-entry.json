@@ -1,0 +1,96 @@
+{
+  "schemaVersion": "0.2.0",
+  "patchExportId": "019ed001-0000-7000-8000-00000000f901",
+  "sourceBridgeId": "019ed001-0000-7000-8000-000000000001",
+  "sourceGame": {
+    "gameId": "itotori-demo",
+    "gameVersion": "1.0.0",
+    "sourceProfileId": "kaifuu-fixture-default",
+    "sourceProfileRevision": {
+      "revisionId": "019ed001-0000-7000-8000-000000000111",
+      "revisionKind": "content_hash",
+      "value": "sha256:740db868d01d40e5077dcc39dc348897d5249928c479304a111068295d9d2732"
+    }
+  },
+  "sourceBundleHash": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+  "sourceBundleRevision": {
+    "revisionId": "019ed001-0000-7000-8000-000000000112",
+    "revisionKind": "content_hash",
+    "value": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647"
+  },
+  "sourceLocale": "en-US",
+  "targetLocale": "fr-FR",
+  "hashStrategy": {
+    "sourceProfile": {
+      "scope": "source_profile",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    },
+    "sourceBundle": {
+      "scope": "source_bundle",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    },
+    "sourceAsset": {
+      "scope": "source_asset",
+      "algorithm": "sha256",
+      "normalization": "bytes"
+    },
+    "sourceUnit": {
+      "scope": "source_unit",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"]
+    },
+    "patchExport": {
+      "scope": "patch_export",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    },
+    "deltaPackage": {
+      "scope": "delta_package",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    }
+  },
+  "entries": [
+    {
+      "entryId": "019ed001-0000-7000-8000-00000000f910",
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+      "sourceUnitKey": "script/prologue#line-001",
+      "sourceHash": "sha256:fa01799c693dbf37732740572dde0106c2d67bed57a5955528687642896968e1",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000101",
+        "revisionKind": "content_hash",
+        "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
+      },
+      "targetText": "Bonjour, {player}.",
+      "protectedSpanMappings": [
+        {
+          "raw": "{player}",
+          "targetStart": 9,
+          "targetEnd": 17
+        }
+      ]
+    },
+    {
+      "entryId": "019ed001-0000-7000-8000-00000000f911",
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+      "sourceUnitKey": "script/prologue#line-001",
+      "sourceHash": "sha256:fa01799c693dbf37732740572dde0106c2d67bed57a5955528687642896968e1",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000101",
+        "revisionKind": "content_hash",
+        "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
+      },
+      "targetText": "Salut, {player}.",
+      "protectedSpanMappings": [
+        {
+          "raw": "{player}",
+          "targetStart": 7,
+          "targetEnd": 15
+        }
+      ]
+    }
+  ]
+}

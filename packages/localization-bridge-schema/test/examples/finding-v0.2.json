@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "0.2.0",
+  "findingFixtureId": "019ed002-0000-7000-8000-000000000901",
+  "sourceTriageBundleId": "019ed002-0000-7000-8000-000000000001",
+  "finding": {
+    "findingId": "019ed002-0000-7000-8000-000000000902",
+    "findingKind": "style_guide_violation",
+    "severity": "P1",
+    "qualityCategory": "style",
+    "title": "Greeting register drift",
+    "description": "The draft uses a casual greeting where the locale branch style guide requires formal address.",
+    "impact": "Reviewer triage must block patch export until the greeting register is repaired.",
+    "createdAt": "2026-06-17T00:00:00.000Z",
+    "affectedRefs": [
+      {
+        "subjectKind": "bridge_unit",
+        "subjectId": "019ed001-0000-7000-8000-000000000201",
+        "label": "script/prologue#line-001"
+      }
+    ],
+    "evidence": [
+      {
+        "evidenceId": "019ed002-0000-7000-8000-000000000903",
+        "evidenceKind": "text_excerpt",
+        "summary": "The observed draft greeting does not follow the formal-register branch rule.",
+        "expectedValue": "formal greeting",
+        "observedValue": "casual greeting",
+        "provenanceIds": ["019ed002-0000-7000-8000-000000000904"]
+      }
+    ],
+    "provenance": [
+      {
+        "provenanceId": "019ed002-0000-7000-8000-000000000904",
+        "provenanceKind": "style_guide",
+        "styleGuideId": "019ed002-0000-7000-8000-000000000905",
+        "styleGuideVersionId": "019ed002-0000-7000-8000-000000000906",
+        "ruleId": "fr-FR.formal-greeting",
+        "rulePath": "style.formality.greetings"
+      }
+    ],
+    "causalLinks": []
+  },
+  "compatibilityNotes": [
+    "Standalone finding fixtures validate the same finding shape used inside triage bundles.",
+    "Evidence provenance ids must resolve to provenance records on the same finding."
+  ]
+}

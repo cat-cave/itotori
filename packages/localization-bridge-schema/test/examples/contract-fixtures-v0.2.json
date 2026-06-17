@@ -1,0 +1,141 @@
+{
+  "schemaVersion": "0.2.0",
+  "suiteId": "019ed010-0000-7000-8000-000000000010",
+  "generatedAt": "2026-06-17T00:00:00.000Z",
+  "validFixtures": [
+    {
+      "kind": "asset-policy-v0.2",
+      "path": "./asset-policy-v0.2.json",
+      "description": "Branch-scoped non-dialogue asset policy decisions."
+    },
+    {
+      "kind": "benchmark-report-v0.2",
+      "path": "./benchmark-report-v0.2.json",
+      "description": "Benchmark, cost, QA-agent, human evaluation, and finding rollup report."
+    },
+    {
+      "kind": "bridge-v0.2",
+      "path": "./bridge-v0.2.json",
+      "description": "Full bridge bundle covering dialogue, UI, database, song, image text, and metadata surfaces."
+    },
+    {
+      "kind": "contract-compatibility-v0.2",
+      "path": "./contract-compatibility-v0.2.json",
+      "description": "Compatibility report for the committed contract fixture suite."
+    },
+    {
+      "kind": "contract-fixtures-v0.2",
+      "path": "./contract-fixtures-v0.2.json",
+      "description": "Manifest consumed by TypeScript and Rust fixture validation."
+    },
+    {
+      "kind": "delta-package-v0.2",
+      "path": "./delta-package-v0.2.json",
+      "description": "Delta metadata tracing a package back to bridge source revision and patch export hash."
+    },
+    {
+      "kind": "finding-v0.2",
+      "path": "./finding-v0.2.json",
+      "description": "Standalone finding record with same-finding evidence provenance."
+    },
+    {
+      "kind": "patch-export-v0.2",
+      "path": "./patch-export-v0.2.json",
+      "description": "Patch export with source revisions and protected span mappings."
+    },
+    {
+      "kind": "patch-result-v0.2",
+      "path": "./patch-result-v0.2.json",
+      "description": "Patch result with explicit source compatibility details."
+    },
+    {
+      "kind": "permission-local-user-v0.2",
+      "path": "./permission-local-user-v0.2.json",
+      "description": "MVP local user permission fixture."
+    },
+    {
+      "kind": "runtime-evidence-v0.2",
+      "path": "./runtime-evidence-v0.2.json",
+      "description": "Runtime evidence with trace, branch, capture, and recording artifact references."
+    },
+    {
+      "kind": "triage-v0.2",
+      "path": "./triage-v0.2.json",
+      "description": "Triage events, tasks, findings, evidence, provenance, and causal links."
+    }
+  ],
+  "invalidFixtures": [
+    {
+      "kind": "asset-policy-v0.2",
+      "path": "./invalid/asset-policy-v0.2-dangling-patch-ref.json",
+      "expectedSemanticError": "patchRef\\.assetId",
+      "description": "Patch refs must resolve to an asset in the asset policy bundle."
+    },
+    {
+      "kind": "benchmark-report-v0.2",
+      "path": "./invalid/benchmark-report-v0.2-missing-qa-evaluation.json",
+      "expectedSemanticError": "qaAgentEvaluations\\.providerRunIds",
+      "description": "LLM QA provider runs must be covered by QA-agent evaluations."
+    },
+    {
+      "kind": "bridge-v0.2",
+      "path": "./invalid/bridge-v0.2-dangling-asset-ref.json",
+      "expectedSemanticError": "sourceAssetRef\\.assetId.*asset",
+      "description": "Bridge units must reference known bridge assets."
+    },
+    {
+      "kind": "bridge-v0.2",
+      "path": "./invalid/bridge-v0.2-malformed-hash.json",
+      "expectedSemanticError": "canonical sha256 hash string",
+      "description": "Bridge hashes must be canonical lowercase SHA-256 strings."
+    },
+    {
+      "kind": "bridge-v0.2",
+      "path": "./invalid/bridge-v0.2-schema-version-0.1.json",
+      "expectedSemanticError": "schemaVersion must be 0\\.2\\.0",
+      "description": "v0.1 bridge payloads must route through legacy guards."
+    },
+    {
+      "kind": "delta-package-v0.2",
+      "path": "./invalid/delta-package-v0.2-source-revision-mismatch.json",
+      "expectedSemanticError": "sourceBundleRevision\\.value",
+      "description": "Delta metadata source revisions must trace the cited source bundle hash."
+    },
+    {
+      "kind": "finding-v0.2",
+      "path": "./invalid/finding-v0.2-empty-evidence.json",
+      "expectedSemanticError": "evidence.*at least one evidence record",
+      "description": "Findings must carry evidence instead of confidence-only claims."
+    },
+    {
+      "kind": "patch-export-v0.2",
+      "path": "./invalid/patch-export-v0.2-duplicate-entry.json",
+      "expectedSemanticError": "unique by bridgeUnitId and sourceUnitKey",
+      "description": "Patch export entries must be unique by bridge unit and source unit key."
+    },
+    {
+      "kind": "patch-result-v0.2",
+      "path": "./invalid/patch-result-v0.2-incompatible-status.json",
+      "expectedSemanticError": "status must be incompatible_source",
+      "description": "Patch results cannot carry an incompatible source report unless the top-level status says so."
+    },
+    {
+      "kind": "permission-local-user-v0.2",
+      "path": "./invalid/permission-local-user-v0.2-missing-grant.json",
+      "expectedSemanticError": "grants must include feedback\\.import",
+      "description": "The local user fixture must include every MVP permission grant."
+    },
+    {
+      "kind": "runtime-evidence-v0.2",
+      "path": "./invalid/runtime-evidence-v0.2-overclaimed-fidelity.json",
+      "expectedSemanticError": "evidenceTier must not exceed E2",
+      "description": "Runtime evidence tier cannot exceed the declared fidelity tier."
+    },
+    {
+      "kind": "triage-v0.2",
+      "path": "./invalid/triage-v0.2-dangling-provenance.json",
+      "expectedSemanticError": "provenanceIds\\[0\\] must reference provenance in TriageBundleV02",
+      "description": "Triage finding evidence must reference known provenance."
+    }
+  ]
+}

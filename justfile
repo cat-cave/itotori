@@ -58,6 +58,14 @@ schema:
     pnpm --filter @itotori/localization-bridge-schema test
     pnpm --filter @itotori/localization-bridge-schema build
 
+contract-validate-ts:
+    pnpm --filter @itotori/localization-bridge-schema test
+
+contract-validate-rust:
+    cargo test -p kaifuu-core shared_contract_fixture_suite
+
+contract-validate: contract-validate-ts contract-validate-rust
+
 db-up:
     docker compose up -d postgres
 

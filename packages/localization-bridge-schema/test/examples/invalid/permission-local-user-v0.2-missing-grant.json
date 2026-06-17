@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "0.2.0",
+  "permissionFixtureId": "019ed007-0000-7000-8000-00000000f001",
+  "user": {
+    "userId": "local-user",
+    "displayName": "Local user"
+  },
+  "grants": [
+    "project.import",
+    "draft.write",
+    "patch.export",
+    "runtime.ingest",
+    "system.reset"
+  ],
+  "compatibilityNotes": ["feedback.import is intentionally missing."]
+}
