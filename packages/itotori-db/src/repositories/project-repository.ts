@@ -1,4 +1,4 @@
-import { eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   assertBridgeBundle,
   assertBridgeBundleV02,
@@ -561,8 +561,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     patchExport: PatchExport | PatchExportV02,
   ): Promise<void> {
     await requirePermission(this.db, actor, permissionValues.patchExport);
-    const sourceBundleId = sourceBundleIdFor(project.bridge);
     await this.db.transaction(async (tx) => {
+      const { sourceBundleId } = await resolveSourceBundlePersistenceTarget(tx, project);
       await tx
         .insert(artifacts)
         .values({
@@ -582,6 +582,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         .onConflictDoUpdate({
           target: artifacts.artifactId,
           set: {
+            localeBranchId: project.localeBranchId,
+            sourceBundleId,
             hash: "patchExportHash" in patchExport ? (patchExport.patchExportHash ?? null) : null,
             metadata: {
               schemaVersion: patchExport.schemaVersion,
@@ -606,8 +608,6 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     patchResultId: string,
   ): Promise<ProjectDashboardStatus> {
     await requirePermission(this.db, actor, permissionValues.runtimeIngest);
-    const sourceBundleId = sourceBundleIdFor(project.bridge);
-    const sourceBundleRevisionId = sourceBundleRevisionIdFor(project.bridge);
     const runtimeReportId = runtimeReportIdFor(runtimeReport);
     const adapterName = runtimeAdapterName(runtimeReport);
     const adapterVersion = runtimeAdapterVersion(runtimeReport);
@@ -645,6 +645,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     const recordedEventId = `${runtimeReportId}:recorded`;
 
     await this.db.transaction(async (tx) => {
+      const { sourceBundleId, sourceBundleRevisionId } =
+        await resolveSourceBundlePersistenceTarget(tx, project);
       await tx
         .insert(artifacts)
         .values({
@@ -658,6 +660,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         .onConflictDoUpdate({
           target: artifacts.artifactId,
           set: {
+            localeBranchId: project.localeBranchId,
+            sourceBundleId,
             metadata: runtimeReportMetadata,
           },
         });
@@ -674,7 +678,11 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         })
         .onConflictDoUpdate({
           target: artifacts.artifactId,
-          set: { metadata: { status: runtimeStatus, finalStatus, runtimeReportId } },
+          set: {
+            localeBranchId: project.localeBranchId,
+            sourceBundleId,
+            metadata: { status: runtimeStatus, finalStatus, runtimeReportId },
+          },
         });
 
       for (const artifactLink of artifactLinks) {
@@ -698,6 +706,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           .onConflictDoUpdate({
             target: artifacts.artifactId,
             set: {
+              localeBranchId: project.localeBranchId,
+              sourceBundleId,
               bridgeUnitId: artifactLink.bridgeUnitId ?? null,
               artifactKind: artifactLink.artifactKind,
               uri: artifactLink.uri,
@@ -726,6 +736,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           .onConflictDoUpdate({
             target: artifacts.artifactId,
             set: {
+              localeBranchId: project.localeBranchId,
+              sourceBundleId,
               bridgeUnitId: eventArtifact.bridgeUnitId,
               metadata: eventArtifact.metadata,
             },
@@ -926,6 +938,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             .onConflictDoUpdate({
               target: artifacts.artifactId,
               set: {
+                localeBranchId: project.localeBranchId,
+                sourceBundleId,
                 bridgeUnitId: validation.bridgeUnitId ?? null,
                 findingId: validation.findingId,
                 artifactKind: validation.artifactRef.artifactKind,
@@ -1577,6 +1591,7 @@ async function assertImportOwnership(
   normalized: NormalizedSourceBundle,
 ): Promise<void> {
   assertUniqueNormalizedUnitIds(normalized.units);
+  await assertStableSourceUnitKeys(tx, normalized);
 
   const revisionIds = normalized.revisions.map((revisionRecord) => revisionRecord.revisionId);
   if (revisionIds.length > 0) {
@@ -1637,12 +1652,108 @@ async function assertImportOwnership(
 
 function assertUniqueNormalizedUnitIds(units: LocalizationUnitV02[]): void {
   const bridgeUnitIds = new Set<string>();
+  const sourceUnitKeys = new Set<string>();
   for (const unit of units) {
     if (bridgeUnitIds.has(unit.bridgeUnitId)) {
       throw new Error(`bridgeUnitId ${unit.bridgeUnitId} must be unique within the import`);
     }
     bridgeUnitIds.add(unit.bridgeUnitId);
+    if (sourceUnitKeys.has(unit.sourceUnitKey)) {
+      throw new Error(`sourceUnitKey ${unit.sourceUnitKey} must be unique within the import`);
+    }
+    sourceUnitKeys.add(unit.sourceUnitKey);
   }
+}
+
+async function assertStableSourceUnitKeys(
+  tx: ItotoriTransaction,
+  normalized: NormalizedSourceBundle,
+): Promise<void> {
+  const incomingBySourceUnitKey = new Map(
+    normalized.units.map((unit) => [unit.sourceUnitKey, unit]),
+  );
+  const sourceUnitKeys = [...incomingBySourceUnitKey.keys()];
+  if (sourceUnitKeys.length === 0) {
+    return;
+  }
+
+  const unitRows = await tx
+    .select({
+      bridgeUnitId: sourceUnits.bridgeUnitId,
+      sourceUnitKey: sourceUnits.sourceUnitKey,
+    })
+    .from(sourceUnits)
+    .where(
+      and(
+        eq(sourceUnits.sourceBundleId, normalized.sourceBundleId),
+        inArray(sourceUnits.sourceUnitKey, sourceUnitKeys),
+      ),
+    );
+
+  for (const row of unitRows) {
+    const incoming = incomingBySourceUnitKey.get(row.sourceUnitKey);
+    if (incoming !== undefined && incoming.bridgeUnitId !== row.bridgeUnitId) {
+      throw new Error(
+        `sourceUnitKey ${row.sourceUnitKey} is already linked to bridgeUnitId ${row.bridgeUnitId}; reimport cannot change it to ${incoming.bridgeUnitId}`,
+      );
+    }
+  }
+}
+
+async function resolveSourceBundlePersistenceTarget(
+  tx: ItotoriTransaction,
+  project: ItotoriProjectRecord,
+): Promise<{ sourceBundleId: string; sourceBundleRevisionId: string }> {
+  if (project.importStatus !== undefined) {
+    const [sourceBundle] = await tx
+      .select({
+        sourceBundleId: sourceBundles.sourceBundleId,
+        projectId: sourceBundles.projectId,
+        bridgeId: sourceBundles.bridgeId,
+      })
+      .from(sourceBundles)
+      .where(eq(sourceBundles.sourceBundleId, project.importStatus.sourceBundleId))
+      .limit(1);
+    if (sourceBundle === undefined) {
+      throw new Error(
+        `source bundle ${project.importStatus.sourceBundleId} has not been imported for project ${project.projectId}`,
+      );
+    }
+    if (sourceBundle.projectId !== project.projectId) {
+      throw new Error(
+        `source bundle ${sourceBundle.sourceBundleId} belongs to project ${sourceBundle.projectId}`,
+      );
+    }
+    if (sourceBundle.bridgeId !== project.importStatus.bridgeId) {
+      throw new Error(
+        `source bundle ${sourceBundle.sourceBundleId} belongs to bridge ${sourceBundle.bridgeId}`,
+      );
+    }
+    return {
+      sourceBundleId: project.importStatus.sourceBundleId,
+      sourceBundleRevisionId: project.importStatus.sourceBundleRevisionId,
+    };
+  }
+
+  const [sourceBundle] = await tx
+    .select({
+      sourceBundleId: sourceBundles.sourceBundleId,
+      sourceBundleRevisionId: sourceBundles.sourceBundleRevisionId,
+    })
+    .from(sourceBundles)
+    .where(
+      and(
+        eq(sourceBundles.projectId, project.projectId),
+        eq(sourceBundles.bridgeId, sourceBundleIdFor(project.bridge)),
+      ),
+    )
+    .limit(1);
+  if (sourceBundle === undefined) {
+    throw new Error(
+      `bridge ${project.bridge.bridgeId} has no imported source bundle for project ${project.projectId}`,
+    );
+  }
+  return sourceBundle;
 }
 
 async function diffSourceBundleImport(
@@ -2068,6 +2179,16 @@ function revision(revisionId: string, value: string): SourceRevisionV02 {
 function uniqueRevisions(revisions: SourceRevisionV02[]): SourceRevisionV02[] {
   const byId = new Map<string, SourceRevisionV02>();
   for (const revisionRecord of revisions) {
+    const existing = byId.get(revisionRecord.revisionId);
+    if (
+      existing !== undefined &&
+      (existing.revisionKind !== revisionRecord.revisionKind ||
+        existing.value !== revisionRecord.value)
+    ) {
+      throw new Error(
+        `source revision ${revisionRecord.revisionId} appears multiple times with different content`,
+      );
+    }
     byId.set(revisionRecord.revisionId, revisionRecord);
   }
   return [...byId.values()];
@@ -2202,12 +2323,6 @@ function runtimeReportCreatedAt(report: RuntimeReportInput): Date {
 
 function runtimeApproximations(report: RuntimeReportInput): unknown[] {
   return report.approximations;
-}
-
-function sourceBundleRevisionIdFor(bundle: BridgeBundle | BridgeBundleV02): string {
-  return isBridgeBundleV02(bundle)
-    ? bundle.sourceBundleRevision.revisionId
-    : `${bundle.bridgeId}:bundle-revision`;
 }
 
 function runtimeReportMetadataFor(

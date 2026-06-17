@@ -410,6 +410,51 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("rejects conflicting duplicate source revision ids before project import writes", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const bridge = bridgeV02Fixture();
+      const conflictingBridge: BridgeBundleV02 = {
+        ...bridge,
+        sourceGame: {
+          ...bridge.sourceGame,
+          sourceProfileRevision: {
+            revisionId: bridge.sourceBundleRevision.revisionId,
+            revisionKind: "manual_snapshot",
+            value: "profile snapshot that does not match the source bundle revision",
+          },
+        },
+      };
+
+      await expect(
+        repo.importSourceBundle(localActor, projectV02Fixture(conflictingBridge)),
+      ).rejects.toThrow(/source revision .* appears multiple times with different content/);
+
+      const counts = await context.pool.query<{
+        projects: number;
+        source_revisions: number;
+        source_bundles: number;
+        bridge_imports: number;
+      }>(`
+        select
+          (select count(*)::int from itotori_projects) as projects,
+          (select count(*)::int from itotori_source_revisions) as source_revisions,
+          (select count(*)::int from itotori_source_bundles) as source_bundles,
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports
+      `);
+      expect(counts.rows[0]).toEqual({
+        projects: 0,
+        source_revisions: 0,
+        source_bundles: 0,
+        bridge_imports: 0,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("records source revision diffs on v0.2 reimport without duplicating revisions", async () => {
     const context = await migratedContext();
     try {
@@ -609,6 +654,69 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("rejects reimport that changes bridge unit id for a stable source unit key", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      const firstImport = await repo.importSourceBundle(localActor, project);
+      const firstUnit = project.bridge.units[0]!;
+      const rekeyedProject = projectFixture({
+        drafts: { "bridge-unit-rekeyed": "Hello, {player}." },
+        bridge: {
+          ...project.bridge,
+          sourceBundleHash: "hash-rekeyed",
+          units: [
+            {
+              ...firstUnit,
+              bridgeUnitId: "bridge-unit-rekeyed",
+              sourceHash: "source-hash-rekeyed",
+            },
+          ],
+        },
+      });
+
+      await expect(repo.importSourceBundle(localActor, rekeyedProject)).rejects.toThrow(
+        /sourceUnitKey hello\.scene\.001\.line\.001 is already linked to bridgeUnitId bridge-unit-test; reimport cannot change it to bridge-unit-rekeyed/,
+      );
+
+      const unitRows = await context.pool.query<{
+        bridge_unit_id: string;
+        source_unit_key: string;
+        source_hash: string;
+      }>(
+        `
+        select bridge_unit_id, source_unit_key, source_hash
+        from itotori_source_units
+        order by bridge_unit_id
+      `,
+      );
+      expect(unitRows.rows).toEqual([
+        {
+          bridge_unit_id: "bridge-unit-test",
+          source_unit_key: "hello.scene.001.line.001",
+          source_hash: "source-hash",
+        },
+      ]);
+
+      const counts = await context.pool.query<{
+        source_revisions: number;
+        bridge_imports: number;
+      }>(`
+        select
+          (select count(*)::int from itotori_source_revisions) as source_revisions,
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports
+      `);
+      expect(counts.rows[0]).toEqual({
+        source_revisions: firstImport.sourceRevisionCount,
+        bridge_imports: 1,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("reimports a migrated legacy bridge through its existing source bundle id", async () => {
     const context = await migratedContext();
     try {
@@ -725,6 +833,90 @@ describe("ItotoriProjectRepository", () => {
           asset_count: 1,
         },
       ]);
+
+      const importedProject = { ...projectFixture(), importStatus };
+      await repo.savePatchExport(localActor, importedProject, {
+        schemaVersion: "0.1.0",
+        patchExportId: "legacy-remap-patch",
+        sourceBridgeId: "bridge-test",
+        sourceBundleHash: "hash-test",
+        sourceLocale: "ja-JP",
+        targetLocale: "en-US",
+        entries: [
+          {
+            entryId: "legacy-remap-entry",
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+            sourceHash: "source-hash",
+            targetText: "Hello, {player}.",
+            protectedSpanMappings: [{ raw: "{player}", targetStart: 7, targetEnd: 15 }],
+          },
+        ],
+      });
+      await repo.saveRuntimeReport(
+        localActor,
+        importedProject,
+        runtimeEvidenceReportFixture(),
+        "legacy-remap-patch-result",
+      );
+
+      const artifactBundles = await context.pool.query<{
+        artifact_id: string;
+        source_bundle_id: string | null;
+      }>(
+        `
+        select artifact_id, source_bundle_id
+        from itotori_artifacts
+        where artifact_id in ($1, $2, $3)
+        order by artifact_id
+      `,
+        [
+          "019ed003-0000-7000-8000-000000000901",
+          "legacy-remap-patch",
+          "legacy-remap-patch-result",
+        ],
+      );
+      expect(artifactBundles.rows).toEqual([
+        {
+          artifact_id: "019ed003-0000-7000-8000-000000000901",
+          source_bundle_id: "legacy:project-test:source-bundle",
+        },
+        {
+          artifact_id: "legacy-remap-patch",
+          source_bundle_id: "legacy:project-test:source-bundle",
+        },
+        {
+          artifact_id: "legacy-remap-patch-result",
+          source_bundle_id: "legacy:project-test:source-bundle",
+        },
+      ]);
+
+      const runtimeRows = await context.pool.query<{
+        row_kind: string;
+        source_bundle_id: string;
+        source_bundle_revision_id: string;
+      }>(`
+        select
+          'run' as row_kind,
+          source_bundle_id,
+          source_bundle_revision_id
+        from itotori_runtime_evidence_runs
+        union all
+        select
+          'item' as row_kind,
+          source_bundle_id,
+          source_bundle_revision_id
+        from itotori_runtime_evidence_items
+        order by row_kind, source_bundle_id, source_bundle_revision_id
+      `);
+      expect(runtimeRows.rows.length).toBeGreaterThan(0);
+      expect(
+        runtimeRows.rows.every(
+          (row) =>
+            row.source_bundle_id === "legacy:project-test:source-bundle" &&
+            row.source_bundle_revision_id === "bridge-test:bundle-revision",
+        ),
+      ).toBe(true);
     } finally {
       await context.close();
     }
