@@ -129,6 +129,54 @@ mod tests {
     }
 
     #[test]
+    fn apply_delta_rejects_windows_drive_relative_path_without_writing_output() {
+        for (index, unsafe_path) in [
+            "C:source.json",
+            "c:source.json",
+            "data/C:source.json",
+            "data\\C:source.json",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let root = temp_dir(&format!("drive-relative-path-{index}"));
+            let game_dir = root.join("game");
+            let output_dir = root.join("patched");
+            let original_text = write_original_source(&game_dir);
+            let delta_path = root.join("unsafe.kaifuu");
+            write_json(
+                &delta_path,
+                &json!({
+                    "schemaVersion": "0.1.0",
+                    "deltaPatchId": deterministic_id("delta", 1),
+                    "format": "kaifuu-fixture-delta",
+                    "original": {
+                        "path": "source.json",
+                        "hash": content_hash(&original_text)
+                    },
+                    "changedEntries": [
+                        {
+                            "path": unsafe_path,
+                            "strategy": "whole_changed_file",
+                            "content": { "units": [] },
+                            "patchedHash": "ignored"
+                        }
+                    ]
+                }),
+            )
+            .unwrap();
+
+            let error = apply_delta(&game_dir, &delta_path, &output_dir)
+                .unwrap_err()
+                .to_string();
+
+            assert!(error.contains("unsafe relative output path"));
+            assert!(!output_dir.exists());
+            let _ = fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
     fn apply_delta_rejects_partial_multi_entry_delta_without_writing_output() {
         let root = temp_dir("partial-multi-entry");
         let game_dir = root.join("game");
