@@ -10,6 +10,11 @@ Itotori is a monorepo because the shared contracts are the hard part. The three 
 - **Kaifuu** consumes game files and patch exports, then emits bridge bundles, patch results, and `.kaifuu` delta packages.
 - **Utsushi** consumes patched game directories and emits runtime traces, captures, and smoke reports.
 
+Search and indexing infrastructure is governed by
+[ADR 0004](adrs/0004-search-and-indexing-infrastructure.md). Exact Postgres
+indexes are the required baseline; semantic retrieval is an optional capability
+with deterministic exact fallback when pgvector or embeddings are unavailable.
+
 ## Tooling
 
 Vite+ and Vite Task provide the TypeScript/web workspace command surface and cached task orchestration. Cargo remains the authority for Rust builds, tests, and dependency modeling. The root `justfile` is the human-facing command layer.
