@@ -1,0 +1,762 @@
+{
+  "schemaVersion": "0.2.0",
+  "bridgeId": "019ed001-0000-7000-8000-000000000001",
+  "sourceBundleHash": "sha256:bundle-v02-example",
+  "sourceLocale": "en-US",
+  "extractor": {
+    "name": "kaifuu-contract-example",
+    "version": "0.2.0"
+  },
+  "assets": [
+    {
+      "assetId": "019ed001-0000-7000-8000-000000000002",
+      "assetKey": "script/prologue",
+      "assetKind": "script",
+      "sourceHash": "sha256:script-prologue",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000101",
+        "revisionKind": "content_hash",
+        "value": "sha256:script-prologue"
+      },
+      "path": "scenario/prologue.txt"
+    },
+    {
+      "assetId": "019ed001-0000-7000-8000-000000000003",
+      "assetKey": "image/sign-caution",
+      "assetKind": "image",
+      "sourceHash": "sha256:image-sign-caution",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000102",
+        "revisionKind": "content_hash",
+        "value": "sha256:image-sign-caution"
+      },
+      "path": "images/sign-caution.png"
+    },
+    {
+      "assetId": "019ed001-0000-7000-8000-000000000004",
+      "assetKey": "database/items",
+      "assetKind": "database",
+      "sourceHash": "sha256:database-items",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000103",
+        "revisionKind": "content_hash",
+        "value": "sha256:database-items"
+      },
+      "path": "data/items.json"
+    },
+    {
+      "assetId": "019ed001-0000-7000-8000-000000000005",
+      "assetKey": "ui/menu",
+      "assetKind": "ui_texture",
+      "sourceHash": "sha256:ui-menu",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000104",
+        "revisionKind": "content_hash",
+        "value": "sha256:ui-menu"
+      },
+      "path": "ui/menu.json"
+    },
+    {
+      "assetId": "019ed001-0000-7000-8000-000000000006",
+      "assetKey": "audio/bgm/moonlit-path",
+      "assetKind": "audio",
+      "sourceHash": "sha256:audio-moonlit-path",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000105",
+        "revisionKind": "content_hash",
+        "value": "sha256:audio-moonlit-path"
+      },
+      "path": "audio/bgm/moonlit-path.ogg"
+    },
+    {
+      "assetId": "019ed001-0000-7000-8000-000000000007",
+      "assetKey": "metadata/package",
+      "assetKind": "metadata",
+      "sourceHash": "sha256:metadata-package",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000106",
+        "revisionKind": "content_hash",
+        "value": "sha256:metadata-package"
+      },
+      "path": "package.json"
+    }
+  ],
+  "units": [
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+      "surfaceId": "019ed001-0000-7000-8000-000000000301",
+      "surfaceKind": "dialogue",
+      "sourceUnitKey": "script/prologue#line-001",
+      "occurrenceId": "prologue-001",
+      "sourceLocale": "en-US",
+      "sourceText": "Hello, {player}.",
+      "sourceHash": "sha256:unit-dialogue-known",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000101",
+        "revisionKind": "content_hash",
+        "value": "sha256:script-prologue"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002",
+        "assetKey": "script/prologue"
+      },
+      "sourceLocation": {
+        "containerKey": "script/prologue",
+        "entryPath": ["commands", "0"],
+        "range": {
+          "startByte": 0,
+          "endByte": 16
+        }
+      },
+      "speaker": {
+        "knowledgeState": "known",
+        "speakerId": "019ed001-0000-7000-8000-000000000401",
+        "displayName": "Mira",
+        "canonicalNameRef": "character/mira"
+      },
+      "context": {
+        "route": {
+          "routeId": "019ed001-0000-7000-8000-000000000503",
+          "routeKey": "common",
+          "sceneId": "019ed001-0000-7000-8000-000000000504",
+          "sceneKey": "prologue",
+          "position": "line-001"
+        }
+      },
+      "policy": {
+        "policyAction": "localize",
+        "targetLocale": "fr-FR"
+      },
+      "spans": [
+        {
+          "spanId": "019ed001-0000-7000-8000-000000000801",
+          "spanKind": "variable_placeholder",
+          "raw": "{player}",
+          "startByte": 7,
+          "endByte": 15,
+          "preserveMode": "map",
+          "variableName": "player"
+        }
+      ],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002",
+        "writeMode": "replace",
+        "sourceUnitKey": "script/prologue#line-001",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000101",
+          "revisionKind": "content_hash",
+          "value": "sha256:script-prologue"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text",
+        "traceKey": "prologue-001"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000202",
+      "surfaceId": "019ed001-0000-7000-8000-000000000302",
+      "surfaceKind": "narration",
+      "sourceUnitKey": "script/prologue#line-002",
+      "occurrenceId": "prologue-002",
+      "sourceLocale": "en-US",
+      "sourceText": "The gate opens.",
+      "sourceHash": "sha256:unit-narration",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000101",
+        "revisionKind": "content_hash",
+        "value": "sha256:script-prologue"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002"
+      },
+      "sourceLocation": {
+        "containerKey": "script/prologue",
+        "entryPath": ["commands", "1"],
+        "range": {
+          "startByte": 0,
+          "endByte": 15
+        }
+      },
+      "speaker": {
+        "knowledgeState": "not_applicable"
+      },
+      "context": {
+        "route": {
+          "routeKey": "common",
+          "sceneKey": "prologue",
+          "position": "line-002"
+        }
+      },
+      "spans": [],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002",
+        "writeMode": "replace",
+        "sourceUnitKey": "script/prologue#line-002",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000101",
+          "revisionKind": "content_hash",
+          "value": "sha256:script-prologue"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text",
+        "traceKey": "prologue-002"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000203",
+      "surfaceId": "019ed001-0000-7000-8000-000000000303",
+      "surfaceKind": "speaker_name",
+      "sourceUnitKey": "script/prologue#name-mira",
+      "occurrenceId": "prologue-name-001",
+      "sourceLocale": "en-US",
+      "sourceText": "Mira",
+      "sourceHash": "sha256:unit-speaker-name",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000101",
+        "revisionKind": "content_hash",
+        "value": "sha256:script-prologue"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002"
+      },
+      "sourceLocation": {
+        "containerKey": "script/prologue",
+        "entryPath": ["nameplates", "mira"],
+        "range": {
+          "startByte": 0,
+          "endByte": 4
+        }
+      },
+      "speaker": {
+        "knowledgeState": "known",
+        "speakerId": "019ed001-0000-7000-8000-000000000401",
+        "displayName": "Mira"
+      },
+      "context": {
+        "speakerName": {
+          "displayContext": "name_plate",
+          "canonicalNameRef": "character/mira"
+        }
+      },
+      "policy": {
+        "policyAction": "romanize",
+        "targetLocale": "fr-FR",
+        "romanizationSystem": "source-form"
+      },
+      "spans": [],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002",
+        "writeMode": "replace",
+        "sourceUnitKey": "script/prologue#name-mira",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000101",
+          "revisionKind": "content_hash",
+          "value": "sha256:script-prologue"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000204",
+      "surfaceId": "019ed001-0000-7000-8000-000000000304",
+      "surfaceKind": "choice_label",
+      "sourceUnitKey": "script/prologue#choice-open",
+      "occurrenceId": "prologue-choice-001",
+      "sourceLocale": "en-US",
+      "sourceText": "Open the gate",
+      "sourceHash": "sha256:unit-choice",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000101",
+        "revisionKind": "content_hash",
+        "value": "sha256:script-prologue"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002"
+      },
+      "sourceLocation": {
+        "containerKey": "script/prologue",
+        "entryPath": ["choices", "0", "label"],
+        "range": {
+          "startByte": 0,
+          "endByte": 13
+        }
+      },
+      "context": {
+        "choice": {
+          "choiceGroupId": "019ed001-0000-7000-8000-000000000501",
+          "choiceId": "019ed001-0000-7000-8000-000000000502",
+          "optionIndex": 0,
+          "routeTargetRef": "route/common/open-gate"
+        },
+        "route": {
+          "routeKey": "common",
+          "sceneKey": "prologue"
+        }
+      },
+      "spans": [],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002",
+        "writeMode": "replace",
+        "sourceUnitKey": "script/prologue#choice-open",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000101",
+          "revisionKind": "content_hash",
+          "value": "sha256:script-prologue"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000205",
+      "surfaceId": "019ed001-0000-7000-8000-000000000305",
+      "surfaceKind": "ui_label",
+      "sourceUnitKey": "ui/menu#inventory",
+      "occurrenceId": "ui-menu-001",
+      "sourceLocale": "en-US",
+      "sourceText": "Inventory",
+      "sourceHash": "sha256:unit-ui",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000104",
+        "revisionKind": "content_hash",
+        "value": "sha256:ui-menu"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000005"
+      },
+      "sourceLocation": {
+        "containerKey": "ui/menu",
+        "entryPath": ["buttons", "inventory", "label"],
+        "range": {
+          "startByte": 0,
+          "endByte": 9
+        }
+      },
+      "context": {
+        "ui": {
+          "uiArea": "menu",
+          "controlRef": "inventory-button",
+          "layoutConstraint": "max-width:96px"
+        }
+      },
+      "spans": [],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000005",
+        "writeMode": "replace",
+        "sourceUnitKey": "ui/menu#inventory",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000104",
+          "revisionKind": "content_hash",
+          "value": "sha256:ui-menu"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "layout_probe"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000206",
+      "surfaceId": "019ed001-0000-7000-8000-000000000306",
+      "surfaceKind": "tutorial_text",
+      "sourceUnitKey": "script/prologue#tutorial-inspect",
+      "occurrenceId": "tutorial-001",
+      "sourceLocale": "en-US",
+      "sourceText": "Press {confirm} to inspect.",
+      "sourceHash": "sha256:unit-tutorial",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000101",
+        "revisionKind": "content_hash",
+        "value": "sha256:script-prologue"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002"
+      },
+      "sourceLocation": {
+        "containerKey": "script/prologue",
+        "entryPath": ["tutorials", "inspect"],
+        "range": {
+          "startByte": 0,
+          "endByte": 27
+        }
+      },
+      "context": {
+        "tutorial": {
+          "tutorialStepRef": "inspect",
+          "inputActionRefs": ["confirm"],
+          "platformCondition": "keyboard"
+        }
+      },
+      "spans": [
+        {
+          "spanId": "019ed001-0000-7000-8000-000000000802",
+          "spanKind": "variable_placeholder",
+          "raw": "{confirm}",
+          "startByte": 6,
+          "endByte": 15,
+          "preserveMode": "map",
+          "variableName": "confirm"
+        }
+      ],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002",
+        "writeMode": "replace",
+        "sourceUnitKey": "script/prologue#tutorial-inspect",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000101",
+          "revisionKind": "content_hash",
+          "value": "sha256:script-prologue"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000207",
+      "surfaceId": "019ed001-0000-7000-8000-000000000307",
+      "surfaceKind": "database_entry",
+      "sourceUnitKey": "database/items#silver-key.name",
+      "occurrenceId": "item-silver-key-name",
+      "sourceLocale": "en-US",
+      "sourceText": "Silver Key",
+      "sourceHash": "sha256:unit-database",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000103",
+        "revisionKind": "content_hash",
+        "value": "sha256:database-items"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000004"
+      },
+      "sourceLocation": {
+        "containerKey": "database/items",
+        "entryPath": ["items", "silver-key", "name"],
+        "range": {
+          "startByte": 0,
+          "endByte": 10
+        }
+      },
+      "context": {
+        "database": {
+          "databaseKind": "item",
+          "entryId": "silver-key",
+          "fieldKey": "name",
+          "sortKey": "key-silver"
+        }
+      },
+      "spans": [],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000004",
+        "writeMode": "replace",
+        "sourceUnitKey": "database/items#silver-key.name",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000103",
+          "revisionKind": "content_hash",
+          "value": "sha256:database-items"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "metadata_only"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000208",
+      "surfaceId": "019ed001-0000-7000-8000-000000000308",
+      "surfaceKind": "song_title",
+      "sourceUnitKey": "audio/bgm/moonlit-path#title",
+      "occurrenceId": "song-title-001",
+      "sourceLocale": "en-US",
+      "sourceText": "Moonlit Path",
+      "sourceHash": "sha256:unit-song",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000105",
+        "revisionKind": "content_hash",
+        "value": "sha256:audio-moonlit-path"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000006"
+      },
+      "sourceLocation": {
+        "containerKey": "audio/bgm/moonlit-path",
+        "entryPath": ["title"],
+        "range": {
+          "startByte": 0,
+          "endByte": 12
+        }
+      },
+      "context": {
+        "song": {
+          "audioAssetRef": {
+            "assetId": "019ed001-0000-7000-8000-000000000006"
+          },
+          "trackId": "moonlit-path",
+          "titleField": "music_room_title",
+          "creditRefs": ["composer/anon"]
+        }
+      },
+      "policy": {
+        "policyAction": "romanize",
+        "targetLocale": "fr-FR",
+        "romanizationSystem": "source-form",
+        "policyReason": "The soundtrack title is fan-facing canonical text."
+      },
+      "spans": [],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000006",
+        "writeMode": "metadata",
+        "sourceUnitKey": "audio/bgm/moonlit-path#title",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000105",
+          "revisionKind": "content_hash",
+          "value": "sha256:audio-moonlit-path"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "metadata_only"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000209",
+      "surfaceId": "019ed001-0000-7000-8000-000000000309",
+      "surfaceKind": "image_text",
+      "sourceUnitKey": "image/sign-caution#region-0",
+      "occurrenceId": "image-text-001",
+      "sourceLocale": "en-US",
+      "sourceText": "CAUTION",
+      "sourceHash": "sha256:unit-image-text",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000102",
+        "revisionKind": "content_hash",
+        "value": "sha256:image-sign-caution"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000003"
+      },
+      "sourceLocation": {
+        "containerKey": "image/sign-caution",
+        "region": {
+          "x": 24,
+          "y": 18,
+          "width": 180,
+          "height": 48
+        }
+      },
+      "context": {
+        "imageText": {
+          "region": {
+            "x": 24,
+            "y": 18,
+            "width": 180,
+            "height": 48
+          },
+          "ocrText": "CAUTION",
+          "editable": true,
+          "replacementMode": "redraw_region"
+        }
+      },
+      "spans": [],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000003",
+        "writeMode": "update_region",
+        "sourceUnitKey": "image/sign-caution#region-0",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000102",
+          "revisionKind": "content_hash",
+          "value": "sha256:image-sign-caution"
+        },
+        "constraints": ["preserve transparent background"]
+      },
+      "runtimeExpectation": {
+        "expectationKind": "screenshot_region",
+        "region": {
+          "x": 24,
+          "y": 18,
+          "width": 180,
+          "height": 48
+        }
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000210",
+      "surfaceId": "019ed001-0000-7000-8000-000000000310",
+      "surfaceKind": "metadata_text",
+      "sourceUnitKey": "metadata/package#title",
+      "occurrenceId": "metadata-title-001",
+      "sourceLocale": "en-US",
+      "sourceText": "Itotori Demo",
+      "sourceHash": "sha256:unit-metadata",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000106",
+        "revisionKind": "content_hash",
+        "value": "sha256:metadata-package"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000007"
+      },
+      "sourceLocation": {
+        "containerKey": "metadata/package",
+        "entryPath": ["title"],
+        "range": {
+          "startByte": 0,
+          "endByte": 12
+        }
+      },
+      "context": {
+        "metadata": {
+          "metadataScope": "package",
+          "fieldKey": "title",
+          "visibility": "platform"
+        }
+      },
+      "spans": [],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000007",
+        "writeMode": "metadata",
+        "sourceUnitKey": "metadata/package#title",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000106",
+          "revisionKind": "content_hash",
+          "value": "sha256:metadata-package"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "metadata_only"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000211",
+      "surfaceId": "019ed001-0000-7000-8000-000000000311",
+      "surfaceKind": "dialogue",
+      "sourceUnitKey": "script/prologue#line-003",
+      "occurrenceId": "prologue-003",
+      "sourceLocale": "en-US",
+      "sourceText": "You found me.",
+      "sourceHash": "sha256:unit-dialogue-reader-unknown",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000101",
+        "revisionKind": "content_hash",
+        "value": "sha256:script-prologue"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002"
+      },
+      "sourceLocation": {
+        "containerKey": "script/prologue",
+        "entryPath": ["commands", "2"],
+        "range": {
+          "startByte": 0,
+          "endByte": 13
+        }
+      },
+      "speaker": {
+        "knowledgeState": "reader_unknown",
+        "speakerId": "019ed001-0000-7000-8000-000000000402",
+        "displayName": "Rook",
+        "readerLabel": "???"
+      },
+      "context": {
+        "route": {
+          "routeKey": "common",
+          "sceneKey": "prologue",
+          "position": "line-003"
+        }
+      },
+      "spans": [],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002",
+        "writeMode": "replace",
+        "sourceUnitKey": "script/prologue#line-003",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000101",
+          "revisionKind": "content_hash",
+          "value": "sha256:script-prologue"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text"
+      }
+    },
+    {
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000212",
+      "surfaceId": "019ed001-0000-7000-8000-000000000312",
+      "surfaceKind": "dialogue",
+      "sourceUnitKey": "script/prologue#line-004",
+      "occurrenceId": "prologue-004",
+      "sourceLocale": "en-US",
+      "sourceText": "A voice calls.",
+      "sourceHash": "sha256:unit-dialogue-parser-unknown",
+      "sourceRevision": {
+        "revisionId": "019ed001-0000-7000-8000-000000000101",
+        "revisionKind": "content_hash",
+        "value": "sha256:script-prologue"
+      },
+      "sourceAssetRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002"
+      },
+      "sourceLocation": {
+        "containerKey": "script/prologue",
+        "entryPath": ["commands", "3"],
+        "range": {
+          "startByte": 0,
+          "endByte": 14
+        }
+      },
+      "speaker": {
+        "knowledgeState": "parser_unknown",
+        "evidence": "The source command has message text but no nameplate field."
+      },
+      "context": {
+        "route": {
+          "routeKey": "common",
+          "sceneKey": "prologue",
+          "position": "line-004"
+        }
+      },
+      "spans": [],
+      "patchRef": {
+        "assetId": "019ed001-0000-7000-8000-000000000002",
+        "writeMode": "replace",
+        "sourceUnitKey": "script/prologue#line-004",
+        "sourceRevision": {
+          "revisionId": "019ed001-0000-7000-8000-000000000101",
+          "revisionKind": "content_hash",
+          "value": "sha256:script-prologue"
+        }
+      },
+      "runtimeExpectation": {
+        "expectationKind": "trace_text"
+      }
+    }
+  ],
+  "policyRecords": [
+    {
+      "policyRecordId": "019ed001-0000-7000-8000-000000000701",
+      "policyRecordKind": "romanized_term",
+      "policyAction": "romanize",
+      "termKey": "character/mira",
+      "sourceText": "Mira",
+      "targetLocale": "fr-FR",
+      "romanizationSystem": "source-form",
+      "scope": "speaker_name",
+      "policyReason": "Character names keep the official Latin spelling.",
+      "reviewRequired": true
+    },
+    {
+      "policyRecordId": "019ed001-0000-7000-8000-000000000702",
+      "policyRecordKind": "non_translated_term",
+      "policyAction": "do_not_translate",
+      "termKey": "code/silver-key",
+      "sourceText": "Silver Key",
+      "targetLocale": "fr-FR",
+      "preserveForm": "Silver Key",
+      "scope": "database_entry",
+      "policyReason": "The item name is referenced verbatim by a puzzle clue.",
+      "reviewRequired": true
+    }
+  ]
+}
