@@ -1,0 +1,938 @@
+{
+  "schemaVersion": "0.2.0",
+  "benchmarkRunId": "019ed032-0000-7000-8000-000000001001",
+  "taxonomyId": "itotori-lqa-1",
+  "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+  "createdAt": "2026-06-17T16:00:00.000Z",
+  "benchmarkName": "seeded localization defect corpus en-US oracle",
+  "status": "passed",
+  "fixtureOrCorpusRefs": [
+    {
+      "corpusRefId": "seeded-localization-defects-public",
+      "corpusKind": "public_fixture",
+      "label": "Seeded localization defects public fixture",
+      "manifestUri": "fixtures/public/seeded-localization-defects.manifest.json",
+      "manifestHash": "sha256:46b72e7e091abf5a23ee2f8030005b4f911d91baf8c5e316bb532e522edbbf3b",
+      "sourceBundleHash": "sha256:ba8bc93d8bd5253d3169fa83dadf1cf3ed36a3a155a75fd4645ce22d44342bd3",
+      "sourceLocale": "ja-JP",
+      "targetLocale": "en-US",
+      "engineProfile": "synthetic-json",
+      "benchmarkSplit": "public-seeded-defects",
+      "sourceUnitCount": 9,
+      "sourceCharacterCount": 67,
+      "publicContent": true
+    }
+  ],
+  "sourceLocale": "ja-JP",
+  "targetLocale": "en-US",
+  "engineProfile": "synthetic-json",
+  "gitCommit": "1111111111111111111111111111111111111111",
+  "bridgeSchemaVersion": "0.2.0",
+  "deterministicSeed": "seeded-localization-defects-v0.1-en-US",
+  "toolVersions": [
+    {
+      "name": "@itotori/localization-bridge-schema",
+      "version": "0.0.0",
+      "gitCommit": "1111111111111111111111111111111111111111"
+    },
+    {
+      "name": "itotori-seeded-defect-oracle",
+      "version": "0.1.0"
+    }
+  ],
+  "commandLines": [
+    {
+      "commandId": "fixture-review",
+      "argv": [
+        "itotori",
+        "qa",
+        "evaluate-seeded-defects",
+        "--fixture",
+        "seeded-localization-defects",
+        "--target",
+        "en-US"
+      ]
+    },
+    {
+      "commandId": "validate-report",
+      "argv": ["just", "schema"]
+    }
+  ],
+  "systemsCompared": [
+    {
+      "systemId": "seeded-target",
+      "systemKind": "deterministic_fixture",
+      "displayName": "Seeded target fixture",
+      "generatedAt": "2026-06-17T16:00:10.000Z",
+      "providerRunIds": [],
+      "outputArtifactRef": {
+        "artifactId": "019ed032-0000-7000-8000-000000001101",
+        "artifactKind": "seeded-target-fixture",
+        "uri": "fixtures/seeded-localization-defects/source.json",
+        "hash": "sha256:ba8bc93d8bd5253d3169fa83dadf1cf3ed36a3a155a75fd4645ce22d44342bd3",
+        "mediaType": "application/json"
+      }
+    }
+  ],
+  "providerModelCostRecords": [
+    {
+      "providerRunId": "019ed032-0000-7000-8000-000000001201",
+      "systemId": "seeded-target",
+      "taskKind": "llm_qa",
+      "startedAt": "2026-06-17T16:00:20.000Z",
+      "completedAt": "2026-06-17T16:00:20.500Z",
+      "latencyMs": 500,
+      "status": "succeeded",
+      "provider": {
+        "providerFamily": "recorded",
+        "endpointFamily": "recorded-fixture",
+        "providerName": "recorded-seeded-qa",
+        "requestedModelId": "seeded-qa-model-v1",
+        "actualModelId": "seeded-qa-model-v1",
+        "routeSettingsHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "prompt": {
+        "promptPresetId": "itotori-qa-agent-lqa-v1",
+        "promptTemplateVersion": "1.0.0",
+        "promptHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      },
+      "structuredOutputMode": "json_schema",
+      "retryCount": 0,
+      "errorClasses": [],
+      "fallbackUsed": false,
+      "fallbackPlan": ["seeded-qa-model-v1"],
+      "tokenUsage": {
+        "tokenCountSource": "deterministic_counter",
+        "promptTokens": 67,
+        "completionTokens": 160,
+        "totalTokens": 227
+      },
+      "cost": {
+        "costKind": "zero",
+        "currency": "USD",
+        "amountMicrosUsd": 0,
+        "pricingSnapshotId": "fixture-zero-cost"
+      }
+    }
+  ],
+  "costLedger": {
+    "currency": "USD",
+    "reportTotalMicrosUsd": 0,
+    "totalsBySystem": [
+      {
+        "systemId": "seeded-target",
+        "totalMicrosUsd": 0
+      }
+    ],
+    "includesUnknownCost": false
+  },
+  "seededDefectOracle": [
+    {
+      "seededDefectId": "seed-lost-markup-001",
+      "fixtureOrCorpusRefId": "seeded-localization-defects-public",
+      "seedKind": "control_markup_corrupted",
+      "targetLocale": "en-US",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000101",
+          "label": "script/prologue#line-001"
+        }
+      ],
+      "category": "protected_content",
+      "qualitySubcategory": "control_code_corrupted",
+      "qualitySeverity": "critical",
+      "expectedRootCause": "benchmark_seed",
+      "expectedDetectorKinds": ["deterministic_qa", "patch_verify", "human_review"],
+      "matchedFindingIds": ["019ed032-0000-7000-8000-000000002001"],
+      "publicContent": true
+    },
+    {
+      "seededDefectId": "seed-wrong-speaker-001",
+      "fixtureOrCorpusRefId": "seeded-localization-defects-public",
+      "seedKind": "speaker_voice_drift",
+      "targetLocale": "en-US",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000102",
+          "label": "script/prologue#line-002"
+        }
+      ],
+      "category": "tone_register",
+      "qualitySubcategory": "speaker_voice_drift",
+      "qualitySeverity": "major",
+      "expectedRootCause": "benchmark_seed",
+      "expectedDetectorKinds": ["llm_qa", "human_review"],
+      "matchedFindingIds": ["019ed032-0000-7000-8000-000000002002"],
+      "publicContent": true
+    },
+    {
+      "seededDefectId": "seed-style-001",
+      "fixtureOrCorpusRefId": "seeded-localization-defects-public",
+      "seedKind": "style_guide_violation",
+      "targetLocale": "en-US",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000103",
+          "label": "ui/tutorial#confirm"
+        }
+      ],
+      "category": "style",
+      "qualitySubcategory": "style_guide_violation",
+      "qualitySeverity": "major",
+      "expectedRootCause": "benchmark_seed",
+      "expectedDetectorKinds": ["deterministic_qa", "llm_qa", "human_review"],
+      "matchedFindingIds": ["019ed032-0000-7000-8000-000000002003"],
+      "publicContent": true
+    },
+    {
+      "seededDefectId": "seed-glossary-001",
+      "fixtureOrCorpusRefId": "seeded-localization-defects-public",
+      "seedKind": "wrong_glossary_term",
+      "targetLocale": "en-US",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000104",
+          "label": "items/aether-core#name"
+        }
+      ],
+      "category": "terminology",
+      "qualitySubcategory": "glossary_violation",
+      "qualitySeverity": "major",
+      "expectedRootCause": "benchmark_seed",
+      "expectedDetectorKinds": ["deterministic_qa", "llm_qa", "human_review"],
+      "matchedFindingIds": ["019ed032-0000-7000-8000-000000002004"],
+      "publicContent": true
+    },
+    {
+      "seededDefectId": "seed-meaning-shift-001",
+      "fixtureOrCorpusRefId": "seeded-localization-defects-public",
+      "seedKind": "choice_semantics_flip",
+      "targetLocale": "en-US",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000105",
+          "label": "choices/bridge#line-001"
+        }
+      ],
+      "category": "accuracy",
+      "qualitySubcategory": "choice_semantics_shift",
+      "qualitySeverity": "critical",
+      "expectedRootCause": "benchmark_seed",
+      "expectedDetectorKinds": ["llm_qa", "human_review"],
+      "matchedFindingIds": ["019ed032-0000-7000-8000-000000002005"],
+      "publicContent": true
+    },
+    {
+      "seededDefectId": "seed-over-literal-001",
+      "fixtureOrCorpusRefId": "seeded-localization-defects-public",
+      "seedKind": "over_literal_mtl",
+      "targetLocale": "en-US",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000106",
+          "label": "script/prologue#line-006"
+        }
+      ],
+      "category": "style",
+      "qualitySubcategory": "unidiomatic",
+      "qualitySeverity": "minor",
+      "expectedRootCause": "benchmark_seed",
+      "expectedDetectorKinds": ["llm_qa", "human_review"],
+      "matchedFindingIds": ["019ed032-0000-7000-8000-000000002006"],
+      "publicContent": true
+    },
+    {
+      "seededDefectId": "seed-overflow-001",
+      "fixtureOrCorpusRefId": "seeded-localization-defects-public",
+      "seedKind": "layout_overflow",
+      "targetLocale": "en-US",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000103",
+          "label": "ui/tutorial#confirm"
+        }
+      ],
+      "category": "layout",
+      "qualitySubcategory": "overflow_or_truncation",
+      "qualitySeverity": "major",
+      "expectedRootCause": "benchmark_seed",
+      "expectedDetectorKinds": ["deterministic_qa", "runtime_probe", "human_review"],
+      "matchedFindingIds": ["019ed032-0000-7000-8000-000000002007"],
+      "publicContent": true
+    },
+    {
+      "seededDefectId": "seed-overflow-002",
+      "fixtureOrCorpusRefId": "seeded-localization-defects-public",
+      "seedKind": "layout_overflow",
+      "targetLocale": "en-US",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000107",
+          "label": "ui/status#buff"
+        }
+      ],
+      "category": "layout",
+      "qualitySubcategory": "overflow_or_truncation",
+      "qualitySeverity": "major",
+      "expectedRootCause": "benchmark_seed",
+      "expectedDetectorKinds": ["deterministic_qa", "runtime_probe", "human_review"],
+      "matchedFindingIds": ["019ed032-0000-7000-8000-000000002008"],
+      "publicContent": true
+    }
+  ],
+  "findingRecords": [
+    {
+      "findingId": "019ed032-0000-7000-8000-000000002001",
+      "systemId": "seeded-target",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "deterministic_qa",
+      "category": "protected_content",
+      "qualitySubcategory": "control_code_corrupted",
+      "qualitySeverity": "critical",
+      "rootCause": "benchmark_seed",
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000101",
+          "label": "script/prologue#line-001"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed032-0000-7000-8000-000000003001",
+          "evidenceKind": "text_excerpt",
+          "summary": "Seeded target drops the required RPG-style color control codes.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed032-0000-7000-8000-000000000101",
+            "label": "script/prologue#line-001"
+          },
+          "expectedValue": "Bring me the \\C[2]Aether Core\\C[0].",
+          "observedValue": "Bring me the Aether Core.",
+          "provenanceIds": ["019ed032-0000-7000-8000-000000004001"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed032-0000-7000-8000-000000004001",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed032-0000-7000-8000-000000005001",
+          "taskId": "019ed032-0000-7000-8000-000000006001",
+          "provider": "fixture-oracle",
+          "model": "deterministic-rule",
+          "outputHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "promptHash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      ],
+      "seededDefectId": "seed-lost-markup-001",
+      "reviewerRationale": "Confirmed against the seeded oracle; protected control codes are missing."
+    },
+    {
+      "findingId": "019ed032-0000-7000-8000-000000002002",
+      "systemId": "seeded-target",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "llm_qa",
+      "category": "tone_register",
+      "qualitySubcategory": "speaker_voice_drift",
+      "qualitySeverity": "major",
+      "rootCause": "benchmark_seed",
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000102",
+          "label": "script/prologue#line-002"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed032-0000-7000-8000-000000003002",
+          "evidenceKind": "text_excerpt",
+          "summary": "Seeded target changes the addressed speaker from Mika to Ren.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed032-0000-7000-8000-000000000102",
+            "label": "script/prologue#line-002"
+          },
+          "expectedValue": "Mika, close the gate.",
+          "observedValue": "Ren, close the gate.",
+          "provenanceIds": ["019ed032-0000-7000-8000-000000004002"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed032-0000-7000-8000-000000004002",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed032-0000-7000-8000-000000005002",
+          "taskId": "019ed032-0000-7000-8000-000000006002",
+          "provider": "recorded-seeded-qa",
+          "model": "seeded-qa-model-v1",
+          "outputHash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+          "promptHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "seededDefectId": "seed-wrong-speaker-001",
+      "reviewerRationale": "Confirmed against the seeded oracle; speaker reference changes the line context."
+    },
+    {
+      "findingId": "019ed032-0000-7000-8000-000000002003",
+      "systemId": "seeded-target",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "deterministic_qa",
+      "category": "style",
+      "qualitySubcategory": "style_guide_violation",
+      "qualitySeverity": "major",
+      "rootCause": "benchmark_seed",
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000103",
+          "label": "ui/tutorial#confirm"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed032-0000-7000-8000-000000003003",
+          "evidenceKind": "text_excerpt",
+          "summary": "Seeded target violates the modern direct UI style rule.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed032-0000-7000-8000-000000000103",
+            "label": "ui/tutorial#confirm"
+          },
+          "expectedValue": "Confirm",
+          "observedValue": "Verily confirm, traveler",
+          "provenanceIds": ["019ed032-0000-7000-8000-000000004003"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed032-0000-7000-8000-000000004003",
+          "provenanceKind": "style_guide",
+          "styleGuideId": "019ed032-0000-7000-8000-000000004103",
+          "styleGuideVersionId": "019ed032-0000-7000-8000-000000004203",
+          "ruleId": "en-US.voice.no-archaic-player-address",
+          "rulePath": "styleGuide.rules[0]"
+        }
+      ],
+      "seededDefectId": "seed-style-001",
+      "reviewerRationale": "Confirmed against the seeded oracle; the UI string uses archaic wording."
+    },
+    {
+      "findingId": "019ed032-0000-7000-8000-000000002004",
+      "systemId": "seeded-target",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "deterministic_qa",
+      "category": "terminology",
+      "qualitySubcategory": "glossary_violation",
+      "qualitySeverity": "major",
+      "rootCause": "benchmark_seed",
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000104",
+          "label": "items/aether-core#name"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed032-0000-7000-8000-000000003004",
+          "evidenceKind": "text_excerpt",
+          "summary": "Seeded target uses a disallowed glossary variant.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed032-0000-7000-8000-000000000104",
+            "label": "items/aether-core#name"
+          },
+          "expectedValue": "Aether Core",
+          "observedValue": "Ether Core",
+          "provenanceIds": ["019ed032-0000-7000-8000-000000004004"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed032-0000-7000-8000-000000004004",
+          "provenanceKind": "deterministic_check",
+          "checkId": "019ed032-0000-7000-8000-000000004104",
+          "checkName": "glossary-required-term",
+          "checkVersion": "0.1.0"
+        }
+      ],
+      "seededDefectId": "seed-glossary-001",
+      "reviewerRationale": "Confirmed against the seeded oracle; the target violates the required term."
+    },
+    {
+      "findingId": "019ed032-0000-7000-8000-000000002005",
+      "systemId": "seeded-target",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "llm_qa",
+      "category": "accuracy",
+      "qualitySubcategory": "choice_semantics_shift",
+      "qualitySeverity": "critical",
+      "rootCause": "benchmark_seed",
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000105",
+          "label": "choices/bridge#line-001"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed032-0000-7000-8000-000000003005",
+          "evidenceKind": "text_excerpt",
+          "summary": "Seeded target changes the choice action from crossing to waiting.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed032-0000-7000-8000-000000000105",
+            "label": "choices/bridge#line-001"
+          },
+          "expectedValue": "Cross the bridge",
+          "observedValue": "Wait by the bridge",
+          "provenanceIds": ["019ed032-0000-7000-8000-000000004005"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed032-0000-7000-8000-000000004005",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed032-0000-7000-8000-000000005005",
+          "taskId": "019ed032-0000-7000-8000-000000006005",
+          "provider": "recorded-seeded-qa",
+          "model": "seeded-qa-model-v1",
+          "outputHash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+          "promptHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "seededDefectId": "seed-meaning-shift-001",
+      "reviewerRationale": "Confirmed against the seeded oracle; the player choice semantics are inverted."
+    },
+    {
+      "findingId": "019ed032-0000-7000-8000-000000002006",
+      "systemId": "seeded-target",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "llm_qa",
+      "category": "style",
+      "qualitySubcategory": "unidiomatic",
+      "qualitySeverity": "minor",
+      "rootCause": "benchmark_seed",
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000106",
+          "label": "script/prologue#line-006"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed032-0000-7000-8000-000000003006",
+          "evidenceKind": "text_excerpt",
+          "summary": "Seeded target preserves source word order too literally for natural English.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed032-0000-7000-8000-000000000106",
+            "label": "script/prologue#line-006"
+          },
+          "expectedValue": "It's windy today.",
+          "observedValue": "Today, the wind is strong, isn't it.",
+          "provenanceIds": ["019ed032-0000-7000-8000-000000004006"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed032-0000-7000-8000-000000004006",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed032-0000-7000-8000-000000005006",
+          "taskId": "019ed032-0000-7000-8000-000000006006",
+          "provider": "recorded-seeded-qa",
+          "model": "seeded-qa-model-v1",
+          "outputHash": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+          "promptHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "seededDefectId": "seed-over-literal-001",
+      "reviewerRationale": "Confirmed against the seeded oracle; this is the over-literal MTL calibration line."
+    },
+    {
+      "findingId": "019ed032-0000-7000-8000-000000002007",
+      "systemId": "seeded-target",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "deterministic_qa",
+      "category": "layout",
+      "qualitySubcategory": "overflow_or_truncation",
+      "qualitySeverity": "major",
+      "rootCause": "benchmark_seed",
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000103",
+          "label": "ui/tutorial#confirm"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed032-0000-7000-8000-000000003007",
+          "evidenceKind": "text_excerpt",
+          "summary": "Seeded target exceeds the confirm button line-length budget.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed032-0000-7000-8000-000000000103",
+            "label": "ui/tutorial#confirm"
+          },
+          "expectedValue": "maxUtf16CodeUnits=14",
+          "observedValue": "Verily confirm, traveler",
+          "provenanceIds": ["019ed032-0000-7000-8000-000000004007"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed032-0000-7000-8000-000000004007",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed032-0000-7000-8000-000000005007",
+          "taskId": "019ed032-0000-7000-8000-000000006007",
+          "provider": "fixture-oracle",
+          "model": "deterministic-rule",
+          "outputHash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+          "promptHash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      ],
+      "seededDefectId": "seed-overflow-001",
+      "reviewerRationale": "Confirmed against the seeded oracle; text exceeds the declared UI slot budget."
+    },
+    {
+      "findingId": "019ed032-0000-7000-8000-000000002008",
+      "systemId": "seeded-target",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "runtime_probe",
+      "category": "layout",
+      "qualitySubcategory": "overflow_or_truncation",
+      "qualitySeverity": "major",
+      "rootCause": "benchmark_seed",
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000107",
+          "label": "ui/status#buff"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed032-0000-7000-8000-000000003008",
+          "evidenceKind": "text_excerpt",
+          "summary": "Seeded target exceeds the compact status label budget.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed032-0000-7000-8000-000000000107",
+            "label": "ui/status#buff"
+          },
+          "expectedValue": "maxUtf16CodeUnits=12",
+          "observedValue": "Defense increased for the next encounter",
+          "provenanceIds": ["019ed032-0000-7000-8000-000000004008"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed032-0000-7000-8000-000000004008",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed032-0000-7000-8000-000000005008",
+          "taskId": "019ed032-0000-7000-8000-000000006008",
+          "provider": "fixture-runtime-probe",
+          "model": "deterministic-runtime-slot-check",
+          "outputHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "promptHash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+        }
+      ],
+      "seededDefectId": "seed-overflow-002",
+      "reviewerRationale": "Confirmed against the seeded oracle; text exceeds the declared UI slot budget."
+    },
+    {
+      "findingId": "019ed032-0000-7000-8000-000000002009",
+      "systemId": "seeded-target",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "deterministic_qa",
+      "category": "accuracy",
+      "qualitySubcategory": "omission",
+      "qualitySeverity": "neutral",
+      "rootCause": "deterministic_qa_rule_error",
+      "adjudicationState": "rejected_false_positive",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000108",
+          "label": "ui/system#save"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed032-0000-7000-8000-000000003009",
+          "evidenceKind": "text_excerpt",
+          "summary": "Calibration case for a short UI label that should not be flagged as omission.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed032-0000-7000-8000-000000000108",
+            "label": "ui/system#save"
+          },
+          "expectedValue": "Save",
+          "observedValue": "Save",
+          "provenanceIds": ["019ed032-0000-7000-8000-000000004009"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed032-0000-7000-8000-000000004009",
+          "provenanceKind": "human_review",
+          "reviewerId": "019ed032-0000-7000-8000-000000007001",
+          "reviewSessionId": "019ed032-0000-7000-8000-000000007101",
+          "noteHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "reviewerRationale": "Rejected false positive; concise source and target labels are complete in UI context."
+    },
+    {
+      "findingId": "019ed032-0000-7000-8000-000000002010",
+      "systemId": "seeded-target",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "deterministic_qa",
+      "category": "terminology",
+      "qualitySubcategory": "inconsistent_term",
+      "qualitySeverity": "neutral",
+      "rootCause": "deterministic_qa_rule_error",
+      "adjudicationState": "intentional_or_accepted",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed032-0000-7000-8000-000000000109",
+          "label": "items/skybridge#name"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed032-0000-7000-8000-000000003010",
+          "evidenceKind": "text_excerpt",
+          "summary": "Calibration case for a closed compound glossary term that should not be split.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed032-0000-7000-8000-000000000109",
+            "label": "items/skybridge#name"
+          },
+          "expectedValue": "Skybridge",
+          "observedValue": "Skybridge",
+          "provenanceIds": ["019ed032-0000-7000-8000-000000004010"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed032-0000-7000-8000-000000004010",
+          "provenanceKind": "human_review",
+          "reviewerId": "019ed032-0000-7000-8000-000000007001",
+          "reviewSessionId": "019ed032-0000-7000-8000-000000007101",
+          "noteHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        }
+      ],
+      "reviewerRationale": "Accepted as intentional; the glossary requires the closed compound."
+    }
+  ],
+  "countsByQualitySeverity": [
+    {
+      "bucket": "critical",
+      "count": 2
+    },
+    {
+      "bucket": "major",
+      "count": 5
+    },
+    {
+      "bucket": "minor",
+      "count": 1
+    },
+    {
+      "bucket": "neutral",
+      "count": 2
+    }
+  ],
+  "countsByCategory": [
+    {
+      "bucket": "accuracy",
+      "count": 2
+    },
+    {
+      "bucket": "terminology",
+      "count": 2
+    },
+    {
+      "bucket": "style",
+      "count": 2
+    },
+    {
+      "bucket": "tone_register",
+      "count": 1
+    },
+    {
+      "bucket": "protected_content",
+      "count": 1
+    },
+    {
+      "bucket": "layout",
+      "count": 2
+    }
+  ],
+  "countsByRootCause": [
+    {
+      "bucket": "benchmark_seed",
+      "count": 8
+    },
+    {
+      "bucket": "deterministic_qa_rule_error",
+      "count": 2
+    }
+  ],
+  "countsByDetectorKind": [
+    {
+      "bucket": "deterministic_qa",
+      "count": 6
+    },
+    {
+      "bucket": "llm_qa",
+      "count": 3
+    },
+    {
+      "bucket": "runtime_probe",
+      "count": 1
+    }
+  ],
+  "countsByAdjudicationState": [
+    {
+      "bucket": "confirmed",
+      "count": 8
+    },
+    {
+      "bucket": "rejected_false_positive",
+      "count": 1
+    },
+    {
+      "bucket": "intentional_or_accepted",
+      "count": 1
+    }
+  ],
+  "penaltySummary": {
+    "penaltyTotal": 76,
+    "penaltyPerThousandSourceChars": 1134.33,
+    "penaltyPerHundredSourceUnits": 844.44
+  },
+  "deterministicQaResults": [
+    {
+      "deterministicQaRunId": "019ed032-0000-7000-8000-000000008001",
+      "evaluatedSystemId": "seeded-target",
+      "checkName": "seeded-defect-oracle",
+      "checkVersion": "0.1.0",
+      "startedAt": "2026-06-17T16:00:30.000Z",
+      "completedAt": "2026-06-17T16:00:30.100Z",
+      "ruleCount": 10,
+      "passedRuleCount": 0,
+      "failedRuleCount": 10,
+      "findingIds": [
+        "019ed032-0000-7000-8000-000000002001",
+        "019ed032-0000-7000-8000-000000002003",
+        "019ed032-0000-7000-8000-000000002004",
+        "019ed032-0000-7000-8000-000000002007",
+        "019ed032-0000-7000-8000-000000002009",
+        "019ed032-0000-7000-8000-000000002010"
+      ],
+      "artifactRefs": [
+        {
+          "artifactId": "019ed032-0000-7000-8000-000000008101",
+          "artifactKind": "seeded-defect-oracle",
+          "uri": "fixtures/seeded-localization-defects/seeded-defect-oracle-v0.1.json",
+          "hash": "sha256:2d0cde5f773b62f9908121603d84e58577765a189046ba461fa6df56f3a838b7",
+          "mediaType": "application/json"
+        }
+      ]
+    }
+  ],
+  "qaAgentEvaluations": [
+    {
+      "qaAgentEvaluationId": "019ed032-0000-7000-8000-000000009001",
+      "qaAgentId": "seeded-localization-defect-qa-agent",
+      "qaAgentVersion": "0.1.0",
+      "evaluatedSystemId": "seeded-target",
+      "providerRunIds": ["019ed032-0000-7000-8000-000000001201"],
+      "findingIds": [
+        "019ed032-0000-7000-8000-000000002002",
+        "019ed032-0000-7000-8000-000000002005",
+        "019ed032-0000-7000-8000-000000002006"
+      ],
+      "metrics": {
+        "seededRecall": 1,
+        "seededPrecision": 0.8,
+        "f1": 0.89,
+        "categoryAccuracy": 1,
+        "qualitySeverityAccuracy": 1,
+        "rootCauseAccuracy": 1,
+        "criticalRecall": 1,
+        "unscorableRate": 0,
+        "humanConfirmedPrecision": 0.8,
+        "findingsEmitted": 10,
+        "scorableFindings": 10,
+        "adjudicatedFindings": 10
+      },
+      "limitations": [
+        "Recorded QA-agent fixture demonstrates seeded-defect schema and oracle mapping only.",
+        "False-positive calibration cases are represented as neutral adjudicated findings, not product quality claims."
+      ]
+    }
+  ],
+  "humanEvaluationResults": [
+    {
+      "humanEvaluationId": "019ed032-0000-7000-8000-000000010001",
+      "reviewSessionId": "019ed032-0000-7000-8000-000000007101",
+      "evaluatedSystemIds": ["seeded-target"],
+      "reviewerCount": 1,
+      "sampleUnitCount": 9,
+      "sampleSourceCharacterCount": 67,
+      "blindReview": false,
+      "adjudicatedFindingIds": [
+        "019ed032-0000-7000-8000-000000002001",
+        "019ed032-0000-7000-8000-000000002002",
+        "019ed032-0000-7000-8000-000000002003",
+        "019ed032-0000-7000-8000-000000002004",
+        "019ed032-0000-7000-8000-000000002005",
+        "019ed032-0000-7000-8000-000000002006",
+        "019ed032-0000-7000-8000-000000002007",
+        "019ed032-0000-7000-8000-000000002008",
+        "019ed032-0000-7000-8000-000000002009",
+        "019ed032-0000-7000-8000-000000002010"
+      ],
+      "reviewerAgreementNotes": "Single-reviewer seeded fixture review; no inter-reviewer agreement claim."
+    }
+  ],
+  "knownBlindSpots": [
+    "Synthetic lines are intentionally small and public; they do not prove quality on private or full-game corpora.",
+    "Wrong-speaker coverage is represented through tone/register context rather than engine speaker-binding mutation.",
+    "Over-literal MTL coverage is evaluated as style/unidiomatic because the taxonomy does not define a separate over-literal category."
+  ]
+}

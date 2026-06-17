@@ -380,6 +380,15 @@
       "description": "Break an explicit style-guide rule."
     },
     {
+      "id": "over_literal_mtl",
+      "category": "style",
+      "subcategory": "unidiomatic",
+      "defaultQualitySeverity": "minor",
+      "expectedDetectorKinds": ["llm_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Preserve source word order or phrasing too literally for natural target-language text."
+    },
+    {
       "id": "speaker_voice_drift",
       "category": "tone_register",
       "subcategory": "speaker_voice_drift",

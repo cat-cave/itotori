@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "seeded-defect-false-positives-0.1.0",
+  "fixtureId": "seeded-localization-defects",
+  "taxonomyId": "itotori-lqa-1",
+  "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+  "cases": [
+    {
+      "falsePositiveCaseId": "fp-short-label-001",
+      "affectedBridgeUnitId": "019ed032-0000-7000-8000-000000000108",
+      "detectorKind": "deterministic_qa",
+      "candidateCategory": "accuracy",
+      "candidateQualitySubcategory": "omission",
+      "adjudicationState": "rejected_false_positive",
+      "qualitySeverity": "neutral",
+      "expectedReviewerRationale": "The Japanese UI label is intentionally concise and the target 'Save' is complete in context."
+    },
+    {
+      "falsePositiveCaseId": "fp-compound-term-001",
+      "affectedBridgeUnitId": "019ed032-0000-7000-8000-000000000109",
+      "detectorKind": "deterministic_qa",
+      "candidateCategory": "terminology",
+      "candidateQualitySubcategory": "inconsistent_term",
+      "adjudicationState": "intentional_or_accepted",
+      "qualitySeverity": "neutral",
+      "expectedReviewerRationale": "The glossary requires the closed compound 'Skybridge'; splitting it as 'Sky Bridge' would be the defect."
+    }
+  ]
+}

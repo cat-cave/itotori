@@ -1,0 +1,150 @@
+{
+  "schemaVersion": "seeded-localization-defects-source-0.1.0",
+  "fixtureId": "seeded-localization-defects",
+  "title": "Seeded Localization Defects",
+  "engineId": "synthetic-json",
+  "sourceLocale": "ja-JP",
+  "targetLocale": "en-US",
+  "license": "CC0-1.0",
+  "styleGuide": {
+    "styleGuideId": "seed-style-en-US-001",
+    "rules": [
+      {
+        "ruleId": "en-US.voice.no-archaic-player-address",
+        "summary": "Player-facing tutorial and menu text must use modern, direct English rather than archaic phrasing."
+      },
+      {
+        "ruleId": "en-US.dialogue.keep-speaker-voice",
+        "summary": "Ren is terse and technical; Mika is warm and informal. Do not swap their voice or speaker attribution."
+      }
+    ]
+  },
+  "glossary": [
+    {
+      "termId": "glossary-aether-core",
+      "source": "エーテルコア",
+      "requiredTarget": "Aether Core",
+      "disallowedTargets": ["Ether Core", "Aether Crystal"]
+    },
+    {
+      "termId": "glossary-skybridge",
+      "source": "空橋",
+      "requiredTarget": "Skybridge",
+      "disallowedTargets": ["Sky Bridge", "Aerial Bridge"]
+    }
+  ],
+  "units": [
+    {
+      "bridgeUnitId": "019ed032-0000-7000-8000-000000000101",
+      "sourceUnitKey": "script/prologue#line-001",
+      "surfaceKind": "dialogue",
+      "speaker": "Ren",
+      "sourceText": "\\C[2]エーテルコア\\C[0]を持ってきてくれ。",
+      "referenceTarget": "Bring me the \\C[2]Aether Core\\C[0].",
+      "seededTarget": "Bring me the Aether Core.",
+      "protectedSpans": [
+        {
+          "spanId": "span-color-open-001",
+          "kind": "control_code",
+          "raw": "\\C[2]"
+        },
+        {
+          "spanId": "span-color-close-001",
+          "kind": "control_code",
+          "raw": "\\C[0]"
+        }
+      ],
+      "seededDefectIds": ["seed-lost-markup-001"]
+    },
+    {
+      "bridgeUnitId": "019ed032-0000-7000-8000-000000000102",
+      "sourceUnitKey": "script/prologue#line-002",
+      "surfaceKind": "dialogue",
+      "speaker": "Ren",
+      "sourceText": "ミカ、ゲートを閉じろ。",
+      "referenceTarget": "Mika, close the gate.",
+      "seededTarget": "Ren, close the gate.",
+      "seededDefectIds": ["seed-wrong-speaker-001"]
+    },
+    {
+      "bridgeUnitId": "019ed032-0000-7000-8000-000000000103",
+      "sourceUnitKey": "ui/tutorial#confirm",
+      "surfaceKind": "ui_label",
+      "speaker": null,
+      "sourceText": "確認",
+      "referenceTarget": "Confirm",
+      "seededTarget": "Verily confirm, traveler",
+      "layoutConstraint": {
+        "slotId": "confirm-button",
+        "maxUtf16CodeUnits": 14
+      },
+      "seededDefectIds": ["seed-style-001", "seed-overflow-001"]
+    },
+    {
+      "bridgeUnitId": "019ed032-0000-7000-8000-000000000104",
+      "sourceUnitKey": "items/aether-core#name",
+      "surfaceKind": "database_term",
+      "speaker": null,
+      "sourceText": "エーテルコア",
+      "referenceTarget": "Aether Core",
+      "seededTarget": "Ether Core",
+      "seededDefectIds": ["seed-glossary-001"]
+    },
+    {
+      "bridgeUnitId": "019ed032-0000-7000-8000-000000000105",
+      "sourceUnitKey": "choices/bridge#line-001",
+      "surfaceKind": "choice",
+      "speaker": null,
+      "sourceText": "橋を渡る",
+      "referenceTarget": "Cross the bridge",
+      "seededTarget": "Wait by the bridge",
+      "seededDefectIds": ["seed-meaning-shift-001"]
+    },
+    {
+      "bridgeUnitId": "019ed032-0000-7000-8000-000000000106",
+      "sourceUnitKey": "script/prologue#line-006",
+      "surfaceKind": "dialogue",
+      "speaker": "Mika",
+      "sourceText": "今日は風が強いね。",
+      "referenceTarget": "It's windy today.",
+      "seededTarget": "Today, the wind is strong, isn't it.",
+      "seededDefectIds": ["seed-over-literal-001"]
+    },
+    {
+      "bridgeUnitId": "019ed032-0000-7000-8000-000000000107",
+      "sourceUnitKey": "ui/status#buff",
+      "surfaceKind": "ui_label",
+      "speaker": null,
+      "sourceText": "防御アップ",
+      "referenceTarget": "DEF Up",
+      "seededTarget": "Defense increased for the next encounter",
+      "layoutConstraint": {
+        "slotId": "status-buff-small",
+        "maxUtf16CodeUnits": 12
+      },
+      "seededDefectIds": ["seed-overflow-002"]
+    },
+    {
+      "bridgeUnitId": "019ed032-0000-7000-8000-000000000108",
+      "sourceUnitKey": "ui/system#save",
+      "surfaceKind": "ui_label",
+      "speaker": null,
+      "sourceText": "セーブ",
+      "referenceTarget": "Save",
+      "seededTarget": "Save",
+      "seededDefectIds": [],
+      "falsePositiveCaseIds": ["fp-short-label-001"]
+    },
+    {
+      "bridgeUnitId": "019ed032-0000-7000-8000-000000000109",
+      "sourceUnitKey": "items/skybridge#name",
+      "surfaceKind": "database_term",
+      "speaker": null,
+      "sourceText": "空橋",
+      "referenceTarget": "Skybridge",
+      "seededTarget": "Skybridge",
+      "seededDefectIds": [],
+      "falsePositiveCaseIds": ["fp-compound-term-001"]
+    }
+  ]
+}

@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "seeded-defect-coverage-matrix-0.1.0",
+  "fixtureId": "seeded-localization-defects",
+  "taxonomyId": "itotori-lqa-1",
+  "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+  "coverage": [
+    {
+      "acceptanceCase": "lost markup",
+      "seededDefectIds": ["seed-lost-markup-001"],
+      "category": "protected_content",
+      "qualitySubcategory": "control_code_corrupted",
+      "primaryExpectedDetectorKind": "deterministic_qa"
+    },
+    {
+      "acceptanceCase": "wrong speaker",
+      "seededDefectIds": ["seed-wrong-speaker-001"],
+      "category": "tone_register",
+      "qualitySubcategory": "speaker_voice_drift",
+      "primaryExpectedDetectorKind": "llm_qa"
+    },
+    {
+      "acceptanceCase": "style violation",
+      "seededDefectIds": ["seed-style-001"],
+      "category": "style",
+      "qualitySubcategory": "style_guide_violation",
+      "primaryExpectedDetectorKind": "deterministic_qa"
+    },
+    {
+      "acceptanceCase": "glossary drift",
+      "seededDefectIds": ["seed-glossary-001"],
+      "category": "terminology",
+      "qualitySubcategory": "glossary_violation",
+      "primaryExpectedDetectorKind": "deterministic_qa"
+    },
+    {
+      "acceptanceCase": "semantic mistranslation",
+      "seededDefectIds": ["seed-meaning-shift-001"],
+      "category": "accuracy",
+      "qualitySubcategory": "choice_semantics_shift",
+      "primaryExpectedDetectorKind": "llm_qa"
+    },
+    {
+      "acceptanceCase": "over-literal MTL",
+      "seededDefectIds": ["seed-over-literal-001"],
+      "category": "style",
+      "qualitySubcategory": "unidiomatic",
+      "primaryExpectedDetectorKind": "llm_qa"
+    },
+    {
+      "acceptanceCase": "line length/UI overflow",
+      "seededDefectIds": ["seed-overflow-001", "seed-overflow-002"],
+      "category": "layout",
+      "qualitySubcategory": "overflow_or_truncation",
+      "primaryExpectedDetectorKind": "deterministic_qa"
+    },
+    {
+      "acceptanceCase": "short-label false-positive QA case",
+      "falsePositiveCaseIds": ["fp-short-label-001"],
+      "category": "accuracy",
+      "qualitySubcategory": "omission",
+      "primaryExpectedDetectorKind": "deterministic_qa"
+    },
+    {
+      "acceptanceCase": "compound-term false-positive QA case",
+      "falsePositiveCaseIds": ["fp-compound-term-001"],
+      "category": "terminology",
+      "qualitySubcategory": "inconsistent_term",
+      "primaryExpectedDetectorKind": "deterministic_qa"
+    }
+  ],
+  "summary": {
+    "seededDefectCount": 8,
+    "falsePositiveCaseCount": 2,
+    "taxonomyCategoriesCovered": [
+      "accuracy",
+      "terminology",
+      "style",
+      "tone_register",
+      "protected_content",
+      "layout"
+    ],
+    "detectorKindsCovered": [
+      "deterministic_qa",
+      "llm_qa",
+      "runtime_probe",
+      "patch_verify",
+      "human_review"
+    ]
+  }
+}

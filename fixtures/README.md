@@ -5,6 +5,9 @@ private corpora.
 
 - `hello-game/` is the existing synthetic public fixture used by the hello-world
   workflow.
+- `seeded-localization-defects/` is the synthetic public localization QA corpus
+  used for seeded defect recall, expected findings, false-positive calibration,
+  and taxonomy coverage review.
 - `public/` contains fixture manifests, the public manifest schema, and the
   manifest validator.
 - `private-local/` is ignored by git and reserved for purchased games, licensed

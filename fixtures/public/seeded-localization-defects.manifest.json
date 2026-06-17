@@ -1,0 +1,71 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "seeded-localization-defects",
+    "title": "Seeded Localization Defects",
+    "kind": "synthetic",
+    "summary": "Synthetic public localization QA corpus with oracle-backed seeded defects, false-positive calibration cases, and defect coverage matrix for expected benchmark findings.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["en-US"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Synthetic fixture text, expected findings, and QA metadata authored for repository tests; no third-party raw assets."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored seeded localization QA corpus for deterministic QA, QA-agent, triage, and benchmark calibration.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/seeded-localization-defects/source.json",
+      "role": "source-game",
+      "mediaType": "application/json",
+      "sha256": "ba8bc93d8bd5253d3169fa83dadf1cf3ed36a3a155a75fd4645ce22d44342bd3",
+      "bytes": 4995,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/seeded-localization-defects/seeded-defect-oracle-v0.1.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "2d0cde5f773b62f9908121603d84e58577765a189046ba461fa6df56f3a838b7",
+      "bytes": 4773,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/seeded-localization-defects/false-positive-cases-v0.1.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "9bad75906617480fae01ee64af2d9e280ffd6a8098dbc3fa0691442e6019fd65",
+      "bytes": 1206,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/seeded-localization-defects/defect-coverage-matrix-v0.1.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "c58fa45e006f5c857de042049f2dde9f289078f68a87721d618f72ac64a7a12d",
+      "bytes": 2840,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 4,
+    "textUnits": 9,
+    "sourceTextUtf16CodeUnits": 67,
+    "protectedSpans": 2,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["en-US"],
+    "engineKinds": ["synthetic-json"],
+    "notes": "Fixture covers lost markup, wrong speaker, style violation, glossary drift, semantic mistranslation, over-literal MTL, line length/UI overflow, and false-positive QA calibration cases. Expected findings use itotori-lqa-1 taxonomy categories, quality severities, root causes, detector kinds, and adjudication states."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:seeded-localization-defects"
+  }
+}

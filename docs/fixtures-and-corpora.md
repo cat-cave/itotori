@@ -38,6 +38,14 @@ The `fixtures/hello-game/source.json` fixture is synthetic and is described by
 `fixtures/public/hello-game.manifest.json`. Its expected bridge snapshots,
 patch export, patch result, delta metadata, runtime report, benchmark report,
 standalone finding, and surface coverage matrix live beside the source fixture.
+The `fixtures/seeded-localization-defects/` fixture is synthetic and is
+described by `fixtures/public/seeded-localization-defects.manifest.json`. Its
+source fixture, seeded-defect oracle, false-positive calibration cases, and
+defect coverage matrix are listed in the public manifest. Its expected
+benchmark finding report lives beside the source fixture and cites the manifest
+hash for the input corpus. The expected findings map to `itotori-lqa-1`
+categories, quality severities, root causes, detector kinds, and adjudication
+states.
 Future public fixtures may place their raw files under
 `fixtures/public/<fixture-id>/` when that is the least surprising layout, but
 committed manifests should use repo-relative paths so tools can validate hashes
