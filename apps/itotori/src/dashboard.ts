@@ -1,40 +1,65 @@
-import type { HelloDashboardStatus } from "@itotori/db";
+import type { ProjectDashboardStatus } from "@itotori/db";
 
-export async function fetchHelloStatus(
-  endpoint = "/api/hello/status",
-): Promise<HelloDashboardStatus> {
+export async function fetchProjectStatus(
+  endpoint = "/api/projects/status",
+): Promise<ProjectDashboardStatus> {
   const url = endpoint.startsWith("http")
     ? endpoint
     : new URL(endpoint, window.location.href).toString();
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`failed to load hello status: ${response.status}`);
+    throw new Error(`failed to load project status: ${response.status}`);
   }
-  return (await response.json()) as HelloDashboardStatus;
+  return (await response.json()) as ProjectDashboardStatus;
 }
 
 export async function renderDashboard(
   root: HTMLElement,
-  endpoint = "/api/hello/status",
+  endpoint = "/api/projects/status",
 ): Promise<void> {
-  root.innerHTML = `<main><h1>Itotori</h1><p>Loading DB-backed hello-world status...</p></main>`;
+  root.innerHTML = `<main><h1>Itotori</h1><p>Loading project status...</p></main>`;
   try {
-    const status = await fetchHelloStatus(endpoint);
+    const status = await fetchProjectStatus(endpoint);
+    const branches = status.localeBranches
+      .map(
+        (branch) => `
+          <tr>
+            <td>${escapeHtml(branch.targetLocale)}</td>
+            <td>${escapeHtml(branch.status)}</td>
+            <td>${branch.translatedUnitCount}/${branch.unitCount}</td>
+            <td>${branch.openFindingCount}</td>
+            <td>${branch.artifactCount}</td>
+          </tr>
+        `,
+      )
+      .join("");
     root.innerHTML = `
-      <main style="font-family: system-ui; margin: 2rem; max-width: 880px">
+      <main style="font-family: system-ui; margin: 2rem; max-width: 960px">
         <h1>Itotori</h1>
-        <p>Agentic localization workbench hello world.</p>
-        <section aria-label="Hello status">
-          <h2>${escapeHtml(status.finalStatus)}</h2>
+        <section aria-label="Project status">
+          <h2>${escapeHtml(status.name)}</h2>
           <dl>
             <dt>Project</dt><dd>${escapeHtml(status.projectId)}</dd>
-            <dt>Locale</dt><dd>${escapeHtml(status.sourceLocale)} -> ${escapeHtml(status.targetLocale)}</dd>
-            <dt>Units</dt><dd>${status.translatedUnitCount}/${status.unitCount} translated</dd>
-            <dt>Patch export</dt><dd>${escapeHtml(status.patchExportId ?? "missing")}</dd>
-            <dt>Runtime report</dt><dd>${escapeHtml(status.runtimeReportId ?? "missing")}</dd>
-            <dt>Runtime</dt><dd>${escapeHtml(status.runtimeStatus ?? "missing")} (${escapeHtml(status.fidelityTier ?? "unknown")})</dd>
-            <dt>Evidence</dt><dd>${status.textEventCount} text event(s), ${status.frameCaptureCount} frame capture(s)</dd>
+            <dt>Status</dt><dd>${escapeHtml(status.status)}</dd>
+            <dt>Source</dt><dd>${escapeHtml(status.sourceLocale)} ${escapeHtml(status.sourceBundleHash)}</dd>
+            <dt>Revision</dt><dd>${escapeHtml(status.sourceBundleRevisionId)}</dd>
+            <dt>Units</dt><dd>${status.unitCount}</dd>
+            <dt>Findings</dt><dd>${status.findingCount}</dd>
+            <dt>Artifacts</dt><dd>${status.artifactCount}</dd>
+            <dt>Latest event</dt><dd>${escapeHtml(status.latestEventKind ?? "none")}</dd>
           </dl>
+          <table>
+            <thead>
+              <tr>
+                <th>Locale</th>
+                <th>Status</th>
+                <th>Translated</th>
+                <th>Open findings</th>
+                <th>Artifacts</th>
+              </tr>
+            </thead>
+            <tbody>${branches}</tbody>
+          </table>
         </section>
       </main>
     `;
@@ -42,7 +67,7 @@ export async function renderDashboard(
     root.innerHTML = `
       <main style="font-family: system-ui; margin: 2rem; max-width: 880px">
         <h1>Itotori</h1>
-        <p role="alert">Dashboard could not load DB-backed hello-world status.</p>
+        <p role="alert">Dashboard could not load DB-backed project status.</p>
         <pre>${escapeHtml(error instanceof Error ? error.message : String(error))}</pre>
       </main>
     `;

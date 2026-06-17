@@ -5,22 +5,33 @@ import { setupServer } from "msw/node";
 import { renderDashboard } from "../src/dashboard.js";
 
 const server = setupServer(
-  http.get("http://itotori.test/api/hello/status", () =>
+  http.get("http://itotori.test/api/projects/status", () =>
     HttpResponse.json({
       projectId: "project-1",
-      bridgeId: "bridge-1",
-      localeBranchId: "locale-1",
+      projectKey: "project-1",
+      name: "project-1",
+      status: "runtime_ingested",
+      sourceBundleId: "bridge-1",
+      sourceBundleHash: "hash-1",
+      sourceBundleRevisionId: "revision-1",
       sourceLocale: "ja-JP",
-      targetLocale: "en-US",
-      finalStatus: "hello_world_passed",
+      branchCount: 1,
       unitCount: 1,
-      translatedUnitCount: 1,
-      patchExportId: "patch-1",
-      runtimeReportId: "runtime-1",
-      runtimeStatus: "passed",
-      fidelityTier: "layout_probe",
-      textEventCount: 1,
-      frameCaptureCount: 1,
+      findingCount: 0,
+      artifactCount: 3,
+      latestEventKind: "patch_result_recorded",
+      latestEventAt: "2026-06-17T00:00:00.000Z",
+      localeBranches: [
+        {
+          localeBranchId: "locale-1",
+          targetLocale: "en-US",
+          status: "active",
+          unitCount: 1,
+          translatedUnitCount: 1,
+          openFindingCount: 0,
+          artifactCount: 3,
+        },
+      ],
     }),
   ),
 );
@@ -30,15 +41,15 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 describe("Itotori dashboard", () => {
-  it("renders DB-backed hello-world status from the API", async () => {
+  it("renders DB-backed project status from the API", async () => {
     const root = document.createElement("div");
     document.body.append(root);
 
-    await renderDashboard(root, "http://itotori.test/api/hello/status");
+    await renderDashboard(root, "http://itotori.test/api/projects/status");
 
-    expect(root.textContent).toContain("hello_world_passed");
-    expect(root.textContent).toContain("ja-JP -> en-US");
-    expect(root.textContent).toContain("1/1 translated");
-    expect(root.textContent).toContain("runtime-1");
+    expect(root.textContent).toContain("runtime_ingested");
+    expect(root.textContent).toContain("en-US");
+    expect(root.textContent).toContain("1/1");
+    expect(root.textContent).toContain("patch_result_recorded");
   });
 });

@@ -59,6 +59,10 @@ const migrations = [
     id: "0002_permissions",
     file: "0002_permissions.sql",
   },
+  {
+    id: "0003_persistence_v02",
+    file: "0003_persistence_v02.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

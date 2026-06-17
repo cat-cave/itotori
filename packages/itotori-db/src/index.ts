@@ -11,5 +11,18 @@ export {
 } from "./authorization.js";
 export type { AuthorizationActor, Permission } from "./authorization.js";
 export { migrate } from "./migrations.js";
-export { HelloWorldRepository } from "./repositories/hello-world-repository.js";
-export type { HelloDashboardStatus, ProjectRecord } from "./repositories/hello-world-repository.js";
+export {
+  defaultWorkspaceId,
+  defaultWorkspaceName,
+  ItotoriProjectRepository,
+} from "./repositories/project-repository.js";
+export type {
+  ArtifactInput,
+  EventInput,
+  FindingInput,
+  ItotoriProjectRecord,
+  ItotoriProjectRepositoryPort,
+  LocaleBranchStatus,
+  ProjectDashboardStatus,
+  RuntimeDashboardStatus,
+} from "./repositories/project-repository.js";
