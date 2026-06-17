@@ -150,6 +150,11 @@ to merge even if commands pass.
 
 ## Provider And Model Policy
 
+The detailed provider boundary, secret handling, OpenRouter routing, local
+endpoint, prompt logging, structured-output fallback, and recorded-fixture rules
+are defined in [ADR 0002](adrs/0002-provider-routing-and-recording.md). This
+section is the operating summary for orchestrated work.
+
 Live agent experiments may use provider keys already loaded into the process
 environment by the user or invoking shell. Keys must never be committed,
 printed, pasted into logs, or exposed in audit output. Do not read, print,
@@ -184,8 +189,9 @@ opt-in and recorded as non-committed artifacts.
 
 Treat live model credit as scarce. For every live run, record provider, model,
 prompt preset, timestamp, token usage when available, estimated or billed cost,
-router settings, retry count, and the spec or experiment id that justified the
-run.
+router settings, OpenRouter account/workspace logging and privacy states when
+OpenRouter is used, retry count, and the spec or experiment id that justified
+the run.
 
 Use recorded fixtures, fake providers, and deterministic tests for normal CI.
 Do not require live keys for `just check`, `just ci`, unit tests, or routine
