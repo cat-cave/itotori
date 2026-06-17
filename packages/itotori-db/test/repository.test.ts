@@ -10,8 +10,6 @@ import {
   permissionValues,
   type AuthorizationActor,
 } from "../src/authorization.js";
-import { createDatabaseContext } from "../src/connection.js";
-import { migrate } from "../src/migrations.js";
 import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
@@ -32,6 +30,7 @@ import {
   feedbackSources,
   userPermissionGrants,
 } from "../src/schema.js";
+import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
@@ -1012,9 +1011,7 @@ describe("ItotoriProjectRepository", () => {
 });
 
 async function migratedContext() {
-  const databaseUrl = requiredDatabaseUrl();
-  await migrate(databaseUrl);
-  return createDatabaseContext(databaseUrl);
+  return isolatedMigratedContext();
 }
 
 function requiredDatabaseUrl(): string {

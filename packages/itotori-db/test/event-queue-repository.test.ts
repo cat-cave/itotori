@@ -1,8 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
-import { createDatabaseContext, type ItotoriDatabase } from "../src/connection.js";
-import { migrate } from "../src/migrations.js";
+import { type ItotoriDatabase } from "../src/connection.js";
 import {
   ItotoriEventQueueRepository,
   type JobQueueInput,
@@ -25,6 +24,7 @@ import {
   outboxStatusValues,
   userPermissionGrants,
 } from "../src/schema.js";
+import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
@@ -531,20 +531,11 @@ describe("ItotoriEventQueueRepository", () => {
 });
 
 async function migratedContext() {
-  const databaseUrl = requiredDatabaseUrl();
-  await migrate(databaseUrl);
-  return createDatabaseContext(databaseUrl);
+  return isolatedMigratedContext();
 }
 
 async function seedProject(db: ItotoriDatabase): Promise<void> {
   const repo = new ItotoriProjectRepository(db);
   await repo.reset(localActor);
   await repo.importSourceBundle(localActor, projectFixture());
-}
-
-function requiredDatabaseUrl(): string {
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL is required for DB-backed repository tests");
-  }
-  return process.env.DATABASE_URL;
 }

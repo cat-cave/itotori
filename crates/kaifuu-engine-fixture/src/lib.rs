@@ -1195,7 +1195,7 @@ pub fn registry() -> kaifuu_core::AdapterRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaifuu_core::{PatchExport, ProtectedSpanMapping};
+    use kaifuu_core::{PatchExport, ProtectedSpanMapping, stable_json};
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::PathBuf;
 
@@ -1426,10 +1426,7 @@ mod tests {
                 game_dir: &fixture_dir,
             })
             .unwrap();
-        let actual = format!(
-            "{}\n",
-            serde_json::to_string_pretty(&extraction.bridge).unwrap()
-        );
+        let actual = stable_json(&extraction.bridge).unwrap();
         let expected =
             fs::read_to_string(repo_root().join("fixtures/hello-game/expected/bridge-v0.1.json"))
                 .unwrap();

@@ -32,8 +32,8 @@
       "path": "fixtures/hello-game/expected/bridge-v0.1.json",
       "role": "bridge-bundle",
       "mediaType": "application/json",
-      "sha256": "4fcf8bbfb1a1f7ac1394a569f82d9dc39318ca68ffd425d96a3fc1b31af8dbdc",
-      "bytes": 6552,
+      "sha256": "97043e2f54ad6805af89dcfdbeaffe4033e2c82302ba8a7195e57f920ac4cd8f",
+      "bytes": 6528,
       "redistributable": true
     },
     {
