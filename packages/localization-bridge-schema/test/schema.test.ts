@@ -157,6 +157,27 @@ function asTestRecord(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function assetPolicyDecisionById(
+  assetPolicy: Record<string, unknown>,
+  decisionId: string,
+): Record<string, unknown> {
+  const decisions = assetPolicy.decisions as Array<Record<string, unknown>>;
+  const decision = decisions.find((candidate) => candidate.assetPolicyDecisionId === decisionId);
+  return asTestRecord(decision, `asset policy decision ${decisionId}`);
+}
+
+function assetPolicyAssetRevision(
+  assetPolicy: Record<string, unknown>,
+  assetId: string,
+): Record<string, unknown> {
+  const assets = assetPolicy.assets as Array<Record<string, unknown>>;
+  const asset = assets.find((candidate) => candidate.assetId === assetId);
+  return cloneRecord(asTestRecord(asset, `asset policy asset ${assetId}`).sourceRevision) as Record<
+    string,
+    unknown
+  >;
+}
+
 describe("localization bridge schema guards", () => {
   it("has explicit validation expectations for each top-level example fixture", () => {
     const expectedTopLevelFixtures = new Set([
@@ -387,6 +408,28 @@ describe("localization bridge schema guards", () => {
     );
   });
 
+  it("accepts textless non-font asset policy decisions without fake source text", () => {
+    const assetPolicy = assetPolicyV02Example();
+
+    expect(() => assertAssetPolicyBundleV02(assetPolicy)).not.toThrow();
+
+    const uiArtDecision = assetPolicyDecisionById(
+      assetPolicy,
+      "019ed004-0000-7000-8000-000000000307",
+    );
+    const videoDecision = assetPolicyDecisionById(
+      assetPolicy,
+      "019ed004-0000-7000-8000-000000000308",
+    );
+
+    expect(uiArtDecision.assetSurfaceKind).toBe("ui_art");
+    expect(uiArtDecision.textSourceKind).toBe("not_applicable");
+    expect(uiArtDecision.sourceText).toBeUndefined();
+    expect(videoDecision.assetSurfaceKind).toBe("video");
+    expect(videoDecision.textSourceKind).toBe("not_applicable");
+    expect(videoDecision.sourceText).toBeUndefined();
+  });
+
   it("rejects asset policies without locale-branch scope", () => {
     const assetPolicy = assetPolicyV02Example();
     const localeBranch = asTestRecord(assetPolicy.localeBranch, "asset policy locale branch");
@@ -424,6 +467,38 @@ describe("localization bridge schema guards", () => {
     uiArtDecision.textSourceKind = "ocr_complete";
 
     expect(() => assertAssetPolicyBundleV02(assetPolicy)).toThrow(/textSourceKind/);
+  });
+
+  it("rejects font substitution patch refs that point at non-font assets", () => {
+    const assetPolicy = assetPolicyV02Example();
+    const fontDecision = assetPolicyDecisionById(
+      assetPolicy,
+      "019ed004-0000-7000-8000-000000000304",
+    );
+    const patchRef = asTestRecord(fontDecision.patchRef, "font asset policy patch ref");
+    const imageAssetId = "019ed004-0000-7000-8000-000000000101";
+    patchRef.assetId = imageAssetId;
+    patchRef.sourceRevision = assetPolicyAssetRevision(assetPolicy, imageAssetId);
+
+    expect(() => assertAssetPolicyBundleV02(assetPolicy)).toThrow(
+      /patchRef\.assetId assetKind image.*font_substitution_required/,
+    );
+  });
+
+  it("rejects asset replacement patch refs outside the asset policy surface kind", () => {
+    const assetPolicy = assetPolicyV02Example();
+    const uiArtDecision = assetPolicyDecisionById(
+      assetPolicy,
+      "019ed004-0000-7000-8000-000000000307",
+    );
+    const patchRef = asTestRecord(uiArtDecision.patchRef, "textless ui art patch ref");
+    const audioAssetId = "019ed004-0000-7000-8000-000000000103";
+    patchRef.assetId = audioAssetId;
+    patchRef.sourceRevision = assetPolicyAssetRevision(assetPolicy, audioAssetId);
+
+    expect(() => assertAssetPolicyBundleV02(assetPolicy)).toThrow(
+      /patchRef\.assetId assetKind audio.*asset_replacement_required.*ui_art/,
+    );
   });
 
   it("accepts v0.2 patch exports with explicit source compatibility metadata", () => {

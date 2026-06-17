@@ -128,6 +128,13 @@ The current asset policy surfaces are:
 runtime expectation and must not be treated as OCR, image redraw, or video edit
 support.
 
+Textless `ui_art`, `font`, and `video` decisions use
+`textSourceKind: "not_applicable"` and may omit `sourceText`; text-bearing
+asset policy decisions still record their observed source text. `patchRef`
+targets must reference assets whose kind is compatible with the asset policy
+surface and patch mode, so a font substitution cannot be satisfied by an image,
+audio, or video asset reference.
+
 ## Surface Kinds
 
 | Surface Kind     | Localizable Payload                                                                                                           | Future Typed Fields                                                                                                                                | Default Policy And Notes                                                                                                                                                                                                                               |

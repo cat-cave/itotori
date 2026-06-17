@@ -57,12 +57,19 @@ of the observed text (`metadata`, `manual_transcription`, `ocr_hint`, or
 work: for example, `region_redraw_required` and `asset_replacement_required`
 are requirements, not completed edits.
 
+Textless `ui_art`, `font`, and `video` decisions use
+`textSourceKind: "not_applicable"` and may omit `sourceText`; text-bearing
+decisions still record the observed source text. When a decision includes a
+`patchRef`, the referenced asset kind must be compatible with both the asset
+policy surface and the patch mode, so font substitution cannot point at image,
+audio, or video patch assets.
+
 `metadata_only` is intentionally metadata-first. The guard requires
 `runtimeExpectation.expectationKind: "metadata_only"` for these records so they
 cannot imply visible OCR, image editing, video editing, or runtime screenshot
 validation. Image, UI art, and video policy can still be represented before the
-editing pipeline exists by recording the desired text, branch, and required
-patch mode.
+editing pipeline exists by recording the desired text when present, branch, and
+required patch mode.
 
 ## Runtime Evidence
 

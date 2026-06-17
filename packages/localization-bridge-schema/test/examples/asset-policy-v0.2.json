@@ -187,6 +187,53 @@
       }
     },
     {
+      "assetPolicyDecisionId": "019ed004-0000-7000-8000-000000000307",
+      "assetSurfaceKind": "ui_art",
+      "sourceAssetRef": {
+        "assetId": "019ed004-0000-7000-8000-000000000102",
+        "assetKey": "ui/title-logo"
+      },
+      "sourceLocation": {
+        "containerKey": "ui/title-logo",
+        "region": {
+          "x": 0,
+          "y": 0,
+          "width": 400,
+          "height": 140
+        }
+      },
+      "sourceHash": "sha256:0707070707070707070707070707070707070707070707070707070707070707",
+      "sourceRevision": {
+        "revisionId": "019ed004-0000-7000-8000-000000000202",
+        "revisionKind": "content_hash",
+        "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "policyAction": "localize",
+      "policyReason": "The French branch uses alternate icon-only title art; no source text is present.",
+      "textSourceKind": "not_applicable",
+      "patchMode": "asset_replacement_required",
+      "patchRef": {
+        "assetId": "019ed004-0000-7000-8000-000000000102",
+        "writeMode": "replace_asset",
+        "sourceRevision": {
+          "revisionId": "019ed004-0000-7000-8000-000000000202",
+          "revisionKind": "content_hash",
+          "value": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "constraints": ["preserve icon semantics"]
+      },
+      "runtimeExpectation": {
+        "expectationKind": "screenshot_region",
+        "region": {
+          "x": 0,
+          "y": 0,
+          "width": 400,
+          "height": 140
+        }
+      },
+      "notes": ["Textless UI art can be branch-scoped without inventing source text."]
+    },
+    {
       "assetPolicyDecisionId": "019ed004-0000-7000-8000-000000000303",
       "assetSurfaceKind": "song_title",
       "sourceAssetRef": {
@@ -336,6 +383,28 @@
         }
       },
       "notes": ["Policy captures the desired decision; video editing support is not implied."]
+    },
+    {
+      "assetPolicyDecisionId": "019ed004-0000-7000-8000-000000000308",
+      "assetSurfaceKind": "video",
+      "sourceAssetRef": {
+        "assetId": "019ed004-0000-7000-8000-000000000106",
+        "assetKey": "video/opening"
+      },
+      "sourceHash": "sha256:0808080808080808080808080808080808080808080808080808080808080808",
+      "sourceRevision": {
+        "revisionId": "019ed004-0000-7000-8000-000000000206",
+        "revisionKind": "content_hash",
+        "value": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "policyAction": "do_not_translate",
+      "policyReason": "The opening video has an icon-only beat for this branch and no source text to transcribe.",
+      "textSourceKind": "not_applicable",
+      "patchMode": "no_patch_required",
+      "runtimeExpectation": {
+        "expectationKind": "layout_probe"
+      },
+      "notes": ["Textless video policy can omit sourceText and patchRef."]
     }
   ],
   "compatibilityNotes": [

@@ -199,6 +199,13 @@ export const ASSET_POLICY_PATCH_MODES = [
 ] as const;
 export type AssetPolicyPatchModeV02 = (typeof ASSET_POLICY_PATCH_MODES)[number];
 
+const TEXTLESS_ASSET_POLICY_SURFACE_KINDS: readonly AssetPolicySurfaceKindV02[] = [
+  "ui_art",
+  "font",
+  "video",
+];
+const REGION_PATCH_ASSET_KINDS: readonly AssetKindV02[] = ["image", "video", "ui_texture"];
+
 export const SURFACE_KINDS = [
   "dialogue",
   "narration",
@@ -1994,9 +2001,10 @@ function assertAssetPolicyPatchRefV02(
 }
 
 function assertAssetPolicyActionFieldsV02(decision: AssetPolicyDecisionV02, label: string): void {
+  const hasTextSource = decision.textSourceKind !== "not_applicable";
   if (
     (decision.policyAction === "localize" || decision.policyAction === "romanize") &&
-    decision.textSourceKind !== "not_applicable" &&
+    hasTextSource &&
     decision.targetText === undefined
   ) {
     throw new Error(`${label}.targetText is required for localized or romanized asset text`);
@@ -2006,6 +2014,7 @@ function assertAssetPolicyActionFieldsV02(decision: AssetPolicyDecisionV02, labe
   }
   if (
     decision.policyAction === "do_not_translate" &&
+    hasTextSource &&
     decision.preserveForm === undefined &&
     decision.sourceText === undefined
   ) {
@@ -2014,8 +2023,13 @@ function assertAssetPolicyActionFieldsV02(decision: AssetPolicyDecisionV02, labe
 }
 
 function assertAssetPolicyTextSourceV02(decision: AssetPolicyDecisionV02, label: string): void {
-  if (decision.textSourceKind === "not_applicable" && decision.assetSurfaceKind !== "font") {
-    throw new Error(`${label}.textSourceKind not_applicable is only valid for font policies`);
+  if (
+    decision.textSourceKind === "not_applicable" &&
+    !TEXTLESS_ASSET_POLICY_SURFACE_KINDS.includes(decision.assetSurfaceKind)
+  ) {
+    throw new Error(
+      `${label}.textSourceKind not_applicable is only valid for textless asset policy surfaces`,
+    );
   }
   if (decision.textSourceKind !== "not_applicable" && decision.sourceText === undefined) {
     throw new Error(`${label}.sourceText is required when textSourceKind is text-bearing`);
@@ -2094,6 +2108,7 @@ function assertAssetPolicyDecisionAssetRefsExist(
     ) {
       throw new Error(`${label}.patchRef.sourceRevision must match the patch asset revision`);
     }
+    assertAssetPolicyPatchAssetKindV02(decision, patchAsset, label);
   }
 }
 
@@ -2117,6 +2132,44 @@ function assertAssetPolicySurfaceMatchesAssetKindV02(
     throw new Error(
       `${label}.assetSurfaceKind ${decision.assetSurfaceKind} is not valid for assetKind ${sourceAsset.assetKind}`,
     );
+  }
+}
+
+function assertAssetPolicyPatchAssetKindV02(
+  decision: AssetPolicyDecisionV02,
+  patchAsset: BridgeAssetV02,
+  label: string,
+): void {
+  const allowedKinds = assetKindsForAssetPolicyPatchRefV02(decision);
+  if (!allowedKinds.includes(patchAsset.assetKind)) {
+    throw new Error(
+      `${label}.patchRef.assetId assetKind ${patchAsset.assetKind} is not valid for ${decision.patchMode} on ${decision.assetSurfaceKind}`,
+    );
+  }
+}
+
+function assetKindsForAssetPolicyPatchRefV02(
+  decision: AssetPolicyDecisionV02,
+): readonly AssetKindV02[] {
+  const surfaceKinds = assetKindsForAssetPolicySurfaceKindV02(decision.assetSurfaceKind);
+  const modeKinds = assetKindsForAssetPolicyPatchModeV02(decision.patchMode);
+  return surfaceKinds.filter((kind) => modeKinds.includes(kind));
+}
+
+function assetKindsForAssetPolicyPatchModeV02(
+  patchMode: AssetPolicyPatchModeV02,
+): readonly AssetKindV02[] {
+  switch (patchMode) {
+    case "metadata_only":
+    case "asset_replacement_required":
+      return ASSET_KINDS;
+    case "region_redraw_required":
+      return REGION_PATCH_ASSET_KINDS;
+    case "font_substitution_required":
+      return ["font"];
+    case "no_patch_required":
+    case "unsupported":
+      return [];
   }
 }
 
