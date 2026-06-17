@@ -75,22 +75,26 @@ authoritative operating model for orchestrator responsibilities, delegation,
 provider policy, cost discipline, and worktree hygiene.
 
 1. Run `just roadmap-ready` or `node scripts/spec-dag.mjs pop --json`.
-2. Claim one ready node by moving it to `in_progress` in a branch or worktree.
-3. Launch a spec-planning agent to turn the node into an implementation plan.
-4. Launch one or more implementation agents in separate worktrees only when
+2. Create the branch and worktree using the node id before editing the node out
+   of `planned`.
+3. Claim the node by committing schema-valid `in_progress` metadata with
+   `owner` plus `branch` or `worktree`; push or merge the claim according to the
+   coordination workflow before delegation.
+4. Launch a spec-planning agent to turn the node into an implementation plan.
+5. Launch one or more implementation agents in separate worktrees only when
    their write scopes are disjoint.
-5. Run local checks required by the node's `verification` list.
-6. Launch audit agents for architecture, correctness, tests, performance, and
+6. Run local checks required by the node's `verification` list.
+7. Launch audit agents for architecture, correctness, tests, performance, and
    UX where relevant.
-7. For P0/P1 audit findings, create a repair plan, assign worker
+8. For P0/P1 audit findings, create a repair plan, assign worker
    implementation, and re-audit.
-8. Convert P2/P3 findings into new DAG nodes or add them to existing planned
+9. Convert P2/P3 findings into new DAG nodes or add them to existing planned
    nodes unless they are cheap, explicitly assigned to a worker before merge,
    and recorded durably in a tracked and committed branch note file, audit
    report artifact, DAG node/update, PR comment/description, or commit message.
-9. Merge only after CI is green, P0/P1 findings are gone, acceptance criteria
-   are met, and the orchestrator trusts the result.
-10. After the implementation is merged into `main`, mark the node `complete`
+10. Merge only after CI is green, P0/P1 findings are gone, acceptance criteria
+    are met, and the orchestrator trusts the result.
+11. After the implementation is merged into `main`, mark the node `complete`
     only when the merged result is verified and audit-clean for P0/P1.
 
 ## Parallelism

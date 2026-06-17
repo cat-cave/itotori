@@ -89,9 +89,11 @@ test implementation, and spec implementation belong to workers.
    `node scripts/spec-dag.mjs pop --json`.
 2. Pick one node, considering P0/P1 priority, MVP target pressure, dependency
    unlocks, and worktree capacity.
-3. Mark the node `in_progress` with owner and branch or worktree metadata when
-   the process has durable claim support.
-4. Create a branch and worktree scoped to that node.
+3. Create a branch and worktree scoped to that node while the node is still
+   `planned`.
+4. Commit schema-valid `in_progress` metadata with `owner` plus `branch` or
+   `worktree`, then push or merge the claim according to the coordination
+   workflow before work starts.
 5. Ask a planning worker for an implementation plan tied to the node's
    deliverables, acceptance criteria, verification, and audit focus.
 6. Review the plan for scope, missing dependencies, test strategy, and unsafe
@@ -214,6 +216,9 @@ should keep disk usage reasonable:
 When disk pressure appears, prune merged and abandoned worktrees before
 discarding useful evidence. Never treat untracked files as disposable until the
 owning worker or branch state has been checked.
+
+The detailed branch naming, claim, repair, merge, blocked-state, and cleanup
+checklists live in [worktree-lifecycle.md](worktree-lifecycle.md).
 
 ## DAG Follow-Up Policy
 
