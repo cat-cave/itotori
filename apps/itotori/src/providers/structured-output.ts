@@ -10,6 +10,12 @@ export function supportForStructuredOutputMode(
     case "json_object":
       return capabilities.structuredOutputs.jsonObject;
     case "tool_call_arguments":
+      if (capabilities.structuredOutputs.toolCallArguments !== "supported") {
+        return capabilities.structuredOutputs.toolCallArguments;
+      }
+      if (capabilities.toolCalls.support !== "supported") {
+        return capabilities.toolCalls.support;
+      }
       return capabilities.structuredOutputs.toolCallArguments;
     case "plain_json":
       return capabilities.structuredOutputs.plainJsonExtraction;

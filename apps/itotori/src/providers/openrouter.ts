@@ -12,7 +12,10 @@ import {
   ModelProviderError,
   type ModelTool,
   type ModelToolCall,
+  type ModelToolChoice,
+  type ProviderDataHandlingPolicy,
   type ProviderDescriptor,
+  type ProviderInputClassification,
   type ProviderLiveRunOptions,
   type ProviderRunArtifact,
   type ProviderRunRecord,
@@ -75,13 +78,27 @@ export class OpenRouterProvider implements ModelProvider {
         false,
       );
     }
-    assertProviderInputAllowed(this.descriptor.capabilities, request.inputClassification);
+    const startedAt = new Date();
+    const requestedModelId = request.modelId ?? this.descriptor.defaultModelId;
+    const providerRouting = buildOpenRouterProviderRouting(this.routing, request);
+    const effectiveDataHandling = openRouterDataHandlingForRouting(
+      this.descriptor.capabilities.dataHandling,
+      providerRouting,
+    );
+    assertProviderInputAllowed(
+      {
+        ...this.descriptor.capabilities,
+        dataHandling: effectiveDataHandling,
+      },
+      request.inputClassification,
+    );
     if (request.structuredOutput) {
       assertStructuredOutputModeSupported(
         this.descriptor.capabilities,
         request.structuredOutput.mode,
       );
     }
+    assertToolCallArgumentsCanBeForced(request);
 
     const apiKey = this.resolveApiKey();
     if (!apiKey) {
@@ -92,9 +109,6 @@ export class OpenRouterProvider implements ModelProvider {
       );
     }
 
-    const startedAt = new Date();
-    const requestedModelId = request.modelId ?? this.descriptor.defaultModelId;
-    const providerRouting = buildOpenRouterProviderRouting(this.routing, request);
     const requestBody = buildOpenRouterRequestBody(request, requestedModelId, providerRouting);
     const routeSettingsHash = hashJson(providerRouting);
     const response = await this.fetchImpl(`${stripTrailingSlash(this.baseUrl)}/chat/completions`, {
@@ -120,6 +134,7 @@ export class OpenRouterProvider implements ModelProvider {
         routeSettingsHash,
         errorClasses: [`http_${response.status}`],
         tokenUsage: { tokenCountSource: "unknown" },
+        dataHandling: effectiveDataHandling,
       });
       await this.live.artifactRecorder.recordProviderRun(
         buildArtifact({
@@ -152,6 +167,7 @@ export class OpenRouterProvider implements ModelProvider {
       routeSettingsHash,
       errorClasses: [],
       tokenUsage: normalized.tokenUsage,
+      dataHandling: effectiveDataHandling,
     });
     const metadata = adapterMetadata(body, providerRouting);
     await this.live.artifactRecorder.recordProviderRun(
@@ -274,10 +290,13 @@ function buildOpenRouterRequestBody(
   if (request.structuredOutput?.mode === "json_object") {
     body.response_format = { type: "json_object" };
   }
-  if (request.tools && request.tools.length > 0) {
-    body.tools = request.tools.map(toOpenAiTool);
+  const tools = toolsForRequest(request);
+  if (tools.length > 0) {
+    body.tools = tools;
   }
-  if (request.toolChoice) {
+  if (request.structuredOutput?.mode === "tool_call_arguments") {
+    body.tool_choice = forcedToolChoice(request.structuredOutput.toolName);
+  } else if (request.toolChoice) {
     body.tool_choice =
       typeof request.toolChoice === "string"
         ? request.toolChoice
@@ -291,14 +310,16 @@ function buildOpenRouterProviderRouting(
   request: ModelInvocationRequest,
 ): JsonObject {
   const provider: Record<string, JsonValue> = {
-    data_collection: routing.dataCollection ?? "deny",
+    data_collection: dataCollectionForRequest(routing.dataCollection, request.inputClassification),
   };
   const strictParametersRequired =
-    request.structuredOutput?.mode === "json_schema" || Boolean(request.tools?.length);
-  if (routing.requireParameters !== undefined) {
-    provider.require_parameters = routing.requireParameters;
-  } else if (strictParametersRequired) {
+    request.structuredOutput?.mode === "json_schema" ||
+    request.structuredOutput?.mode === "tool_call_arguments" ||
+    Boolean(request.tools?.length);
+  if (strictParametersRequired) {
     provider.require_parameters = true;
+  } else if (routing.requireParameters !== undefined) {
+    provider.require_parameters = routing.requireParameters;
   }
   if (routing.order) {
     provider.order = routing.order;
@@ -328,6 +349,30 @@ function buildOpenRouterProviderRouting(
     provider.max_price = routing.maxPrice;
   }
   return provider as JsonObject;
+}
+
+function dataCollectionForRequest(
+  requested: OpenRouterProviderRouting["dataCollection"],
+  inputClassification: ProviderInputClassification,
+): "allow" | "deny" {
+  if (isPrivateInput(inputClassification)) {
+    return "deny";
+  }
+  return requested ?? "deny";
+}
+
+function isPrivateInput(inputClassification: ProviderInputClassification): boolean {
+  return inputClassification !== "synthetic_public" && inputClassification !== "public";
+}
+
+function openRouterDataHandlingForRouting(
+  basePolicy: ProviderDataHandlingPolicy,
+  providerRouting: JsonObject,
+): ProviderDataHandlingPolicy {
+  return {
+    ...basePolicy,
+    dataCollection: providerRouting.data_collection === "allow" ? "allow" : "deny",
+  };
 }
 
 function toOpenAiMessage(message: ModelMessage): JsonObject {
@@ -374,6 +419,57 @@ function toOpenAiTool(tool: ModelTool): JsonObject {
       parameters: tool.parameters,
     },
   };
+}
+
+function toolsForRequest(request: ModelInvocationRequest): JsonValue[] {
+  const tools = request.tools?.map(toOpenAiTool) ?? [];
+  if (request.structuredOutput?.mode === "tool_call_arguments") {
+    tools.push({
+      type: "function",
+      function: {
+        name: request.structuredOutput.toolName,
+        description: "Return the requested structured output as function arguments.",
+        parameters: request.structuredOutput.schema,
+        strict: request.structuredOutput.strict,
+      },
+    });
+  }
+  return tools;
+}
+
+function forcedToolChoice(toolName: string): JsonObject {
+  return { type: "function", function: { name: toolName } };
+}
+
+function assertToolCallArgumentsCanBeForced(request: ModelInvocationRequest): void {
+  if (request.structuredOutput?.mode !== "tool_call_arguments") {
+    return;
+  }
+  const toolName = request.structuredOutput.toolName;
+  if (request.tools?.some((tool) => tool.name === toolName)) {
+    throw new ModelProviderError(
+      `structured output tool ${toolName} conflicts with request tools`,
+      "configuration_error",
+      false,
+    );
+  }
+  if (!toolChoiceMatchesForcedTool(request.toolChoice, toolName)) {
+    throw new ModelProviderError(
+      `structured output mode tool_call_arguments requires forced tool choice ${toolName}`,
+      "configuration_error",
+      false,
+    );
+  }
+}
+
+function toolChoiceMatchesForcedTool(
+  toolChoice: ModelToolChoice | undefined,
+  toolName: string,
+): boolean {
+  return (
+    toolChoice === undefined ||
+    (typeof toolChoice === "object" && toolChoice.functionName === toolName)
+  );
 }
 
 function normalizeOpenRouterResponse(
@@ -443,6 +539,7 @@ function buildProviderRunRecord(input: {
   routeSettingsHash: string;
   errorClasses: string[];
   tokenUsage: TokenUsage;
+  dataHandling: ProviderDataHandlingPolicy;
 }): ProviderRunRecord {
   const completedAt = new Date();
   const fallbackPlan = fallbackPlanForRequest(input.request, input.requestedModelId);
@@ -475,7 +572,7 @@ function buildProviderRunRecord(input: {
       costKind: "unknown",
       currency: "USD",
     },
-    dataHandling: input.descriptor.capabilities.dataHandling,
+    dataHandling: input.dataHandling,
   };
   if (input.descriptor.capabilities.accountPrivacy) {
     run.accountPrivacy = input.descriptor.capabilities.accountPrivacy;

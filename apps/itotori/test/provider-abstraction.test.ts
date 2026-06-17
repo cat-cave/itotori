@@ -144,6 +144,149 @@ describe("OpenRouterProvider", () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("forces provider data collection denial for private inputs despite routing overrides", async () => {
+    const recorder = memoryRecorder();
+    const fetchCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCalls.push({ input, init });
+      return jsonResponse({
+        model: "openai/gpt-4o-mini",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: '{"targetText":"Hello."}',
+            },
+          },
+        ],
+      });
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesForPrivateInputs(),
+      routing: { dataCollection: "allow" },
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    const result = await provider.invoke(jsonSchemaRequest());
+
+    const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {
+      provider: { data_collection?: string };
+    };
+    expect(requestBody.provider.data_collection).toBe("deny");
+    expect(result.providerRun.dataHandling.dataCollection).toBe("deny");
+    expect(recorder.artifacts[0]?.run.dataHandling.dataCollection).toBe("deny");
+  });
+
+  it("records the actual OpenRouter data collection routing policy for public inputs", async () => {
+    const recorder = memoryRecorder();
+    const fetchCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCalls.push({ input, init });
+      return jsonResponse({
+        model: "openai/gpt-4o-mini",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: '{"targetText":"Hello."}',
+            },
+          },
+        ],
+      });
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesForPrivateInputs(),
+      routing: { dataCollection: "allow" },
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    const result = await provider.invoke({
+      ...jsonSchemaRequest(),
+      inputClassification: "public",
+    });
+
+    const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {
+      provider: { data_collection?: string };
+    };
+    expect(requestBody.provider.data_collection).toBe("allow");
+    expect(result.providerRun.dataHandling.dataCollection).toBe("allow");
+    expect(recorder.artifacts[0]?.run.dataHandling.dataCollection).toBe("allow");
+  });
+
+  it("translates tool_call_arguments into a required OpenRouter tool call", async () => {
+    const recorder = memoryRecorder();
+    const fetchCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCalls.push({ input, init });
+      return jsonResponse({
+        model: "openai/gpt-4o-mini",
+        choices: [
+          {
+            finish_reason: "tool_calls",
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call-1",
+                  type: "function",
+                  function: {
+                    name: "emit_translation",
+                    arguments: '{"targetText":"Hello."}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesWithToolCallArguments(),
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    const result = await provider.invoke(toolCallArgumentsRequest());
+
+    const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {
+      provider: { require_parameters?: boolean };
+      response_format?: unknown;
+      tools?: Array<{ function?: { name?: string; parameters?: unknown; strict?: boolean } }>;
+      tool_choice?: { function?: { name?: string } };
+    };
+    expect(requestBody.response_format).toBeUndefined();
+    expect(requestBody.provider.require_parameters).toBe(true);
+    expect(requestBody.tools).toHaveLength(1);
+    expect(requestBody.tools?.[0]?.function).toMatchObject({
+      name: "emit_translation",
+      parameters: toolCallSchema(),
+      strict: true,
+    });
+    expect(requestBody.tool_choice).toMatchObject({
+      function: { name: "emit_translation" },
+    });
+    expect(result.toolCalls).toEqual([
+      {
+        id: "call-1",
+        name: "emit_translation",
+        argumentsJson: '{"targetText":"Hello."}',
+      },
+    ]);
+    expect(result.providerRun.structuredOutputMode).toBe("tool_call_arguments");
+    expect(recorder.artifacts[0]?.request.structuredOutputMode).toBe("tool_call_arguments");
+  });
 });
 
 describe("LocalOpenAICompatibleProvider", () => {
@@ -194,6 +337,70 @@ describe("LocalOpenAICompatibleProvider", () => {
     expect(requestBody.provider).toBeUndefined();
     expect(recorder.artifacts[0]?.run.provider.endpointFamily).toBe("local-chat-completions");
   });
+
+  it("translates tool_call_arguments into a required local OpenAI-compatible tool call", async () => {
+    const recorder = memoryRecorder();
+    const fetchCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCalls.push({ input, init });
+      return jsonResponse({
+        model: "local-model",
+        choices: [
+          {
+            finish_reason: "tool_calls",
+            message: {
+              role: "assistant",
+              content: null,
+              tool_calls: [
+                {
+                  id: "call-local-1",
+                  type: "function",
+                  function: {
+                    name: "emit_translation",
+                    arguments: '{"targetText":"Hello."}',
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+    }) as unknown as typeof fetch;
+    const provider = new LocalOpenAICompatibleProvider({
+      modelId: "local-model",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      fetch: fetchMock,
+      capabilities: localCapabilitiesWithToolCallArguments(),
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    const result = await provider.invoke(toolCallArgumentsRequest());
+
+    const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {
+      response_format?: unknown;
+      tools?: Array<{ function?: { name?: string; parameters?: unknown; strict?: boolean } }>;
+      tool_choice?: { function?: { name?: string } };
+    };
+    expect(requestBody.response_format).toBeUndefined();
+    expect(requestBody.tools).toHaveLength(1);
+    expect(requestBody.tools?.[0]?.function).toMatchObject({
+      name: "emit_translation",
+      parameters: toolCallSchema(),
+      strict: true,
+    });
+    expect(requestBody.tool_choice).toMatchObject({
+      function: { name: "emit_translation" },
+    });
+    expect(result.toolCalls).toEqual([
+      {
+        id: "call-local-1",
+        name: "emit_translation",
+        argumentsJson: '{"targetText":"Hello."}',
+      },
+    ]);
+    expect(result.providerRun.structuredOutputMode).toBe("tool_call_arguments");
+    expect(recorder.artifacts[0]?.request.structuredOutputMode).toBe("tool_call_arguments");
+  });
 });
 
 function jsonSchemaRequest(): ModelInvocationRequest {
@@ -214,6 +421,31 @@ function jsonSchemaRequest(): ModelInvocationRequest {
         additionalProperties: false,
       },
     },
+  };
+}
+
+function toolCallArgumentsRequest(): ModelInvocationRequest {
+  return {
+    taskKind: "draft_translation",
+    inputClassification: "private_corpus",
+    messages: [{ role: "user", content: "translate hello" }],
+    structuredOutput: {
+      mode: "tool_call_arguments",
+      toolName: "emit_translation",
+      strict: true,
+      schema: toolCallSchema(),
+    },
+  };
+}
+
+function toolCallSchema() {
+  return {
+    type: "object",
+    properties: {
+      targetText: { type: "string" },
+    },
+    required: ["targetText"],
+    additionalProperties: false,
   };
 }
 
@@ -243,6 +475,21 @@ function openRouterCapabilitiesForPrivateInputs(): ModelCapabilities {
   };
 }
 
+function openRouterCapabilitiesWithToolCallArguments(): ModelCapabilities {
+  const capabilities = openRouterCapabilitiesForPrivateInputs();
+  return {
+    ...capabilities,
+    structuredOutputs: {
+      ...capabilities.structuredOutputs,
+      toolCallArguments: "supported",
+    },
+    toolCalls: {
+      ...capabilities.toolCalls,
+      support: "supported",
+    },
+  };
+}
+
 function localCapabilities(): ModelCapabilities {
   return {
     ...openRouterCapabilitiesForPrivateInputs(),
@@ -262,6 +509,21 @@ function localCapabilities(): ModelCapabilities {
       trainingUse: "not_applicable",
       dataCollection: "not_applicable",
       rawCaptureDefault: "disabled",
+    },
+  };
+}
+
+function localCapabilitiesWithToolCallArguments(): ModelCapabilities {
+  const capabilities = localCapabilities();
+  return {
+    ...capabilities,
+    structuredOutputs: {
+      ...capabilities.structuredOutputs,
+      toolCallArguments: "supported",
+    },
+    toolCalls: {
+      ...capabilities.toolCalls,
+      support: "supported",
     },
   };
 }

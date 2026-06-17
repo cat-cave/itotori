@@ -11,6 +11,7 @@ import {
   ModelProviderError,
   type ModelTool,
   type ModelToolCall,
+  type ModelToolChoice,
   type ProviderDescriptor,
   type ProviderLiveRunOptions,
   type ProviderRunArtifact,
@@ -64,6 +65,7 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
         request.structuredOutput.mode,
       );
     }
+    assertToolCallArgumentsCanBeForced(request);
 
     const requestedModelId = request.modelId ?? this.descriptor.defaultModelId;
     const startedAt = new Date();
@@ -207,10 +209,13 @@ function buildRequestBody(request: ModelInvocationRequest, requestedModelId: str
   if (request.structuredOutput?.mode === "json_object") {
     body.response_format = { type: "json_object" };
   }
-  if (request.tools && request.tools.length > 0) {
-    body.tools = request.tools.map(toOpenAiTool);
+  const tools = toolsForRequest(request);
+  if (tools.length > 0) {
+    body.tools = tools;
   }
-  if (request.toolChoice) {
+  if (request.structuredOutput?.mode === "tool_call_arguments") {
+    body.tool_choice = forcedToolChoice(request.structuredOutput.toolName);
+  } else if (request.toolChoice) {
     body.tool_choice =
       typeof request.toolChoice === "string"
         ? request.toolChoice
@@ -263,6 +268,57 @@ function toOpenAiTool(tool: ModelTool): JsonObject {
       parameters: tool.parameters,
     },
   };
+}
+
+function toolsForRequest(request: ModelInvocationRequest): JsonValue[] {
+  const tools = request.tools?.map(toOpenAiTool) ?? [];
+  if (request.structuredOutput?.mode === "tool_call_arguments") {
+    tools.push({
+      type: "function",
+      function: {
+        name: request.structuredOutput.toolName,
+        description: "Return the requested structured output as function arguments.",
+        parameters: request.structuredOutput.schema,
+        strict: request.structuredOutput.strict,
+      },
+    });
+  }
+  return tools;
+}
+
+function forcedToolChoice(toolName: string): JsonObject {
+  return { type: "function", function: { name: toolName } };
+}
+
+function assertToolCallArgumentsCanBeForced(request: ModelInvocationRequest): void {
+  if (request.structuredOutput?.mode !== "tool_call_arguments") {
+    return;
+  }
+  const toolName = request.structuredOutput.toolName;
+  if (request.tools?.some((tool) => tool.name === toolName)) {
+    throw new ModelProviderError(
+      `structured output tool ${toolName} conflicts with request tools`,
+      "configuration_error",
+      false,
+    );
+  }
+  if (!toolChoiceMatchesForcedTool(request.toolChoice, toolName)) {
+    throw new ModelProviderError(
+      `structured output mode tool_call_arguments requires forced tool choice ${toolName}`,
+      "configuration_error",
+      false,
+    );
+  }
+}
+
+function toolChoiceMatchesForcedTool(
+  toolChoice: ModelToolChoice | undefined,
+  toolName: string,
+): boolean {
+  return (
+    toolChoice === undefined ||
+    (typeof toolChoice === "object" && toolChoice.functionName === toolName)
+  );
 }
 
 function normalizeResponse(
