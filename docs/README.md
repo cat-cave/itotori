@@ -7,6 +7,8 @@ These docs describe the monorepo as a three-project suite:
 - Utsushi: runtime validation evidence.
 
 Start with [hello-world.md](hello-world.md), then read [architecture.md](architecture.md).
+The MVP definition of done and release gate matrix live in
+[mvp-definition-of-done.md](mvp-definition-of-done.md).
 Toolchain upgrade policy lives in [toolchain-policy.md](toolchain-policy.md).
 Testing conventions live in [testing-standard.md](testing-standard.md).
 Kaifuu engine fixture sourcing, reference citation, and unsupported variant
