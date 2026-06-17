@@ -152,6 +152,11 @@ type QueueSqlExecutor = {
   execute: (query: SQL) => Promise<{ rows: unknown[] }>;
 };
 
+type InsertOutboxEventResult = {
+  outboxEvent: OutboxEventRecord;
+  inserted: boolean;
+};
+
 export interface ItotoriEventQueueRepositoryPort {
   appendOutboxEvent(actor: AuthorizationActor, input: OutboxEventInput): Promise<OutboxEventRecord>;
   enqueueJob(actor: AuthorizationActor, input: JobQueueInput): Promise<JobQueueRecord>;
@@ -206,7 +211,8 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
     input: OutboxEventInput,
   ): Promise<OutboxEventRecord> {
     await requirePermission(this.db, actor, permissionValues.queueManage);
-    return insertOutboxEvent(this.db as unknown as QueueSqlExecutor, input);
+    const result = await insertOutboxEvent(this.db as unknown as QueueSqlExecutor, input);
+    return result.outboxEvent;
   }
 
   async enqueueJob(actor: AuthorizationActor, input: JobQueueInput): Promise<JobQueueRecord> {
@@ -221,7 +227,11 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
     await requirePermission(this.db, actor, permissionValues.queueManage);
     return this.db.transaction(async (tx) => {
       const executor = tx as unknown as QueueSqlExecutor;
-      const outboxEvent = await insertOutboxEvent(executor, input.event);
+      const outboxInsert = await insertOutboxEvent(executor, input.event);
+      const outboxEvent = outboxInsert.outboxEvent;
+      if (!outboxInsert.inserted) {
+        return { outboxEvent, jobs: [] };
+      }
       const jobs: JobQueueRecord[] = [];
       for (const jobInput of input.jobs) {
         const linkedJobInput: JobQueueInput = {
@@ -355,7 +365,10 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
       sql`
         update ${eventOutbox} e
         set
-          status = ${outboxStatusValues.retryWaiting},
+          status = case
+            when e.attempt_count >= e.max_attempts then ${outboxStatusValues.deadLetter}
+            else ${outboxStatusValues.retryWaiting}
+          end,
           available_at = now(),
           locked_by = null,
           locked_at = null,
@@ -367,7 +380,7 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
               'workerId', coalesce(e.locked_by, 'unknown'),
               'attempt', e.attempt_count,
               'error', 'lease expired',
-              'terminal', false
+              'terminal', e.attempt_count >= e.max_attempts
             )
           ),
           updated_at = now()
@@ -500,7 +513,10 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
       sql`
         update ${jobQueue} j
         set
-          status = ${jobStatusValues.retryWaiting},
+          status = case
+            when j.attempt_count >= j.max_attempts then ${jobStatusValues.deadLetter}
+            else ${jobStatusValues.retryWaiting}
+          end,
           available_at = now(),
           locked_by = null,
           locked_at = null,
@@ -512,7 +528,7 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
               'workerId', coalesce(j.locked_by, 'unknown'),
               'attempt', j.attempt_count,
               'error', 'lease expired',
-              'terminal', false
+              'terminal', j.attempt_count >= j.max_attempts
             )
           ),
           updated_at = now()
@@ -544,7 +560,7 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
 async function insertOutboxEvent(
   executor: QueueSqlExecutor,
   input: OutboxEventInput,
-): Promise<OutboxEventRecord> {
+): Promise<InsertOutboxEventResult> {
   const outboxEventId = input.outboxEventId ?? createUuid7();
   const correlationId = input.correlationId ?? outboxEventId;
   const availableAt = input.availableAt ?? new Date();
@@ -580,12 +596,24 @@ async function insertOutboxEvent(
         ${availableAt},
         ${maxAttempts}
       )
-      on conflict (idempotency_key) do update
-      set updated_at = itotori_event_outbox.updated_at
+      on conflict (idempotency_key) do nothing
       returning *
     `,
   );
-  return singleOutboxRow(rows, outboxEventId);
+  if (rows[0] !== undefined) {
+    return { outboxEvent: outboxEventFromRow(rows[0]), inserted: true };
+  }
+
+  const existingRows = await executeRows(
+    executor,
+    sql`
+      select *
+      from ${eventOutbox}
+      where idempotency_key = ${input.idempotencyKey}
+      limit 1
+    `,
+  );
+  return { outboxEvent: singleOutboxRow(existingRows, outboxEventId), inserted: false };
 }
 
 async function insertJob(

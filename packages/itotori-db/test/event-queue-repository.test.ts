@@ -160,17 +160,26 @@ describe("ItotoriEventQueueRepository", () => {
         },
         jobs: [
           jobInput({
-            jobId: "job-rerun-drafts-duplicate-id",
+            jobId: "job-rerun-drafts-changed-idempotency",
             idempotency: {
               policy: jobIdempotencyPolicyValues.idempotent,
-              key: "job:rerun:affected-drafts",
+              key: "job:rerun:affected-drafts:v2",
+            },
+          }),
+          jobInput({
+            jobId: "job-rerun-drafts-non-idempotent",
+            jobName: "rerun.affected-drafts.non-idempotent",
+            idempotency: {
+              policy: jobIdempotencyPolicyValues.nonIdempotent,
             },
           }),
         ],
       });
 
       expect(duplicate.outboxEvent.outboxEventId).toBe("outbox-rerun-requested");
-      expect(duplicate.jobs[0]?.jobId).toBe("job-rerun-drafts");
+      expect(duplicate.jobs).toEqual([]);
+      await expect(queue.getJob("job-rerun-drafts-changed-idempotency")).resolves.toBeNull();
+      await expect(queue.getJob("job-rerun-drafts-non-idempotent")).resolves.toBeNull();
 
       const counts = await context.db.execute(sql`
         select
@@ -245,6 +254,57 @@ describe("ItotoriEventQueueRepository", () => {
     }
   });
 
+  it("dead-letters expired outbox leases after the final allowed attempt", async () => {
+    const context = await migratedContext();
+    try {
+      await seedProject(context.db);
+      const queue = new ItotoriEventQueueRepository(context.db);
+      await queue.appendOutboxEvent(localActor, {
+        outboxEventId: "outbox-final-lease-expired",
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        eventType: outboxEventTypeValues.agentTaskRequested,
+        idempotencyKey: "outbox:final-lease-expired",
+        payload: { agentTask: "context-summary" },
+        maxAttempts: 1,
+      });
+
+      const claimed = await queue.claimOutboxEvents(localActor, "publisher-final", {
+        limit: 1,
+        leaseSeconds: 0,
+      });
+      expect(claimed).toHaveLength(1);
+      expect(claimed[0]).toMatchObject({
+        outboxEventId: "outbox-final-lease-expired",
+        status: outboxStatusValues.publishing,
+        attemptCount: 1,
+      });
+
+      const recovered = await queue.recoverExpiredOutboxLeases(localActor);
+      expect(recovered).toHaveLength(1);
+      expect(recovered[0]).toMatchObject({
+        outboxEventId: "outbox-final-lease-expired",
+        status: outboxStatusValues.deadLetter,
+        attemptCount: 1,
+        lastError: "lease expired",
+        lockedBy: null,
+        leaseExpiresAt: null,
+      });
+      expect(recovered[0]?.errorHistory[0]).toMatchObject({
+        workerId: "publisher-final",
+        attempt: 1,
+        error: "lease expired",
+        terminal: true,
+      });
+
+      await expect(
+        queue.claimOutboxEvents(localActor, "publisher-retry", { limit: 1 }),
+      ).resolves.toEqual([]);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("prevents duplicate job leases and recovers expired leases for another worker", async () => {
     const context = await migratedContext();
     try {
@@ -287,6 +347,57 @@ describe("ItotoriEventQueueRepository", () => {
         attempt: 1,
         error: "lease expired",
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("dead-letters expired job leases after the final allowed attempt", async () => {
+    const context = await migratedContext();
+    try {
+      await seedProject(context.db);
+      const queue = new ItotoriEventQueueRepository(context.db);
+      await queue.enqueueJob(
+        localActor,
+        jobInput({
+          jobId: "job-final-lease-expired",
+          idempotency: {
+            policy: jobIdempotencyPolicyValues.idempotent,
+            key: "job:final-lease-expired",
+          },
+          maxAttempts: 1,
+        }),
+      );
+
+      const claimed = await queue.claimJobs(localActor, "worker-final", {
+        limit: 1,
+        leaseSeconds: 0,
+      });
+      expect(claimed).toHaveLength(1);
+      expect(claimed[0]).toMatchObject({
+        jobId: "job-final-lease-expired",
+        status: jobStatusValues.running,
+        attemptCount: 1,
+      });
+
+      const recovered = await queue.recoverExpiredJobLeases(localActor);
+      expect(recovered).toHaveLength(1);
+      expect(recovered[0]).toMatchObject({
+        jobId: "job-final-lease-expired",
+        status: jobStatusValues.deadLetter,
+        attemptCount: 1,
+        lastError: "lease expired",
+        lockedBy: null,
+        leaseExpiresAt: null,
+      });
+      expect(recovered[0]?.errorHistory[0]).toMatchObject({
+        workerId: "worker-final",
+        attempt: 1,
+        error: "lease expired",
+        terminal: true,
+      });
+
+      await expect(queue.claimJobs(localActor, "worker-retry", { limit: 1 })).resolves.toEqual([]);
     } finally {
       await context.close();
     }
