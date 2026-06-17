@@ -136,12 +136,18 @@ Required API surface:
 | `smoke_validate`    | `RuntimeCapability::SmokeValidation` | Small pass/fail evidence report for release and CI checks.            |
 
 Every adapter registers a `RuntimeAdapterDescriptor` with its name, version,
-capabilities, maximum fidelity tier, maximum evidence tier, approximation tiers,
-and limitations. `RuntimeAdapterRegistry` rejects duplicate adapter names and
-rejects descriptors whose evidence ceiling exceeds the declared fidelity tier.
+capabilities, maximum fidelity tier, maximum evidence tier, runtime capability
+contract, approximation tiers, and limitations. The capability contract names the
+adapter boundary as static trace, launch/capture, instrumented runtime, partial
+VM, or reference VM, then marks individual playback features as supported,
+partial, or unsupported. `RuntimeAdapterRegistry` rejects duplicate adapter names
+and rejects descriptors whose evidence ceiling exceeds the declared fidelity or
+capability contract.
 
 The synthetic fixture adapter lives in `utsushi-fixture` and uses the same trait
 and registry path as future adapters. Its descriptor advertises trace, frame
 capture, and smoke validation, but not branch discovery or reference comparison.
 Its approximation tier is `deterministic_fixture`, and its reports state that
-captures are deterministic screenshot references without pixel comparison.
+captures are deterministic artifact references without pixel comparison. The base
+fixture contract explicitly does not implement jump, snapshot, live screenshot,
+or recording APIs.

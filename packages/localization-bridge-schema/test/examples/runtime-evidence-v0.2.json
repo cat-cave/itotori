@@ -9,6 +9,121 @@
   "adapterVersion": "0.2.0",
   "fidelityTier": "replay_review",
   "evidenceTier": "E3",
+  "runtimeCapabilities": {
+    "contractVersion": "0.2.0",
+    "capabilityClass": "instrumented_runtime",
+    "fidelityTierCeiling": "replay_review",
+    "evidenceTierCeiling": "E3",
+    "features": [
+      {
+        "feature": "static_trace",
+        "status": "supported",
+        "evidenceTierCeiling": "E1",
+        "description": "Discovers deterministic text reachability before runtime launch.",
+        "limitations": []
+      },
+      {
+        "feature": "launch",
+        "status": "supported",
+        "evidenceTierCeiling": "E1",
+        "description": "Starts a controlled review runtime for the fixture route.",
+        "limitations": []
+      },
+      {
+        "feature": "text_trace",
+        "status": "supported",
+        "evidenceTierCeiling": "E1",
+        "description": "Records observed localized text events.",
+        "limitations": []
+      },
+      {
+        "feature": "branch_discovery",
+        "status": "supported",
+        "evidenceTierCeiling": "E1",
+        "description": "Records reachable branch points and selected options.",
+        "limitations": []
+      },
+      {
+        "feature": "frame_capture",
+        "status": "supported",
+        "evidenceTierCeiling": "E2",
+        "description": "Captures frame metadata with portable screenshot artifact references.",
+        "limitations": []
+      },
+      {
+        "feature": "recording",
+        "status": "partial",
+        "evidenceTierCeiling": "E3",
+        "description": "Records replay-review video for the exercised route.",
+        "limitations": [
+          "Recording supports review navigation only and does not imply reference VM fidelity."
+        ]
+      },
+      {
+        "feature": "jump",
+        "status": "unsupported",
+        "description": "Jump target controls are intentionally outside this base contract.",
+        "limitations": []
+      },
+      {
+        "feature": "snapshot",
+        "status": "unsupported",
+        "description": "Snapshot save and restore are intentionally outside this base contract.",
+        "limitations": []
+      },
+      {
+        "feature": "screenshot",
+        "status": "unsupported",
+        "description": "The base contract does not require a live screenshot API.",
+        "limitations": []
+      },
+      {
+        "feature": "instrumentation_hooks",
+        "status": "partial",
+        "evidenceTierCeiling": "E3",
+        "description": "Instrumentation covers the scripted review route only.",
+        "limitations": [
+          "Hooks are fixture scoped and do not expose arbitrary engine internals."
+        ]
+      },
+      {
+        "feature": "vm_state_inspection",
+        "status": "unsupported",
+        "description": "This fixture does not expose VM state inspection.",
+        "limitations": []
+      },
+      {
+        "feature": "reference_comparison",
+        "status": "unsupported",
+        "description": "This fixture is not a reference VM.",
+        "limitations": []
+      }
+    ],
+    "limitations": [
+      "Instrumented runtime evidence supports controlled review but is not a reference VM."
+    ]
+  },
+  "controlledPlaybackSession": {
+    "sessionId": "019ed003-0000-7000-8000-000000000011",
+    "adapterName": "utsushi-contract-example",
+    "adapterVersion": "0.2.0",
+    "capabilityClass": "instrumented_runtime",
+    "requestedOperation": "smoke_validation",
+    "status": "passed",
+    "fidelityTier": "replay_review",
+    "evidenceTier": "E3",
+    "featuresUsed": [
+      "static_trace",
+      "launch",
+      "text_trace",
+      "branch_discovery",
+      "frame_capture",
+      "recording"
+    ],
+    "limitations": [
+      "The session does not provide jump targets, snapshots, or reference VM comparison."
+    ]
+  },
   "status": "passed",
   "createdAt": "2026-06-17T00:00:00.000Z",
   "traceEvents": [

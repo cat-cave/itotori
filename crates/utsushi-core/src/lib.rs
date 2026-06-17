@@ -31,6 +31,7 @@ pub struct RuntimeAdapterDescriptor {
     pub version: String,
     pub fidelity_tier: FidelityTier,
     pub evidence_tier_ceiling: EvidenceTier,
+    pub capability_contract: RuntimeCapabilityContract,
     pub capabilities: Vec<RuntimeCapability>,
     pub approximation_tiers: Vec<ApproximationTier>,
     pub limitations: Vec<String>,
@@ -43,6 +44,39 @@ impl RuntimeAdapterDescriptor {
 
     pub fn uses_approximation(&self, approximation_tier: ApproximationTier) -> bool {
         self.approximation_tiers.contains(&approximation_tier)
+    }
+
+    pub fn validate_contract(&self) -> UtsushiResult<()> {
+        self.capability_contract.validate()?;
+        if self.evidence_tier_ceiling > self.fidelity_tier.evidence_ceiling() {
+            return Err(format!(
+                "runtime adapter {} evidence ceiling {} exceeds fidelity tier {}",
+                self.name,
+                self.evidence_tier_ceiling.as_str(),
+                self.fidelity_tier.as_str()
+            )
+            .into());
+        }
+        if self.evidence_tier_ceiling > self.capability_contract.evidence_tier_ceiling {
+            return Err(format!(
+                "runtime adapter {} evidence ceiling {} exceeds capability contract ceiling {}",
+                self.name,
+                self.evidence_tier_ceiling.as_str(),
+                self.capability_contract.evidence_tier_ceiling.as_str()
+            )
+            .into());
+        }
+        if !self
+            .capability_contract
+            .supports_required_features(&self.capabilities)
+        {
+            return Err(format!(
+                "runtime adapter {} descriptor capabilities exceed its runtime capability contract",
+                self.name
+            )
+            .into());
+        }
+        Ok(())
     }
 }
 
@@ -144,6 +178,15 @@ impl FidelityTier {
             Self::ReferenceFidelity => EvidenceTier::E4,
         }
     }
+
+    pub fn rank(self) -> u8 {
+        match self {
+            Self::TraceOnly => 1,
+            Self::LayoutProbe => 2,
+            Self::ReplayReview => 3,
+            Self::ReferenceFidelity => 4,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -164,6 +207,327 @@ impl ApproximationTier {
             Self::EnginePartial => "engine_partial",
             Self::ReferenceMatched => "reference_matched",
         }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RuntimeCapabilityClass {
+    StaticTrace,
+    LaunchCapture,
+    InstrumentedRuntime,
+    PartialVm,
+    ReferenceVm,
+}
+
+impl RuntimeCapabilityClass {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::StaticTrace => "static_trace",
+            Self::LaunchCapture => "launch_capture",
+            Self::InstrumentedRuntime => "instrumented_runtime",
+            Self::PartialVm => "partial_vm",
+            Self::ReferenceVm => "reference_vm",
+        }
+    }
+
+    pub fn fidelity_tier_ceiling(self) -> FidelityTier {
+        match self {
+            Self::StaticTrace => FidelityTier::TraceOnly,
+            Self::LaunchCapture => FidelityTier::LayoutProbe,
+            Self::InstrumentedRuntime | Self::PartialVm => FidelityTier::ReplayReview,
+            Self::ReferenceVm => FidelityTier::ReferenceFidelity,
+        }
+    }
+
+    pub fn evidence_tier_ceiling(self) -> EvidenceTier {
+        self.fidelity_tier_ceiling().evidence_ceiling()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RuntimePlaybackFeature {
+    StaticTrace,
+    Launch,
+    TextTrace,
+    BranchDiscovery,
+    FrameCapture,
+    Jump,
+    Snapshot,
+    Screenshot,
+    Recording,
+    InstrumentationHooks,
+    VmStateInspection,
+    ReferenceComparison,
+}
+
+impl RuntimePlaybackFeature {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::StaticTrace => "static_trace",
+            Self::Launch => "launch",
+            Self::TextTrace => "text_trace",
+            Self::BranchDiscovery => "branch_discovery",
+            Self::FrameCapture => "frame_capture",
+            Self::Jump => "jump",
+            Self::Snapshot => "snapshot",
+            Self::Screenshot => "screenshot",
+            Self::Recording => "recording",
+            Self::InstrumentationHooks => "instrumentation_hooks",
+            Self::VmStateInspection => "vm_state_inspection",
+            Self::ReferenceComparison => "reference_comparison",
+        }
+    }
+
+    fn covers_runtime_capability(self, capability: RuntimeCapability) -> bool {
+        matches!(
+            (self, capability),
+            (
+                Self::StaticTrace | Self::TextTrace,
+                RuntimeCapability::Trace
+            ) | (Self::BranchDiscovery, RuntimeCapability::BranchDiscovery)
+                | (Self::FrameCapture, RuntimeCapability::FrameCapture)
+                | (Self::TextTrace, RuntimeCapability::SmokeValidation)
+                | (Self::FrameCapture, RuntimeCapability::SmokeValidation)
+                | (Self::Recording, RuntimeCapability::ReplayReview)
+                | (
+                    Self::ReferenceComparison,
+                    RuntimeCapability::ReferenceComparison
+                )
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RuntimeFeatureStatus {
+    Supported,
+    Partial,
+    Unsupported,
+}
+
+impl RuntimeFeatureStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Supported => "supported",
+            Self::Partial => "partial",
+            Self::Unsupported => "unsupported",
+        }
+    }
+
+    fn is_available(self) -> bool {
+        matches!(self, Self::Supported | Self::Partial)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeFeatureSupport {
+    pub feature: RuntimePlaybackFeature,
+    pub status: RuntimeFeatureStatus,
+    pub evidence_tier_ceiling: Option<EvidenceTier>,
+    pub description: String,
+    pub limitations: Vec<String>,
+}
+
+impl RuntimeFeatureSupport {
+    pub fn supported(
+        feature: RuntimePlaybackFeature,
+        evidence_tier_ceiling: EvidenceTier,
+        description: impl Into<String>,
+    ) -> Self {
+        Self {
+            feature,
+            status: RuntimeFeatureStatus::Supported,
+            evidence_tier_ceiling: Some(evidence_tier_ceiling),
+            description: description.into(),
+            limitations: Vec::new(),
+        }
+    }
+
+    pub fn partial(
+        feature: RuntimePlaybackFeature,
+        evidence_tier_ceiling: EvidenceTier,
+        description: impl Into<String>,
+        limitations: Vec<String>,
+    ) -> Self {
+        Self {
+            feature,
+            status: RuntimeFeatureStatus::Partial,
+            evidence_tier_ceiling: Some(evidence_tier_ceiling),
+            description: description.into(),
+            limitations,
+        }
+    }
+
+    pub fn unsupported(feature: RuntimePlaybackFeature, description: impl Into<String>) -> Self {
+        Self {
+            feature,
+            status: RuntimeFeatureStatus::Unsupported,
+            evidence_tier_ceiling: None,
+            description: description.into(),
+            limitations: Vec::new(),
+        }
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut value = serde_json::Map::new();
+        value.insert("feature".to_string(), self.feature.as_str().into());
+        value.insert("status".to_string(), self.status.as_str().into());
+        if let Some(evidence_tier_ceiling) = self.evidence_tier_ceiling {
+            value.insert(
+                "evidenceTierCeiling".to_string(),
+                evidence_tier_ceiling.as_str().into(),
+            );
+        }
+        value.insert("description".to_string(), self.description.clone().into());
+        value.insert(
+            "limitations".to_string(),
+            self.limitations
+                .iter()
+                .map(|limitation| Value::String(limitation.clone()))
+                .collect::<Vec<_>>()
+                .into(),
+        );
+        Value::Object(value)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeCapabilityContract {
+    pub contract_version: String,
+    pub capability_class: RuntimeCapabilityClass,
+    pub fidelity_tier_ceiling: FidelityTier,
+    pub evidence_tier_ceiling: EvidenceTier,
+    pub features: Vec<RuntimeFeatureSupport>,
+    pub limitations: Vec<String>,
+}
+
+impl RuntimeCapabilityContract {
+    pub fn new(
+        capability_class: RuntimeCapabilityClass,
+        fidelity_tier_ceiling: FidelityTier,
+        evidence_tier_ceiling: EvidenceTier,
+        features: Vec<RuntimeFeatureSupport>,
+        limitations: Vec<String>,
+    ) -> Self {
+        Self {
+            contract_version: "0.2.0".to_string(),
+            capability_class,
+            fidelity_tier_ceiling,
+            evidence_tier_ceiling,
+            features,
+            limitations,
+        }
+    }
+
+    pub fn validate(&self) -> UtsushiResult<()> {
+        if self.fidelity_tier_ceiling.rank() > self.capability_class.fidelity_tier_ceiling().rank()
+        {
+            return Err(format!(
+                "runtime capability class {} cannot claim fidelity ceiling {}",
+                self.capability_class.as_str(),
+                self.fidelity_tier_ceiling.as_str()
+            )
+            .into());
+        }
+        if self.evidence_tier_ceiling > self.fidelity_tier_ceiling.evidence_ceiling() {
+            return Err(format!(
+                "runtime capability contract evidence ceiling {} exceeds fidelity ceiling {}",
+                self.evidence_tier_ceiling.as_str(),
+                self.fidelity_tier_ceiling.as_str()
+            )
+            .into());
+        }
+        if self.evidence_tier_ceiling > self.capability_class.evidence_tier_ceiling() {
+            return Err(format!(
+                "runtime capability class {} cannot claim evidence ceiling {}",
+                self.capability_class.as_str(),
+                self.evidence_tier_ceiling.as_str()
+            )
+            .into());
+        }
+        for feature in &self.features {
+            match (feature.status, feature.evidence_tier_ceiling) {
+                (RuntimeFeatureStatus::Supported | RuntimeFeatureStatus::Partial, None) => {
+                    return Err(format!(
+                        "runtime feature {} must declare an evidence ceiling",
+                        feature.feature.as_str()
+                    )
+                    .into());
+                }
+                (RuntimeFeatureStatus::Unsupported, Some(_)) => {
+                    return Err(format!(
+                        "unsupported runtime feature {} must not declare an evidence ceiling",
+                        feature.feature.as_str()
+                    )
+                    .into());
+                }
+                (_, Some(feature_ceiling)) if feature_ceiling > self.evidence_tier_ceiling => {
+                    return Err(format!(
+                        "runtime feature {} evidence ceiling {} exceeds contract ceiling {}",
+                        feature.feature.as_str(),
+                        feature_ceiling.as_str(),
+                        self.evidence_tier_ceiling.as_str()
+                    )
+                    .into());
+                }
+                _ => {}
+            }
+        }
+        Ok(())
+    }
+
+    pub fn supports_required_features(&self, capabilities: &[RuntimeCapability]) -> bool {
+        capabilities.iter().all(|capability| {
+            self.features.iter().any(|feature| {
+                feature.status.is_available()
+                    && feature.feature.covers_runtime_capability(*capability)
+            })
+        })
+    }
+
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "contractVersion": self.contract_version,
+            "capabilityClass": self.capability_class.as_str(),
+            "fidelityTierCeiling": self.fidelity_tier_ceiling.as_str(),
+            "evidenceTierCeiling": self.evidence_tier_ceiling.as_str(),
+            "features": self.features.iter().map(RuntimeFeatureSupport::to_json).collect::<Vec<_>>(),
+            "limitations": self.limitations
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ControlledPlaybackSession {
+    pub session_id: String,
+    pub adapter_name: String,
+    pub adapter_version: String,
+    pub capability_class: RuntimeCapabilityClass,
+    pub requested_operation: RuntimeOperation,
+    pub status: String,
+    pub fidelity_tier: FidelityTier,
+    pub evidence_tier: EvidenceTier,
+    pub features_used: Vec<RuntimePlaybackFeature>,
+    pub limitations: Vec<String>,
+}
+
+impl ControlledPlaybackSession {
+    pub fn to_json(&self) -> Value {
+        serde_json::json!({
+            "sessionId": self.session_id,
+            "adapterName": self.adapter_name,
+            "adapterVersion": self.adapter_version,
+            "capabilityClass": self.capability_class.as_str(),
+            "requestedOperation": self.requested_operation.as_str(),
+            "status": self.status,
+            "fidelityTier": self.fidelity_tier.as_str(),
+            "evidenceTier": self.evidence_tier.as_str(),
+            "featuresUsed": self
+                .features_used
+                .iter()
+                .map(|feature| feature.as_str())
+                .collect::<Vec<_>>(),
+            "limitations": self.limitations
+        })
     }
 }
 
@@ -211,15 +575,7 @@ impl<'a> RuntimeAdapterRegistry<'a> {
 
     pub fn register(&mut self, adapter: &'a dyn RuntimeAdapter) -> UtsushiResult<()> {
         let descriptor = adapter.descriptor();
-        if descriptor.evidence_tier_ceiling > descriptor.fidelity_tier.evidence_ceiling() {
-            return Err(format!(
-                "runtime adapter {} evidence ceiling {} exceeds fidelity tier {}",
-                descriptor.name,
-                descriptor.evidence_tier_ceiling.as_str(),
-                descriptor.fidelity_tier.as_str()
-            )
-            .into());
-        }
+        descriptor.validate_contract()?;
         if self
             .adapters
             .iter()
@@ -298,6 +654,43 @@ mod tests {
 
     struct FakeTraceAdapter;
 
+    fn trace_contract() -> RuntimeCapabilityContract {
+        RuntimeCapabilityContract::new(
+            RuntimeCapabilityClass::StaticTrace,
+            FidelityTier::TraceOnly,
+            EvidenceTier::E1,
+            vec![
+                RuntimeFeatureSupport::supported(
+                    RuntimePlaybackFeature::StaticTrace,
+                    EvidenceTier::E1,
+                    "static trace fixture",
+                ),
+                RuntimeFeatureSupport::supported(
+                    RuntimePlaybackFeature::TextTrace,
+                    EvidenceTier::E1,
+                    "text trace fixture",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::Jump,
+                    "jump is not part of the base trace contract",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::Snapshot,
+                    "snapshot is not part of the base trace contract",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::Screenshot,
+                    "screenshots are not part of the base trace contract",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::Recording,
+                    "recording is not part of the base trace contract",
+                ),
+            ],
+            vec!["unit test adapter".to_string()],
+        )
+    }
+
     impl RuntimeAdapter for FakeTraceAdapter {
         fn descriptor(&self) -> RuntimeAdapterDescriptor {
             RuntimeAdapterDescriptor {
@@ -305,6 +698,7 @@ mod tests {
                 version: "0.0.0-test".to_string(),
                 fidelity_tier: FidelityTier::TraceOnly,
                 evidence_tier_ceiling: EvidenceTier::E1,
+                capability_contract: trace_contract(),
                 capabilities: vec![RuntimeCapability::Trace],
                 approximation_tiers: vec![ApproximationTier::DeterministicFixture],
                 limitations: vec!["unit test adapter".to_string()],
@@ -328,6 +722,17 @@ mod tests {
                 version: "0.0.0-test".to_string(),
                 fidelity_tier: FidelityTier::LayoutProbe,
                 evidence_tier_ceiling: EvidenceTier::E4,
+                capability_contract: RuntimeCapabilityContract::new(
+                    RuntimeCapabilityClass::LaunchCapture,
+                    FidelityTier::LayoutProbe,
+                    EvidenceTier::E4,
+                    vec![RuntimeFeatureSupport::supported(
+                        RuntimePlaybackFeature::FrameCapture,
+                        EvidenceTier::E4,
+                        "overclaims capture evidence",
+                    )],
+                    vec![],
+                ),
                 capabilities: vec![RuntimeCapability::Trace, RuntimeCapability::FrameCapture],
                 approximation_tiers: vec![ApproximationTier::ReferenceMatched],
                 limitations: vec![],
@@ -394,7 +799,56 @@ mod tests {
 
         let error = registry.register(&adapter).unwrap_err().to_string();
 
-        assert!(error.contains("exceeds fidelity tier"));
+        assert!(error.contains("exceeds"));
+    }
+
+    #[test]
+    fn capability_contract_serializes_base_unsupported_features() {
+        let contract = trace_contract();
+        contract.validate().unwrap();
+
+        let value = contract.to_json();
+
+        assert_eq!(value["capabilityClass"], "static_trace");
+        assert_eq!(value["evidenceTierCeiling"], "E1");
+        assert!(
+            value["features"].as_array().unwrap().iter().any(|feature| {
+                feature["feature"] == "jump" && feature["status"] == "unsupported"
+            })
+        );
+        assert!(value["features"].as_array().unwrap().iter().any(|feature| {
+            feature["feature"] == "snapshot" && feature["status"] == "unsupported"
+        }));
+        assert!(value["features"].as_array().unwrap().iter().any(|feature| {
+            feature["feature"] == "screenshot" && feature["status"] == "unsupported"
+        }));
+        assert!(value["features"].as_array().unwrap().iter().any(|feature| {
+            feature["feature"] == "recording" && feature["status"] == "unsupported"
+        }));
+    }
+
+    #[test]
+    fn capability_classes_map_to_expected_evidence_boundaries() {
+        assert_eq!(
+            RuntimeCapabilityClass::StaticTrace.evidence_tier_ceiling(),
+            EvidenceTier::E1
+        );
+        assert_eq!(
+            RuntimeCapabilityClass::LaunchCapture.evidence_tier_ceiling(),
+            EvidenceTier::E2
+        );
+        assert_eq!(
+            RuntimeCapabilityClass::InstrumentedRuntime.evidence_tier_ceiling(),
+            EvidenceTier::E3
+        );
+        assert_eq!(
+            RuntimeCapabilityClass::PartialVm.evidence_tier_ceiling(),
+            EvidenceTier::E3
+        );
+        assert_eq!(
+            RuntimeCapabilityClass::ReferenceVm.evidence_tier_ceiling(),
+            EvidenceTier::E4
+        );
     }
 
     #[test]

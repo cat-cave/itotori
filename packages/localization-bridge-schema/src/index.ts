@@ -126,6 +126,42 @@ export type RuntimeFidelityTierV02 = (typeof RUNTIME_FIDELITY_TIERS_V02)[number]
 export const RUNTIME_EVIDENCE_TIERS_V02 = ["E0", "E1", "E2", "E3", "E4"] as const;
 export type RuntimeEvidenceTierV02 = (typeof RUNTIME_EVIDENCE_TIERS_V02)[number];
 
+export const RUNTIME_CAPABILITY_CLASSES_V02 = [
+  "static_trace",
+  "launch_capture",
+  "instrumented_runtime",
+  "partial_vm",
+  "reference_vm",
+] as const;
+export type RuntimeCapabilityClassV02 = (typeof RUNTIME_CAPABILITY_CLASSES_V02)[number];
+
+export const RUNTIME_PLAYBACK_FEATURES_V02 = [
+  "static_trace",
+  "launch",
+  "text_trace",
+  "branch_discovery",
+  "frame_capture",
+  "jump",
+  "snapshot",
+  "screenshot",
+  "recording",
+  "instrumentation_hooks",
+  "vm_state_inspection",
+  "reference_comparison",
+] as const;
+export type RuntimePlaybackFeatureV02 = (typeof RUNTIME_PLAYBACK_FEATURES_V02)[number];
+
+export const RUNTIME_FEATURE_STATUSES_V02 = ["supported", "partial", "unsupported"] as const;
+export type RuntimeFeatureStatusV02 = (typeof RUNTIME_FEATURE_STATUSES_V02)[number];
+
+export const RUNTIME_REQUESTED_OPERATIONS_V02 = [
+  "trace",
+  "branch_discovery",
+  "capture",
+  "smoke_validation",
+] as const;
+export type RuntimeRequestedOperationV02 = (typeof RUNTIME_REQUESTED_OPERATIONS_V02)[number];
+
 export const RUNTIME_ARTIFACT_KINDS_V02 = [
   "trace_log",
   "screenshot",
@@ -1490,6 +1526,36 @@ export type PatchResultV02 = {
   sourceCompatibility?: PatchSourceCompatibilityReportV02;
 };
 
+export type RuntimeFeatureSupportV02 = {
+  feature: RuntimePlaybackFeatureV02;
+  status: RuntimeFeatureStatusV02;
+  evidenceTierCeiling?: RuntimeEvidenceTierV02;
+  description: string;
+  limitations: string[];
+};
+
+export type RuntimeCapabilityContractV02 = {
+  contractVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  capabilityClass: RuntimeCapabilityClassV02;
+  fidelityTierCeiling: RuntimeFidelityTierV02;
+  evidenceTierCeiling: RuntimeEvidenceTierV02;
+  features: RuntimeFeatureSupportV02[];
+  limitations: string[];
+};
+
+export type ControlledPlaybackSessionV02 = {
+  sessionId: Uuid7;
+  adapterName: string;
+  adapterVersion: string;
+  capabilityClass: RuntimeCapabilityClassV02;
+  requestedOperation: RuntimeRequestedOperationV02;
+  status: "passed" | "failed";
+  fidelityTier: RuntimeFidelityTierV02;
+  evidenceTier: RuntimeEvidenceTierV02;
+  featuresUsed: RuntimePlaybackFeatureV02[];
+  limitations: string[];
+};
+
 export type RuntimeEvidenceReportV02 = {
   schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
   runtimeReportId: Uuid7;
@@ -1501,6 +1567,8 @@ export type RuntimeEvidenceReportV02 = {
   adapterVersion: string;
   fidelityTier: RuntimeFidelityTierV02;
   evidenceTier: RuntimeEvidenceTierV02;
+  runtimeCapabilities?: RuntimeCapabilityContractV02;
+  controlledPlaybackSession?: ControlledPlaybackSessionV02;
   status: "passed" | "failed";
   createdAt: string;
   traceEvents: RuntimeTraceEventV02[];
@@ -2549,6 +2617,21 @@ export function assertRuntimeEvidenceReportV02(
     report.fidelityTier,
     "RuntimeEvidenceReportV02",
   );
+  if (report.runtimeCapabilities !== undefined) {
+    assertRuntimeCapabilityContractV02(
+      report.runtimeCapabilities,
+      "RuntimeEvidenceReportV02.runtimeCapabilities",
+      report.fidelityTier,
+      report.evidenceTier,
+    );
+  }
+  if (report.controlledPlaybackSession !== undefined) {
+    assertControlledPlaybackSessionV02(
+      report.controlledPlaybackSession,
+      "RuntimeEvidenceReportV02.controlledPlaybackSession",
+      report,
+    );
+  }
   assertEnum(report.status, ["passed", "failed"] as const, "RuntimeEvidenceReportV02.status");
   assertRfc3339Instant(report.createdAt, "RuntimeEvidenceReportV02.createdAt");
 
@@ -2613,12 +2696,40 @@ export function assertRuntimeEvidenceReportV02(
       "E2",
       "RuntimeEvidenceReportV02.evidenceTier",
     );
+    if (report.runtimeCapabilities !== undefined) {
+      assertRuntimeCapabilitySupportsFeatureV02(
+        report.runtimeCapabilities as RuntimeCapabilityContractV02,
+        "frame_capture",
+        "RuntimeEvidenceReportV02.runtimeCapabilities",
+      );
+    }
   }
   if (recordings.length > 0) {
     assertMinimumRuntimeEvidenceTierV02(
       report.evidenceTier,
       "E3",
       "RuntimeEvidenceReportV02.evidenceTier",
+    );
+    if (report.runtimeCapabilities !== undefined) {
+      assertRuntimeCapabilitySupportsFeatureV02(
+        report.runtimeCapabilities as RuntimeCapabilityContractV02,
+        "recording",
+        "RuntimeEvidenceReportV02.runtimeCapabilities",
+      );
+    }
+  }
+  if (traceEvents.length > 0 && report.runtimeCapabilities !== undefined) {
+    assertRuntimeCapabilitySupportsFeatureV02(
+      report.runtimeCapabilities as RuntimeCapabilityContractV02,
+      "text_trace",
+      "RuntimeEvidenceReportV02.runtimeCapabilities",
+    );
+  }
+  if (branchEvents.length > 0 && report.runtimeCapabilities !== undefined) {
+    assertRuntimeCapabilitySupportsFeatureV02(
+      report.runtimeCapabilities as RuntimeCapabilityContractV02,
+      "branch_discovery",
+      "RuntimeEvidenceReportV02.runtimeCapabilities",
     );
   }
   if (report.fidelityTier !== "reference_fidelity" && approximations.length === 0) {
@@ -2632,6 +2743,13 @@ export function assertRuntimeEvidenceReportV02(
   ) {
     throw new Error(
       "RuntimeEvidenceReportV02.referenceComparisons must include passed reference-runtime or conformance comparison evidence for E4/reference_fidelity claims",
+    );
+  }
+  if (referenceComparisons.length > 0 && report.runtimeCapabilities !== undefined) {
+    assertRuntimeCapabilitySupportsFeatureV02(
+      report.runtimeCapabilities as RuntimeCapabilityContractV02,
+      "reference_comparison",
+      "RuntimeEvidenceReportV02.runtimeCapabilities",
     );
   }
   if (report.status === "failed" && validationFindings.length === 0) {
@@ -2858,6 +2976,182 @@ function assertRuntimeArtifactRefV02(
   }
 }
 
+function assertRuntimeCapabilityContractV02(
+  value: unknown,
+  label: string,
+  reportFidelityTier: RuntimeFidelityTierV02,
+  reportEvidenceTier: RuntimeEvidenceTierV02,
+): asserts value is RuntimeCapabilityContractV02 {
+  const contract = asRecord(value, label);
+  assertEqual(contract.contractVersion, BRIDGE_SCHEMA_VERSION_V02, `${label}.contractVersion`);
+  assertEnum(contract.capabilityClass, RUNTIME_CAPABILITY_CLASSES_V02, `${label}.capabilityClass`);
+  assertEnum(contract.fidelityTierCeiling, RUNTIME_FIDELITY_TIERS_V02, `${label}.fidelityTierCeiling`);
+  assertEnum(contract.evidenceTierCeiling, RUNTIME_EVIDENCE_TIERS_V02, `${label}.evidenceTierCeiling`);
+  assertRuntimeCapabilityClassCeilingV02(
+    contract.capabilityClass,
+    contract.fidelityTierCeiling,
+    contract.evidenceTierCeiling,
+    label,
+  );
+  assertRuntimeEvidenceTierWithinFidelityV02(
+    contract.evidenceTierCeiling,
+    contract.fidelityTierCeiling,
+    label,
+  );
+  assertMaximumRuntimeFidelityTierV02(
+    reportFidelityTier,
+    contract.fidelityTierCeiling,
+    "RuntimeEvidenceReportV02.fidelityTier",
+  );
+  assertMaximumRuntimeEvidenceTierV02(
+    reportEvidenceTier,
+    contract.evidenceTierCeiling,
+    "RuntimeEvidenceReportV02.evidenceTier",
+  );
+
+  const features = asArray(contract.features, `${label}.features`);
+  if (features.length === 0) {
+    throw new Error(`${label}.features must include at least one runtime feature declaration`);
+  }
+  const seenFeatures = new Set<string>();
+  for (const [index, feature] of features.entries()) {
+    const featureLabel = `${label}.features[${index}]`;
+    const featureRecord = assertRuntimeFeatureSupportV02(feature, featureLabel);
+    if (seenFeatures.has(featureRecord.feature)) {
+      throw new Error(`${featureLabel}.feature must be unique within runtime capability contract`);
+    }
+    seenFeatures.add(featureRecord.feature);
+    if (
+      featureRecord.evidenceTierCeiling !== undefined &&
+      runtimeEvidenceTierRankV02(featureRecord.evidenceTierCeiling) >
+        runtimeEvidenceTierRankV02(contract.evidenceTierCeiling)
+    ) {
+      throw new Error(`${featureLabel}.evidenceTierCeiling must not exceed contract evidenceTierCeiling`);
+    }
+  }
+  assertStringArray(contract.limitations, `${label}.limitations`);
+}
+
+function assertRuntimeFeatureSupportV02(
+  value: unknown,
+  label: string,
+): RuntimeFeatureSupportV02 {
+  const feature = asRecord(value, label);
+  assertEnum(feature.feature, RUNTIME_PLAYBACK_FEATURES_V02, `${label}.feature`);
+  assertEnum(feature.status, RUNTIME_FEATURE_STATUSES_V02, `${label}.status`);
+  if (feature.evidenceTierCeiling !== undefined) {
+    assertEnum(
+      feature.evidenceTierCeiling,
+      RUNTIME_EVIDENCE_TIERS_V02,
+      `${label}.evidenceTierCeiling`,
+    );
+  }
+  if (feature.status === "unsupported" && feature.evidenceTierCeiling !== undefined) {
+    throw new Error(`${label}.evidenceTierCeiling must be omitted for unsupported runtime features`);
+  }
+  if (feature.status !== "unsupported" && feature.evidenceTierCeiling === undefined) {
+    throw new Error(`${label}.evidenceTierCeiling is required for supported runtime features`);
+  }
+  assertString(feature.description, `${label}.description`);
+  assertStringArray(feature.limitations, `${label}.limitations`);
+  return feature as RuntimeFeatureSupportV02;
+}
+
+function assertControlledPlaybackSessionV02(
+  value: unknown,
+  label: string,
+  report: Record<string, unknown>,
+): asserts value is ControlledPlaybackSessionV02 {
+  const session = asRecord(value, label);
+  assertUuid7(session.sessionId, `${label}.sessionId`);
+  assertString(session.adapterName, `${label}.adapterName`);
+  assertString(session.adapterVersion, `${label}.adapterVersion`);
+  if (session.adapterName !== report.adapterName) {
+    throw new Error(`${label}.adapterName must match RuntimeEvidenceReportV02.adapterName`);
+  }
+  if (session.adapterVersion !== report.adapterVersion) {
+    throw new Error(`${label}.adapterVersion must match RuntimeEvidenceReportV02.adapterVersion`);
+  }
+  assertEnum(session.capabilityClass, RUNTIME_CAPABILITY_CLASSES_V02, `${label}.capabilityClass`);
+  assertEnum(session.requestedOperation, RUNTIME_REQUESTED_OPERATIONS_V02, `${label}.requestedOperation`);
+  assertEnum(session.status, ["passed", "failed"] as const, `${label}.status`);
+  assertEnum(session.fidelityTier, RUNTIME_FIDELITY_TIERS_V02, `${label}.fidelityTier`);
+  assertEnum(session.evidenceTier, RUNTIME_EVIDENCE_TIERS_V02, `${label}.evidenceTier`);
+  assertRuntimeEvidenceTierWithinFidelityV02(session.evidenceTier, session.fidelityTier, label);
+  assertMaximumRuntimeFidelityTierV02(
+    session.fidelityTier,
+    report.fidelityTier as RuntimeFidelityTierV02,
+    `${label}.fidelityTier`,
+  );
+  assertMaximumRuntimeEvidenceTierV02(
+    session.evidenceTier,
+    report.evidenceTier as RuntimeEvidenceTierV02,
+    `${label}.evidenceTier`,
+  );
+  const featuresUsed = asArray(session.featuresUsed, `${label}.featuresUsed`);
+  for (const [index, feature] of featuresUsed.entries()) {
+    assertEnum(feature, RUNTIME_PLAYBACK_FEATURES_V02, `${label}.featuresUsed[${index}]`);
+    if (report.runtimeCapabilities !== undefined) {
+      assertRuntimeCapabilitySupportsFeatureV02(
+        report.runtimeCapabilities as RuntimeCapabilityContractV02,
+        feature as RuntimePlaybackFeatureV02,
+        "RuntimeEvidenceReportV02.runtimeCapabilities",
+      );
+    }
+  }
+  if (
+    report.runtimeCapabilities !== undefined &&
+    session.capabilityClass !==
+      (report.runtimeCapabilities as RuntimeCapabilityContractV02).capabilityClass
+  ) {
+    throw new Error(`${label}.capabilityClass must match runtimeCapabilities.capabilityClass`);
+  }
+  assertStringArray(session.limitations, `${label}.limitations`);
+}
+
+function assertRuntimeCapabilitySupportsFeatureV02(
+  contract: RuntimeCapabilityContractV02,
+  feature: RuntimePlaybackFeatureV02,
+  label: string,
+): void {
+  const declaration = contract.features.find((entry) => entry.feature === feature);
+  if (declaration === undefined || declaration.status === "unsupported") {
+    throw new Error(`${label} must advertise supported or partial ${feature} capability`);
+  }
+}
+
+function assertRuntimeCapabilityClassCeilingV02(
+  capabilityClass: RuntimeCapabilityClassV02,
+  fidelityTierCeiling: RuntimeFidelityTierV02,
+  evidenceTierCeiling: RuntimeEvidenceTierV02,
+  label: string,
+): void {
+  const fidelityCeilingByClass: Record<RuntimeCapabilityClassV02, RuntimeFidelityTierV02> = {
+    static_trace: "trace_only",
+    launch_capture: "layout_probe",
+    instrumented_runtime: "replay_review",
+    partial_vm: "replay_review",
+    reference_vm: "reference_fidelity",
+  };
+  const evidenceCeilingByClass: Record<RuntimeCapabilityClassV02, RuntimeEvidenceTierV02> = {
+    static_trace: "E1",
+    launch_capture: "E2",
+    instrumented_runtime: "E3",
+    partial_vm: "E3",
+    reference_vm: "E4",
+  };
+  assertMaximumRuntimeFidelityTierV02(
+    fidelityTierCeiling,
+    fidelityCeilingByClass[capabilityClass],
+    `${label}.fidelityTierCeiling`,
+  );
+  assertMaximumRuntimeEvidenceTierV02(
+    evidenceTierCeiling,
+    evidenceCeilingByClass[capabilityClass],
+    `${label}.evidenceTierCeiling`,
+  );
+}
+
 function assertRuntimeEvidenceTierWithinFidelityV02(
   evidenceTier: RuntimeEvidenceTierV02,
   fidelityTier: RuntimeFidelityTierV02,
@@ -2874,6 +3168,16 @@ function assertRuntimeEvidenceTierWithinFidelityV02(
     ceilingByFidelity[fidelityTier],
     `${label}.evidenceTier`,
   );
+}
+
+function assertMaximumRuntimeFidelityTierV02(
+  actual: RuntimeFidelityTierV02,
+  maximum: RuntimeFidelityTierV02,
+  label: string,
+): void {
+  if (runtimeFidelityTierRankV02(actual) > runtimeFidelityTierRankV02(maximum)) {
+    throw new Error(`${label} must not exceed ${maximum} for the declared runtime capability`);
+  }
 }
 
 function assertMinimumRuntimeEvidenceTierV02(
@@ -2898,6 +3202,10 @@ function assertMaximumRuntimeEvidenceTierV02(
 
 function runtimeEvidenceTierRankV02(tier: RuntimeEvidenceTierV02): number {
   return RUNTIME_EVIDENCE_TIERS_V02.indexOf(tier);
+}
+
+function runtimeFidelityTierRankV02(tier: RuntimeFidelityTierV02): number {
+  return RUNTIME_FIDELITY_TIERS_V02.indexOf(tier);
 }
 
 function assertPortableArtifactUriV02(value: unknown, label: string): asserts value is string {

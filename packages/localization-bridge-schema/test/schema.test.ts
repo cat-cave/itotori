@@ -1681,6 +1681,14 @@ describe("localization bridge schema guards", () => {
 
     expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
     expect(() => assertRuntimeReport(report)).not.toThrow();
+    expect(report.runtimeCapabilities).toMatchObject({
+      capabilityClass: "instrumented_runtime",
+      evidenceTierCeiling: "E3",
+    });
+    expect(report.controlledPlaybackSession).toMatchObject({
+      requestedOperation: "smoke_validation",
+      evidenceTier: "E3",
+    });
 
     const captures = report.captures as Array<Record<string, unknown>>;
     const firstCapture = asTestRecord(captures[0], "first runtime capture");
@@ -1688,6 +1696,113 @@ describe("localization bridge schema guards", () => {
     expect(artifactRef.uri).toBe("artifacts/utsushi/hello/frame-0001.png");
     expect(firstCapture).not.toHaveProperty("bytes");
     expect(firstCapture).not.toHaveProperty("data");
+  });
+
+  it("accepts base controlled playback contracts without jump, snapshot, screenshot, or recording support", () => {
+    const report = runtimeEvidenceV02Example();
+    report.fidelityTier = "layout_probe";
+    report.evidenceTier = "E2";
+    report.branchEvents = [];
+    report.recordings = [];
+    report.runtimeCapabilities = {
+      contractVersion: "0.2.0",
+      capabilityClass: "launch_capture",
+      fidelityTierCeiling: "layout_probe",
+      evidenceTierCeiling: "E2",
+      features: [
+        {
+          feature: "static_trace",
+          status: "supported",
+          evidenceTierCeiling: "E1",
+          description: "Static trace.",
+          limitations: [],
+        },
+        {
+          feature: "text_trace",
+          status: "supported",
+          evidenceTierCeiling: "E1",
+          description: "Text trace.",
+          limitations: [],
+        },
+        {
+          feature: "frame_capture",
+          status: "partial",
+          evidenceTierCeiling: "E2",
+          description: "Capture metadata.",
+          limitations: ["No live screenshot API."],
+        },
+        {
+          feature: "jump",
+          status: "unsupported",
+          description: "Jump is not required.",
+          limitations: [],
+        },
+        {
+          feature: "snapshot",
+          status: "unsupported",
+          description: "Snapshot is not required.",
+          limitations: [],
+        },
+        {
+          feature: "screenshot",
+          status: "unsupported",
+          description: "Screenshot API is not required.",
+          limitations: [],
+        },
+        {
+          feature: "recording",
+          status: "unsupported",
+          description: "Recording is not required.",
+          limitations: [],
+        },
+      ],
+      limitations: ["Fixture-scoped launch/capture contract."],
+    };
+    report.controlledPlaybackSession = {
+      sessionId: "019ed003-0000-7000-8000-000000000012",
+      adapterName: "utsushi-contract-example",
+      adapterVersion: "0.2.0",
+      capabilityClass: "launch_capture",
+      requestedOperation: "capture",
+      status: "passed",
+      fidelityTier: "layout_probe",
+      evidenceTier: "E2",
+      featuresUsed: ["static_trace", "text_trace", "frame_capture"],
+      limitations: ["No jump, snapshot, screenshot API, or recording API."],
+    };
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
+  });
+
+  it("rejects runtime capability contracts that overclaim their class ceiling", () => {
+    const report = runtimeEvidenceV02Example();
+    const capabilities = asTestRecord(
+      report.runtimeCapabilities,
+      "runtime capability contract",
+    );
+    capabilities.capabilityClass = "launch_capture";
+    capabilities.evidenceTierCeiling = "E3";
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(
+      /runtimeCapabilities\.fidelityTierCeiling/,
+    );
+  });
+
+  it("rejects runtime evidence that uses a feature advertised as unsupported", () => {
+    const report = runtimeEvidenceV02Example();
+    const capabilities = asTestRecord(
+      report.runtimeCapabilities,
+      "runtime capability contract",
+    );
+    const features = capabilities.features as Array<Record<string, unknown>>;
+    const branchFeature = features.find((feature) => feature.feature === "branch_discovery");
+    if (branchFeature === undefined) {
+      throw new Error("test fixture missing branch_discovery feature");
+    }
+    branchFeature.status = "unsupported";
+    delete branchFeature.evidenceTierCeiling;
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/branch_discovery capability/);
   });
 
   it("rejects v0.2 runtime evidence that overclaims fixture fidelity", () => {

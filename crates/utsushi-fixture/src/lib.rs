@@ -3,8 +3,10 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use utsushi_core::{
-    ApproximationTier, EvidenceTier, FidelityTier, RuntimeAdapter, RuntimeAdapterDescriptor,
-    RuntimeAdapterRegistry, RuntimeCapability, RuntimeRequest, UtsushiResult,
+    ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier, RuntimeAdapter,
+    RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeCapability, RuntimeCapabilityClass,
+    RuntimeCapabilityContract, RuntimeFeatureSupport, RuntimePlaybackFeature, RuntimeRequest,
+    UtsushiResult,
 };
 
 pub struct FixtureRuntimeAdapter;
@@ -39,6 +41,7 @@ impl RuntimeAdapter for FixtureRuntimeAdapter {
             version: env!("CARGO_PKG_VERSION").to_string(),
             fidelity_tier: FidelityTier::LayoutProbe,
             evidence_tier_ceiling: EvidenceTier::E2,
+            capability_contract: fixture_capability_contract(),
             capabilities: vec![
                 RuntimeCapability::Trace,
                 RuntimeCapability::FrameCapture,
@@ -64,6 +67,7 @@ impl RuntimeAdapter for FixtureRuntimeAdapter {
             &source,
             vec![trace_event(unit, 1)?],
             vec![],
+            RuntimeOperationLabel::Trace,
             FidelityTier::TraceOnly,
             EvidenceTier::E1,
             "Runtime trace reached fixture text; no frame was captured.",
@@ -78,6 +82,7 @@ impl RuntimeAdapter for FixtureRuntimeAdapter {
             &source,
             vec![trace_event(unit, 1)?],
             vec![capture_event(unit, 1)?],
+            RuntimeOperationLabel::Capture,
             FidelityTier::LayoutProbe,
             EvidenceTier::E2,
             "Fixture capture produced a screenshot reference; no pixel comparison was performed.",
@@ -117,11 +122,113 @@ fn first_unit(source: &Value) -> UtsushiResult<&Value> {
         .ok_or_else(|| "source has no units".into())
 }
 
+#[derive(Clone, Copy)]
+enum RuntimeOperationLabel {
+    Trace,
+    Capture,
+}
+
+impl RuntimeOperationLabel {
+    fn as_core_operation(self) -> utsushi_core::RuntimeOperation {
+        match self {
+            Self::Trace => utsushi_core::RuntimeOperation::Trace,
+            Self::Capture => utsushi_core::RuntimeOperation::Capture,
+        }
+    }
+
+    fn features_used(self) -> Vec<RuntimePlaybackFeature> {
+        match self {
+            Self::Trace => vec![
+                RuntimePlaybackFeature::StaticTrace,
+                RuntimePlaybackFeature::TextTrace,
+            ],
+            Self::Capture => vec![
+                RuntimePlaybackFeature::StaticTrace,
+                RuntimePlaybackFeature::TextTrace,
+                RuntimePlaybackFeature::FrameCapture,
+            ],
+        }
+    }
+}
+
+fn fixture_capability_contract() -> RuntimeCapabilityContract {
+    RuntimeCapabilityContract::new(
+        RuntimeCapabilityClass::LaunchCapture,
+        FidelityTier::LayoutProbe,
+        EvidenceTier::E2,
+        vec![
+            RuntimeFeatureSupport::supported(
+                RuntimePlaybackFeature::StaticTrace,
+                EvidenceTier::E1,
+                "Reads fixture source JSON and emits deterministic text reachability trace events.",
+            ),
+            RuntimeFeatureSupport::supported(
+                RuntimePlaybackFeature::Launch,
+                EvidenceTier::E1,
+                "Launches the synthetic fixture playback model without invoking a commercial engine.",
+            ),
+            RuntimeFeatureSupport::supported(
+                RuntimePlaybackFeature::TextTrace,
+                EvidenceTier::E1,
+                "Reports the first reachable fixture text unit as observed runtime text.",
+            ),
+            RuntimeFeatureSupport::partial(
+                RuntimePlaybackFeature::FrameCapture,
+                EvidenceTier::E2,
+                "Emits deterministic frame metadata and a portable artifact reference.",
+                vec![
+                    "Frame metadata is fixture-generated and is not a live engine screenshot."
+                        .to_string(),
+                ],
+            ),
+            RuntimeFeatureSupport::unsupported(
+                RuntimePlaybackFeature::BranchDiscovery,
+                "Branch discovery is not implemented for the current fixture source format.",
+            ),
+            RuntimeFeatureSupport::unsupported(
+                RuntimePlaybackFeature::Jump,
+                "Controlled jump targets are outside the base fixture contract.",
+            ),
+            RuntimeFeatureSupport::unsupported(
+                RuntimePlaybackFeature::Snapshot,
+                "Snapshot save and restore are outside the base fixture contract.",
+            ),
+            RuntimeFeatureSupport::unsupported(
+                RuntimePlaybackFeature::Screenshot,
+                "The fixture does not capture live engine screenshots.",
+            ),
+            RuntimeFeatureSupport::unsupported(
+                RuntimePlaybackFeature::Recording,
+                "The fixture does not record playback video.",
+            ),
+            RuntimeFeatureSupport::unsupported(
+                RuntimePlaybackFeature::InstrumentationHooks,
+                "The fixture does not expose instrumented runtime hooks.",
+            ),
+            RuntimeFeatureSupport::unsupported(
+                RuntimePlaybackFeature::VmStateInspection,
+                "The fixture does not expose VM state inspection.",
+            ),
+            RuntimeFeatureSupport::unsupported(
+                RuntimePlaybackFeature::ReferenceComparison,
+                "The fixture is not a reference VM and performs no reference comparison.",
+            ),
+        ],
+        vec![
+            "Synthetic fixture runtime only; no commercial engine behavior is emulated."
+                .to_string(),
+            "Capture support is deterministic metadata, not live-engine screenshot capture."
+                .to_string(),
+        ],
+    )
+}
+
 fn runtime_report(
     descriptor: &RuntimeAdapterDescriptor,
     source: &Value,
     trace_events: Vec<Value>,
     captures: Vec<Value>,
+    operation: RuntimeOperationLabel,
     fidelity_tier: FidelityTier,
     evidence_tier: EvidenceTier,
     limitation: &str,
@@ -142,6 +249,19 @@ fn runtime_report(
         "adapterVersion": descriptor.version,
         "fidelityTier": fidelity_tier.as_str(),
         "evidenceTier": evidence_tier.as_str(),
+        "runtimeCapabilities": descriptor.capability_contract.to_json(),
+        "controlledPlaybackSession": ControlledPlaybackSession {
+            session_id: deterministic_uuid("session", 1),
+            adapter_name: descriptor.name.clone(),
+            adapter_version: descriptor.version.clone(),
+            capability_class: descriptor.capability_contract.capability_class,
+            requested_operation: operation.as_core_operation(),
+            status: "passed".to_string(),
+            fidelity_tier,
+            evidence_tier,
+            features_used: operation.features_used(),
+            limitations: limitations.clone(),
+        }.to_json(),
         "status": "passed",
         "createdAt": "2026-06-17T00:00:00.000Z",
         "traceEvents": trace_events,
@@ -224,6 +344,7 @@ fn deterministic_uuid(kind: &str, index: usize) -> String {
         "capture" => 0x3000,
         "screenshot" => 0x4000,
         "approximation" => 0x5000,
+        "session" => 0x6000,
         _ => 0xf000,
     };
     format!("019ed003-0000-7000-8000-{kind_code:08x}{index:04x}")
@@ -282,6 +403,44 @@ mod tests {
         assert!(descriptor.supports(RuntimeCapability::SmokeValidation));
         assert!(!descriptor.supports(RuntimeCapability::BranchDiscovery));
         assert!(descriptor.uses_approximation(ApproximationTier::DeterministicFixture));
+        assert_eq!(
+            descriptor.capability_contract.capability_class,
+            RuntimeCapabilityClass::LaunchCapture
+        );
+        assert_eq!(
+            descriptor.capability_contract.evidence_tier_ceiling,
+            EvidenceTier::E2
+        );
+        assert!(
+            descriptor
+                .capability_contract
+                .features
+                .iter()
+                .any(|feature| {
+                    feature.feature == RuntimePlaybackFeature::Jump
+                        && feature.status == utsushi_core::RuntimeFeatureStatus::Unsupported
+                })
+        );
+        assert!(
+            descriptor
+                .capability_contract
+                .features
+                .iter()
+                .any(|feature| {
+                    feature.feature == RuntimePlaybackFeature::Snapshot
+                        && feature.status == utsushi_core::RuntimeFeatureStatus::Unsupported
+                })
+        );
+        assert!(
+            descriptor
+                .capability_contract
+                .features
+                .iter()
+                .any(|feature| {
+                    feature.feature == RuntimePlaybackFeature::Recording
+                        && feature.status == utsushi_core::RuntimeFeatureStatus::Unsupported
+                })
+        );
         assert!(
             descriptor
                 .limitations
@@ -308,6 +467,10 @@ mod tests {
         assert_eq!(report["adapterName"], FixtureRuntimeAdapter::NAME);
         assert_eq!(report["evidenceTier"], "E1");
         assert_eq!(report["fidelityTier"], "trace_only");
+        assert_eq!(
+            report["controlledPlaybackSession"]["requestedOperation"],
+            "trace"
+        );
         let _ = fs::remove_dir_all(game_dir);
     }
 
@@ -353,6 +516,29 @@ mod tests {
         assert_eq!(report["adapterName"], FixtureRuntimeAdapter::NAME);
         assert_eq!(report["evidenceTier"], "E2");
         assert_eq!(report["fidelityTier"], "layout_probe");
+        assert_eq!(
+            report["runtimeCapabilities"]["capabilityClass"],
+            "launch_capture"
+        );
+        assert_eq!(report["runtimeCapabilities"]["evidenceTierCeiling"], "E2");
+        assert!(
+            report["runtimeCapabilities"]["features"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|feature| {
+                    feature["feature"] == "screenshot" && feature["status"] == "unsupported"
+                })
+        );
+        assert_eq!(
+            report["controlledPlaybackSession"]["capabilityClass"],
+            "launch_capture"
+        );
+        assert_eq!(
+            report["controlledPlaybackSession"]["requestedOperation"],
+            "capture"
+        );
+        assert_eq!(report["controlledPlaybackSession"]["evidenceTier"], "E2");
         assert_eq!(report["traceEvents"].as_array().unwrap().len(), 1);
         assert_eq!(report["captures"].as_array().unwrap().len(), 1);
         assert_eq!(
@@ -389,6 +575,7 @@ mod tests {
         assert_eq!(report["schemaVersion"], "0.2.0");
         assert_eq!(report["evidenceTier"], "E1");
         assert_eq!(report["fidelityTier"], "trace_only");
+        assert_eq!(report["controlledPlaybackSession"]["evidenceTier"], "E1");
         assert_eq!(report["captures"].as_array().unwrap().len(), 0);
         assert_eq!(report["approximations"][0]["evidenceTierCeiling"], "E1");
         let _ = fs::remove_dir_all(game_dir);

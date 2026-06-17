@@ -157,6 +157,72 @@ function runtimeEvidenceReportFixture(
     adapterVersion: "0.0.0",
     fidelityTier: "layout_probe",
     evidenceTier: "E2",
+    runtimeCapabilities: {
+      contractVersion: "0.2.0",
+      capabilityClass: "launch_capture",
+      fidelityTierCeiling: "layout_probe",
+      evidenceTierCeiling: "E2",
+      features: [
+        {
+          feature: "static_trace",
+          status: "supported",
+          evidenceTierCeiling: "E1",
+          description: "Fixture static trace.",
+          limitations: [],
+        },
+        {
+          feature: "text_trace",
+          status: "supported",
+          evidenceTierCeiling: "E1",
+          description: "Fixture text trace.",
+          limitations: [],
+        },
+        {
+          feature: "frame_capture",
+          status: "partial",
+          evidenceTierCeiling: "E2",
+          description: "Fixture capture metadata.",
+          limitations: ["No live engine screenshot API."],
+        },
+        {
+          feature: "jump",
+          status: "unsupported",
+          description: "Jump is not required by the base contract.",
+          limitations: [],
+        },
+        {
+          feature: "snapshot",
+          status: "unsupported",
+          description: "Snapshot is not required by the base contract.",
+          limitations: [],
+        },
+        {
+          feature: "screenshot",
+          status: "unsupported",
+          description: "Screenshot API is not required by the base contract.",
+          limitations: [],
+        },
+        {
+          feature: "recording",
+          status: "unsupported",
+          description: "Recording is not required by the base contract.",
+          limitations: [],
+        },
+      ],
+      limitations: ["Fixture launch/capture boundary."],
+    },
+    controlledPlaybackSession: {
+      sessionId: "019ed003-0000-7000-8000-000000000906",
+      adapterName: "utsushi-fixture",
+      adapterVersion: "0.0.0",
+      capabilityClass: "launch_capture",
+      requestedOperation: "capture",
+      status: "passed",
+      fidelityTier: "layout_probe",
+      evidenceTier: "E2",
+      featuresUsed: ["static_trace", "text_trace", "frame_capture"],
+      limitations: ["No jump, snapshot, screenshot API, or recording API."],
+    },
     status: "passed",
     createdAt: "2026-06-17T00:00:00.000Z",
     traceEvents: [
@@ -936,6 +1002,79 @@ describe("ItotoriProjectRepository", () => {
           adapterVersion: "0.0.0",
           fidelityTier: "layout_probe",
           evidenceTier: "E2",
+          runtimeCapabilities: {
+            contractVersion: "0.2.0",
+            capabilityClass: "launch_capture",
+            fidelityTierCeiling: "layout_probe",
+            evidenceTierCeiling: "E2",
+            features: [
+              {
+                feature: "static_trace",
+                status: "supported",
+                evidenceTierCeiling: "E1",
+                description: "Fixture static trace.",
+                limitations: [],
+              },
+              {
+                feature: "text_trace",
+                status: "supported",
+                evidenceTierCeiling: "E1",
+                description: "Fixture text trace.",
+                limitations: [],
+              },
+              {
+                feature: "branch_discovery",
+                status: "partial",
+                evidenceTierCeiling: "E1",
+                description: "Fixture branch metadata.",
+                limitations: ["Synthetic branch metadata only."],
+              },
+              {
+                feature: "frame_capture",
+                status: "partial",
+                evidenceTierCeiling: "E2",
+                description: "Fixture capture metadata.",
+                limitations: ["No live engine screenshot API."],
+              },
+              {
+                feature: "jump",
+                status: "unsupported",
+                description: "Jump is not required by the base contract.",
+                limitations: [],
+              },
+              {
+                feature: "snapshot",
+                status: "unsupported",
+                description: "Snapshot is not required by the base contract.",
+                limitations: [],
+              },
+              {
+                feature: "screenshot",
+                status: "unsupported",
+                description: "Screenshot API is not required by the base contract.",
+                limitations: [],
+              },
+              {
+                feature: "recording",
+                status: "unsupported",
+                description: "Recording is not required by the base contract.",
+                limitations: [],
+              },
+            ],
+            limitations: ["Fixture launch/capture boundary."],
+          },
+          controlledPlaybackSession: {
+            sessionId: "019ed003-0000-7000-8000-000000000006",
+            adapterName: "utsushi-fixture",
+            adapterVersion: "0.0.0",
+            capabilityClass: "launch_capture",
+            requestedOperation: "capture",
+            status: "passed",
+            fidelityTier: "layout_probe",
+            evidenceTier: "E2",
+            featuresUsed: ["static_trace", "text_trace", "branch_discovery", "frame_capture"],
+            limitations: ["No jump, snapshot, screenshot API, or recording API."],
+          },
           status: "passed",
           createdAt: "2026-06-17T00:00:00.000Z",
           traceEvents: [
@@ -1032,6 +1171,26 @@ describe("ItotoriProjectRepository", () => {
         screenshotArtifactCount: 1,
         recordingArtifactCount: 0,
         validationFindingCount: 0,
+      });
+
+      const runtimeReportArtifact = await context.pool.query<{
+        metadata: {
+          runtimeCapabilities?: { capabilityClass?: string; evidenceTierCeiling?: string };
+          controlledPlaybackSession?: {
+            requestedOperation?: string;
+            evidenceTier?: string;
+          };
+        };
+      }>("select metadata from itotori_artifacts where artifact_id = $1", [
+        "019ed003-0000-7000-8000-000000000001",
+      ]);
+      expect(runtimeReportArtifact.rows[0]?.metadata.runtimeCapabilities).toMatchObject({
+        capabilityClass: "launch_capture",
+        evidenceTierCeiling: "E2",
+      });
+      expect(runtimeReportArtifact.rows[0]?.metadata.controlledPlaybackSession).toMatchObject({
+        requestedOperation: "capture",
+        evidenceTier: "E2",
       });
 
       const artifactResult = await context.pool.query<{

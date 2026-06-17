@@ -108,6 +108,15 @@ required patch mode.
 the report claim: `trace_only` can claim at most E1, `layout_probe` at most E2,
 `replay_review` at most E3, and `reference_fidelity` at most E4.
 
+Runtime reports may include `runtimeCapabilities` and
+`controlledPlaybackSession`. `runtimeCapabilities` declares the adapter boundary
+as `static_trace`, `launch_capture`, `instrumented_runtime`, `partial_vm`, or
+`reference_vm`, with feature-level `supported`, `partial`, or `unsupported`
+claims and evidence ceilings. `controlledPlaybackSession` records the actual
+operation and features used for a report. The base contract can honestly mark
+`jump`, `snapshot`, `screenshot`, or `recording` as unsupported; those APIs are
+not required just because an adapter supports trace or launch/capture evidence.
+
 Every trace event, capture, recording, branch point, approximation, or runtime
 finding carries a `bridgeUnitRef` when it refers to localized content. The ref
 contains `bridgeUnitId` and should include `sourceUnitKey` when available so

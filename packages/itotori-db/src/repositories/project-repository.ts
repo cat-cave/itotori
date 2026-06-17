@@ -2368,6 +2368,12 @@ function runtimeReportMetadataFor(
     validationFindingCount: summary.validationFindingCount,
     referenceComparisonCount: summary.referenceComparisonCount,
     approximations: runtimeApproximations(report),
+    runtimeCapabilities: isRuntimeEvidenceReportV02(report)
+      ? (report.runtimeCapabilities ?? null)
+      : null,
+    controlledPlaybackSession: isRuntimeEvidenceReportV02(report)
+      ? (report.controlledPlaybackSession ?? null)
+      : null,
     limitations: isRuntimeEvidenceReportV02(report) ? report.limitations : [],
     reportCreatedAt: runtimeReportCreatedAt(report).toISOString(),
   };
