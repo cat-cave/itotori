@@ -1,0 +1,577 @@
+{
+  "schemaVersion": "0.2.0",
+  "triageBundleId": "019ed002-0000-7000-8000-000000000001",
+  "projectId": "019ed002-0000-7000-8000-000000000002",
+  "sourceBridgeId": "019ed001-0000-7000-8000-000000000001",
+  "localeBranchId": "019ed002-0000-7000-8000-000000000003",
+  "events": [
+    {
+      "eventId": "019ed002-0000-7000-8000-000000000101",
+      "eventKind": "task_requested",
+      "occurredAt": "2026-06-17T12:00:00.000Z",
+      "actor": {
+        "actorKind": "human",
+        "actorId": "019ed002-0000-7000-8000-000000000901",
+        "displayName": "QA lead"
+      },
+      "taskId": "019ed002-0000-7000-8000-000000000201",
+      "subjectRefs": [
+        {
+          "subjectKind": "task",
+          "subjectId": "019ed002-0000-7000-8000-000000000201",
+          "label": "style and patch QA"
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000410",
+          "provenanceKind": "human_review",
+          "reviewerId": "019ed002-0000-7000-8000-000000000901",
+          "reviewSessionId": "019ed002-0000-7000-8000-000000000902",
+          "noteHash": "sha256:qa-task-request"
+        }
+      ],
+      "causalLinks": [],
+      "payload": {
+        "requestedChecks": ["style", "protected-spans", "patch-result"]
+      }
+    },
+    {
+      "eventId": "019ed002-0000-7000-8000-000000000102",
+      "eventKind": "model_output_recorded",
+      "occurredAt": "2026-06-17T12:02:00.000Z",
+      "actor": {
+        "actorKind": "agent",
+        "actorId": "019ed002-0000-7000-8000-000000000903",
+        "displayName": "draft-agent"
+      },
+      "taskId": "019ed002-0000-7000-8000-000000000201",
+      "subjectRefs": [
+        {
+          "subjectKind": "model_output",
+          "subjectId": "019ed002-0000-7000-8000-000000000501",
+          "label": "draft output for prologue line 001"
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000403",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed002-0000-7000-8000-000000000501",
+          "taskId": "019ed002-0000-7000-8000-000000000201",
+          "provider": "fixture-provider",
+          "model": "fixture-model-v1",
+          "outputHash": "sha256:model-output-prologue-001",
+          "promptHash": "sha256:prompt-prologue-001",
+          "artifactRef": {
+            "artifactId": "019ed002-0000-7000-8000-000000000601",
+            "artifactKind": "model-output-json",
+            "uri": "artifacts/model-output-prologue-001.json",
+            "hash": "sha256:model-output-prologue-001"
+          }
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000701",
+          "linkKind": "caused_by",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000101",
+          "rationale": "The QA task requested draft inspection."
+        }
+      ],
+      "payload": {
+        "outputHash": "sha256:model-output-prologue-001"
+      }
+    },
+    {
+      "eventId": "019ed002-0000-7000-8000-000000000103",
+      "eventKind": "qa_finding_reported",
+      "occurredAt": "2026-06-17T12:03:00.000Z",
+      "actor": {
+        "actorKind": "tool",
+        "actorId": "019ed002-0000-7000-8000-000000000904",
+        "displayName": "annotation-check"
+      },
+      "taskId": "019ed002-0000-7000-8000-000000000201",
+      "findingId": "019ed002-0000-7000-8000-000000000301",
+      "subjectRefs": [
+        {
+          "subjectKind": "bridge_span",
+          "subjectId": "019ed001-0000-7000-8000-000000000801",
+          "label": "source annotation span"
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000401",
+          "provenanceKind": "source_annotation",
+          "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+          "spanId": "019ed001-0000-7000-8000-000000000801",
+          "sourceAssetRef": {
+            "assetId": "019ed001-0000-7000-8000-000000000002",
+            "assetKey": "script/prologue"
+          },
+          "sourceLocation": {
+            "containerKey": "script/prologue",
+            "entryPath": ["commands", "0"],
+            "range": {
+              "startByte": 7,
+              "endByte": 15
+            }
+          },
+          "annotationText": "placeholder must remain player-name slot",
+          "observedAt": "2026-06-17T12:03:00.000Z"
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000702",
+          "linkKind": "derived_from",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000101"
+        }
+      ]
+    },
+    {
+      "eventId": "019ed002-0000-7000-8000-000000000104",
+      "eventKind": "qa_finding_reported",
+      "occurredAt": "2026-06-17T12:04:00.000Z",
+      "actor": {
+        "actorKind": "agent",
+        "actorId": "019ed002-0000-7000-8000-000000000905",
+        "displayName": "style-agent"
+      },
+      "taskId": "019ed002-0000-7000-8000-000000000201",
+      "findingId": "019ed002-0000-7000-8000-000000000302",
+      "subjectRefs": [
+        {
+          "subjectKind": "style_guide_rule",
+          "subjectId": "019ed002-0000-7000-8000-000000000511",
+          "label": "formal address rule"
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000402",
+          "provenanceKind": "style_guide",
+          "styleGuideId": "019ed002-0000-7000-8000-000000000510",
+          "styleGuideVersionId": "019ed002-0000-7000-8000-000000000512",
+          "ruleId": "voice.formality.player-address",
+          "rulePath": "voice.formality",
+          "excerptHash": "sha256:style-guide-player-address"
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000703",
+          "linkKind": "derived_from",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000102"
+        }
+      ]
+    },
+    {
+      "eventId": "019ed002-0000-7000-8000-000000000105",
+      "eventKind": "qa_finding_reported",
+      "occurredAt": "2026-06-17T12:05:00.000Z",
+      "actor": {
+        "actorKind": "agent",
+        "actorId": "019ed002-0000-7000-8000-000000000906",
+        "displayName": "terminology-agent"
+      },
+      "taskId": "019ed002-0000-7000-8000-000000000201",
+      "findingId": "019ed002-0000-7000-8000-000000000303",
+      "subjectRefs": [
+        {
+          "subjectKind": "model_output",
+          "subjectId": "019ed002-0000-7000-8000-000000000501",
+          "label": "draft output for prologue line 001"
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000403",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed002-0000-7000-8000-000000000501",
+          "taskId": "019ed002-0000-7000-8000-000000000201",
+          "provider": "fixture-provider",
+          "model": "fixture-model-v1",
+          "outputHash": "sha256:model-output-prologue-001",
+          "promptHash": "sha256:prompt-prologue-001"
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000704",
+          "linkKind": "derived_from",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000102"
+        }
+      ]
+    },
+    {
+      "eventId": "019ed002-0000-7000-8000-000000000106",
+      "eventKind": "patch_result_recorded",
+      "occurredAt": "2026-06-17T12:06:00.000Z",
+      "actor": {
+        "actorKind": "tool",
+        "actorId": "019ed002-0000-7000-8000-000000000907",
+        "displayName": "kaifuu-patcher"
+      },
+      "taskId": "019ed002-0000-7000-8000-000000000202",
+      "subjectRefs": [
+        {
+          "subjectKind": "patch_result",
+          "subjectId": "019ed002-0000-7000-8000-000000000520",
+          "label": "failed patch verify result"
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000404",
+          "provenanceKind": "patching_cause",
+          "patchResultId": "019ed002-0000-7000-8000-000000000520",
+          "patchExportId": "019ed002-0000-7000-8000-000000000521",
+          "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+          "assetRef": {
+            "assetId": "019ed001-0000-7000-8000-000000000002",
+            "assetKey": "script/prologue"
+          },
+          "writeMode": "replace",
+          "failureCode": "protected_span_dropped",
+          "failureDetail": "The target text omitted the mapped player placeholder."
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000705",
+          "linkKind": "caused_by",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000102"
+        }
+      ]
+    },
+    {
+      "eventId": "019ed002-0000-7000-8000-000000000107",
+      "eventKind": "qa_finding_reported",
+      "occurredAt": "2026-06-17T12:07:00.000Z",
+      "actor": {
+        "actorKind": "tool",
+        "actorId": "019ed002-0000-7000-8000-000000000907",
+        "displayName": "kaifuu-patcher"
+      },
+      "taskId": "019ed002-0000-7000-8000-000000000202",
+      "findingId": "019ed002-0000-7000-8000-000000000304",
+      "subjectRefs": [
+        {
+          "subjectKind": "patch_result",
+          "subjectId": "019ed002-0000-7000-8000-000000000520",
+          "label": "failed patch verify result"
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000404",
+          "provenanceKind": "patching_cause",
+          "patchResultId": "019ed002-0000-7000-8000-000000000520",
+          "patchExportId": "019ed002-0000-7000-8000-000000000521",
+          "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+          "assetRef": {
+            "assetId": "019ed001-0000-7000-8000-000000000002",
+            "assetKey": "script/prologue"
+          },
+          "writeMode": "replace",
+          "failureCode": "protected_span_dropped",
+          "failureDetail": "The target text omitted the mapped player placeholder."
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000706",
+          "linkKind": "derived_from",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000106"
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "019ed002-0000-7000-8000-000000000201",
+      "taskKind": "llm_qa",
+      "createdAt": "2026-06-17T12:00:00.000Z",
+      "summary": "Review prologue draft against source annotations and style guidance.",
+      "createdByEventId": "019ed002-0000-7000-8000-000000000101",
+      "inputRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed001-0000-7000-8000-000000000201",
+          "label": "prologue line 001"
+        },
+        {
+          "subjectKind": "style_guide_rule",
+          "subjectId": "019ed002-0000-7000-8000-000000000511",
+          "label": "formal address rule"
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000410",
+          "provenanceKind": "human_review",
+          "reviewerId": "019ed002-0000-7000-8000-000000000901",
+          "reviewSessionId": "019ed002-0000-7000-8000-000000000902",
+          "noteHash": "sha256:qa-task-request"
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000707",
+          "linkKind": "caused_by",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000101"
+        }
+      ]
+    },
+    {
+      "taskId": "019ed002-0000-7000-8000-000000000202",
+      "taskKind": "patch",
+      "createdAt": "2026-06-17T12:06:00.000Z",
+      "summary": "Patch and verify prologue script output.",
+      "inputRefs": [
+        {
+          "subjectKind": "patch_export",
+          "subjectId": "019ed002-0000-7000-8000-000000000521",
+          "label": "patch export with prologue draft"
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000404",
+          "provenanceKind": "patching_cause",
+          "patchResultId": "019ed002-0000-7000-8000-000000000520",
+          "patchExportId": "019ed002-0000-7000-8000-000000000521",
+          "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+          "writeMode": "replace",
+          "failureCode": "protected_span_dropped"
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000708",
+          "linkKind": "caused_by",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000102"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "findingId": "019ed002-0000-7000-8000-000000000301",
+      "findingKind": "source_annotation_issue",
+      "severity": "P2",
+      "qualityCategory": "protected_content",
+      "title": "Placeholder annotation is ambiguous for QA",
+      "description": "The source annotation says the player-name slot must be preserved but does not name the target placeholder form.",
+      "impact": "Automated QA can detect the issue, but a reviewer must decide whether the target form is acceptable.",
+      "createdAt": "2026-06-17T12:03:00.000Z",
+      "reportedByTaskId": "019ed002-0000-7000-8000-000000000201",
+      "firstSeenEventId": "019ed002-0000-7000-8000-000000000103",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_span",
+          "subjectId": "019ed001-0000-7000-8000-000000000801",
+          "label": "source annotation span"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed002-0000-7000-8000-000000000801",
+          "evidenceKind": "text_excerpt",
+          "summary": "Annotation text names the placeholder purpose but not the target form.",
+          "subjectRef": {
+            "subjectKind": "bridge_span",
+            "subjectId": "019ed001-0000-7000-8000-000000000801"
+          },
+          "expectedValue": "Target placeholder form documented",
+          "observedValue": "placeholder must remain player-name slot",
+          "provenanceIds": ["019ed002-0000-7000-8000-000000000401"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000401",
+          "provenanceKind": "source_annotation",
+          "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+          "spanId": "019ed001-0000-7000-8000-000000000801",
+          "annotationText": "placeholder must remain player-name slot"
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000709",
+          "linkKind": "derived_from",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000103"
+        }
+      ]
+    },
+    {
+      "findingId": "019ed002-0000-7000-8000-000000000302",
+      "findingKind": "style_guide_violation",
+      "severity": "P1",
+      "qualityCategory": "style",
+      "title": "Player address ignores formal voice rule",
+      "description": "The draft uses a casual player address where the locale branch style guide requires formal address in tutorial-adjacent dialogue.",
+      "impact": "The line cannot ship in the MVP fixture because it violates a required style rule.",
+      "createdAt": "2026-06-17T12:04:00.000Z",
+      "reportedByTaskId": "019ed002-0000-7000-8000-000000000201",
+      "firstSeenEventId": "019ed002-0000-7000-8000-000000000104",
+      "affectedRefs": [
+        {
+          "subjectKind": "style_guide_rule",
+          "subjectId": "019ed002-0000-7000-8000-000000000511",
+          "label": "formal address rule"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed002-0000-7000-8000-000000000802",
+          "evidenceKind": "text_excerpt",
+          "summary": "The draft phrase conflicts with the style-guide rule excerpt.",
+          "expectedValue": "Formal player address",
+          "observedValue": "Casual player address",
+          "provenanceIds": ["019ed002-0000-7000-8000-000000000402"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000402",
+          "provenanceKind": "style_guide",
+          "styleGuideId": "019ed002-0000-7000-8000-000000000510",
+          "styleGuideVersionId": "019ed002-0000-7000-8000-000000000512",
+          "ruleId": "voice.formality.player-address",
+          "rulePath": "voice.formality",
+          "excerptHash": "sha256:style-guide-player-address"
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000710",
+          "linkKind": "derived_from",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000104"
+        }
+      ]
+    },
+    {
+      "findingId": "019ed002-0000-7000-8000-000000000303",
+      "findingKind": "model_output_issue",
+      "severity": "P1",
+      "qualityCategory": "terminology",
+      "title": "Model output dropped required term choice",
+      "description": "The model output used an unapproved term for the player placeholder label.",
+      "impact": "The draft needs regeneration or manual repair before patch export.",
+      "createdAt": "2026-06-17T12:05:00.000Z",
+      "reportedByTaskId": "019ed002-0000-7000-8000-000000000201",
+      "firstSeenEventId": "019ed002-0000-7000-8000-000000000105",
+      "affectedRefs": [
+        {
+          "subjectKind": "model_output",
+          "subjectId": "019ed002-0000-7000-8000-000000000501",
+          "label": "draft output for prologue line 001"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed002-0000-7000-8000-000000000803",
+          "evidenceKind": "artifact",
+          "summary": "The recorded model output artifact contains the unapproved term.",
+          "artifactRef": {
+            "artifactId": "019ed002-0000-7000-8000-000000000601",
+            "artifactKind": "model-output-json",
+            "uri": "artifacts/model-output-prologue-001.json",
+            "hash": "sha256:model-output-prologue-001"
+          },
+          "expectedValue": "Approved player placeholder term",
+          "observedValue": "Unapproved player placeholder term",
+          "provenanceIds": ["019ed002-0000-7000-8000-000000000403"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000403",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed002-0000-7000-8000-000000000501",
+          "taskId": "019ed002-0000-7000-8000-000000000201",
+          "provider": "fixture-provider",
+          "model": "fixture-model-v1",
+          "outputHash": "sha256:model-output-prologue-001",
+          "promptHash": "sha256:prompt-prologue-001"
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000711",
+          "linkKind": "derived_from",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000105"
+        }
+      ]
+    },
+    {
+      "findingId": "019ed002-0000-7000-8000-000000000304",
+      "findingKind": "patching_issue",
+      "severity": "P0",
+      "qualityCategory": "technical_integrity",
+      "title": "Patcher dropped protected placeholder",
+      "description": "Patch verification reports that the target text omitted the mapped player placeholder.",
+      "impact": "The patched game would render a broken line and must not be exported.",
+      "createdAt": "2026-06-17T12:07:00.000Z",
+      "reportedByTaskId": "019ed002-0000-7000-8000-000000000202",
+      "firstSeenEventId": "019ed002-0000-7000-8000-000000000107",
+      "affectedRefs": [
+        {
+          "subjectKind": "patch_result",
+          "subjectId": "019ed002-0000-7000-8000-000000000520",
+          "label": "failed patch verify result"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed002-0000-7000-8000-000000000804",
+          "evidenceKind": "validator_message",
+          "summary": "Patch verifier emitted protected_span_dropped.",
+          "expectedValue": "{player} placeholder preserved",
+          "observedValue": "protected_span_dropped",
+          "provenanceIds": ["019ed002-0000-7000-8000-000000000404"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed002-0000-7000-8000-000000000404",
+          "provenanceKind": "patching_cause",
+          "patchResultId": "019ed002-0000-7000-8000-000000000520",
+          "patchExportId": "019ed002-0000-7000-8000-000000000521",
+          "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+          "assetRef": {
+            "assetId": "019ed001-0000-7000-8000-000000000002",
+            "assetKey": "script/prologue"
+          },
+          "writeMode": "replace",
+          "failureCode": "protected_span_dropped",
+          "failureDetail": "The target text omitted the mapped player placeholder."
+        }
+      ],
+      "causalLinks": [
+        {
+          "causalLinkId": "019ed002-0000-7000-8000-000000000712",
+          "linkKind": "derived_from",
+          "targetKind": "event",
+          "targetId": "019ed002-0000-7000-8000-000000000107"
+        }
+      ]
+    }
+  ]
+}
