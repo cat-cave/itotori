@@ -2235,6 +2235,10 @@ fn validate_capability_report(
             "delta_patching",
             "encrypted_input",
             "key_profile",
+            "container_access",
+            "crypto_access",
+            "codec_access",
+            "patch_back",
             "runtime_vm",
         ],
     );
@@ -5822,6 +5826,9 @@ impl PatchResult {
 
     pub fn redacted_for_report(&self) -> Self {
         let mut result = self.clone();
+        result.patch_result_id = redact_for_log_or_report(&result.patch_result_id);
+        result.patch_export_id = redact_for_log_or_report(&result.patch_export_id);
+        result.output_hash = redact_for_log_or_report(&result.output_hash);
         result.failures = result
             .failures
             .iter()
@@ -5847,6 +5854,8 @@ impl PatchResult {
 impl VerificationResult {
     pub fn redacted_for_report(&self) -> Self {
         let mut result = self.clone();
+        result.patch_result_id = redact_for_log_or_report(&result.patch_result_id);
+        result.output_hash = redact_for_log_or_report(&result.output_hash);
         result.failures = result
             .failures
             .iter()
@@ -5859,6 +5868,9 @@ impl VerificationResult {
 impl GoldenRoundTripReport {
     pub fn redacted_for_report(&self) -> Self {
         let mut report = self.clone();
+        report.report_id = redact_for_log_or_report(&report.report_id);
+        report.adapter_id = redact_for_log_or_report(&report.adapter_id);
+        report.adapter_name = redact_for_log_or_report(&report.adapter_name);
         report.phases = report
             .phases
             .iter()
@@ -6543,40 +6555,21 @@ pub fn run_round_trip_golden(
         }
     };
 
-    let unchanged_output_dir = prepare_golden_work_dir(request.work_dir, "unchanged-patch")?;
-    match adapter.patch(PatchRequest {
-        game_dir: request.game_dir,
-        patch_export: &unchanged_patch,
-        output_dir: &unchanged_output_dir,
-    }) {
-        Ok(patch_result) if patch_result.status == OperationStatus::Passed => report_passed_phase(
-            &mut report,
-            "unchanged_patch",
-            "unchanged patch applied successfully",
-            Some("source.json"),
-        ),
-        Ok(patch_result) => {
-            record_adapter_failures(&mut report, adapter.id(), "unchanged_patch", &patch_result);
-            return Ok(finalize_golden_report(report));
-        }
-        Err(error) => {
-            record_golden_failure(
-                &mut report,
-                GoldenFailure {
-                    code: "unchanged_patch_error".to_string(),
-                    phase: "unchanged_patch".to_string(),
-                    adapter_id: adapter.id().to_string(),
-                    message: error.to_string(),
-                    asset_ref: Some("source.json".to_string()),
-                    source_unit_key: None,
-                    support_boundary: None,
-                    expected: Some("successful unchanged patch".to_string()),
-                    actual: Some("adapter error".to_string()),
-                },
-            );
-            return Ok(finalize_golden_report(report));
-        }
-    }
+    let Some(unchanged_output_dir) = run_golden_patch_phase(
+        adapter,
+        &mut report,
+        "unchanged_patch",
+        request.game_dir,
+        request.work_dir,
+        "unchanged-patch",
+        &unchanged_patch,
+        "unchanged patch applied successfully",
+        "unchanged_patch_error",
+        "successful unchanged patch",
+    )?
+    else {
+        return Ok(finalize_golden_report(report));
+    };
 
     report_byte_equivalence(
         &mut report,
@@ -6611,6 +6604,87 @@ pub fn run_round_trip_golden(
     }
 
     Ok(finalize_golden_report(report))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_golden_patch_phase(
+    adapter: &dyn EngineAdapter,
+    report: &mut GoldenRoundTripReport,
+    phase: &str,
+    game_dir: &Path,
+    work_dir: &Path,
+    work_child: &str,
+    patch_export: &PatchExport,
+    success_details: &str,
+    patch_error_code: &str,
+    patch_expected: &str,
+) -> KaifuuResult<Option<PathBuf>> {
+    match adapter.patch_preflight(PatchPreflightRequest {
+        game_dir,
+        patch_export,
+    }) {
+        Ok(preflight)
+            if preflight.status == OperationStatus::Failed
+                && preflight.has_preflight_blocking_failure() =>
+        {
+            let preflight = preflight.redacted_for_report();
+            record_adapter_failures(report, adapter.id(), phase, &preflight);
+            return Ok(None);
+        }
+        Ok(_) => {}
+        Err(error) => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: format!("{phase}_preflight_error"),
+                    phase: phase.to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: error.to_string(),
+                    asset_ref: Some("source.json".to_string()),
+                    source_unit_key: None,
+                    support_boundary: None,
+                    expected: Some(format!("{patch_expected} preflight")),
+                    actual: Some("adapter error".to_string()),
+                },
+            );
+            return Ok(None);
+        }
+    }
+
+    let output_dir = prepare_golden_work_dir(work_dir, work_child)?;
+    match adapter.patch(PatchRequest {
+        game_dir,
+        patch_export,
+        output_dir: &output_dir,
+    }) {
+        Ok(patch_result) if patch_result.status == OperationStatus::Passed => {
+            report_passed_phase(report, phase, success_details, Some("source.json"));
+        }
+        Ok(patch_result) => {
+            let patch_result = patch_result.redacted_for_report();
+            record_adapter_failures(report, adapter.id(), phase, &patch_result);
+            return Ok(None);
+        }
+        Err(error) => {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: patch_error_code.to_string(),
+                    phase: phase.to_string(),
+                    adapter_id: adapter.id().to_string(),
+                    message: error.to_string(),
+                    asset_ref: Some("source.json".to_string()),
+                    source_unit_key: None,
+                    support_boundary: None,
+                    expected: Some(patch_expected.to_string()),
+                    actual: Some("adapter error".to_string()),
+                },
+            );
+            return Ok(None);
+        }
+    }
+
+    Ok(Some(output_dir))
 }
 
 fn golden_adapter<'a>(
@@ -7155,42 +7229,21 @@ fn report_translated_patch(
         None,
     );
 
-    let output_dir = prepare_golden_work_dir(work_dir, "translated-patch")?;
-    match adapter.patch(PatchRequest {
+    let Some(output_dir) = run_golden_patch_phase(
+        adapter,
+        report,
+        "translated_patch",
         game_dir,
-        patch_export: &patch_export,
-        output_dir: &output_dir,
-    }) {
-        Ok(patch_result) if patch_result.status == OperationStatus::Passed => {
-            report_passed_phase(
-                report,
-                "translated_patch",
-                "translated patch applied successfully",
-                Some("source.json"),
-            );
-        }
-        Ok(patch_result) => {
-            record_adapter_failures(report, adapter.id(), "translated_patch", &patch_result);
-            return Ok(());
-        }
-        Err(error) => {
-            record_golden_failure(
-                report,
-                GoldenFailure {
-                    code: "translated_patch_error".to_string(),
-                    phase: "translated_patch".to_string(),
-                    adapter_id: adapter.id().to_string(),
-                    message: error.to_string(),
-                    asset_ref: Some("source.json".to_string()),
-                    source_unit_key: None,
-                    support_boundary: None,
-                    expected: Some("successful translated patch".to_string()),
-                    actual: Some("adapter error".to_string()),
-                },
-            );
-            return Ok(());
-        }
-    }
+        work_dir,
+        "translated-patch",
+        &patch_export,
+        "translated patch applied successfully",
+        "translated_patch_error",
+        "successful translated patch",
+    )?
+    else {
+        return Ok(());
+    };
 
     report_translated_target_equivalence(report, adapter.id(), &patch_export, &output_dir);
     report_verify_phase(adapter, report, "translated_verify", &output_dir);
@@ -7612,6 +7665,10 @@ pub fn require_u64(value: &Value, key: &str) -> KaifuuResult<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
 
     fn temp_dir(name: &str) -> PathBuf {
         let nonce = std::time::SystemTime::now()
@@ -7694,6 +7751,218 @@ mod tests {
             .unwrap_or_else(|| panic!("missing archive row {row_id}"));
         assert!(row.detected, "{row_id} should be detected: {row:#?}");
         row
+    }
+
+    fn golden_boundary_profile(adapter_id: &str) -> GameProfile {
+        GameProfile {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            profile_id: deterministic_id("profile", 91),
+            game_id: "golden-boundary-fixture".to_string(),
+            title: "Golden Boundary Fixture".to_string(),
+            source_locale: "ja-JP".to_string(),
+            engine: EngineProfile {
+                adapter_id: adapter_id.to_string(),
+                engine_family: "fixture".to_string(),
+                engine_version: None,
+                detected_variant: "preflight-boundary".to_string(),
+            },
+            source_fingerprint: None,
+            key_requirements: vec![],
+            archive_parameters: vec![],
+            helper_evidence: None,
+            assets: vec![AssetProfile {
+                asset_id: deterministic_id("asset", 91),
+                path: "source.json".to_string(),
+                asset_kind: AssetKind::Script,
+                text_surfaces: vec![TextSurface::Dialogue],
+                source_hash: Some(content_hash("こんにちは")),
+                patching: CapabilityReport::supported(Capability::Patching),
+            }],
+            capabilities: vec![
+                CapabilityReport::supported(Capability::Detection),
+                CapabilityReport::supported(Capability::Extraction),
+                CapabilityReport::supported(Capability::Patching),
+                CapabilityReport::supported(Capability::Verification),
+            ],
+            requirements: vec![],
+            metadata: BTreeMap::new(),
+        }
+    }
+
+    fn golden_boundary_extraction(adapter_id: &str) -> ExtractionResult {
+        let source_unit_key = "scene.001.line.001".to_string();
+        ExtractionResult {
+            adapter_id: adapter_id.to_string(),
+            profile: golden_boundary_profile(adapter_id),
+            bridge: BridgeBundle {
+                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                bridge_id: deterministic_id("bridge", 91),
+                source_bundle_hash: content_hash("こんにちは"),
+                source_locale: "ja-JP".to_string(),
+                extractor_name: "golden-boundary-test".to_string(),
+                extractor_version: "0.0.0".to_string(),
+                units: vec![BridgeUnit {
+                    bridge_unit_id: deterministic_id("bridge-unit", 91),
+                    source_unit_key: source_unit_key.clone(),
+                    occurrence_id: "scene.001.line.001#1".to_string(),
+                    source_hash: content_hash("こんにちは"),
+                    source_locale: "ja-JP".to_string(),
+                    source_text: "こんにちは".to_string(),
+                    speaker: "Narrator".to_string(),
+                    text_surface: "dialogue".to_string(),
+                    protected_spans: vec![],
+                    patch_ref: PatchRef {
+                        asset_id: deterministic_id("asset", 91),
+                        write_mode: "replace_text".to_string(),
+                        source_unit_key,
+                    },
+                }],
+            },
+            warnings: vec![],
+        }
+    }
+
+    fn golden_boundary_patch_export(patch_export_id: impl Into<String>) -> PatchExport {
+        PatchExport {
+            patch_export_id: patch_export_id.into(),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![PatchExportEntry {
+                bridge_unit_id: deterministic_id("bridge-unit", 91),
+                source_unit_key: "scene.001.line.001".to_string(),
+                source_hash: content_hash("こんにちは"),
+                target_text: "Hello.".to_string(),
+                protected_span_mappings: vec![],
+            }],
+        }
+    }
+
+    struct GoldenPreflightBoundaryAdapter {
+        block_on_preflight_call: usize,
+        preflight_calls: Arc<AtomicUsize>,
+        patch_calls: Arc<AtomicUsize>,
+    }
+
+    impl GoldenPreflightBoundaryAdapter {
+        fn preflight_failure(&self, patch_export: &PatchExport) -> PatchResult {
+            let raw_key = "00112233445566778899aabbccddeeff";
+            let preflight = LayeredAccessPreflightReport::from_requirements(
+                self.id(),
+                "fixture",
+                "layered-access-test",
+                vec![
+                    LayeredAccessPreflightRequirement::missing_capability(
+                        LayeredAccessStage::Container,
+                        "private-route-name/ending.ks",
+                        "container helper unavailable for /home/dev/Private Route Spoiler Game/data.xp3",
+                    ),
+                    LayeredAccessPreflightRequirement::missing_capability(
+                        LayeredAccessStage::Crypto,
+                        "Scene.pck",
+                        format!("helper dump included unresolved raw key {raw_key}"),
+                    ),
+                ],
+            );
+            PatchResult {
+                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                patch_result_id:
+                    "patch-result=/home/dev/Private Route Spoiler Game/patch-result.json"
+                        .to_string(),
+                patch_export_id: patch_export.patch_export_id.clone(),
+                status: OperationStatus::Failed,
+                output_hash: format!("helper dump output hash {raw_key}"),
+                failures: preflight.failures,
+            }
+        }
+    }
+
+    impl EngineAdapter for GoldenPreflightBoundaryAdapter {
+        fn id(&self) -> &'static str {
+            "kaifuu.golden-preflight-boundary"
+        }
+
+        fn name(&self) -> &'static str {
+            "Golden Preflight Boundary"
+        }
+
+        fn capabilities(&self) -> AdapterCapabilities {
+            AdapterCapabilities::new(
+                self.id(),
+                vec![
+                    CapabilityReport::supported(Capability::Detection),
+                    CapabilityReport::supported(Capability::Extraction),
+                    CapabilityReport::supported(Capability::Patching),
+                    CapabilityReport::supported(Capability::Verification),
+                ],
+            )
+        }
+
+        fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+            Ok(DetectionResult {
+                adapter_id: self.id().to_string(),
+                detected: true,
+                engine_family: Some("fixture".to_string()),
+                engine_version: None,
+                detected_variant: Some("preflight-boundary".to_string()),
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: self.capabilities().reports,
+            })
+        }
+
+        fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+            Ok(golden_boundary_profile(self.id()))
+        }
+
+        fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+            Ok(AssetList {
+                adapter_id: self.id().to_string(),
+                assets: vec![],
+            })
+        }
+
+        fn asset_inventory(
+            &self,
+            _request: AssetInventoryRequest<'_>,
+        ) -> KaifuuResult<AssetInventoryManifest> {
+            Err("asset inventory is not used by golden preflight tests".into())
+        }
+
+        fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+            Ok(golden_boundary_extraction(self.id()))
+        }
+
+        fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
+            let call = self.preflight_calls.fetch_add(1, Ordering::SeqCst) + 1;
+            if call == self.block_on_preflight_call {
+                Ok(self.preflight_failure(request.patch_export))
+            } else {
+                Ok(PatchResult::preflight_pass(request.patch_export))
+            }
+        }
+
+        fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+            self.patch_calls.fetch_add(1, Ordering::SeqCst);
+            fs::write(request.output_dir.join("source.json"), "{}\n")?;
+            Ok(PatchResult {
+                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                patch_result_id: deterministic_id("patch-result", 91),
+                patch_export_id: request.patch_export.patch_export_id.clone(),
+                status: OperationStatus::Passed,
+                output_hash: content_hash("patched"),
+                failures: vec![],
+            })
+        }
+
+        fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+            Ok(VerificationResult {
+                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                patch_result_id: deterministic_id("verify", 91),
+                status: OperationStatus::Passed,
+                output_hash: content_hash("verified"),
+                failures: vec![],
+            })
+        }
     }
 
     #[test]
@@ -8312,6 +8581,187 @@ mod tests {
                 "{text} should be redacted"
             );
         }
+    }
+
+    #[test]
+    fn patch_and_verify_report_redaction_covers_hostile_top_level_fields() {
+        let raw_key = "00112233445566778899aabbccddeeff";
+        let patch_result = PatchResult {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            patch_result_id: "patch-result=/home/dev/game/private-route-ending.ks".to_string(),
+            patch_export_id: format!("patch-export helper dump raw key {raw_key}"),
+            status: OperationStatus::Failed,
+            output_hash: "C:\\Games\\SecretRoute\\private-route-ending.ks".to_string(),
+            failures: vec![AdapterFailure::secret_redacted(
+                "kaifuu.fixture",
+                "fixture",
+                "private-route",
+                "private-route-ending.ks",
+                format!(
+                    "helper dump source:/home/dev/game/private-route-ending.ks raw key {raw_key}"
+                ),
+            )],
+        };
+        let verify_result = VerificationResult {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            patch_result_id: "verify-result=/home/dev/game/private-route-ending.ks".to_string(),
+            status: OperationStatus::Failed,
+            output_hash: format!("helper dump outputHash {raw_key}"),
+            failures: vec![AdapterFailure::helper_unavailable(
+                "kaifuu.fixture",
+                "fixture",
+                "private-route",
+                "helper unavailable for C:\\Games\\SecretRoute\\private-route-ending.ks",
+            )],
+        };
+
+        let patch_serialized = serde_json::to_string(&patch_result.redacted_for_report()).unwrap();
+        let verify_serialized =
+            serde_json::to_string(&verify_result.redacted_for_report()).unwrap();
+
+        for serialized in [&patch_serialized, &verify_serialized] {
+            assert!(serialized.contains(SEMANTIC_SECRET_REDACTED));
+            for forbidden in [
+                "/home/dev/game",
+                "C:\\Games",
+                "SecretRoute",
+                "helper dump",
+                raw_key,
+                "private-route-ending.ks",
+            ] {
+                assert!(
+                    !serialized.contains(forbidden),
+                    "report leaked {forbidden}: {serialized}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn profile_validation_accepts_layered_capability_variants() {
+        let mut profile = valid_key_profile_value();
+        let capabilities = profile["capabilities"].as_array_mut().unwrap();
+        for capability in [
+            "container_access",
+            "crypto_access",
+            "codec_access",
+            "patch_back",
+        ] {
+            capabilities.push(serde_json::json!({
+                "capability": capability,
+                "status": "requires_user_input",
+                "limitation": "requires local layered access support"
+            }));
+        }
+
+        let validation = validate_profile_value(&profile);
+
+        assert_eq!(validation.status, OperationStatus::Passed);
+    }
+
+    #[test]
+    fn golden_unchanged_patch_preflight_blocks_before_work_dir_prepare() {
+        let game_dir = temp_dir("golden-unchanged-preflight-game");
+        let work_dir = temp_dir("golden-unchanged-preflight-work");
+        let sentinel = work_dir.join("unchanged-patch").join("sentinel.txt");
+        fs::create_dir_all(sentinel.parent().unwrap()).unwrap();
+        fs::write(&sentinel, "keep").unwrap();
+
+        let preflight_calls = Arc::new(AtomicUsize::new(0));
+        let patch_calls = Arc::new(AtomicUsize::new(0));
+        let mut registry = AdapterRegistry::new();
+        registry.register(GoldenPreflightBoundaryAdapter {
+            block_on_preflight_call: 1,
+            preflight_calls: Arc::clone(&preflight_calls),
+            patch_calls: Arc::clone(&patch_calls),
+        });
+
+        let report = run_round_trip_golden(
+            &registry,
+            GoldenHarnessRequest {
+                game_dir: &game_dir,
+                work_dir: &work_dir,
+                adapter_id: Some("kaifuu.golden-preflight-boundary"),
+                byte_equivalence: GoldenByteEquivalenceMode::Unsupported {
+                    support_boundary: "byte identity is outside this preflight test".to_string(),
+                },
+                translated_patch_export: None,
+                translated_source_bridge: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(preflight_calls.load(Ordering::SeqCst), 1);
+        assert_eq!(patch_calls.load(Ordering::SeqCst), 0);
+        assert!(
+            sentinel.exists(),
+            "unchanged work dir should not be removed before preflight"
+        );
+        assert!(report.failures.iter().any(|failure| {
+            failure.phase == "unchanged_patch"
+                && failure.code == SEMANTIC_MISSING_CONTAINER_CAPABILITY
+        }));
+        let serialized = report.stable_json().unwrap();
+        for forbidden in [
+            "/home/dev",
+            "Private Route Spoiler Game",
+            "private-route-name",
+            "helper dump",
+            "00112233445566778899aabbccddeeff",
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "golden report leaked {forbidden}: {serialized}"
+            );
+        }
+    }
+
+    #[test]
+    fn golden_translated_patch_preflight_blocks_before_work_dir_prepare() {
+        let game_dir = temp_dir("golden-translated-preflight-game");
+        let work_dir = temp_dir("golden-translated-preflight-work");
+        let sentinel = work_dir.join("translated-patch").join("sentinel.txt");
+        fs::create_dir_all(sentinel.parent().unwrap()).unwrap();
+        fs::write(&sentinel, "keep").unwrap();
+
+        let preflight_calls = Arc::new(AtomicUsize::new(0));
+        let patch_calls = Arc::new(AtomicUsize::new(0));
+        let mut registry = AdapterRegistry::new();
+        registry.register(GoldenPreflightBoundaryAdapter {
+            block_on_preflight_call: 2,
+            preflight_calls: Arc::clone(&preflight_calls),
+            patch_calls: Arc::clone(&patch_calls),
+        });
+        let translated_patch =
+            serde_json::to_value(golden_boundary_patch_export("translated-patch-1")).unwrap();
+
+        let report = run_round_trip_golden(
+            &registry,
+            GoldenHarnessRequest {
+                game_dir: &game_dir,
+                work_dir: &work_dir,
+                adapter_id: Some("kaifuu.golden-preflight-boundary"),
+                byte_equivalence: GoldenByteEquivalenceMode::Unsupported {
+                    support_boundary: "byte identity is outside this preflight test".to_string(),
+                },
+                translated_patch_export: Some(&translated_patch),
+                translated_source_bridge: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(preflight_calls.load(Ordering::SeqCst), 2);
+        assert_eq!(patch_calls.load(Ordering::SeqCst), 1);
+        assert!(
+            sentinel.exists(),
+            "translated work dir should not be removed before preflight"
+        );
+        assert!(report.failures.iter().any(|failure| {
+            failure.phase == "translated_patch"
+                && failure.code == SEMANTIC_MISSING_CONTAINER_CAPABILITY
+        }));
     }
 
     #[test]
