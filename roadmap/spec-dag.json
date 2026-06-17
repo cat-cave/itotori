@@ -7557,7 +7557,7 @@
     {
       "id": "KAIFUU-047",
       "title": "Delta apply preflight completeness",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P2",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -7588,7 +7588,10 @@
         "Staging writes before preflight failure",
         "Partial multi-entry packages",
         "Manifest comparison drift"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/kaifuu-047",
+      "worktree": "/tmp/itotori-spec-kaifuu-047"
     },
     {
       "id": "KAIFUU-048",
