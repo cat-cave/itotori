@@ -1,19 +1,22 @@
-import { eq, sql } from "drizzle-orm";
-import type {
-  BridgeAssetV02,
-  BridgeBundle,
-  BridgeBundleV02,
-  FindingRecordV02,
-  LocalizationUnitV02,
-  PatchExport,
-  PatchExportV02,
-  RuntimeArtifactRefV02,
-  RuntimeBridgeUnitRefV02,
-  RuntimeEvidenceReportV02,
-  RuntimeValidationFindingV02,
-  RuntimeVerificationReport,
-  SourceRevisionV02,
-  TriageEventV02,
+import { eq, inArray, sql } from "drizzle-orm";
+import {
+  assertBridgeBundle,
+  assertBridgeBundleV02,
+  BRIDGE_SCHEMA_VERSION_V02,
+  type BridgeAssetV02,
+  type BridgeBundle,
+  type BridgeBundleV02,
+  type FindingRecordV02,
+  type LocalizationUnitV02,
+  type PatchExport,
+  type PatchExportV02,
+  type RuntimeArtifactRefV02,
+  type RuntimeBridgeUnitRefV02,
+  type RuntimeEvidenceReportV02,
+  type RuntimeValidationFindingV02,
+  type RuntimeVerificationReport,
+  type SourceRevisionV02,
+  type TriageEventV02,
 } from "@itotori/localization-bridge-schema";
 import type { ItotoriDatabase } from "../connection.js";
 import {
@@ -26,6 +29,7 @@ import { ItotoriModelLedgerRepository, type ProjectCostReport } from "./model-le
 import {
   artifacts,
   assets,
+  bridgeImports,
   costLedgerEntries,
   eventOutbox,
   events,
@@ -65,8 +69,48 @@ export type ItotoriProjectRecord = {
   localeBranchId: string;
   targetLocale: string;
   drafts: Record<string, string>;
+  importStatus?: BridgeImportStatus;
   patchExport?: PatchExport | PatchExportV02;
   runtimeReport?: RuntimeVerificationReport | RuntimeEvidenceReportV02;
+};
+
+export type BridgeImportFutureReferences = {
+  catalogWorkId: string | null;
+  localCorpusEntryId: string | null;
+  readinessProfileId: string | null;
+  completenessStatusId: string | null;
+};
+
+export type BridgeImportDiffCounts = {
+  added: number;
+  updated: number;
+  removed: number;
+  unchanged: number;
+};
+
+export type BridgeImportRevisionDiffCounts = {
+  added: number;
+  existing: number;
+};
+
+export type BridgeImportStatus = {
+  bridgeImportId: string;
+  projectId: string;
+  bridgeId: string;
+  sourceBundleId: string;
+  sourceBundleHash: string;
+  sourceBundleRevisionId: string;
+  schemaVersion: string;
+  sourceLocale: string;
+  importedAt: string;
+  unitCount: number;
+  assetCount: number;
+  sourceRevisionCount: number;
+  validationFailureCount: number;
+  units: BridgeImportDiffCounts;
+  assets: BridgeImportDiffCounts;
+  sourceRevisions: BridgeImportRevisionDiffCounts;
+  futureReferences: BridgeImportFutureReferences;
 };
 
 export type ArtifactInput = {
@@ -120,6 +164,7 @@ export type ProjectDashboardStatus = {
   artifactCount: number;
   latestEventKind: string | null;
   latestEventAt: string | null;
+  importStatus: BridgeImportStatus;
   cost: ProjectCostReport;
   localeBranches: LocaleBranchStatus[];
 };
@@ -139,7 +184,10 @@ export type RuntimeDashboardStatus = {
 
 export interface ItotoriProjectRepositoryPort {
   reset(actor: AuthorizationActor): Promise<void>;
-  importSourceBundle(actor: AuthorizationActor, project: ItotoriProjectRecord): Promise<void>;
+  importSourceBundle(
+    actor: AuthorizationActor,
+    project: ItotoriProjectRecord,
+  ): Promise<BridgeImportStatus>;
   saveDrafts(actor: AuthorizationActor, project: ItotoriProjectRecord): Promise<void>;
   savePatchExport(
     actor: AuthorizationActor,
@@ -187,6 +235,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         ${localeBranches},
         ${sourceUnits},
         ${assets},
+        ${bridgeImports},
         ${sourceBundles},
         ${sourceRevisions},
         ${projects},
@@ -199,11 +248,16 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
   async importSourceBundle(
     actor: AuthorizationActor,
     project: ItotoriProjectRecord,
-  ): Promise<void> {
+  ): Promise<BridgeImportStatus> {
     await requirePermission(this.db, actor, permissionValues.projectImport);
+    assertImportableBridgeBundle(project.bridge);
     const normalized = normalizeSourceBundle(project);
 
-    await this.db.transaction(async (tx) => {
+    return await this.db.transaction(async (tx) => {
+      const diff = await diffSourceBundleImport(tx, normalized);
+      const importedAt = new Date();
+      const importStatus = bridgeImportStatusFor(project.projectId, normalized, diff, importedAt);
+
       await tx
         .insert(workspaces)
         .values({ workspaceId: defaultWorkspaceId, name: defaultWorkspaceName })
@@ -350,6 +404,16 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           });
       }
 
+      if (diff.units.removedIds.length > 0) {
+        await tx
+          .delete(sourceUnits)
+          .where(inArray(sourceUnits.bridgeUnitId, diff.units.removedIds));
+      }
+
+      if (diff.assets.removedIds.length > 0) {
+        await tx.delete(assets).where(inArray(assets.assetId, diff.assets.removedIds));
+      }
+
       await tx
         .insert(localeBranches)
         .values({
@@ -388,6 +452,70 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             },
           });
       }
+
+      await tx
+        .insert(bridgeImports)
+        .values({
+          bridgeImportId: importStatus.bridgeImportId,
+          projectId: project.projectId,
+          sourceBundleId: normalized.sourceBundleId,
+          sourceBundleRevisionId: normalized.sourceBundleRevision.revisionId,
+          bridgeId: normalized.bridgeId,
+          schemaVersion: normalized.schemaVersion,
+          sourceBundleHash: normalized.sourceBundleHash,
+          sourceLocale: normalized.sourceLocale,
+          unitCount: importStatus.unitCount,
+          assetCount: importStatus.assetCount,
+          sourceRevisionCount: importStatus.sourceRevisionCount,
+          validationFailureCount: importStatus.validationFailureCount,
+          addedUnitCount: importStatus.units.added,
+          updatedUnitCount: importStatus.units.updated,
+          removedUnitCount: importStatus.units.removed,
+          unchangedUnitCount: importStatus.units.unchanged,
+          addedAssetCount: importStatus.assets.added,
+          updatedAssetCount: importStatus.assets.updated,
+          removedAssetCount: importStatus.assets.removed,
+          unchangedAssetCount: importStatus.assets.unchanged,
+          addedSourceRevisionCount: importStatus.sourceRevisions.added,
+          existingSourceRevisionCount: importStatus.sourceRevisions.existing,
+          catalogWorkId: importStatus.futureReferences.catalogWorkId,
+          localCorpusEntryId: importStatus.futureReferences.localCorpusEntryId,
+          readinessProfileId: importStatus.futureReferences.readinessProfileId,
+          completenessStatusId: importStatus.futureReferences.completenessStatusId,
+          metadata: bridgeImportMetadata(normalized),
+          importedAt,
+        })
+        .onConflictDoUpdate({
+          target: [bridgeImports.sourceBundleId, bridgeImports.sourceBundleRevisionId],
+          set: {
+            bridgeId: normalized.bridgeId,
+            schemaVersion: normalized.schemaVersion,
+            sourceBundleHash: normalized.sourceBundleHash,
+            sourceLocale: normalized.sourceLocale,
+            unitCount: importStatus.unitCount,
+            assetCount: importStatus.assetCount,
+            sourceRevisionCount: importStatus.sourceRevisionCount,
+            validationFailureCount: importStatus.validationFailureCount,
+            addedUnitCount: importStatus.units.added,
+            updatedUnitCount: importStatus.units.updated,
+            removedUnitCount: importStatus.units.removed,
+            unchangedUnitCount: importStatus.units.unchanged,
+            addedAssetCount: importStatus.assets.added,
+            updatedAssetCount: importStatus.assets.updated,
+            removedAssetCount: importStatus.assets.removed,
+            unchangedAssetCount: importStatus.assets.unchanged,
+            addedSourceRevisionCount: importStatus.sourceRevisions.added,
+            existingSourceRevisionCount: importStatus.sourceRevisions.existing,
+            catalogWorkId: importStatus.futureReferences.catalogWorkId,
+            localCorpusEntryId: importStatus.futureReferences.localCorpusEntryId,
+            readinessProfileId: importStatus.futureReferences.readinessProfileId,
+            completenessStatusId: importStatus.futureReferences.completenessStatusId,
+            metadata: bridgeImportMetadata(normalized),
+            importedAt,
+          },
+        });
+
+      return importStatus;
     });
   }
 
@@ -957,10 +1085,23 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       latest_bundle as (
         select
           source_bundle_id,
+          bridge_id,
           project_id,
+          schema_version,
           source_bundle_hash,
-          source_bundle_revision_id
+          source_bundle_revision_id,
+          source_locale,
+          unit_count,
+          asset_count,
+          imported_at
         from ${sourceBundles}
+        where project_id in (select project_id from latest_project)
+        order by imported_at desc
+        limit 1
+      ),
+      latest_import as (
+        select *
+        from ${bridgeImports}
         where project_id in (select project_id from latest_project)
         order by imported_at desc
         limit 1
@@ -974,6 +1115,36 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         lb.source_bundle_id,
         lb.source_bundle_hash,
         lb.source_bundle_revision_id,
+        coalesce(
+          li.bridge_import_id,
+          'bridge-import:' || p.project_id || ':' || lb.source_bundle_id || ':' || lb.source_bundle_revision_id
+        ) as bridge_import_id,
+        coalesce(li.source_bundle_id, lb.source_bundle_id) as import_source_bundle_id,
+        coalesce(li.source_bundle_hash, lb.source_bundle_hash) as import_source_bundle_hash,
+        coalesce(li.source_bundle_revision_id, lb.source_bundle_revision_id)
+          as import_source_bundle_revision_id,
+        coalesce(li.bridge_id, lb.bridge_id) as bridge_id,
+        coalesce(li.schema_version, lb.schema_version) as import_schema_version,
+        coalesce(li.source_locale, lb.source_locale) as import_source_locale,
+        coalesce(li.imported_at, lb.imported_at) as imported_at,
+        coalesce(li.unit_count, lb.unit_count)::int as import_unit_count,
+        coalesce(li.asset_count, lb.asset_count)::int as import_asset_count,
+        coalesce(li.source_revision_count, 0)::int as import_source_revision_count,
+        coalesce(li.validation_failure_count, 0)::int as import_validation_failure_count,
+        coalesce(li.added_unit_count, 0)::int as import_added_unit_count,
+        coalesce(li.updated_unit_count, 0)::int as import_updated_unit_count,
+        coalesce(li.removed_unit_count, 0)::int as import_removed_unit_count,
+        coalesce(li.unchanged_unit_count, lb.unit_count)::int as import_unchanged_unit_count,
+        coalesce(li.added_asset_count, 0)::int as import_added_asset_count,
+        coalesce(li.updated_asset_count, 0)::int as import_updated_asset_count,
+        coalesce(li.removed_asset_count, 0)::int as import_removed_asset_count,
+        coalesce(li.unchanged_asset_count, lb.asset_count)::int as import_unchanged_asset_count,
+        coalesce(li.added_source_revision_count, 0)::int as import_added_source_revision_count,
+        coalesce(li.existing_source_revision_count, 0)::int as import_existing_source_revision_count,
+        li.catalog_work_id as import_catalog_work_id,
+        li.local_corpus_entry_id as import_local_corpus_entry_id,
+        li.readiness_profile_id as import_readiness_profile_id,
+        li.completeness_status_id as import_completeness_status_id,
         b.locale_branch_id,
         b.target_locale,
         b.status as branch_status,
@@ -988,6 +1159,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       from ${projects} p
       join latest_project lp on lp.project_id = p.project_id
       join latest_bundle lb on lb.project_id = p.project_id
+      left join latest_import li on true
       left join ${localeBranches} b on b.project_id = p.project_id
       left join ${sourceUnits} su on su.source_bundle_id = lb.source_bundle_id
       left join ${localeBranchUnits} lbu
@@ -1022,8 +1194,40 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         p.status,
         p.source_locale,
         lb.source_bundle_id,
+        lb.bridge_id,
+        lb.schema_version,
         lb.source_bundle_hash,
         lb.source_bundle_revision_id,
+        lb.source_locale,
+        lb.unit_count,
+        lb.asset_count,
+        lb.imported_at,
+        li.bridge_import_id,
+        li.source_bundle_id,
+        li.source_bundle_hash,
+        li.source_bundle_revision_id,
+        li.bridge_id,
+        li.schema_version,
+        li.source_locale,
+        li.imported_at,
+        li.unit_count,
+        li.asset_count,
+        li.source_revision_count,
+        li.validation_failure_count,
+        li.added_unit_count,
+        li.updated_unit_count,
+        li.removed_unit_count,
+        li.unchanged_unit_count,
+        li.added_asset_count,
+        li.updated_asset_count,
+        li.removed_asset_count,
+        li.unchanged_asset_count,
+        li.added_source_revision_count,
+        li.existing_source_revision_count,
+        li.catalog_work_id,
+        li.local_corpus_entry_id,
+        li.readiness_profile_id,
+        li.completeness_status_id,
         b.locale_branch_id,
         b.target_locale,
         b.status,
@@ -1073,6 +1277,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       latestEventKind: nullableString(first.latest_event_kind),
       latestEventAt:
         first.latest_event_at instanceof Date ? first.latest_event_at.toISOString() : null,
+      importStatus: bridgeImportStatusFromRow(first),
       cost,
       localeBranches: branches,
     };
@@ -1191,6 +1396,21 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
   }
 }
 
+type ItotoriTransaction = Parameters<Parameters<ItotoriDatabase["transaction"]>[0]>[0];
+type ExistingSourceRevision = typeof sourceRevisions.$inferSelect;
+type ExistingAsset = typeof assets.$inferSelect;
+type ExistingSourceUnit = typeof sourceUnits.$inferSelect;
+
+type IndexedImportDiff = BridgeImportDiffCounts & {
+  removedIds: string[];
+};
+
+type SourceBundleImportDiff = {
+  sourceRevisions: BridgeImportRevisionDiffCounts;
+  assets: IndexedImportDiff;
+  units: IndexedImportDiff;
+};
+
 type NormalizedSourceBundle = {
   sourceBundleId: string;
   bridgeId: string;
@@ -1208,6 +1428,294 @@ type NormalizedSourceBundle = {
   assets: BridgeAssetV02[];
   units: LocalizationUnitV02[];
 };
+
+async function diffSourceBundleImport(
+  tx: ItotoriTransaction,
+  normalized: NormalizedSourceBundle,
+): Promise<SourceBundleImportDiff> {
+  const revisionRows = await tx
+    .select()
+    .from(sourceRevisions)
+    .where(
+      inArray(
+        sourceRevisions.sourceRevisionId,
+        normalized.revisions.map((revisionRecord) => revisionRecord.revisionId),
+      ),
+    );
+  const existingRevisions = new Map(
+    revisionRows.map((revisionRecord) => [revisionRecord.sourceRevisionId, revisionRecord]),
+  );
+  const sourceRevisionsDiff = diffSourceRevisions(normalized.revisions, existingRevisions);
+
+  const assetRows = await tx
+    .select()
+    .from(assets)
+    .where(eq(assets.sourceBundleId, normalized.sourceBundleId));
+  const unitRows = await tx
+    .select()
+    .from(sourceUnits)
+    .where(eq(sourceUnits.sourceBundleId, normalized.sourceBundleId));
+
+  return {
+    sourceRevisions: sourceRevisionsDiff,
+    assets: diffAssets(normalized.assets, assetRows),
+    units: diffUnits(normalized.units, unitRows),
+  };
+}
+
+function diffSourceRevisions(
+  revisions: SourceRevisionV02[],
+  existingRevisions: ReadonlyMap<string, ExistingSourceRevision>,
+): BridgeImportRevisionDiffCounts {
+  let added = 0;
+  let existing = 0;
+  for (const revisionRecord of revisions) {
+    const existingRevision = existingRevisions.get(revisionRecord.revisionId);
+    if (existingRevision === undefined) {
+      added += 1;
+      continue;
+    }
+    if (
+      existingRevision.revisionKind !== revisionRecord.revisionKind ||
+      existingRevision.value !== revisionRecord.value
+    ) {
+      throw new Error(
+        `source revision ${revisionRecord.revisionId} already exists with different content`,
+      );
+    }
+    existing += 1;
+  }
+  return { added, existing };
+}
+
+function diffAssets(incomingAssets: BridgeAssetV02[], existingAssets: ExistingAsset[]) {
+  let added = 0;
+  let updated = 0;
+  let unchanged = 0;
+  const incomingIds = new Set(incomingAssets.map((asset) => asset.assetId));
+  const existingById = new Map(existingAssets.map((asset) => [asset.assetId, asset]));
+
+  for (const asset of incomingAssets) {
+    const existingAsset = existingById.get(asset.assetId);
+    if (existingAsset === undefined) {
+      added += 1;
+    } else if (assetMatchesExisting(asset, existingAsset)) {
+      unchanged += 1;
+    } else {
+      updated += 1;
+    }
+  }
+
+  const removedIds = existingAssets
+    .filter((asset) => !incomingIds.has(asset.assetId))
+    .map((asset) => asset.assetId);
+  return { added, updated, removed: removedIds.length, unchanged, removedIds };
+}
+
+function diffUnits(incomingUnits: LocalizationUnitV02[], existingUnits: ExistingSourceUnit[]) {
+  let added = 0;
+  let updated = 0;
+  let unchanged = 0;
+  const incomingIds = new Set(incomingUnits.map((unit) => unit.bridgeUnitId));
+  const existingById = new Map(existingUnits.map((unit) => [unit.bridgeUnitId, unit]));
+
+  for (const unit of incomingUnits) {
+    const existingUnit = existingById.get(unit.bridgeUnitId);
+    if (existingUnit === undefined) {
+      added += 1;
+    } else if (unitMatchesExisting(unit, existingUnit)) {
+      unchanged += 1;
+    } else {
+      updated += 1;
+    }
+  }
+
+  const removedIds = existingUnits
+    .filter((unit) => !incomingIds.has(unit.bridgeUnitId))
+    .map((unit) => unit.bridgeUnitId);
+  return { added, updated, removed: removedIds.length, unchanged, removedIds };
+}
+
+function assetMatchesExisting(asset: BridgeAssetV02, existingAsset: ExistingAsset): boolean {
+  return (
+    existingAsset.sourceRevisionId === asset.sourceRevision.revisionId &&
+    existingAsset.assetKey === asset.assetKey &&
+    existingAsset.assetKind === asset.assetKind &&
+    existingAsset.sourceHash === asset.sourceHash &&
+    existingAsset.path === (asset.path ?? null)
+  );
+}
+
+function unitMatchesExisting(unit: LocalizationUnitV02, existingUnit: ExistingSourceUnit): boolean {
+  return (
+    existingUnit.sourceAssetId === unit.sourceAssetRef.assetId &&
+    existingUnit.sourceRevisionId === unit.sourceRevision.revisionId &&
+    existingUnit.surfaceId === unit.surfaceId &&
+    existingUnit.surfaceKind === unit.surfaceKind &&
+    existingUnit.sourceUnitKey === unit.sourceUnitKey &&
+    existingUnit.occurrenceId === unit.occurrenceId &&
+    existingUnit.sourceLocale === unit.sourceLocale &&
+    existingUnit.sourceText === unit.sourceText &&
+    existingUnit.sourceHash === unit.sourceHash &&
+    jsonEquals(existingUnit.sourceLocation, unit.sourceLocation) &&
+    jsonEquals(existingUnit.speaker, unit.speaker ?? null) &&
+    jsonEquals(existingUnit.context, unit.context) &&
+    jsonEquals(existingUnit.policy, unit.policy ?? null) &&
+    jsonEquals(existingUnit.spans, unit.spans) &&
+    jsonEquals(existingUnit.patchRef, unit.patchRef) &&
+    jsonEquals(existingUnit.runtimeExpectation, unit.runtimeExpectation)
+  );
+}
+
+function bridgeImportStatusFor(
+  projectId: string,
+  normalized: NormalizedSourceBundle,
+  diff: SourceBundleImportDiff,
+  importedAt: Date,
+): BridgeImportStatus {
+  return {
+    bridgeImportId: bridgeImportIdFor(projectId, normalized),
+    projectId,
+    bridgeId: normalized.bridgeId,
+    sourceBundleId: normalized.sourceBundleId,
+    sourceBundleHash: normalized.sourceBundleHash,
+    sourceBundleRevisionId: normalized.sourceBundleRevision.revisionId,
+    schemaVersion: normalized.schemaVersion,
+    sourceLocale: normalized.sourceLocale,
+    importedAt: importedAt.toISOString(),
+    unitCount: normalized.units.length,
+    assetCount: normalized.assets.length,
+    sourceRevisionCount: normalized.revisions.length,
+    validationFailureCount: 0,
+    units: countsOnly(diff.units),
+    assets: countsOnly(diff.assets),
+    sourceRevisions: diff.sourceRevisions,
+    futureReferences: emptyFutureReferences(),
+  };
+}
+
+function bridgeImportStatusFromRow(row: Record<string, unknown>): BridgeImportStatus {
+  return {
+    bridgeImportId: String(row.bridge_import_id),
+    projectId: String(row.project_id),
+    bridgeId: String(row.bridge_id),
+    sourceBundleId: String(row.import_source_bundle_id),
+    sourceBundleHash: String(row.import_source_bundle_hash),
+    sourceBundleRevisionId: String(row.import_source_bundle_revision_id),
+    schemaVersion: String(row.import_schema_version),
+    sourceLocale: String(row.import_source_locale),
+    importedAt: timestampString(row.imported_at),
+    unitCount: Number(row.import_unit_count),
+    assetCount: Number(row.import_asset_count),
+    sourceRevisionCount: Number(row.import_source_revision_count),
+    validationFailureCount: Number(row.import_validation_failure_count),
+    units: {
+      added: Number(row.import_added_unit_count),
+      updated: Number(row.import_updated_unit_count),
+      removed: Number(row.import_removed_unit_count),
+      unchanged: Number(row.import_unchanged_unit_count),
+    },
+    assets: {
+      added: Number(row.import_added_asset_count),
+      updated: Number(row.import_updated_asset_count),
+      removed: Number(row.import_removed_asset_count),
+      unchanged: Number(row.import_unchanged_asset_count),
+    },
+    sourceRevisions: {
+      added: Number(row.import_added_source_revision_count),
+      existing: Number(row.import_existing_source_revision_count),
+    },
+    futureReferences: {
+      catalogWorkId: nullableString(row.import_catalog_work_id),
+      localCorpusEntryId: nullableString(row.import_local_corpus_entry_id),
+      readinessProfileId: nullableString(row.import_readiness_profile_id),
+      completenessStatusId: nullableString(row.import_completeness_status_id),
+    },
+  };
+}
+
+function bridgeImportIdFor(projectId: string, normalized: NormalizedSourceBundle): string {
+  return [
+    "bridge-import",
+    projectId,
+    normalized.sourceBundleId,
+    normalized.sourceBundleRevision.revisionId,
+  ].join(":");
+}
+
+function bridgeImportMetadata(normalized: NormalizedSourceBundle): Record<string, unknown> {
+  return {
+    importKind: "validated_bridge_import_foundation",
+    sourceGame: normalized.sourceGame,
+    extractor: normalized.extractor,
+    futureReferenceFields: [
+      "catalogWorkId",
+      "localCorpusEntryId",
+      "readinessProfileId",
+      "completenessStatusId",
+    ],
+  };
+}
+
+function countsOnly(diff: IndexedImportDiff): BridgeImportDiffCounts {
+  return {
+    added: diff.added,
+    updated: diff.updated,
+    removed: diff.removed,
+    unchanged: diff.unchanged,
+  };
+}
+
+function emptyFutureReferences(): BridgeImportFutureReferences {
+  return {
+    catalogWorkId: null,
+    localCorpusEntryId: null,
+    readinessProfileId: null,
+    completenessStatusId: null,
+  };
+}
+
+function timestampString(value: unknown): string {
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  if (typeof value === "string") {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? value : date.toISOString();
+  }
+  return "";
+}
+
+function assertImportableBridgeBundle(bridge: BridgeBundle | BridgeBundleV02): void {
+  const schemaVersion =
+    typeof bridge === "object" && bridge !== null
+      ? (bridge as { schemaVersion?: unknown }).schemaVersion
+      : undefined;
+  if (schemaVersion === BRIDGE_SCHEMA_VERSION_V02) {
+    assertBridgeBundleV02(bridge);
+    return;
+  }
+  assertBridgeBundle(bridge);
+}
+
+function jsonEquals(left: unknown, right: unknown): boolean {
+  return stableJson(left) === stableJson(right);
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableJson(entry)).join(",")}]`;
+  }
+  if (typeof value === "object" && value !== null) {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, entryValue]) => entryValue !== undefined)
+      .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey));
+    return `{${entries
+      .map(([key, entryValue]) => `${JSON.stringify(key)}:${stableJson(entryValue)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 
 function normalizeSourceBundle(project: ItotoriProjectRecord): NormalizedSourceBundle {
   if (isBridgeBundleV02(project.bridge)) {

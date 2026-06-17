@@ -135,8 +135,8 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       targetLocale: "en-US",
       drafts: {},
     };
-    await this.repository.importSourceBundle(this.actor, project);
-    return project;
+    const importStatus = await this.repository.importSourceBundle(this.actor, project);
+    return { ...project, importStatus };
   }
 
   async draftProject(project: ProjectState, locale: string): Promise<ProjectState> {

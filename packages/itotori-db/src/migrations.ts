@@ -88,6 +88,10 @@ const migrations = [
     id: "0007_runtime_evidence_ingestion",
     file: "0007_runtime_evidence_ingestion.sql",
   },
+  {
+    id: "0008_bridge_import_status",
+    file: "0008_bridge_import_status.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

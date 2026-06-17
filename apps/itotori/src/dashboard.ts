@@ -196,6 +196,7 @@ function renderWorkbench(
 
       <nav class="workbench-nav" aria-label="Workbench sections">
         ${navLink("Projects", "projects")}
+        ${navLink("Import status", "import-status")}
         ${navLink("Locale branches", "locale-branches")}
         ${navLink("Style guide", "style-guide")}
         ${navLink("Glossary", "glossary")}
@@ -216,6 +217,7 @@ function renderWorkbench(
 
       <section class="section-grid" aria-label="Dashboard sections">
         ${renderProjects(projects)}
+        ${renderImportStatus(status)}
         ${renderLocaleBranches(status)}
         ${renderStyleGuide()}
         ${renderGlossary()}
@@ -261,6 +263,26 @@ function renderProjects(projects: ProjectDashboardStatus[]): string {
         </thead>
         <tbody>${rows}</tbody>
       </table>
+    `,
+  );
+}
+
+function renderImportStatus(status: ProjectDashboardStatus): string {
+  const importStatus = status.importStatus;
+  return panel(
+    "import-status",
+    "Import status",
+    `
+      <dl class="metric-list">
+        <div><dt>Bridge</dt><dd>${escapeHtml(importStatus.bridgeId)}</dd></div>
+        <div><dt>Bundle revision</dt><dd>${escapeHtml(importStatus.sourceBundleRevisionId)}</dd></div>
+        <div><dt>Units</dt><dd>${formatDiff(importStatus.units, importStatus.unitCount)}</dd></div>
+        <div><dt>Assets</dt><dd>${formatDiff(importStatus.assets, importStatus.assetCount)}</dd></div>
+        <div><dt>Source revisions</dt><dd>${importStatus.sourceRevisions.added} new / ${importStatus.sourceRevisions.existing} existing</dd></div>
+        <div><dt>Validation failures</dt><dd>${importStatus.validationFailureCount}</dd></div>
+        <div><dt>Catalog</dt><dd>${escapeHtml(importStatus.futureReferences.catalogWorkId ?? "pending")}</dd></div>
+        <div><dt>Readiness</dt><dd>${escapeHtml(importStatus.futureReferences.readinessProfileId ?? "pending")}</dd></div>
+      </dl>
     `,
   );
 }
@@ -643,6 +665,13 @@ function formatMicrosUsd(value: number | null): string {
 
 function formatTokens(value: number | null): string {
   return value === null ? "unknown" : String(value);
+}
+
+function formatDiff(
+  diff: ProjectDashboardStatus["importStatus"]["units"],
+  total: number,
+): string {
+  return `${total} (${diff.added} new / ${diff.updated} updated / ${diff.removed} removed)`;
 }
 
 function plural(count: number, singular: string): string {

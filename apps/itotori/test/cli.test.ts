@@ -70,6 +70,25 @@ describe("Itotori CLI handlers", () => {
     expect(services.projectWorkflow.importBridge).not.toHaveBeenCalled();
   });
 
+  it("writes imported project JSON with bridge import status", async () => {
+    const services = servicesFixture();
+    const bridge = projectFixture().bridge;
+    const reads = new Map<string, unknown>([["bridge.json", bridge]]);
+    const writes = new Map<string, unknown>();
+
+    await runItotoriCliCommand(["import", "--bridge", "bridge.json", "--project", "project.json"], {
+      io: jsonStoreFixture(reads, writes),
+      migrateDatabase: vi.fn(async () => {}),
+      withServices: async (callback) => await callback(services),
+    });
+
+    expect(services.projectWorkflow.importBridge).toHaveBeenCalledWith(bridge);
+    expect(writes.get("project.json")).toMatchObject({
+      projectId: "project-1",
+      importStatus: dashboardStatusFixture.importStatus,
+    });
+  });
+
   it("imports manual feedback through the feedback service", async () => {
     const services = servicesFixture();
     const feedback = {
@@ -175,6 +194,7 @@ function projectFixture(): ProjectState {
     localeBranchId: "locale-1",
     targetLocale: "en-US",
     drafts: {},
+    importStatus: dashboardStatusFixture.importStatus,
     bridge: {
       schemaVersion: "0.1.0",
       bridgeId: "bridge-1",
@@ -224,6 +244,30 @@ const dashboardStatusFixture: ProjectDashboardStatus = {
   artifactCount: 3,
   latestEventKind: "patch_result_recorded",
   latestEventAt: "2026-06-17T00:00:00.000Z",
+  importStatus: {
+    bridgeImportId: "bridge-import:project-1:bridge-1:revision-1",
+    projectId: "project-1",
+    bridgeId: "bridge-1",
+    sourceBundleId: "bridge-1",
+    sourceBundleHash: "hash-1",
+    sourceBundleRevisionId: "revision-1",
+    schemaVersion: "0.1.0",
+    sourceLocale: "ja-JP",
+    importedAt: "2026-06-17T00:00:00.000Z",
+    unitCount: 1,
+    assetCount: 1,
+    sourceRevisionCount: 4,
+    validationFailureCount: 0,
+    units: { added: 1, updated: 0, removed: 0, unchanged: 0 },
+    assets: { added: 1, updated: 0, removed: 0, unchanged: 0 },
+    sourceRevisions: { added: 4, existing: 0 },
+    futureReferences: {
+      catalogWorkId: null,
+      localCorpusEntryId: null,
+      readinessProfileId: null,
+      completenessStatusId: null,
+    },
+  },
   cost: costReportFixture,
   localeBranches: [],
 };

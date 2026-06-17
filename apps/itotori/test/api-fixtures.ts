@@ -1,9 +1,5 @@
 import { readFileSync } from "node:fs";
-import type {
-  ProjectCostReport,
-  ProjectDashboardStatus,
-  RuntimeDashboardStatus,
-} from "@itotori/db";
+import type { ProjectCostReport, ProjectDashboardStatus, RuntimeDashboardStatus } from "@itotori/db";
 import type {
   BenchmarkReportV02,
   BridgeBundle,
@@ -127,6 +123,30 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
   artifactCount: 3,
   latestEventKind: "patch_result_recorded",
   latestEventAt: "2026-06-17T00:00:00.000Z",
+  importStatus: {
+    bridgeImportId: "bridge-import:project-1:bridge-1:revision-1",
+    projectId: "project-1",
+    bridgeId: "bridge-1",
+    sourceBundleId: "bridge-1",
+    sourceBundleHash: "hash-1",
+    sourceBundleRevisionId: "revision-1",
+    schemaVersion: "0.1.0",
+    sourceLocale: "ja-JP",
+    importedAt: "2026-06-17T00:00:00.000Z",
+    unitCount: 1,
+    assetCount: 1,
+    sourceRevisionCount: 4,
+    validationFailureCount: 0,
+    units: { added: 1, updated: 0, removed: 0, unchanged: 0 },
+    assets: { added: 1, updated: 0, removed: 0, unchanged: 0 },
+    sourceRevisions: { added: 4, existing: 0 },
+    futureReferences: {
+      catalogWorkId: null,
+      localCorpusEntryId: null,
+      readinessProfileId: null,
+      completenessStatusId: null,
+    },
+  },
   cost: costReportFixture,
   localeBranches: [
     {

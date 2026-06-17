@@ -42,6 +42,10 @@ export {
 } from "./repositories/project-repository.js";
 export type {
   ArtifactInput,
+  BridgeImportDiffCounts,
+  BridgeImportFutureReferences,
+  BridgeImportRevisionDiffCounts,
+  BridgeImportStatus,
   EventInput,
   FindingInput,
   ItotoriProjectRecord,

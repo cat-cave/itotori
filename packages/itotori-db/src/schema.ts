@@ -227,6 +227,62 @@ export const sourceBundles = pgTable(
   ],
 );
 
+export const bridgeImports = pgTable(
+  "itotori_bridge_imports",
+  {
+    bridgeImportId: text("bridge_import_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    sourceBundleId: text("source_bundle_id")
+      .notNull()
+      .references(() => sourceBundles.sourceBundleId, { onDelete: "cascade" }),
+    sourceBundleRevisionId: text("source_bundle_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    bridgeId: text("bridge_id").notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    sourceBundleHash: text("source_bundle_hash").notNull(),
+    sourceLocale: text("source_locale").notNull(),
+    unitCount: integer("unit_count").notNull(),
+    assetCount: integer("asset_count").notNull(),
+    sourceRevisionCount: integer("source_revision_count").notNull(),
+    validationFailureCount: integer("validation_failure_count").notNull().default(0),
+    addedUnitCount: integer("added_unit_count").notNull(),
+    updatedUnitCount: integer("updated_unit_count").notNull(),
+    removedUnitCount: integer("removed_unit_count").notNull(),
+    unchangedUnitCount: integer("unchanged_unit_count").notNull(),
+    addedAssetCount: integer("added_asset_count").notNull(),
+    updatedAssetCount: integer("updated_asset_count").notNull(),
+    removedAssetCount: integer("removed_asset_count").notNull(),
+    unchangedAssetCount: integer("unchanged_asset_count").notNull(),
+    addedSourceRevisionCount: integer("added_source_revision_count").notNull(),
+    existingSourceRevisionCount: integer("existing_source_revision_count").notNull(),
+    catalogWorkId: text("catalog_work_id"),
+    localCorpusEntryId: text("local_corpus_entry_id"),
+    readinessProfileId: text("readiness_profile_id"),
+    completenessStatusId: text("completeness_status_id"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_bridge_imports_bundle_revision_idx").on(
+      table.sourceBundleId,
+      table.sourceBundleRevisionId,
+    ),
+    index("itotori_bridge_imports_project_imported_idx").on(table.projectId, table.importedAt),
+    index("itotori_bridge_imports_future_refs_idx").on(
+      table.catalogWorkId,
+      table.localCorpusEntryId,
+      table.readinessProfileId,
+      table.completenessStatusId,
+    ),
+  ],
+);
+
 export const assets = pgTable(
   "itotori_assets",
   {

@@ -5,6 +5,7 @@ import { eq, sql } from "drizzle-orm";
 import pg from "pg";
 import { describe, expect, it } from "vitest";
 import type { RuntimeEvidenceReportV02 } from "@itotori/localization-bridge-schema";
+import type { BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import {
   allPermissions,
   localUserId,
@@ -58,7 +59,7 @@ function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriP
           sourceText: "こんにちは、{player}。",
           textSurface: "dialogue",
           protectedSpans: [
-            { kind: "placeholder", raw: "{player}", start: 6, end: 14, preserveMode: "exact" },
+            { kind: "placeholder", raw: "{player}", start: 18, end: 26, preserveMode: "exact" },
           ],
           patchRef: {
             assetId: "source.json",
@@ -70,6 +71,33 @@ function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriP
     },
   };
   return { ...project, ...overrides };
+}
+
+function projectV02Fixture(bridge: BridgeBundleV02): ItotoriProjectRecord {
+  return {
+    projectId: "project-v02",
+    localeBranchId: "locale-v02-fr-fr",
+    targetLocale: "fr-FR",
+    drafts: {},
+    bridge,
+  };
+}
+
+function bridgeV02Fixture(): BridgeBundleV02 {
+  return JSON.parse(
+    readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "..",
+        "localization-bridge-schema",
+        "test",
+        "examples",
+        "bridge-v0.2.json",
+      ),
+      "utf8",
+    ),
+  ) as BridgeBundleV02;
 }
 
 function manualFeedbackFixture(
@@ -255,6 +283,26 @@ describe("ItotoriProjectRepository", () => {
       expect(status.localeBranches[0]?.translatedUnitCount).toBe(1);
       expect(status.artifactCount).toBe(4);
       expect(status.latestEventKind).toBe("patch_result_recorded");
+      expect(status.importStatus).toMatchObject({
+        projectId: "project-test",
+        bridgeId: "bridge-test",
+        sourceBundleId: "bridge-test",
+        sourceBundleRevisionId: "bridge-test:bundle-revision",
+        unitCount: 1,
+        assetCount: 1,
+        sourceRevisionCount: 4,
+        validationFailureCount: 0,
+        units: { added: 1, updated: 0, removed: 0, unchanged: 0 },
+        assets: { added: 1, updated: 0, removed: 0, unchanged: 0 },
+        sourceRevisions: { added: 4, existing: 0 },
+        futureReferences: {
+          catalogWorkId: null,
+          localCorpusEntryId: null,
+          readinessProfileId: null,
+          completenessStatusId: null,
+        },
+      });
+      expect(status.importStatus.importedAt).toContain("T");
 
       const runtimeStatus = await repo.getRuntimeStatus();
       expect(runtimeStatus).toEqual({
@@ -269,6 +317,135 @@ describe("ItotoriProjectRepository", () => {
         recordingArtifactCount: 0,
         validationFindingCount: 0,
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects invalid bridge bundles before project import writes", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      const unit = project.bridge.units[0]!;
+      const invalidProject = projectFixture({
+        bridge: {
+          ...project.bridge,
+          units: [
+            {
+              ...unit,
+              protectedSpans: [
+                {
+                  ...unit.protectedSpans[0]!,
+                  raw: "{missing}",
+                },
+              ],
+            },
+          ],
+        },
+      });
+
+      await expect(repo.importSourceBundle(localActor, invalidProject)).rejects.toThrow(
+        /byte range/,
+      );
+
+      const counts = await context.pool.query<{
+        projects: number;
+        source_revisions: number;
+        bridge_imports: number;
+      }>(`
+        select
+          (select count(*)::int from itotori_projects) as projects,
+          (select count(*)::int from itotori_source_revisions) as source_revisions,
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports
+      `);
+      expect(counts.rows[0]).toEqual({
+        projects: 0,
+        source_revisions: 0,
+        bridge_imports: 0,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("records source revision diffs on v0.2 reimport without duplicating revisions", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const bridge = bridgeV02Fixture();
+      const project = projectV02Fixture(bridge);
+
+      const firstImport = await repo.importSourceBundle(localActor, project);
+      const reimportedBridge: BridgeBundleV02 = {
+        ...bridge,
+        sourceBundleRevision: {
+          ...bridge.sourceBundleRevision,
+          revisionId: "019ed001-0000-7000-8000-000000000113",
+        },
+      };
+      const secondImport = await repo.importSourceBundle(
+        localActor,
+        projectV02Fixture(reimportedBridge),
+      );
+
+      expect(firstImport.sourceRevisions).toEqual({
+        added: firstImport.sourceRevisionCount,
+        existing: 0,
+      });
+      expect(secondImport.sourceRevisions).toEqual({
+        added: 1,
+        existing: firstImport.sourceRevisionCount - 1,
+      });
+      expect(secondImport.units).toMatchObject({
+        added: 0,
+        updated: 0,
+        removed: 0,
+        unchanged: bridge.units.length,
+      });
+      expect(secondImport.assets).toMatchObject({
+        added: 0,
+        updated: 0,
+        removed: 0,
+        unchanged: bridge.assets.length,
+      });
+
+      const imports = await context.pool.query<{
+        source_bundle_revision_id: string;
+        added_source_revision_count: number;
+        existing_source_revision_count: number;
+      }>(
+        `
+        select
+          source_bundle_revision_id,
+          added_source_revision_count,
+          existing_source_revision_count
+        from itotori_bridge_imports
+        where project_id = $1
+        order by source_bundle_revision_id
+      `,
+        ["project-v02"],
+      );
+      expect(imports.rows).toEqual([
+        {
+          source_bundle_revision_id: "019ed001-0000-7000-8000-000000000112",
+          added_source_revision_count: firstImport.sourceRevisionCount,
+          existing_source_revision_count: 0,
+        },
+        {
+          source_bundle_revision_id: "019ed001-0000-7000-8000-000000000113",
+          added_source_revision_count: 1,
+          existing_source_revision_count: firstImport.sourceRevisionCount - 1,
+        },
+      ]);
+
+      const revisions = await context.pool.query<{ count: number }>(
+        "select count(*)::int from itotori_source_revisions where project_id = $1",
+        ["project-v02"],
+      );
+      expect(revisions.rows[0]?.count).toBe(firstImport.sourceRevisionCount + 1);
     } finally {
       await context.close();
     }

@@ -31,6 +31,7 @@ describe("Itotori dashboard", () => {
 
     expect(root.querySelector('[data-state="ready"]')).not.toBeNull();
     expect(root.textContent).toContain("Projects");
+    expect(root.textContent).toContain("Import status");
     expect(root.textContent).toContain("Locale branches");
     expect(root.textContent).toContain("Style guide");
     expect(root.textContent).toContain("Glossary");
@@ -45,6 +46,10 @@ describe("Itotori dashboard", () => {
     expect(pendingDecisions?.textContent).toContain("en-US");
 
     expect(root.textContent).toContain("runtime_ingested");
+    expect(root.textContent).toContain("revision-1");
+    expect(root.textContent).toContain("1 (1 new / 0 updated / 0 removed)");
+    expect(root.textContent).toContain("Catalog");
+    expect(root.textContent).toContain("Readiness");
     expect(root.textContent).toContain("1/1");
     expect(root.textContent).toContain("patch_result_recorded");
     expect(root.textContent).toContain("provider_estimate");

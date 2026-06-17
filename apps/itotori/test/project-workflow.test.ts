@@ -41,8 +41,17 @@ describe("ItotoriProjectWorkflowService", () => {
       localeBranchId: "019ed000-0000-7000-8000-locale000001",
       targetLocale: "en-US",
       drafts: {},
+      importStatus: importStatusFixture,
     });
-    expect(repository.importSourceBundle).toHaveBeenCalledWith(actor, project);
+    expect(repository.importSourceBundle).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        projectId: "019ed000-0000-7000-8000-project00001",
+        localeBranchId: "019ed000-0000-7000-8000-locale000001",
+        targetLocale: "en-US",
+        drafts: {},
+      }),
+    );
   });
 
   it("drafts deterministic translations before saving drafts", async () => {
@@ -337,7 +346,7 @@ function repositoryFixture(): ItotoriProjectRepositoryPort {
   return {
     reset: vi.fn(async () => {}),
     importSourceBundle: vi.fn(
-      async (_actor: AuthorizationActor, _project: ItotoriProjectRecord) => {},
+      async (_actor: AuthorizationActor, _project: ItotoriProjectRecord) => importStatusFixture,
     ),
     saveDrafts: vi.fn(async (_actor: AuthorizationActor, _project: ItotoriProjectRecord) => {}),
     savePatchExport: vi.fn(async () => {}),
@@ -635,6 +644,31 @@ const costReportFixture: ProjectCostReport = {
   ],
 };
 
+const importStatusFixture = {
+  bridgeImportId: "bridge-import:project-test:bridge-test:revision-test",
+  projectId: "project-test",
+  bridgeId: "bridge-test",
+  sourceBundleId: "bridge-test",
+  sourceBundleHash: "hash-test",
+  sourceBundleRevisionId: "revision-test",
+  schemaVersion: "0.1.0",
+  sourceLocale: "ja-JP",
+  importedAt: "2026-06-17T00:00:00.000Z",
+  unitCount: 1,
+  assetCount: 1,
+  sourceRevisionCount: 4,
+  validationFailureCount: 0,
+  units: { added: 1, updated: 0, removed: 0, unchanged: 0 },
+  assets: { added: 1, updated: 0, removed: 0, unchanged: 0 },
+  sourceRevisions: { added: 4, existing: 0 },
+  futureReferences: {
+    catalogWorkId: null,
+    localCorpusEntryId: null,
+    readinessProfileId: null,
+    completenessStatusId: null,
+  },
+};
+
 const dashboardStatusFixture: ProjectDashboardStatus = {
   projectId: "project-test",
   projectKey: "project-test",
@@ -650,6 +684,7 @@ const dashboardStatusFixture: ProjectDashboardStatus = {
   artifactCount: 0,
   latestEventKind: null,
   latestEventAt: null,
+  importStatus: importStatusFixture,
   cost: costReportFixture,
   localeBranches: [],
 };

@@ -259,6 +259,7 @@ export function assertProjectDashboardStatus(
   assertNonNegativeInteger(status.artifactCount, `${label}.artifactCount`);
   assertNullableString(status.latestEventKind, `${label}.latestEventKind`);
   assertNullableString(status.latestEventAt, `${label}.latestEventAt`);
+  assertBridgeImportStatus(status.importStatus, `${label}.importStatus`);
   assertProjectCostReport(status.cost, `${label}.cost`);
   const branches = asArray(status.localeBranches, `${label}.localeBranches`);
   for (const [index, branchValue] of branches.entries()) {
@@ -280,6 +281,50 @@ export function assertProjectDashboardStatus(
       `${label}.localeBranches[${index}].artifactCount`,
     );
   }
+}
+
+function assertBridgeImportStatus(value: unknown, label: string): void {
+  const status = asRecord(value, label);
+  assertString(status.bridgeImportId, `${label}.bridgeImportId`);
+  assertString(status.projectId, `${label}.projectId`);
+  assertString(status.bridgeId, `${label}.bridgeId`);
+  assertString(status.sourceBundleId, `${label}.sourceBundleId`);
+  assertString(status.sourceBundleHash, `${label}.sourceBundleHash`);
+  assertString(status.sourceBundleRevisionId, `${label}.sourceBundleRevisionId`);
+  assertString(status.schemaVersion, `${label}.schemaVersion`);
+  assertString(status.sourceLocale, `${label}.sourceLocale`);
+  assertString(status.importedAt, `${label}.importedAt`);
+  assertNonNegativeInteger(status.unitCount, `${label}.unitCount`);
+  assertNonNegativeInteger(status.assetCount, `${label}.assetCount`);
+  assertNonNegativeInteger(status.sourceRevisionCount, `${label}.sourceRevisionCount`);
+  assertNonNegativeInteger(status.validationFailureCount, `${label}.validationFailureCount`);
+  assertDiffCounts(status.units, `${label}.units`);
+  assertDiffCounts(status.assets, `${label}.assets`);
+  const sourceRevisions = asRecord(status.sourceRevisions, `${label}.sourceRevisions`);
+  assertNonNegativeInteger(sourceRevisions.added, `${label}.sourceRevisions.added`);
+  assertNonNegativeInteger(sourceRevisions.existing, `${label}.sourceRevisions.existing`);
+  const futureReferences = asRecord(status.futureReferences, `${label}.futureReferences`);
+  assertNullableString(futureReferences.catalogWorkId, `${label}.futureReferences.catalogWorkId`);
+  assertNullableString(
+    futureReferences.localCorpusEntryId,
+    `${label}.futureReferences.localCorpusEntryId`,
+  );
+  assertNullableString(
+    futureReferences.readinessProfileId,
+    `${label}.futureReferences.readinessProfileId`,
+  );
+  assertNullableString(
+    futureReferences.completenessStatusId,
+    `${label}.futureReferences.completenessStatusId`,
+  );
+}
+
+function assertDiffCounts(value: unknown, label: string): void {
+  const counts = asRecord(value, label);
+  assertNonNegativeInteger(counts.added, `${label}.added`);
+  assertNonNegativeInteger(counts.updated, `${label}.updated`);
+  assertNonNegativeInteger(counts.removed, `${label}.removed`);
+  assertNonNegativeInteger(counts.unchanged, `${label}.unchanged`);
 }
 
 export function assertProjectCostReport(
@@ -387,6 +432,9 @@ export function assertProjectState(
   const drafts = asRecord(project.drafts, `${label}.drafts`);
   for (const [draftKey, draftValue] of Object.entries(drafts)) {
     assertString(draftValue, `${label}.drafts.${draftKey}`);
+  }
+  if (project.importStatus !== undefined) {
+    assertBridgeImportStatus(project.importStatus, `${label}.importStatus`);
   }
   if (project.patchExport !== undefined) {
     assertPatchExportInput(project.patchExport, `${label}.patchExport`);
