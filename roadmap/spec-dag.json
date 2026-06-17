@@ -1843,7 +1843,7 @@
     {
       "id": "KAIFUU-003",
       "title": "Round-trip golden harness",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "shared"],
@@ -1879,7 +1879,10 @@
         "False positives in round-trip claims",
         "Missing negative tests",
         "Slow fixture execution"
-      ]
+      ],
+      "owner": "codex-wave10",
+      "branch": "spec/kaifuu-003",
+      "worktree": "/tmp/itotori-spec-kaifuu-003"
     },
     {
       "id": "KAIFUU-004",
@@ -3109,7 +3112,7 @@
     {
       "id": "ITOTORI-004",
       "title": "Typed API layer and local dashboard backend",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -3142,7 +3145,10 @@
           "value": "just check"
         }
       ],
-      "auditFocus": ["Untyped request bodies", "Permission gaps", "API/dashboard drift"]
+      "auditFocus": ["Untyped request bodies", "Permission gaps", "API/dashboard drift"],
+      "owner": "codex-wave10",
+      "branch": "spec/itotori-004",
+      "worktree": "/tmp/itotori-spec-itotori-004"
     },
     {
       "id": "ITOTORI-005",
@@ -3304,7 +3310,7 @@
     {
       "id": "ITOTORI-009",
       "title": "LLM provider abstraction",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -3337,7 +3343,10 @@
           "value": "No live API required in CI"
         }
       ],
-      "auditFocus": ["OpenRouter lock-in", "Tool-call capability ambiguity", "Secret handling"]
+      "auditFocus": ["OpenRouter lock-in", "Tool-call capability ambiguity", "Secret handling"],
+      "owner": "codex-wave10",
+      "branch": "spec/itotori-009",
+      "worktree": "/tmp/itotori-spec-itotori-009"
     },
     {
       "id": "ITOTORI-010",
