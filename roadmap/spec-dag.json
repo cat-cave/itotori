@@ -894,7 +894,7 @@
     {
       "id": "SHARED-005",
       "title": "Runtime evidence schema v0.2",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "utsushi", "itotori"],
@@ -930,10 +930,7 @@
         "Overclaiming pixel fidelity",
         "Untraceable evidence",
         "Asset path portability"
-      ],
-      "owner": "orchestrator-wave6",
-      "branch": "spec/shared-005",
-      "worktree": "/tmp/itotori-spec-shared-005"
+      ]
     },
     {
       "id": "SHARED-006",
@@ -1057,7 +1054,7 @@
     {
       "id": "SHARED-009",
       "title": "Localization quality taxonomy and benchmark protocol",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori"],
@@ -1093,10 +1090,7 @@
         "Quality taxonomy vagueness",
         "Conflating orchestration severity with translation severity",
         "Unscorable QA findings"
-      ],
-      "owner": "orchestrator-wave6",
-      "branch": "spec/shared-009",
-      "worktree": "/tmp/itotori-spec-shared-009"
+      ]
     },
     {
       "id": "SHARED-010",
@@ -1313,6 +1307,89 @@
         "Permission value drift between code and migrations",
         "Manual SQL check constraints missing new permissions",
         "Hardening that rewrites historical migrations unsafely"
+      ]
+    },
+    {
+      "id": "SHARED-015",
+      "title": "Unified relative path validator",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["shared", "kaifuu"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["KAIFUU-019"],
+      "summary": "Unify profile path validation and package-controlled write path validation around one shared relative-path rule so dot, traversal, absolute, drive-prefix, and separator edge cases cannot diverge.",
+      "deliverables": [
+        "Shared relative-path validator",
+        "Profile validation migration to the shared validator",
+        "Package-controlled write migration to the shared validator",
+        "Negative fixture matrix for dot and traversal components"
+      ],
+      "acceptanceCriteria": [
+        "Profile validation rejects . components consistently with package-controlled writes",
+        "safe_join_relative and profile validation share a documented rule or one implementation",
+        "Absolute, drive-prefix, empty, dot, and parent traversal paths have regression fixtures",
+        "The shared validator documents whether it only validates paths or returns normalized safe output"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-delta"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Profile/write path validation drift",
+        "Dot components accepted by one surface only",
+        "Validator broadens allowed package-controlled writes"
+      ]
+    },
+    {
+      "id": "SHARED-016",
+      "title": "Branch-event multi-ref DB regression",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-005"],
+      "summary": "Strengthen the DB branch-event persistence test with distinct labelBridgeUnitRef and targetBridgeUnitRef bridge-unit references to prove aggregation records every branch option reference.",
+      "deliverables": [
+        "Distinct label bridge-unit fixture",
+        "Distinct target bridge-unit fixture",
+        "Repository assertion for aggregated branch refs",
+        "Regression test covering multi-ref branch options"
+      ],
+      "acceptanceCriteria": [
+        "A branch event option with different labelBridgeUnitRef and targetBridgeUnitRef values persists both references",
+        "The DB test fails if aggregation collapses multiple bridge-unit refs into one value",
+        "The fixture names the label and target refs clearly enough to diagnose regressions"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Branch ref aggregation hiding missing refs",
+        "Label and target refs accidentally identical",
+        "Runtime evidence persistence regressions"
       ]
     },
     {
@@ -2040,7 +2117,7 @@
     {
       "id": "KAIFUU-019",
       "title": "Encoding, normalization, and patch safety policy",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "shared"],
@@ -2072,10 +2149,7 @@
           "value": "just check"
         }
       ],
-      "auditFocus": ["Encoding corruption", "Unsafe writes", "Silent partial patch success"],
-      "owner": "orchestrator-wave6",
-      "branch": "spec/kaifuu-019",
-      "worktree": "/tmp/itotori-spec-kaifuu-019"
+      "auditFocus": ["Encoding corruption", "Unsafe writes", "Silent partial patch success"]
     },
     {
       "id": "KAIFUU-021",
@@ -2297,6 +2371,48 @@
         "Silent OCR hallucinations",
         "Unsupported image formats",
         "Asset provenance loss"
+      ]
+    },
+    {
+      "id": "KAIFUU-027",
+      "title": "Stable metadata string NFC alignment",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-019"],
+      "summary": "Align the utf8-nfc-lf-json-stable-v1 metadata rule with actual stable JSON writes by normalizing metadata string contents to NFC with explicit fixtures, or rename the rule until that behavior is implemented.",
+      "deliverables": [
+        "Metadata string NFC normalization path or renamed rule",
+        "Composed Unicode metadata fixture",
+        "Decomposed Unicode metadata fixture",
+        "Regression test proving asset bytes are untouched"
+      ],
+      "acceptanceCriteria": [
+        "Stable JSON metadata writes either NFC-normalize string contents or stop claiming an NFC rule",
+        "Composed and decomposed metadata strings serialize according to the documented behavior",
+        "Tests prove binary and source asset bytes are not blindly normalized",
+        "Rule names, docs, and emitted metadata remain internally consistent"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Metadata rule overclaims NFC behavior",
+        "Decomposed/composed fixture drift",
+        "Accidental normalization of asset bytes"
       ]
     },
     {
@@ -3605,7 +3721,7 @@
     {
       "id": "ITOTORI-033",
       "title": "Feedback source model and manual import stub",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -3641,10 +3757,7 @@
         "Feedback without context",
         "Duplicate spam",
         "Style disputes treated as facts"
-      ],
-      "owner": "orchestrator-wave6",
-      "branch": "spec/itotori-033",
-      "worktree": "/tmp/itotori-spec-itotori-033"
+      ]
     },
     {
       "id": "ITOTORI-034",
