@@ -935,7 +935,7 @@
     {
       "id": "SHARED-006",
       "title": "Benchmark and cost report schema",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori"],
@@ -971,7 +971,10 @@
         "Unverifiable quality claims",
         "Provider ambiguity",
         "Missing QA-agent metrics"
-      ]
+      ],
+      "owner": "orchestrator-wave7",
+      "branch": "spec/shared-006",
+      "worktree": "/tmp/itotori-spec-shared-006"
     },
     {
       "id": "SHARED-007",
@@ -1146,7 +1149,7 @@
     {
       "id": "SHARED-011",
       "title": "Asset localization policy schema",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori", "kaifuu"],
@@ -1182,7 +1185,10 @@
         "Non-text surfaces forgotten",
         "Overpromising image editing",
         "Policy not tied to locale branches"
-      ]
+      ],
+      "owner": "orchestrator-wave7",
+      "branch": "spec/shared-011",
+      "worktree": "/tmp/itotori-spec-shared-011"
     },
     {
       "id": "SHARED-012",
@@ -3610,7 +3616,7 @@
     {
       "id": "ITOTORI-030",
       "title": "Search and indexing infrastructure decision",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -3642,7 +3648,10 @@
         "Legacy opaque RAG",
         "Unavailable extensions blocking CI",
         "Search performance blind spots"
-      ]
+      ],
+      "owner": "orchestrator-wave7",
+      "branch": "spec/itotori-030",
+      "worktree": "/tmp/itotori-spec-itotori-030"
     },
     {
       "id": "ITOTORI-031",
@@ -4108,7 +4117,7 @@
     {
       "id": "UTSUSHI-001",
       "title": "Utsushi runtime adapter trait",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["utsushi", "shared"],
@@ -4144,7 +4153,10 @@
         "Pixel-perfect overcommitment",
         "Vague fidelity tiers",
         "Adapter API too engine-specific"
-      ]
+      ],
+      "owner": "orchestrator-wave7",
+      "branch": "spec/utsushi-001",
+      "worktree": "/tmp/itotori-spec-utsushi-001"
     },
     {
       "id": "UTSUSHI-002",
