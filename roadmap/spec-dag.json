@@ -2350,7 +2350,7 @@
     {
       "id": "KAIFUU-014",
       "title": "Encryption and key profile boundary",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu"],
@@ -2387,9 +2387,6 @@
           "value": "Secret redaction tests"
         }
       ],
-      "owner": "codex-wave11",
-      "branch": "spec/kaifuu-014",
-      "worktree": "/tmp/itotori-spec-kaifuu-014",
       "auditFocus": ["Accidental key leakage", "Platform coupling", "Blocking unencrypted engines"]
     },
     {
@@ -3490,7 +3487,7 @@
     {
       "id": "KAIFUU-020",
       "title": "Engine adapter development playbook",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "universal"],
@@ -3522,13 +3519,121 @@
           "value": "just roadmap-ready"
         }
       ],
-      "owner": "codex-wave11",
-      "branch": "spec/kaifuu-020",
-      "worktree": "/tmp/itotori-spec-kaifuu-020",
       "auditFocus": [
         "Playbook too vague",
         "Unsafe remote execution assumptions",
         "Missing test requirements"
+      ]
+    },
+    {
+      "id": "KAIFUU-043",
+      "title": "Report-wide redaction hardening",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-014"],
+      "summary": "Scrub or relativize absolute local paths and raw diagnostic echoes across Kaifuu detection, profile validation, patch, golden report, and CLI error surfaces.",
+      "deliverables": [
+        "Central report redaction helper",
+        "Detection and profile validation redaction coverage",
+        "Patch and golden report redaction coverage",
+        "CLI error redaction coverage"
+      ],
+      "acceptanceCriteria": [
+        "Detection, profile validation, patch, golden report, and CLI error outputs do not expose absolute local paths from test fixtures or user inputs",
+        "Diagnostics that echo adapter, helper, or validation payloads redact key material, private text, and machine-specific path fragments before serialization",
+        "Golden report fixtures assert redacted or relative forms instead of host-specific paths"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core redaction"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Absolute path leakage in structured reports",
+        "Raw diagnostic echoes bypassing report redaction",
+        "Golden fixtures normalizing host-specific output"
+      ]
+    },
+    {
+      "id": "KAIFUU-044",
+      "title": "Centralized profile write gate",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-014"],
+      "summary": "Route legacy `kaifuu profile <game-dir>` writes through the same validation and redaction gate as profile init, or remove the legacy write path.",
+      "deliverables": [
+        "Single profile write gate",
+        "Legacy profile command migration or removal",
+        "Profile write regression tests",
+        "CLI documentation update"
+      ],
+      "acceptanceCriteria": [
+        "Every command that writes a key profile uses the shared validation and redaction gate before persisting output",
+        "The legacy `kaifuu profile <game-dir>` path either delegates to the shared gate or is removed with a stable replacement error",
+        "Regression tests prove invalid, unredacted, or raw-key profile payloads cannot be written through either command path"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core profile"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Legacy profile writes bypassing validation",
+        "Divergent redaction behavior between profile commands",
+        "Raw key material persisted through compatibility paths"
+      ]
+    },
+    {
+      "id": "KAIFUU-045",
+      "title": "Stricter secret-ref linting",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-014"],
+      "summary": "Expand secret-ref linting beyond raw-key heuristics to flag unstable local ids, account or order ids, machine-specific names, and high-entropy edge cases.",
+      "deliverables": [
+        "Stable secret-ref id lint rules",
+        "Machine-specific name lint rules",
+        "High-entropy edge-case tests",
+        "Secret-ref lint documentation"
+      ],
+      "acceptanceCriteria": [
+        "Secret-ref ids that embed account ids, order ids, local usernames, machine names, or absolute path fragments produce stable lint diagnostics",
+        "High-entropy secret-ref names beyond current raw-key heuristics are covered by fixtures with false-positive guard cases",
+        "Lint diagnostics identify the unstable component without echoing sensitive values"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core secret_ref"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Secret refs that encode user or machine identity",
+        "High-entropy identifiers missed by raw-key checks",
+        "Lint diagnostics leaking the sensitive substring"
       ]
     },
     {
@@ -3878,7 +3983,7 @@
     {
       "id": "ITOTORI-010",
       "title": "Model registry, presets, and cost ledger",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -3911,9 +4016,6 @@
           "value": "Benchmark report fixture"
         }
       ],
-      "owner": "codex-wave11",
-      "branch": "spec/itotori-010",
-      "worktree": "/tmp/itotori-spec-itotori-010",
       "auditFocus": ["Cost undercounting", "Untracked fallback model changes", "Preset drift"]
     },
     {
@@ -5559,6 +5661,82 @@
         "Dashboard mutations untested in MSW",
         "MSW handlers accepting shapes the real API rejects",
         "Permission or scoping denials missing from UI contract tests"
+      ]
+    },
+    {
+      "id": "ITOTORI-052",
+      "title": "Provider ledger hardening",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "agent-runtime",
+      "dependsOn": ["ITOTORI-010"],
+      "summary": "Harden provider cost ledger ingestion and reconciliation around provider metadata, bigint-safe micros, token invariants, timestamp ordering, enum parity, and fallback cost edge cases.",
+      "deliverables": [
+        "Provider pricing snapshot ingestion",
+        "Ledger reconciliation checks",
+        "Bigint-safe micros handling",
+        "Fallback and unknown-cost benchmark cases"
+      ],
+      "acceptanceCriteria": [
+        "Provider pricing snapshots can be ingested from provider metadata and reconciled against ledger entries without floating-point micros loss",
+        "Ledger writes reject negative token counts and preserve deterministic timestamp ordering for usage and billing events",
+        "Provider and model enum or check constraints stay aligned with adapter metadata and schema migrations",
+        "Benchmark-to-ledger fixtures cover fallback providers and unknown-cost cases without silently recording false zero cost"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Floating-point or integer overflow in micros math",
+        "Negative or reordered provider usage entries",
+        "Fallback and unknown-cost runs misreported as billed zero"
+      ]
+    },
+    {
+      "id": "ITOTORI-053",
+      "title": "Cost drilldown dashboard filters",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-010"],
+      "summary": "Add dashboard and API cost drilldown affordances for project, system, and time filtering, pagination, provider metadata inspection, and clearer zero-versus-unknown cost display.",
+      "deliverables": [
+        "Cost drilldown API filters",
+        "Paginated dashboard cost table",
+        "Provider adapter metadata drilldown",
+        "Zero versus unknown cost display states"
+      ],
+      "acceptanceCriteria": [
+        "Cost drilldown APIs support project, system, and time filters with deterministic pagination",
+        "Dashboard views expose provider adapter metadata for a selected ledger row without requiring raw provider payloads",
+        "Zero-cost and unknown-cost records render as distinct states in the API and dashboard",
+        "Filter combinations preserve totals and pagination metadata in contract tests"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Cost filters that change aggregate totals incorrectly",
+        "Unknown cost rendered as numeric zero",
+        "Provider metadata drilldown exposing raw provider payloads"
       ]
     },
     {

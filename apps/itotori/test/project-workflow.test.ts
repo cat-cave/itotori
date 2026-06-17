@@ -99,11 +99,11 @@ describe("ItotoriProjectWorkflowService", () => {
     const provider = failingProvider();
     const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
 
-    await expect(service.draftProject(projectFixture({ drafts: {} }), "fr-FR")).rejects.toMatchObject(
-      {
-        code: "provider_http_error",
-      },
-    );
+    await expect(
+      service.draftProject(projectFixture({ drafts: {} }), "fr-FR"),
+    ).rejects.toMatchObject({
+      code: "provider_http_error",
+    });
 
     expect(ledger.recordProviderRun).toHaveBeenCalledWith(
       actor,
@@ -123,11 +123,11 @@ describe("ItotoriProjectWorkflowService", () => {
     const provider = failingProviderWithoutRun();
     const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
 
-    await expect(service.draftProject(projectFixture({ drafts: {} }), "fr-FR")).rejects.toMatchObject(
-      {
-        code: "provider_response_invalid",
-      },
-    );
+    await expect(
+      service.draftProject(projectFixture({ drafts: {} }), "fr-FR"),
+    ).rejects.toMatchObject({
+      code: "provider_response_invalid",
+    });
 
     expect(ledger.recordProviderRun).toHaveBeenCalledWith(
       actor,
@@ -154,11 +154,11 @@ describe("ItotoriProjectWorkflowService", () => {
     const provider = nullContentProvider();
     const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
 
-    await expect(service.draftProject(projectFixture({ drafts: {} }), "fr-FR")).rejects.toMatchObject(
-      {
-        code: "provider_response_invalid",
-      },
-    );
+    await expect(
+      service.draftProject(projectFixture({ drafts: {} }), "fr-FR"),
+    ).rejects.toMatchObject({
+      code: "provider_response_invalid",
+    });
 
     expect(ledger.recordProviderRun).toHaveBeenCalledWith(
       actor,
@@ -443,10 +443,7 @@ function nullContentProvider(): ModelProvider {
   };
 }
 
-function failedProviderRun(
-  request: ModelInvocationRequest,
-  modelId: string,
-): ProviderRunRecord {
+function failedProviderRun(request: ModelInvocationRequest, modelId: string): ProviderRunRecord {
   return {
     runId: "provider-run-failed",
     taskKind: request.taskKind,

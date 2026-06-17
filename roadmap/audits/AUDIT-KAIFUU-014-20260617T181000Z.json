@@ -1,0 +1,192 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-014-20260617T181000Z",
+  "generatedAt": "2026-06-17T18:10:00Z",
+  "spec": {
+    "id": "KAIFUU-014",
+    "title": "Encryption and key profile boundary",
+    "branch": "spec/kaifuu-014",
+    "worktree": "/tmp/itotori-spec-kaifuu-014"
+  },
+  "auditor": {
+    "name": "wave11-final-audit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final audit found no P0/P1 blockers for KAIFUU-014. Remaining redaction, profile write-gate, and secret-ref lint items are tracked as non-blocking DAG follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 2,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-014-F001", "KAIFUU-014-F002", "KAIFUU-014-F003"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-014-F001",
+      "severity": "P2",
+      "title": "Report-wide redaction needs broader coverage",
+      "category": "security",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "symbol": "KAIFUU-014"
+        }
+      ],
+      "description": "Detection, profile validation, patch, golden report, and CLI error surfaces need a report-wide pass that scrubs or relativizes absolute local paths and raw diagnostic echoes.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final wave 11 audit recorded report-wide redaction hardening as a P2 follow-up with no P0/P1 completion blocker."
+        }
+      ],
+      "impact": "Host-specific paths or raw diagnostic echoes could leak from non-key report surfaces even though key material is already guarded.",
+      "actionableAcceptanceCriteria": [
+        "Detection, profile validation, patch, golden report, and CLI error outputs do not expose absolute local paths from test fixtures or user inputs.",
+        "Diagnostics that echo adapter, helper, or validation payloads redact key material, private text, and machine-specific path fragments before serialization.",
+        "Golden report fixtures assert redacted or relative forms instead of host-specific paths."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-043",
+          "acceptanceCriteria": [
+            "Detection, profile validation, patch, golden report, and CLI error outputs do not expose absolute local paths from test fixtures or user inputs",
+            "Diagnostics that echo adapter, helper, or validation payloads redact key material, private text, and machine-specific path fragments before serialization",
+            "Golden report fixtures assert redacted or relative forms instead of host-specific paths"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core redaction"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Absolute path leakage in structured reports",
+            "Raw diagnostic echoes bypassing report redaction",
+            "Golden fixtures normalizing host-specific output"
+          ],
+          "notes": "Tracked as planned DAG node KAIFUU-043 for wave 11 completion bookkeeping."
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-014-F002",
+      "severity": "P2",
+      "title": "Legacy profile writes need the central gate",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "symbol": "KAIFUU-014"
+        }
+      ],
+      "description": "The legacy `kaifuu profile <game-dir>` path must validate and redact profile writes through the same gate as profile init, or be removed.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final wave 11 audit recorded centralized profile write gating as a P2 follow-up with no P0/P1 completion blocker."
+        }
+      ],
+      "impact": "A compatibility profile command can drift from the hardened profile-init path and reintroduce invalid or unredacted profile writes.",
+      "actionableAcceptanceCriteria": [
+        "Every command that writes a key profile uses the shared validation and redaction gate before persisting output.",
+        "The legacy `kaifuu profile <game-dir>` path either delegates to the shared gate or is removed with a stable replacement error.",
+        "Regression tests prove invalid, unredacted, or raw-key profile payloads cannot be written through either command path."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-044",
+          "acceptanceCriteria": [
+            "Every command that writes a key profile uses the shared validation and redaction gate before persisting output",
+            "The legacy `kaifuu profile <game-dir>` path either delegates to the shared gate or is removed with a stable replacement error",
+            "Regression tests prove invalid, unredacted, or raw-key profile payloads cannot be written through either command path"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core profile"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Legacy profile writes bypassing validation",
+            "Divergent redaction behavior between profile commands",
+            "Raw key material persisted through compatibility paths"
+          ],
+          "notes": "Tracked as planned DAG node KAIFUU-044 for wave 11 completion bookkeeping."
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-014-F003",
+      "severity": "P3",
+      "title": "Secret-ref lints need stricter edge cases",
+      "category": "security",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "symbol": "KAIFUU-014"
+        }
+      ],
+      "description": "Secret-ref linting should expand beyond current raw-key heuristics to cover unstable local ids, account or order ids, machine-specific names, and high-entropy edge cases.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final wave 11 audit recorded stricter secret-ref linting as a P3 follow-up with no P0/P1 completion blocker."
+        }
+      ],
+      "impact": "Secret references can avoid storing raw keys while still encoding user, account, order, machine, or high-entropy identifiers that should not become durable shared metadata.",
+      "actionableAcceptanceCriteria": [
+        "Secret-ref ids that embed account ids, order ids, local usernames, machine names, or absolute path fragments produce stable lint diagnostics.",
+        "High-entropy secret-ref names beyond current raw-key heuristics are covered by fixtures with false-positive guard cases.",
+        "Lint diagnostics identify the unstable component without echoing sensitive values."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-045",
+          "acceptanceCriteria": [
+            "Secret-ref ids that embed account ids, order ids, local usernames, machine names, or absolute path fragments produce stable lint diagnostics",
+            "High-entropy secret-ref names beyond current raw-key heuristics are covered by fixtures with false-positive guard cases",
+            "Lint diagnostics identify the unstable component without echoing sensitive values"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core secret_ref"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Secret refs that encode user or machine identity",
+            "High-entropy identifiers missed by raw-key checks",
+            "Lint diagnostics leaking the sensitive substring"
+          ],
+          "notes": "Tracked as planned DAG node KAIFUU-045 for wave 11 completion bookkeeping."
+        }
+      }
+    }
+  ]
+}

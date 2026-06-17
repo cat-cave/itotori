@@ -177,10 +177,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         throw error;
       }
       if (result.content === null) {
-        const failedRun = failedProviderRunFromRun(
-          result.providerRun,
-          "provider_response_invalid",
-        );
+        const failedRun = failedProviderRunFromRun(result.providerRun, "provider_response_invalid");
         const error = new ModelProviderError(
           `draft provider returned no text for ${unit.bridgeUnitId}`,
           "provider_response_invalid",
@@ -378,8 +375,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
             startedAt,
             error,
           });
-    const adapterMetadata =
-      error instanceof ModelProviderError ? error.adapterMetadata : undefined;
+    const adapterMetadata = error instanceof ModelProviderError ? error.adapterMetadata : undefined;
     await this.modelLedger.recordProviderRun(
       this.actor,
       providerRunLedgerInputFromRun(project, providerRun, adapterMetadata),
@@ -416,10 +412,7 @@ function draftPromptPreset() {
   };
 }
 
-function failedProviderRunFromRun(
-  run: ProviderRunRecord,
-  errorClass: string,
-): ProviderRunRecord {
+function failedProviderRunFromRun(run: ProviderRunRecord, errorClass: string): ProviderRunRecord {
   return {
     ...run,
     status: "failed",

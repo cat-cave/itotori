@@ -1,0 +1,32 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-020-20260617T182000Z",
+  "generatedAt": "2026-06-17T18:20:00Z",
+  "spec": {
+    "id": "KAIFUU-020",
+    "title": "Engine adapter development playbook",
+    "branch": "spec/kaifuu-020",
+    "worktree": "/tmp/itotori-spec-kaifuu-020"
+  },
+  "auditor": {
+    "name": "wave11-final-audit",
+    "kind": "documentation"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final audit found no P0/P1 blockers and no remaining P2/P3 follow-up findings for KAIFUU-020 after repair.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}

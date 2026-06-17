@@ -1,0 +1,143 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-010-20260617T180000Z",
+  "generatedAt": "2026-06-17T18:00:00Z",
+  "spec": {
+    "id": "ITOTORI-010",
+    "title": "Model registry, presets, and cost ledger",
+    "branch": "spec/itotori-010",
+    "worktree": "/tmp/itotori-spec-itotori-010"
+  },
+  "auditor": {
+    "name": "wave11-final-audit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final audit found no P0/P1 blockers for ITOTORI-010. Remaining provider ledger and dashboard drilldown items are tracked as non-blocking DAG follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-010-F001", "ITOTORI-010-F002"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-010-F001",
+      "severity": "P2",
+      "title": "Provider ledger hardening remains follow-up work",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "symbol": "ITOTORI-010"
+        }
+      ],
+      "description": "The final audit accepted ITOTORI-010 for completion, but provider ledger ingestion and reconciliation still need stronger pricing metadata handling, bigint-safe micros, token invariants, timestamp ordering, enum/check parity, and benchmark fallback coverage.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final wave 11 audit recorded provider ledger hardening as a P2 follow-up with no P0/P1 completion blocker."
+        }
+      ],
+      "impact": "Cost reports can remain MVP-acceptable while later provider metadata, fallback, or unknown-cost edge cases risk undercounting or ambiguous ledger rows.",
+      "actionableAcceptanceCriteria": [
+        "Provider pricing snapshots can be ingested from provider metadata and reconciled against ledger entries without floating-point micros loss.",
+        "Ledger writes reject negative token counts and preserve deterministic timestamp ordering for usage and billing events.",
+        "Provider and model enum or check constraints stay aligned with adapter metadata and schema migrations.",
+        "Benchmark-to-ledger fixtures cover fallback providers and unknown-cost cases without silently recording false zero cost."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "ITOTORI-052",
+          "acceptanceCriteria": [
+            "Provider pricing snapshots can be ingested from provider metadata and reconciled against ledger entries without floating-point micros loss",
+            "Ledger writes reject negative token counts and preserve deterministic timestamp ordering for usage and billing events",
+            "Provider and model enum or check constraints stay aligned with adapter metadata and schema migrations",
+            "Benchmark-to-ledger fixtures cover fallback providers and unknown-cost cases without silently recording false zero cost"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Floating-point or integer overflow in micros math",
+            "Negative or reordered provider usage entries",
+            "Fallback and unknown-cost runs misreported as billed zero"
+          ],
+          "notes": "Tracked as planned DAG node ITOTORI-052 for wave 11 completion bookkeeping."
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-010-F002",
+      "severity": "P3",
+      "title": "Dashboard and API cost drilldown is still shallow",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "symbol": "ITOTORI-010"
+        }
+      ],
+      "description": "The final audit accepted the MVP cost ledger, but follow-up dashboard and API drilldown should add project, system, and time filters, pagination, provider adapter metadata inspection, and clearer zero-versus-unknown cost display.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final wave 11 audit recorded dashboard/API cost drilldown as a P3 follow-up with no P0/P1 completion blocker."
+        }
+      ],
+      "impact": "Operators may need to inspect cost details manually, and unknown-cost records can be mistaken for true zero-cost records.",
+      "actionableAcceptanceCriteria": [
+        "Cost drilldown APIs support project, system, and time filters with deterministic pagination.",
+        "Dashboard views expose provider adapter metadata for a selected ledger row without requiring raw provider payloads.",
+        "Zero-cost and unknown-cost records render as distinct states in the API and dashboard.",
+        "Filter combinations preserve totals and pagination metadata in contract tests."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "ITOTORI-053",
+          "acceptanceCriteria": [
+            "Cost drilldown APIs support project, system, and time filters with deterministic pagination",
+            "Dashboard views expose provider adapter metadata for a selected ledger row without requiring raw provider payloads",
+            "Zero-cost and unknown-cost records render as distinct states in the API and dashboard",
+            "Filter combinations preserve totals and pagination metadata in contract tests"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Cost filters that change aggregate totals incorrectly",
+            "Unknown cost rendered as numeric zero",
+            "Provider metadata drilldown exposing raw provider payloads"
+          ],
+          "notes": "Tracked as planned DAG node ITOTORI-053 for wave 11 completion bookkeeping."
+        }
+      }
+    }
+  ]
+}
