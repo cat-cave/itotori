@@ -452,7 +452,11 @@ function assertRuntimeEvidenceResponse(
   value: unknown,
 ): asserts value is ApiRuntimeEvidenceResponse {
   const response = asRecord(value, "ApiRuntimeEvidenceResponse");
-  assertEnum(response.status, ["hello_world_passed"] as const, "ApiRuntimeEvidenceResponse.status");
+  assertEnum(
+    response.status,
+    ["hello_world_passed", "hello_world_failed"] as const,
+    "ApiRuntimeEvidenceResponse.status",
+  );
   assertString(response.bridgeId, "ApiRuntimeEvidenceResponse.bridgeId");
   assertString(response.localeBranchId, "ApiRuntimeEvidenceResponse.localeBranchId");
   assertString(response.patchResultId, "ApiRuntimeEvidenceResponse.patchResultId");

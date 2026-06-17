@@ -1,11 +1,19 @@
-import { AuthorizationError, permissionValues, type Permission } from "@itotori/db";
+import {
+  AuthorizationError,
+  ItotoriProjectRepository,
+  localUserId,
+  permissionValues,
+  type Permission,
+} from "@itotori/db";
 import { describe, expect, it, vi } from "vitest";
+import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import {
   handleItotoriApiRequest,
   isItotoriApiPath,
   type ItotoriApiRequest,
   type ItotoriApiServices,
 } from "../src/api-handlers.js";
+import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.js";
 import {
   benchmarkReportFixture,
   bridgeFixture,
@@ -144,6 +152,139 @@ describe("Itotori API handlers", () => {
     expect(response.body).toMatchObject({ code: "forbidden" });
     expect(services.projectWorkflow.importBridge).not.toHaveBeenCalled();
   });
+
+  it("allows failed runtime evidence ingest results with validation findings", async () => {
+    const services = serviceFixture();
+    services.projectWorkflow.ingestRuntimeReport.mockResolvedValueOnce({
+      project: projectFixture,
+      result: {
+        ...runtimeIngestResultFixture,
+        status: "hello_world_failed",
+      },
+    });
+
+    const response = await handleItotoriApiRequest(
+      post("/api/projects/project-1/runtime-evidence", {
+        project: projectFixture,
+        runtimeReport: { ...runtimeReportFixture, status: "failed" },
+      }),
+      services,
+    );
+
+    expect(response).toMatchObject({
+      statusCode: 200,
+      body: { status: "hello_world_failed", runtimeReportId: "runtime-1" },
+    });
+  });
+
+  it.skipIf(!process.env.DATABASE_URL)(
+    "keeps runtime patch result artifacts independent through the API workflow",
+    async () => {
+      const context = await isolatedMigratedContext();
+      try {
+        const actor = { userId: localUserId };
+        const repository = new ItotoriProjectRepository(context.db);
+        const workflow = new ItotoriProjectWorkflowService(repository, actor);
+        const project = await workflow.importBridge(bridgeFixture);
+        const services: ItotoriApiServices = {
+          authorization: {
+            requirePermission: vi.fn<[Permission], Promise<void>>(async () => {}),
+          },
+          projectWorkflow: workflow,
+        };
+
+        const firstReport = {
+          ...runtimeReportFixture,
+          runtimeReportId: "runtime-api-1",
+        };
+        const secondReport = {
+          ...runtimeReportFixture,
+          runtimeReportId: "runtime-api-2",
+        };
+
+        const firstResponse = await handleItotoriApiRequest(
+          post(`/api/projects/${project.projectId}/runtime-evidence`, {
+            project,
+            runtimeReport: firstReport,
+          }),
+          services,
+        );
+        const secondResponse = await handleItotoriApiRequest(
+          post(`/api/projects/${project.projectId}/runtime-evidence`, {
+            project,
+            runtimeReport: secondReport,
+          }),
+          services,
+        );
+
+        expect(firstResponse).toMatchObject({
+          statusCode: 200,
+          body: {
+            patchResultId: "runtime-api-1:patch-result",
+            runtimeReportId: "runtime-api-1",
+          },
+        });
+        expect(secondResponse).toMatchObject({
+          statusCode: 200,
+          body: {
+            patchResultId: "runtime-api-2:patch-result",
+            runtimeReportId: "runtime-api-2",
+          },
+        });
+
+        const patchResults = await context.pool.query<{
+          artifact_id: string;
+          runtime_report_id: string;
+          final_status: string;
+        }>(
+          `
+          select
+            artifact_id,
+            metadata->>'runtimeReportId' as runtime_report_id,
+            metadata->>'finalStatus' as final_status
+          from itotori_artifacts
+          where artifact_kind = 'patch_result'
+          order by artifact_id
+        `,
+        );
+        expect(patchResults.rows).toEqual([
+          {
+            artifact_id: "runtime-api-1:patch-result",
+            runtime_report_id: "runtime-api-1",
+            final_status: "hello_world_passed",
+          },
+          {
+            artifact_id: "runtime-api-2:patch-result",
+            runtime_report_id: "runtime-api-2",
+            final_status: "hello_world_passed",
+          },
+        ]);
+
+        const runs = await context.pool.query<{
+          runtime_run_id: string;
+          patch_result_artifact_id: string;
+        }>(
+          `
+          select runtime_run_id, patch_result_artifact_id
+          from itotori_runtime_evidence_runs
+          order by runtime_run_id
+        `,
+        );
+        expect(runs.rows).toEqual([
+          {
+            runtime_run_id: "runtime-api-1",
+            patch_result_artifact_id: "runtime-api-1:patch-result",
+          },
+          {
+            runtime_run_id: "runtime-api-2",
+            patch_result_artifact_id: "runtime-api-2:patch-result",
+          },
+        ]);
+      } finally {
+        await context.close();
+      }
+    },
+  );
 
   it("identifies API paths without claiming static assets", () => {
     expect(isItotoriApiPath("/api/projects/status")).toBe(true);

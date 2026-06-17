@@ -102,6 +102,36 @@ export const providerCostKindValues = {
 
 export type ProviderCostKind = (typeof providerCostKindValues)[keyof typeof providerCostKindValues];
 
+export const runtimeRunStatusValues = {
+  passed: "passed",
+  failed: "failed",
+} as const;
+
+export type RuntimeRunStatus = (typeof runtimeRunStatusValues)[keyof typeof runtimeRunStatusValues];
+
+export const runtimeEvidenceKindValues = {
+  traceEvent: "trace_event",
+  branchEvent: "branch_event",
+  capture: "capture",
+  recording: "recording",
+  approximation: "approximation",
+  referenceComparison: "reference_comparison",
+} as const;
+
+export type RuntimeEvidenceKind =
+  (typeof runtimeEvidenceKindValues)[keyof typeof runtimeEvidenceKindValues];
+
+export const runtimeBridgeUnitRefRoleValues = {
+  primary: "primary",
+  branchLabel: "branch_label",
+  branchTarget: "branch_target",
+  affected: "affected",
+  covered: "covered",
+} as const;
+
+export type RuntimeBridgeUnitRefRole =
+  (typeof runtimeBridgeUnitRefRoleValues)[keyof typeof runtimeBridgeUnitRefRoleValues];
+
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -679,6 +709,163 @@ export const artifacts = pgTable(
     index("itotori_artifacts_finding_idx").on(table.findingId),
     index("itotori_artifacts_bridge_unit_idx").on(table.bridgeUnitId),
     index("itotori_artifacts_source_bundle_idx").on(table.sourceBundleId),
+  ],
+);
+
+export const runtimeEvidenceRuns = pgTable(
+  "itotori_runtime_evidence_runs",
+  {
+    runtimeRunId: text("runtime_run_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceBundleId: text("source_bundle_id")
+      .notNull()
+      .references(() => sourceBundles.sourceBundleId, { onDelete: "restrict" }),
+    sourceBundleRevisionId: text("source_bundle_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    runtimeReportArtifactId: text("runtime_report_artifact_id")
+      .notNull()
+      .references(() => artifacts.artifactId, { onDelete: "cascade" }),
+    patchResultArtifactId: text("patch_result_artifact_id").references(() => artifacts.artifactId, {
+      onDelete: "set null",
+    }),
+    adapterName: text("adapter_name").notNull(),
+    adapterVersion: text("adapter_version"),
+    status: text("status").notNull(),
+    fidelityTier: text("fidelity_tier").notNull(),
+    evidenceTier: text("evidence_tier"),
+    textEventCount: integer("text_event_count").notNull().default(0),
+    branchEventCount: integer("branch_event_count").notNull().default(0),
+    captureCount: integer("capture_count").notNull().default(0),
+    recordingCount: integer("recording_count").notNull().default(0),
+    validationFindingCount: integer("validation_finding_count").notNull().default(0),
+    referenceComparisonCount: integer("reference_comparison_count").notNull().default(0),
+    reportCreatedAt: timestamp("report_created_at", { withTimezone: true }).notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_runtime_runs_project_created_idx").on(table.projectId, table.reportCreatedAt),
+    index("itotori_runtime_runs_branch_created_idx").on(
+      table.localeBranchId,
+      table.reportCreatedAt,
+    ),
+    index("itotori_runtime_runs_bundle_revision_idx").on(
+      table.sourceBundleId,
+      table.sourceBundleRevisionId,
+    ),
+    index("itotori_runtime_runs_status_idx").on(table.status),
+  ],
+);
+
+export const runtimeEvidenceItems = pgTable(
+  "itotori_runtime_evidence_items",
+  {
+    runtimeEvidenceId: text("runtime_evidence_id").primaryKey(),
+    runtimeRunId: text("runtime_run_id")
+      .notNull()
+      .references(() => runtimeEvidenceRuns.runtimeRunId, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceBundleId: text("source_bundle_id")
+      .notNull()
+      .references(() => sourceBundles.sourceBundleId, { onDelete: "restrict" }),
+    sourceBundleRevisionId: text("source_bundle_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    bridgeUnitId: text("bridge_unit_id").references(() => sourceUnits.bridgeUnitId, {
+      onDelete: "set null",
+    }),
+    artifactId: text("artifact_id").references(() => artifacts.artifactId, {
+      onDelete: "set null",
+    }),
+    evidenceKind: text("evidence_kind").notNull(),
+    evidenceTier: text("evidence_tier"),
+    artifactKind: text("artifact_kind"),
+    portableArtifactUri: text("portable_artifact_uri"),
+    frame: integer("frame"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_runtime_evidence_run_kind_idx").on(table.runtimeRunId, table.evidenceKind),
+    index("itotori_runtime_evidence_bridge_unit_idx").on(table.bridgeUnitId),
+    index("itotori_runtime_evidence_artifact_idx").on(table.artifactId),
+  ],
+);
+
+export const runtimeEvidenceBridgeUnitRefs = pgTable(
+  "itotori_runtime_evidence_bridge_unit_refs",
+  {
+    runtimeEvidenceId: text("runtime_evidence_id")
+      .notNull()
+      .references(() => runtimeEvidenceItems.runtimeEvidenceId, { onDelete: "cascade" }),
+    bridgeUnitId: text("bridge_unit_id")
+      .notNull()
+      .references(() => sourceUnits.bridgeUnitId, { onDelete: "cascade" }),
+    refRole: text("ref_role").notNull(),
+    sourceUnitKey: text("source_unit_key").notNull().default(""),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.runtimeEvidenceId, table.bridgeUnitId, table.refRole, table.sourceUnitKey],
+    }),
+    index("itotori_runtime_evidence_refs_bridge_unit_idx").on(table.bridgeUnitId),
+  ],
+);
+
+export const runtimeValidationFindings = pgTable(
+  "itotori_runtime_validation_findings",
+  {
+    findingId: text("finding_id")
+      .primaryKey()
+      .references(() => findings.findingId, { onDelete: "cascade" }),
+    runtimeRunId: text("runtime_run_id")
+      .notNull()
+      .references(() => runtimeEvidenceRuns.runtimeRunId, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceBundleId: text("source_bundle_id")
+      .notNull()
+      .references(() => sourceBundles.sourceBundleId, { onDelete: "restrict" }),
+    sourceBundleRevisionId: text("source_bundle_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    bridgeUnitId: text("bridge_unit_id").references(() => sourceUnits.bridgeUnitId, {
+      onDelete: "set null",
+    }),
+    artifactId: text("artifact_id").references(() => artifacts.artifactId, {
+      onDelete: "set null",
+    }),
+    findingKind: text("finding_kind").notNull(),
+    severity: text("severity").notNull(),
+    message: text("message").notNull(),
+    evidenceTier: text("evidence_tier").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_runtime_validation_run_idx").on(table.runtimeRunId),
+    index("itotori_runtime_validation_bridge_unit_idx").on(table.bridgeUnitId),
+    index("itotori_runtime_validation_artifact_idx").on(table.artifactId),
   ],
 );
 
