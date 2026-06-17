@@ -1836,10 +1836,14 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
 function runtimeBranchEventBridgeUnitRefs(
   event: RuntimeEvidenceReportV02["branchEvents"][number],
 ): RuntimeBridgeUnitRef[] {
-  return runtimeBranchEventBridgeUnitLinks(event).map((ref) => ({
-    bridgeUnitId: ref.bridgeUnitId,
-    ...(ref.sourceUnitKey === undefined ? {} : { sourceUnitKey: ref.sourceUnitKey }),
-  }));
+  const uniqueRefs = new Map<string, RuntimeBridgeUnitRef>();
+  for (const ref of runtimeBranchEventBridgeUnitLinks(event)) {
+    uniqueRefs.set(`${ref.bridgeUnitId}\0${ref.sourceUnitKey ?? ""}`, {
+      bridgeUnitId: ref.bridgeUnitId,
+      ...(ref.sourceUnitKey === undefined ? {} : { sourceUnitKey: ref.sourceUnitKey }),
+    });
+  }
+  return Array.from(uniqueRefs.values());
 }
 
 function runtimeBranchEventBridgeUnitLinks(
