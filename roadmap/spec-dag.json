@@ -1491,7 +1491,7 @@
     {
       "id": "SHARED-015",
       "title": "Unified relative path validator",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["shared", "kaifuu"],
@@ -1528,7 +1528,10 @@
         "Profile/write path validation drift",
         "Dot components accepted by one surface only",
         "Validator broadens allowed package-controlled writes"
-      ]
+      ],
+      "owner": "orchestrator-wave11",
+      "branch": "spec/shared-015",
+      "worktree": "/tmp/itotori-spec-shared-015"
     },
     {
       "id": "SHARED-016",
@@ -7549,7 +7552,7 @@
     {
       "id": "ITOTORI-049",
       "title": "Provider invocation capability guards",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -7584,7 +7587,10 @@
         "Provider-specific capability drift",
         "Fallback metadata loss",
         "Unsupported structured output accepted"
-      ]
+      ],
+      "owner": "orchestrator-wave11",
+      "branch": "spec/itotori-049",
+      "worktree": "/tmp/itotori-spec-itotori-049"
     },
     {
       "id": "ITOTORI-050",
@@ -8282,7 +8288,7 @@
     {
       "id": "UTSUSHI-012",
       "title": "Controlled playback session and capability contract",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "shared", "itotori"],
@@ -8322,7 +8328,10 @@
         "Contract overclaiming runtime fidelity",
         "Engine-selection work hidden in the base contract",
         "Evidence tier lost during Itotori ingestion"
-      ]
+      ],
+      "owner": "orchestrator-wave11",
+      "branch": "spec/utsushi-012",
+      "worktree": "/tmp/itotori-spec-utsushi-012"
     },
     {
       "id": "UTSUSHI-013",
