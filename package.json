@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "affected": "node scripts/affected.mjs",
+    "roadmap:issues": "node scripts/spec-dag.mjs sync-issues --dry-run",
     "roadmap:ready": "node scripts/spec-dag.mjs ready",
+    "roadmap:test": "node scripts/spec-dag-issues.test.mjs",
     "roadmap:validate": "node scripts/spec-dag.mjs validate"
   },
   "devDependencies": {
