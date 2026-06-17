@@ -735,6 +735,83 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("rejects traversal and raw runtime artifact paths", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      await repo.importSourceBundle(localActor, project);
+
+      const runtimeReport = {
+        schemaVersion: "0.1.0" as const,
+        runtimeReportId: "runtime-path-test",
+        adapterName: "utsushi-fixture",
+        fidelityTier: "layout_probe",
+        status: "passed" as const,
+        textEvents: [],
+        frameCaptures: [
+          {
+            frameCaptureId: "frame-path-test",
+            bridgeUnitId: "bridge-unit-test",
+            width: 320,
+            height: 180,
+            nonZeroPixels: 57600,
+            artifactPath: "../capture.png",
+          },
+        ],
+        approximations: [],
+      };
+
+      await expect(
+        repo.saveRuntimeReport(localActor, project, runtimeReport, "patch-result-traversal"),
+      ).rejects.toThrow(/portable relative artifact path/);
+
+      await expect(
+        repo.saveRuntimeReport(
+          localActor,
+          project,
+          {
+            ...runtimeReport,
+            runtimeReportId: "runtime-raw-test",
+            frameCaptures: [
+              {
+                ...runtimeReport.frameCaptures[0]!,
+                frameCaptureId: "frame-raw-test",
+                artifactPath: "data:image/png;base64,AAAA",
+              },
+            ],
+          },
+          "patch-result-raw",
+        ),
+      ).rejects.toThrow(/portable relative artifact path/);
+
+      await expect(
+        repo.saveRuntimeReport(
+          localActor,
+          project,
+          runtimeEvidenceReportFixture({
+            runtimeReportId: "019ed003-0000-7000-8000-000000000903",
+            captures: [
+              {
+                ...runtimeEvidenceReportFixture().captures[0]!,
+                captureId: "019ed003-0000-7000-8000-000000000923",
+                artifactRef: {
+                  ...runtimeEvidenceReportFixture().captures[0]!.artifactRef,
+                  artifactId: "019ed003-0000-7000-8000-000000000934",
+                  uri: "../capture.png",
+                },
+              },
+            ],
+          }),
+          "019ed003-0000-7000-8000-000000000983",
+        ),
+      ).rejects.toThrow(/portable relative artifact path/);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("supports multiple locale branches for one project", async () => {
     const context = await migratedContext();
     try {

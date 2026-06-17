@@ -242,7 +242,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     project: ProjectState;
     result: RuntimeIngestResult;
   }> {
-    const patchResultId = id("patch-result", 1);
+    const patchResultId = patchResultIdForRuntimeReport(runtimeReport);
     const nextProject: ProjectState = { ...project, runtimeReport };
     const dashboard = await this.repository.saveRuntimeReport(
       this.actor,
@@ -653,6 +653,10 @@ function emptyCostReport(projectId: string): ProjectCostReport {
 
 function id(kind: string, n: number): string {
   return `019ed000-0000-7000-8000-${kind.replaceAll("-", "").padEnd(8, "0").slice(0, 8)}${String(n).padStart(4, "0")}`;
+}
+
+function patchResultIdForRuntimeReport(runtimeReport: RuntimeReportInput): string {
+  return `${runtimeReport.runtimeReportId}:patch-result`;
 }
 
 function isBridgeBundleV02(bridge: BridgeBundle | BridgeBundleV02): bridge is BridgeBundleV02 {

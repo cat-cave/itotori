@@ -1531,20 +1531,23 @@ function runtimeReportMetadataFor(
 
 function runtimeArtifactLinks(report: RuntimeReportInput): RuntimeArtifactLink[] {
   if (!isRuntimeEvidenceReportV02(report)) {
-    return report.frameCaptures.map((frame) => ({
-      artifactId: frame.frameCaptureId,
-      artifactKind: "frame_capture",
-      uri: frame.artifactPath,
-      hash: undefined,
-      bridgeUnitId: frame.bridgeUnitId,
-      metadata: {
-        captureId: frame.frameCaptureId,
-        evidenceTier: null,
-        width: frame.width,
-        height: frame.height,
-        nonZeroPixels: frame.nonZeroPixels,
-      },
-    }));
+    return report.frameCaptures.map((frame) => {
+      assertPortableLegacyRuntimeArtifactUri(frame.artifactPath);
+      return {
+        artifactId: frame.frameCaptureId,
+        artifactKind: "frame_capture",
+        uri: frame.artifactPath,
+        hash: undefined,
+        bridgeUnitId: frame.bridgeUnitId,
+        metadata: {
+          captureId: frame.frameCaptureId,
+          evidenceTier: null,
+          width: frame.width,
+          height: frame.height,
+          nonZeroPixels: frame.nonZeroPixels,
+        },
+      };
+    });
   }
 
   return [
@@ -1964,7 +1967,29 @@ function runtimeValidationFindingRecord(
 }
 
 function assertPortableRelativeArtifactUri(uri: string): void {
-  if (/^[A-Za-z][A-Za-z0-9+.-]*:/.test(uri) || uri.startsWith("/") || uri.includes("\\")) {
+  assertPortableRuntimeArtifactUri(uri, { allowFixtureUri: false });
+}
+
+function assertPortableLegacyRuntimeArtifactUri(uri: string): void {
+  assertPortableRuntimeArtifactUri(uri, { allowFixtureUri: true });
+}
+
+function assertPortableRuntimeArtifactUri(
+  uri: string,
+  options: { allowFixtureUri: boolean },
+): void {
+  const hasScheme = /^[A-Za-z][A-Za-z0-9+.-]*:/.test(uri);
+  const allowedFixtureUri = options.allowFixtureUri && uri.startsWith("fixture://");
+  const hasTraversalSegment = uri.split("/").some((segment) => segment === "." || segment === "..");
+  if (
+    uri.startsWith("data:") ||
+    uri.startsWith("blob:") ||
+    uri.startsWith("file:") ||
+    (hasScheme && !allowedFixtureUri) ||
+    uri.startsWith("/") ||
+    uri.includes("\\") ||
+    hasTraversalSegment
+  ) {
     throw new Error(`runtime artifact uri must be a portable relative artifact path: ${uri}`);
   }
 }

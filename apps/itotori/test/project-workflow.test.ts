@@ -282,12 +282,13 @@ describe("ItotoriProjectWorkflowService", () => {
       actor,
       result.project,
       report,
-      "019ed000-0000-7000-8000-patchres0001",
+      "runtime-test:patch-result",
     );
     expect(result.result).toMatchObject({
       status: "hello_world_passed",
       bridgeId: "bridge-test",
       localeBranchId: "locale-en-us",
+      patchResultId: "runtime-test:patch-result",
       runtimeReportId: "runtime-test",
       dashboard: dashboardStatusFixture,
     });
