@@ -12,6 +12,20 @@ export {
 export type { AuthorizationActor, Permission } from "./authorization.js";
 export { migrate } from "./migrations.js";
 export {
+  jobIdempotencyPolicyValues,
+  jobStatusValues,
+  jobTaskTypeValues,
+  outboxEventTypeValues,
+  outboxStatusValues,
+} from "./schema.js";
+export type {
+  JobIdempotencyPolicy,
+  JobStatus,
+  JobTaskType,
+  OutboxEventType,
+  OutboxStatus,
+} from "./schema.js";
+export {
   defaultWorkspaceId,
   defaultWorkspaceName,
   ItotoriProjectRepository,
@@ -54,3 +68,31 @@ export type {
   ManualFeedbackScreenshotAttachment,
   ManualFeedbackSourceInput,
 } from "./repositories/feedback-repository.js";
+export { createUuid7, ItotoriEventQueueRepository } from "./repositories/event-queue-repository.js";
+export type {
+  ClaimJobsOptions,
+  ClaimOutboxEventsOptions,
+  ItotoriEventQueueRepositoryPort,
+  JobIdempotencyInput,
+  JobQueueInput,
+  JobQueueRecord,
+  OutboxEventInput,
+  OutboxEventRecord,
+  OutboxEventWithJobsInput,
+  OutboxEventWithJobsResult,
+  QueueErrorRecord,
+  QueueFailureInput,
+  QueueJsonRecord,
+} from "./repositories/event-queue-repository.js";
+export {
+  ItotoriJobWorkerService,
+  ItotoriOutboxPublisherService,
+} from "./services/event-queue-service.js";
+export type {
+  JobHandler,
+  JobHandlerRegistry,
+  JobWorkerResult,
+  OutboxPublishHandler,
+  OutboxPublishResult,
+  QueueServiceRunOptions,
+} from "./services/event-queue-service.js";
