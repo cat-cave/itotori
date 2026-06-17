@@ -164,7 +164,9 @@
       "textSourceKind": "manual_transcription",
       "patchMode": "region_redraw_required",
       "patchingLimitation": "fixture adapter records manually annotated image text but does not perform OCR, redraw, or image patching",
-      "notes": ["Manual fixture annotation aligned with image.sign-caution.region-0; no OCR was performed."]
+      "notes": [
+        "Manual fixture annotation aligned with image.sign-caution.region-0; no OCR was performed."
+      ]
     },
     {
       "surfaceId": "surface-ui-title-logo-art",

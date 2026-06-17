@@ -19,14 +19,14 @@ after the database has been migrated.
 
 ## Permission Matrix
 
-| Permission       | Current gate                                      |
-| ---------------- | ------------------------------------------------- |
-| `project.import` | Import a bridge bundle into Itotori project state |
-| `draft.write`    | Persist draft translations                        |
-| `patch.export`   | Persist patch export metadata                     |
-| `runtime.ingest` | Persist runtime verification evidence and status  |
-| `feedback.import` | Import manual feedback and playtest notes        |
-| `system.reset`   | Reset local hello-world persisted state           |
+| Permission        | Current gate                                      |
+| ----------------- | ------------------------------------------------- |
+| `project.import`  | Import a bridge bundle into Itotori project state |
+| `draft.write`     | Persist draft translations                        |
+| `patch.export`    | Persist patch export metadata                     |
+| `runtime.ingest`  | Persist runtime verification evidence and status  |
+| `feedback.import` | Import manual feedback and playtest notes         |
+| `system.reset`    | Reset local hello-world persisted state           |
 
 Reads such as dashboard status do not currently require a permission gate.
 

@@ -5,12 +5,6 @@
     "userId": "local-user",
     "displayName": "Local user"
   },
-  "grants": [
-    "project.import",
-    "draft.write",
-    "patch.export",
-    "runtime.ingest",
-    "system.reset"
-  ],
+  "grants": ["project.import", "draft.write", "patch.export", "runtime.ingest", "system.reset"],
   "compatibilityNotes": ["feedback.import is intentionally missing."]
 }

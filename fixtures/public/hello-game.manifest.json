@@ -24,15 +24,15 @@
       "path": "fixtures/hello-game/source.json",
       "role": "source-game",
       "mediaType": "application/json",
-      "sha256": "6d09d2031614a0ccd32d62e1dd546374e25e3208b5c0e8649053cf6a7361388e",
-      "bytes": 10740,
+      "sha256": "7b156e100fbebd6f53cc71a89cd134cc0281a4ddc493486ca291e83a3bd55a5d",
+      "bytes": 10756,
       "redistributable": true
     },
     {
       "path": "fixtures/hello-game/expected/bridge-v0.1.json",
       "role": "bridge-bundle",
       "mediaType": "application/json",
-      "sha256": "ccef4d85853aa66ae89f7da7a7202cf0899d56181d34645b6d45ec3d41a2a922",
+      "sha256": "c6b0f1d03edd4b084bea00787e2bba0142d65550df097537b3ea3da403641993",
       "bytes": 6375,
       "redistributable": true
     },
@@ -48,8 +48,8 @@
       "path": "fixtures/hello-game/asset-inventory.expected.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "1baf9c075ebaa63b9268e42df04b09677e01a319c422910a7b80b0ae9f02526d",
-      "bytes": 10855,
+      "sha256": "03abb9cd04a84a3699c80e6853b96c57182ae5a7e9a31938b3b94266a65bf433",
+      "bytes": 10715,
       "redistributable": true
     }
   ],

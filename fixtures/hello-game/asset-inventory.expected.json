@@ -125,7 +125,7 @@
       "assetKey": "source.json",
       "assetKind": "script",
       "path": "source.json",
-      "sourceHash": "2d77b754c6c1079e",
+      "sourceHash": "1bcaa54e26d35466",
       "metadata": {}
     }
   ],
@@ -139,10 +139,7 @@
       },
       "sourceLocation": {
         "containerKey": "audio/bgm/moonlit-path",
-        "entryPath": [
-          "metadata",
-          "TITLE"
-        ]
+        "entryPath": ["metadata", "TITLE"]
       },
       "sourceText": "月明かりの道",
       "sourceHash": "7120e80c039c48dc",
@@ -153,9 +150,7 @@
         "status": "unsupported",
         "limitation": "fixture adapter reports song metadata but does not rewrite audio metadata"
       },
-      "notes": [
-        "Song title comes from explicit fixture metadata."
-      ]
+      "notes": ["Song title comes from explicit fixture metadata."]
     },
     {
       "surfaceId": "surface-font-main-cjk-coverage",
@@ -174,9 +169,7 @@
         "status": "unsupported",
         "limitation": "fixture adapter reports font coverage policy needs but does not inspect or substitute font files"
       },
-      "notes": [
-        "Font surface is textless and records coverage risk only."
-      ]
+      "notes": ["Font surface is textless and records coverage risk only."]
     },
     {
       "surfaceId": "surface-image-sign-caution-text",
@@ -216,10 +209,7 @@
       },
       "sourceLocation": {
         "containerKey": "metadata/credits",
-        "entryPath": [
-          "staff",
-          "line1"
-        ]
+        "entryPath": ["staff", "line1"]
       },
       "sourceText": "制作: Itotori Contributors",
       "sourceHash": "ce6cc6e697cd7e5d",
@@ -230,9 +220,7 @@
         "status": "unsupported",
         "limitation": "fixture adapter reports credits metadata but does not patch metadata assets"
       },
-      "notes": [
-        "Synthetic credits metadata is safe for public fixtures."
-      ]
+      "notes": ["Synthetic credits metadata is safe for public fixtures."]
     },
     {
       "surfaceId": "surface-ui-title-logo-art",
@@ -251,9 +239,7 @@
         "status": "unsupported",
         "limitation": "fixture adapter reports UI texture localization risk but does not replace or redraw UI textures"
       },
-      "notes": [
-        "Textless UI art surface used to test non-text inventory reporting."
-      ]
+      "notes": ["Textless UI art surface used to test non-text inventory reporting."]
     },
     {
       "surfaceId": "surface-video-opening-card",
@@ -280,9 +266,7 @@
         "status": "unsupported",
         "limitation": "fixture adapter reports manually annotated video frame text but does not OCR, subtitle, or edit video"
       },
-      "notes": [
-        "Manual fixture annotation; no video frame analysis was performed."
-      ]
+      "notes": ["Manual fixture annotation; no video frame analysis was performed."]
     }
   ],
   "capabilities": [

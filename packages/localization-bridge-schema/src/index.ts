@@ -519,8 +519,7 @@ export const CONTRACT_FIXTURE_KINDS_V02 = [
 export type ContractFixtureKindV02 = (typeof CONTRACT_FIXTURE_KINDS_V02)[number];
 
 export const CONTRACT_COMPATIBILITY_STATUSES_V02 = ["compatible", "incompatible"] as const;
-export type ContractCompatibilityStatusV02 =
-  (typeof CONTRACT_COMPATIBILITY_STATUSES_V02)[number];
+export type ContractCompatibilityStatusV02 = (typeof CONTRACT_COMPATIBILITY_STATUSES_V02)[number];
 
 export const RUNTIME_EXPECTATION_KINDS = [
   "trace_text",
@@ -2200,10 +2199,7 @@ export function assertContractFixtureManifestV02(
   );
   assertUuid7(manifest.suiteId, "ContractFixtureManifestV02.suiteId");
   assertRfc3339Instant(manifest.generatedAt, "ContractFixtureManifestV02.generatedAt");
-  const validFixtures = asArray(
-    manifest.validFixtures,
-    "ContractFixtureManifestV02.validFixtures",
-  );
+  const validFixtures = asArray(manifest.validFixtures, "ContractFixtureManifestV02.validFixtures");
   const invalidFixtures = asArray(
     manifest.invalidFixtures,
     "ContractFixtureManifestV02.invalidFixtures",
@@ -2245,7 +2241,10 @@ export function assertContractCompatibilityReportV02(
     "ContractCompatibilityReportV02.suiteManifestPath",
   );
   assertString(report.sourceOfTruth, "ContractCompatibilityReportV02.sourceOfTruth");
-  assertCommandTokensV02(report.typescriptCommand, "ContractCompatibilityReportV02.typescriptCommand");
+  assertCommandTokensV02(
+    report.typescriptCommand,
+    "ContractCompatibilityReportV02.typescriptCommand",
+  );
   assertCommandTokensV02(report.rustCommand, "ContractCompatibilityReportV02.rustCommand");
   assertEnum(
     report.overallStatus,
@@ -2259,7 +2258,9 @@ export function assertContractCompatibilityReportV02(
     const label = `ContractCompatibilityReportV02.coverage[${index}]`;
     assertContractCompatibilityCoverageV02(entry, label);
     if (coveredKinds.has(entry.kind)) {
-      throw new Error(`${label}.kind must be unique within ContractCompatibilityReportV02.coverage`);
+      throw new Error(
+        `${label}.kind must be unique within ContractCompatibilityReportV02.coverage`,
+      );
     }
     coveredKinds.add(entry.kind);
     if (report.overallStatus === "compatible" && entry.status !== "compatible") {
@@ -2283,7 +2284,11 @@ export function assertContractCompatibilityReportV02(
     assertString(crossRef.to, `${label}.to`);
     assertString(crossRef.rule, `${label}.rule`);
   }
-  if (!crossRefs.some((ref) => asRecord(ref, "crossContractRef").from === "./permission-local-user-v0.2.json")) {
+  if (
+    !crossRefs.some(
+      (ref) => asRecord(ref, "crossContractRef").from === "./permission-local-user-v0.2.json",
+    )
+  ) {
     throw new Error(
       "ContractCompatibilityReportV02.crossContractRefs must document permission-local-user-v0.2.json",
     );
@@ -4678,11 +4683,7 @@ function assertContractFixturePathV02(value: unknown, label: string): asserts va
   }
 }
 
-function assertUniqueFixturePathV02(
-  path: string,
-  label: string,
-  seenPaths: Set<string>,
-): void {
+function assertUniqueFixturePathV02(path: string, label: string, seenPaths: Set<string>): void {
   if (seenPaths.has(path)) {
     throw new Error(`${label}.path must be unique within the contract fixture manifest`);
   }

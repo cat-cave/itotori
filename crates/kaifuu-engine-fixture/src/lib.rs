@@ -1272,14 +1272,20 @@ mod tests {
     #[test]
     fn fixture_asset_inventory_matches_reviewed_fixture_manifest() {
         let game_dir = hello_fixture_dir();
-        let manifest = FixtureAdapter
+        let mut manifest = FixtureAdapter
             .asset_inventory(AssetInventoryRequest {
                 game_dir: &game_dir,
             })
             .unwrap();
-        let expected = fs::read_to_string(expected_asset_inventory_path()).unwrap();
+        let mut expected: AssetInventoryManifest =
+            serde_json::from_str(&fs::read_to_string(expected_asset_inventory_path()).unwrap())
+                .unwrap();
 
-        assert_eq!(manifest.stable_json().unwrap(), expected);
+        manifest.normalize();
+        expected.normalize();
+        assert_eq!(manifest.validate().status, OperationStatus::Passed);
+        assert_eq!(expected.validate().status, OperationStatus::Passed);
+        assert_eq!(manifest, expected);
     }
 
     #[test]

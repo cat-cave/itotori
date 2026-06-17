@@ -262,7 +262,10 @@ describe("localization bridge schema guards", () => {
 
     for (const fixture of manifest.validFixtures as Array<{ kind: string; path: string }>) {
       expect(() =>
-        assertContractFixtureV02(fixture.kind, exampleFixture(`./examples/${fixture.path.slice(2)}`)),
+        assertContractFixtureV02(
+          fixture.kind,
+          exampleFixture(`./examples/${fixture.path.slice(2)}`),
+        ),
       ).not.toThrow();
     }
   });
@@ -277,7 +280,10 @@ describe("localization bridge schema guards", () => {
       expectedSemanticError: string;
     }>) {
       expect(() =>
-        assertContractFixtureV02(fixture.kind, exampleFixture(`./examples/${fixture.path.slice(2)}`)),
+        assertContractFixtureV02(
+          fixture.kind,
+          exampleFixture(`./examples/${fixture.path.slice(2)}`),
+        ),
       ).toThrow(new RegExp(fixture.expectedSemanticError));
     }
   });
@@ -969,8 +975,9 @@ describe("localization bridge schema guards", () => {
 
     const bridgeUnitMismatchWithoutActual = cloneRecord(report);
     bridgeUnitMismatchWithoutActual.status = "incompatible";
-    const mismatchCompatibleUnits =
-      bridgeUnitMismatchWithoutActual.compatibleUnits as Array<Record<string, unknown>>;
+    const mismatchCompatibleUnits = bridgeUnitMismatchWithoutActual.compatibleUnits as Array<
+      Record<string, unknown>
+    >;
     const mismatchUnit = asTestRecord(
       mismatchCompatibleUnits.shift(),
       "bridge unit mismatch compatibility unit",
