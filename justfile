@@ -35,18 +35,26 @@ ci: check build db-migrate test
     cargo deny check
 
 ci-itotori:
+    pnpm --filter @itotori/db typecheck
+    pnpm --filter @itotori/db test
+    pnpm --filter @itotori/db build
     pnpm --filter @itotori/app typecheck
     pnpm --filter @itotori/app test
     pnpm --filter @itotori/app build
 
 ci-kaifuu:
-    cargo test -p kaifuu-core -p kaifuu-delta -p kaifuu-cli
+    cargo test -p kaifuu-core -p kaifuu-delta -p kaifuu-engine-fixture -p kaifuu-cli
 
 ci-utsushi:
+    pnpm --filter @itotori/runtime-web-review typecheck
+    pnpm --filter @itotori/runtime-web-review test
+    pnpm --filter @itotori/runtime-web-review build
     cargo test -p utsushi-core -p utsushi-fixture -p utsushi-cli
 
 schema:
+    pnpm --filter @itotori/localization-bridge-schema typecheck
     pnpm --filter @itotori/localization-bridge-schema test
+    pnpm --filter @itotori/localization-bridge-schema build
 
 db-up:
     docker compose up -d postgres
