@@ -462,7 +462,7 @@
     {
       "id": "UNIV-006",
       "title": "Spec audit templates and finding schema",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["universal", "shared"],
@@ -499,7 +499,7 @@
     {
       "id": "UNIV-007",
       "title": "Toolchain version and upgrade policy",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["universal"],
