@@ -45,6 +45,9 @@ pub trait EngineAdapter {
         request: AssetInventoryRequest<'_>,
     ) -> KaifuuResult<AssetInventoryManifest>;
     fn extract(&self, request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult>;
+    fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
+        Ok(PatchResult::preflight_pass(request.patch_export))
+    }
     fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult>;
     fn verify(&self, request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult>;
 }
@@ -133,6 +136,12 @@ pub struct PatchRequest<'a> {
 }
 
 #[derive(Clone, Copy)]
+pub struct PatchPreflightRequest<'a> {
+    pub game_dir: &'a Path,
+    pub patch_export: &'a PatchExport,
+}
+
+#[derive(Clone, Copy)]
 pub struct VerifyRequest<'a> {
     pub game_dir: &'a Path,
 }
@@ -209,6 +218,14 @@ impl CapabilityReport {
             limitation: Some(limitation.into()),
         }
     }
+
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            capability: self.capability.clone(),
+            status: self.status.clone(),
+            limitation: self.limitation.as_deref().map(redact_for_log_or_report),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -250,6 +267,23 @@ impl AdapterCapabilities {
         });
         self.key_requirements
             .sort_by_key(AdapterKeyRequirementDeclaration::sort_key);
+    }
+
+    pub fn redacted_for_report(&self) -> Self {
+        let mut capabilities = self.clone();
+        capabilities.adapter_id = redact_for_log_or_report(&capabilities.adapter_id);
+        capabilities.reports = capabilities
+            .reports
+            .iter()
+            .map(CapabilityReport::redacted_for_report)
+            .collect();
+        capabilities.key_requirements = capabilities
+            .key_requirements
+            .iter()
+            .map(AdapterKeyRequirementDeclaration::redacted_for_report)
+            .collect();
+        capabilities.normalize();
+        capabilities
     }
 }
 
@@ -323,6 +357,17 @@ impl DetectionResult {
             .iter()
             .map(DetectionEvidence::redacted_for_report)
             .collect();
+        result.requirements = result
+            .requirements
+            .iter()
+            .map(ProfileRequirement::redacted_for_report)
+            .collect();
+        result.capabilities = result
+            .capabilities
+            .iter()
+            .map(CapabilityReport::redacted_for_report)
+            .collect();
+        result.normalize();
         result
     }
 }
@@ -2626,6 +2671,22 @@ impl AdapterKeyRequirementDeclaration {
             serde_json::to_string(&self.material_kind).unwrap_or_default(),
         )
     }
+
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            requirement_id: redact_for_log_or_report(&self.requirement_id),
+            engine_family: redact_for_log_or_report(&self.engine_family),
+            material_kind: self.material_kind,
+            bytes: self.bytes,
+            archive_parameters: self
+                .archive_parameters
+                .iter()
+                .map(ArchiveParameterDeclaration::redacted_for_report)
+                .collect(),
+            validation: self.validation.clone(),
+            semantic_errors: self.semantic_errors.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2635,6 +2696,17 @@ pub struct ArchiveParameterDeclaration {
     pub name: String,
     pub kind: ArchiveParameterKind,
     pub required: bool,
+}
+
+impl ArchiveParameterDeclaration {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            parameter_id: redact_for_log_or_report(&self.parameter_id),
+            name: redact_for_log_or_report(&self.name),
+            kind: self.kind,
+            required: self.required,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2881,6 +2953,11 @@ fn secret_redaction_reason<'a>(key: &str, field: &str, value: &'a Value) -> Opti
         );
     }
     let text = value.as_str()?;
+    if is_free_text_secret_scan_field(&normalized) && free_text_requires_redaction(text) {
+        return Some(
+            "free-text profile/report fields must not persist secrets, helper dumps, decrypted text, local paths, or private source filenames",
+        );
+    }
     if is_path_like_field(&normalized) && is_local_absolute_path(text) {
         return Some("local absolute paths must be redacted from profiles and reports");
     }
@@ -2926,6 +3003,10 @@ fn is_forbidden_secret_field(normalized: &str) -> bool {
 
 fn is_path_like_field(normalized: &str) -> bool {
     normalized.contains("path") || normalized == "gamedir"
+}
+
+fn is_free_text_secret_scan_field(normalized: &str) -> bool {
+    matches!(normalized, "description" | "placeholder" | "limitation")
 }
 
 fn is_key_like_context(normalized: &str, field: &str) -> bool {
@@ -3115,6 +3196,14 @@ fn text_requires_redaction(text: &str) -> bool {
         || text_contains_sensitive_filename(text)
 }
 
+fn free_text_requires_redaction(text: &str) -> bool {
+    let text = text.trim();
+    text_contains_local_absolute_path(text)
+        || text_contains_raw_key_material_token(text)
+        || text_contains_forbidden_private_payload(text)
+        || text_contains_sensitive_filename(text)
+}
+
 fn asset_ref_requires_redaction(asset_ref: &str) -> bool {
     if text_requires_redaction(asset_ref) {
         return true;
@@ -3126,16 +3215,49 @@ fn asset_ref_requires_redaction(asset_ref: &str) -> bool {
 fn text_contains_local_absolute_path(text: &str) -> bool {
     text.split_whitespace()
         .map(trim_token_punctuation)
-        .any(|token| {
-            !token.is_empty()
-                && (is_local_absolute_path(token) || path_has_windows_drive_prefix_component(token))
-        })
+        .any(token_contains_local_absolute_path)
+}
+
+fn token_contains_local_absolute_path(token: &str) -> bool {
+    if token.is_empty() {
+        return false;
+    }
+    if is_local_absolute_path(token) || path_has_windows_drive_prefix_component(token) {
+        return true;
+    }
+    token.char_indices().any(|(index, character)| {
+        if !matches!(character, '=' | ':') {
+            return false;
+        }
+        if character == ':'
+            && token
+                .get(index.saturating_sub(5)..index + 3)
+                .is_some_and(|window| window.eq_ignore_ascii_case("https://"))
+        {
+            return false;
+        }
+        if character == ':'
+            && token
+                .get(index.saturating_sub(4)..index + 3)
+                .is_some_and(|window| window.eq_ignore_ascii_case("http://"))
+        {
+            return false;
+        }
+        let candidate = trim_token_punctuation(&token[index + character.len_utf8()..]);
+        !candidate.is_empty()
+            && (is_local_absolute_path(candidate)
+                || path_has_windows_drive_prefix_component(candidate))
+    })
 }
 
 fn text_contains_raw_key_material(text: &str) -> bool {
     if looks_like_raw_key_material(text) {
         return true;
     }
+    text_contains_raw_key_material_token(text)
+}
+
+fn text_contains_raw_key_material_token(text: &str) -> bool {
     text.split(|character: char| {
         !(character.is_ascii_alphanumeric() || matches!(character, '+' | '/' | '=' | '-' | '_'))
     })
@@ -3203,6 +3325,17 @@ impl ProfileRequirement {
             serde_json::to_string(&self.status).unwrap_or_default(),
         )
     }
+
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            category: self.category.clone(),
+            key: redact_for_log_or_report(&self.key),
+            status: self.status.clone(),
+            description: redact_for_log_or_report(&self.description),
+            placeholder: self.placeholder.as_deref().map(redact_for_log_or_report),
+            secret: self.secret,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -3238,6 +3371,36 @@ pub struct ProfileValidationFailure {
     pub code: String,
     pub field: String,
     pub message: String,
+}
+
+impl ProfileValidationResult {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            schema_version: self.schema_version.clone(),
+            profile_id: self.profile_id.as_deref().map(redact_for_log_or_report),
+            status: self.status.clone(),
+            failures: self
+                .failures
+                .iter()
+                .map(ProfileValidationFailure::redacted_for_report)
+                .collect(),
+            requirements: self
+                .requirements
+                .iter()
+                .map(ProfileRequirement::redacted_for_report)
+                .collect(),
+        }
+    }
+}
+
+impl ProfileValidationFailure {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            code: redact_for_log_or_report(&self.code),
+            field: redact_for_log_or_report(&self.field),
+            message: redact_for_log_or_report(&self.message),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -5646,6 +5809,17 @@ impl AdapterFailure {
 }
 
 impl PatchResult {
+    pub fn preflight_pass(patch_export: &PatchExport) -> Self {
+        Self {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            patch_result_id: deterministic_id("patch-preflight", 0),
+            patch_export_id: patch_export.patch_export_id.clone(),
+            status: OperationStatus::Passed,
+            output_hash: content_hash("patch preflight passed without output"),
+            failures: vec![],
+        }
+    }
+
     pub fn redacted_for_report(&self) -> Self {
         let mut result = self.clone();
         result.failures = result
@@ -8086,6 +8260,61 @@ mod tests {
     }
 
     #[test]
+    fn profile_validation_scans_requirement_and_capability_free_text_fields() {
+        let mut profile = valid_key_profile_value();
+        profile["requirements"][0]["status"] = serde_json::json!("missing");
+        profile["requirements"][0]["description"] = serde_json::json!(
+            "helper dump source:/home/dev/game/private-route-ending.ks included raw key 00112233445566778899aabbccddeeff"
+        );
+        profile["requirements"][0]["placeholder"] =
+            serde_json::json!("file=C:\\Games\\SecretRoute\\key.bin");
+        profile["capabilities"][1]["limitation"] =
+            serde_json::json!("decrypted text from private-route-ending.ks requires local review");
+
+        let validation = validate_profile_value(&profile);
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for field in [
+            "requirements.0.description",
+            "requirements.0.placeholder",
+            "capabilities.1.limitation",
+        ] {
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.code == SEMANTIC_SECRET_REDACTED && failure.field == field
+                }),
+                "missing free-text redaction failure for {field}: {:#?}",
+                validation.failures
+            );
+        }
+
+        let redacted = validation.redacted_for_report();
+        let serialized = serde_json::to_string(&redacted).unwrap();
+        assert!(!serialized.contains("/home/dev/game"));
+        assert!(!serialized.contains("C:\\Games"));
+        assert!(!serialized.contains("helper dump"));
+        assert!(!serialized.contains("decrypted text"));
+        assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
+        assert!(!serialized.contains("private-route-ending.ks"));
+    }
+
+    #[test]
+    fn log_report_redaction_catches_embedded_local_path_formats() {
+        for text in [
+            "helper failed path=/home/dev/game",
+            "helper failed source:/home/dev/game",
+            "helper failed file=C:\\Games\\SecretRoute\\game.exe",
+        ] {
+            let redacted = redact_for_log_or_report(text);
+            assert_eq!(
+                redacted,
+                format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED),
+                "{text} should be redacted"
+            );
+        }
+    }
+
+    #[test]
     fn missing_secret_requirements_emit_key_profile_semantic_errors() {
         let mut profile = valid_key_profile_value();
         profile.as_object_mut().unwrap().remove("keyRequirements");
@@ -8172,6 +8401,67 @@ mod tests {
                 "kaifuu.unsupported_variant.encrypted"
             ])
         );
+    }
+
+    #[test]
+    fn adapter_capabilities_redacts_key_requirement_declaration_strings() {
+        let capabilities = AdapterCapabilities::new(
+            "kaifuu.path=/home/dev/game/private-route-ending.ks",
+            vec![CapabilityReport::requires_user_input(
+                Capability::KeyProfile,
+                "helper dump source:/home/dev/game/private-route-ending.ks exposed raw key 00112233445566778899aabbccddeeff",
+            )],
+        )
+        .with_key_requirements(vec![AdapterKeyRequirementDeclaration {
+            requirement_id:
+                "source:/home/dev/game/private-route-ending.ks:00112233445566778899aabbccddeeff"
+                    .to_string(),
+            engine_family: "helper dump C:\\Games\\SecretRoute\\engine.exe".to_string(),
+            material_kind: KeyMaterialKind::FixedBytes,
+            bytes: Some(16),
+            archive_parameters: vec![ArchiveParameterDeclaration {
+                parameter_id: "file=C:\\Games\\SecretRoute\\Scene.pck".to_string(),
+                name: "private-route-ending.ks".to_string(),
+                kind: ArchiveParameterKind::ArchiveFormat,
+                required: true,
+            }],
+            validation: AdapterKeyValidationDeclaration {
+                method: KeyValidationMethod::DecryptHeaderProof,
+                proof_required: true,
+            },
+            semantic_errors: vec![SemanticErrorCode::SecretRedacted],
+        }]);
+
+        let redacted = capabilities.redacted_for_report();
+        let serialized = serde_json::to_string(&redacted).unwrap();
+
+        assert!(serialized.contains(SEMANTIC_SECRET_REDACTED));
+        assert_eq!(
+            redacted.key_requirements[0].material_kind,
+            KeyMaterialKind::FixedBytes
+        );
+        assert_eq!(redacted.key_requirements[0].bytes, Some(16));
+        assert_eq!(
+            redacted.key_requirements[0].validation.method,
+            KeyValidationMethod::DecryptHeaderProof
+        );
+        assert_eq!(
+            redacted.key_requirements[0].semantic_errors,
+            vec![SemanticErrorCode::SecretRedacted]
+        );
+        for forbidden in [
+            "/home/dev/game",
+            "C:\\Games",
+            "helper dump",
+            "00112233445566778899aabbccddeeff",
+            "private-route-ending.ks",
+            "SecretRoute",
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "capabilities leaked {forbidden}"
+            );
+        }
     }
 
     #[test]

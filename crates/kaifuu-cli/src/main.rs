@@ -1,11 +1,12 @@
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
     DetectionResult, EngineAdapter, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
-    GoldenHarnessRequest, KaifuuResult, PatchExport, PatchRequest, ProfileRequest, VerifyRequest,
-    atomic_write_text, read_json, redact_for_log_or_report, run_round_trip_golden,
-    validate_profile_value, write_json,
+    GoldenHarnessRequest, KaifuuResult, PatchExport, PatchPreflightRequest, PatchRequest,
+    PatchResult, ProfileRequest, VerifyRequest, atomic_write_text, read_json,
+    redact_for_log_or_report, run_round_trip_golden, validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -76,22 +77,23 @@ fn run_with_args_and_registry(
             let output = PathBuf::from(flag(&args, "--output")?);
             let patch_export: PatchExport = read_json(&patch)?;
             let adapter = registered_adapter_for_game(registry, &game_dir)?;
-            let result = adapter
-                .patch(PatchRequest {
+            let preflight = adapter
+                .patch_preflight(PatchPreflightRequest {
                     game_dir: &game_dir,
                     patch_export: &patch_export,
-                    output_dir: &output,
                 })?
                 .redacted_for_report();
-            let failed = result.status == kaifuu_core::OperationStatus::Failed;
-            if failed && result.has_preflight_blocking_failure() {
+            if preflight.status == kaifuu_core::OperationStatus::Failed
+                && preflight.has_preflight_blocking_failure()
+            {
                 return Err(format!(
                     "patch preflight failed: {}",
-                    result.failure_codes().join(", ")
+                    preflight.failure_codes().join(", ")
                 )
                 .into());
             }
-            write_json(&output.join("patch-result.json"), &result)?;
+            let result = run_patch_with_owned_staging(adapter, &game_dir, &patch_export, &output)?;
+            let failed = result.status == kaifuu_core::OperationStatus::Failed;
             if failed {
                 return Err(format!(
                     "patch failed; see {}",
@@ -144,7 +146,7 @@ fn run_with_args_and_registry(
             let capabilities = registry
                 .adapters()
                 .iter()
-                .map(|adapter| adapter.capabilities())
+                .map(|adapter| adapter.capabilities().redacted_for_report())
                 .collect::<Vec<_>>();
             write_json(&output, &capabilities)?;
         }
@@ -156,6 +158,44 @@ fn run_with_args_and_registry(
         }
     }
     Ok(())
+}
+
+fn run_patch_with_owned_staging(
+    adapter: &dyn EngineAdapter,
+    game_dir: &Path,
+    patch_export: &PatchExport,
+    output: &Path,
+) -> KaifuuResult<PatchResult> {
+    let staging_output = allocate_patch_staging_dir(output)?;
+    let result = match adapter.patch(PatchRequest {
+        game_dir,
+        patch_export,
+        output_dir: &staging_output,
+    }) {
+        Ok(result) => result.redacted_for_report(),
+        Err(error) => {
+            remove_patch_staging_dir(&staging_output)?;
+            return Err(error);
+        }
+    };
+    let failed = result.status == kaifuu_core::OperationStatus::Failed;
+    if failed && result.has_preflight_blocking_failure() {
+        remove_patch_staging_dir(&staging_output)?;
+        return Err(format!(
+            "patch preflight failed: {}",
+            result.failure_codes().join(", ")
+        )
+        .into());
+    }
+    if let Err(error) = write_json(&staging_output.join("patch-result.json"), &result) {
+        remove_patch_staging_dir(&staging_output)?;
+        return Err(error);
+    }
+    if let Err(error) = promote_patch_staging_dir(&staging_output, output) {
+        remove_patch_staging_dir(&staging_output)?;
+        return Err(error);
+    }
+    Ok(result)
 }
 
 fn run_golden_command(
@@ -239,7 +279,10 @@ fn run_profile_command(
             let profile_path = PathBuf::from(positional(args, 2)?);
             let output = PathBuf::from(flag(args, "--output")?);
             let profile: serde_json::Value = read_json(&profile_path)?;
-            write_json(&output, &validate_profile_value(&profile))?;
+            write_json(
+                &output,
+                &validate_profile_value(&profile).redacted_for_report(),
+            )?;
         }
         _ => {
             let game_dir = PathBuf::from(positional(args, 1)?);
@@ -296,6 +339,47 @@ fn write_stable_asset_inventory(
     atomic_write_text(output, &manifest.stable_json()?)
 }
 
+fn allocate_patch_staging_dir(output: &Path) -> KaifuuResult<PathBuf> {
+    let parent = output.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let file_name = output
+        .file_name()
+        .ok_or("patch output directory must include a final path component")?
+        .to_string_lossy();
+    for attempt in 0..1000 {
+        let staging = parent.join(format!(
+            ".{file_name}.kaifuu-staging-{}-{attempt}",
+            std::process::id()
+        ));
+        match fs::create_dir(&staging) {
+            Ok(()) => return Ok(staging),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err("could not allocate a unique patch staging directory".into())
+}
+
+fn remove_patch_staging_dir(staging_output: &Path) -> KaifuuResult<()> {
+    match fs::remove_dir_all(staging_output) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn promote_patch_staging_dir(staging_output: &Path, output: &Path) -> KaifuuResult<()> {
+    if output.exists() {
+        return Err(format!(
+            "patch output directory already exists: {}",
+            redact_for_log_or_report(&output.display().to_string())
+        )
+        .into());
+    }
+    fs::rename(staging_output, output)?;
+    Ok(())
+}
+
 fn positional(args: &[String], index: usize) -> Result<&str, Box<dyn std::error::Error>> {
     args.get(index)
         .map(String::as_str)
@@ -321,7 +405,7 @@ fn flag_present(args: &[String], name: &str) -> bool {
 mod tests {
     use super::*;
     use kaifuu_core::{
-        ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterWarning,
+        ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterFailure, AdapterWarning,
         ArchiveDetectionSignal, ArchiveDetectionStatus, AssetInventoryAsset,
         AssetInventoryAssetKind, AssetInventoryAssetRef, AssetInventoryPatchMode,
         AssetInventorySurface, AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind,
@@ -696,7 +780,7 @@ mod tests {
             Err("extract is not used by the preflight test".into())
         }
 
-        fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+        fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
             let raw_key = "00112233445566778899aabbccddeeff";
             let preflight = LayeredAccessPreflightReport::from_requirements(
                 self.id(),
@@ -725,6 +809,10 @@ mod tests {
             })
         }
 
+        fn patch(&self, _request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+            Err("patch must not run after a blocking preflight failure".into())
+        }
+
         fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
             Err("verify is not used by the preflight test".into())
         }
@@ -733,6 +821,317 @@ mod tests {
     fn preflight_registry() -> AdapterRegistry {
         let mut registry = AdapterRegistry::new();
         registry.register(PreflightBlockingAdapter);
+        registry
+    }
+
+    struct MaliciousPreflightBlockingPatchAdapter {
+        failure: AdapterFailure,
+    }
+
+    impl MaliciousPreflightBlockingPatchAdapter {
+        fn new(failure: AdapterFailure) -> Self {
+            Self { failure }
+        }
+    }
+
+    impl EngineAdapter for MaliciousPreflightBlockingPatchAdapter {
+        fn id(&self) -> &'static str {
+            "kaifuu.test.malicious-preflight"
+        }
+
+        fn name(&self) -> &'static str {
+            "Kaifuu malicious preflight failure test adapter"
+        }
+
+        fn capabilities(&self) -> AdapterCapabilities {
+            AdapterCapabilities::new(
+                self.id(),
+                vec![
+                    CapabilityReport::supported(Capability::Detection),
+                    CapabilityReport::supported(Capability::Patching),
+                ],
+            )
+        }
+
+        fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+            Ok(DetectionResult {
+                adapter_id: self.id().to_string(),
+                detected: true,
+                engine_family: Some("malicious-preflight-test".to_string()),
+                engine_version: None,
+                detected_variant: Some("writes-before-failure".to_string()),
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: self.capabilities().reports,
+            })
+        }
+
+        fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+            Err("profile is not used by the malicious preflight test".into())
+        }
+
+        fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+            Err("list_assets is not used by the malicious preflight test".into())
+        }
+
+        fn asset_inventory(
+            &self,
+            _request: AssetInventoryRequest<'_>,
+        ) -> KaifuuResult<AssetInventoryManifest> {
+            Err("asset_inventory is not used by the malicious preflight test".into())
+        }
+
+        fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+            Err("extract is not used by the malicious preflight test".into())
+        }
+
+        fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+            fs::create_dir_all(request.output_dir)?;
+            fs::write(
+                request.output_dir.join("must-not-escape.txt"),
+                "leaked output\n",
+            )?;
+            Ok(PatchResult {
+                schema_version: "0.1.0".to_string(),
+                patch_result_id: deterministic_id("patch-result", 78),
+                patch_export_id: request.patch_export.patch_export_id.clone(),
+                status: OperationStatus::Failed,
+                output_hash: content_hash("malicious preflight output"),
+                failures: vec![self.failure.clone()],
+            })
+        }
+
+        fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+            Err("verify is not used by the malicious preflight test".into())
+        }
+    }
+
+    fn malicious_registry(failure: AdapterFailure) -> AdapterRegistry {
+        let mut registry = AdapterRegistry::new();
+        registry.register(MaliciousPreflightBlockingPatchAdapter::new(failure));
+        registry
+    }
+
+    enum PatchFilesystemFailureMode {
+        AdapterErrAfterWrite,
+        ReportWriteCollision,
+        SuccessfulWrite,
+    }
+
+    struct PatchFilesystemFailureAdapter {
+        mode: PatchFilesystemFailureMode,
+    }
+
+    impl PatchFilesystemFailureAdapter {
+        fn new(mode: PatchFilesystemFailureMode) -> Self {
+            Self { mode }
+        }
+    }
+
+    impl EngineAdapter for PatchFilesystemFailureAdapter {
+        fn id(&self) -> &'static str {
+            "kaifuu.test.patch-filesystem-failure"
+        }
+
+        fn name(&self) -> &'static str {
+            "Kaifuu patch filesystem failure test adapter"
+        }
+
+        fn capabilities(&self) -> AdapterCapabilities {
+            AdapterCapabilities::new(
+                self.id(),
+                vec![
+                    CapabilityReport::supported(Capability::Detection),
+                    CapabilityReport::supported(Capability::Patching),
+                ],
+            )
+        }
+
+        fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+            Ok(DetectionResult {
+                adapter_id: self.id().to_string(),
+                detected: true,
+                engine_family: Some("patch-filesystem-failure-test".to_string()),
+                engine_version: None,
+                detected_variant: Some("cleanup".to_string()),
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: self.capabilities().reports,
+            })
+        }
+
+        fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+            Err("profile is not used by the patch filesystem failure test".into())
+        }
+
+        fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+            Err("list_assets is not used by the patch filesystem failure test".into())
+        }
+
+        fn asset_inventory(
+            &self,
+            _request: AssetInventoryRequest<'_>,
+        ) -> KaifuuResult<AssetInventoryManifest> {
+            Err("asset_inventory is not used by the patch filesystem failure test".into())
+        }
+
+        fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+            Err("extract is not used by the patch filesystem failure test".into())
+        }
+
+        fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+            fs::write(
+                request.output_dir.join("adapter-output.txt"),
+                "staged output\n",
+            )?;
+            match self.mode {
+                PatchFilesystemFailureMode::AdapterErrAfterWrite => {
+                    Err("adapter failed after writing staged output".into())
+                }
+                PatchFilesystemFailureMode::ReportWriteCollision => {
+                    fs::create_dir(request.output_dir.join("patch-result.json"))?;
+                    Ok(self.patch_result(request.patch_export))
+                }
+                PatchFilesystemFailureMode::SuccessfulWrite => {
+                    Ok(self.patch_result(request.patch_export))
+                }
+            }
+        }
+
+        fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+            Err("verify is not used by the patch filesystem failure test".into())
+        }
+    }
+
+    impl PatchFilesystemFailureAdapter {
+        fn patch_result(&self, patch_export: &PatchExport) -> PatchResult {
+            PatchResult {
+                schema_version: "0.1.0".to_string(),
+                patch_result_id: deterministic_id("patch-result", 79),
+                patch_export_id: patch_export.patch_export_id.clone(),
+                status: OperationStatus::Passed,
+                output_hash: content_hash("patch filesystem failure output"),
+                failures: vec![],
+            }
+        }
+    }
+
+    fn patch_filesystem_failure_registry(mode: PatchFilesystemFailureMode) -> AdapterRegistry {
+        let mut registry = AdapterRegistry::new();
+        registry.register(PatchFilesystemFailureAdapter::new(mode));
+        registry
+    }
+
+    fn empty_patch_export(root: &Path, seed: usize) -> PathBuf {
+        let patch_export = PatchExport {
+            patch_export_id: deterministic_id("patch", seed),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![],
+        };
+        let patch_export_path = root.join("patch-export.json");
+        write_json(&patch_export_path, &patch_export).unwrap();
+        patch_export_path
+    }
+
+    fn assert_no_patch_staging_entries(root: &Path, output_name: &str) {
+        let leaked_entries = fs::read_dir(root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains(output_name) && name.contains("kaifuu-staging"))
+            .collect::<Vec<_>>();
+        assert_eq!(leaked_entries, Vec::<String>::new());
+    }
+
+    struct SensitiveReportAdapter;
+
+    impl EngineAdapter for SensitiveReportAdapter {
+        fn id(&self) -> &'static str {
+            "kaifuu.test.sensitive-report"
+        }
+
+        fn name(&self) -> &'static str {
+            "Kaifuu sensitive report test adapter"
+        }
+
+        fn capabilities(&self) -> AdapterCapabilities {
+            AdapterCapabilities::new(
+                self.id(),
+                vec![
+                    CapabilityReport::requires_user_input(
+                        Capability::KeyProfile,
+                        "register dump at path=/home/dev/game contained raw key 00112233445566778899aabbccddeeff",
+                    ),
+                    CapabilityReport::unsupported(
+                        Capability::PatchBack,
+                        "story file private-route-ending.ks requires file=C:\\Games\\SecretRoute\\patcher.exe",
+                    ),
+                ],
+            )
+        }
+
+        fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+            Ok(DetectionResult {
+                adapter_id: self.id().to_string(),
+                detected: true,
+                engine_family: Some("sensitive-report-test".to_string()),
+                engine_version: None,
+                detected_variant: Some("private-route".to_string()),
+                evidence: vec![],
+                requirements: vec![
+                    ProfileRequirement {
+                        category: RequirementCategory::SecretKey,
+                        key: "route-key".to_string(),
+                        status: RequirementStatus::Missing,
+                        description: "read register dump source:/home/dev/game/private-route-ending.ks with raw key 00112233445566778899aabbccddeeff".to_string(),
+                        placeholder: Some("file=C:\\Games\\SecretRoute\\key.bin".to_string()),
+                        secret: true,
+                    },
+                    ProfileRequirement {
+                        category: RequirementCategory::File,
+                        key: "script".to_string(),
+                        status: RequirementStatus::Unsupported,
+                        description: "story-ish filename private-route-ending.ks must stay local".to_string(),
+                        placeholder: None,
+                        secret: false,
+                    },
+                ],
+                capabilities: self.capabilities().reports,
+            })
+        }
+
+        fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+            Err("profile is not used by the sensitive report test".into())
+        }
+
+        fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+            Err("list_assets is not used by the sensitive report test".into())
+        }
+
+        fn asset_inventory(
+            &self,
+            _request: AssetInventoryRequest<'_>,
+        ) -> KaifuuResult<AssetInventoryManifest> {
+            Err("asset_inventory is not used by the sensitive report test".into())
+        }
+
+        fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+            Err("extract is not used by the sensitive report test".into())
+        }
+
+        fn patch(&self, _request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+            Err("patch is not used by the sensitive report test".into())
+        }
+
+        fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+            Err("verify is not used by the sensitive report test".into())
+        }
+    }
+
+    fn sensitive_report_registry() -> AdapterRegistry {
+        let mut registry = AdapterRegistry::new();
+        registry.register(SensitiveReportAdapter);
         registry
     }
 
@@ -894,6 +1293,66 @@ mod tests {
         let verify: VerificationResult = read_json(&verify_path).unwrap();
         assert_eq!(verify.output_hash, "registry-verify-output");
         assert_calls(&calls, &["detect", "verify"]);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn detection_and_capabilities_reports_redact_sensitive_free_text() {
+        let root = temp_dir("sensitive-report-redaction");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let registry = sensitive_report_registry();
+
+        let capabilities_path = root.join("capabilities.json");
+        run_cli_with_registry(
+            &[
+                "capabilities",
+                "--output",
+                capabilities_path.to_str().unwrap(),
+            ],
+            &registry,
+        );
+        let capabilities_serialized = fs::read_to_string(&capabilities_path).unwrap();
+        assert!(capabilities_serialized.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED));
+        for forbidden in [
+            "/home/dev/game",
+            "C:\\Games",
+            "register dump",
+            "00112233445566778899aabbccddeeff",
+            "private-route-ending.ks",
+        ] {
+            assert!(
+                !capabilities_serialized.contains(forbidden),
+                "capabilities leaked {forbidden}"
+            );
+        }
+
+        let detect_path = root.join("detect.json");
+        run_cli_with_registry(
+            &[
+                "detect",
+                game_dir.to_str().unwrap(),
+                "--output",
+                detect_path.to_str().unwrap(),
+            ],
+            &registry,
+        );
+        let detection_serialized = fs::read_to_string(&detect_path).unwrap();
+        assert!(detection_serialized.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED));
+        for forbidden in [
+            "/home/dev/game",
+            "C:\\Games",
+            "register dump",
+            "00112233445566778899aabbccddeeff",
+            "private-route-ending.ks",
+            "SecretRoute",
+        ] {
+            assert!(
+                !detection_serialized.contains(forbidden),
+                "detection leaked {forbidden}"
+            );
+        }
 
         let _ = fs::remove_dir_all(root);
     }
@@ -1143,6 +1602,117 @@ mod tests {
     }
 
     #[test]
+    fn patch_command_cleans_staging_when_adapter_errors_after_writing() {
+        let root = temp_dir("patch-adapter-error-cleanup");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let patch_export_path = empty_patch_export(&root, 79);
+        let output_dir = root.join("patched-output");
+        let registry =
+            patch_filesystem_failure_registry(PatchFilesystemFailureMode::AdapterErrAfterWrite);
+
+        let result = run_with_args_and_registry(
+            [
+                "patch",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+            &registry,
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("adapter failed after writing staged output"),
+            "{error}"
+        );
+        assert!(!output_dir.exists());
+        assert_no_patch_staging_entries(&root, "patched-output");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_command_cleans_staging_when_promotion_fails_for_existing_output() {
+        let root = temp_dir("patch-promotion-cleanup");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let patch_export_path = empty_patch_export(&root, 80);
+        let output_dir = root.join("patched-output");
+        fs::create_dir_all(&output_dir).unwrap();
+        fs::write(output_dir.join("existing.txt"), "existing output\n").unwrap();
+        let registry =
+            patch_filesystem_failure_registry(PatchFilesystemFailureMode::SuccessfulWrite);
+
+        let result = run_with_args_and_registry(
+            [
+                "patch",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+            &registry,
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("patch output directory already exists"),
+            "{error}"
+        );
+        assert_eq!(
+            fs::read_to_string(output_dir.join("existing.txt")).unwrap(),
+            "existing output\n"
+        );
+        assert!(!output_dir.join("adapter-output.txt").exists());
+        assert!(!output_dir.join("patch-result.json").exists());
+        assert_no_patch_staging_entries(&root, "patched-output");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_command_cleans_staging_when_report_write_fails() {
+        let root = temp_dir("patch-report-write-cleanup");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let patch_export_path = empty_patch_export(&root, 81);
+        let output_dir = root.join("patched-output");
+        let registry =
+            patch_filesystem_failure_registry(PatchFilesystemFailureMode::ReportWriteCollision);
+
+        let result = run_with_args_and_registry(
+            [
+                "patch",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+            &registry,
+        );
+
+        assert!(result.is_err());
+        assert!(!output_dir.exists());
+        assert_no_patch_staging_entries(&root, "patched-output");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn patch_command_preflight_failure_is_redacted_and_writes_no_output() {
         let root = temp_dir("patch-preflight-redaction");
         let game_dir = root.join("Private Route Spoiler Game");
@@ -1191,6 +1761,160 @@ mod tests {
         assert!(!output_dir.exists());
 
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_command_cleans_malicious_adapter_output_on_late_preflight_failure() {
+        let root = temp_dir("patch-preflight-malicious-output");
+        let game_dir = root.join("malicious-game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let patch_export = PatchExport {
+            patch_export_id: deterministic_id("patch", 78),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![],
+        };
+        let patch_export_path = root.join("patch-export.json");
+        write_json(&patch_export_path, &patch_export).unwrap();
+        let output_dir = root.join("patched-output");
+        let registry = malicious_registry(AdapterFailure::missing_key_material(
+            "kaifuu.test.malicious-preflight",
+            "malicious-preflight-test",
+            "writes-before-failure",
+            "raw-key",
+            "path=/home/dev/game helper dump contained 00112233445566778899aabbccddeeff",
+        ));
+
+        let result = run_with_args_and_registry(
+            [
+                "patch",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+            &registry,
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("patch preflight failed"), "{error}");
+        assert!(error.contains(kaifuu_core::SEMANTIC_MISSING_KEY_MATERIAL));
+        assert!(!error.contains("/home/dev"));
+        assert!(!error.contains("helper dump"));
+        assert!(!error.contains("00112233445566778899aabbccddeeff"));
+        assert!(!output_dir.exists());
+        let leaked_entries = fs::read_dir(&root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .filter(|name| name.contains("patched-output") && name.contains("kaifuu-staging"))
+            .collect::<Vec<_>>();
+        assert_eq!(leaked_entries, Vec::<String>::new());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_command_preflight_blocking_semantic_classes_write_no_output() {
+        let cases = vec![
+            AdapterFailure::missing_key_material(
+                "kaifuu.test.malicious-preflight",
+                "semantic-test",
+                "missing-key",
+                "local-key",
+                "missing local key material",
+            ),
+            AdapterFailure::helper_unavailable(
+                "kaifuu.test.malicious-preflight",
+                "semantic-test",
+                "helper-unavailable",
+                "helper unavailable before patching",
+            ),
+            AdapterFailure::key_validation_failed(
+                "kaifuu.test.malicious-preflight",
+                "semantic-test",
+                "key-validation",
+                "local-key",
+                "key validation failed before patching",
+            ),
+            AdapterFailure::protected_executable_unsupported(
+                "kaifuu.test.malicious-preflight",
+                "semantic-test",
+                "protected-exe",
+                "protected executable unsupported before patching",
+            ),
+            AdapterFailure::semantic(
+                kaifuu_core::AdapterFailureSemanticParams::new(
+                    SemanticErrorCode::UnsupportedLayeredTransform,
+                    "kaifuu.test.malicious-preflight",
+                    "unsupported layered transform before patching",
+                )
+                .engine("semantic-test")
+                .detected_variant("unsupported-layered-transform"),
+            ),
+            AdapterFailure::semantic(
+                kaifuu_core::AdapterFailureSemanticParams::new(
+                    SemanticErrorCode::MissingCodecCapability,
+                    "kaifuu.test.malicious-preflight",
+                    "codec unavailable before patching",
+                )
+                .engine("semantic-test")
+                .detected_variant("missing-codec")
+                .required_capability(Capability::CodecAccess),
+            ),
+            AdapterFailure::semantic(
+                kaifuu_core::AdapterFailureSemanticParams::new(
+                    SemanticErrorCode::MissingPatchBackCapability,
+                    "kaifuu.test.malicious-preflight",
+                    "patch-back unavailable before patching",
+                )
+                .engine("semantic-test")
+                .detected_variant("missing-patch-back")
+                .required_capability(Capability::PatchBack),
+            ),
+        ];
+
+        for (index, failure) in cases.into_iter().enumerate() {
+            let root = temp_dir(&format!("patch-preflight-semantic-{index}"));
+            let game_dir = root.join("game");
+            fs::create_dir_all(&game_dir).unwrap();
+            let patch_export = PatchExport {
+                patch_export_id: deterministic_id("patch", 790 + index),
+                source_locale: "ja-JP".to_string(),
+                target_locale: "en-US".to_string(),
+                entries: vec![],
+            };
+            let patch_export_path = root.join("patch-export.json");
+            write_json(&patch_export_path, &patch_export).unwrap();
+            let output_dir = root.join("patched-output");
+            let expected_code = failure.error_code.clone();
+            let registry = malicious_registry(failure);
+
+            let result = run_with_args_and_registry(
+                [
+                    "patch",
+                    game_dir.to_str().unwrap(),
+                    "--patch",
+                    patch_export_path.to_str().unwrap(),
+                    "--output",
+                    output_dir.to_str().unwrap(),
+                ]
+                .iter()
+                .map(|arg| arg.to_string())
+                .collect(),
+                &registry,
+            );
+
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains("patch preflight failed"), "{error}");
+            assert!(error.contains(&expected_code), "{error}");
+            assert!(!output_dir.exists(), "{expected_code} wrote output");
+            let _ = fs::remove_dir_all(root);
+        }
     }
 
     #[test]
@@ -1715,6 +2439,100 @@ mod tests {
         assert!(!serialized.contains("mP9xZpQ2rS7vLj4N8aW_KtYd0hF3uC6b"));
         assert!(!serialized.contains("/home/dev/private-game"));
         assert!(!serialized.contains("private script line"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn profile_validation_redacts_requirement_free_text_fields() {
+        let root = temp_dir("profile-validation-requirement-redaction");
+        let profile_path = root.join("profile.json");
+        let validation_path = root.join("validation.json");
+        fs::write(
+            &profile_path,
+            r#"{
+  "schemaVersion": "0.1.0",
+  "profileId": "019ed000-0000-7000-8000-profile00015",
+  "gameId": "sensitive-requirements",
+  "title": "Sensitive Requirements",
+  "sourceLocale": "ja-JP",
+  "engine": {
+    "adapterId": "kaifuu.fixture",
+    "engineFamily": "fixture",
+    "engineVersion": null,
+    "detectedVariant": "plain-json-source"
+  },
+  "assets": [],
+  "capabilities": [
+    {
+      "capability": "patching",
+      "status": "limited",
+      "limitation": "requires profile validation"
+    }
+  ],
+  "requirements": [
+    {
+      "category": "secret_key",
+      "key": "archive-key",
+      "status": "missing",
+      "description": "helper dump source:/home/dev/game/private-route-ending.ks exposed raw key 00112233445566778899aabbccddeeff",
+      "placeholder": "file=C:\\Games\\SecretRoute\\key.bin",
+      "secret": true
+    },
+    {
+      "category": "file",
+      "key": "story-script",
+      "status": "unsupported",
+      "description": "decrypted text from private-route-ending.ks must remain local",
+      "placeholder": null,
+      "secret": false
+    }
+  ],
+  "metadata": {}
+}
+"#,
+        )
+        .unwrap();
+
+        run_cli(&[
+            "profile",
+            "validate",
+            profile_path.to_str().unwrap(),
+            "--output",
+            validation_path.to_str().unwrap(),
+        ]);
+
+        let validation: kaifuu_core::ProfileValidationResult = read_json(&validation_path).unwrap();
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for field in [
+            "requirements.0.description",
+            "requirements.0.placeholder",
+            "requirements.1.description",
+        ] {
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.code == kaifuu_core::SEMANTIC_SECRET_REDACTED && failure.field == field
+                }),
+                "missing requirement redaction failure for {field}: {:#?}",
+                validation.failures
+            );
+        }
+        let serialized = fs::read_to_string(&validation_path).unwrap();
+        assert!(serialized.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED));
+        for forbidden in [
+            "/home/dev/game",
+            "C:\\Games",
+            "helper dump",
+            "decrypted text",
+            "00112233445566778899aabbccddeeff",
+            "private-route-ending.ks",
+            "SecretRoute",
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "validation leaked {forbidden}"
+            );
+        }
 
         let _ = fs::remove_dir_all(root);
     }
