@@ -4,10 +4,11 @@ use std::path::Path;
 use serde_json::{Value, json};
 use utsushi_core::{
     ApproximationTier, EvidenceTier, FidelityTier, RuntimeAdapter, RuntimeAdapterDescriptor,
-    RuntimeCapability, RuntimeRequest, UtsushiResult,
+    RuntimeAdapterRegistry, RuntimeCapability, RuntimeRequest, UtsushiResult,
 };
 
 pub struct FixtureRuntimeAdapter;
+static FIXTURE_RUNTIME_ADAPTER: FixtureRuntimeAdapter = FixtureRuntimeAdapter;
 
 impl FixtureRuntimeAdapter {
     pub const NAME: &'static str = "utsushi-fixture";
@@ -21,6 +22,14 @@ impl Default for FixtureRuntimeAdapter {
     fn default() -> Self {
         Self::new()
     }
+}
+
+pub fn registry() -> RuntimeAdapterRegistry<'static> {
+    let mut registry = RuntimeAdapterRegistry::new();
+    registry
+        .register(&FIXTURE_RUNTIME_ADAPTER)
+        .expect("fixture runtime adapter descriptor is valid");
+    registry
 }
 
 impl RuntimeAdapter for FixtureRuntimeAdapter {
@@ -300,6 +309,19 @@ mod tests {
         assert_eq!(report["evidenceTier"], "E1");
         assert_eq!(report["fidelityTier"], "trace_only");
         let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn fixture_registry_factory_exposes_runtime_adapter() {
+        let registry = registry();
+        let descriptors = registry.descriptors();
+
+        assert_eq!(descriptors.len(), 1);
+        assert_eq!(descriptors[0].name, FixtureRuntimeAdapter::NAME);
+        assert!(descriptors[0].supports(RuntimeCapability::Trace));
+        assert!(descriptors[0].supports(RuntimeCapability::FrameCapture));
+        assert!(descriptors[0].supports(RuntimeCapability::SmokeValidation));
+        assert_eq!(descriptors[0].fidelity_tier, FidelityTier::LayoutProbe);
     }
 
     #[test]
