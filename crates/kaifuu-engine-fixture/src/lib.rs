@@ -632,8 +632,7 @@ impl FixtureAdapter {
         }
         let separator = content
             .char_indices()
-            .find(|(_, character)| matches!(character, '=' | ':' | ' ' | '\t'))
-            .map(|(index, character)| (index, character));
+            .find(|(_, character)| matches!(character, '=' | ':' | ' ' | '\t'));
         let Some((separator_index, separator_char)) = separator else {
             return (Self::normalize_fixture_markup_name(content), vec![]);
         };
