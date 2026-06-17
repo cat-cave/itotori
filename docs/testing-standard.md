@@ -240,6 +240,45 @@ locales, protected span preservation, patch entry identity, status values, schem
 versions, and hashes. Do not compare unrelated formatting, temp paths, or
 machine-local runtime details.
 
+## Localization Quality Benchmarks
+
+Localization quality tests and benchmark fixtures use the `itotori-lqa-1`
+taxonomy from
+[ADR 0003](adrs/0003-localization-quality-taxonomy.md) and
+[localization-quality-taxonomy.json](localization-quality-taxonomy.json).
+
+Do not use DAG or audit `P0`-`P3` values as translation quality severities.
+Tests that create localization findings must use `qualitySeverity` values
+`critical`, `major`, `minor`, or `neutral`, and must keep the orchestration
+`severity` field separate when a triage or audit contract also needs one.
+
+Seeded-defect fixtures should be small, explicit, and oracle-backed. Each seed
+record should name:
+
+- fixture or corpus id and target locale;
+- affected bridge unit, span, asset, or runtime evidence id;
+- seed kind from the taxonomy;
+- category, subcategory, quality severity, and expected root cause;
+- expected detector families, such as deterministic QA, LLM QA, patch verify,
+  runtime probe, or human review;
+- expected evidence fields and accepted near-match rules;
+- whether the seed is public or private-local.
+
+QA-agent tests must score findings against adjudicated or seeded truth, not
+against model confidence. Required aggregate metrics are seeded recall, seeded
+precision, human-confirmed precision when human review is present, category
+accuracy, quality-severity accuracy, root-cause accuracy, critical recall, and
+unscorable rate.
+
+A finding is unscorable when it lacks any required taxonomy field, concrete
+evidence, affected subject reference, or adjudication state. Tests should fail
+on unscorable findings before computing precision or recall.
+
+Benchmark reports should aggregate counts by quality severity, category, root
+cause, detector kind, and adjudication state. A single quality score is allowed
+only as a dashboard trend field; tests must still assert the structured
+distribution because it is the repairable evidence.
+
 ## Property Testing
 
 Property tests are for invariants that are easy to under-sample with examples.

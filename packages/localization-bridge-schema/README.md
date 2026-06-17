@@ -68,6 +68,13 @@ audit consequence. Localization issue class belongs in the separate
 `qualityCategory` field, using `LOCALIZATION_QUALITY_CATEGORIES`; it is not a
 replacement for severity.
 
+Localization benchmark and QA-agent records must also follow
+`itotori-lqa-1` from
+`docs/adrs/0003-localization-quality-taxonomy.md` and
+`docs/localization-quality-taxonomy.json`. Future report/finding schemas should
+add `qualitySeverity`, `qualitySubcategory`, `rootCause`, and
+`adjudicationState` rather than overloading the triage `severity` field.
+
 Every finding requires concrete `evidence[]` and `provenance[]`. Provenance can
 point to source annotations, style guide rules, model outputs, patching causes,
 runtime evidence, human review notes, or deterministic checks. The triage guard

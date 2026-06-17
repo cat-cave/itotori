@@ -13,6 +13,11 @@ Toolchain upgrade policy lives in [toolchain-policy.md](toolchain-policy.md).
 Testing conventions live in [testing-standard.md](testing-standard.md).
 Itotori permission gates and the MVP local-user baseline are documented in
 [permissions.md](permissions.md).
+Localization quality claims, benchmark taxonomy, seeded-defect protocol, and
+human adjudication requirements are documented in
+[quality-claims.md](quality-claims.md),
+[localization-quality-taxonomy.json](localization-quality-taxonomy.json), and
+[ADR 0003](adrs/0003-localization-quality-taxonomy.md).
 Kaifuu engine fixture sourcing, reference citation, and unsupported variant
 policy lives in [kaifuu-fixture-policy.md](kaifuu-fixture-policy.md).
 Affected detection and CI cache rules live in

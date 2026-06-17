@@ -1,0 +1,606 @@
+{
+  "$schema": "./localization-quality-taxonomy.schema.json",
+  "schemaVersion": "itotori-quality-taxonomy-0.1.0",
+  "taxonomyId": "itotori-lqa-1",
+  "decisionAdr": "docs/adrs/0003-localization-quality-taxonomy.md",
+  "basis": [
+    {
+      "label": "MQM overview",
+      "url": "https://themqm.org/"
+    },
+    {
+      "label": "MQM Core typology",
+      "url": "https://themqm.org/the-mqm-typology/"
+    },
+    {
+      "label": "MQM scoring models",
+      "url": "https://themqm.org/error-types-2/the-mqm-scoring-models/"
+    },
+    {
+      "label": "MQM root causes",
+      "url": "https://themqm.org/resources/root-causes/"
+    }
+  ],
+  "dagSeveritySeparation": {
+    "triageSeverityField": "severity",
+    "qualitySeverityField": "qualitySeverity",
+    "rule": "P0-P3 values describe DAG or audit consequence only; localization quality records use critical, major, minor, or neutral."
+  },
+  "qualitySeverities": [
+    {
+      "id": "critical",
+      "weight": 25,
+      "blocksExportByDefault": true,
+      "description": "Artifact is unsafe or unusable for the target context: broken rendering, protected content loss, meaning inversion, or release/export blocker without explicit waiver."
+    },
+    {
+      "id": "major",
+      "weight": 5,
+      "blocksExportByDefault": false,
+      "description": "Material meaning, policy, term, tone, or locale defect that target-language players would notice and that should be repaired before a quality claim."
+    },
+    {
+      "id": "minor",
+      "weight": 1,
+      "blocksExportByDefault": false,
+      "description": "Low-impact defect that is noticeable but does not change core meaning and may ship only with reviewer rationale."
+    },
+    {
+      "id": "neutral",
+      "weight": 0,
+      "blocksExportByDefault": false,
+      "description": "Traceable note, duplicate, false positive, reviewer question, or intentional accepted deviation that does not count as a quality defect."
+    }
+  ],
+  "categories": [
+    {
+      "id": "accuracy",
+      "mqmAnchor": "Accuracy",
+      "description": "Target content does not preserve source meaning or intended player choice semantics.",
+      "subcategories": [
+        {
+          "id": "mistranslation",
+          "description": "Target expresses the wrong meaning for the source."
+        },
+        {
+          "id": "omission",
+          "description": "Source content that should be present is missing from the target."
+        },
+        {
+          "id": "addition",
+          "description": "Target adds meaning not present in the source or context."
+        },
+        {
+          "id": "over_specific",
+          "description": "Target is more specific than the source or context supports."
+        },
+        {
+          "id": "under_specific",
+          "description": "Target is too vague and loses required source specificity."
+        },
+        {
+          "id": "choice_semantics_shift",
+          "description": "A menu choice, branch option, or gameplay prompt changes the player's intended action."
+        },
+        {
+          "id": "context_misread",
+          "description": "Target meaning is wrong because scene, speaker, route, or runtime context was misread."
+        }
+      ]
+    },
+    {
+      "id": "terminology",
+      "mqmAnchor": "Terminology",
+      "description": "Target content violates glossary, canon, term consistency, or romanization policy.",
+      "subcategories": [
+        {
+          "id": "wrong_term",
+          "description": "Target uses an incorrect term for a known concept."
+        },
+        {
+          "id": "inconsistent_term",
+          "description": "Target uses multiple terms where one term is required."
+        },
+        {
+          "id": "glossary_violation",
+          "description": "Target ignores a glossary or termbase rule."
+        },
+        {
+          "id": "canon_name_violation",
+          "description": "Target changes a character, place, item, faction, skill, or lore name against canon policy."
+        },
+        {
+          "id": "romanization_violation",
+          "description": "Target uses the wrong romanization system or inconsistent romanized form."
+        }
+      ]
+    },
+    {
+      "id": "style",
+      "mqmAnchor": "Style",
+      "description": "Target content violates style guidance, idiomaticity, readability, genre fit, or consistency expectations.",
+      "subcategories": [
+        {
+          "id": "style_guide_violation",
+          "description": "Target conflicts with a cited style-guide rule."
+        },
+        {
+          "id": "unidiomatic",
+          "description": "Target is grammatical but unnatural for the locale."
+        },
+        {
+          "id": "inconsistent_style",
+          "description": "Target style shifts without source, speaker, or scene reason."
+        },
+        {
+          "id": "readability",
+          "description": "Target is unnecessarily hard to read in context."
+        },
+        {
+          "id": "genre_voice_mismatch",
+          "description": "Target does not fit the game's genre, era, or narrative mode."
+        }
+      ]
+    },
+    {
+      "id": "tone_register",
+      "mqmAnchor": "Style / language register",
+      "description": "Target gives a speaker, relationship, formality level, honorific, or emotional stance the wrong voice.",
+      "subcategories": [
+        {
+          "id": "formality_mismatch",
+          "description": "Target is too formal or informal for policy and context."
+        },
+        {
+          "id": "speaker_voice_drift",
+          "description": "Target breaks an established character voice."
+        },
+        {
+          "id": "relationship_mismatch",
+          "description": "Target misrepresents social distance, respect, intimacy, or hostility."
+        },
+        {
+          "id": "honorific_misuse",
+          "description": "Target uses honorifics, titles, or address forms contrary to locale-branch policy."
+        }
+      ]
+    },
+    {
+      "id": "locale_convention",
+      "mqmAnchor": "Locale conventions / audience appropriateness",
+      "description": "Target content violates locale formatting, cultural reference, shortcut, measurement, currency, or sensitivity requirements.",
+      "subcategories": [
+        {
+          "id": "date_time_number_format",
+          "description": "Target uses the wrong date, time, or number format."
+        },
+        {
+          "id": "measurement_currency_format",
+          "description": "Target uses the wrong measurement, unit, or currency convention."
+        },
+        {
+          "id": "cultural_reference_mismatch",
+          "description": "Target reference is confusing, inappropriate, or loses required cultural intent."
+        },
+        {
+          "id": "offensive_or_sensitive",
+          "description": "Target introduces avoidable offense or mishandles sensitivity policy."
+        },
+        {
+          "id": "shortcut_key_locale",
+          "description": "Target shortcut, mnemonic, or input hint is wrong for the locale."
+        }
+      ]
+    },
+    {
+      "id": "protected_content",
+      "mqmAnchor": "Accuracy / design and markup",
+      "description": "Target corrupts, drops, translates, invents, or misorders protected spans.",
+      "subcategories": [
+        {
+          "id": "placeholder_dropped",
+          "description": "A required variable, placeholder, or interpolation is missing."
+        },
+        {
+          "id": "placeholder_translated",
+          "description": "A placeholder or variable name was translated when it should be preserved or mapped."
+        },
+        {
+          "id": "markup_corrupted",
+          "description": "Markup tags are missing, malformed, reordered incorrectly, or mistranslated."
+        },
+        {
+          "id": "control_code_corrupted",
+          "description": "Engine control codes, ruby tags, color tags, waits, or command spans are invalid."
+        },
+        {
+          "id": "do_not_translate_violation",
+          "description": "A protected do-not-translate span was localized or altered."
+        }
+      ]
+    },
+    {
+      "id": "layout",
+      "mqmAnchor": "Design and markup",
+      "description": "Target fails in its presentation slot, including overflow, truncation, wrapping, visibility, or script/font fit.",
+      "subcategories": [
+        {
+          "id": "overflow_or_truncation",
+          "description": "Target exceeds available space or is cut off."
+        },
+        {
+          "id": "line_break_bad",
+          "description": "Line wrapping or manual breaks harm readability or meaning."
+        },
+        {
+          "id": "text_hidden",
+          "description": "Target text is present but hidden, off-screen, or unreadable at runtime."
+        },
+        {
+          "id": "ruby_or_furigana_bad",
+          "description": "Ruby, furigana, or pronunciation guide rendering is wrong."
+        },
+        {
+          "id": "image_text_misaligned",
+          "description": "Localized image text, overlay text, or UI label placement does not match the asset."
+        }
+      ]
+    },
+    {
+      "id": "technical_integrity",
+      "mqmAnchor": "Linguistic conventions / design and markup",
+      "description": "Patch, encoding, schema, asset binding, or runtime integration breaks the localized artifact independent of wording quality.",
+      "subcategories": [
+        {
+          "id": "encoding_garble",
+          "description": "Target characters are corrupted by encoding, normalization, or font support."
+        },
+        {
+          "id": "schema_invalid",
+          "description": "A bridge, patch, runtime, finding, or benchmark payload violates its schema."
+        },
+        {
+          "id": "patch_application_error",
+          "description": "Patch or delta application writes the wrong content or loses required content."
+        },
+        {
+          "id": "runtime_reference_broken",
+          "description": "Runtime link, asset reference, label, route, or cross-reference is broken."
+        },
+        {
+          "id": "asset_binding_broken",
+          "description": "Localized text is attached to the wrong asset, speaker, event, or UI element."
+        }
+      ]
+    }
+  ],
+  "rootCauses": [
+    {
+      "id": "source_content_defect",
+      "description": "Source text or asset is wrong, ambiguous, corrupt, or internally inconsistent."
+    },
+    {
+      "id": "source_annotation_gap",
+      "description": "Source annotations, protected-span metadata, speaker data, or context markings are missing or wrong."
+    },
+    {
+      "id": "style_guide_gap",
+      "description": "Style guide is missing, contradictory, stale, or wrong for the target branch."
+    },
+    {
+      "id": "glossary_policy_gap",
+      "description": "Glossary, canon-name, do-not-translate, or romanization policy is missing, contradictory, or stale."
+    },
+    {
+      "id": "prompt_or_context_pack_error",
+      "description": "Drafting or QA task assembled incomplete, stale, or misleading context."
+    },
+    {
+      "id": "model_draft_error",
+      "description": "Model output is wrong despite adequate context and policy."
+    },
+    {
+      "id": "human_edit_error",
+      "description": "Human reviewer, editor, or post-editor introduced or failed to catch the defect."
+    },
+    {
+      "id": "deterministic_qa_rule_error",
+      "description": "Rule produced a false positive, false negative, or encoded the wrong policy."
+    },
+    {
+      "id": "patch_application_error",
+      "description": "Patching, delta application, or verification changed or lost localized content."
+    },
+    {
+      "id": "runtime_environment_or_i18n_limit",
+      "description": "Runtime evidence exposes engine, font, fixed-size UI, BiDi, input, or other i18n limits."
+    },
+    {
+      "id": "benchmark_seed",
+      "description": "Defect was deliberately injected for seeded-defect evaluation."
+    },
+    {
+      "id": "unknown_unadjudicated",
+      "description": "Temporary value before human or oracle adjudication; draft/internal reports only."
+    }
+  ],
+  "seededDefectKinds": [
+    {
+      "id": "meaning_shift",
+      "category": "accuracy",
+      "subcategory": "mistranslation",
+      "defaultQualitySeverity": "major",
+      "expectedDetectorKinds": ["llm_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Inject a target phrase that changes the source proposition."
+    },
+    {
+      "id": "omission",
+      "category": "accuracy",
+      "subcategory": "omission",
+      "defaultQualitySeverity": "major",
+      "expectedDetectorKinds": ["deterministic_qa", "llm_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Remove required source content from the target."
+    },
+    {
+      "id": "choice_semantics_flip",
+      "category": "accuracy",
+      "subcategory": "choice_semantics_shift",
+      "defaultQualitySeverity": "critical",
+      "expectedDetectorKinds": ["llm_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Invert or redirect a player choice, route, or action prompt."
+    },
+    {
+      "id": "wrong_glossary_term",
+      "category": "terminology",
+      "subcategory": "glossary_violation",
+      "defaultQualitySeverity": "major",
+      "expectedDetectorKinds": ["deterministic_qa", "llm_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Use a term disallowed by glossary or canon policy."
+    },
+    {
+      "id": "term_inconsistency",
+      "category": "terminology",
+      "subcategory": "inconsistent_term",
+      "defaultQualitySeverity": "minor",
+      "expectedDetectorKinds": ["deterministic_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Use multiple target terms for the same canon concept."
+    },
+    {
+      "id": "style_guide_violation",
+      "category": "style",
+      "subcategory": "style_guide_violation",
+      "defaultQualitySeverity": "major",
+      "expectedDetectorKinds": ["deterministic_qa", "llm_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Break an explicit style-guide rule."
+    },
+    {
+      "id": "speaker_voice_drift",
+      "category": "tone_register",
+      "subcategory": "speaker_voice_drift",
+      "defaultQualitySeverity": "major",
+      "expectedDetectorKinds": ["llm_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Change a character's established voice or relationship stance."
+    },
+    {
+      "id": "locale_format_error",
+      "category": "locale_convention",
+      "subcategory": "date_time_number_format",
+      "defaultQualitySeverity": "minor",
+      "expectedDetectorKinds": ["deterministic_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Use a target-locale formatting convention incorrectly."
+    },
+    {
+      "id": "cultural_reference_mismatch",
+      "category": "locale_convention",
+      "subcategory": "cultural_reference_mismatch",
+      "defaultQualitySeverity": "major",
+      "expectedDetectorKinds": ["llm_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Introduce or preserve a cultural reference that fails the target-locale policy."
+    },
+    {
+      "id": "placeholder_dropped",
+      "category": "protected_content",
+      "subcategory": "placeholder_dropped",
+      "defaultQualitySeverity": "critical",
+      "expectedDetectorKinds": ["deterministic_qa", "patch_verify", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Remove a required variable, placeholder, or interpolation."
+    },
+    {
+      "id": "control_markup_corrupted",
+      "category": "protected_content",
+      "subcategory": "control_code_corrupted",
+      "defaultQualitySeverity": "critical",
+      "expectedDetectorKinds": ["deterministic_qa", "patch_verify"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Corrupt engine control codes, markup, or protected command spans."
+    },
+    {
+      "id": "do_not_translate_violation",
+      "category": "protected_content",
+      "subcategory": "do_not_translate_violation",
+      "defaultQualitySeverity": "major",
+      "expectedDetectorKinds": ["deterministic_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Translate or alter a span explicitly marked for preservation."
+    },
+    {
+      "id": "layout_overflow",
+      "category": "layout",
+      "subcategory": "overflow_or_truncation",
+      "defaultQualitySeverity": "major",
+      "expectedDetectorKinds": ["runtime_probe", "deterministic_qa", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Make target text exceed a known UI, textbox, or asset bound."
+    },
+    {
+      "id": "hidden_or_missing_runtime_text",
+      "category": "layout",
+      "subcategory": "text_hidden",
+      "defaultQualitySeverity": "critical",
+      "expectedDetectorKinds": ["runtime_probe", "human_review"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Place text off-screen, behind another element, or outside a visible runtime path."
+    },
+    {
+      "id": "encoding_garble",
+      "category": "technical_integrity",
+      "subcategory": "encoding_garble",
+      "defaultQualitySeverity": "critical",
+      "expectedDetectorKinds": ["deterministic_qa", "patch_verify", "runtime_probe"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Introduce invalid encoding, normalization, or unsupported rendered characters."
+    },
+    {
+      "id": "schema_or_patch_breakage",
+      "category": "technical_integrity",
+      "subcategory": "patch_application_error",
+      "defaultQualitySeverity": "critical",
+      "expectedDetectorKinds": ["schema_guard", "patch_verify"],
+      "expectedRootCause": "benchmark_seed",
+      "description": "Make a bridge, patch, delta, runtime, finding, or benchmark payload invalid or non-applyable."
+    }
+  ],
+  "adjudicationStates": [
+    {
+      "id": "unreviewed",
+      "description": "Finding exists but has not been reviewed; draft reports only."
+    },
+    {
+      "id": "confirmed",
+      "description": "Reviewer agrees this is a real defect and keeps or corrects taxonomy fields."
+    },
+    {
+      "id": "rejected_false_positive",
+      "description": "Reviewer finds no defect or no supported evidence."
+    },
+    {
+      "id": "duplicate",
+      "description": "Finding repeats another active finding; metrics credit only the canonical one."
+    },
+    {
+      "id": "needs_more_context",
+      "description": "Reviewer cannot judge from available source, target, policy, or runtime evidence."
+    },
+    {
+      "id": "intentional_or_accepted",
+      "description": "Issue is intentional, policy-approved, or explicitly accepted with rationale."
+    },
+    {
+      "id": "fixed_verified",
+      "description": "Defect was repaired and reviewer verified the new evidence."
+    }
+  ],
+  "qaAgentFindingFields": {
+    "required": [
+      "taxonomyId",
+      "taxonomyVersion",
+      "findingId",
+      "detectorKind",
+      "subjectRefs",
+      "category",
+      "qualitySeverity",
+      "rootCause",
+      "evidence",
+      "adjudicationState"
+    ],
+    "recommended": [
+      "subcategory",
+      "secondaryCategories",
+      "contributingRootCauses",
+      "seededDefectId",
+      "expectedValue",
+      "observedValue",
+      "repairSuggestion",
+      "reviewerRationale"
+    ],
+    "forbidden": [
+      "confidence",
+      "qualitySeverity:P0",
+      "qualitySeverity:P1",
+      "qualitySeverity:P2",
+      "qualitySeverity:P3"
+    ]
+  },
+  "benchmarkReportFields": {
+    "required": [
+      "benchmarkRunId",
+      "taxonomyId",
+      "taxonomyVersion",
+      "fixtureOrCorpusRefs",
+      "sourceLocale",
+      "targetLocale",
+      "engineProfile",
+      "gitCommit",
+      "toolVersions",
+      "commandLines",
+      "systemsCompared",
+      "findingRecords",
+      "countsByQualitySeverity",
+      "countsByCategory",
+      "countsByRootCause",
+      "countsByDetectorKind",
+      "countsByAdjudicationState",
+      "qaAgentMetrics"
+    ],
+    "recommended": [
+      "providerModelCostRecords",
+      "seededDefectOracle",
+      "humanReviewSample",
+      "penaltyTotal",
+      "penaltyPerThousandSourceChars",
+      "penaltyPerHundredSourceUnits",
+      "reviewerAgreementNotes",
+      "knownBlindSpots"
+    ],
+    "forbidden": [
+      "rawPrivateSourceText",
+      "rawPrivateScreenshot",
+      "qualityClaimWithoutAdjudication",
+      "severityAsQualitySeverity"
+    ]
+  },
+  "metrics": [
+    {
+      "id": "seeded_recall",
+      "description": "Expected seeded defects detected at least once divided by expected seeded defects."
+    },
+    {
+      "id": "seeded_precision",
+      "description": "Seed-matched confirmed findings divided by all findings claiming a seed match."
+    },
+    {
+      "id": "human_confirmed_precision",
+      "description": "Confirmed non-duplicate findings divided by adjudicated non-duplicate findings."
+    },
+    {
+      "id": "category_accuracy",
+      "description": "Share of confirmed findings whose primary category matches the reviewer or oracle category."
+    },
+    {
+      "id": "quality_severity_accuracy",
+      "description": "Share of confirmed findings whose qualitySeverity matches the reviewer or oracle severity."
+    },
+    {
+      "id": "root_cause_accuracy",
+      "description": "Share of confirmed findings whose primary root cause matches the reviewer or oracle cause."
+    },
+    {
+      "id": "critical_recall",
+      "description": "Critical defects detected divided by adjudicated or seeded critical defects."
+    },
+    {
+      "id": "unscorable_rate",
+      "description": "Findings missing required fields, evidence, taxonomy ids, or adjudication divided by all emitted findings."
+    }
+  ]
+}
