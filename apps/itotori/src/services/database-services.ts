@@ -1,5 +1,6 @@
 import {
   ItotoriFeedbackRepository,
+  ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
   bootstrapLocalUser,
   createDatabaseContext,
@@ -47,9 +48,15 @@ export async function withDatabaseItotoriServices<T>(
     }
     const projectRepository = new ItotoriProjectRepository(context.db);
     const feedbackRepository = new ItotoriFeedbackRepository(context.db);
+    const modelLedgerRepository = new ItotoriModelLedgerRepository(context.db);
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
-      projectWorkflow: new ItotoriProjectWorkflowService(projectRepository, localUserActor),
+      projectWorkflow: new ItotoriProjectWorkflowService(
+        projectRepository,
+        localUserActor,
+        undefined,
+        modelLedgerRepository,
+      ),
       manualFeedback: new ManualFeedbackImportService(feedbackRepository, localUserActor),
     });
   } finally {

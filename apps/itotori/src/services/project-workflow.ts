@@ -1,8 +1,12 @@
+import { createHash } from "node:crypto";
 import type {
   AuthorizationActor,
+  ItotoriModelLedgerRepositoryPort,
   ItotoriProjectRecord,
   ItotoriProjectRepositoryPort,
+  ProjectCostReport,
   ProjectDashboardStatus,
+  ProviderRunLedgerInput,
   RuntimeDashboardStatus,
 } from "@itotori/db";
 import type {
@@ -18,7 +22,15 @@ import type {
   TriageEventV02,
 } from "@itotori/localization-bridge-schema";
 import { FakeModelProvider } from "../providers/fake.js";
-import type { ModelProvider } from "../providers/types.js";
+import {
+  ModelProviderError,
+  type JsonObject,
+  type ModelInvocationResult,
+  type ModelInvocationRequest,
+  type ModelProvider,
+  type ProviderRunRecord,
+  createProviderRunId,
+} from "../providers/types.js";
 
 export type ProjectState = ItotoriProjectRecord;
 export type RuntimeReportInput = RuntimeVerificationReport | RuntimeEvidenceReportV02;
@@ -56,6 +68,7 @@ export interface ItotoriProjectWorkflowPort {
   reset(): Promise<void>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
   getRuntimeStatus(): Promise<RuntimeDashboardStatus>;
+  getCostReport(projectId?: string): Promise<ProjectCostReport>;
   importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState>;
   draftProject(project: ProjectState, locale: string): Promise<ProjectState>;
   exportPatch(project: ProjectState): Promise<{
@@ -92,6 +105,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     private readonly repository: ItotoriProjectRepositoryPort,
     private readonly actor: AuthorizationActor,
     private readonly draftModelProvider: ModelProvider = new FakeModelProvider(),
+    private readonly modelLedger?: ItotoriModelLedgerRepositoryPort,
   ) {}
 
   async reset(): Promise<void> {
@@ -104,6 +118,13 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
 
   async getRuntimeStatus(): Promise<RuntimeDashboardStatus> {
     return await this.repository.getRuntimeStatus();
+  }
+
+  async getCostReport(projectId?: string): Promise<ProjectCostReport> {
+    if (!this.modelLedger) {
+      return emptyCostReport(projectId ?? "unknown");
+    }
+    return await this.modelLedger.getProjectCostReport(projectId);
   }
 
   async importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState> {
@@ -125,15 +146,16 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       drafts: { ...project.drafts },
     };
     for (const unit of nextProject.bridge.units) {
-      const result = await this.draftModelProvider.invoke({
+      const prompt = draftPromptPreset();
+      const request: ModelInvocationRequest = {
         taskKind: "draft_translation",
         modelId: this.draftModelProvider.descriptor.defaultModelId,
         inputClassification: "private_corpus",
+        prompt,
         messages: [
           {
             role: "system",
-            content:
-              "Draft a localized target string. Preserve protected spans exactly and return only the target text.",
+            content: draftPromptSystemMessage,
           },
           {
             role: "user",
@@ -145,10 +167,31 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
             }),
           },
         ],
-      });
-      if (result.content === null) {
-        throw new Error(`draft provider returned no text for ${unit.bridgeUnitId}`);
+      };
+      let result: ModelInvocationResult;
+      const invocationStartedAt = new Date();
+      try {
+        result = await this.draftModelProvider.invoke(request);
+      } catch (error) {
+        await this.recordProviderFailure(nextProject, request, invocationStartedAt, error);
+        throw error;
       }
+      if (result.content === null) {
+        const failedRun = failedProviderRunFromRun(
+          result.providerRun,
+          "provider_response_invalid",
+        );
+        const error = new ModelProviderError(
+          `draft provider returned no text for ${unit.bridgeUnitId}`,
+          "provider_response_invalid",
+          false,
+          failedRun,
+          result.adapterMetadata,
+        );
+        await this.recordProviderFailure(nextProject, request, invocationStartedAt, error);
+        throw error;
+      }
+      await this.recordProviderRun(nextProject, result);
       nextProject.drafts[unit.bridgeUnitId] = result.content;
     }
     await this.repository.saveDrafts(this.actor, nextProject);
@@ -284,6 +327,17 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       },
       ...(input.localeBranchId === undefined ? {} : { localeBranchId: input.localeBranchId }),
     });
+    for (const providerRun of report.providerModelCostRecords) {
+      await this.modelLedger?.recordProviderRun(
+        this.actor,
+        providerRunLedgerInputFromBenchmark(
+          projectId,
+          input.localeBranchId,
+          report.benchmarkRunId,
+          providerRun,
+        ),
+      );
+    }
     return {
       benchmarkRunId: report.benchmarkRunId,
       artifactId: report.benchmarkRunId,
@@ -292,6 +346,316 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       findingCount: report.findingRecords.length,
     };
   }
+
+  private async recordProviderRun(
+    project: ProjectState,
+    result: ModelInvocationResult,
+  ): Promise<void> {
+    if (!this.modelLedger) {
+      return;
+    }
+    await this.modelLedger.recordProviderRun(
+      this.actor,
+      providerRunLedgerInputFromRun(project, result.providerRun, result.adapterMetadata),
+    );
+  }
+
+  private async recordProviderFailure(
+    project: ProjectState,
+    request: ModelInvocationRequest,
+    startedAt: Date,
+    error: unknown,
+  ): Promise<void> {
+    if (!this.modelLedger) {
+      return;
+    }
+    const providerRun =
+      error instanceof ModelProviderError && error.providerRun !== undefined
+        ? error.providerRun
+        : failedProviderRunFromRequest({
+            descriptor: this.draftModelProvider.descriptor,
+            request,
+            startedAt,
+            error,
+          });
+    const adapterMetadata =
+      error instanceof ModelProviderError ? error.adapterMetadata : undefined;
+    await this.modelLedger.recordProviderRun(
+      this.actor,
+      providerRunLedgerInputFromRun(project, providerRun, adapterMetadata),
+    );
+  }
+}
+
+const draftPromptSystemMessage =
+  "Draft a localized target string. Preserve protected spans exactly and return only the target text.";
+
+function draftPromptPreset() {
+  const configSnapshot = {
+    schemaVersion: "itotori.prompt-preset.v0",
+    presetId: "itotori-draft-default-v1",
+    templateVersion: "1.0.0",
+    messages: [
+      {
+        role: "system",
+        content: draftPromptSystemMessage,
+      },
+      {
+        role: "user",
+        contentTemplate:
+          '{"sourceLocale":string,"targetLocale":string,"sourceText":string,"protectedSpans":string[]}',
+      },
+    ],
+  } satisfies JsonObject;
+  return {
+    presetId: "itotori-draft-default-v1",
+    templateVersion: "1.0.0",
+    promptHash: hashJson(configSnapshot),
+    schemaVersion: "itotori.prompt-preset.v0",
+    configSnapshot,
+  };
+}
+
+function failedProviderRunFromRun(
+  run: ProviderRunRecord,
+  errorClass: string,
+): ProviderRunRecord {
+  return {
+    ...run,
+    status: "failed",
+    errorClasses: Array.from(new Set([...run.errorClasses, errorClass])),
+    cost: {
+      costKind: "unknown",
+      currency: "USD",
+    },
+  };
+}
+
+function failedProviderRunFromRequest(input: {
+  descriptor: ModelProvider["descriptor"];
+  request: ModelInvocationRequest;
+  startedAt: Date;
+  error: unknown;
+}): ProviderRunRecord {
+  const completedAt = new Date();
+  const requestedModelId = input.request.modelId ?? input.descriptor.defaultModelId;
+  const fallbackPlan = fallbackPlanForRequest(input.request, requestedModelId);
+  const run: ProviderRunRecord = {
+    runId: input.request.runId ?? createProviderRunId(input.descriptor.family),
+    taskKind: input.request.taskKind,
+    startedAt: input.startedAt.toISOString(),
+    completedAt: completedAt.toISOString(),
+    latencyMs: completedAt.getTime() - input.startedAt.getTime(),
+    status: "failed",
+    provider: {
+      providerFamily: input.descriptor.family,
+      endpointFamily: input.descriptor.endpointFamily,
+      providerName: input.descriptor.providerName,
+      requestedModelId,
+      actualModelId: requestedModelId,
+    },
+    structuredOutputMode: input.request.structuredOutput?.mode ?? "none",
+    retryCount: 0,
+    errorClasses: [providerFailureClass(input.error)],
+    fallbackUsed: false,
+    fallbackPlan,
+    tokenUsage: {
+      tokenCountSource: "unknown",
+    },
+    cost: {
+      costKind: "unknown",
+      currency: "USD",
+    },
+    prompt: input.request.prompt,
+    dataHandling: input.descriptor.capabilities.dataHandling,
+  };
+  if (input.request.preset) {
+    run.providerPreset = input.request.preset;
+  }
+  if (input.descriptor.capabilities.accountPrivacy) {
+    run.accountPrivacy = input.descriptor.capabilities.accountPrivacy;
+  }
+  return run;
+}
+
+function providerFailureClass(error: unknown): string {
+  if (error instanceof ModelProviderError) {
+    return error.code;
+  }
+  return "provider_invocation_error";
+}
+
+function fallbackPlanForRequest(
+  request: ModelInvocationRequest,
+  requestedModelId: string,
+): string[] {
+  return Array.from(new Set([requestedModelId, ...(request.fallbackModels ?? [])]));
+}
+
+function providerRunLedgerInputFromRun(
+  project: ProjectState,
+  run: ProviderRunRecord,
+  adapterMetadata: JsonObject | undefined,
+): ProviderRunLedgerInput {
+  const prompt: ProviderRunLedgerInput["prompt"] = {
+    promptPresetId: run.prompt.presetId,
+    promptTemplateVersion: run.prompt.templateVersion,
+    promptHash: run.prompt.promptHash,
+  };
+  if (run.prompt.schemaVersion !== undefined) {
+    prompt.presetSchemaVersion = run.prompt.schemaVersion;
+  }
+  if (run.prompt.configSnapshot !== undefined) {
+    prompt.configSnapshot = run.prompt.configSnapshot;
+  }
+  return {
+    providerRunId: run.runId,
+    projectId: project.projectId,
+    localeBranchId: project.localeBranchId,
+    taskKind: run.taskKind,
+    startedAt: run.startedAt,
+    completedAt: run.completedAt,
+    latencyMs: run.latencyMs,
+    status: run.status,
+    provider: run.provider,
+    prompt,
+    structuredOutputMode: run.structuredOutputMode,
+    retryCount: run.retryCount,
+    errorClasses: run.errorClasses,
+    fallbackUsed: run.fallbackUsed,
+    fallbackPlan: run.fallbackPlan,
+    tokenUsage: run.tokenUsage,
+    cost: run.cost,
+    dataHandling: run.dataHandling,
+    ...(run.providerPreset === undefined ? {} : { providerPreset: run.providerPreset }),
+    ...(run.accountPrivacy === undefined ? {} : { accountPrivacy: run.accountPrivacy }),
+    ...(adapterMetadata === undefined ? {} : { adapterMetadata }),
+  };
+}
+
+function providerRunLedgerInputFromBenchmark(
+  projectId: string,
+  localeBranchId: string | undefined,
+  benchmarkRunId: string,
+  providerRun: BenchmarkReportV02["providerModelCostRecords"][number],
+): ProviderRunLedgerInput {
+  const completedAt = requiredString(
+    providerRun.completedAt,
+    "providerModelCostRecords.completedAt",
+  );
+  const latencyMs = requiredNumber(providerRun.latencyMs, "providerModelCostRecords.latencyMs");
+  const promptHash =
+    providerRun.prompt.promptHash ??
+    hashJson({
+      source: "benchmark_report",
+      benchmarkRunId,
+      promptPresetId: providerRun.prompt.promptPresetId,
+      promptTemplateVersion: providerRun.prompt.promptTemplateVersion,
+    });
+  const providerPreset = providerPresetFromBenchmarkPrompt(providerRun.prompt);
+  return {
+    providerRunId: providerRun.providerRunId,
+    projectId,
+    ...(localeBranchId === undefined ? {} : { localeBranchId }),
+    systemId: providerRun.systemId,
+    taskKind: providerRun.taskKind,
+    startedAt: providerRun.startedAt,
+    completedAt,
+    latencyMs,
+    status: providerRun.status,
+    provider: providerRun.provider,
+    prompt: {
+      promptPresetId: providerRun.prompt.promptPresetId,
+      promptTemplateVersion: providerRun.prompt.promptTemplateVersion,
+      promptHash,
+      presetSchemaVersion: "benchmark-report-v0.2",
+      configSnapshot: {
+        source: "benchmark_report",
+        benchmarkRunId,
+        systemId: providerRun.systemId,
+      },
+    },
+    structuredOutputMode: providerRun.structuredOutputMode,
+    retryCount: providerRun.retryCount,
+    errorClasses: providerRun.errorClasses,
+    fallbackUsed: providerRun.fallbackUsed,
+    fallbackPlan: providerRun.fallbackPlan ?? [],
+    tokenUsage: providerRun.tokenUsage,
+    cost: providerRun.cost,
+    dataHandling: {},
+    ...(providerPreset === undefined ? {} : { providerPreset }),
+    adapterMetadata: {
+      source: "benchmark_report",
+      routeSettingsHash: providerRun.provider.routeSettingsHash ?? null,
+    },
+  };
+}
+
+function providerPresetFromBenchmarkPrompt(
+  prompt: BenchmarkReportV02["providerModelCostRecords"][number]["prompt"],
+): ProviderRunLedgerInput["providerPreset"] | undefined {
+  if (
+    prompt.remotePresetSlug === undefined &&
+    prompt.remotePresetVersion === undefined &&
+    prompt.remotePresetConfigHash === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    slug: prompt.remotePresetSlug ?? "unknown",
+    ...(prompt.remotePresetVersion === undefined ? {} : { version: prompt.remotePresetVersion }),
+    ...(prompt.remotePresetConfigHash === undefined
+      ? {}
+      : { configHash: prompt.remotePresetConfigHash }),
+    configSnapshot: {
+      source: "benchmark_report",
+      remotePresetSlug: prompt.remotePresetSlug ?? null,
+      remotePresetVersion: prompt.remotePresetVersion ?? null,
+      remotePresetConfigHash: prompt.remotePresetConfigHash ?? null,
+    },
+  };
+}
+
+function hashJson(value: JsonObject): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
+}
+
+function requiredString(value: string | undefined, label: string): string {
+  if (value === undefined) {
+    throw new Error(`${label} is required`);
+  }
+  return value;
+}
+
+function requiredNumber(value: number | undefined, label: string): number {
+  if (value === undefined) {
+    throw new Error(`${label} is required`);
+  }
+  return value;
+}
+
+function emptyCostReport(projectId: string): ProjectCostReport {
+  return {
+    projectId,
+    currency: "USD",
+    runCount: 0,
+    billedMicrosUsd: 0,
+    estimatedMicrosUsd: 0,
+    zeroRunCount: 0,
+    unknownRunCount: 0,
+    includesUnknownCost: false,
+    totalsByCostKind: ["billed", "provider_estimate", "local_estimate", "zero", "unknown"].map(
+      (costKind) => ({
+        costKind: costKind as ProjectCostReport["totalsByCostKind"][number]["costKind"],
+        runCount: 0,
+        amountMicrosUsd: 0,
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      }),
+    ),
+    recentRuns: [],
+  };
 }
 
 function id(kind: string, n: number): string {

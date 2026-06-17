@@ -1,4 +1,7 @@
 import {
+  bigint as pgBigint,
+  boolean,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -78,6 +81,26 @@ export const jobIdempotencyPolicyValues = {
 
 export type JobIdempotencyPolicy =
   (typeof jobIdempotencyPolicyValues)[keyof typeof jobIdempotencyPolicyValues];
+
+export const providerRunStatusValues = {
+  succeeded: "succeeded",
+  failed: "failed",
+  partial: "partial",
+  skipped: "skipped",
+} as const;
+
+export type ProviderRunStatus =
+  (typeof providerRunStatusValues)[keyof typeof providerRunStatusValues];
+
+export const providerCostKindValues = {
+  billed: "billed",
+  providerEstimate: "provider_estimate",
+  localEstimate: "local_estimate",
+  zero: "zero",
+  unknown: "unknown",
+} as const;
+
+export type ProviderCostKind = (typeof providerCostKindValues)[keyof typeof providerCostKindValues];
 
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
@@ -423,6 +446,161 @@ export const jobQueue = pgTable(
     index("itotori_jobs_trigger_outbox_event_idx").on(table.triggerOutboxEventId),
     index("itotori_jobs_source_event_idx").on(table.sourceEventId),
     index("itotori_jobs_correlation_idx").on(table.correlationId),
+  ],
+);
+
+export const modelProviders = pgTable(
+  "itotori_model_providers",
+  {
+    providerId: text("provider_id").primaryKey(),
+    providerFamily: text("provider_family").notNull(),
+    endpointFamily: text("endpoint_family").notNull(),
+    providerName: text("provider_name").notNull(),
+    dataHandling: jsonb("data_handling").$type<Record<string, unknown>>().notNull(),
+    accountPrivacy: jsonb("account_privacy").$type<Record<string, unknown> | null>(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_model_providers_identity_idx").on(
+      table.providerFamily,
+      table.endpointFamily,
+      table.providerName,
+    ),
+  ],
+);
+
+export const modelRegistry = pgTable(
+  "itotori_model_registry",
+  {
+    modelRegistryId: text("model_registry_id").primaryKey(),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => modelProviders.providerId, { onDelete: "restrict" }),
+    modelId: text("model_id").notNull(),
+    capabilities: jsonb("capabilities").$type<Record<string, unknown>>().notNull(),
+    pricing: jsonb("pricing").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_model_registry_provider_model_idx").on(table.providerId, table.modelId),
+    index("itotori_model_registry_model_idx").on(table.modelId),
+  ],
+);
+
+export const promptPresets = pgTable(
+  "itotori_prompt_presets",
+  {
+    promptPresetId: text("prompt_preset_id").notNull(),
+    promptTemplateVersion: text("prompt_template_version").notNull(),
+    presetSchemaVersion: text("preset_schema_version").notNull(),
+    promptHash: text("prompt_hash").notNull(),
+    configSnapshot: jsonb("config_snapshot").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.promptPresetId, table.promptTemplateVersion] }),
+    index("itotori_prompt_presets_hash_idx").on(table.promptHash),
+  ],
+);
+
+export const providerRuns = pgTable(
+  "itotori_provider_runs",
+  {
+    providerRunId: text("provider_run_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id").references(() => localeBranches.localeBranchId, {
+      onDelete: "set null",
+    }),
+    jobId: text("job_id").references(() => jobQueue.jobId, { onDelete: "set null" }),
+    systemId: text("system_id"),
+    taskKind: text("task_kind").notNull(),
+    status: text("status").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+    latencyMs: integer("latency_ms").notNull(),
+    providerId: text("provider_id")
+      .notNull()
+      .references(() => modelProviders.providerId, { onDelete: "restrict" }),
+    requestedModelRegistryId: text("requested_model_registry_id")
+      .notNull()
+      .references(() => modelRegistry.modelRegistryId, { onDelete: "restrict" }),
+    actualModelRegistryId: text("actual_model_registry_id")
+      .notNull()
+      .references(() => modelRegistry.modelRegistryId, { onDelete: "restrict" }),
+    requestedModelId: text("requested_model_id").notNull(),
+    actualModelId: text("actual_model_id").notNull(),
+    upstreamProvider: text("upstream_provider"),
+    routeSettingsHash: text("route_settings_hash"),
+    promptPresetId: text("prompt_preset_id").notNull(),
+    promptTemplateVersion: text("prompt_template_version").notNull(),
+    promptHash: text("prompt_hash").notNull(),
+    providerPreset: jsonb("provider_preset").$type<Record<string, unknown> | null>(),
+    structuredOutputMode: text("structured_output_mode").notNull(),
+    retryCount: integer("retry_count").notNull(),
+    errorClasses: jsonb("error_classes").$type<string[]>().notNull(),
+    fallbackUsed: boolean("fallback_used").notNull(),
+    fallbackPlan: jsonb("fallback_plan").$type<string[]>().notNull(),
+    tokenCountSource: text("token_count_source").notNull(),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    reasoningTokens: integer("reasoning_tokens"),
+    cachedInputTokens: integer("cached_input_tokens"),
+    totalTokens: integer("total_tokens"),
+    dataHandling: jsonb("data_handling").$type<Record<string, unknown>>().notNull(),
+    accountPrivacy: jsonb("account_privacy").$type<Record<string, unknown> | null>(),
+    adapterMetadata: jsonb("adapter_metadata").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_provider_runs_project_started_idx").on(table.projectId, table.startedAt),
+    index("itotori_provider_runs_project_task_idx").on(table.projectId, table.taskKind),
+    index("itotori_provider_runs_prompt_idx").on(table.promptPresetId, table.promptTemplateVersion),
+    index("itotori_provider_runs_fallback_idx").on(table.projectId, table.fallbackUsed),
+    foreignKey({
+      columns: [table.promptPresetId, table.promptTemplateVersion],
+      foreignColumns: [promptPresets.promptPresetId, promptPresets.promptTemplateVersion],
+      name: "itotori_provider_runs_prompt_preset_fk",
+    }).onDelete("restrict"),
+  ],
+);
+
+export const costLedgerEntries = pgTable(
+  "itotori_cost_ledger_entries",
+  {
+    costLedgerEntryId: text("cost_ledger_entry_id").primaryKey(),
+    providerRunId: text("provider_run_id")
+      .notNull()
+      .references(() => providerRuns.providerRunId, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id").references(() => localeBranches.localeBranchId, {
+      onDelete: "set null",
+    }),
+    costKind: text("cost_kind").notNull(),
+    currency: text("currency").notNull(),
+    amountMicrosUsd: pgBigint("amount_micros_usd", { mode: "number" }),
+    pricingSnapshotId: text("pricing_snapshot_id"),
+    tokenCountSource: text("token_count_source").notNull(),
+    promptTokens: integer("prompt_tokens"),
+    completionTokens: integer("completion_tokens"),
+    reasoningTokens: integer("reasoning_tokens"),
+    cachedInputTokens: integer("cached_input_tokens"),
+    totalTokens: integer("total_tokens"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_cost_ledger_provider_run_idx").on(table.providerRunId),
+    index("itotori_cost_ledger_project_kind_idx").on(table.projectId, table.costKind),
+    index("itotori_cost_ledger_project_created_idx").on(table.projectId, table.createdAt),
   ],
 );
 

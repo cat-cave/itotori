@@ -3,6 +3,7 @@ import {
   feedbackTypeValues,
   type ManualFeedbackImportInput,
   type ManualFeedbackImportResult,
+  type ProjectCostReport,
   type ProjectDashboardStatus,
 } from "@itotori/db";
 import type { BridgeBundle } from "@itotori/localization-bridge-schema";
@@ -109,6 +110,7 @@ function servicesFixture(): ItotoriCliServices {
     projectWorkflow: {
       reset: vi.fn(async () => {}),
       getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
+      getCostReport: vi.fn(async () => costReportFixture),
       getRuntimeStatus: vi.fn(async () => ({
         finalStatus: "hello_world_passed",
         runtimeReportId: "runtime-1",
@@ -185,6 +187,28 @@ function projectFixture(): ProjectState {
   };
 }
 
+const costReportFixture: ProjectCostReport = {
+  projectId: "project-1",
+  currency: "USD",
+  runCount: 0,
+  billedMicrosUsd: 0,
+  estimatedMicrosUsd: 0,
+  zeroRunCount: 0,
+  unknownRunCount: 0,
+  includesUnknownCost: false,
+  totalsByCostKind: ["billed", "provider_estimate", "local_estimate", "zero", "unknown"].map(
+    (costKind) => ({
+      costKind: costKind as ProjectCostReport["totalsByCostKind"][number]["costKind"],
+      runCount: 0,
+      amountMicrosUsd: 0,
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+    }),
+  ),
+  recentRuns: [],
+};
+
 const dashboardStatusFixture: ProjectDashboardStatus = {
   projectId: "project-1",
   projectKey: "project-1",
@@ -200,6 +224,7 @@ const dashboardStatusFixture: ProjectDashboardStatus = {
   artifactCount: 3,
   latestEventKind: "patch_result_recorded",
   latestEventAt: "2026-06-17T00:00:00.000Z",
+  cost: costReportFixture,
   localeBranches: [],
 };
 

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   benchmarkReportFixture,
   bridgeFixture,
+  costReportFixture,
   dashboardStatusFixture,
   decisionEventFixture,
   findingRecordFixture,
@@ -16,6 +17,7 @@ import {
 const requirePermission = vi.fn<[Permission], Promise<void>>(async () => {});
 const getDashboardStatus = vi.fn(async () => dashboardStatusFixture);
 const getRuntimeStatus = vi.fn(async () => runtimeStatusFixture);
+const getCostReport = vi.fn(async () => costReportFixture);
 const importBridge = vi.fn(async () => projectFixture);
 
 const { createItotoriServer, startItotoriServer } = await import("../src/server.js");
@@ -42,6 +44,18 @@ describe("Itotori server API contracts", () => {
 
     expect(response).toEqual(runtimeStatusFixture);
     expect(getRuntimeStatus).toHaveBeenCalledTimes(1);
+    expect(getDashboardStatus).not.toHaveBeenCalled();
+  });
+
+  it("serves project cost status from /api/projects/cost", async () => {
+    const response = await requestJson({ path: "/api/projects/cost" });
+
+    expect(response).toMatchObject({
+      projectId: "project-1",
+      billedMicrosUsd: 1200,
+      estimatedMicrosUsd: 980,
+    });
+    expect(getCostReport).toHaveBeenCalledTimes(1);
     expect(getDashboardStatus).not.toHaveBeenCalled();
   });
 
@@ -154,6 +168,7 @@ async function serviceFactory<T>(
       reset: vi.fn(async () => {}),
       getDashboardStatus,
       getRuntimeStatus,
+      getCostReport,
       importBridge,
       draftProject: vi.fn(async () => projectFixture),
       exportPatch: vi.fn(async () => {

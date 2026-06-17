@@ -17,6 +17,7 @@ import {
   type ProviderRunArtifact,
   type ProviderRunRecord,
   type TokenUsage,
+  createProviderRunId,
 } from "./types.js";
 
 export type LocalOpenAICompatibleProviderOptions = {
@@ -69,11 +70,41 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
 
     const requestedModelId = request.modelId ?? this.descriptor.defaultModelId;
     const startedAt = new Date();
-    const response = await this.fetchImpl(`${stripTrailingSlash(this.baseUrl)}/chat/completions`, {
-      method: "POST",
-      headers: this.headers(),
-      body: JSON.stringify(buildRequestBody(request, requestedModelId)),
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${stripTrailingSlash(this.baseUrl)}/chat/completions`, {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify(buildRequestBody(request, requestedModelId)),
+      });
+    } catch (error) {
+      const run = buildRun({
+        descriptor: this.descriptor,
+        request,
+        requestedModelId,
+        actualModelId: requestedModelId,
+        startedAt,
+        status: "failed",
+        errorClasses: ["provider_network_error"],
+        tokenUsage: { tokenCountSource: "unknown" },
+      });
+      await this.live.artifactRecorder.recordProviderRun(
+        buildArtifact({
+          request,
+          run,
+          error: {
+            class: "provider_http_error",
+            message: providerExceptionMessage(error),
+          },
+        }),
+      );
+      throw new ModelProviderError(
+        `local OpenAI-compatible request failed before response: ${providerExceptionMessage(error)}`,
+        "provider_http_error",
+        true,
+        run,
+      );
+    }
     const body = await safeJson(response);
     if (!response.ok) {
       const run = buildRun({
@@ -100,10 +131,42 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
         `local OpenAI-compatible request failed with HTTP ${response.status}`,
         "provider_http_error",
         response.status >= 500 || response.status === 429,
+        run,
       );
     }
 
-    const normalized = normalizeResponse(body, requestedModelId);
+    let normalized: ReturnType<typeof normalizeResponse>;
+    try {
+      normalized = normalizeResponse(body, requestedModelId);
+    } catch (error) {
+      const run = buildRun({
+        descriptor: this.descriptor,
+        request,
+        requestedModelId,
+        actualModelId:
+          isRecord(body) && typeof body.model === "string" ? body.model : requestedModelId,
+        startedAt,
+        status: "failed",
+        errorClasses: ["provider_response_invalid"],
+        tokenUsage: isRecord(body) ? normalizeUsage(body.usage) : { tokenCountSource: "unknown" },
+      });
+      await this.live.artifactRecorder.recordProviderRun(
+        buildArtifact({
+          request,
+          run,
+          error: {
+            class: "provider_response_invalid",
+            message: providerExceptionMessage(error),
+          },
+        }),
+      );
+      throw new ModelProviderError(
+        `local OpenAI-compatible response was invalid: ${providerExceptionMessage(error)}`,
+        "provider_response_invalid",
+        false,
+        run,
+      );
+    }
     const run = buildRun({
       descriptor: this.descriptor,
       request,
@@ -383,8 +446,8 @@ function buildRun(input: {
   tokenUsage: TokenUsage;
 }): ProviderRunRecord {
   const completedAt = new Date();
-  return {
-    runId: input.request.runId ?? `local-${completedAt.getTime().toString(36)}`,
+  const run: ProviderRunRecord = {
+    runId: input.request.runId ?? createProviderRunId("local"),
     taskKind: input.request.taskKind,
     startedAt: input.startedAt.toISOString(),
     completedAt: completedAt.toISOString(),
@@ -403,13 +466,24 @@ function buildRun(input: {
     fallbackUsed: false,
     fallbackPlan: [input.requestedModelId],
     tokenUsage: input.tokenUsage,
-    cost: {
-      costKind: "local_estimate",
-      currency: "USD",
-      amountMicrosUsd: 0,
-    },
+    cost:
+      input.status === "failed"
+        ? {
+            costKind: "unknown",
+            currency: "USD",
+          }
+        : {
+            costKind: "local_estimate",
+            currency: "USD",
+            amountMicrosUsd: 0,
+          },
+    prompt: input.request.prompt,
     dataHandling: input.descriptor.capabilities.dataHandling,
   };
+  if (input.request.preset) {
+    run.providerPreset = input.request.preset;
+  }
+  return run;
 }
 
 function buildArtifact(input: {
@@ -428,8 +502,12 @@ function buildArtifact(input: {
       structuredOutputMode: input.run.structuredOutputMode,
       toolCount: input.request.tools?.length ?? 0,
       rawTextCaptured: false,
+      prompt: input.run.prompt,
     },
   };
+  if (input.run.providerPreset) {
+    artifact.request.providerPreset = input.run.providerPreset;
+  }
   if (input.response) {
     artifact.response = input.response;
   }
@@ -452,6 +530,13 @@ function providerErrorMessage(body: unknown, status: number): string {
     return body.error.message;
   }
   return `HTTP ${status}`;
+}
+
+function providerExceptionMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
 }
 
 function stripTrailingSlash(value: string): string {

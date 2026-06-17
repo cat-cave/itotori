@@ -50,6 +50,7 @@ export type {
   ProviderLoggingState,
   ProviderPolicyState,
   ProviderPresetReference,
+  PromptPresetReference,
   ProviderRetentionState,
   ProviderRunArtifact,
   ProviderRunArtifactRecorder,

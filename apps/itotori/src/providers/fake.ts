@@ -7,6 +7,7 @@ import type {
   ProviderDescriptor,
   ProviderRunRecord,
 } from "./types.js";
+import { createProviderRunId } from "./types.js";
 
 export type FakeModelProviderOptions = {
   providerName?: string;
@@ -40,7 +41,7 @@ export class FakeModelProvider implements ModelProvider {
     );
     const completionTokens = countApproximateTokens(content);
     const run: ProviderRunRecord = {
-      runId: request.runId ?? `fake-${Date.now().toString(36)}`,
+      runId: request.runId ?? createProviderRunId("fake"),
       taskKind: request.taskKind,
       startedAt,
       completedAt,
@@ -69,8 +70,12 @@ export class FakeModelProvider implements ModelProvider {
         currency: "USD",
         amountMicrosUsd: 0,
       },
+      prompt: request.prompt,
       dataHandling: this.descriptor.capabilities.dataHandling,
     };
+    if (request.preset) {
+      run.providerPreset = request.preset;
+    }
     return { content, toolCalls: [], finishReason: "stop", providerRun: run };
   }
 }
