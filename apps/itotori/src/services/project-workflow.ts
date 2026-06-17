@@ -7,8 +7,10 @@ import type {
 } from "@itotori/db";
 import type {
   BenchmarkReportV02,
+  BridgeUnit,
   BridgeBundle,
   BridgeBundleV02,
+  LocalizationUnitV02,
   FindingRecordV02,
   PatchExport,
   RuntimeEvidenceReportV02,
@@ -139,7 +141,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
               sourceLocale: unit.sourceLocale,
               targetLocale: locale,
               sourceText: unit.sourceText,
-              protectedSpans: unit.protectedSpans.map((span) => span.raw),
+              protectedSpans: protectedSpanRaws(unit),
             }),
           },
         ],
@@ -302,4 +304,11 @@ function id(kind: string, n: number): string {
 
 function isBridgeBundleV02(bridge: BridgeBundle | BridgeBundleV02): bridge is BridgeBundleV02 {
   return bridge.schemaVersion === "0.2.0";
+}
+
+function protectedSpanRaws(unit: BridgeUnit | LocalizationUnitV02): string[] {
+  if ("spans" in unit) {
+    return unit.spans.map((span) => span.raw);
+  }
+  return unit.protectedSpans.map((span) => span.raw);
 }

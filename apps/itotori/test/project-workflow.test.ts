@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type {
   AuthorizationActor,
   ItotoriProjectRecord,
@@ -5,7 +6,11 @@ import type {
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
 } from "@itotori/db";
-import type { BridgeBundle, RuntimeVerificationReport } from "@itotori/localization-bridge-schema";
+import type {
+  BridgeBundle,
+  BridgeBundleV02,
+  RuntimeVerificationReport,
+} from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import {
@@ -64,6 +69,33 @@ describe("ItotoriProjectWorkflowService", () => {
         inputClassification: "private_corpus",
       }),
     );
+  });
+
+  it("drafts v0.2 bridges using normalized protected span raws", async () => {
+    const repository = repositoryFixture();
+    const seenProtectedSpans: string[][] = [];
+    const service = new ItotoriProjectWorkflowService(
+      repository,
+      actor,
+      new FakeModelProvider({
+        generate: (request) => {
+          const message = request.messages.findLast((candidate) => candidate.role === "user");
+          const payload = JSON.parse(String(message?.content)) as {
+            sourceText: string;
+            protectedSpans: string[];
+          };
+          seenProtectedSpans.push(payload.protectedSpans);
+          return payload.sourceText;
+        },
+      }),
+    );
+    const project = projectFixture({ bridge: bridgeV02Fixture(), drafts: {} });
+
+    const drafted = await service.draftProject(project, "fr-FR");
+
+    expect(seenProtectedSpans).toContainEqual(["{player}"]);
+    expect(drafted.drafts["019ed001-0000-7000-8000-000000000201"]).toBe("Hello, {player}.");
+    expect(repository.saveDrafts).toHaveBeenCalledWith(actor, drafted);
   });
 
   it("validates protected spans before writing patch exports", async () => {
@@ -157,6 +189,18 @@ function bridgeFixture(): BridgeBundle {
       },
     ],
   };
+}
+
+function bridgeV02Fixture(): BridgeBundleV02 {
+  return JSON.parse(
+    readFileSync(
+      new URL(
+        "../../../packages/localization-bridge-schema/test/examples/bridge-v0.2.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  ) as BridgeBundleV02;
 }
 
 function runtimeReportFixture(): RuntimeVerificationReport {
