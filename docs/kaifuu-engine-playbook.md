@@ -374,6 +374,11 @@ tests should prove:
 
 - Detection reports the adapter id, engine family, detected variant, evidence,
   requirements, and capabilities for the public fixture.
+- `archiveDetection` rows report aggregate archive/encryption evidence and
+  semantic diagnostics without claiming extraction, decryption, patching, or
+  archive rebuild support.
+- Detection report `gameDir` output is redacted so private-local absolute paths
+  and game titles do not appear in command artifacts.
 - Profile generation validates and records assets, text surfaces, capabilities,
   requirements, source hashes, and support boundary metadata.
 - Extraction emits a shared bridge bundle with stable unit ids, source hashes,
