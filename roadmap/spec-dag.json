@@ -662,26 +662,27 @@
       "projects": ["universal", "shared"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["UNIV-004", "UNIV-008"],
-      "summary": "Add mutation testing and property-style testing to the highest-risk TypeScript and Rust packages after the alpha readiness checks are stable.",
+      "summary": "Add mutation testing and property-style testing commands for the highest-risk TypeScript and Rust packages after the alpha readiness checks are stable.",
       "deliverables": [
-        "Stryker or equivalent TS setup",
+        "Stryker or equivalent TypeScript mutation-test command",
         "Rust property-test examples",
-        "Coverage/mutation thresholds",
-        "CI opt-in policy"
+        "Coverage and mutation threshold configuration",
+        "CI opt-in recipe for slow quality gates"
       ],
       "acceptanceCriteria": [
-        "Selected schema/delta/protected-span logic has mutation or property coverage",
+        "Selected schema, delta, and protected-span logic has mutation or property coverage",
         "Quality gates are meaningful and not prohibitively slow",
-        "Slow gates are scheduled intentionally"
+        "Slow gates are scheduled intentionally and can be invoked locally",
+        "Mutation/property failures produce actionable diagnostics"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Mutation-test pilot report"
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
         },
         {
-          "type": "manual",
-          "value": "Property-test review"
+          "type": "command",
+          "value": "cargo test --workspace"
         },
         {
           "type": "command",
@@ -790,9 +791,9 @@
       "dependsOn": ["UNIV-007"],
       "summary": "Clean up local Node >=24.14.0 toolchain warnings so contributors see actionable diagnostics instead of confusing version noise.",
       "deliverables": [
-        "Local warning reproduction notes",
-        "Toolchain diagnostic or script cleanup",
-        "Docs update for Node >=24.14.0 expectations"
+        "Toolchain warning regression fixture or reproduction case",
+        "Toolchain diagnostic implementation",
+        "Node >=24.14.0 expectation docs update"
       ],
       "acceptanceCriteria": [
         "Local checks do not emit avoidable Node >=24.14.0 warnings when the configured runtime is correct",
@@ -803,6 +804,10 @@
         {
           "type": "command",
           "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp check"
         },
         {
           "type": "manual",
@@ -1660,16 +1665,15 @@
       "dependsOn": ["ITOTORI-003"],
       "summary": "Add a focused guard that keeps Drizzle schema index definitions and SQL migration indexes aligned for event outbox and job queue tables.",
       "deliverables": [
-        "Queue index source-of-truth decision",
+        "Generated queue index source-of-truth assertion",
         "Drizzle-to-migration index verification",
         "Regression fixture for event queue indexes",
         "Contributor workflow for queue index changes"
       ],
       "acceptanceCriteria": [
-        "Event outbox and job queue indexes are generated from or checked against one documented source",
-        "Changing a Drizzle index without the matching migration update fails targeted verification",
-        "The guard covers current queue indexes without rewriting historical migrations",
-        "Add, rename, and drop index workflows are documented for contributors"
+        "Queue indexes declared in code and migrations are verified by an automated check",
+        "The check fails when a migration omits a required event queue index",
+        "Contributor instructions describe how to update code and migrations together"
       ],
       "verification": [
         {
@@ -1742,23 +1746,24 @@
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["SHARED-012", "ITOTORI-029"],
-      "summary": "Add en-US full-system artifact goldens if future regression coverage needs both target locales represented in the public corpus.",
+      "summary": "Add en-US full-system artifact goldens alongside the existing target locale so public fixtures prove locale-branch behavior across at least two concrete target locales.",
       "deliverables": [
         "en-US patch export golden artifacts",
         "en-US delta package and runtime report goldens",
         "Locale comparison manifest",
-        "Regression guidance for maintaining both target locales"
+        "Golden validation command coverage for both target locales"
       ],
       "acceptanceCriteria": [
         "en-US artifacts are generated from public-safe fixtures and committed with fixture hashes",
         "Locale-specific branch metadata is visible in the golden artifacts",
         "The corpus makes locale assumptions explicit instead of treating one target locale as universal",
-        "Both locale sets can be validated without live provider credentials"
+        "Both locale sets validate without live provider credentials",
+        "Golden regeneration fails when either target locale is missing expected patch, delta, runtime, benchmark, or finding artifacts"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "en-US golden artifact review"
+          "type": "command",
+          "value": "just schema"
         },
         {
           "type": "command",
@@ -2708,7 +2713,7 @@
     },
     {
       "id": "KAIFUU-015",
-      "title": "SiglusEngine research slice",
+      "title": "Siglus key-profile and parser proof slice",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
@@ -2722,34 +2727,33 @@
         "KAIFUU-050",
         "KAIFUU-051"
       ],
-      "summary": "Produce an alpha readiness research and validation slice for Siglus key discovery, Scene.pck/Gameexe.dat requirements, pure adapter boundaries, Utsushi VM opportunities, and the concrete path to claimed production Siglus support.",
+      "summary": "Implement a Siglus proof slice for key-profile handoff, Scene.pck/Gameexe.dat detection, safe parser boundaries, and redacted private-local validation evidence that prepares the production adapter without making broad support claims.",
       "deliverables": [
-        "Siglus format notes",
-        "Static and dynamic key-discovery notes",
-        "Synthetic or private-local key validation slice",
-        "Minimal parser spike if safe fixtures exist",
-        "Risk register",
-        "Adapter implementation DAG updates"
+        "Siglus key-profile examples with secret refs",
+        "Scene.pck/Gameexe.dat detector fixtures or parser spike fixtures",
+        "Static and dynamic key-discovery helper contract examples",
+        "Redacted private-local validation summary renderer",
+        "Utsushi VM/runtime evidence requirements for Siglus"
       ],
       "acceptanceCriteria": [
-        "Scene.pck/Gameexe.dat requirements are clear",
-        "Second-layer key requirements, key.toml-style handoff, static extraction, dynamic extraction, and known-key database paths are documented",
-        "Key discovery is separated from pure parsing and patching",
+        "Scene.pck/Gameexe.dat requirements are represented as validated profile fields or fixture assertions",
+        "Second-layer key requirements, key.toml-style handoff, static extraction, dynamic extraction, and known-key database paths have executable helper-boundary examples",
+        "Key discovery is separated from pure parsing and patching in code and fixtures",
         "Private-local validation can record redacted proof hashes without raw keys",
-        "VM value for validation is assessed"
+        "Siglus runtime/VM evidence requirements are written as adapter contract inputs, not as a decision gate"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Research doc review"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
         },
         {
           "type": "manual",
-          "value": "Parser spike tests if safe fixtures exist"
-        },
-        {
-          "type": "manual",
-          "value": "DAG update dry-run"
+          "value": "Siglus private-local redaction dry-run when available"
         }
       ],
       "auditFocus": ["Overcommitting without fixtures", "Legal overstatement", "VM scope creep"]
@@ -2948,7 +2952,7 @@
     },
     {
       "id": "KAIFUU-038",
-      "title": "KiriKiri XP3 encrypted research slice",
+      "title": "KiriKiri XP3 encrypted profile and fixture proof",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
@@ -2963,86 +2967,86 @@
         "KAIFUU-050",
         "KAIFUU-051"
       ],
-      "summary": "Research KiriKiri/XP3 archive encryption and patch workflows enough to define fixture requirements, helper boundaries, and production encrypted-XP3 adapter nodes.",
+      "summary": "Implement XP3 encrypted-archive profile examples, detector fixtures, helper-boundary cases, and patch-workflow constraints that directly feed the production encrypted-XP3 adapter path.",
       "deliverables": [
-        "XP3 encryption scheme notes",
-        "docs/kaifuu-encrypted-engine-research.md update",
-        "GARbro/KrkrExtract reference review",
-        "Synthetic encrypted XP3 or detector fixture plan",
-        "Future adapter DAG split"
+        "XP3 encryption profile examples",
+        "Synthetic encrypted XP3 or XP3-like detector fixtures",
+        "Helper-required and missing-key semantic error fixtures",
+        "GARbro/KrkrExtract reference behavior notes captured in adapter tests or fixture docs",
+        "Patch-workflow constraint fixtures for encrypted XP3 profiles"
       ],
       "acceptanceCriteria": [
-        "Known XP3 schemes, credential/game-title prompts, read/write filters, universal dump, and universal patch workflows are summarized with citations",
-        "Protected executable and bypass-conflict limits are represented as helper/capability errors",
-        "Production encrypted XP3 patching is separated from plaintext KAG adapter support",
-        "Private-local validation can triage owned XP3 titles without publishing keys or assets"
+        "XP3 profiles separate plain, packed, encrypted, protected executable, helper-required, universal dump, and universal patch workflows",
+        "Synthetic fixtures exercise encrypted, missing-key, helper-unavailable, and out-of-profile cases without private bytes",
+        "Detector and helper-boundary tests fail before patching writes output",
+        "Production adapter prerequisites are represented as concrete profile fields and fixture requirements"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Research doc review"
-        },
-        {
-          "type": "manual",
-          "value": "Synthetic fixture feasibility review"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
         },
         {
           "type": "command",
           "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "XP3 fixture provenance and redaction review"
         }
       ],
       "auditFocus": [
-        "Overclaiming encrypted XP3 support",
-        "Copying incompatible reference code",
-        "Ignoring Windows-oriented patch workflows"
+        "Plaintext-only KiriKiri overclaim",
+        "Encrypted XP3 helper leakage",
+        "Profile fields too vague for production adapter work"
       ]
     },
     {
       "id": "KAIFUU-039",
-      "title": "RPG Maker MV/MZ encrypted asset research slice",
+      "title": "RPG Maker MV/MZ encrypted asset fixture proof",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-014", "KAIFUU-034", "KAIFUU-035", "KAIFUU-050", "KAIFUU-051"],
-      "summary": "Research RPG Maker MV/MZ built-in encrypted assets, key discovery from System.json or encrypted images, and the line between JSON text support and media asset patching.",
+      "summary": "Implement MV/MZ encrypted asset detection, key-validation fixtures, and asset-surface policy hooks so JSON text support and encrypted media patching are separated by tested capability boundaries.",
       "deliverables": [
-        "MV/MZ encryption notes",
-        "docs/kaifuu-encrypted-engine-research.md update",
-        "Synthetic encrypted asset fixture plan",
-        "Key validation proof strategy",
-        "Asset patching follow-up nodes"
+        "Synthetic MV/MZ encrypted asset fixtures",
+        "System.json or image-derived key validation fixtures",
+        "Encrypted image/audio suffix detector coverage",
+        "Asset-surface capability report fixtures",
+        "Itotori asset-policy handoff examples"
       ],
       "acceptanceCriteria": [
-        "System.json and encrypted-image key detection paths are documented",
-        "Image no-key restoration and audio key-required behavior are represented in capability diagnostics",
-        "alpha readiness JSON text patching remains separate from full encrypted media asset localization",
-        "Public fixtures use only synthetic/public test keys"
+        "Built-in MV/MZ encrypted image and audio extensions are detected with stable semantic outcomes",
+        "Fixture keys validate decryptable synthetic assets without storing private key material",
+        "JSON text patching remains available when encrypted media is unsupported or missing keys",
+        "Asset patching prerequisites are represented as tested capability fields and handoff examples"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Research doc review"
-        },
-        {
-          "type": "manual",
-          "value": "Encrypted asset fixture review"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
         },
         {
           "type": "command",
           "value": "just fixtures-validate"
+        },
+        {
+          "type": "manual",
+          "value": "Encrypted asset fixture provenance review"
         }
       ],
       "auditFocus": [
-        "Conflating JSON text support with asset decryption",
-        "Unsafe key storage",
-        "Missing media localization surfaces"
+        "Media text silently omitted",
+        "Raw key leakage",
+        "JSON support coupled to encrypted media support"
       ]
     },
     {
       "id": "KAIFUU-040",
-      "title": "Wolf RPG Editor encrypted archive research slice",
+      "title": "Wolf encrypted archive profile and helper proof",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
@@ -3057,75 +3061,75 @@
         "KAIFUU-050",
         "KAIFUU-051"
       ],
-      "summary": "Research Wolf RPG Editor archive encryption and Pro protection-key workflows so Kaifuu can triage owned Wolf games and define the production encrypted-archive adapter path.",
+      "summary": "Implement Wolf RPG Editor encrypted-archive profile examples, detector fixtures, helper boundary cases, and protection-key semantics that feed the production encrypted Wolf adapter path.",
       "deliverables": [
-        "Wolf archive/key notes",
-        "docs/kaifuu-encrypted-engine-research.md update",
-        "WolfDec/UberWolf reference review",
-        "Detector fixture requirements",
-        "Future adapter and helper DAG updates"
+        "Wolf archive and protection-key profile examples",
+        "Synthetic encrypted archive detector fixtures",
+        "Helper-required and manual-key semantic error fixtures",
+        "WolfDec/UberWolf reference behavior notes captured in fixture docs",
+        "Private-local triage report shape for owned Wolf games"
       ],
       "acceptanceCriteria": [
-        ".wolf and common archive extensions are represented in the detector matrix",
-        "Automatic decryption key detection and Pro protection-key detection are modeled as helper capabilities",
-        "Full Wolf text patching remains gated on binary patching support",
-        "Private-local validation can report aggregate readiness without publishing archives or keys"
+        "Wolf profiles distinguish unencrypted, encrypted, protection-key, helper-required, and out-of-profile archive cases",
+        "Detector fixtures exercise missing-key, helper-unavailable, validation-failed, and safe-redaction paths",
+        "Private-local triage can summarize owned Wolf evidence without filenames, keys, paths, or decrypted text",
+        "Production adapter prerequisites are concrete profile fields and fixture requirements"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Research doc review"
-        },
-        {
-          "type": "manual",
-          "value": "Private-local triage dry-run when corpus exists"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
         },
         {
           "type": "command",
           "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "Private-local Wolf triage dry-run when corpus exists"
         }
       ],
       "auditFocus": [
-        "Assuming Wolf text patching before binary support",
-        "Missing Pro protection-key constraints",
-        "Private archive leakage"
+        "Archive/protection-key overclaiming",
+        "Helper leakage",
+        "Private corpus dependency"
       ]
     },
     {
       "id": "KAIFUU-041",
-      "title": "BGI/Ethornell encrypted profile research slice",
+      "title": "BGI/Ethornell encrypted profile and detector proof",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-014", "KAIFUU-020", "KAIFUU-034", "KAIFUU-035", "KAIFUU-051"],
-      "summary": "Research BGI/Ethornell containers, script decoding/encoding, and encrypted/compressed boundary cases enough to avoid treating BGI as purely unencrypted future work.",
+      "summary": "Implement BGI/Ethornell container, compression, key-requirement, and script-profile detector fixtures so future binary extraction work starts from tested capability boundaries.",
       "deliverables": [
-        "BGI/Ethornell profile notes",
-        "docs/kaifuu-encrypted-engine-research.md update",
-        "VNTranslationTools/BGIKit reference review",
-        "Container and key-requirement detector cases",
-        "Future binary adapter DAG split"
+        "BGI/Ethornell profile examples",
+        "Container and key-requirement detector fixtures",
+        "Header and no-header bytecode profile cases",
+        "Encrypted/compressed semantic error fixtures",
+        "VNTranslationTools/BGIKit reference behavior notes captured in fixture docs"
       ],
       "acceptanceCriteria": [
-        "Script decode/encode workflows, original-file-informed encoding, string-table or bytecode risks, and false-positive string references are summarized",
-        "BGI is treated as profile/container/bytecode-centric unless a concrete key workflow is identified",
-        "Encrypted or compressed cases fail with semantic capability errors instead of vague unsupported claims",
-        "Future production adapter nodes distinguish binary patching, container handling, and key/profile requirements"
+        "Detector fixtures separate container, bytecode, encrypted, compressed, missing profile, and unknown opcode cases",
+        "Supported unencrypted profile requirements remain distinct from encrypted/compressed readiness evidence",
+        "Out-of-profile BGI variants fail with semantic errors before patch writes",
+        "Future binary adapter prerequisites are concrete fixture requirements, not a deferred decision"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Research doc review"
-        },
-        {
-          "type": "manual",
-          "value": "Detector requirements review"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
         },
         {
           "type": "command",
           "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "BGI profile fixture provenance review"
         }
       ],
       "auditFocus": [
@@ -3136,7 +3140,7 @@
     },
     {
       "id": "KAIFUU-042",
-      "title": "Encrypted corpus alpha readiness gate",
+      "title": "Encrypted corpus readiness verifier",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
@@ -3161,18 +3165,18 @@
         "KAIFUU-055",
         "CATALOG-003"
       ],
-      "summary": "Collect the alpha encrypted-input readiness evidence across docs, detectors, key profiles, helper boundaries, redaction tests, research slices, and private-local reports.",
+      "summary": "Implement an alpha encrypted-input readiness verifier that checks docs, detectors, key profiles, helper boundaries, redaction tests, fixture proofs, and optional private-local summaries without making universal decryption claims.",
       "deliverables": [
-        "Encrypted readiness report",
-        "Alpha readiness evidence bundle",
-        "Public CI/public fixture proof",
-        "Private-local optional validation proof"
+        "Encrypted readiness verifier command or script",
+        "Alpha readiness evidence bundle schema",
+        "Public fixture evidence renderer",
+        "Private-local optional validation summary renderer"
       ],
       "acceptanceCriteria": [
-        "The milestone evidence proves encrypted corpus triage is first-class without making private corpora required for CI",
+        "The verifier proves encrypted corpus triage is first-class without making private corpora required for CI",
         "Public fixtures cover detector, key-profile, helper-unavailable, missing-key, validation-failed, and redaction paths with synthetic data",
         "Private-local runs can add aggregate readiness results for owned games without leaking keys, assets, helper dumps, decrypted scripts, local paths, or sensitive filenames",
-        "alpha readiness milestone notes avoid universal decryption and broad commercial support claims"
+        "Verifier output avoids universal decryption and broad commercial support claims"
       ],
       "verification": [
         {
@@ -3185,13 +3189,13 @@
         },
         {
           "type": "manual",
-          "value": "Encrypted readiness milestone audit"
+          "value": "Private-local redaction dry-run when corpus exists"
         }
       ],
       "auditFocus": [
-        "Encrypted workflow still treated as optional polish",
-        "CI coupled to private corpora",
-        "Alpha readiness claims exceed evidence"
+        "Private corpus leakage",
+        "Readiness mistaken for production support",
+        "Missing synthetic encrypted cases"
       ]
     },
     {
@@ -3411,30 +3415,30 @@
     },
     {
       "id": "KAIFUU-055",
-      "title": "RPG Maker VX Ace RGSS3 readiness slice",
+      "title": "RPG Maker VX Ace RGSS3 profile and fixture proof",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-011", "KAIFUU-052", "KAIFUU-053", "CATALOG-003"],
-      "summary": "Pull RPG Maker VX Ace/RGSS3 forward for the local backlog by proving RGSSAD/Ruby Marshal readiness, binary patcher needs, and first adapter split before full production support.",
+      "summary": "Implement RGSSAD/Ruby Marshal profile examples, detector fixtures, and binary-patcher dependency checks for RPG Maker VX Ace/RGSS3 so production adapter work starts from tested layered-transform boundaries.",
       "deliverables": [
-        "RGSS3 readiness record",
-        "RGSSAD/Ruby Marshal fixture plan",
-        "Binary patcher integration requirements",
-        "Future VX Ace adapter DAG split"
+        "RGSS3/RGSSAD profile examples",
+        "Ruby Marshal fixture or synthetic profile case",
+        "Binary patcher dependency fixtures",
+        "Layered transform capability diagnostics"
       ],
       "acceptanceCriteria": [
-        "Local backlog RGSS3/VX Ace weight is represented in roadmap priority",
-        "RGSSAD archive, Ruby Marshal codec, string-table/binary rewrite, and patch-back risks are separated as layered transforms",
-        "Synthetic or public fixtures define what can be tested before private-local validation",
-        "Future production adapter work is split into reviewable parser, patcher, and fixture nodes"
+        "RGSSAD archive, Ruby Marshal codec, string-table/binary rewrite, and patch-back risks are represented as layered transform profile fields",
+        "Synthetic or public fixtures exercise readable, encrypted/packed, missing-profile, and binary-patcher-required cases",
+        "Unsupported RGSS3/VX Ace variants fail with semantic capability errors before patch writes",
+        "The production adapter prerequisites are executable profile and fixture requirements"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "RGSS3 readiness record review"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
         },
         {
           "type": "command",
@@ -3442,7 +3446,7 @@
         },
         {
           "type": "manual",
-          "value": "Binary patcher dependency audit"
+          "value": "RGSS3 fixture provenance review"
         }
       ],
       "auditFocus": [
@@ -3460,25 +3464,24 @@
       "projects": ["kaifuu", "suite"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-015", "KAIFUU-036", "KAIFUU-040", "KAIFUU-052", "KAIFUU-053"],
-      "summary": "Create readiness profiles for high-value packed or encrypted engines such as Siglus, Unity/Naninovel, Wolf, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2, using readiness to create production adapter work rather than treating unsupported extraction as permanent scope.",
+      "summary": "Implement validated readiness profiles for high-value packed or encrypted engines such as Siglus, Unity/Naninovel, Wolf, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2, using readiness as executable capability metadata rather than permanent non-support scope.",
       "deliverables": [
         "Packed-engine readiness profile template",
         "Siglus, Unity, Wolf, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2 profile seeds",
-        "Capability-level summary report",
-        "Adapter implementation split recommendations"
+        "Capability-level summary renderer",
+        "Profile validation fixtures"
       ],
       "acceptanceCriteria": [
         "Every readiness profile states identify/inventory/extract/patch status and required container, crypto, codec, key, helper, and patch-back stages",
         "Profiles can be generated from public synthetic fixtures and supplemented by private-local aggregate reports",
         "No readiness profile serializes raw keys, private asset paths, decrypted scripts, helper dumps, or story filenames",
-        "Adapter implementation nodes are created only where readiness evidence and fixture strategy are strong enough",
         "Profiles distinguish unknown/out-of-profile semantic failures from bugs inside claimed support profiles",
-        "High-value profiles produce explicit follow-up adapter nodes when extraction and patching evidence is strong enough"
+        "Profile validation fails when required capability, fixture, key, helper, or patch-back fields are missing"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Packed-engine readiness report review"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
         },
         {
           "type": "command",
@@ -3486,14 +3489,14 @@
         },
         {
           "type": "manual",
-          "value": "Private-local redaction audit"
+          "value": "Private-local profile redaction audit"
         }
       ],
       "auditFocus": [
         "Readiness profiles mistaken for support claims",
         "Secret/private evidence leakage",
-        "Adapter nodes created without fixture strategy",
-        "Readiness treated as a permanent non-support state instead of a production adapter staging step"
+        "Profile fields too vague for production adapter work",
+        "Readiness treated as a permanent non-support state instead of executable capability metadata"
       ]
     },
     {
@@ -3720,72 +3723,78 @@
     },
     {
       "id": "KAIFUU-017",
-      "title": "Majiro and CatSystem2 research adapters",
+      "title": "Majiro and CatSystem2 format fixture spikes",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-011", "KAIFUU-020", "KAIFUU-000"],
-      "summary": "Research and spike Majiro and CatSystem2 support enough to split each into implementation specs with real fixtures.",
+      "summary": "Build narrow Majiro and CatSystem2 parser spikes around redistributable or synthetic fixtures so later adapters inherit concrete format, string-table, encoding, and patch-back requirements.",
       "deliverables": [
-        "Research notes",
-        "Parser spike if feasible",
-        "Fixture requirements",
-        "Follow-up DAG nodes"
+        "Majiro synthetic or public parser fixture",
+        "CatSystem2 synthetic or public parser fixture",
+        "String-reference and encoding spike tests",
+        "Patch-back constraint fixture docs"
       ],
       "acceptanceCriteria": [
-        "Each engine has a scoped next implementation node or explicit blocker",
-        "Reference implementations are cataloged",
-        "Binary risks are documented"
+        "Each engine has at least one fixture-backed parser or detector spike, or a semantic unsupported fixture explaining the missing prerequisite",
+        "String table, encoding, opcode/reference, and patch-back constraints are captured as tests or fixture metadata",
+        "No private game bytes are committed",
+        "Later adapter work can start from concrete fixture requirements and parser evidence"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Research doc review"
+          "type": "command",
+          "value": "cargo test --workspace"
         },
         {
           "type": "manual",
-          "value": "Spike tests if fixtures exist"
+          "value": "Majiro/CatSystem2 fixture provenance review"
         }
       ],
-      "auditFocus": ["Spec vagueness", "Unsupported claims", "Fixture scarcity"]
+      "auditFocus": [
+        "Spec ending as notes only",
+        "Unsafe fixture provenance",
+        "Patch-back constraints omitted"
+      ]
     },
     {
       "id": "KAIFUU-018",
-      "title": "Unity localization asset research",
+      "title": "Unity localization asset fixture spike",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
       "projects": ["kaifuu", "utsushi"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-020", "SHARED-011", "KAIFUU-021"],
-      "summary": "Assess Unity text extraction and patching strategies for I2 Localization, TextMeshPro, Addressables, and common asset bundle layouts.",
+      "summary": "Build a fixture-backed Unity localization asset spike for one or more common patterns such as I2 Localization, TextMeshPro, Addressables, or asset bundles, with capability errors for unsupported patterns.",
       "deliverables": [
-        "Unity research doc",
-        "Fixture requirements",
-        "Tooling options",
-        "Follow-up DAG nodes"
+        "Unity localization asset fixture",
+        "Pattern-specific detector or parser spike",
+        "Unsupported-pattern semantic errors",
+        "Patch/export capability fixture docs"
       ],
       "acceptanceCriteria": [
-        "Common Unity localization storage patterns are separated",
-        "Patch feasibility is rated by asset type",
-        "Runtime validation implications are documented"
+        "At least one Unity localization storage pattern has a redistributable fixture and parser or detector spike",
+        "Unsupported Unity patterns return semantic capability errors rather than broad Unity support claims",
+        "Patch capability is represented as capability metadata for the fixture profile",
+        "Runtime validation implications are captured as adapter limitations and evidence-tier constraints"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Research doc review"
+          "type": "command",
+          "value": "cargo test --workspace"
         },
         {
           "type": "manual",
-          "value": "Optional public fixture spike"
+          "value": "Unity fixture provenance review"
         }
       ],
       "auditFocus": [
-        "One-size-fits-all Unity assumptions",
-        "Asset bundle mutation risk",
-        "Scope explosion"
+        "Broad Unity overclaiming",
+        "Fixture provenance",
+        "Patch capability handwaving"
       ]
     },
     {
@@ -3806,7 +3815,7 @@
       ],
       "acceptanceCriteria": [
         "Shift-JIS, UTF-8, and UTF-16LE handling is specified",
-        "Patch writers use atomic output rules where feasible",
+        "Patch writers use atomic output rules for supported write targets",
         "Path traversal and partial writes fail safely"
       ],
       "verification": [
@@ -3985,29 +3994,34 @@
       "projects": ["kaifuu", "utsushi"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-018", "KAIFUU-021", "KAIFUU-020"],
-      "summary": "Prototype Unity localization asset extraction for one selected pattern after research separates I2, TextMeshPro, Addressables, and asset bundles.",
+      "summary": "Prototype Unity localization asset extraction and patching for one selected fixture-backed pattern with explicit unsupported capability errors for the rest.",
       "deliverables": [
         "Unity adapter prototype",
         "Asset fixture",
         "Capability docs",
-        "Follow-up implementation nodes"
+        "Extraction and patch smoke tests"
       ],
       "acceptanceCriteria": [
-        "Prototype names the Unity localization pattern it supports",
-        "Unsupported asset bundle mutation is explicit",
-        "Runtime validation implications are documented"
+        "The selected Unity pattern can extract localizable text or metadata from a public fixture",
+        "Patch-back support is either implemented for the selected fixture profile or blocked with a semantic capability error before writes",
+        "Unsupported Unity patterns remain explicitly out-of-profile",
+        "No follow-up roadmap decisions are required to evaluate prototype success"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Unity prototype review"
-        },
-        {
           "type": "command",
           "value": "cargo test --workspace"
+        },
+        {
+          "type": "manual",
+          "value": "Unity prototype fixture review"
         }
       ],
-      "auditFocus": ["One-size-fits-all Unity claims", "Asset mutation risk", "Scope explosion"]
+      "auditFocus": [
+        "Prototype overclaim",
+        "Patch-back ambiguity",
+        "Unsupported Unity pattern drift"
+      ]
     },
     {
       "id": "KAIFUU-026",
@@ -4018,30 +4032,27 @@
       "projects": ["kaifuu", "itotori"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-021", "SHARED-011"],
-      "summary": "Prototype OCR and text-region extraction for image/UI assets as evidence and drafting input without silently treating OCR as truth.",
+      "summary": "Prototype OCR and text-region extraction for image/UI assets as structured evidence and drafting input without silently treating OCR as truth.",
       "deliverables": [
-        "OCR prototype",
+        "OCR prototype command or service",
         "Text-region fixture output",
-        "Uncertainty findings",
+        "Uncertainty finding fixtures",
         "Asset provenance records"
       ],
       "acceptanceCriteria": [
-        "Fixture images produce text regions with provenance",
-        "Uncertain OCR is represented as findings",
-        "OCR output does not overwrite source asset policy decisions"
+        "Fixture images produce schema-valid text regions with provenance",
+        "Uncertain OCR is represented as findings with source asset references",
+        "OCR output does not overwrite source asset policy decisions",
+        "The prototype can run on public fixtures without live credentials or private assets"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "OCR prototype report"
-        },
-        {
-          "type": "manual",
-          "value": "Asset fixture review"
-        },
-        {
           "type": "command",
           "value": "just check"
+        },
+        {
+          "type": "manual",
+          "value": "Asset OCR fixture review"
         }
       ],
       "auditFocus": [
@@ -6218,7 +6229,7 @@
       "dependsOn": ["ITOTORI-002"],
       "summary": "Narrow the read-only Itotori API service factory so query handlers receive only the dependencies they need.",
       "deliverables": [
-        "Read-only API service factory review",
+        "Read-only API service factory implementation",
         "Narrowed dependency interface",
         "Query handler wiring update",
         "Regression tests for read-only endpoints"
@@ -6260,7 +6271,7 @@
       "dependsOn": ["ITOTORI-003", "SHARED-008"],
       "summary": "Add explicit authorization for getOutboxEvent and getJob read paths before any API or dashboard surface exposes queue internals.",
       "deliverables": [
-        "Queue read permission decision",
+        "Queue read permission constants",
         "Authorized getOutboxEvent read path",
         "Authorized getJob read path",
         "Denial tests for queue read access"
@@ -6302,10 +6313,10 @@
       "dependsOn": ["ITOTORI-003"],
       "summary": "Define and test the audit trail, immutability, and retention or archival policy for queue lifecycle records after worker behavior stabilizes.",
       "deliverables": [
-        "Queue lifecycle audit policy",
+        "Queue lifecycle audit configuration",
         "Immutable job_events regression tests",
-        "Retention or archival strategy",
-        "Worker diagnostic event coverage review"
+        "Retention or archival implementation hook",
+        "Worker diagnostic event coverage tests"
       ],
       "acceptanceCriteria": [
         "Job lifecycle transitions leave an auditable record that cannot be silently rewritten",
@@ -6319,8 +6330,8 @@
           "value": "pnpm --filter @itotori/db test"
         },
         {
-          "type": "manual",
-          "value": "Queue retention policy review"
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
         },
         {
           "type": "command",
@@ -7134,16 +7145,16 @@
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Mock agent tests"
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
         },
         {
           "type": "manual",
-          "value": "Runtime finding fixtures"
-        },
-        {
-          "type": "manual",
-          "value": "Triage tests"
+          "value": "Runtime-evidence QA fixture review"
         }
       ],
       "auditFocus": [
@@ -7154,76 +7165,87 @@
     },
     {
       "id": "UTSUSHI-012",
-      "title": "Scene VM feasibility report",
+      "title": "Controlled playback runtime core",
       "status": "planned",
-      "priority": "P2",
+      "priority": "P1",
       "target": "alpha",
-      "projects": ["utsushi", "kaifuu"],
-      "parallelGroup": "engine-research",
-      "dependsOn": ["UTSUSHI-001", "KAIFUU-020", "UTSUSHI-000"],
-      "summary": "Evaluate when engine-specific VMs are worth building for validation, branch navigation, screenshots, recordings, and browser playback, using launch/capture probes as the baseline alternative.",
+      "projects": ["utsushi", "shared", "itotori"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-001", "UTSUSHI-003", "SHARED-005", "UTSUSHI-000"],
+      "summary": "Implement the reusable controlled-playback contract that future runtime wrappers, instrumented runtimes, and engine VMs use for jump targets, snapshots, replay sessions, recordings, browser embedding, and agent-reviewable state.",
       "deliverables": [
-        "VM feasibility report",
-        "Engine ranking",
-        "Prototype selection",
-        "Follow-up DAG nodes"
+        "Controlled playback session schema",
+        "Jump target and snapshot metadata model",
+        "Replay and recording capability extensions",
+        "Runtime adapter trait extensions or companion traits",
+        "Fixture adapter implementation of the controlled-playback contract"
       ],
       "acceptanceCriteria": [
-        "Accuracy target is validation usefulness first, pixel-perfect second",
-        "Each candidate is compared against wrapper, hook, Wine, browser, and static-probe alternatives",
-        "Siglus, RPG Maker, and KiriKiri are compared",
-        "Build-vs-skip criteria are explicit",
-        "The report can create follow-up DAG nodes without blocking alpha readiness runtime probes"
+        "Specs build reusable runtime primitives rather than making engine-selection decisions",
+        "A controlled playback session can name bridge-linked jump targets, current runtime state, screenshots, recordings, and limitations",
+        "Adapters can honestly advertise whether they support static trace, launch/capture, instrumented runtime, partial VM, or reference VM control surfaces",
+        "The fixture runtime exercises at least one jump target, one snapshot, and one replay or recording metadata path",
+        "Itotori can ingest controlled-playback metadata without treating it as stronger evidence than its evidence tier"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Research doc review"
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
         },
         {
           "type": "manual",
-          "value": "DAG update dry-run"
+          "value": "Itotori ingestion contract review"
         }
       ],
       "auditFocus": [
-        "Engine-specific sinkhole",
-        "Pixel-perfect barrier confusion",
-        "Undefined payoff"
+        "Decision-making disguised as a spec",
+        "Controlled playback overclaiming runtime fidelity",
+        "Adapter traits that cannot support future VMs",
+        "Itotori ingestion losing evidence-tier boundaries"
       ]
     },
     {
       "id": "UTSUSHI-013",
-      "title": "Browser playback experiment",
+      "title": "Browser playback vertical slice",
       "status": "planned",
-      "priority": "P3",
+      "priority": "P2",
       "target": "continuous",
       "projects": ["utsushi"],
       "parallelGroup": "engine-research",
       "dependsOn": ["UTSUSHI-010", "UTSUSHI-012"],
-      "summary": "Experiment with WebAssembly/browser playback or partial runtime visualization for one selected engine family.",
+      "summary": "Implement a browser playback vertical slice for a controlled fixture or selected engine profile, exercising jump targets, screenshots, annotations, and artifact reporting through the Utsushi runtime evidence contract.",
       "deliverables": [
-        "Prototype",
-        "Performance notes",
-        "Fidelity notes",
-        "Next-spec recommendation"
+        "Browser playback prototype",
+        "Controlled playback fixture",
+        "Screenshot and annotation artifact output",
+        "Runtime evidence smoke test"
       ],
       "acceptanceCriteria": [
-        "Prototype shows whether browser playback helps review",
-        "Limitations are measured",
-        "No alpha readiness dependency is introduced"
+        "The browser slice can load a public fixture or selected engine profile without private assets",
+        "A reviewer can jump to at least one known moment and see linked runtime evidence",
+        "Limitations and evidence tiers are visible in the report and UI",
+        "Artifacts remain under the managed artifact root"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Manual demo"
+          "type": "command",
+          "value": "pnpm exec vitest run apps/runtime-web-review/test/dashboard.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
         },
         {
           "type": "manual",
-          "value": "Smoke test if automated feasible"
-        },
-        {
-          "type": "manual",
-          "value": "Research summary"
+          "value": "Browser playback smoke demo"
         }
       ],
       "auditFocus": [
@@ -7451,7 +7473,14 @@
       "target": "alpha",
       "projects": ["suite", "itotori", "utsushi"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": ["ALPHA-001", "ITOTORI-023", "UTSUSHI-005", "ALPHA-000", "ITOTORI-024"],
+      "dependsOn": [
+        "ALPHA-001",
+        "ITOTORI-023",
+        "UTSUSHI-005",
+        "ALPHA-000",
+        "ITOTORI-024",
+        "UTSUSHI-012"
+      ],
       "summary": "Make human draft feedback from a playable or runtime-reviewed slice flow into triage, decisions, repair jobs, and updated patch output.",
       "deliverables": [
         "Feedback UX",
@@ -7486,46 +7515,46 @@
     },
     {
       "id": "ALPHA-003",
-      "title": "Pre-alpha cost and quality target report",
+      "title": "Pre-alpha cost and quality benchmark run",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["suite", "itotori"],
       "parallelGroup": "alpha-integration",
       "dependsOn": ["ALPHA-001", "ITOTORI-026", "ITOTORI-027", "ALPHA-000", "ITOTORI-039"],
-      "summary": "Produce the first credible pre-alpha report comparing raw MTL, Itotori drafts, deterministic QA, LLM QA, cost, and runtime evidence on fixture and private-local data before a full-game localization project begins.",
-      "deliverables": ["Benchmark run", "Cost report", "Quality report", "README-safe summary"],
+      "summary": "Run the first credible pre-alpha benchmark comparing raw MTL, Itotori drafts, deterministic QA, LLM QA, cost, and runtime evidence on fixture and private-local data before a full-game localization project begins.",
+      "deliverables": [
+        "Benchmark run artifacts",
+        "Cost report artifact",
+        "Quality report artifact",
+        "README-safe summary renderer"
+      ],
       "acceptanceCriteria": [
         "Reports avoid unverifiable public claims",
         "MTL baseline is included",
-        "The $25 target is evaluated with real token/count data",
-        "Reports include raw MTL, Itotori draft, QA-agent evaluation, deterministic QA output, token/cost data, provider/model metadata, and fixture hashes",
-        "At least one fake or recorded-provider path is deterministic for CI and at least one local or explicitly opted-in live-provider proof exercises real LLM response handling before a full-game project begins"
+        "Cost accounting includes model/provider metadata",
+        "Private-local results are summarized safely when present",
+        "The benchmark command can run without private-local corpora by using public fixtures"
       ],
       "verification": [
         {
           "type": "manual",
-          "value": "Benchmark command"
+          "value": "Benchmark report review"
         },
         {
           "type": "manual",
-          "value": "Report schema validation"
+          "value": "Cost ledger review"
         },
         {
-          "type": "manual",
-          "value": "Manual report audit"
+          "type": "command",
+          "value": "just check"
         }
       ],
-      "auditFocus": [
-        "Quality self-delusion",
-        "Private data leakage",
-        "Cost optimism",
-        "Real LLM behavior deferred until alpha stress testing"
-      ]
+      "auditFocus": ["Benchmark theater", "Unclear cost math", "Private result leakage"]
     },
     {
       "id": "ALPHA-004",
-      "title": "Alpha engine readiness and breadth demonstration",
+      "title": "Alpha engine capability matrix generator",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
@@ -7542,32 +7571,35 @@
         "CATALOG-004",
         "ALPHA-000"
       ],
-      "summary": "Demonstrate engine breadth through MV/MZ positive support, TyranoScript null-key support when complete, and capability-leveled readiness profiles for packed/encrypted engines instead of over-weighting RenPy or plaintext-only KiriKiri.",
+      "summary": "Implement a generated engine capability matrix that derives breadth/readiness evidence from adapter registries, readiness profiles, and fixture runs instead of hand-written claims.",
       "deliverables": [
-        "Engine readiness matrix",
-        "MV/MZ full-surface run artifacts",
-        "TyranoScript null-key run artifacts when complete",
-        "Packed-engine readiness reports",
-        "Known limitations"
+        "Engine capability matrix schema",
+        "Matrix generator command or script",
+        "MV/MZ full-surface run artifact inputs",
+        "TyranoScript null-key artifact inputs when complete",
+        "Packed-engine readiness profile inputs",
+        "Known-limitation renderer"
       ],
       "acceptanceCriteria": [
-        "The architecture is shown across positive extraction/patch adapters and readiness-only packed/encrypted profiles",
+        "The matrix is generated from adapter registry, fixture output, readiness profile, and validation artifact inputs",
+        "Positive extraction/patch adapters and readiness-only packed/encrypted profiles are mechanically distinguished",
         "RenPy is not presented as an alpha Japanese opportunity driver",
         "KiriKiri breadth is represented by XP3/readiness evidence rather than plaintext-only support",
-        "Capability levels distinguish identify, inventory, extract, and patch for each engine family"
+        "Capability levels distinguish identify, inventory, extract, and patch for each engine family",
+        "Stale or manually edited capability entries fail validation"
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Adapter tests"
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
         },
         {
           "type": "manual",
-          "value": "Multi-engine integration run"
-        },
-        {
-          "type": "manual",
-          "value": "Dashboard review"
+          "value": "Generated matrix artifact review"
         }
       ],
       "auditFocus": [
@@ -7600,22 +7632,24 @@
         "ITOTORI-042",
         "CATALOG-004",
         "KAIFUU-052",
-        "KAIFUU-053"
+        "KAIFUU-053",
+        "ALPHA-002"
       ],
-      "summary": "Prepare the suite to start a first real localization project: docs, install flow, security posture, known limitations, examples, green required checks, and roadmap continuation.",
+      "summary": "Prepare the suite to start a first real localization project with executable install, docs, security, limitation, example, and readiness checks.",
       "deliverables": [
         "Alpha readiness README",
         "Install docs",
-        "Security/limitations docs",
-        "Alpha readiness checklist",
-        "Next DAG tranche"
+        "Security and limitations docs",
+        "Alpha readiness checklist command or checked artifact",
+        "Fresh-clone public fixture demo command coverage"
       ],
       "acceptanceCriteria": [
-        "A new user can run public fixture demos",
+        "A new user can run public fixture demos from a fresh clone",
         "Known legal/safety boundaries are practical and not overstated",
         "CI, hello-world workflows, benchmark smoke, and recorded or opted-in real-provider proof are required and green",
         "Docs frame the product as catalog, inventory, readiness, extraction, localization, patching, and validation rather than only translation",
-        "The milestone is framed as readiness to start a real localization project, not as a terminal product release"
+        "The milestone is framed as readiness to start a real localization project, not as a terminal product release",
+        "Readiness docs are checked against generated capability and benchmark artifacts rather than hand-maintained claims"
       ],
       "verification": [
         {
@@ -7631,15 +7665,15 @@
           "value": "just hello"
         },
         {
-          "type": "manual",
-          "value": "Docs audit"
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
         }
       ],
       "auditFocus": [
-        "Overclaiming support",
-        "Setup brittleness",
-        "Missing limitation disclosure",
-        "Full-game alpha testing used to excuse missing pre-alpha validation"
+        "Papering over known limitations",
+        "Install instructions untested",
+        "Milestone treated as a product endpoint",
+        "Docs drifting from generated capability artifacts"
       ]
     },
     {

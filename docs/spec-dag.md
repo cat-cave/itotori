@@ -83,6 +83,15 @@ Each node is a single PR-reviewable unit. A good node is large enough to justify
 planning, implementation, and audit, but small enough that a reviewer can reason
 about the diff without accepting a vague epic.
 
+Nodes are execution specs, not decision records. Product, strategy, and priority
+decisions are made before a node enters the DAG. A node must therefore produce a
+concrete implementation artifact such as code, schema, fixtures, generated
+reports, validators, dashboards, adapters, commands, docs tied to executable
+behavior, or tests. Avoid nodes whose main output is a feasibility report,
+recommendation, risk register, future DAG split, or choice between alternatives.
+If a report is necessary, the node should build the generator, schema,
+validation rules, and fixture inputs that make the report reproducible.
+
 Every node includes:
 
 - `id`: stable id such as `KAIFUU-007`.
@@ -188,7 +197,9 @@ The graph intentionally exposes early parallel lanes:
 - `translation-loop`: drafting, patch export, repair, and rerun mechanics.
 - `context-agents`: focused context-producing agents.
 - `engine-adapters`: real extraction and patching adapters.
-- `engine-research`: format, VM, and future adapter research.
+- `engine-research`: fixture-backed format, profile, helper-boundary, and
+  parser-spike proof work that prepares engine adapters without becoming
+  notes-only research.
 - `utsushi-core`: runtime adapter traits, evidence ingestion, and artifacts.
 - `runtime-adapters`: pragmatic validation probes and future VM work.
 - `alpha-integration`: vertical slices that prove the suite is ready to start a
@@ -205,10 +216,12 @@ When adding a node:
 
 1. Use a stable id with the owning prefix.
 2. Keep it PR-reviewable.
-3. Add only real dependencies; avoid using dependencies as vague sequencing.
-4. Include concrete verification commands or tests.
-5. Include audit focus areas specific enough for a reviewer to find bugs.
-6. Run `just roadmap-validate`.
+3. Make it implementable; do not use the DAG node to decide whether work should
+   exist.
+4. Add only real dependencies; avoid using dependencies as vague sequencing.
+5. Include concrete verification commands or tests.
+6. Include audit focus areas specific enough for a reviewer to find bugs.
+7. Run `just roadmap-validate`.
 
 When an audit finds issues:
 

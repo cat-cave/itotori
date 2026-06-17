@@ -6,10 +6,11 @@ The scaffold implements a fixture runtime. It optimizes for validation usefulnes
 
 ## First Useful Target
 
-Utsushi is not primarily "the Rust game engine project." It is the runtime
-evidence layer for Itotori and Kaifuu. Engine VMs, WASM playback, browser
-review, Wine launchers, and screenshot capture are adapter strategies under that
-goal.
+Utsushi is the runtime evidence layer for Itotori and Kaifuu, and that evidence
+contract is the product bar. Engine VMs, WASM playback, browser review, Wine
+launchers, screenshot capture, and embedded demos are implementation strategies
+under that bar. They are not vanity projects, but they are also not optional
+when they are the only credible way to provide the runtime control Itotori needs.
 
 The degenerate useful case is:
 
@@ -22,22 +23,48 @@ The degenerate useful case is:
 4. Itotori ingests that report so humans and QA agents can review source,
    translation, runtime evidence, findings, and feedback together.
 
-That is valuable even before Utsushi can emulate a full engine. It catches
-broken protected markup, missing text, wrong patch output, glyph/font problems,
-line overflow, branch reachability gaps, untranslated UI/image surfaces, and
-runtime-only strings that static extraction missed.
+That is valuable even before Utsushi can emulate a full engine, but it is not a
+license for half-measures. It catches broken protected markup, missing text,
+wrong patch output, glyph/font problems, line overflow, branch reachability
+gaps, untranslated UI/image surfaces, and runtime-only strings that static
+extraction missed.
 
 The first real-engine proof should be an RPG Maker MV/MZ validation probe that
 uses the existing MV/MZ runtime where possible, such as browser or NW.js-style
-launch/capture plus injected observation hooks, rather than a Rust reimplementation
-of RPG Maker. A Rust-side adapter still owns orchestration, capability reporting,
-artifact storage, semantic errors, and normalized runtime evidence.
+launch/capture plus injected observation hooks. That is not because Utsushi is
+afraid of building runtimes; it is because RPG Maker already ships a web-shaped
+runtime that can plausibly deliver trace, branch, snapshot, screenshot, and
+review evidence faster than a ground-up port. A Rust-side adapter still owns
+orchestration, capability reporting, artifact storage, semantic errors, and
+normalized runtime evidence.
 
-Full or partial VMs are justified later when they clearly improve branch
-navigation, jump-to-moment review, deterministic replay, screenshot automation,
-browser playback, or cross-platform validation beyond what launch/capture hooks
-can provide. Siglus, KiriKiri, RPG Maker, and Ren'Py should be evaluated through
-that build-vs-wrap lens before Utsushi commits to a large engine-port effort.
+For engines where the native runtime cannot provide controlled playback,
+deterministic jumping, snapshots, recordings, embedded browser demos, or
+agent-inspectable state, a full or partial VM is the correct direction. The
+existence of `siglus_rs` is evidence that this path is practical for at least
+some commercial VN engines. The product decision is that Utsushi must support
+controlled playback when Itotori needs it. Engine-specific specs can then choose
+the implementation strategy, such as wrapping, instrumentation, Wine/native
+launch, browser runtime, partial VM, or reference VM, against that already-agreed
+feature bar.
+
+## Runtime Strategy Bar
+
+Every real-engine runtime adapter should be classified by the strongest control
+surface it can honestly provide:
+
+| Strategy                 | When it is acceptable                                                                 | When it is not enough                                                                 |
+| ------------------------ | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| Static probe             | E0 structure, route hints, asset links, and launch planning.                          | Any claim that localized text was observed in a running game.                         |
+| Launch/capture wrapper   | The original runtime can be launched, navigated, captured, and bounded reliably.      | Jump-to-moment, branch control, embedded demos, or agent state inspection are needed. |
+| Instrumented runtime     | Hooks can observe text, choices, scene state, screenshots, and deterministic markers. | Hooks are brittle, host-specific, or cannot produce stable replay/snapshot semantics. |
+| Partial VM/playback core | Enough script semantics can be implemented for review, replay, branch, and snapshots. | The feature needs pixel/reference fidelity outside the implemented semantic subset.   |
+| Reference runtime/VM     | Engine behavior is matched against reference output for a declared feature profile.   | The profile is too broad to validate or cannot be tested against reference behavior.  |
+
+The first credible long-term Utsushi proof is not merely "a screenshot exists."
+It is controlled playback evidence: jump to a known localized moment, observe the
+line and state, capture an artifact, attach reviewer or agent findings, and
+repeat the run deterministically enough that a failed validation is debuggable.
 
 ## Runtime Evidence v0.2
 

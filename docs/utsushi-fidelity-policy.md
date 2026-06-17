@@ -198,13 +198,15 @@ Utsushi owns runtime probes, traces, captures, replay sessions, and VM/playback
 adapters. It must be useful even when imperfect, as long as its reports state the
 capability level honestly.
 
-Engine VMs are not the entry bar. The first real-engine target is an evidence
-probe that uses an existing runtime when that is cheaper and more reliable. For
-RPG Maker MV/MZ, that likely means launching or instrumenting the browser/NW.js
-runtime and capturing trace plus frame evidence before attempting any Rust
-reimplementation. A VM becomes the right answer only when it provides concrete
-validation leverage that wrapper-based probes cannot: deterministic jumping,
-branch control, replay, browser-distributable review, or reference comparison.
+Engine VMs are not vanity scope and they are not forbidden complexity. The first
+real-engine target may use an existing runtime when that is cheaper and stronger.
+For RPG Maker MV/MZ, that likely means launching or instrumenting the
+browser/NW.js runtime and capturing trace plus frame evidence before attempting a
+Rust reimplementation. For engines where the native runtime cannot provide
+controlled playback, deterministic jumping, snapshot state, embedded review, or
+agent-inspectable evidence, a partial or full VM is the expected path. A weak
+wrapper that cannot support the envisioned Itotori workflows must not be treated
+as an adequate substitute just because it is simpler.
 
 ## Alpha Bar
 
@@ -217,7 +219,10 @@ For alpha readiness, Utsushi must support synthetic fixture evidence through E2:
 4. Allow Itotori to ingest the report without weakening the tier language.
 
 Engine-specific VM/playback work can start before E4 fidelity is possible, but
-must label itself as E1, E2, or E3 until reference comparison exists.
+must label itself as E1, E2, or E3 until reference comparison exists. A partial VM
+can still be a successful product milestone when it supports controlled playback,
+jump-to-moment review, snapshots, recordings, browser embedding, and repeatable
+agent validation inside a declared feature profile.
 
 The first real-engine alpha proof should be an RPG Maker MV/MZ validation probe
 that demonstrates at least one patched project can produce evidence useful to
@@ -225,3 +230,10 @@ Itotori review: reachable text or choice trace, screenshot artifact references,
 semantic launch/capture errors when unsupported, and visible fidelity limits.
 Static route analysis may accompany that report, but it must remain E0 unless an
 actual runtime path observed the content.
+
+The first VM-track proof should build concrete controlled-playback primitives,
+not a decision report. Specs in the roadmap should implement the agreed
+direction: reusable session state, jump targets, snapshots, replay metadata,
+recording hooks, browser embedding contracts, and adapter capability boundaries.
+Engine-specific adapter specs can then implement those primitives for RPG Maker,
+Siglus, KiriKiri, or another selected engine profile.
