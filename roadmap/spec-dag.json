@@ -5,9 +5,9 @@
     "generatedFrom": "Itotori hello-world monorepo state after commit aa9339c",
     "currentBaseline": "DB-backed fixture hello world across Itotori, Kaifuu, and Utsushi",
     "priorityDefinitions": {
-      "P0": "Critical orchestration or MVP blocker. A failed P0 audit blocks merge and must be repaired immediately.",
-      "P1": "Required for the MVP target. P1 audit findings block merge for the owning spec.",
-      "P2": "Important quality, scale, or post-MVP work. P2 findings may become new DAG nodes.",
+      "P0": "Critical orchestration, data integrity, or alpha-readiness blocker. A failed P0 audit blocks merge and must be repaired immediately.",
+      "P1": "Required for alpha readiness or for the owning spec acceptance criteria. P1 audit findings block merge for the owning spec.",
+      "P2": "Important quality, scale, or continuous expansion work. P2 findings may become new DAG nodes.",
       "P3": "Exploratory, nice-to-have, or research work. P3 findings should be batched unless cheap."
     },
     "statusDefinitions": {
@@ -59,13 +59,13 @@
       ]
     },
     {
-      "id": "MVP-000",
-      "title": "MVP definition of done and release gate matrix",
+      "id": "ALPHA-000",
+      "title": "Alpha localization project readiness definition",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["suite", "universal"],
-      "parallelGroup": "release",
+      "parallelGroup": "milestone",
       "dependsOn": [
         "UNIV-001",
         "UNIV-005",
@@ -78,22 +78,22 @@
         "UNIV-008",
         "ITOTORI-031"
       ],
-      "summary": "Define exact MVP engines, fixture requirements, dashboard flows, quality/cost reports, non-goals, release checks, and demo script before integration milestones claim MVP completion.",
+      "summary": "Define the exact feature set, engine/readiness set, fixture requirements, dashboard flows, quality/cost reports, non-goals, readiness checks, and demo script required before starting the first real localization project.",
       "deliverables": [
-        "docs/mvp-definition-of-done.md",
-        "Release gate matrix",
+        "docs/alpha-localization-project-readiness.md",
+        "Alpha readiness check matrix",
         "Demo script",
         "Known non-goals"
       ],
       "acceptanceCriteria": [
-        "MVP engines and fixture requirements are explicit",
-        "Required dashboard workflows and quality/cost reports are named",
-        "Known non-goals are documented"
+        "Alpha engine/readiness set and fixture requirements are explicit",
+        "Required dashboard workflows, real-provider proof, and quality/cost reports are named",
+        "Known non-goals are documented without implying the monorepo enters a terminal product state"
       ],
       "verification": [
         {
           "type": "manual",
-          "value": "MVP gate review"
+          "value": "Alpha readiness definition review"
         },
         {
           "type": "command",
@@ -104,14 +104,19 @@
           "value": "just check"
         }
       ],
-      "auditFocus": ["Moving MVP target", "Implicit demo requirements", "Unclear non-goals"]
+      "auditFocus": [
+        "Moving alpha readiness target",
+        "Implicit first-project requirements",
+        "Benchmarking or real-LLM proof deferred until full-game testing",
+        "Unclear non-goals"
+      ]
     },
     {
       "id": "UTSUSHI-000",
       "title": "Runtime probe environment and fidelity policy",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi", "kaifuu", "itotori"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UNIV-001"],
@@ -148,7 +153,7 @@
       "title": "Product workflow and HITL UX spec",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["UNIV-001", "UTSUSHI-000"],
@@ -185,7 +190,7 @@
       "title": "Engine fixture sourcing and reference implementation policy",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "universal"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["UNIV-005", "UNIV-008"],
@@ -226,7 +231,7 @@
       "title": "Localization surface inventory and contract ADR",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
       "parallelGroup": "contracts",
       "dependsOn": ["UNIV-001"],
@@ -308,7 +313,7 @@
       "title": "GitHub issue sync for DAG nodes",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["universal"],
       "parallelGroup": "roadmap-infra",
       "dependsOn": ["UNIV-001"],
@@ -346,7 +351,7 @@
       "title": "Agent worktree lifecycle playbook",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["universal"],
       "parallelGroup": "roadmap-infra",
       "dependsOn": ["UNIV-001", "UNIV-006"],
@@ -383,7 +388,7 @@
       "title": "Affected task detection and CI cache hardening",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["universal"],
       "parallelGroup": "tooling",
       "dependsOn": ["UNIV-001", "UNIV-007"],
@@ -424,7 +429,7 @@
       "title": "Golden fixture and private corpus policy",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["universal", "shared"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["UNIV-001"],
@@ -464,7 +469,7 @@
       "title": "Spec audit templates and finding schema",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["universal", "shared"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["UNIV-001"],
@@ -501,7 +506,7 @@
       "title": "Toolchain version and upgrade policy",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["universal"],
       "parallelGroup": "tooling",
       "dependsOn": ["UNIV-001"],
@@ -538,7 +543,7 @@
       "title": "BDD and fixture-driven testing standard",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["universal", "shared"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["UNIV-001", "UNIV-005"],
@@ -575,7 +580,7 @@
       "title": "Orchestrator claim, plan, audit lifecycle CLI",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["universal"],
       "parallelGroup": "roadmap-infra",
       "dependsOn": ["UNIV-002", "UNIV-003", "UNIV-006", "UNIV-008"],
@@ -616,7 +621,7 @@
       "title": "Large-project synthetic scale harness",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["universal", "shared", "itotori"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["SHARED-003", "ITOTORI-001", "UNIV-008"],
@@ -653,11 +658,11 @@
       "title": "Mutation and property-test quality gates",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["universal", "shared"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["UNIV-004", "UNIV-008"],
-      "summary": "Add mutation testing and property-style testing to the highest-risk TypeScript and Rust packages after the MVP gates are stable.",
+      "summary": "Add mutation testing and property-style testing to the highest-risk TypeScript and Rust packages after the alpha readiness checks are stable.",
       "deliverables": [
         "Stryker or equivalent TS setup",
         "Rust property-test examples",
@@ -690,7 +695,7 @@
       "title": "Harden exact upgrade recipe verification",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["universal"],
       "parallelGroup": "tooling",
       "dependsOn": ["UNIV-007"],
@@ -730,7 +735,7 @@
       "title": "Self-contained DB test and scale smoke recipe",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["universal", "itotori", "shared"],
       "parallelGroup": "tooling",
       "dependsOn": ["ITOTORI-002", "UNIV-010"],
@@ -779,7 +784,7 @@
       "title": "Local Node toolchain warning cleanup",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["universal"],
       "parallelGroup": "tooling",
       "dependsOn": ["UNIV-007"],
@@ -815,7 +820,7 @@
       "title": "Bridge schema v0.2 domain model",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
       "parallelGroup": "contracts",
       "dependsOn": ["UNIV-001", "SHARED-000"],
@@ -861,7 +866,7 @@
       "title": "Bridge contract validation",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-001", "UNIV-008"],
@@ -902,7 +907,7 @@
       "title": "Multi-surface public bridge fixture corpus",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "kaifuu", "itotori", "utsushi"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["SHARED-001", "SHARED-002", "UNIV-005", "UNIV-008"],
@@ -944,7 +949,7 @@
       "title": "Patch and source revision semantics",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "kaifuu", "itotori"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-001"],
@@ -981,7 +986,7 @@
       "title": "Runtime evidence schema v0.2",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "utsushi", "itotori"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-001", "SHARED-007", "UTSUSHI-000"],
@@ -1022,7 +1027,7 @@
       "title": "Benchmark and cost report schema",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "itotori"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["SHARED-001", "SHARED-007", "SHARED-009", "ITOTORI-031"],
@@ -1063,7 +1068,7 @@
       "title": "Event and finding taxonomy",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-001"],
@@ -1104,11 +1109,11 @@
       "title": "Permission model and local-user baseline",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "itotori"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-001"],
-      "summary": "Introduce permission-based access primitives now, with a single all-permissions local user for MVP and a clean path to custom roles later.",
+      "summary": "Introduce permission-based access primitives now, with a single all-permissions local user for alpha readiness and a clean path to custom roles later.",
       "deliverables": [
         "Permission enum",
         "User and grant schema",
@@ -1118,7 +1123,7 @@
       "acceptanceCriteria": [
         "No role strings are hardcoded into authorization checks",
         "Every API mutation has a permission gate",
-        "MVP local mode remains frictionless"
+        "alpha local mode remains frictionless"
       ],
       "verification": [
         {
@@ -1141,7 +1146,7 @@
       "title": "Localization quality taxonomy and benchmark protocol",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "itotori"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["SHARED-007"],
@@ -1182,7 +1187,7 @@
       "title": "Full contract validation",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
       "parallelGroup": "contracts",
       "dependsOn": [
@@ -1233,7 +1238,7 @@
       "title": "Asset localization policy schema",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "itotori", "kaifuu"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-001"],
@@ -1274,7 +1279,7 @@
       "title": "Full-system golden artifact corpus",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["SHARED-003", "SHARED-010"],
@@ -1315,7 +1320,7 @@
       "title": "Permission-gate negative test matrix",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "itotori"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-008"],
@@ -1357,7 +1362,7 @@
       "title": "Permission constant and migration drift guard",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "itotori"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-008"],
@@ -1399,7 +1404,7 @@
       "title": "Unified relative path validator",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "kaifuu"],
       "parallelGroup": "contracts",
       "dependsOn": ["KAIFUU-019"],
@@ -1441,7 +1446,7 @@
       "title": "Branch-event multi-ref DB regression",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "itotori"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-005"],
@@ -1482,7 +1487,7 @@
       "title": "Benchmark QA evaluated-system validation",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "itotori"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["SHARED-006", "SHARED-009"],
@@ -1524,7 +1529,7 @@
       "title": "Patch asset-kind coverage matrix",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "kaifuu"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-011"],
@@ -1565,7 +1570,7 @@
       "title": "RFC3339 timestamp validation parity",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "kaifuu", "itotori", "utsushi"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-010"],
@@ -1607,7 +1612,7 @@
       "title": "Bridge surface normalization semantics",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "itotori"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-003", "SHARED-010"],
@@ -1649,7 +1654,7 @@
       "title": "Queue index migration drift guard",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori", "shared"],
       "parallelGroup": "tooling",
       "dependsOn": ["ITOTORI-003"],
@@ -1691,7 +1696,7 @@
       "title": "Public golden corpus regeneration utility",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "kaifuu", "itotori", "utsushi"],
       "parallelGroup": "tooling",
       "dependsOn": ["SHARED-012"],
@@ -1733,7 +1738,7 @@
       "title": "en-US full-system artifact goldens",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["SHARED-012", "ITOTORI-029"],
@@ -1775,7 +1780,7 @@
       "title": "Round-trip report JSON schema",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["shared", "kaifuu"],
       "parallelGroup": "contracts",
       "dependsOn": ["KAIFUU-003"],
@@ -1813,11 +1818,305 @@
       ]
     },
     {
+      "id": "CATALOG-000",
+      "title": "Catalog schema and provenance model",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["ITOTORI-002", "SHARED-008", "UNIV-005"],
+      "summary": "Promote work identity, external ids, source provenance, language status, releases, local scans, and seed targets into first-class typed Postgres state instead of local research scripts.",
+      "deliverables": [
+        "Catalog ERD and migration plan",
+        "Drizzle schema and migrations for work identity and provenance",
+        "Repository/service contract for catalog records",
+        "Fixture records for VNDB, EGS, DLsite, Steam, IGDB, Wikidata, and local corpus provenance"
+      ],
+      "acceptanceCriteria": [
+        "Catalog identity does not depend on VNDB as the root source",
+        "External ids, source provenance, fetched-at metadata, conflict records, releases, and local scan references are repeatable records rather than one-column shortcuts",
+        "Permissions and local-user defaults cover catalog reads and writes without bypassing the existing authorization model",
+        "Fixtures prove DLsite-only, EGS-only, VNDB-linked, Steam-linked, IGDB-linked, and local-only works can coexist"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "VNDB-centric schema assumptions",
+        "Provenance flattened into lossy fields",
+        "Migration/index drift for catalog tables"
+      ]
+    },
+    {
+      "id": "CATALOG-001",
+      "title": "Cross-source entity resolver",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-000"],
+      "summary": "Implement the full-outer-join work resolver for VNDB, EGS, DLsite, DMM, Steam, IGDB, Wikidata, and local corpus inputs with deterministic provenance and reviewable conflicts.",
+      "deliverables": [
+        "Resolver service and repositories",
+        "External-id registry",
+        "Fuzzy/Wikidata fallback policy",
+        "Conflict and merge decision fixtures"
+      ],
+      "acceptanceCriteria": [
+        "A work can be created from any supported source without requiring a VNDB id",
+        "Exact external-id joins are deterministic and fuzzy fallback candidates remain reviewable instead of auto-merged silently",
+        "Conflicts are preserved with source provenance and can feed quality/opportunity review",
+        "Resolver fixtures cover one-to-many editions, DLsite translation parent/child links, and local-only corpus entries"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "manual",
+          "value": "Resolver fixture and conflict review"
+        }
+      ],
+      "auditFocus": [
+        "False merges across editions",
+        "Dropping source provenance",
+        "Non-deterministic fuzzy matching"
+      ]
+    },
+    {
+      "id": "CATALOG-002",
+      "title": "Translation completeness intelligence",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-001", "SHARED-009"],
+      "summary": "Model per-work language completeness across official, fan, partial, MTL, interface-only, console-unverified, none, unknown, and conflict states for prioritization and benchmark selection.",
+      "deliverables": [
+        "Language status enum and provenance schema",
+        "Completeness inference service",
+        "Conflict detector for source disagreements",
+        "Benchmark seed query fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Language status supports official_full, fan_full, fan_partial, mtl, interface_only, unverified_console, none, unknown, and conflict evidence",
+        "VNDB, Steam, DLsite, IGDB, and local sidecar evidence can disagree without overwriting one another",
+        "MTL-only, fan-partial, no-English, and conflict sets can be queried as benchmark or opportunity pools",
+        "Public reports use aggregate counts and source ids without publishing private local corpus content"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "manual",
+          "value": "Completeness conflict fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Official-English false negatives",
+        "MTL and partial statuses collapsed into full translations",
+        "Benchmark-set leakage or bias"
+      ]
+    },
+    {
+      "id": "CATALOG-003",
+      "title": "Local corpus scanner and redacted sidecar writer",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "kaifuu", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-000", "KAIFUU-034", "UNIV-005"],
+      "summary": "Turn the private local game library scan into a first-class local workflow that records owned corpus inventory, engine evidence, archive/install state, and redacted sidecars without committing private assets.",
+      "deliverables": [
+        "Local scan command or service",
+        "Redacted sidecar schema",
+        "Archive/install-state model",
+        "Private-local aggregate report renderer"
+      ],
+      "acceptanceCriteria": [
+        "The scanner distinguishes source archives, installed games, collection members, editions, and sidecar metadata",
+        "Sidecars record stable local ids, owned flag, engine/readiness evidence, aggregate counts, hashes, and tool versions without raw text, private paths, keys, screenshots, or story filenames",
+        "Kaifuu detector evidence and catalog identity can share one engine-fingerprint registry",
+        "Absence of private local corpora never affects public CI"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just fixtures-validate"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "manual",
+          "value": "Private-local redaction dry-run"
+        }
+      ],
+      "auditFocus": [
+        "Private path or filename leakage",
+        "Scanner mutating game files",
+        "Engine evidence drift from Kaifuu detection"
+      ]
+    },
+    {
+      "id": "CATALOG-004",
+      "title": "Opportunity ranking and benchmark seed finder",
+      "status": "planned",
+      "priority": "P2",
+      "target": "alpha",
+      "projects": ["itotori", "shared", "utsushi"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-002", "CATALOG-003"],
+      "summary": "Expose ranked opportunity and benchmark seed queries from completeness, local corpus, market prevalence, engine readiness, and existing translation status.",
+      "deliverables": [
+        "Opportunity scoring service",
+        "Benchmark seed finder queries",
+        "Readiness-aware ranking fixtures",
+        "Dashboard/API read model seed"
+      ],
+      "acceptanceCriteria": [
+        "RPG Maker MV/MZ, RGSS3/VX Ace, KiriKiri XP3, TyranoScript, Unity, Siglus, Wolf, MTL-only, fan-partial, and conflict pools can be ranked with explainable evidence",
+        "Opportunity output distinguishes prevalence, local ownership, translation completeness, adapter readiness, and benchmark usefulness",
+        "Ranking can be generated from public fixtures and from private-local aggregate sidecars without leaking private data",
+        "The $25-cost target and quality benchmarks can select corpora by readiness rather than arbitrary fixture availability"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "manual",
+          "value": "Opportunity ranking fixture review"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Popularity mistaken for readiness",
+        "Private corpus leakage",
+        "Unexplainable opportunity scores"
+      ]
+    },
+    {
+      "id": "CATALOG-005",
+      "title": "Research source adapters and crawler framework",
+      "status": "planned",
+      "priority": "P2",
+      "target": "alpha",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-000", "ITOTORI-003"],
+      "summary": "Promote the VNDB, EGS, DLsite, Steam, IGDB, and Wikidata research importers into a resumable, rate-limited, provenance-preserving crawler framework.",
+      "deliverables": [
+        "Source adapter interface",
+        "Checkpoint and rate-limit model",
+        "Single-writer-safe ingestion job",
+        "Recorded public fixture imports"
+      ],
+      "acceptanceCriteria": [
+        "Crawlers are resumable, provenance-preserving, and safe to run without live network access in CI through recorded fixtures",
+        "Source adapters can ingest dumps, SQL extracts, AJAX/API responses, and local files through one job framework",
+        "Fetched-at, source version, request identity, and parser version are recorded for every imported fact",
+        "Network credentials and private local data are never required by public CI"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        },
+        {
+          "type": "manual",
+          "value": "Recorded crawler fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Non-resumable crawls",
+        "Live-network CI coupling",
+        "Lost fetched-at/provenance metadata"
+      ]
+    },
+    {
+      "id": "CATALOG-006",
+      "title": "Edition and milestone mapping model",
+      "status": "planned",
+      "priority": "P2",
+      "target": "alpha",
+      "projects": ["shared", "itotori", "kaifuu"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-001"],
+      "summary": "Represent editions, remasters, fandiscs, bundles, collection members, install states, platform releases, and translation parent/child links so patching and translation porting target the right artifact.",
+      "deliverables": [
+        "Edition/milestone schema",
+        "Collection member model",
+        "Install-state sidecar integration",
+        "Translation-portability evidence fixtures"
+      ],
+      "acceptanceCriteria": [
+        "A work can have multiple editions/releases with distinct engines, packages, languages, and install states",
+        "Collection members and bundled games can be scanned and patched without losing parent package identity",
+        "DLsite translation parent/child and VNDB milestone data can inform whether an existing translation is portable",
+        "Patch/export/readiness flows name the exact edition or install member they target"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "manual",
+          "value": "Edition mapping fixture review"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Merging incompatible editions",
+        "Patch applied to wrong milestone",
+        "Collection member identity loss"
+      ]
+    },
+    {
       "id": "KAIFUU-001",
       "title": "Kaifuu adapter trait and game profile model",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["SHARED-001"],
@@ -1858,7 +2157,7 @@
       "title": "Fixture engine on adapter architecture",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-001"],
@@ -1894,7 +2193,7 @@
       "title": "Round-trip golden harness",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-001", "SHARED-003", "KAIFUU-002", "UNIV-008"],
@@ -1935,7 +2234,7 @@
       "title": "Protected markup parser and span normalizer",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-001", "SHARED-001", "KAIFUU-019", "SHARED-003"],
@@ -1976,7 +2275,7 @@
       "title": ".kaifuu delta package v0.2",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-003", "SHARED-004", "KAIFUU-019"],
@@ -2017,7 +2316,7 @@
       "title": "Engine detection and profile CLI",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-001", "KAIFUU-000"],
@@ -2055,10 +2354,10 @@
     },
     {
       "id": "KAIFUU-007",
-      "title": "RPG Maker MV/MZ adapter",
+      "title": "RPG Maker MV/MZ full-surface adapter",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -2069,20 +2368,25 @@
         "KAIFUU-019",
         "KAIFUU-020",
         "KAIFUU-021",
-        "KAIFUU-039"
+        "KAIFUU-039",
+        "KAIFUU-052",
+        "KAIFUU-053",
+        "CATALOG-003"
       ],
-      "summary": "Implement extraction, patching, and verification for RPG Maker MV/MZ JSON assets across dialogue, choices, common events, database text, and UI-like strings.",
+      "summary": "Implement the first positive real-engine adapter for RPG Maker MV/MZ with full JSON text coverage, protected control codes, asset inventory, encrypted-media diagnostics, plugin-text boundaries, and collection/local-corpus readiness.",
       "deliverables": [
-        "RPG Maker adapter",
-        "Public fixture",
-        "Round-trip tests",
-        "Capability documentation"
+        "RPG Maker MV/MZ adapter",
+        "Full-surface public fixture",
+        "Round-trip and patch tests",
+        "Encrypted-media capability diagnostics",
+        "Local corpus readiness notes"
       ],
       "acceptanceCriteria": [
-        "Adapter extracts core map/event/database text",
-        "Patch writes preserve JSON structure and control codes",
-        "Unchanged round-trip is stable",
-        "Fixture source is documented, support boundary is explicit, and unsupported encrypted or compiled variants fail with semantic capability errors"
+        "Adapter extracts map events, common events, choices, database text, UI-like terms, plugin-profiled text, and protected control-code spans where represented in JSON",
+        "Patch writes preserve JSON structure, control codes, encodings, and source revision compatibility",
+        "Unchanged round-trip is stable and translated patch output is deterministic",
+        "Encrypted media assets are detected and reported as per-surface key/profile requirements without blocking null-key JSON text extraction",
+        "Fixture source is documented, support boundary is explicit, and unsupported plugin-owned, encrypted, packed, or unknown variants fail with semantic capability errors"
       ],
       "verification": [
         {
@@ -2099,17 +2403,18 @@
         }
       ],
       "auditFocus": [
-        "Missing high-value text locations",
+        "Toy MV/MZ slice instead of full surface",
         "Control-code damage",
+        "Encrypted media silently ignored",
         "Large project performance"
       ]
     },
     {
       "id": "KAIFUU-008",
-      "title": "Ren'Py adapter",
+      "title": "RenPy reference adapter",
       "status": "planned",
-      "priority": "P1",
-      "target": "mvp",
+      "priority": "P3",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -2121,7 +2426,7 @@
         "KAIFUU-020",
         "KAIFUU-021"
       ],
-      "summary": "Implement a Ren'Py adapter for plaintext scripts and documented decompiled-script handoff, with clean extraction of dialogue, menus, labels, and translatable strings.",
+      "summary": "Keep RenPy plaintext support as a low-priority reference/null-key adapter rather than an alpha Japanese opportunity driver, with documented decompiled-script handoff and capability errors.",
       "deliverables": [
         "Ren'Py adapter",
         "Script parser tests",
@@ -2149,17 +2454,17 @@
         }
       ],
       "auditFocus": [
-        "Python/Ren'Py syntax corruption",
-        "Ambiguous support for compiled scripts",
-        "Choice text coverage"
+        "RenPy treated as a JP opportunity driver",
+        "Python/RenPy syntax corruption",
+        "Ambiguous support for compiled scripts"
       ]
     },
     {
       "id": "KAIFUU-009",
-      "title": "KiriKiri/KAG plaintext adapter",
+      "title": "KiriKiri KAG plaintext reference adapter",
       "status": "planned",
-      "priority": "P1",
-      "target": "mvp",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -2170,15 +2475,17 @@
         "KAIFUU-019",
         "KAIFUU-020",
         "KAIFUU-021",
-        "KAIFUU-038"
+        "KAIFUU-038",
+        "KAIFUU-052",
+        "KAIFUU-054"
       ],
-      "summary": "Implement KAG .ks extraction and patching for plaintext or already-extracted KiriKiri projects, including speaker/name context and inline command preservation.",
+      "summary": "Implement plaintext or already-extracted KAG .ks support as the null-container special case after the XP3 readiness profile is clear, without presenting plaintext KAG as commercial KiriKiri coverage.",
       "deliverables": ["KAG parser", "Speaker extraction", "Patch writer", "Fixture corpus"],
       "acceptanceCriteria": [
-        "Dialogue, names, choices, and command-heavy lines are covered",
-        "Reader-unknown speaker state can be represented",
-        "Round-trip keeps commands stable",
-        "Fixture source is documented, support boundary is explicit, and unsupported encrypted or compiled variants fail with semantic capability errors"
+        "Plaintext .ks fixtures round-trip as a null-container/null-key pipeline configuration",
+        "Speaker, name, choice, label, macro, and command-heavy context survives extraction and patching",
+        "XP3-packed or encrypted inputs route to KiriKiri readiness/profile errors rather than plaintext adapter claims",
+        "Fixture source is documented, support boundary is explicit, and unsupported variants fail with semantic capability errors"
       ],
       "verification": [
         {
@@ -2195,9 +2502,9 @@
         }
       ],
       "auditFocus": [
-        "Regex-only parser fragility",
-        "Speaker attribution mistakes",
-        "Inline command damage"
+        "Plaintext-only KiriKiri overclaim",
+        "Command/tag corruption",
+        "Speaker context loss"
       ]
     },
     {
@@ -2205,7 +2512,7 @@
       "title": "Patch result and verification v0.2",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared", "itotori"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-005", "SHARED-002", "KAIFUU-019", "SHARED-007"],
@@ -2239,14 +2546,14 @@
     },
     {
       "id": "KAIFUU-011",
-      "title": "Binary patcher core",
+      "title": "Binary patcher core for packed and binary engines",
       "status": "planned",
-      "priority": "P2",
-      "target": "post_mvp",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": ["KAIFUU-003", "KAIFUU-004", "KAIFUU-019"],
-      "summary": "Build shared binary offset rewriting utilities for engines that store text in string tables or bytecode with referenced offsets.",
+      "dependsOn": ["KAIFUU-003", "KAIFUU-004", "KAIFUU-019", "KAIFUU-052"],
+      "summary": "Build shared binary offset, relocation, encoding, and string-table rewriting utilities early because RGSS3/VX Ace, Wolf, Majiro, BGI, and other high-value local backlog engines depend on them.",
       "deliverables": [
         "BinaryPatcher utility",
         "Offset mapping tests",
@@ -2254,9 +2561,10 @@
         "Negative tests"
       ],
       "acceptanceCriteria": [
-        "String growth/shrink rewrites offsets correctly",
-        "Shift-JIS and UTF-16LE cases have fixtures",
-        "Failures avoid corrupt writes"
+        "Binary patcher utilities handle offset mapping, string table rebuilds, encoding boundaries, and preflight failure before writes",
+        "Tests cover Shift-JIS/UTF variants, length expansion, duplicate strings, false-positive references, and rollback behavior",
+        "The API composes with the layered access pipeline instead of being adapter-specific glue",
+        "RGSS3/VX Ace readiness can name the exact binary patcher support it needs"
       ],
       "verification": [
         {
@@ -2269,9 +2577,9 @@
         }
       ],
       "auditFocus": [
-        "Off-by-one offset corruption",
-        "Encoding assumptions",
-        "Unsafe partial writes"
+        "Offset table corruption",
+        "Adapter-specific binary patcher shortcuts",
+        "Late discovery of RGSS/Wolf/BGI blockers"
       ]
     },
     {
@@ -2279,7 +2587,7 @@
       "title": "Wolf RPG Editor adapter",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-006", "KAIFUU-011", "KAIFUU-000", "KAIFUU-020"],
@@ -2320,7 +2628,7 @@
       "title": "BGI/Ethornell adapter",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-006", "KAIFUU-011", "KAIFUU-000", "KAIFUU-020"],
@@ -2361,11 +2669,11 @@
       "title": "Encryption and key profile boundary",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-006", "KAIFUU-019", "UNIV-005"],
-      "summary": "Define the MVP boundary for key profiles, local-only key material, adapter key requirements, and platform-assisted discovery without coupling pure extraction/patching to helper code.",
+      "summary": "Define the alpha boundary for key profiles, local-only key material, adapter key requirements, and platform-assisted discovery without coupling pure extraction/patching to helper code.",
       "deliverables": [
         "docs/kaifuu-key-discovery.md",
         "Key profile schema",
@@ -2403,7 +2711,7 @@
       "title": "SiglusEngine research slice",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "utsushi"],
       "parallelGroup": "engine-research",
       "dependsOn": [
@@ -2414,7 +2722,7 @@
         "KAIFUU-050",
         "KAIFUU-051"
       ],
-      "summary": "Produce an MVP research and validation slice for Siglus key discovery, Scene.pck/Gameexe.dat requirements, pure adapter boundaries, and Utsushi VM opportunities without claiming production Siglus support.",
+      "summary": "Produce an alpha readiness research and validation slice for Siglus key discovery, Scene.pck/Gameexe.dat requirements, pure adapter boundaries, and Utsushi VM opportunities without claiming production Siglus support.",
       "deliverables": [
         "Siglus format notes",
         "Static and dynamic key-discovery notes",
@@ -2451,11 +2759,11 @@
       "title": "Archive and encryption detection matrix",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-006", "KAIFUU-000"],
-      "summary": "Extend Kaifuu detection to classify archive/encryption/key-requirement signals across MVP and high-value VN/RPG engine families without claiming extraction support.",
+      "summary": "Extend Kaifuu detection to classify archive/encryption/key-requirement signals across alpha readiness and high-value VN/RPG engine families without claiming extraction support.",
       "deliverables": [
         "Detection matrix schema",
         "Engine-family fingerprint cases",
@@ -2493,22 +2801,22 @@
       "title": "Safe redaction and helper error boundaries",
       "status": "in_progress",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-014", "KAIFUU-019", "UNIV-005"],
-      "summary": "Implement and document redaction, logging, report, and semantic error boundaries for key profiles, helper outputs, and private encrypted corpora.",
+      "summary": "Implement redaction, logging, report, and semantic error boundaries for key profiles, helper outputs, layered access preflight failures, and private encrypted corpora.",
       "deliverables": [
         "Redaction policy enforcement",
-        "Helper result error taxonomy",
+        "Helper and layered-preflight error taxonomy",
         "Log/report scrubber tests",
         "Private-local report safety checklist"
       ],
       "acceptanceCriteria": [
-        "Stable errors cover missing key material, helper unavailable, key validation failed, protected executable unsupported, and secret redacted cases",
+        "Stable errors cover missing key material, helper unavailable, key validation failed, protected executable unsupported, unsupported layered transform, and secret redacted cases",
         "Logs and reports cannot include raw keys, helper dumps, decrypted private text, local absolute paths, or retail filenames that disclose story content",
-        "Adapters fail before writing output when required key material or helper capability is missing",
-        "Synthetic tests prove redaction in CLI, report, and structured error paths"
+        "Adapters and layered access preflight fail before writing output when required key material, helper capability, container support, crypto support, codec support, or patch-back capability is missing",
+        "Synthetic tests prove redaction in CLI, report, structured error, and layered-preflight paths"
       ],
       "verification": [
         {
@@ -2526,7 +2834,7 @@
       ],
       "auditFocus": [
         "Secret leakage",
-        "Untriageable helper failures",
+        "Untriageable helper or layered-preflight failures",
         "Over-redaction that hides actionable remediation"
       ],
       "owner": "orchestrator",
@@ -2538,16 +2846,17 @@
       "title": "Private-local encrypted corpus triage workflow",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "suite"],
-      "parallelGroup": "mvp-integration",
+      "parallelGroup": "alpha-integration",
       "dependsOn": [
         "UNIV-005",
         "KAIFUU-014",
         "KAIFUU-034",
         "KAIFUU-035",
         "KAIFUU-050",
-        "KAIFUU-051"
+        "KAIFUU-051",
+        "CATALOG-003"
       ],
       "summary": "Make encrypted owned-game corpus triage a first-class local workflow that produces safe aggregate readiness evidence while remaining absent from public CI.",
       "deliverables": [
@@ -2588,7 +2897,7 @@
       "title": "Platform-assisted key discovery harness",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": [
@@ -2642,7 +2951,7 @@
       "title": "KiriKiri XP3 encrypted research slice",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": [
@@ -2693,7 +3002,7 @@
       "title": "RPG Maker MV/MZ encrypted asset research slice",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-014", "KAIFUU-034", "KAIFUU-035", "KAIFUU-050", "KAIFUU-051"],
@@ -2708,7 +3017,7 @@
       "acceptanceCriteria": [
         "System.json and encrypted-image key detection paths are documented",
         "Image no-key restoration and audio key-required behavior are represented in capability diagnostics",
-        "MVP JSON text patching remains separate from full encrypted media asset localization",
+        "alpha readiness JSON text patching remains separate from full encrypted media asset localization",
         "Public fixtures use only synthetic/public test keys"
       ],
       "verification": [
@@ -2736,7 +3045,7 @@
       "title": "Wolf RPG Editor encrypted archive research slice",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": [
@@ -2787,7 +3096,7 @@
       "title": "BGI/Ethornell encrypted profile research slice",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-014", "KAIFUU-020", "KAIFUU-034", "KAIFUU-035", "KAIFUU-051"],
@@ -2827,12 +3136,12 @@
     },
     {
       "id": "KAIFUU-042",
-      "title": "Encrypted corpus readiness gate",
+      "title": "Encrypted corpus alpha readiness gate",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "suite"],
-      "parallelGroup": "mvp-integration",
+      "parallelGroup": "alpha-integration",
       "dependsOn": [
         "KAIFUU-014",
         "KAIFUU-015",
@@ -2845,20 +3154,25 @@
         "KAIFUU-040",
         "KAIFUU-041",
         "KAIFUU-050",
-        "KAIFUU-051"
+        "KAIFUU-051",
+        "KAIFUU-052",
+        "KAIFUU-053",
+        "KAIFUU-054",
+        "KAIFUU-055",
+        "CATALOG-003"
       ],
-      "summary": "Collect the MVP encrypted-input readiness evidence across docs, detectors, key profiles, helper boundaries, redaction tests, research slices, and private-local reports.",
+      "summary": "Collect the alpha encrypted-input readiness evidence across docs, detectors, key profiles, helper boundaries, redaction tests, research slices, and private-local reports.",
       "deliverables": [
         "Encrypted readiness report",
-        "Release gate evidence bundle",
+        "Alpha readiness evidence bundle",
         "Public CI/public fixture proof",
         "Private-local optional validation proof"
       ],
       "acceptanceCriteria": [
-        "The release evidence proves encrypted corpus triage is first-class without making private corpora required for CI",
+        "The milestone evidence proves encrypted corpus triage is first-class without making private corpora required for CI",
         "Public fixtures cover detector, key-profile, helper-unavailable, missing-key, validation-failed, and redaction paths with synthetic data",
         "Private-local runs can add aggregate readiness results for owned games without leaking keys, assets, helper dumps, decrypted scripts, local paths, or sensitive filenames",
-        "MVP release notes avoid universal decryption and broad commercial support claims"
+        "alpha readiness milestone notes avoid universal decryption and broad commercial support claims"
       ],
       "verification": [
         {
@@ -2871,13 +3185,13 @@
         },
         {
           "type": "manual",
-          "value": "Encrypted readiness release audit"
+          "value": "Encrypted readiness milestone audit"
         }
       ],
       "auditFocus": [
         "Encrypted workflow still treated as optional polish",
         "CI coupled to private corpora",
-        "Release claims exceed evidence"
+        "Alpha readiness claims exceed evidence"
       ]
     },
     {
@@ -2885,10 +3199,10 @@
       "title": "Local key resolver and secret store",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
-      "dependsOn": ["KAIFUU-014", "KAIFUU-035"],
+      "dependsOn": ["KAIFUU-014", "KAIFUU-035", "KAIFUU-052"],
       "summary": "Implement the local-only key material resolver that turns validated key-profile secret refs into adapter-consumable bytes without persisting or logging raw secrets.",
       "deliverables": [
         "SecretRef parser and enum-backed scheme model",
@@ -2929,10 +3243,10 @@
       "title": "Synthetic encrypted fixture suite",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "quality-foundation",
-      "dependsOn": ["KAIFUU-034", "KAIFUU-035", "KAIFUU-050", "UNIV-005"],
+      "dependsOn": ["KAIFUU-034", "KAIFUU-035", "KAIFUU-050", "UNIV-005", "KAIFUU-052"],
       "summary": "Add generated public fixtures for encrypted, packed, missing-key, helper-required, validation-failed, and redaction paths so encrypted readiness can be tested without private games.",
       "deliverables": [
         "Synthetic encrypted fixture generator",
@@ -2969,20 +3283,239 @@
       ]
     },
     {
-      "id": "KAIFUU-016",
-      "title": "TyranoScript adapter",
+      "id": "KAIFUU-052",
+      "title": "Layered text access pipeline contract",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-001", "KAIFUU-014", "KAIFUU-034", "KAIFUU-035", "KAIFUU-019"],
+      "summary": "Recast engine access as reversible per-surface transforms: locate surface, unpack container, decrypt, decode/decompile, normalize text, patch back, with plaintext represented as identity layers.",
+      "deliverables": [
+        "Layered access profile model",
+        "Container, crypto, codec, and surface transform enums",
+        "Capability-level contract for identify, inventory, extract, and patch",
+        "Identity/null-key fixtures for plaintext engines"
+      ],
+      "acceptanceCriteria": [
+        "GameProfile and adapter capability output can represent container/archive, encryption/obfuscation, codec/decompile, and patch-back stages per text-bearing surface",
+        "Plaintext engines are modeled as identity container, null-key crypto, and identity codec rather than a separate architecture",
+        "Per-surface differences are representable, such as MV/MZ JSON text with encrypted media assets",
+        "Adapters fail before writes when any required transform stage is unsupported, missing key material, or helper-gated",
+        "Existing fixture adapter remains an identity-layer configuration with no hello-world regression"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        },
+        {
+          "type": "command",
+          "value": "just hello"
+        }
+      ],
+      "auditFocus": [
+        "Plaintext and encrypted engines diverging into separate architectures",
+        "Per-surface transform loss",
+        "False patch capability claims"
+      ]
+    },
+    {
+      "id": "KAIFUU-053",
+      "title": "Capability-leveled engine detector registry",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "shared", "itotori"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-034", "KAIFUU-052", "CATALOG-003"],
+      "summary": "Promote detection into a shared engine-fingerprint registry that reports identify, inventory, extract, and patch levels instead of presenting a recognized engine as usable by default.",
+      "deliverables": [
+        "Shared engine-fingerprint registry",
+        "Capability-level detector output",
+        "Local scanner integration contract",
+        "Detector fixture matrix for recognized-but-not-ready engines"
+      ],
+      "acceptanceCriteria": [
+        "Detection distinguishes identify, inventory, extract, patch, and unsupported readiness for each engine/surface",
+        "Recognized packed or encrypted engines are not shown as extractable or patchable unless exact support exists",
+        "Kaifuu detection and Itotori local corpus scanning use the same normalized engine-family and variant identifiers",
+        "Detector output includes aggregate evidence and semantic remediation without raw private filenames, keys, or local paths"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "manual",
+          "value": "Detector registry fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Recognized engine overstated as usable",
+        "Registry drift between Kaifuu and catalog scanner",
+        "Private evidence leakage"
+      ]
+    },
+    {
+      "id": "KAIFUU-054",
+      "title": "KiriKiri XP3 readiness profile",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-038", "KAIFUU-052", "KAIFUU-053", "KAIFUU-037"],
+      "summary": "Replace plaintext-only KiriKiri alpha readiness assumptions with a readiness profile for XP3-packed and encrypted KiriKiri/KAG games, including helper, key, dump, and patch-workflow boundaries.",
+      "deliverables": [
+        "KiriKiri XP3 readiness profile schema examples",
+        "Capability-leveled XP3 detector fixtures",
+        "Helper/key requirement mapping",
+        "Future production adapter split"
+      ],
+      "acceptanceCriteria": [
+        "Plaintext .ks support is explicitly marked as the null-container special case, not the commercial KiriKiri baseline",
+        "XP3 archive, encrypted XP3, protected executable, universal dump, and universal patch workflows have distinct readiness/capability outcomes",
+        "Private-local XP3 triage can produce aggregate readiness evidence without publishing keys, assets, helper dumps, paths, or source text",
+        "alpha readiness docs no longer claim KiriKiri breadth through plaintext-only fixtures"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "KiriKiri readiness profile review"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Plaintext-only KiriKiri overclaim",
+        "XP3 helper/key workflows collapsed together",
+        "Protected executable constraints hidden"
+      ]
+    },
+    {
+      "id": "KAIFUU-055",
+      "title": "RPG Maker VX Ace RGSS3 readiness slice",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-011", "KAIFUU-052", "KAIFUU-053", "CATALOG-003"],
+      "summary": "Pull RPG Maker VX Ace/RGSS3 forward for the local backlog by proving RGSSAD/Ruby Marshal readiness, binary patcher needs, and first adapter split before full production support.",
+      "deliverables": [
+        "RGSS3 readiness record",
+        "RGSSAD/Ruby Marshal fixture plan",
+        "Binary patcher integration requirements",
+        "Future VX Ace adapter DAG split"
+      ],
+      "acceptanceCriteria": [
+        "Local backlog RGSS3/VX Ace weight is represented in roadmap priority",
+        "RGSSAD archive, Ruby Marshal codec, string-table/binary rewrite, and patch-back risks are separated as layered transforms",
+        "Synthetic or public fixtures define what can be tested before private-local validation",
+        "Future production adapter work is split into reviewable parser, patcher, and fixture nodes"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "RGSS3 readiness record review"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "Binary patcher dependency audit"
+        }
+      ],
+      "auditFocus": [
+        "Underestimating Ruby Marshal/RGSSAD patch-back risk",
+        "Private corpus dependency",
+        "Binary patcher scope creep"
+      ]
+    },
+    {
+      "id": "KAIFUU-056",
+      "title": "Packed-engine readiness profile set",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "alpha",
+      "projects": ["kaifuu", "suite"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-015", "KAIFUU-036", "KAIFUU-040", "KAIFUU-052", "KAIFUU-053"],
+      "summary": "Create readiness profiles for high-value packed or encrypted engines such as Siglus, Unity/Naninovel, Wolf, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2 without claiming extraction until round-trip support exists.",
+      "deliverables": [
+        "Packed-engine readiness profile template",
+        "Siglus, Unity, Wolf, NeXAS, Aoi, RealLive, Majiro, BGI, and CatSystem2 profile seeds",
+        "Capability-level summary report",
+        "Adapter implementation split recommendations"
+      ],
+      "acceptanceCriteria": [
+        "Every readiness profile states identify/inventory/extract/patch status and required container, crypto, codec, key, helper, and patch-back stages",
+        "Profiles can be generated from public synthetic fixtures and supplemented by private-local aggregate reports",
+        "No readiness profile serializes raw keys, private asset paths, decrypted scripts, helper dumps, or story filenames",
+        "Adapter implementation nodes are created only where readiness evidence and fixture strategy are strong enough"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Packed-engine readiness report review"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "Private-local redaction audit"
+        }
+      ],
+      "auditFocus": [
+        "Readiness profiles mistaken for support claims",
+        "Secret/private evidence leakage",
+        "Adapter nodes created without fixture strategy"
+      ]
+    },
+    {
+      "id": "KAIFUU-016",
+      "title": "TyranoScript null-key adapter",
+      "status": "planned",
+      "priority": "P2",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": ["KAIFUU-004", "KAIFUU-006", "KAIFUU-009", "KAIFUU-000", "KAIFUU-020"],
-      "summary": "Implement TyranoScript extraction and patching by reusing KAG-like markup parsing where appropriate.",
+      "dependsOn": [
+        "KAIFUU-004",
+        "KAIFUU-006",
+        "KAIFUU-000",
+        "KAIFUU-020",
+        "KAIFUU-052",
+        "KAIFUU-053"
+      ],
+      "summary": "Implement TyranoScript extraction and patching as an early high-reach null-key/plaintext adapter using the layered pipeline rather than depending on KiriKiri plaintext work.",
       "deliverables": ["Tyrano adapter", "Markup fixtures", "Patch tests", "Capability docs"],
       "acceptanceCriteria": [
-        "Dialogue, choices, and common tags extract",
-        "Unsupported plugins are preserved or reported",
-        "Patch round-trip is stable"
+        "Plaintext TyranoScript scenario fixtures round-trip through identity container, null-key crypto, and script codec stages",
+        "Dialogue, choices, labels, jumps, variables, comments, common tags, and plugin-like unknown tags are extracted or preserved safely",
+        "Packed browser/mobile builds, encrypted assets, generated plugin text, and unsupported custom tags return semantic capability errors",
+        "The adapter does not depend on KiriKiri plaintext implementation to exist first"
       ],
       "verification": [
         {
@@ -3001,7 +3534,7 @@
       "auditFocus": [
         "Assuming KAG equivalence too broadly",
         "Plugin tag preservation",
-        "Speaker context"
+        "Null-key pipeline drift"
       ]
     },
     {
@@ -3009,7 +3542,7 @@
       "title": "Majiro and CatSystem2 research adapters",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-011", "KAIFUU-020", "KAIFUU-000"],
@@ -3042,7 +3575,7 @@
       "title": "Unity localization asset research",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu", "utsushi"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-020", "SHARED-011", "KAIFUU-021"],
@@ -3079,7 +3612,7 @@
       "title": "Encoding, normalization, and patch safety policy",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-001", "SHARED-001", "UNIV-008"],
@@ -3116,7 +3649,7 @@
       "title": "Asset inventory and non-text surface extraction",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-001", "SHARED-011"],
@@ -3157,7 +3690,7 @@
       "title": "Siglus pure extraction and patching adapter",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-015", "KAIFUU-014", "KAIFUU-011", "KAIFUU-020"],
@@ -3194,7 +3727,7 @@
       "title": "Majiro adapter",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-017", "KAIFUU-011", "KAIFUU-020"],
@@ -3231,7 +3764,7 @@
       "title": "CatSystem2 adapter",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-017", "KAIFUU-011", "KAIFUU-020"],
@@ -3264,7 +3797,7 @@
       "title": "Unity text asset adapter prototype",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu", "utsushi"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-018", "KAIFUU-021", "KAIFUU-020"],
@@ -3297,7 +3830,7 @@
       "title": "Asset OCR and text-region extraction prototype",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu", "itotori"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-021", "SHARED-011"],
@@ -3338,7 +3871,7 @@
       "title": "Stable metadata string NFC alignment",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-019"],
@@ -3380,7 +3913,7 @@
       "title": "Asset metadata hashing validator",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-021", "SHARED-010"],
@@ -3422,7 +3955,7 @@
       "title": "Stable JSON formatter alignment",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "tooling",
       "dependsOn": ["KAIFUU-021"],
@@ -3464,7 +3997,7 @@
       "title": "Real-engine protected markup grammar adapters",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-004", "KAIFUU-007", "KAIFUU-008", "KAIFUU-009"],
@@ -3506,11 +4039,11 @@
       "title": "Target span mapping edge cases",
       "status": "planned",
       "priority": "P2",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "shared", "itotori"],
       "parallelGroup": "contracts",
       "dependsOn": ["KAIFUU-004", "SHARED-010"],
-      "summary": "Harden the MVP protected-span target-mapping slice before real patch export so translated placeholders and protected spans can be reordered, duplicated, or preserveMode=map without Itotori assuming source-span order.",
+      "summary": "Harden the alpha protected-span target-mapping slice before real patch export so translated placeholders and protected spans can be reordered, duplicated, or preserveMode=map without Itotori assuming source-span order.",
       "deliverables": [
         "Reordered target placeholder and protected-span fixtures",
         "Duplicate raw protected-span fixtures",
@@ -3553,7 +4086,7 @@
       "title": "Adapter-neutral round-trip asset assertions",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-003"],
@@ -3595,7 +4128,7 @@
       "title": "Native source hash recomputation",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-003", "SHARED-010"],
@@ -3637,7 +4170,7 @@
       "title": "Engine adapter development playbook",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu", "universal"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-003", "KAIFUU-006", "UNIV-003"],
@@ -3678,7 +4211,7 @@
       "title": "Report-wide redaction hardening",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-014"],
@@ -3715,7 +4248,7 @@
       "title": "Centralized profile write gate",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-014"],
@@ -3752,7 +4285,7 @@
       "title": "Stricter secret-ref linting",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-014"],
@@ -3789,7 +4322,7 @@
       "title": "Archive detection report semantics hardening",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-034"],
@@ -3831,7 +4364,7 @@
       "title": "Itotori persistence schema v0.2",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "itotori-core",
       "dependsOn": ["SHARED-001", "SHARED-007", "SHARED-008", "UNIV-008"],
@@ -3873,7 +4406,7 @@
       "title": "Repository and service layer split",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "itotori-core",
       "dependsOn": ["ITOTORI-001"],
@@ -3910,7 +4443,7 @@
       "title": "Event outbox and job queue foundation",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "itotori-core",
       "dependsOn": ["ITOTORI-002", "SHARED-007"],
@@ -3942,7 +4475,7 @@
       "title": "Typed API layer and local dashboard backend",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-002", "SHARED-008"],
@@ -3980,7 +4513,7 @@
       "title": "Dashboard application shell",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-004"],
@@ -4019,24 +4552,25 @@
     },
     {
       "id": "ITOTORI-006",
-      "title": "Bridge import workflow",
+      "title": "Validated bridge import foundation",
       "status": "in_progress",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "kaifuu"],
       "parallelGroup": "itotori-core",
       "dependsOn": ["ITOTORI-004", "SHARED-002", "SHARED-004"],
-      "summary": "Import Kaifuu bridge bundles into projects, preserve source revisions, index units/assets, and expose import status in CLI and dashboard.",
+      "summary": "Import Kaifuu bridge bundles transactionally into project/source-revision state while preserving future hooks for catalog identity, local corpus provenance, readiness profiles, and completeness intelligence.",
       "deliverables": [
-        "Import service",
-        "CLI command",
-        "Dashboard import view",
-        "Validation and duplicate handling"
+        "Transactional bridge import service",
+        "CLI/API import command",
+        "Import status read model",
+        "Validation, revision diff, and duplicate handling"
       ],
       "acceptanceCriteria": [
         "Invalid bridge bundles fail before DB writes",
-        "Reimported source revisions are diffed, not blindly duplicated",
-        "Import metrics are visible"
+        "Reimported source revisions are diffed and versioned rather than blindly duplicated",
+        "Import metrics include units, assets, source revision, validation failures, and optional future catalog/local-corpus/readiness references",
+        "The implementation does not build a user-facing intake workflow that assumes bridge bundles are always the first project entrypoint"
       ],
       "verification": [
         {
@@ -4056,7 +4590,12 @@
           "value": "just hello"
         }
       ],
-      "auditFocus": ["Partial imports", "Duplicate unit handling", "Source revision semantics"],
+      "auditFocus": [
+        "Partial imports",
+        "Duplicate unit handling",
+        "Source revision semantics",
+        "Bridge import treated as the only project intake path"
+      ],
       "owner": "orchestrator",
       "branch": "spec/itotori-006",
       "worktree": "/tmp/itotori-spec-itotori-006"
@@ -4066,7 +4605,7 @@
       "title": "Conversational style guide builder",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "policy",
       "dependsOn": ["ITOTORI-004", "ITOTORI-000", "ITOTORI-029", "ITOTORI-031", "ITOTORI-005"],
@@ -4103,7 +4642,7 @@
       "title": "Glossary and terminology index",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "policy",
       "dependsOn": ["ITOTORI-002", "ITOTORI-029", "ITOTORI-030"],
@@ -4140,7 +4679,7 @@
       "title": "LLM provider abstraction",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-003", "ITOTORI-031"],
@@ -4178,7 +4717,7 @@
       "title": "Model registry, presets, and cost ledger",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-009", "SHARED-006"],
@@ -4216,7 +4755,7 @@
       "title": "Agent and deterministic tool registry",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-003", "SHARED-007"],
@@ -4252,7 +4791,7 @@
       "title": "Context artifact framework",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "context-agents",
       "dependsOn": ["ITOTORI-011", "ITOTORI-006", "ITOTORI-030"],
@@ -4289,7 +4828,7 @@
       "title": "Scene summary agent",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "context-agents",
       "dependsOn": ["ITOTORI-012", "ITOTORI-010"],
@@ -4326,7 +4865,7 @@
       "title": "Character relationship agent",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "context-agents",
       "dependsOn": ["ITOTORI-012", "ITOTORI-010"],
@@ -4367,7 +4906,7 @@
       "title": "Route and choice map agent",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "utsushi"],
       "parallelGroup": "context-agents",
       "dependsOn": ["ITOTORI-012", "SHARED-005", "UTSUSHI-003", "ITOTORI-010"],
@@ -4404,7 +4943,7 @@
       "title": "Terminology candidate agent",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "context-agents",
       "dependsOn": ["ITOTORI-012", "ITOTORI-008", "ITOTORI-010"],
@@ -4441,7 +4980,7 @@
       "title": "Speaker and hidden-identity labeling agent",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "context-agents",
       "dependsOn": ["ITOTORI-012", "ITOTORI-010"],
@@ -4482,7 +5021,7 @@
       "title": "Batch planner and context packer",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-012", "ITOTORI-008", "ITOTORI-010"],
@@ -4519,7 +5058,7 @@
       "title": "Translation drafting engine",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "translation-loop",
       "dependsOn": [
@@ -4568,7 +5107,7 @@
       "title": "Deterministic QA tool suite",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "qa",
       "dependsOn": [
@@ -4612,7 +5151,7 @@
       "title": "LLM QA agents and scored findings",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "qa",
       "dependsOn": ["ITOTORI-019", "ITOTORI-020", "ITOTORI-032", "SHARED-009"],
@@ -4650,7 +5189,7 @@
       "title": "Finding triage and root-cause router",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "qa",
       "dependsOn": ["ITOTORI-021", "SHARED-007"],
@@ -4687,7 +5226,7 @@
       "title": "Human decision queue UX",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": [
@@ -4737,7 +5276,7 @@
       "title": "Playtest feedback intake",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "feedback",
       "dependsOn": ["ITOTORI-023", "ITOTORI-033"],
@@ -4775,7 +5314,7 @@
       "title": "Patch export and Kaifuu handoff v0.2",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "kaifuu"],
       "parallelGroup": "translation-loop",
       "dependsOn": ["ITOTORI-019", "ITOTORI-020", "SHARED-004", "ITOTORI-029", "ITOTORI-035"],
@@ -4812,7 +5351,7 @@
       "title": "Benchmark harness and MTL baseline",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "benchmarks",
       "dependsOn": [
@@ -4822,9 +5361,11 @@
         "ITOTORI-021",
         "ITOTORI-032",
         "ITOTORI-029",
-        "SHARED-009"
+        "SHARED-009",
+        "CATALOG-002",
+        "CATALOG-004"
       ],
-      "summary": "Run raw MTL baselines, deterministic QA, seeded defect tests, QA-agent evaluation, cost reports, and quality summaries through one benchmark harness.",
+      "summary": "Run raw MTL baselines, deterministic QA, seeded defect tests, QA-agent evaluation, cost reports, and completeness-aware benchmark summaries through one benchmark harness.",
       "deliverables": [
         "Benchmark runner",
         "MTL baseline mode",
@@ -4832,10 +5373,11 @@
         "Cost/quality report output"
       ],
       "acceptanceCriteria": [
-        "Raw MTL is a comparable baseline",
-        "QA agents are benchmarked separately from final drafts",
-        "Reports are reproducible with fixture hashes",
-        "Reports include raw MTL, Itotori draft, QA-agent evaluation, deterministic QA output, token/cost data, and fixture hashes"
+        "Raw MTL baseline is included for every benchmark set",
+        "Seeded localization defects and deterministic QA results are recorded",
+        "QA-agent evaluation and finding-backed scores are represented without confidence fields",
+        "Cost/token/provider metadata is tied to model ledger records",
+        "Benchmark sets can be selected from MTL-only, fan-partial, conflict, official-full, public fixture, and private-local readiness pools without leaking private data"
       ],
       "verification": [
         {
@@ -4862,7 +5404,7 @@
       "title": "Cost and quality dashboard",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-005", "ITOTORI-026", "ITOTORI-029"],
@@ -4900,9 +5442,9 @@
       "title": "End-to-end draft iteration loop",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "kaifuu", "utsushi"],
-      "parallelGroup": "mvp-integration",
+      "parallelGroup": "alpha-integration",
       "dependsOn": [
         "ITOTORI-023",
         "ITOTORI-025",
@@ -4948,7 +5490,7 @@
       "title": "Locale branch foundation",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "translation-loop",
       "dependsOn": ["ITOTORI-002", "SHARED-001", "SHARED-008"],
@@ -4985,7 +5527,7 @@
       "title": "Search and indexing infrastructure decision",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "itotori-core",
       "dependsOn": ["ITOTORI-001", "ITOTORI-031"],
@@ -5022,7 +5564,7 @@
       "title": "Provider credentials, routing, and recording policy",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["UNIV-001"],
@@ -5055,7 +5597,7 @@
       "title": "Seeded localization defect corpus",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["SHARED-003", "SHARED-009", "UNIV-008"],
@@ -5096,7 +5638,7 @@
       "title": "Feedback source model and manual import stub",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "feedback",
       "dependsOn": ["ITOTORI-000", "ITOTORI-001"],
@@ -5137,7 +5679,7 @@
       "title": "Translation memory and reuse index",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "translation-loop",
       "dependsOn": ["ITOTORI-002", "ITOTORI-008", "ITOTORI-029"],
@@ -5174,7 +5716,7 @@
       "title": "Asset localization decision workflow",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "kaifuu"],
       "parallelGroup": "policy",
       "dependsOn": ["ITOTORI-007", "SHARED-011", "KAIFUU-021"],
@@ -5215,7 +5757,7 @@
       "title": "Local model provider parity",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-009", "ITOTORI-010", "ITOTORI-019"],
@@ -5252,7 +5794,7 @@
       "title": "External community channel integrations",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "feedback",
       "dependsOn": ["ITOTORI-024", "ITOTORI-033"],
@@ -5285,7 +5827,7 @@
       "title": "Repair and rerun orchestration skeleton",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "translation-loop",
       "dependsOn": ["ITOTORI-003", "ITOTORI-022", "ITOTORI-025"],
@@ -5322,7 +5864,7 @@
       "title": "Model and prompt experiment runner",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "benchmarks",
       "dependsOn": ["ITOTORI-010", "ITOTORI-026", "ITOTORI-031"],
@@ -5363,7 +5905,7 @@
       "title": "Localization workspace UX",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-005", "ITOTORI-006", "ITOTORI-029", "ITOTORI-034", "ITOTORI-030"],
@@ -5405,7 +5947,7 @@
       "title": "Asset localization drafting and QA loop",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori", "kaifuu"],
       "parallelGroup": "translation-loop",
       "dependsOn": ["ITOTORI-035", "KAIFUU-026", "ITOTORI-019", "ITOTORI-020"],
@@ -5442,7 +5984,7 @@
       "title": "Style dispute adjudication workflow",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "feedback",
       "dependsOn": ["ITOTORI-007", "ITOTORI-024"],
@@ -5483,7 +6025,7 @@
       "title": "Narrow read-only API service factory",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "itotori-core",
       "dependsOn": ["ITOTORI-002"],
@@ -5525,7 +6067,7 @@
       "title": "Queue read authorization before API exposure",
       "status": "planned",
       "priority": "P2",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-003", "SHARED-008"],
@@ -5539,7 +6081,7 @@
       "acceptanceCriteria": [
         "Queue read APIs cannot expose events or jobs without an explicit permission gate",
         "Unauthorized users receive denied responses for getOutboxEvent and getJob",
-        "The local all-permissions user path remains available for MVP development",
+        "The local all-permissions user path remains available for alpha readiness development",
         "Repository and API services share the same authorization decision rather than duplicating checks"
       ],
       "verification": [
@@ -5567,7 +6109,7 @@
       "title": "Queue lifecycle audit trail and retention policy",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "itotori-core",
       "dependsOn": ["ITOTORI-003"],
@@ -5609,7 +6151,7 @@
       "title": "Stale lease completion hardening",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "itotori-core",
       "dependsOn": ["ITOTORI-003"],
@@ -5651,7 +6193,7 @@
       "title": "Queue health metrics and inspection commands",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-003", "ITOTORI-004", "ITOTORI-044"],
@@ -5693,7 +6235,7 @@
       "title": "Typed job-name registry",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori", "shared"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-003", "ITOTORI-011"],
@@ -5735,7 +6277,7 @@
       "title": "Provider invocation capability guards",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori", "shared"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-009"],
@@ -5777,7 +6319,7 @@
       "title": "Project mutation ownership scoping",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori", "shared"],
       "parallelGroup": "itotori-core",
       "dependsOn": ["ITOTORI-004"],
@@ -5819,7 +6361,7 @@
       "title": "MSW mutation contract coverage",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-004"],
@@ -5861,7 +6403,7 @@
       "title": "Provider ledger hardening",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-010"],
@@ -5899,7 +6441,7 @@
       "title": "Cost drilldown dashboard filters",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-010"],
@@ -5937,7 +6479,7 @@
       "title": "Implementation hash provenance verification",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-011"],
@@ -5979,7 +6521,7 @@
       "title": "Utsushi runtime adapter trait",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi", "shared"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["SHARED-005", "UTSUSHI-000"],
@@ -6020,7 +6562,7 @@
       "title": "Fixture runtime on adapter architecture",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UTSUSHI-001"],
@@ -6057,7 +6599,7 @@
       "title": "Runtime evidence ingestion",
       "status": "complete",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UTSUSHI-001", "ITOTORI-002", "UTSUSHI-002"],
@@ -6091,24 +6633,25 @@
     },
     {
       "id": "UTSUSHI-004",
-      "title": "Screenshot and artifact store",
-      "status": "in_progress",
-      "priority": "P1",
-      "target": "mvp",
+      "title": "Artifact storage foundation",
+      "status": "planned",
+      "priority": "P2",
+      "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "utsushi-core",
-      "dependsOn": ["UTSUSHI-003"],
-      "summary": "Provide local artifact storage conventions for screenshots, frame captures, traces, and recordings, with references stored in Postgres.",
+      "dependsOn": ["UTSUSHI-003", "CATALOG-003"],
+      "summary": "Provide the narrow local artifact storage contract for screenshots, frame captures, traces, recordings, corpus sidecars, and benchmark artifacts, deferring richer runtime UX until catalog/readiness foundations land.",
       "deliverables": [
-        "Artifact store module",
-        "Path policy",
-        "Cleanup command",
-        "Dashboard-serving route"
+        "Artifact root and path policy",
+        "Deterministic naming contract",
+        "Postgres artifact reference conventions",
+        "Cleanup safety tests"
       ],
       "acceptanceCriteria": [
-        "Artifacts are reproducibly named",
+        "Artifacts are reproducibly named under a dedicated artifact root",
         "DB rows reference artifacts without embedding large files",
-        "Cleanup cannot delete source game files"
+        "Cleanup is constrained to managed artifact roots and cannot delete source game files, local corpus roots, or patch outputs",
+        "The storage contract can serve runtime evidence, local corpus sidecars, and benchmark artifacts without assuming screenshot capture is the next product priority"
       ],
       "verification": [
         {
@@ -6124,17 +6667,19 @@
           "value": "Manual smoke"
         }
       ],
-      "auditFocus": ["Unsafe file deletion", "Path traversal", "Large DB blobs"],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-004",
-      "worktree": "/tmp/itotori-spec-utsushi-004"
+      "auditFocus": [
+        "Unsafe file deletion",
+        "Path traversal",
+        "Large DB blobs",
+        "Runtime UX scope creep before catalog/readiness"
+      ]
     },
     {
       "id": "UTSUSHI-005",
       "title": "Runtime review dashboard",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["UTSUSHI-004", "ITOTORI-005"],
@@ -6176,7 +6721,7 @@
       "title": "RPG Maker MV/MZ validation probe",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-001", "KAIFUU-007", "UTSUSHI-000", "UTSUSHI-002", "UTSUSHI-003"],
@@ -6190,7 +6735,7 @@
       "acceptanceCriteria": [
         "Adapter produces useful validation evidence without requiring pixel-perfect porting",
         "Limitations are explicit",
-        "It supports the first real-engine MVP loop",
+        "It supports the first real-engine alpha readiness loop",
         "Evidence tier is visible wherever evidence is shown"
       ],
       "verification": [
@@ -6217,12 +6762,12 @@
       "id": "UTSUSHI-007",
       "title": "Ren'Py route and text probe",
       "status": "planned",
-      "priority": "P1",
-      "target": "mvp",
+      "priority": "P3",
+      "target": "continuous",
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-001", "KAIFUU-008", "UTSUSHI-000", "UTSUSHI-002", "UTSUSHI-003"],
-      "summary": "Produce runtime-like validation evidence for Ren'Py projects through script structure, route/menu analysis, and optional launch/capture hooks.",
+      "summary": "Keep RenPy route and text probing as continuous expansion reference/runtime work now that RenPy is no longer an alpha Japanese opportunity driver.",
       "deliverables": [
         "Ren'Py runtime probe",
         "Route fixtures",
@@ -6249,22 +6794,18 @@
           "value": "Dashboard smoke"
         }
       ],
-      "auditFocus": [
-        "Static analysis masquerading as runtime",
-        "Route explosion",
-        "Script syntax variants"
-      ]
+      "auditFocus": ["RenPy over-weighting", "Route inference drift", "Runtime evidence overclaim"]
     },
     {
       "id": "UTSUSHI-008",
       "title": "KiriKiri/KAG trace probe",
       "status": "planned",
-      "priority": "P1",
-      "target": "mvp",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-001", "KAIFUU-009", "UTSUSHI-000", "UTSUSHI-002", "UTSUSHI-003"],
-      "summary": "Build a trace-focused KAG validation probe for command-heavy visual novel scripts, emphasizing text order, speaker context, and branch points.",
+      "summary": "Keep KAG trace probing as continuous expansion support for plaintext or already-extracted KiriKiri projects after XP3 readiness work lands.",
       "deliverables": [
         "KAG trace probe",
         "Command fixtures",
@@ -6291,18 +6832,14 @@
           "value": "Dashboard smoke"
         }
       ],
-      "auditFocus": [
-        "Command parser drift from Kaifuu",
-        "Fidelity overclaim",
-        "Speaker/branch ambiguity"
-      ]
+      "auditFocus": ["Plaintext KAG overclaim", "Command trace gaps", "Packed XP3 readiness bypass"]
     },
     {
       "id": "UTSUSHI-009",
       "title": "Branch point explorer",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-006", "UTSUSHI-007", "ITOTORI-015"],
@@ -6339,7 +6876,7 @@
       "title": "Playable review package prototype",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-005", "UTSUSHI-006", "UTSUSHI-014"],
@@ -6353,7 +6890,7 @@
       "acceptanceCriteria": [
         "A reviewer can play a small patched slice and submit contextual feedback",
         "Feedback links to runtime evidence",
-        "The prototype does not block MVP if fidelity is limited"
+        "The prototype does not block alpha readiness if fidelity is limited"
       ],
       "verification": [
         {
@@ -6380,7 +6917,7 @@
       "title": "Agent validation hooks over runtime evidence",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "qa",
       "dependsOn": ["UTSUSHI-003", "ITOTORI-022", "UTSUSHI-005"],
@@ -6423,7 +6960,7 @@
       "title": "Scene VM feasibility report",
       "status": "planned",
       "priority": "P2",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["UTSUSHI-001", "KAIFUU-020", "UTSUSHI-000"],
@@ -6438,7 +6975,7 @@
         "Accuracy target is validation usefulness first, pixel-perfect second",
         "Siglus, RPG Maker, and KiriKiri are compared",
         "Build-vs-skip criteria are explicit",
-        "The report can create follow-up DAG nodes without blocking MVP runtime probes"
+        "The report can create follow-up DAG nodes without blocking alpha readiness runtime probes"
       ],
       "verification": [
         {
@@ -6461,7 +6998,7 @@
       "title": "Browser playback experiment",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["utsushi"],
       "parallelGroup": "engine-research",
       "dependsOn": ["UTSUSHI-010", "UTSUSHI-012"],
@@ -6475,7 +7012,7 @@
       "acceptanceCriteria": [
         "Prototype shows whether browser playback helps review",
         "Limitations are measured",
-        "No MVP dependency is introduced"
+        "No alpha readiness dependency is introduced"
       ],
       "verification": [
         {
@@ -6502,7 +7039,7 @@
       "title": "Cross-platform launch and capture harness",
       "status": "planned",
       "priority": "P2",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-001", "UTSUSHI-004", "UTSUSHI-000"],
@@ -6535,7 +7072,7 @@
       "title": "Runtime limitation and approximation enforcement",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["utsushi", "shared"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-001", "SHARED-005"],
@@ -6577,7 +7114,7 @@
       "title": "CLI-owned runtime registry composition",
       "status": "planned",
       "priority": "P2",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-002"],
@@ -6619,7 +7156,7 @@
       "title": "Trace-only approximation wording clarity",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["utsushi", "shared"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-002"],
@@ -6657,22 +7194,25 @@
       ]
     },
     {
-      "id": "MVP-001",
+      "id": "ALPHA-001",
       "title": "First real-engine end-to-end vertical slice",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["suite", "itotori", "kaifuu", "utsushi"],
-      "parallelGroup": "mvp-integration",
+      "parallelGroup": "alpha-integration",
       "dependsOn": [
         "SHARED-002",
         "ITOTORI-028",
         "KAIFUU-007",
         "UTSUSHI-006",
-        "MVP-000",
-        "SHARED-012"
+        "ALPHA-000",
+        "SHARED-012",
+        "CATALOG-003",
+        "KAIFUU-052",
+        "KAIFUU-053"
       ],
-      "summary": "Run the full Itotori/Kaifuu/Utsushi loop on a public or private-local RPG Maker MV/MZ fixture without relying on the synthetic fixture engine.",
+      "summary": "Run the full Itotori/Kaifuu/Utsushi loop on a public or private-local RPG Maker MV/MZ full-surface fixture after inventory/readiness metadata is available, without relying on the synthetic fixture engine.",
       "deliverables": [
         "Real-engine fixture profile",
         "Full run command",
@@ -6680,9 +7220,10 @@
         "Patch package"
       ],
       "acceptanceCriteria": [
-        "Extract, draft, QA, patch, delta apply, runtime evidence, feedback, and rerun all work",
+        "Inventory, readiness, extract, draft, QA, patch, delta apply, runtime evidence, feedback, and rerun all work for the MV/MZ fixture profile",
         "No raw copyrighted assets are committed",
-        "All failures are structured findings"
+        "All failures are structured findings",
+        "The run reports catalog/local-corpus/readiness identity when available instead of treating bridge import as the first project fact"
       ],
       "verification": [
         {
@@ -6705,14 +7246,14 @@
       ]
     },
     {
-      "id": "MVP-002",
+      "id": "ALPHA-002",
       "title": "Playable draft feedback loop",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["suite", "itotori", "utsushi"],
-      "parallelGroup": "mvp-integration",
-      "dependsOn": ["MVP-001", "ITOTORI-023", "UTSUSHI-005", "MVP-000", "ITOTORI-024"],
+      "parallelGroup": "alpha-integration",
+      "dependsOn": ["ALPHA-001", "ITOTORI-023", "UTSUSHI-005", "ALPHA-000", "ITOTORI-024"],
       "summary": "Make human draft feedback from a playable or runtime-reviewed slice flow into triage, decisions, repair jobs, and updated patch output.",
       "deliverables": [
         "Feedback UX",
@@ -6746,21 +7287,22 @@
       ]
     },
     {
-      "id": "MVP-003",
-      "title": "Cost and quality target report",
+      "id": "ALPHA-003",
+      "title": "Pre-alpha cost and quality target report",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["suite", "itotori"],
-      "parallelGroup": "mvp-integration",
-      "dependsOn": ["MVP-001", "ITOTORI-026", "ITOTORI-027", "MVP-000", "ITOTORI-039"],
-      "summary": "Produce the first credible MVP report comparing raw MTL, Itotori drafts, deterministic QA, LLM QA, cost, and runtime evidence on fixture and private-local data.",
+      "parallelGroup": "alpha-integration",
+      "dependsOn": ["ALPHA-001", "ITOTORI-026", "ITOTORI-027", "ALPHA-000", "ITOTORI-039"],
+      "summary": "Produce the first credible pre-alpha report comparing raw MTL, Itotori drafts, deterministic QA, LLM QA, cost, and runtime evidence on fixture and private-local data before a full-game localization project begins.",
       "deliverables": ["Benchmark run", "Cost report", "Quality report", "README-safe summary"],
       "acceptanceCriteria": [
         "Reports avoid unverifiable public claims",
         "MTL baseline is included",
         "The $25 target is evaluated with real token/count data",
-        "Reports include raw MTL, Itotori draft, QA-agent evaluation, deterministic QA output, token/cost data, and fixture hashes"
+        "Reports include raw MTL, Itotori draft, QA-agent evaluation, deterministic QA output, token/cost data, provider/model metadata, and fixture hashes",
+        "At least one fake or recorded-provider path is deterministic for CI and at least one local or explicitly opted-in live-provider proof exercises real LLM response handling before a full-game project begins"
       ],
       "verification": [
         {
@@ -6776,28 +7318,44 @@
           "value": "Manual report audit"
         }
       ],
-      "auditFocus": ["Quality self-delusion", "Private data leakage", "Cost optimism"]
+      "auditFocus": [
+        "Quality self-delusion",
+        "Private data leakage",
+        "Cost optimism",
+        "Real LLM behavior deferred until alpha stress testing"
+      ]
     },
     {
-      "id": "MVP-004",
-      "title": "Multi-engine MVP demonstration",
+      "id": "ALPHA-004",
+      "title": "Alpha engine readiness and breadth demonstration",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["suite", "kaifuu", "itotori", "utsushi"],
-      "parallelGroup": "mvp-integration",
-      "dependsOn": ["MVP-002", "KAIFUU-008", "KAIFUU-009", "UTSUSHI-007", "UTSUSHI-008", "MVP-000"],
-      "summary": "Demonstrate that the architecture is engine-agnostic by running supported slices across RPG Maker, Ren'Py, and KAG-style fixtures.",
+      "parallelGroup": "alpha-integration",
+      "dependsOn": [
+        "ALPHA-002",
+        "KAIFUU-007",
+        "KAIFUU-016",
+        "KAIFUU-054",
+        "KAIFUU-055",
+        "KAIFUU-056",
+        "CATALOG-004",
+        "ALPHA-000"
+      ],
+      "summary": "Demonstrate engine breadth through MV/MZ positive support, TyranoScript null-key support when complete, and capability-leveled readiness profiles for packed/encrypted engines instead of over-weighting RenPy or plaintext-only KiriKiri.",
       "deliverables": [
-        "Multi-engine run matrix",
-        "Engine capability dashboard",
-        "Known limitations",
-        "Regression fixtures"
+        "Engine readiness matrix",
+        "MV/MZ full-surface run artifacts",
+        "TyranoScript null-key run artifacts when complete",
+        "Packed-engine readiness reports",
+        "Known limitations"
       ],
       "acceptanceCriteria": [
-        "At least three engine families have extraction/patching paths",
-        "Runtime evidence fidelity is clearly tiered",
-        "Itotori code remains engine-agnostic"
+        "The architecture is shown across positive extraction/patch adapters and readiness-only packed/encrypted profiles",
+        "RenPy is not presented as an alpha Japanese opportunity driver",
+        "KiriKiri breadth is represented by XP3/readiness evidence rather than plaintext-only support",
+        "Capability levels distinguish identify, inventory, extract, and patch for each engine family"
       ],
       "verification": [
         {
@@ -6814,45 +7372,51 @@
         }
       ],
       "auditFocus": [
-        "Engine-specific Itotori leakage",
-        "Thin demos without patch verification",
-        "Unclear limitations"
+        "RenPy over-weighting",
+        "Plaintext KiriKiri overclaim",
+        "Readiness profile mistaken for patch support",
+        "Engine capability dashboard drift"
       ]
     },
     {
-      "id": "MVP-005",
-      "title": "MVP release hardening",
+      "id": "ALPHA-005",
+      "title": "Alpha localization project readiness hardening",
       "status": "planned",
       "priority": "P1",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["suite", "universal"],
-      "parallelGroup": "release",
+      "parallelGroup": "milestone",
       "dependsOn": [
-        "MVP-003",
-        "MVP-004",
+        "ALPHA-003",
+        "ALPHA-004",
         "UNIV-004",
         "UNIV-006",
-        "MVP-000",
+        "ALPHA-000",
         "UNIV-007",
         "UNIV-008",
         "UNIV-009",
         "UNIV-010",
         "KAIFUU-042",
         "ITOTORI-040",
-        "ITOTORI-042"
+        "ITOTORI-042",
+        "CATALOG-004",
+        "KAIFUU-052",
+        "KAIFUU-053"
       ],
-      "summary": "Prepare the MVP for public use: docs, install flow, security posture, known limitations, examples, green required checks, and roadmap continuation.",
+      "summary": "Prepare the suite to start a first real localization project: docs, install flow, security posture, known limitations, examples, green required checks, and roadmap continuation.",
       "deliverables": [
-        "MVP README",
+        "Alpha readiness README",
         "Install docs",
         "Security/limitations docs",
-        "Release checklist",
+        "Alpha readiness checklist",
         "Next DAG tranche"
       ],
       "acceptanceCriteria": [
         "A new user can run public fixture demos",
         "Known legal/safety boundaries are practical and not overstated",
-        "CI and hello-world workflows are required and green"
+        "CI, hello-world workflows, benchmark smoke, and recorded or opted-in real-provider proof are required and green",
+        "Docs frame the product as catalog, inventory, readiness, extraction, localization, patching, and validation rather than only translation",
+        "The milestone is framed as readiness to start a real localization project, not as a terminal product release"
       ],
       "verification": [
         {
@@ -6872,14 +7436,19 @@
           "value": "Docs audit"
         }
       ],
-      "auditFocus": ["Overclaiming support", "Setup brittleness", "Missing limitation disclosure"]
+      "auditFocus": [
+        "Overclaiming support",
+        "Setup brittleness",
+        "Missing limitation disclosure",
+        "Full-game alpha testing used to excuse missing pre-alpha validation"
+      ]
     },
     {
       "id": "ITOTORI-055",
       "title": "Dashboard decision read model",
       "status": "planned",
       "priority": "P2",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-005"],
@@ -6915,7 +7484,7 @@
       "title": "Dashboard data-state precision",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-005", "ITOTORI-007", "ITOTORI-008"],
@@ -6951,7 +7520,7 @@
       "title": "Typed dashboard API errors",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["ITOTORI-005", "ITOTORI-004"],
@@ -6987,7 +7556,7 @@
       "title": "Delta apply preflight completeness",
       "status": "planned",
       "priority": "P2",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-005"],
@@ -7023,7 +7592,7 @@
       "title": "Delta apply report collision safety",
       "status": "planned",
       "priority": "P2",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-005"],
@@ -7059,7 +7628,7 @@
       "title": "Delta package path normalization hardening",
       "status": "planned",
       "priority": "P3",
-      "target": "post_mvp",
+      "target": "continuous",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-005", "SHARED-015"],
@@ -7095,7 +7664,7 @@
       "title": "Runtime evidence re-ingest cleanup",
       "status": "planned",
       "priority": "P2",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UTSUSHI-003"],
@@ -7131,7 +7700,7 @@
       "title": "Runtime evidence nested id namespacing",
       "status": "planned",
       "priority": "P2",
-      "target": "mvp",
+      "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UTSUSHI-003"],

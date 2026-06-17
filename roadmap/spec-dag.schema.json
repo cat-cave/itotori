@@ -82,7 +82,7 @@
         },
         "target": {
           "type": "string",
-          "enum": ["baseline", "mvp", "post_mvp"]
+          "enum": ["baseline", "alpha", "continuous"]
         },
         "projects": {
           "type": "array",
@@ -99,6 +99,7 @@
             "agent-runtime",
             "baseline",
             "benchmarks",
+            "catalog",
             "context-agents",
             "contracts",
             "dashboard",
@@ -107,11 +108,11 @@
             "feedback",
             "itotori-core",
             "kaifuu-core",
-            "mvp-integration",
+            "alpha-integration",
             "policy",
             "qa",
             "quality-foundation",
-            "release",
+            "milestone",
             "roadmap-infra",
             "runtime-adapters",
             "tooling",

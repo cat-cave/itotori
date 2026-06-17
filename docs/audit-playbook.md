@@ -41,7 +41,7 @@ downgrade it to a follow-up only when it still describes useful future work.
 | Severity | Meaning                                                                                                                         | Orchestration consequence                                                                               |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `P0`     | The spec cannot be trusted or merged because it violates a hard safety, data integrity, repository, or orchestration invariant. | `blocksCompletion: true`; `completionDecision: blocked`; repair in the active branch before completion. |
-| `P1`     | The spec misses required MVP behavior, acceptance criteria, or verification for the owned node.                                 | `blocksCompletion: true`; `completionDecision: blocked`; repair in the active branch before completion. |
+| `P1`     | The spec misses required alpha-readiness behavior, acceptance criteria, or verification for the owned node.                     | `blocksCompletion: true`; `completionDecision: blocked`; repair in the active branch before completion. |
 | `P2`     | Important follow-up work that should be tracked, but the current spec can complete without it.                                  | `blocksCompletion: false`; convert to a new planned DAG node or append to an existing planned node.     |
 | `P3`     | Exploratory, polish, training, or optional improvement.                                                                         | `blocksCompletion: false`; batch into a future node or append to an existing planned node.              |
 
@@ -86,7 +86,7 @@ P2 and P3 findings must be convertible:
    relies on the current spec being complete.
 5. Keep draft dependencies valid: every `proposedDagNode.dependsOn` entry must
    already exist in `roadmap/spec-dag.json`, and the proposed node cannot depend
-   on a later target (`baseline` before `mvp` before `post_mvp`).
+   on a later target (`baseline` before `alpha` before `continuous`).
 6. Copy or refine `actionableAcceptanceCriteria` into the proposed node's
    `acceptanceCriteria`.
 7. Add verification strong enough for the new acceptance criteria.

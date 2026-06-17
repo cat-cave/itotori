@@ -4,13 +4,13 @@ Itotori authorization is permission-based. Callers present a user id, and mutati
 repository or API code checks for the specific permission needed by that action.
 Authorization checks must not branch on role names.
 
-## MVP Local User
+## Local Alpha User
 
-MVP local mode bootstraps one user:
+Local alpha mode bootstraps one user:
 
-| User id      | Display name | Grants              |
-| ------------ | ------------ | ------------------- |
-| `local-user` | Local user   | All MVP permissions |
+| User id      | Display name | Grants                |
+| ------------ | ------------ | --------------------- |
+| `local-user` | Local user   | All alpha permissions |
 
 `itotori db-migrate` creates the permission tables and idempotently grants every
 known permission to `local-user`. The CLI also idempotently bootstraps this user

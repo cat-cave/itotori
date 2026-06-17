@@ -1,7 +1,7 @@
 # Kaifuu Encrypted Engine Research Brief
 
 This brief records the current research basis for treating decryption and key
-discovery as an MVP readiness lane. It complements
+discovery as an alpha readiness lane. It complements
 [kaifuu-key-discovery.md](kaifuu-key-discovery.md) and the roadmap nodes
 `KAIFUU-035` through `KAIFUU-042`, `KAIFUU-050`, and `KAIFUU-051`.
 
@@ -10,7 +10,7 @@ discovery as an MVP readiness lane. It complements
 Kaifuu should not defer encryption/key discovery as future polish. Existing
 VN/RPG tooling shows that practical extraction often depends on engine-specific
 keys, runtime helpers, static executable analysis, patch databases, or
-game-specific archive schemes. The MVP should therefore ship the generic
+game-specific archive schemes. The alpha should therefore ship the generic
 boundary and validation mechanisms even when a production adapter for a
 specific encrypted commercial format remains out of scope.
 
@@ -44,7 +44,7 @@ Kaifuu implication: plaintext KAG support must not imply encrypted XP3 support.
 XP3 detection should distinguish plain archive, encrypted archive, protected
 executable, helper-required, and patch-database workflows. Production encrypted
 XP3 patching needs a later explicit support claim with fixtures and helper
-evidence, but MVP detection/helper/redaction boundaries are mandatory.
+evidence, but alpha detection/helper/redaction boundaries are mandatory.
 
 ### SiglusEngine
 
@@ -73,8 +73,8 @@ detect the encryption key from MV/MZ `System.json` or an encrypted image, and
 notes that image restoration can be possible without the key while audio
 requires decryption.
 
-Kaifuu implication: the MVP RPG Maker JSON-text adapter can remain text-first,
-but encrypted asset detection and key-profile diagnostics are still MVP. Image
+Kaifuu implication: the alpha readiness RPG Maker JSON-text adapter can remain text-first,
+but encrypted asset detection and key-profile diagnostics are still alpha readiness. Image
 text, UI textures, audio/song metadata, and media policy are localization
 surfaces; the adapter must not silently ignore encrypted assets that may affect
 localization scope.

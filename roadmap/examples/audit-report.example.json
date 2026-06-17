@@ -112,7 +112,7 @@
           "idPrefix": "UNIV",
           "title": "Audit report ingestion command",
           "priority": "P2",
-          "target": "post_mvp",
+          "target": "continuous",
           "projects": ["universal", "shared"],
           "parallelGroup": "roadmap-infra",
           "dependsOn": ["UNIV-006"],
@@ -152,7 +152,7 @@
           "detail": "The first template focuses on canonical P0-P3 cases."
         }
       ],
-      "impact": "Reviewer training may take longer, but this does not affect MVP completion.",
+      "impact": "Reviewer training may take longer, but this does not affect alpha readiness.",
       "actionableAcceptanceCriteria": [
         "Add examples for duplicate findings, accepted risk, and severity downgrades.",
         "State when a note should remain prose-only instead of becoming a finding."

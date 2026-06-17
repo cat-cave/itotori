@@ -12,7 +12,7 @@ const sampleNode = {
   title: "GitHub issue sync for DAG nodes",
   status: "planned",
   priority: "P1",
-  target: "mvp",
+  target: "alpha",
   projects: ["universal"],
   parallelGroup: "roadmap-infra",
   dependsOn: ["UNIV-001"],
@@ -44,7 +44,7 @@ Add a deterministic command that creates or updates GitHub issues from DAG nodes
 - Node: \`UNIV-002\`
 - Status: \`planned\`
 - Priority: \`P1\`
-- Target: \`mvp\`
+- Target: \`alpha\`
 - Projects: \`universal\`
 - Parallel group: \`roadmap-infra\`
 - DAG source: \`roadmap/spec-dag.json\`
@@ -86,7 +86,7 @@ test("uses the managed label taxonomy in a stable order", () => {
     "spec-dag",
     "dag/priority:P1",
     "dag/status:planned",
-    "dag/target:mvp",
+    "dag/target:alpha",
     "dag/project:universal",
     "dag/group:roadmap-infra",
   ]);
@@ -124,7 +124,7 @@ defaultMutating: false
 CREATE UNIV-002
 issue: none
 title: [UNIV-002] GitHub issue sync for DAG nodes
-labels: spec-dag, dag/priority:P1, dag/status:planned, dag/target:mvp, dag/project:universal, dag/group:roadmap-infra
+labels: spec-dag, dag/priority:P1, dag/status:planned, dag/target:alpha, dag/project:universal, dag/group:roadmap-infra
 dependencies: UNIV-001
 status: planned
 acceptanceCriteria:

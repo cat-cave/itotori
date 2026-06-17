@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
-const targetRank = { baseline: 0, mvp: 1, post_mvp: 2 };
+const targetRank = { baseline: 0, alpha: 1, continuous: 2 };
 
 export const issueSyncLabelTaxonomy = Object.freeze({
   root: "spec-dag",

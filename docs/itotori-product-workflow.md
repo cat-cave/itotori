@@ -583,9 +583,9 @@ Decision consequences must be shown before confirmation. The reviewer should
 know whether an action will unblock export, create a new style-guide version,
 invalidate drafts, suppress duplicate feedback, or schedule reruns.
 
-## MVP Product Bar
+## Alpha Product Bar
 
-The MVP workflow is acceptable when:
+The alpha workflow is acceptable when:
 
 - random line review is impossible by product contract;
 - reviewers see source, draft, context, screenshots/evidence, and reasoning

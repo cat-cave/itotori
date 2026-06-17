@@ -52,7 +52,7 @@ Vite+ and Vite Task are the high-level TypeScript/web workspace surface. Cargo r
 ## Status
 
 This repository is scaffolded for DAG-driven development from the DB-backed hello
-world toward the MVP.
+world toward alpha readiness for the first real localization project.
 
 The canonical roadmap is tracked as machine-readable data in `roadmap/spec-dag.json`.
 Use `just roadmap-validate`, `just roadmap-ready`, and `just roadmap-pop` to inspect

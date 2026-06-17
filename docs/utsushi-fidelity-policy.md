@@ -68,7 +68,7 @@ runtime report.
 
 ## Runtime Environment Matrix
 
-| Environment          | Purpose                                           | MVP status               | Notes                                                                                    |
+| Environment          | Purpose                                           | Alpha status             | Notes                                                                                    |
 | -------------------- | ------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------- |
 | Native Linux CLI     | Deterministic traces and fixture captures         | Required                 | Must run in public CI for synthetic fixtures.                                            |
 | Native macOS CLI     | Developer parity                                  | Supported when available | Not a CI blocker unless macOS-specific code is introduced.                               |
@@ -83,17 +83,17 @@ Utsushi reports must make platform assumptions explicit enough that a reviewer
 can distinguish deterministic fixture evidence from host-specific runtime
 behavior.
 
-| Area                  | MVP assumption                                                                                                                         | Reported values                                                                                              |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Linux CI baseline     | Ubuntu 24.04 LTS, x86_64, headless execution, Rust from `rust-toolchain.toml`, Node >= 24.14.0.                                        | `host.os`, `host.osVersion`, `host.arch`, `host.kernel`, tool versions.                                      |
-| macOS developer use   | macOS 14 or newer on arm64 or x86_64 is supported when available, but is not an MVP CI gate.                                           | Same host fields plus `host.buildVersion` when available.                                                    |
-| Windows developer use | Windows 11 23H2 or newer on x86_64 is supported when available; Windows-native behavior is not an MVP CI gate.                         | Same host fields plus `host.buildNumber` and drive/path mode.                                                |
-| Display/headless      | E0 and E1 require no display. E2 fixture captures must run under headless software rendering.                                          | `display.mode` as `none`, `xvfb`, `wayland-headless`, `browser-headless`, or `native`.                       |
-| GPU                   | Hardware acceleration is optional before E4. E2 claims must pass with software rendering.                                              | `gpu.accelerated`, renderer name, device id when available, driver version, and capture scale.               |
-| Wine/Proton           | Not required for MVP. Planned Windows-game probes assume a Linux x86_64 host with Wine 9.x or Proton 9.x or newer and a 64-bit prefix. | Wine or Proton version, host OS, prefix architecture, DXVK/VKD3D state, and whether evidence is Wine-backed. |
-| Browser review        | Browser/WASM review assumes Chromium 124 or newer, or the browser engine pinned by CI tooling.                                         | Browser name, engine, version, user agent, viewport, device scale factor, and headless flag.                 |
-| Filesystem paths      | Portable artifacts use UTF-8 relative paths with forward slashes under the run artifact directory.                                     | Artifact root, path separator, case sensitivity, symlink policy, and any absolute path redaction.            |
-| Locale and fonts      | CI fixture runs use `C.UTF-8` or `en_US.UTF-8`; localized review runs must state their BCP 47 locale and installed font fallback set.  | `LANG`, `LC_ALL`, source/target locale, font family, fallback family, and missing glyph count.               |
+| Area                  | Alpha assumption                                                                                                                                   | Reported values                                                                                              |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Linux CI baseline     | Ubuntu 24.04 LTS, x86_64, headless execution, Rust from `rust-toolchain.toml`, Node >= 24.14.0.                                                    | `host.os`, `host.osVersion`, `host.arch`, `host.kernel`, tool versions.                                      |
+| macOS developer use   | macOS 14 or newer on arm64 or x86_64 is supported when available, but is not an alpha CI gate.                                                     | Same host fields plus `host.buildVersion` when available.                                                    |
+| Windows developer use | Windows 11 23H2 or newer on x86_64 is supported when available; Windows-native behavior is not an alpha CI gate.                                   | Same host fields plus `host.buildNumber` and drive/path mode.                                                |
+| Display/headless      | E0 and E1 require no display. E2 fixture captures must run under headless software rendering.                                                      | `display.mode` as `none`, `xvfb`, `wayland-headless`, `browser-headless`, or `native`.                       |
+| GPU                   | Hardware acceleration is optional before E4. E2 claims must pass with software rendering.                                                          | `gpu.accelerated`, renderer name, device id when available, driver version, and capture scale.               |
+| Wine/Proton           | Not required for alpha readiness. Planned Windows-game probes assume a Linux x86_64 host with Wine 9.x or Proton 9.x or newer and a 64-bit prefix. | Wine or Proton version, host OS, prefix architecture, DXVK/VKD3D state, and whether evidence is Wine-backed. |
+| Browser review        | Browser/WASM review assumes Chromium 124 or newer, or the browser engine pinned by CI tooling.                                                     | Browser name, engine, version, user agent, viewport, device scale factor, and headless flag.                 |
+| Filesystem paths      | Portable artifacts use UTF-8 relative paths with forward slashes under the run artifact directory.                                                 | Artifact root, path separator, case sensitivity, symlink policy, and any absolute path redaction.            |
+| Locale and fonts      | CI fixture runs use `C.UTF-8` or `en_US.UTF-8`; localized review runs must state their BCP 47 locale and installed font fallback set.              | `LANG`, `LC_ALL`, source/target locale, font family, fallback family, and missing glyph count.               |
 
 Reports should record these values in an `environment` object. Schema versions
 that still expose `environment` as a string must include a companion
@@ -198,9 +198,9 @@ Utsushi owns runtime probes, traces, captures, replay sessions, and VM/playback
 adapters. It must be useful even when imperfect, as long as its reports state the
 capability level honestly.
 
-## MVP Bar
+## Alpha Bar
 
-For the MVP, Utsushi must support synthetic fixture evidence through E2:
+For alpha readiness, Utsushi must support synthetic fixture evidence through E2:
 
 1. Produce an E1 runtime trace for the patched fixture.
 2. Produce an E2 frame capture artifact for the patched fixture.

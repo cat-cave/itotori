@@ -63,7 +63,7 @@ const requiredNodeFields = [
 const optionalNodeFields = ["statusReason", "issue", "branch", "worktree", "owner", "blockedBy"];
 
 const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
-const targetRank = { baseline: 0, mvp: 1, post_mvp: 2 };
+const targetRank = { baseline: 0, alpha: 1, continuous: 2 };
 
 const [command = "validate", ...args] = process.argv.slice(2);
 const dag = loadDag();
@@ -189,7 +189,7 @@ function validateDag(value) {
   for (const cycle of findCycles(value.nodes, ids)) {
     errors.push(`cycle detected: ${cycle.join(" -> ")}`);
   }
-  for (const error of validateMvpReleasePath(value.nodes, ids)) {
+  for (const error of validateAlphaReadinessPath(value.nodes, ids)) {
     errors.push(error);
   }
 
@@ -587,22 +587,22 @@ function unusedDagNodeId(dagValue) {
   return "ZZZ-999";
 }
 
-function validateMvpReleasePath(nodes, ids) {
-  const releaseNode = ids.get("MVP-005");
+function validateAlphaReadinessPath(nodes, ids) {
+  const releaseNode = ids.get("ALPHA-005");
   if (!releaseNode) {
-    return ["MVP-005 release hardening node is required"];
+    return ["ALPHA-005 alpha readiness milestone node is required"];
   }
   const ancestors = ancestorsOf(releaseNode, ids);
   return nodes
     .filter(
       (node) =>
         node.priority === "P1" &&
-        node.target === "mvp" &&
+        node.target === "alpha" &&
         node.status !== "complete" &&
-        node.id !== "MVP-005" &&
+        node.id !== "ALPHA-005" &&
         !ancestors.has(node.id),
     )
-    .map((node) => `${node.id} is P1 MVP but is not an ancestor of MVP-005`);
+    .map((node) => `${node.id} is P1 alpha-readiness work but is not an ancestor of ALPHA-005`);
 }
 
 function ancestorsOf(node, ids) {

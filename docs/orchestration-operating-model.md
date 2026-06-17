@@ -87,8 +87,8 @@ test implementation, and spec implementation belong to workers.
 
 1. Read ready nodes with `just roadmap-ready` or
    `node scripts/spec-dag.mjs pop --json`.
-2. Pick one node, considering P0/P1 priority, MVP target pressure, dependency
-   unlocks, and worktree capacity.
+2. Pick one node, considering P0/P1 priority, alpha readiness pressure,
+   dependency unlocks, and worktree capacity.
 3. Create a branch and worktree scoped to that node while the node is still
    `planned`.
 4. Commit schema-valid `in_progress` metadata with `owner` plus `branch` or

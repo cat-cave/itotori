@@ -14,7 +14,7 @@ just roadmap-validate
 just roadmap-ready
 just roadmap-pop
 node scripts/spec-dag.mjs show ITOTORI-019
-node scripts/spec-dag.mjs ready --project kaifuu --target mvp --json
+node scripts/spec-dag.mjs ready --project kaifuu --target alpha --json
 node scripts/spec-dag.mjs sync-issues --dry-run
 node scripts/spec-dag.mjs claim UNIV-009 --owner orchestrator --json
 node scripts/spec-dag.mjs worktree UNIV-009 --json
@@ -69,7 +69,7 @@ The managed label taxonomy is:
 | `spec-dag`                | Issue is managed from the DAG. |
 | `dag/priority:P1`         | Node priority.                 |
 | `dag/status:planned`      | Node lifecycle status.         |
-| `dag/target:mvp`          | Delivery target.               |
+| `dag/target:alpha`        | Delivery target.               |
 | `dag/project:universal`   | Owning project or surface.     |
 | `dag/group:roadmap-infra` | Scheduler parallel group lane. |
 
@@ -88,7 +88,7 @@ Every node includes:
 - `id`: stable id such as `KAIFUU-007`.
 - `status`: `complete`, `planned`, `in_progress`, `blocked`, or `cancelled`.
 - `priority`: `P0` through `P3`.
-- `target`: `baseline`, `mvp`, or `post_mvp`.
+- `target`: `baseline`, `alpha`, or `continuous`.
 - `projects`: one or more of `universal`, `shared`, `itotori`, `kaifuu`,
   `utsushi`, or `suite`.
 - `parallelGroup`: coarse work lane for scheduling.
@@ -112,12 +112,12 @@ represents a meaningful scheduler lane, then update both the schema and this doc
 ## Priority Semantics
 
 `P0` means the current work cannot merge if it fails. These are core
-orchestration, data integrity, or MVP blocker issues.
+orchestration, data integrity, or hard alpha-readiness blocker issues.
 
-`P1` means required for MVP. P1 audit findings block the owning spec until
-fixed.
+`P1` means required for alpha readiness or required by the owning spec's
+acceptance criteria. P1 audit findings block the owning spec until fixed.
 
-`P2` means important but not MVP-blocking. P2 audit findings should become new
+`P2` means important but not alpha-blocking. P2 audit findings should become new
 DAG nodes or be merged into an existing planned node.
 
 `P3` means exploratory. P3 findings are batched unless they uncover a real P0 or
@@ -179,6 +179,9 @@ The graph intentionally exposes early parallel lanes:
 - `policy`: style, glossary, and asset decision policy workflows.
 - `feedback`: playtest and community feedback intake.
 - `benchmarks`: cost, quality, MTL baseline, and QA-agent evaluation.
+- `catalog`: cross-source work identity, local corpus inventory,
+  translation-completeness intelligence, edition mapping, and readiness-aware
+  opportunity ranking.
 - `qa`: deterministic QA, LLM QA, triage, and runtime-evidence QA.
 - `agent-runtime`: provider abstraction, model registry, agent/tool registry,
   batch planning, and drafting.
@@ -188,8 +191,9 @@ The graph intentionally exposes early parallel lanes:
 - `engine-research`: format, VM, and future adapter research.
 - `utsushi-core`: runtime adapter traits, evidence ingestion, and artifacts.
 - `runtime-adapters`: pragmatic validation probes and future VM work.
-- `mvp-integration`: vertical slices that prove the suite works as a system.
-- `release`: MVP definition of done and release hardening.
+- `alpha-integration`: vertical slices that prove the suite is ready to start a
+  first real localization project.
+- `milestone`: alpha readiness definition and readiness hardening.
 
 Ready nodes from different groups are good candidates for parallel work. Ready
 nodes in the same group may still be parallel if their write sets are disjoint,

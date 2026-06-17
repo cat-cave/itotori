@@ -7,11 +7,11 @@ These docs describe the monorepo as a three-project suite:
 - Utsushi: runtime validation evidence.
 
 Start with [hello-world.md](hello-world.md), then read [architecture.md](architecture.md).
-The MVP definition of done and release gate matrix live in
-[mvp-definition-of-done.md](mvp-definition-of-done.md).
+The alpha localization project readiness definition and check matrix live in
+[alpha-localization-project-readiness.md](alpha-localization-project-readiness.md).
 Toolchain upgrade policy lives in [toolchain-policy.md](toolchain-policy.md).
 Testing conventions live in [testing-standard.md](testing-standard.md).
-Itotori permission gates and the MVP local-user baseline are documented in
+Itotori permission gates and the local-user baseline are documented in
 [permissions.md](permissions.md).
 Localization quality claims, benchmark taxonomy, seeded-defect protocol, and
 human adjudication requirements are documented in
@@ -22,7 +22,7 @@ Kaifuu engine fixture sourcing, reference citation, and unsupported variant
 policy lives in [kaifuu-fixture-policy.md](kaifuu-fixture-policy.md).
 Kaifuu archive, encryption, key, helper, and unknown-variant detector rows are
 documented in [kaifuu-detection-matrix.md](kaifuu-detection-matrix.md).
-Kaifuu encrypted-engine research and MVP key-discovery implications are
+Kaifuu encrypted-engine research and alpha key-discovery implications are
 summarized in
 [kaifuu-encrypted-engine-research.md](kaifuu-encrypted-engine-research.md).
 The repeatable workflow for adding new Kaifuu engine adapters lives in
@@ -46,3 +46,6 @@ feedback escalation policy are defined in
 [itotori-product-workflow.md](itotori-product-workflow.md).
 The synthetic large-project generator and scale harness are documented in
 [itotori-scale-harness.md](itotori-scale-harness.md).
+Engine prioritization, catalog/completeness research, and the current
+post-research roadmap synthesis are tracked under
+[research/engine-prioritization-and-roadmap-synthesis.md](research/engine-prioritization-and-roadmap-synthesis.md).

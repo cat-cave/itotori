@@ -1,8 +1,24 @@
 # Kaifuu Subproject
 
-Kaifuu owns extraction, patching, verification, and `.kaifuu` delta packages.
+Kaifuu owns engine detection, inventory, readiness, extraction, patching,
+verification, and `.kaifuu` delta packages.
 
-The scaffold implements a fixture engine only. Real engines such as RPG Maker MV/MZ, KiriKiri, SiglusEngine, and Ren'Py come after the shared contracts and hello world are stable.
+The scaffold implements a fixture engine only. Real engines such as RPG Maker
+MV/MZ, RPG Maker VX Ace/RGSS3, KiriKiri/XP3, TyranoScript, SiglusEngine, Wolf,
+Unity, and Ren'Py come after the shared contracts and hello world are stable.
+The current priority is not "plaintext first"; it is a layered access pipeline
+where plaintext is the identity/null-key special case.
+
+Text access is modeled per text-bearing surface:
+
+```txt
+locate surface -> unpack container -> decrypt -> decode/decompile -> normalized text -> patch back
+```
+
+Each stage can be identity, supported, helper-gated, key-gated, research-only,
+or unsupported. Adapter capability reports must distinguish `identify`,
+`inventory`, `extract`, and `patch`, so a recognized packed or encrypted engine
+is never presented as usable by default.
 
 Patch writers, delta application, and future engine adapters must follow
 [kaifuu-patch-safety.md](kaifuu-patch-safety.md) for encoding,

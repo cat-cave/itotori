@@ -1,7 +1,7 @@
 # Kaifuu Key Discovery And Encrypted Corpus Policy
 
 Kaifuu must be useful on owned and licensed Japanese games, so encrypted-input
-readiness is an MVP requirement. The MVP does not claim universal decryption or
+readiness is an alpha requirement. The alpha readiness milestone does not claim universal decryption or
 production support for every protected commercial variant. It does require a
 clean boundary where local key discovery, secret storage, archive detection, and
 pure extraction/patching can evolve independently.
@@ -27,9 +27,9 @@ extraction/patching as pure adapter work.
 This lets Kaifuu support commercial local workflows without committing keys,
 retail files, helper dumps, or platform-specific discovery internals.
 
-## MVP Implementation Gates
+## Alpha Implementation Gates
 
-Encrypted-input readiness is not post-MVP polish. The MVP may still avoid a
+Encrypted-input readiness is not continuous expansion polish. The alpha readiness milestone may still avoid a
 production support claim for a specific encrypted commercial variant, but it
 must ship the core mechanisms that make owned encrypted games actionable:
 
@@ -58,7 +58,7 @@ must ship the core mechanisms that make owned encrypted games actionable:
    `KAIFUU-038` through `KAIFUU-041`. These slices decide exact adapter/helper
    splits for Siglus, KiriKiri/XP3, RPG Maker MV/MZ encrypted assets, Wolf RPG
    Editor, and BGI/Ethornell.
-9. **Encrypted readiness gate**: required in `KAIFUU-042`. MVP release cannot
+9. **Encrypted readiness gate**: required in `KAIFUU-042`. alpha readiness cannot
    pass unless the public fixture lane and private-local lane are both
    accounted for with safe evidence and no universal-decryption overclaim.
 
@@ -160,7 +160,7 @@ single decryption flag.
 | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | KiriKiri/XP3    | GARbro can browse many VN archive formats and says some encrypted archives ask for credentials or a game title. Its supported-format table includes KiriKiri `.xp3`. KrkrExtract handles krkr2/krkrz XP3 extract/pack, has a `Universal Dumper` for krkrz, generates `KrkrExtract.db` for universal patching, and explicitly warns that protected executables and bypass interactions are difficult.                                                                                                                                                             | Detection must separate plain XP3, encrypted XP3, protected executable, helper-required, and patch-workflow cases. Pure KAG support must not imply encrypted-XP3 support. Helper work may be Windows-oriented or database-backed, but adapter reports stay redacted and capability-scoped. |
 | SiglusEngine    | SiglusExtract is a Windows tool that extracts/repackages Siglus resources including `Scene.pck` and `Gameexe.dat`, detects additional text encryption, and provides repack/universal patch flows. `siglus_rs` documents a `key.toml` handoff with a 16-byte secondary key, notes that trial versions often work with a zero key, and names static extraction, dynamic extraction, and known-key databases for retail keys. `siglus_static_key_tool` statically analyzes executables, packed stubs, and validates candidates against `Gameexe.dat` decompression. | Siglus should be the canonical proof that key discovery is outside pure adapters. The adapter consumes a resolved secondary-key secret ref and validation proof; helper specs cover static parser, dynamic/runtime helper, known-key import, and validation failure paths.                 |
-| RPG Maker MV/MZ | RPG Maker MV/MZ decrypter tooling supports built-in encrypted asset extensions `.rpgmvp`, `.rpgmvm`, `.rpgmvo`, `.png_`, `.m4a_`, and `.ogg_`; it can detect keys from MV/MZ `System.json` or encrypted images, notes images can sometimes be restored without the key, and treats audio as key-required.                                                                                                                                                                                                                                                        | The MVP RPG Maker JSON-text adapter must include encrypted-asset diagnostics and key-profile handling even if full encrypted media patching is a later claim. Text-bearing images and media metadata are localization surfaces.                                                            |
+| RPG Maker MV/MZ | RPG Maker MV/MZ decrypter tooling supports built-in encrypted asset extensions `.rpgmvp`, `.rpgmvm`, `.rpgmvo`, `.png_`, `.m4a_`, and `.ogg_`; it can detect keys from MV/MZ `System.json` or encrypted images, notes images can sometimes be restored without the key, and treats audio as key-required.                                                                                                                                                                                                                                                        | The alpha readiness milestone RPG Maker JSON-text adapter must include encrypted-asset diagnostics and key-profile handling even if full encrypted media patching is a later claim. Text-bearing images and media metadata are localization surfaces.                                      |
 | Wolf RPG Editor | WolfDec describes `.wolf` archive decryption. UberWolf adds GUI/CLI full-game processing, all common archive extensions, automatic decryption-key detection, and Pro Editor Protection Key detection.                                                                                                                                                                                                                                                                                                                                                            | Wolf triage needs helper capability rows for archive decryption, automatic key detection, and Pro protection-key detection before full text patching. Public CI should use synthetic detector fixtures; owned games use private-local redacted readiness reports.                          |
 | BGI/Ethornell   | VNTranslationTools supports Buriko General Interpreter/Ethornell among many VN formats. BGIKit focuses on script decode/encode and requires the original file beside translated text because the encoder needs original-file information. Public evidence found here is more about bytecode/container patching than a universal key-discovery path.                                                                                                                                                                                                              | Treat BGI as profile/container/bytecode-first. If an encrypted/compressed case appears, it must fail semantically until a concrete key/profile requirement is researched, not be hand-waved as ordinary plaintext patching.                                                                |
 
@@ -170,27 +170,27 @@ single decryption flag.
   for a crypt scheme or game-specific option for encrypted archives. KrkrExtract
   shows the practical Windows-oriented runtime/patch workflow, including
   universal dump and patch paths, while warning that protected executables and
-  bypass conflicts are hard. MVP needs XP3/archive detection, local helper
+  bypass conflicts are hard. alpha needs XP3/archive detection, local helper
   boundaries, and a KiriKiri encrypted research slice; production encrypted-XP3
   patch support is a later adapter claim.
 - **SiglusEngine**: Siglus tools center on `Scene.pck`, `Gameexe.dat`, and a
   game-specific secondary key. Practical paths include static extraction,
-  dynamic extraction, and known-key databases. MVP needs the key-profile
+  dynamic extraction, and known-key databases. alpha needs the key-profile
   boundary, static/dynamic helper result shape, and redaction tests before any
   production Siglus adapter claim.
 - **RPG Maker MV/MZ**: built-in asset encryption commonly exposes key recovery
   through `System.json` or encrypted image files. Some image restoration can be
-  possible without a key, while audio needs one. MVP adapter support can remain
+  possible without a key, while audio needs one. alpha adapter support can remain
   JSON-text-first, but encrypted asset detection and key-profile handling belong
-  in MVP because text-bearing images and media metadata are localization
+  in alpha readiness because text-bearing images and media metadata are localization
   surfaces.
 - **Wolf RPG Editor**: Wolf tools show `.wolf` archive decryption, broad
   extension handling, automatic key detection, and Pro protection-key
-  detection. MVP needs archive/protection detection and a helper research slice;
+  detection. alpha needs archive/protection detection and a helper research slice;
   full Wolf text patching can still wait for binary patching support.
 - **BGI/Ethornell**: public tools emphasize script decoding/encoding,
   string-table or bytecode handling, and original-file-informed encoding. The
-  immediate MVP need is profile/container triage and encrypted/compressed
+  immediate alpha readiness need is profile/container triage and encrypted/compressed
   boundary detection rather than assuming a universal key workflow.
 
 ## Detection Matrix Surface
@@ -253,7 +253,7 @@ with public test keys, negative detector fixtures, and redaction tests. It must
 not depend on private corpora, retail keys, commercial archives, helper dumps,
 Wine, Windows, or live community key services.
 
-Private-local encrypted validation is still a first-class MVP evidence lane.
+Private-local encrypted validation is still a first-class alpha evidence lane.
 Local workflows under `fixtures/private-local/` should produce aggregate
 readiness reports that can be cited publicly by corpus label, manifest hash,
 hash-list hash, engine family counts, key-profile ids, redacted proof hashes,

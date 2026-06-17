@@ -17,3 +17,5 @@ coverage/
 !.env.*.example
 # Local-only purchased-game corpora and private benchmark inputs.
 fixtures/private-local/
+# Local research scratch exports. Curated research notes live under docs/research/.
+/research/
