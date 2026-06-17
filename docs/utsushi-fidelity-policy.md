@@ -1,0 +1,186 @@
+# Utsushi Fidelity Policy
+
+Utsushi exists to collect runtime evidence for Kaifuu and Itotori. It does not
+need to be a pixel-perfect commercial port of every engine before it is useful,
+but it must never pretend that weak evidence is stronger than it is. Every
+runtime-facing report must make its evidence tier explicit.
+
+## Evidence Tiers
+
+| Tier | Name            | Evidence                                                                          | Allowed claim                                                                            |
+| ---- | --------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| E0   | Static          | Parsed files, bridge bundles, patch manifests, hashes, schema validation          | The files are structurally understood and patchable.                                     |
+| E1   | Runtime Trace   | A runner loaded the content and emitted deterministic trace events                | The content can be reached by a known runtime path under the stated adapter assumptions. |
+| E2   | Frame Capture   | Screenshots or frame captures were produced at known script positions             | The rendered frame was observed, but visual correctness still requires comparison.       |
+| E3   | Replay Review   | A branchable playback session with navigation, screenshots, and annotations       | A reviewer or agent can inspect localized behavior at tracked points.                    |
+| E4   | Fidelity Target | Engine behavior is validated against reference output for the covered feature set | The adapter is intended to approximate the original runtime for that feature scope.      |
+
+Reports may include multiple tiers. The lowest tier involved in a claim must be
+visible beside the claim. For example, a patch can be "E0 valid" and still have
+no evidence that the localized line renders in-game.
+
+## Legacy Fidelity Tier Mapping
+
+The current bridge schema exposes `fidelityTier` as
+`"trace_only" | "layout_probe"` in
+`packages/localization-bridge-schema/src/index.ts`, and current dashboards render
+that value. That field is a legacy runtime adapter capability label, not the
+canonical evidence tier. Until the schema grows an explicit `evidenceTier` field,
+dashboards and audit records must derive the evidence tier as follows:
+
+| Current `fidelityTier` | Derived evidence tier | Dashboard wording constraint                                    |
+| ---------------------- | --------------------- | --------------------------------------------------------------- |
+| `trace_only`           | E1 Runtime Trace      | May claim trace reachability only.                              |
+| `layout_probe`         | E2 Frame Capture      | May claim captured frames only; never engine or pixel fidelity. |
+
+E0 evidence is produced by static bridge, patch, hash, and schema checks and
+does not require `fidelityTier`. E3 and E4 evidence are not representable by the
+current `RuntimeFidelityTier` type; they require a schema migration that adds an
+explicit `evidenceTier` field and preserves `fidelityTier` only as adapter detail.
+When both fields are present, `evidenceTier` is authoritative and `fidelityTier`
+must not be promoted above the mapped tier without reference-runtime evidence.
+
+## Runtime Environment Matrix
+
+| Environment          | Purpose                                           | MVP status               | Notes                                                                                    |
+| -------------------- | ------------------------------------------------- | ------------------------ | ---------------------------------------------------------------------------------------- |
+| Native Linux CLI     | Deterministic traces and fixture captures         | Required                 | Must run in public CI for synthetic fixtures.                                            |
+| Native macOS CLI     | Developer parity                                  | Supported when available | Not a CI blocker unless macOS-specific code is introduced.                               |
+| Native Windows CLI   | Engine compatibility and user workflows           | Supported when available | Required once an engine depends on Windows-native behavior.                              |
+| Wine/Proton wrapper  | Cross-platform launch for Windows games           | Planned                  | Utsushi may call Wine, but reports must identify it as Wine-backed evidence.             |
+| Browser/WASM runtime | Playable review and sharable inspection           | Planned                  | Good enough for review workflows before it is a complete port.                           |
+| Remote probe host    | Agent-friendly access to a Windows or GPU machine | Planned                  | Required for scalable engine development, but not required for early synthetic fixtures. |
+
+## Platform Baseline
+
+Utsushi reports must make platform assumptions explicit enough that a reviewer
+can distinguish deterministic fixture evidence from host-specific runtime
+behavior.
+
+| Area                  | MVP assumption                                                                                                                         | Reported values                                                                                              |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Linux CI baseline     | Ubuntu 24.04 LTS, x86_64, headless execution, Rust from `rust-toolchain.toml`, Node >= 24.14.0.                                        | `host.os`, `host.osVersion`, `host.arch`, `host.kernel`, tool versions.                                      |
+| macOS developer use   | macOS 14 or newer on arm64 or x86_64 is supported when available, but is not an MVP CI gate.                                           | Same host fields plus `host.buildVersion` when available.                                                    |
+| Windows developer use | Windows 11 23H2 or newer on x86_64 is supported when available; Windows-native behavior is not an MVP CI gate.                         | Same host fields plus `host.buildNumber` and drive/path mode.                                                |
+| Display/headless      | E0 and E1 require no display. E2 fixture captures must run under headless software rendering.                                          | `display.mode` as `none`, `xvfb`, `wayland-headless`, `browser-headless`, or `native`.                       |
+| GPU                   | Hardware acceleration is optional before E4. E2 claims must pass with software rendering.                                              | `gpu.accelerated`, renderer name, device id when available, driver version, and capture scale.               |
+| Wine/Proton           | Not required for MVP. Planned Windows-game probes assume a Linux x86_64 host with Wine 9.x or Proton 9.x or newer and a 64-bit prefix. | Wine or Proton version, host OS, prefix architecture, DXVK/VKD3D state, and whether evidence is Wine-backed. |
+| Browser review        | Browser/WASM review assumes Chromium 124 or newer, or the browser engine pinned by CI tooling.                                         | Browser name, engine, version, user agent, viewport, device scale factor, and headless flag.                 |
+| Filesystem paths      | Portable artifacts use UTF-8 relative paths with forward slashes under the run artifact directory.                                     | Artifact root, path separator, case sensitivity, symlink policy, and any absolute path redaction.            |
+| Locale and fonts      | CI fixture runs use `C.UTF-8` or `en_US.UTF-8`; localized review runs must state their BCP 47 locale and installed font fallback set.  | `LANG`, `LC_ALL`, source/target locale, font family, fallback family, and missing glyph count.               |
+
+Reports should record these values in an `environment` object. Schema versions
+that still expose `environment` as a string must include a companion
+`environmentDetails` object or store the object in artifact metadata. A report
+with missing platform fields may still be useful, but its limitations must say
+which assumptions are unknown and the report must not be used for E4 claims.
+
+## Capability Matrix
+
+| Capability                        | Static parser | Runtime trace | Screenshot capture | VM/playback                                            |
+| --------------------------------- | ------------- | ------------- | ------------------ | ------------------------------------------------------ |
+| Confirms schema validity          | Yes           | Yes           | Yes                | Yes                                                    |
+| Confirms patch bytes or manifests | Yes           | Partial       | Partial            | Partial                                                |
+| Confirms line reachability        | No            | Yes           | Yes                | Yes                                                    |
+| Confirms rendered text exists     | No            | No            | Yes                | Yes                                                    |
+| Confirms visual layout quality    | No            | No            | Partial            | Partial                                                |
+| Confirms branch navigation        | No            | Partial       | Partial            | Yes                                                    |
+| Confirms engine-perfect behavior  | No            | No            | No                 | Only when explicitly tested against reference behavior |
+
+Screenshots are evidence, not proof of complete quality. They are especially
+valuable for catching broken markup, overflow, missing glyphs, bad wrapping,
+wrong branch jumps, or untranslated image text.
+
+## Artifact Requirements
+
+Every Utsushi runtime artifact must include:
+
+- `evidenceTier`: one of `E0`, `E1`, `E2`, `E3`, or `E4`.
+- `adapter`: the runtime adapter or engine family that produced it.
+- `environment`: structured host, display, GPU, wrapper, browser, filesystem,
+  locale, and font details, or a legacy string plus equivalent metadata.
+- `inputHash`: hash of the bridge, patch, script, or game profile input.
+- `outputHash`: hash of the report or captured artifact payload when practical.
+- `limitations`: explicit caveats for unsupported engine features.
+- `createdAt`: timestamp generated by the tool.
+
+When an artifact is derived from screenshots or recordings, the report must also
+include dimensions, count, encoding, and a storage path or content-addressed id.
+
+## Artifact Limits
+
+Default limits keep CI and agent runs predictable:
+
+| Artifact            | Soft ceiling              | Hard ceiling            | Default behavior                                                                     |
+| ------------------- | ------------------------- | ----------------------- | ------------------------------------------------------------------------------------ |
+| Runtime report JSON | 10 MiB                    | 25 MiB                  | Compact optional fields above soft ceiling; reject the report above hard ceiling.    |
+| Single screenshot   | 5 MiB                     | 15 MiB                  | Warn above soft ceiling; reject that capture above hard ceiling.                     |
+| Screenshot set      | 100 MiB                   | 250 MiB                 | Stop taking optional captures above soft ceiling; fail required E2 runs above hard.  |
+| Recording           | 500 MiB local-only        | 1 GiB local-only        | Never upload in public CI; reject above hard ceiling.                                |
+| Trace event count   | 100,000 events            | 250,000 events          | Truncate optional event payloads above soft ceiling; reject as runaway above hard.   |
+| Per-run aggregate   | 750 MiB local, 250 MiB CI | 1 GiB local, 500 MiB CI | Stop optional capture once soft budget is exhausted; fail the run above hard budget. |
+
+Limit enforcement is part of the artifact contract:
+
+- Reports must include an `artifactLimits` block with the default ceiling, any
+  override value, whether the override was used, the actor or CI job that set it,
+  and the reason.
+- Overrides may raise soft ceilings for local research runs, but may not raise
+  hard ceilings in public CI. A CI override without a recorded reason is a
+  failure.
+- Trace truncation must keep deterministic ordering, retain event counts per
+  bridge unit, set `truncated: true`, and record the number of omitted events.
+- Screenshot and recording payloads are binary evidence and must not be
+  truncated in place. Oversized required captures make the report `failed`;
+  oversized optional captures are omitted and listed in `limitations`.
+- Runtime report JSON may compact optional event payloads, but it must not drop
+  required hashes, environment details, tier labels, limitations, or bridge-unit
+  links.
+- Public CI fails when a hard ceiling is exceeded, when required E1/E2 evidence
+  is omitted because of size, or when the artifact limit summary is missing.
+- CI retention is 14 days for report JSON, manifests, and screenshots unless a
+  release or audit explicitly promotes them. Local recordings are retained for 7
+  days by default and must not be committed.
+
+## Wording Rules
+
+Use precise claims:
+
+- Say "E0 bridge-valid" rather than "runtime-valid" when only static checks ran.
+- Say "E1 trace-reachable" when a runtime emitted trace events but no frame was
+  captured.
+- Say "E2 captured" when screenshots exist.
+- Say "E3 replayable" only when branch/jump controls and review annotations are
+  available.
+- Say "E4 fidelity-targeted" only for features compared against a reference
+  runtime or engine-specific conformance fixture.
+
+Avoid unqualified claims such as "works in-game", "fully verified", "pixel
+perfect", or "engine-compatible" unless the report includes the tier and scope
+that justify the statement.
+
+## Project Boundaries
+
+Kaifuu owns extraction, patching, encryption/decryption, delta packages, and
+round-trip verification. It can produce E0 evidence without Utsushi.
+
+Itotori owns localization state, agent decisions, QA, feedback, and human review.
+It consumes Utsushi evidence but must preserve the tier and limitations in its
+own dashboard and audit records.
+
+Utsushi owns runtime probes, traces, captures, replay sessions, and VM/playback
+adapters. It must be useful even when imperfect, as long as its reports state the
+capability level honestly.
+
+## MVP Bar
+
+For the MVP, Utsushi must support synthetic fixture evidence through E2:
+
+1. Produce an E1 runtime trace for the patched fixture.
+2. Produce an E2 frame capture artifact for the patched fixture.
+3. Include evidence tier, adapter, environment, hashes, and limitations in each
+   report.
+4. Allow Itotori to ingest the report without weakening the tier language.
+
+Engine-specific VM/playback work can start before E4 fidelity is possible, but
+must label itself as E1, E2, or E3 until reference comparison exists.
