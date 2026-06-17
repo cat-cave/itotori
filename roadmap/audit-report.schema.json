@@ -1,0 +1,563 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/roadmap/audit-report.schema.json",
+  "title": "Itotori Spec Audit Report",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "reportId",
+    "generatedAt",
+    "spec",
+    "auditor",
+    "humanSummary",
+    "orchestration",
+    "findings"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "minLength": 1
+    },
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "reportId": {
+      "type": "string",
+      "pattern": "^AUDIT-[A-Z]+-[0-9]{3}-[0-9]{8}T[0-9]{6}Z$"
+    },
+    "generatedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "spec": {
+      "type": "object",
+      "required": ["id", "title", "branch", "worktree"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z]+-[0-9]{3}$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "minLength": 1
+        },
+        "worktree": {
+          "type": "string",
+          "minLength": 1
+        },
+        "commit": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{7,40}$"
+        }
+      }
+    },
+    "auditor": {
+      "type": "object",
+      "required": ["name", "kind"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "architecture",
+            "correctness",
+            "documentation",
+            "orchestration",
+            "performance",
+            "security",
+            "test",
+            "ux"
+          ]
+        }
+      }
+    },
+    "humanSummary": {
+      "type": "object",
+      "required": ["outcome", "text", "counts"],
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["pass", "blocked", "follow_up_only"]
+        },
+        "text": {
+          "type": "string",
+          "minLength": 1
+        },
+        "counts": {
+          "$ref": "#/$defs/severityCounts"
+        }
+      }
+    },
+    "orchestration": {
+      "type": "object",
+      "required": ["completionDecision", "blockingFindingIds", "followUpFindingIds"],
+      "additionalProperties": false,
+      "properties": {
+        "completionDecision": {
+          "type": "string",
+          "enum": ["complete_allowed", "blocked"]
+        },
+        "blockingFindingIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/findingId"
+          }
+        },
+        "followUpFindingIds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/findingId"
+          }
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/finding"
+      }
+    }
+  },
+  "$defs": {
+    "findingId": {
+      "type": "string",
+      "pattern": "^[A-Z]+-[0-9]{3}-F[0-9]{3}$"
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["P0", "P1", "P2", "P3"]
+    },
+    "severityCounts": {
+      "type": "object",
+      "required": ["P0", "P1", "P2", "P3"],
+      "additionalProperties": false,
+      "properties": {
+        "P0": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "P1": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "P2": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "P3": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "finding": {
+      "type": "object",
+      "required": [
+        "id",
+        "severity",
+        "title",
+        "category",
+        "locations",
+        "description",
+        "evidence",
+        "impact",
+        "actionableAcceptanceCriteria",
+        "orchestration"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/findingId"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "acceptance_criteria",
+            "documentation",
+            "implementation",
+            "orchestration",
+            "performance",
+            "security",
+            "test",
+            "ux",
+            "verification",
+            "other"
+          ]
+        },
+        "locations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/location"
+          }
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "impact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actionableAcceptanceCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "orchestration": {
+          "$ref": "#/$defs/findingOrchestration"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "severity": {
+                "enum": ["P0", "P1"]
+              }
+            },
+            "required": ["severity"]
+          },
+          "then": {
+            "properties": {
+              "orchestration": {
+                "type": "object",
+                "properties": {
+                  "blocksCompletion": {
+                    "const": true
+                  },
+                  "nextAction": {
+                    "const": "repair_before_completion"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "severity": {
+                "enum": ["P2", "P3"]
+              }
+            },
+            "required": ["severity"]
+          },
+          "then": {
+            "properties": {
+              "orchestration": {
+                "type": "object",
+                "properties": {
+                  "blocksCompletion": {
+                    "const": false
+                  },
+                  "nextAction": {
+                    "enum": ["draft_new_dag_node", "append_to_existing_dag_node"]
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "location": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "symbol": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["kind", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["command", "diff", "file", "fixture", "manual", "test"]
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "location": {
+          "$ref": "#/$defs/location"
+        }
+      }
+    },
+    "findingOrchestration": {
+      "type": "object",
+      "required": ["blocksCompletion", "nextAction"],
+      "additionalProperties": false,
+      "properties": {
+        "blocksCompletion": {
+          "type": "boolean"
+        },
+        "nextAction": {
+          "type": "string",
+          "enum": ["repair_before_completion", "draft_new_dag_node", "append_to_existing_dag_node"]
+        },
+        "proposedDagNode": {
+          "$ref": "#/$defs/proposedDagNode"
+        },
+        "existingDagNodeUpdate": {
+          "$ref": "#/$defs/existingDagNodeUpdate"
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "nextAction": {
+              "const": "repair_before_completion"
+            }
+          },
+          "not": {
+            "anyOf": [
+              {
+                "required": ["proposedDagNode"]
+              },
+              {
+                "required": ["existingDagNodeUpdate"]
+              }
+            ]
+          }
+        },
+        {
+          "properties": {
+            "nextAction": {
+              "const": "draft_new_dag_node"
+            }
+          },
+          "required": ["proposedDagNode"],
+          "not": {
+            "required": ["existingDagNodeUpdate"]
+          }
+        },
+        {
+          "properties": {
+            "nextAction": {
+              "const": "append_to_existing_dag_node"
+            }
+          },
+          "required": ["existingDagNodeUpdate"],
+          "not": {
+            "required": ["proposedDagNode"]
+          }
+        }
+      ]
+    },
+    "proposedDagNode": {
+      "type": "object",
+      "required": [
+        "idPrefix",
+        "title",
+        "priority",
+        "target",
+        "projects",
+        "parallelGroup",
+        "dependsOn",
+        "summary",
+        "deliverables",
+        "acceptanceCriteria",
+        "verification",
+        "auditFocus"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "idPrefix": {
+          "type": "string",
+          "pattern": "^[A-Z]+$"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "priority": {
+          "$ref": "#/$defs/severity"
+        },
+        "target": {
+          "type": "string",
+          "enum": ["baseline", "mvp", "post_mvp"]
+        },
+        "projects": {
+          "$ref": "#/$defs/projects"
+        },
+        "parallelGroup": {
+          "$ref": "#/$defs/parallelGroup"
+        },
+        "dependsOn": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z]+-[0-9]{3}$"
+          }
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deliverables": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "acceptanceCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "verification": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/verification"
+          }
+        },
+        "auditFocus": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "existingDagNodeUpdate": {
+      "type": "object",
+      "required": ["targetNodeId", "acceptanceCriteria"],
+      "additionalProperties": false,
+      "properties": {
+        "targetNodeId": {
+          "type": "string",
+          "pattern": "^[A-Z]+-[0-9]{3}$"
+        },
+        "acceptanceCriteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "verification": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/verification"
+          }
+        },
+        "auditFocus": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "verification": {
+      "type": "object",
+      "required": ["type", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["command", "manual"]
+        },
+        "value": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["universal", "shared", "itotori", "kaifuu", "utsushi", "suite"]
+      }
+    },
+    "parallelGroup": {
+      "type": "string",
+      "enum": [
+        "agent-runtime",
+        "baseline",
+        "benchmarks",
+        "context-agents",
+        "contracts",
+        "dashboard",
+        "engine-adapters",
+        "engine-research",
+        "feedback",
+        "itotori-core",
+        "kaifuu-core",
+        "mvp-integration",
+        "policy",
+        "qa",
+        "quality-foundation",
+        "release",
+        "roadmap-infra",
+        "runtime-adapters",
+        "tooling",
+        "translation-loop",
+        "utsushi-core"
+      ]
+    }
+  }
+}

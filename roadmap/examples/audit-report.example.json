@@ -1,0 +1,174 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UNIV-006-20260616T120000Z",
+  "generatedAt": "2026-06-16T12:00:00Z",
+  "spec": {
+    "id": "UNIV-006",
+    "title": "Spec audit templates and finding schema",
+    "branch": "spec/univ-006",
+    "worktree": "/tmp/itotori-spec-univ-006"
+  },
+  "auditor": {
+    "name": "example-audit",
+    "kind": "orchestration"
+  },
+  "humanSummary": {
+    "outcome": "blocked",
+    "text": "Example report with one finding at each severity. The P0 and P1 findings block completion; the P2 and P3 findings are machine-convertible follow-up work.",
+    "counts": {
+      "P0": 1,
+      "P1": 1,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "blocked",
+    "blockingFindingIds": ["UNIV-006-F001", "UNIV-006-F002"],
+    "followUpFindingIds": ["UNIV-006-F003", "UNIV-006-F004"]
+  },
+  "findings": [
+    {
+      "id": "UNIV-006-F001",
+      "severity": "P0",
+      "title": "Audit output is not machine-parseable JSON",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "roadmap/audit-report.schema.json"
+        }
+      ],
+      "description": "The implementation does not provide a schema or validator path for audit reports, so orchestration cannot ingest audit output deterministically.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "No audit report schema is available for the orchestrator to compile."
+        }
+      ],
+      "impact": "Agents could mark a spec complete from prose-only audit output, losing blocking findings.",
+      "actionableAcceptanceCriteria": [
+        "A JSON Schema for audit reports exists under roadmap/ and rejects unknown top-level and finding fields.",
+        "just roadmap-validate validates at least one audit report fixture against the schema."
+      ],
+      "orchestration": {
+        "blocksCompletion": true,
+        "nextAction": "repair_before_completion"
+      }
+    },
+    {
+      "id": "UNIV-006-F002",
+      "severity": "P1",
+      "title": "Findings can omit actionable acceptance criteria",
+      "category": "acceptance_criteria",
+      "locations": [
+        {
+          "path": "docs/audit-playbook.md"
+        }
+      ],
+      "description": "A finding without explicit repair criteria is not actionable by the implementation worker.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "The audit template does not require actionable acceptance criteria for every finding."
+        }
+      ],
+      "impact": "The owning spec can be blocked by a finding that gives no objective completion condition.",
+      "actionableAcceptanceCriteria": [
+        "Every finding requires one or more actionableAcceptanceCriteria strings.",
+        "The playbook tells reviewers to downgrade or omit findings that cannot state acceptance criteria."
+      ],
+      "orchestration": {
+        "blocksCompletion": true,
+        "nextAction": "repair_before_completion"
+      }
+    },
+    {
+      "id": "UNIV-006-F003",
+      "severity": "P2",
+      "title": "Audit report ingestion command is not yet automated",
+      "category": "orchestration",
+      "locations": [
+        {
+          "path": "scripts/spec-dag.mjs"
+        }
+      ],
+      "description": "The roadmap validator checks committed examples, but there is no dedicated command for ingesting an arbitrary audit report into node draft output.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "The current command surface validates repository fixtures only."
+        }
+      ],
+      "impact": "Future orchestrator automation will need a small ingestion command before it can convert external audit files without custom glue.",
+      "actionableAcceptanceCriteria": [
+        "A command accepts an audit report path and emits proposed DAG node JSON for P2/P3 findings.",
+        "The command rejects reports with blocking P0/P1 findings unless run in validation-only mode."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UNIV",
+          "title": "Audit report ingestion command",
+          "priority": "P2",
+          "target": "post_mvp",
+          "projects": ["universal", "shared"],
+          "parallelGroup": "roadmap-infra",
+          "dependsOn": ["UNIV-006"],
+          "summary": "Add an orchestrator-facing command that converts validated P2/P3 audit findings into draft DAG node JSON.",
+          "deliverables": ["Audit report ingestion command", "P2/P3 node draft output fixture"],
+          "acceptanceCriteria": [
+            "The command validates an input audit report before conversion.",
+            "Each P2/P3 finding with draft_new_dag_node produces a planned node draft with acceptance criteria and verification."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "just roadmap-validate"
+            }
+          ],
+          "auditFocus": [
+            "Conversion preserves finding acceptance criteria",
+            "Blocking findings are not silently converted into follow-up work"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UNIV-006-F004",
+      "severity": "P3",
+      "title": "Reviewer examples could include more edge cases",
+      "category": "documentation",
+      "locations": [
+        {
+          "path": "docs/audit-playbook.md"
+        }
+      ],
+      "description": "The playbook could eventually include more examples for downgrade decisions and duplicate findings.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "The first template focuses on canonical P0-P3 cases."
+        }
+      ],
+      "impact": "Reviewer training may take longer, but this does not affect MVP completion.",
+      "actionableAcceptanceCriteria": [
+        "Add examples for duplicate findings, accepted risk, and severity downgrades.",
+        "State when a note should remain prose-only instead of becoming a finding."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UNIV-009",
+          "acceptanceCriteria": [
+            "Audit ingestion fixture review covers duplicate finding and severity downgrade cases."
+          ],
+          "auditFocus": ["Severity inflation in example findings"],
+          "notes": "Illustrative P3 example for conversion into a different existing planned node."
+        }
+      }
+    }
+  ]
+}

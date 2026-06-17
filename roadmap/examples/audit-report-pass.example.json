@@ -1,0 +1,32 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UNIV-006-20260616T130000Z",
+  "generatedAt": "2026-06-16T13:00:00Z",
+  "spec": {
+    "id": "UNIV-006",
+    "title": "Spec audit templates and finding schema",
+    "branch": "spec/univ-006",
+    "worktree": "/tmp/itotori-spec-univ-006"
+  },
+  "auditor": {
+    "name": "example-pass-audit",
+    "kind": "orchestration"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Example report with no active findings. The audited spec can complete and no follow-up work is proposed.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
