@@ -37,29 +37,220 @@
   ],
   "assets": [
     {
+      "assetId": "asset-script-prologue",
       "assetKey": "script/prologue",
       "assetKind": "script",
-      "path": "scenario/prologue.fixture.json"
+      "path": "scenario/prologue.fixture.json",
+      "metadata": {
+        "fixtureAsset": "logical-only",
+        "surfaceCoverage": "dialogue,speaker_name,choice_label"
+      }
     },
     {
+      "assetId": "asset-ui-menu",
       "assetKey": "ui/menu",
       "assetKind": "ui_texture",
-      "path": "ui/menu.fixture.json"
+      "path": "ui/menu.fixture.json",
+      "metadata": {
+        "fixtureAsset": "logical-only",
+        "surfaceCoverage": "ui_label,tutorial_text"
+      }
     },
     {
+      "assetId": "asset-database-items",
       "assetKey": "database/items",
       "assetKind": "database",
-      "path": "data/items.fixture.json"
+      "path": "data/items.fixture.json",
+      "metadata": {
+        "fixtureAsset": "logical-only",
+        "surfaceCoverage": "database_entry"
+      }
     },
     {
+      "assetId": "asset-image-sign-caution",
       "assetKey": "image/sign-caution",
       "assetKind": "image",
-      "path": "images/sign-caution.fixture.json"
+      "path": "images/sign-caution.fixture.json",
+      "metadata": {
+        "dimensions": "256x128",
+        "fixtureAsset": "logical-only",
+        "mediaType": "image/png",
+        "surfaceCoverage": "image_text"
+      }
     },
     {
+      "assetId": "asset-metadata-package",
       "assetKey": "metadata/package",
       "assetKind": "metadata",
-      "path": "package.fixture.json"
+      "path": "package.fixture.json",
+      "metadata": {
+        "fixtureAsset": "logical-only",
+        "surfaceCoverage": "metadata_text"
+      }
+    },
+    {
+      "assetId": "asset-ui-title-logo",
+      "assetKey": "ui/title-logo",
+      "assetKind": "ui_texture",
+      "path": "ui/title-logo.png",
+      "metadata": {
+        "mediaType": "image/png",
+        "dimensions": "512x128",
+        "fixtureAsset": "logical-only"
+      }
+    },
+    {
+      "assetId": "asset-audio-moonlit-path",
+      "assetKey": "audio/bgm/moonlit-path",
+      "assetKind": "audio",
+      "path": "audio/bgm/moonlit-path.ogg",
+      "metadata": {
+        "mediaType": "audio/ogg",
+        "titleField": "vorbisComment.TITLE",
+        "fixtureAsset": "logical-only"
+      }
+    },
+    {
+      "assetId": "asset-font-main-cjk",
+      "assetKey": "fonts/main-cjk",
+      "assetKind": "font",
+      "path": "fonts/main-cjk.otf",
+      "metadata": {
+        "format": "opentype",
+        "coverage": "ja-Latn",
+        "fixtureAsset": "logical-only"
+      }
+    },
+    {
+      "assetId": "asset-metadata-credits",
+      "assetKey": "metadata/credits",
+      "assetKind": "metadata",
+      "path": "credits.json",
+      "metadata": {
+        "metadataScope": "credits",
+        "fixtureAsset": "logical-only"
+      }
+    },
+    {
+      "assetId": "asset-video-opening",
+      "assetKey": "video/opening",
+      "assetKind": "video",
+      "path": "video/opening.webm",
+      "metadata": {
+        "mediaType": "video/webm",
+        "duration": "12s",
+        "fixtureAsset": "logical-only"
+      }
+    }
+  ],
+  "assetSurfaces": [
+    {
+      "surfaceId": "surface-image-sign-caution-text",
+      "assetSurfaceKind": "image_text",
+      "sourceAssetRef": {
+        "assetId": "asset-image-sign-caution",
+        "assetKey": "image/sign-caution"
+      },
+      "sourceLocation": {
+        "containerKey": "image/sign-caution",
+        "region": {
+          "x": 24,
+          "y": 18,
+          "width": 180,
+          "height": 48
+        }
+      },
+      "sourceText": "注意",
+      "textSourceKind": "manual_transcription",
+      "patchMode": "region_redraw_required",
+      "patchingLimitation": "fixture adapter records manually annotated image text but does not perform OCR, redraw, or image patching",
+      "notes": ["Manual fixture annotation aligned with image.sign-caution.region-0; no OCR was performed."]
+    },
+    {
+      "surfaceId": "surface-ui-title-logo-art",
+      "assetSurfaceKind": "ui_art",
+      "sourceAssetRef": {
+        "assetId": "asset-ui-title-logo",
+        "assetKey": "ui/title-logo"
+      },
+      "sourceLocation": {
+        "containerKey": "ui/title-logo"
+      },
+      "textSourceKind": "not_applicable",
+      "patchMode": "asset_replacement_required",
+      "patchingLimitation": "fixture adapter reports UI texture localization risk but does not replace or redraw UI textures",
+      "notes": ["Textless UI art surface used to test non-text inventory reporting."]
+    },
+    {
+      "surfaceId": "surface-audio-moonlit-path-title",
+      "assetSurfaceKind": "song_title",
+      "sourceAssetRef": {
+        "assetId": "asset-audio-moonlit-path",
+        "assetKey": "audio/bgm/moonlit-path"
+      },
+      "sourceLocation": {
+        "containerKey": "audio/bgm/moonlit-path",
+        "entryPath": ["metadata", "TITLE"]
+      },
+      "sourceText": "月明かりの道",
+      "textSourceKind": "metadata",
+      "patchMode": "metadata_only",
+      "patchingLimitation": "fixture adapter reports song metadata but does not rewrite audio metadata",
+      "notes": ["Song title comes from explicit fixture metadata."]
+    },
+    {
+      "surfaceId": "surface-font-main-cjk-coverage",
+      "assetSurfaceKind": "font",
+      "sourceAssetRef": {
+        "assetId": "asset-font-main-cjk",
+        "assetKey": "fonts/main-cjk"
+      },
+      "sourceLocation": {
+        "containerKey": "fonts/main-cjk"
+      },
+      "textSourceKind": "not_applicable",
+      "patchMode": "font_substitution_required",
+      "patchingLimitation": "fixture adapter reports font coverage policy needs but does not inspect or substitute font files",
+      "notes": ["Font surface is textless and records coverage risk only."]
+    },
+    {
+      "surfaceId": "surface-metadata-credits-staff",
+      "assetSurfaceKind": "credits",
+      "sourceAssetRef": {
+        "assetId": "asset-metadata-credits",
+        "assetKey": "metadata/credits"
+      },
+      "sourceLocation": {
+        "containerKey": "metadata/credits",
+        "entryPath": ["staff", "line1"]
+      },
+      "sourceText": "制作: Itotori Contributors",
+      "textSourceKind": "metadata",
+      "patchMode": "metadata_only",
+      "patchingLimitation": "fixture adapter reports credits metadata but does not patch metadata assets",
+      "notes": ["Synthetic credits metadata is safe for public fixtures."]
+    },
+    {
+      "surfaceId": "surface-video-opening-card",
+      "assetSurfaceKind": "video",
+      "sourceAssetRef": {
+        "assetId": "asset-video-opening",
+        "assetKey": "video/opening"
+      },
+      "sourceLocation": {
+        "containerKey": "video/opening",
+        "region": {
+          "x": 120,
+          "y": 88,
+          "width": 220,
+          "height": 48
+        }
+      },
+      "sourceText": "第1章",
+      "textSourceKind": "manual_transcription",
+      "patchMode": "asset_replacement_required",
+      "patchingLimitation": "fixture adapter reports manually annotated video frame text but does not OCR, subtitle, or edit video",
+      "notes": ["Manual fixture annotation; no video frame analysis was performed."]
     }
   ],
   "units": [

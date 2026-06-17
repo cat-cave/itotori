@@ -9,6 +9,7 @@ use serde_json::Value;
 
 pub type KaifuuResult<T> = Result<T, Box<dyn std::error::Error>>;
 pub const PROFILE_SCHEMA_VERSION: &str = "0.1.0";
+pub const ASSET_INVENTORY_SCHEMA_VERSION: &str = "0.1.0";
 
 pub const BRIDGE_SCHEMA_VERSION_V02: &str = "0.2.0";
 
@@ -21,6 +22,10 @@ pub trait EngineAdapter {
     fn detect(&self, request: DetectRequest<'_>) -> KaifuuResult<DetectionResult>;
     fn profile(&self, request: ProfileRequest<'_>) -> KaifuuResult<GameProfile>;
     fn list_assets(&self, request: AssetListRequest<'_>) -> KaifuuResult<AssetList>;
+    fn asset_inventory(
+        &self,
+        request: AssetInventoryRequest<'_>,
+    ) -> KaifuuResult<AssetInventoryManifest>;
     fn extract(&self, request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult>;
     fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult>;
     fn verify(&self, request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult>;
@@ -93,6 +98,11 @@ pub struct AssetListRequest<'a> {
 }
 
 #[derive(Clone, Copy)]
+pub struct AssetInventoryRequest<'a> {
+    pub game_dir: &'a Path,
+}
+
+#[derive(Clone, Copy)]
 pub struct ExtractRequest<'a> {
     pub game_dir: &'a Path,
 }
@@ -117,6 +127,8 @@ pub enum Capability {
     Patching,
     Verification,
     AssetListing,
+    AssetInventory,
+    NonTextSurfaceExtraction,
     ProfileGeneration,
     LineParityPatching,
     AssetTextPatching,
@@ -697,6 +709,8 @@ fn validate_capability_report(
             "patching",
             "verification",
             "asset_listing",
+            "asset_inventory",
+            "non_text_surface_extraction",
             "profile_generation",
             "line_parity_patching",
             "asset_text_patching",
@@ -1077,6 +1091,499 @@ pub enum TextSurface {
 pub struct AssetList {
     pub adapter_id: String,
     pub assets: Vec<AssetProfile>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetInventoryManifest {
+    pub schema_version: String,
+    pub manifest_id: String,
+    pub adapter_id: String,
+    pub source_locale: String,
+    pub assets: Vec<AssetInventoryAsset>,
+    pub surfaces: Vec<AssetInventorySurface>,
+    pub capabilities: Vec<CapabilityReport>,
+    pub warnings: Vec<AdapterWarning>,
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl AssetInventoryManifest {
+    pub fn normalize(&mut self) {
+        self.assets.sort_by_key(|asset| asset.asset_id.clone());
+        self.surfaces
+            .sort_by_key(|surface| surface.surface_id.clone());
+        for surface in &mut self.surfaces {
+            surface.notes.sort();
+            surface.notes.dedup();
+        }
+        self.capabilities.sort_by_key(|report| {
+            (
+                serde_json::to_string(&report.capability).unwrap_or_default(),
+                serde_json::to_string(&report.status).unwrap_or_default(),
+                report.limitation.clone(),
+            )
+        });
+        self.warnings
+            .sort_by_key(|warning| (warning.code.clone(), warning.message.clone()));
+    }
+
+    pub fn stable_json(&self) -> KaifuuResult<String> {
+        let mut normalized = self.clone();
+        normalized.normalize();
+        Ok(format!("{}\n", serde_json::to_string_pretty(&normalized)?))
+    }
+
+    pub fn validate(&self) -> AssetInventoryValidationResult {
+        let mut failures = Vec::new();
+        if self.schema_version != ASSET_INVENTORY_SCHEMA_VERSION {
+            failures.push(AssetInventoryValidationFailure {
+                code: "unsupported_schema_version".to_string(),
+                field: "schemaVersion".to_string(),
+                message: format!(
+                    "schemaVersion must be {ASSET_INVENTORY_SCHEMA_VERSION}, got {}",
+                    self.schema_version
+                ),
+            });
+        }
+        if self.manifest_id.trim().is_empty() {
+            failures.push(required_inventory_failure(
+                "manifestId",
+                "manifestId must not be empty",
+            ));
+        }
+        if self.adapter_id.trim().is_empty() {
+            failures.push(required_inventory_failure(
+                "adapterId",
+                "adapterId must not be empty",
+            ));
+        }
+        if !is_bcp47_like_locale(&self.source_locale) {
+            failures.push(AssetInventoryValidationFailure {
+                code: "invalid_locale".to_string(),
+                field: "sourceLocale".to_string(),
+                message: "sourceLocale must be a BCP 47-style locale tag".to_string(),
+            });
+        }
+        if self.assets.is_empty() {
+            failures.push(AssetInventoryValidationFailure {
+                code: "missing_assets".to_string(),
+                field: "assets".to_string(),
+                message: "asset inventory must include at least one asset".to_string(),
+            });
+        }
+
+        let mut asset_ids = HashSet::new();
+        let mut asset_keys_by_id = BTreeMap::new();
+        for (index, asset) in self.assets.iter().enumerate() {
+            let field = format!("assets.{index}");
+            if asset.asset_id.trim().is_empty()
+                || asset.asset_id.chars().any(char::is_whitespace)
+                || asset.asset_id.contains('\0')
+            {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "invalid_asset_id".to_string(),
+                    field: format!("{field}.assetId"),
+                    message:
+                        "assetId must not be empty and must not contain whitespace or null bytes"
+                            .to_string(),
+                });
+            }
+            if !asset_ids.insert(asset.asset_id.clone()) {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "duplicate_asset_id".to_string(),
+                    field: "assets".to_string(),
+                    message: format!("assetId {} appears more than once", asset.asset_id),
+                });
+            }
+            if asset.asset_key.trim().is_empty() {
+                failures.push(required_inventory_failure(
+                    &format!("{field}.assetKey"),
+                    "assetKey must not be empty",
+                ));
+            }
+            if let Some(path) = &asset.path {
+                validate_asset_inventory_relative_path(
+                    &mut failures,
+                    &format!("{field}.path"),
+                    path,
+                );
+            }
+            if let Some(source_hash) = &asset.source_hash
+                && source_hash.trim().is_empty()
+            {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "invalid_source_hash".to_string(),
+                    field: format!("{field}.sourceHash"),
+                    message: "sourceHash must be omitted or non-empty".to_string(),
+                });
+            }
+            asset_keys_by_id.insert(asset.asset_id.clone(), asset.asset_key.clone());
+        }
+
+        let mut surface_ids = HashSet::new();
+        for (index, surface) in self.surfaces.iter().enumerate() {
+            let field = format!("surfaces.{index}");
+            if surface.surface_id.trim().is_empty()
+                || surface.surface_id.chars().any(char::is_whitespace)
+                || surface.surface_id.contains('\0')
+            {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "invalid_surface_id".to_string(),
+                    field: format!("{field}.surfaceId"),
+                    message:
+                        "surfaceId must not be empty and must not contain whitespace or null bytes"
+                            .to_string(),
+                });
+            }
+            if !surface_ids.insert(surface.surface_id.clone()) {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "duplicate_surface_id".to_string(),
+                    field: "surfaces".to_string(),
+                    message: format!("surfaceId {} appears more than once", surface.surface_id),
+                });
+            }
+            if !asset_ids.contains(&surface.source_asset_ref.asset_id) {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "unknown_asset_ref".to_string(),
+                    field: format!("{field}.sourceAssetRef.assetId"),
+                    message: format!(
+                        "surface references unknown assetId {}",
+                        surface.source_asset_ref.asset_id
+                    ),
+                });
+            }
+            if let Some(expected_key) = asset_keys_by_id.get(&surface.source_asset_ref.asset_id)
+                && let Some(asset_key) = &surface.source_asset_ref.asset_key
+                && asset_key != expected_key
+            {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "asset_key_mismatch".to_string(),
+                    field: format!("{field}.sourceAssetRef.assetKey"),
+                    message: format!(
+                        "assetKey {asset_key} does not match referenced asset key {expected_key}"
+                    ),
+                });
+            }
+            if let Some(source_location) = &surface.source_location {
+                validate_asset_inventory_source_location(
+                    &mut failures,
+                    &format!("{field}.sourceLocation"),
+                    source_location,
+                );
+            }
+            if matches!(
+                &surface.text_source_kind,
+                AssetInventoryTextSourceKind::NotApplicable
+            ) && surface.source_text.is_some()
+            {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "unexpected_source_text".to_string(),
+                    field: format!("{field}.sourceText"),
+                    message: "sourceText must be omitted when textSourceKind is not_applicable"
+                        .to_string(),
+                });
+            }
+            if !matches!(
+                &surface.text_source_kind,
+                AssetInventoryTextSourceKind::NotApplicable
+            ) && surface
+                .source_text
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or("")
+                .is_empty()
+            {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "missing_source_text".to_string(),
+                    field: format!("{field}.sourceText"),
+                    message: "sourceText is required unless textSourceKind is not_applicable"
+                        .to_string(),
+                });
+            }
+            if let Some(source_hash) = &surface.source_hash
+                && source_hash.trim().is_empty()
+            {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "invalid_source_hash".to_string(),
+                    field: format!("{field}.sourceHash"),
+                    message: "sourceHash must be omitted or non-empty".to_string(),
+                });
+            }
+            if matches!(
+                &surface.patching.status,
+                CapabilityStatus::Limited
+                    | CapabilityStatus::Unsupported
+                    | CapabilityStatus::RequiresUserInput
+            ) && surface
+                .patching
+                .limitation
+                .as_deref()
+                .map(str::trim)
+                .unwrap_or("")
+                .is_empty()
+            {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "missing_patching_limitation".to_string(),
+                    field: format!("{field}.patching.limitation"),
+                    message:
+                        "limited, unsupported, and user-input patching reports require a limitation"
+                            .to_string(),
+                });
+            }
+        }
+
+        AssetInventoryValidationResult {
+            schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
+            manifest_id: Some(self.manifest_id.clone()),
+            status: if failures.is_empty() {
+                OperationStatus::Passed
+            } else {
+                OperationStatus::Failed
+            },
+            failures,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetInventoryValidationResult {
+    pub schema_version: String,
+    pub manifest_id: Option<String>,
+    pub status: OperationStatus,
+    pub failures: Vec<AssetInventoryValidationFailure>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetInventoryValidationFailure {
+    pub code: String,
+    pub field: String,
+    pub message: String,
+}
+
+fn required_inventory_failure(field: &str, message: &str) -> AssetInventoryValidationFailure {
+    AssetInventoryValidationFailure {
+        code: "missing_required_field".to_string(),
+        field: field.to_string(),
+        message: message.to_string(),
+    }
+}
+
+fn validate_asset_inventory_relative_path(
+    failures: &mut Vec<AssetInventoryValidationFailure>,
+    field: &str,
+    path: &str,
+) {
+    let mut profile_failures = Vec::new();
+    validate_relative_path(&mut profile_failures, field, path);
+    if !profile_failures.is_empty() {
+        failures.extend(profile_failures.into_iter().map(|failure| {
+            AssetInventoryValidationFailure {
+                code: failure.code,
+                field: failure.field,
+                message: failure.message,
+            }
+        }));
+    }
+}
+
+fn validate_asset_inventory_source_location(
+    failures: &mut Vec<AssetInventoryValidationFailure>,
+    field: &str,
+    value: &Value,
+) {
+    let Some(location) = value.as_object() else {
+        failures.push(AssetInventoryValidationFailure {
+            code: "invalid_source_location".to_string(),
+            field: field.to_string(),
+            message: "sourceLocation must be a JSON object".to_string(),
+        });
+        return;
+    };
+
+    for key in location.keys() {
+        if !["containerKey", "entryPath", "range", "region"].contains(&key.as_str()) {
+            failures.push(AssetInventoryValidationFailure {
+                code: "engine_specific_source_location".to_string(),
+                field: format!("{field}.{key}"),
+                message:
+                    "sourceLocation must use neutral fields: containerKey, entryPath, range, region"
+                        .to_string(),
+            });
+        }
+    }
+    if let Some(container_key) = location.get("containerKey")
+        && container_key
+            .as_str()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
+    {
+        failures.push(AssetInventoryValidationFailure {
+            code: "invalid_source_location".to_string(),
+            field: format!("{field}.containerKey"),
+            message: "containerKey must be a non-empty string".to_string(),
+        });
+    }
+    if let Some(entry_path) = location.get("entryPath") {
+        let Some(entry_path) = entry_path.as_array() else {
+            failures.push(AssetInventoryValidationFailure {
+                code: "invalid_source_location".to_string(),
+                field: format!("{field}.entryPath"),
+                message: "entryPath must be an array of non-empty strings".to_string(),
+            });
+            return;
+        };
+        for (index, entry) in entry_path.iter().enumerate() {
+            if entry.as_str().map(str::trim).unwrap_or("").is_empty() {
+                failures.push(AssetInventoryValidationFailure {
+                    code: "invalid_source_location".to_string(),
+                    field: format!("{field}.entryPath.{index}"),
+                    message: "entryPath entries must be non-empty strings".to_string(),
+                });
+            }
+        }
+    }
+    if let Some(range) = location.get("range") {
+        validate_asset_inventory_u64_object_fields(
+            failures,
+            &format!("{field}.range"),
+            range,
+            &["startByte", "endByte"],
+        );
+    }
+    if let Some(region) = location.get("region") {
+        validate_asset_inventory_u64_object_fields(
+            failures,
+            &format!("{field}.region"),
+            region,
+            &["x", "y", "width", "height"],
+        );
+    }
+}
+
+fn validate_asset_inventory_u64_object_fields(
+    failures: &mut Vec<AssetInventoryValidationFailure>,
+    field: &str,
+    value: &Value,
+    expected_fields: &[&str],
+) {
+    let Some(object) = value.as_object() else {
+        failures.push(AssetInventoryValidationFailure {
+            code: "invalid_source_location".to_string(),
+            field: field.to_string(),
+            message: format!("{field} must be a JSON object"),
+        });
+        return;
+    };
+    for key in object.keys() {
+        if !expected_fields.contains(&key.as_str()) {
+            failures.push(AssetInventoryValidationFailure {
+                code: "invalid_source_location".to_string(),
+                field: format!("{field}.{key}"),
+                message: format!(
+                    "{field} must only contain fields: {}",
+                    expected_fields.join(", ")
+                ),
+            });
+        }
+    }
+    for expected in expected_fields {
+        if object.get(*expected).and_then(Value::as_u64).is_none() {
+            failures.push(AssetInventoryValidationFailure {
+                code: "invalid_source_location".to_string(),
+                field: format!("{field}.{expected}"),
+                message: format!("{field}.{expected} must be an unsigned integer"),
+            });
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetInventoryAsset {
+    pub asset_id: String,
+    pub asset_key: String,
+    pub asset_kind: AssetInventoryAssetKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_hash: Option<String>,
+    pub metadata: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetInventoryAssetKind {
+    Script,
+    Image,
+    Audio,
+    Video,
+    UiTexture,
+    Font,
+    Database,
+    Metadata,
+    Text,
+    Archive,
+    Unknown,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetInventorySurface {
+    pub surface_id: String,
+    pub asset_surface_kind: AssetInventorySurfaceKind,
+    pub source_asset_ref: AssetInventoryAssetRef,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_location: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_hash: Option<String>,
+    pub text_source_kind: AssetInventoryTextSourceKind,
+    pub patch_mode: AssetInventoryPatchMode,
+    pub patching: CapabilityReport,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AssetInventoryAssetRef {
+    pub asset_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asset_key: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetInventorySurfaceKind {
+    ImageText,
+    UiArt,
+    SongTitle,
+    Font,
+    Credits,
+    Video,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetInventoryTextSourceKind {
+    Metadata,
+    ManualTranscription,
+    OcrHint,
+    NotApplicable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AssetInventoryPatchMode {
+    MetadataOnly,
+    NoPatchRequired,
+    RegionRedrawRequired,
+    AssetReplacementRequired,
+    FontSubstitutionRequired,
+    Unsupported,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -2751,6 +3258,56 @@ mod tests {
     }
 
     #[test]
+    fn asset_inventory_rejects_engine_specific_source_location_fields() {
+        let manifest = AssetInventoryManifest {
+            schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
+            manifest_id: deterministic_id("asset-inventory", 1),
+            adapter_id: "kaifuu.fixture".to_string(),
+            source_locale: "ja-JP".to_string(),
+            assets: vec![AssetInventoryAsset {
+                asset_id: "asset-image-sign".to_string(),
+                asset_key: "image/sign".to_string(),
+                asset_kind: AssetInventoryAssetKind::Image,
+                path: Some("images/sign.png".to_string()),
+                source_hash: Some(content_hash("image/sign")),
+                metadata: BTreeMap::new(),
+            }],
+            surfaces: vec![AssetInventorySurface {
+                surface_id: "surface-image-sign-text".to_string(),
+                asset_surface_kind: AssetInventorySurfaceKind::ImageText,
+                source_asset_ref: AssetInventoryAssetRef {
+                    asset_id: "asset-image-sign".to_string(),
+                    asset_key: Some("image/sign".to_string()),
+                },
+                source_location: Some(serde_json::json!({
+                    "containerKey": "image/sign",
+                    "rpgMakerEventId": 12
+                })),
+                source_text: Some("注意".to_string()),
+                source_hash: Some(content_hash("注意")),
+                text_source_kind: AssetInventoryTextSourceKind::ManualTranscription,
+                patch_mode: AssetInventoryPatchMode::RegionRedrawRequired,
+                patching: CapabilityReport::unsupported(
+                    Capability::AssetTextPatching,
+                    "test adapter does not patch image assets",
+                ),
+                notes: vec![],
+            }],
+            capabilities: vec![CapabilityReport::supported(Capability::AssetInventory)],
+            warnings: vec![],
+            metadata: BTreeMap::new(),
+        };
+
+        let validation = manifest.validate();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(validation.failures.iter().any(|failure| {
+            failure.code == "engine_specific_source_location"
+                && failure.field == "surfaces.0.sourceLocation.rpgMakerEventId"
+        }));
+    }
+
+    #[test]
     fn atomic_write_text_cleans_temp_file_when_rename_fails() {
         let dir = temp_dir("atomic-rename-failure");
         let target = dir.join("source.json");
@@ -3218,6 +3775,13 @@ mod tests {
             }
 
             fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+                unreachable!()
+            }
+
+            fn asset_inventory(
+                &self,
+                _request: AssetInventoryRequest<'_>,
+            ) -> KaifuuResult<AssetInventoryManifest> {
                 unreachable!()
             }
 

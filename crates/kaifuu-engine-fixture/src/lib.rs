@@ -3,13 +3,17 @@ use std::fs;
 use std::path::Path;
 
 use kaifuu_core::{
-    AdapterCapabilities, AdapterFailure, AssetKind, AssetList, AssetListRequest, AssetProfile,
-    BridgeBundle, BridgeUnit, Capability, CapabilityReport, DetectRequest, DetectionEvidence,
-    DetectionResult, EngineAdapter, EngineProfile, EvidenceStatus, ExtractRequest,
-    ExtractionResult, GameProfile, KaifuuResult, OperationStatus, PatchRef, PatchRequest,
-    PatchResult, ProfileRequest, ProfileRequirement, ProtectedSpan, RequirementCategory,
-    RequirementStatus, TextSurface, VerificationResult, VerifyRequest, atomic_write_text,
-    content_hash, deterministic_id, require_str, require_u64, safe_join_relative,
+    ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterFailure, AssetInventoryAsset,
+    AssetInventoryAssetKind, AssetInventoryAssetRef, AssetInventoryManifest,
+    AssetInventoryPatchMode, AssetInventoryRequest, AssetInventorySurface,
+    AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind, AssetList,
+    AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability, CapabilityReport,
+    DetectRequest, DetectionEvidence, DetectionResult, EngineAdapter, EngineProfile,
+    EvidenceStatus, ExtractRequest, ExtractionResult, GameProfile, KaifuuResult, OperationStatus,
+    PatchRef, PatchRequest, PatchResult, ProfileRequest, ProfileRequirement, ProtectedSpan,
+    RequirementCategory, RequirementStatus, TextSurface, VerificationResult, VerifyRequest,
+    atomic_write_text, content_hash, deterministic_id, require_str, require_u64,
+    safe_join_relative,
 };
 use serde_json::{Value, json};
 
@@ -162,6 +166,172 @@ impl FixtureAdapter {
             ),
         })
     }
+
+    fn asset_inventory_from_source(
+        &self,
+        source_text: &str,
+        source: &Value,
+    ) -> KaifuuResult<AssetInventoryManifest> {
+        let mut metadata = BTreeMap::new();
+        metadata.insert(
+            "supportBoundary".to_string(),
+            "Synthetic plain JSON fixture asset inventory; non-text surfaces are reported from explicit fixture metadata and are not OCR results"
+                .to_string(),
+        );
+
+        let mut manifest = AssetInventoryManifest {
+            schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
+            manifest_id: deterministic_id("asset-inventory", 1),
+            adapter_id: FIXTURE_ADAPTER_ID.to_string(),
+            source_locale: Self::source_locale(source),
+            assets: self.asset_inventory_assets_from_source(source_text, source)?,
+            surfaces: self.asset_inventory_surfaces_from_source(source)?,
+            capabilities: self.capabilities().reports,
+            warnings: vec![],
+            metadata,
+        };
+        manifest.normalize();
+        Ok(manifest)
+    }
+
+    fn asset_inventory_assets_from_source(
+        &self,
+        source_text: &str,
+        source: &Value,
+    ) -> KaifuuResult<Vec<AssetInventoryAsset>> {
+        let mut assets = vec![AssetInventoryAsset {
+            asset_id: "source.json".to_string(),
+            asset_key: "source.json".to_string(),
+            asset_kind: AssetInventoryAssetKind::Script,
+            path: Some("source.json".to_string()),
+            source_hash: Some(content_hash(source_text)),
+            metadata: BTreeMap::new(),
+        }];
+
+        for asset in source["assets"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+        {
+            let asset_id = require_str(asset, "assetId")?;
+            let asset_key = require_str(asset, "assetKey")?;
+            let asset_kind = Self::asset_inventory_asset_kind(require_str(asset, "assetKind")?)?;
+            let path = asset["path"].as_str().map(str::to_string);
+            let source_hash = asset["sourceHash"]
+                .as_str()
+                .map(str::to_string)
+                .or_else(|| Some(content_hash(&format!("{asset_key}:{}", asset["assetKind"]))));
+            assets.push(AssetInventoryAsset {
+                asset_id: asset_id.to_string(),
+                asset_key: asset_key.to_string(),
+                asset_kind,
+                path,
+                source_hash,
+                metadata: Self::string_metadata(asset.get("metadata"))?,
+            });
+        }
+
+        Ok(assets)
+    }
+
+    fn asset_inventory_surfaces_from_source(
+        &self,
+        source: &Value,
+    ) -> KaifuuResult<Vec<AssetInventorySurface>> {
+        source["assetSurfaces"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .iter()
+            .enumerate()
+            .map(|(index, surface)| {
+                let surface_id = surface["surfaceId"]
+                    .as_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| deterministic_id("asset-surface", index + 1));
+                let source_text = surface["sourceText"].as_str().map(str::to_string);
+                let source_hash = surface["sourceHash"]
+                    .as_str()
+                    .map(str::to_string)
+                    .or_else(|| source_text.as_deref().map(content_hash));
+                let limitation = surface["patchingLimitation"]
+                    .as_str()
+                    .unwrap_or("fixture adapter reports this asset surface but cannot patch or edit non-text assets");
+                Ok(AssetInventorySurface {
+                    surface_id,
+                    asset_surface_kind: Self::asset_inventory_surface_kind(require_str(
+                        surface,
+                        "assetSurfaceKind",
+                    )?)?,
+                    source_asset_ref: Self::asset_inventory_asset_ref(surface)?,
+                    source_location: surface.get("sourceLocation").cloned(),
+                    source_text,
+                    source_hash,
+                    text_source_kind: Self::asset_inventory_text_source_kind(require_str(
+                        surface,
+                        "textSourceKind",
+                    )?)?,
+                    patch_mode: Self::asset_inventory_patch_mode(require_str(
+                        surface,
+                        "patchMode",
+                    )?)?,
+                    patching: CapabilityReport::unsupported(
+                        Capability::AssetTextPatching,
+                        limitation,
+                    ),
+                    notes: surface["notes"]
+                        .as_array()
+                        .map(Vec::as_slice)
+                        .unwrap_or(&[])
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect(),
+                })
+            })
+            .collect()
+    }
+
+    fn asset_inventory_asset_ref(surface: &Value) -> KaifuuResult<AssetInventoryAssetRef> {
+        let asset_ref = surface
+            .get("sourceAssetRef")
+            .ok_or("asset surface missing sourceAssetRef")?;
+        Ok(AssetInventoryAssetRef {
+            asset_id: require_str(asset_ref, "assetId")?.to_string(),
+            asset_key: asset_ref["assetKey"].as_str().map(str::to_string),
+        })
+    }
+
+    fn string_metadata(value: Option<&Value>) -> KaifuuResult<BTreeMap<String, String>> {
+        let Some(value) = value else {
+            return Ok(BTreeMap::new());
+        };
+        let object = value.as_object().ok_or("metadata must be a JSON object")?;
+        let mut metadata = BTreeMap::new();
+        for (key, value) in object {
+            let Some(value) = value.as_str() else {
+                return Err(format!("metadata.{key} must be a string").into());
+            };
+            metadata.insert(key.clone(), value.to_string());
+        }
+        Ok(metadata)
+    }
+
+    fn asset_inventory_asset_kind(kind: &str) -> KaifuuResult<AssetInventoryAssetKind> {
+        Ok(serde_json::from_value(Value::String(kind.to_string()))?)
+    }
+
+    fn asset_inventory_surface_kind(kind: &str) -> KaifuuResult<AssetInventorySurfaceKind> {
+        Ok(serde_json::from_value(Value::String(kind.to_string()))?)
+    }
+
+    fn asset_inventory_text_source_kind(kind: &str) -> KaifuuResult<AssetInventoryTextSourceKind> {
+        Ok(serde_json::from_value(Value::String(kind.to_string()))?)
+    }
+
+    fn asset_inventory_patch_mode(kind: &str) -> KaifuuResult<AssetInventoryPatchMode> {
+        Ok(serde_json::from_value(Value::String(kind.to_string()))?)
+    }
 }
 
 impl EngineAdapter for FixtureAdapter {
@@ -185,6 +355,11 @@ impl EngineAdapter for FixtureAdapter {
                 ),
                 CapabilityReport::supported(Capability::Verification),
                 CapabilityReport::supported(Capability::AssetListing),
+                CapabilityReport::supported(Capability::AssetInventory),
+                CapabilityReport::limited(
+                    Capability::NonTextSurfaceExtraction,
+                    "reports explicit fixture asset metadata only; does not perform OCR, audio analysis, font inspection, or video frame analysis",
+                ),
                 CapabilityReport::supported(Capability::ProfileGeneration),
                 CapabilityReport::limited(
                     Capability::LineParityPatching,
@@ -288,6 +463,14 @@ impl EngineAdapter for FixtureAdapter {
             adapter_id: FIXTURE_ADAPTER_ID.to_string(),
             assets: vec![self.asset_from_source(&source_text, &source)?],
         })
+    }
+
+    fn asset_inventory(
+        &self,
+        request: AssetInventoryRequest<'_>,
+    ) -> KaifuuResult<AssetInventoryManifest> {
+        let (source_text, source) = Self::read_source(request.game_dir)?;
+        self.asset_inventory_from_source(&source_text, &source)
     }
 
     fn extract(&self, request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
@@ -528,6 +711,7 @@ mod tests {
     use super::*;
     use kaifuu_core::PatchExport;
     use std::collections::{BTreeMap, BTreeSet};
+    use std::path::PathBuf;
 
     fn repo_root() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -571,6 +755,14 @@ mod tests {
         )
         .unwrap();
         dir
+    }
+
+    fn hello_fixture_dir() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/hello-game")
+    }
+
+    fn expected_asset_inventory_path() -> PathBuf {
+        hello_fixture_dir().join("asset-inventory.expected.json")
     }
 
     fn patch_export_for(extraction: &ExtractionResult) -> PatchExport {
@@ -967,6 +1159,19 @@ mod tests {
     fn capabilities_report_unsupported_patching_limitations() {
         let capabilities = FixtureAdapter.capabilities();
         assert!(capabilities.reports.iter().any(|report| {
+            report.capability == Capability::AssetInventory
+                && report.status == kaifuu_core::CapabilityStatus::Supported
+        }));
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == Capability::NonTextSurfaceExtraction
+                && report.status == kaifuu_core::CapabilityStatus::Limited
+                && report
+                    .limitation
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("does not perform OCR")
+        }));
+        assert!(capabilities.reports.iter().any(|report| {
             report.capability == Capability::LineParityPatching
                 && report.status == kaifuu_core::CapabilityStatus::Limited
                 && report
@@ -991,6 +1196,90 @@ mod tests {
             report.capability == Capability::RuntimeVm
                 && report.status == kaifuu_core::CapabilityStatus::Unsupported
         }));
+    }
+
+    #[test]
+    fn fixture_asset_inventory_reports_non_text_surfaces_without_patching_support() {
+        let game_dir = hello_fixture_dir();
+        let manifest = FixtureAdapter
+            .asset_inventory(AssetInventoryRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+
+        assert_eq!(manifest.validate().status, OperationStatus::Passed);
+        assert_eq!(manifest.assets.len(), 11);
+        assert_eq!(manifest.surfaces.len(), 6);
+        let surface_kinds = manifest
+            .surfaces
+            .iter()
+            .map(|surface| serde_json::to_string(&surface.asset_surface_kind).unwrap())
+            .collect::<BTreeSet<_>>();
+        assert_eq!(
+            surface_kinds,
+            [
+                "\"credits\"",
+                "\"font\"",
+                "\"image_text\"",
+                "\"song_title\"",
+                "\"ui_art\"",
+                "\"video\"",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<BTreeSet<_>>()
+        );
+        assert!(manifest.surfaces.iter().all(|surface| {
+            surface.patching.capability == Capability::AssetTextPatching
+                && surface.patching.status == kaifuu_core::CapabilityStatus::Unsupported
+        }));
+        assert!(
+            manifest.surfaces.iter().all(|surface| {
+                surface.text_source_kind != AssetInventoryTextSourceKind::OcrHint
+            })
+        );
+        assert!(manifest.surfaces.iter().any(|surface| {
+            surface.asset_surface_kind == AssetInventorySurfaceKind::Font
+                && surface.source_text.is_none()
+                && surface.text_source_kind == AssetInventoryTextSourceKind::NotApplicable
+        }));
+    }
+
+    #[test]
+    fn fixture_asset_inventory_metadata_round_trips_stably() {
+        let game_dir = hello_fixture_dir();
+        let manifest = FixtureAdapter
+            .asset_inventory(AssetInventoryRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+        let serialized = manifest.stable_json().unwrap();
+        let round_tripped: AssetInventoryManifest = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(round_tripped, manifest);
+        assert_eq!(round_tripped.validate().status, OperationStatus::Passed);
+        let audio_asset = round_tripped
+            .assets
+            .iter()
+            .find(|asset| asset.asset_id == "asset-audio-moonlit-path")
+            .unwrap();
+        assert_eq!(
+            audio_asset.metadata.get("titleField").map(String::as_str),
+            Some("vorbisComment.TITLE")
+        );
+    }
+
+    #[test]
+    fn fixture_asset_inventory_matches_reviewed_fixture_manifest() {
+        let game_dir = hello_fixture_dir();
+        let manifest = FixtureAdapter
+            .asset_inventory(AssetInventoryRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+        let expected = fs::read_to_string(expected_asset_inventory_path()).unwrap();
+
+        assert_eq!(manifest.stable_json().unwrap(), expected);
     }
 
     #[test]

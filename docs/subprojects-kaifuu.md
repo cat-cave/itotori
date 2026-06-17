@@ -19,6 +19,16 @@ Machine-readable adapter capability output is available with:
 cargo run -p kaifuu-cli -- capabilities --output .tmp/kaifuu-capabilities.json
 ```
 
+Asset inventory manifests report engine-neutral non-text surfaces declared by
+the adapter, including image text, UI textures, song metadata, fonts, credits,
+and video surfaces. A reported surface is not a patching claim: adapters must
+mark OCR, redraw, metadata rewrite, font substitution, and video editing as
+unsupported unless that support actually exists.
+
+```sh
+cargo run -p kaifuu-cli -- asset-inventory fixtures/hello-game --output .tmp/hello-world/asset-inventory.json
+```
+
 Fixture commands preserve the hello-world file contract:
 
 ```sh

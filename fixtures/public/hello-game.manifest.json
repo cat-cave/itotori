@@ -24,8 +24,8 @@
       "path": "fixtures/hello-game/source.json",
       "role": "source-game",
       "mediaType": "application/json",
-      "sha256": "ebd46081e4a2860b23ac1aeaabe7b9b3a1561309daf2337288b19ca697725625",
-      "bytes": 4412,
+      "sha256": "6d09d2031614a0ccd32d62e1dd546374e25e3208b5c0e8649053cf6a7361388e",
+      "bytes": 10740,
       "redistributable": true
     },
     {
@@ -43,17 +43,25 @@
       "sha256": "07dc55993701876f8426ac39d13e795cd825ff77962ef5867d702c1827cef8b3",
       "bytes": 3258,
       "redistributable": true
+    },
+    {
+      "path": "fixtures/hello-game/asset-inventory.expected.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "1baf9c075ebaa63b9268e42df04b09677e01a319c422910a7b80b0ae9f02526d",
+      "bytes": 10855,
+      "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 3,
+    "files": 4,
     "textUnits": 11,
     "sourceTextUtf16CodeUnits": 84,
     "protectedSpans": 3,
     "sourceLocales": ["ja-JP"],
     "targetLocales": ["en-US", "fr-FR"],
     "engineKinds": ["synthetic-json"],
-    "notes": "Fixture v0.2 covers dialogue, speaker names, choices, UI labels, tutorial text, database/glossary-like terms, image text, metadata text, placeholders, and inline control markup."
+    "notes": "Fixture v0.2 covers dialogue, speaker names, choices, UI labels, tutorial text, database/glossary-like terms, image text, metadata text, placeholders, inline control markup, and explicit logical asset metadata for six non-text asset surfaces."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,
