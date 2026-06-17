@@ -2351,22 +2351,27 @@
       "id": "KAIFUU-014",
       "title": "Encryption and key profile boundary",
       "status": "planned",
-      "priority": "P2",
-      "target": "post_mvp",
+      "priority": "P1",
+      "target": "mvp",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
-      "dependsOn": ["KAIFUU-006", "KAIFUU-011"],
-      "summary": "Define how adapters request keys, compression options, and platform-assisted discovery without coupling extraction/patching to Windows-only discovery code.",
+      "dependsOn": ["KAIFUU-006", "KAIFUU-019", "UNIV-005"],
+      "summary": "Define the MVP boundary for key profiles, local-only key material, adapter key requirements, and platform-assisted discovery without coupling pure extraction/patching to helper code.",
       "deliverables": [
+        "docs/kaifuu-key-discovery.md",
         "Key profile schema",
-        "Secret redaction rules",
+        "Local-only key material policy",
+        "Secret-ref model",
         "Adapter key requirements",
-        "Discovery boundary docs"
+        "Discovery boundary docs",
+        "Secret redaction tests"
       ],
       "acceptanceCriteria": [
-        "Profiles can reference required keys without storing secrets accidentally",
-        "Linux/macOS extraction remains possible when keys are provided",
-        "Discovery and patching remain separate"
+        "Profiles reference required keys through secret refs and never store raw key material",
+        "Adapters can declare required key material, archive parameters, and validation proofs with stable semantic errors",
+        "Pure extraction and patching consume resolved keys without owning key discovery, Windows hooks, helper orchestration, or community databases",
+        "Linux/macOS extraction and patching remain possible when supported formats and required keys are supplied",
+        "Redaction tests prove keys, local paths, helper dumps, and decrypted private text are not emitted in logs or reports"
       ],
       "verification": [
         {
@@ -2388,21 +2393,25 @@
       "id": "KAIFUU-015",
       "title": "SiglusEngine research slice",
       "status": "planned",
-      "priority": "P2",
-      "target": "post_mvp",
+      "priority": "P1",
+      "target": "mvp",
       "projects": ["kaifuu", "utsushi"],
       "parallelGroup": "engine-research",
-      "dependsOn": ["KAIFUU-014"],
-      "summary": "Produce a concrete implementation plan for Siglus extraction/patching from reference implementations, including scene VM opportunities and key discovery boundaries.",
+      "dependsOn": ["KAIFUU-014", "KAIFUU-034", "KAIFUU-035", "KAIFUU-037"],
+      "summary": "Produce an MVP research and validation slice for Siglus key discovery, Scene.pck/Gameexe.dat requirements, pure adapter boundaries, and Utsushi VM opportunities without claiming production Siglus support.",
       "deliverables": [
         "Siglus format notes",
-        "Minimal parser spike",
+        "Static and dynamic key-discovery notes",
+        "Synthetic or private-local key validation slice",
+        "Minimal parser spike if safe fixtures exist",
         "Risk register",
         "Adapter implementation DAG updates"
       ],
       "acceptanceCriteria": [
         "Scene.pck/Gameexe.dat requirements are clear",
-        "Key discovery is separated from pure parsing",
+        "Second-layer key requirements, key.toml-style handoff, static extraction, dynamic extraction, and known-key database paths are documented",
+        "Key discovery is separated from pure parsing and patching",
+        "Private-local validation can record redacted proof hashes without raw keys",
         "VM value for validation is assessed"
       ],
       "verification": [
@@ -2420,6 +2429,396 @@
         }
       ],
       "auditFocus": ["Overcommitting without fixtures", "Legal overstatement", "VM scope creep"]
+    },
+    {
+      "id": "KAIFUU-034",
+      "title": "Archive and encryption detection matrix",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-006", "KAIFUU-000"],
+      "summary": "Extend Kaifuu detection to classify archive/encryption/key-requirement signals across MVP and high-value VN/RPG engine families without claiming extraction support.",
+      "deliverables": [
+        "Detection matrix schema",
+        "Engine-family fingerprint cases",
+        "Synthetic encrypted/packed negative fixtures",
+        "Capability diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "KiriKiri/XP3, Siglus, RPG Maker MV/MZ encrypted assets, Wolf RPG Editor archives, BGI/Ethornell containers, Ren'Py packed inputs, and unknown variants have detector rows",
+        "Detection output records evidence fields instead of confidence scores",
+        "Encrypted, packed, protected, missing-key, helper-required, and unknown cases return stable semantic capability diagnostics",
+        "Public CI uses synthetic fixtures only and private-local corpora can add aggregate detector evidence"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "Detector matrix review"
+        },
+        {
+          "type": "command",
+          "value": "just fixtures-validate"
+        }
+      ],
+      "auditFocus": [
+        "False support claims from detection",
+        "Missing common encrypted variants",
+        "Private filename leakage"
+      ]
+    },
+    {
+      "id": "KAIFUU-035",
+      "title": "Safe redaction and helper error boundaries",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-014", "KAIFUU-019", "UNIV-005"],
+      "summary": "Implement and document redaction, logging, report, and semantic error boundaries for key profiles, helper outputs, and private encrypted corpora.",
+      "deliverables": [
+        "Redaction policy enforcement",
+        "Helper result error taxonomy",
+        "Log/report scrubber tests",
+        "Private-local report safety checklist"
+      ],
+      "acceptanceCriteria": [
+        "Stable errors cover missing key material, helper unavailable, key validation failed, protected executable unsupported, and secret redacted cases",
+        "Logs and reports cannot include raw keys, helper dumps, decrypted private text, local absolute paths, or retail filenames that disclose story content",
+        "Adapters fail before writing output when required key material or helper capability is missing",
+        "Synthetic tests prove redaction in CLI, report, and structured error paths"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "manual",
+          "value": "Redaction audit"
+        }
+      ],
+      "auditFocus": [
+        "Secret leakage",
+        "Untriageable helper failures",
+        "Over-redaction that hides actionable remediation"
+      ]
+    },
+    {
+      "id": "KAIFUU-036",
+      "title": "Private-local encrypted corpus triage workflow",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "suite"],
+      "parallelGroup": "mvp-integration",
+      "dependsOn": ["UNIV-005", "KAIFUU-014", "KAIFUU-034", "KAIFUU-035"],
+      "summary": "Make encrypted owned-game corpus triage a first-class local workflow that produces safe aggregate readiness evidence while remaining absent from public CI.",
+      "deliverables": [
+        "Private-local encrypted manifest conventions",
+        "Triage command or documented workflow",
+        "Aggregate readiness report schema",
+        "README-safe report example"
+      ],
+      "acceptanceCriteria": [
+        "Local manifests may record redacted key-profile ids, helper classes, proof hashes, detector results, aggregate counts, and command lines",
+        "No raw keys, retail assets, extracted strings, screenshots, helper dumps, local paths, or sensitive filenames are written to committed paths",
+        "Absence of fixtures/private-local never fails public CI or public fixture validation",
+        "Private-local readiness reports can be cited publicly by aggregate/hash metadata"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "manual",
+          "value": "Private-local dry-run with ignored sample path"
+        },
+        {
+          "type": "manual",
+          "value": "Report redaction review"
+        }
+      ],
+      "auditFocus": [
+        "Hidden CI dependency on private corpora",
+        "Leaking private corpus metadata",
+        "Reports too vague to guide adapter priorities"
+      ]
+    },
+    {
+      "id": "KAIFUU-037",
+      "title": "Platform-assisted key discovery harness",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-014", "KAIFUU-020", "KAIFUU-034", "KAIFUU-035"],
+      "summary": "Define and spike the local helper harness for static parsers, known-key imports, Wine/Windows execution, and remote Windows helper calls without putting helper code inside pure adapters.",
+      "deliverables": [
+        "Helper result schema",
+        "Helper registry and capability model",
+        "Local/Wine/Windows/remote helper boundary docs",
+        "Fixture-only helper stub",
+        "No-raw-key logging tests"
+      ],
+      "acceptanceCriteria": [
+        "Helpers return structured validated results with secret refs, proof hashes, tool versions, and remediation, not raw keys in logs",
+        "Pure adapters depend only on resolved profile data and do not call Windows hooks or network helpers directly",
+        "Linux/macOS flows work when key material has already been supplied",
+        "Unavailable helper, unsupported protected executable, and failed validation paths are deterministic and triageable"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "manual",
+          "value": "Helper harness design review"
+        },
+        {
+          "type": "manual",
+          "value": "Wine/Windows workflow dry-run when available"
+        }
+      ],
+      "auditFocus": [
+        "Platform coupling in adapters",
+        "Unsafe remote execution assumptions",
+        "Raw key leakage"
+      ]
+    },
+    {
+      "id": "KAIFUU-038",
+      "title": "KiriKiri XP3 encrypted research slice",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-014", "KAIFUU-020", "KAIFUU-034", "KAIFUU-035", "KAIFUU-037"],
+      "summary": "Research KiriKiri/XP3 archive encryption and patch workflows enough to define fixture requirements, helper boundaries, and future production adapter nodes.",
+      "deliverables": [
+        "XP3 encryption scheme notes",
+        "GARbro/KrkrExtract reference review",
+        "Synthetic encrypted XP3 or detector fixture plan",
+        "Future adapter DAG split"
+      ],
+      "acceptanceCriteria": [
+        "Known XP3 schemes, credential/game-title prompts, read/write filters, universal dump, and universal patch workflows are summarized with citations",
+        "Protected executable and bypass-conflict limits are represented as helper/capability errors",
+        "Production encrypted XP3 patching is separated from plaintext KAG adapter support",
+        "Private-local validation can triage owned XP3 titles without publishing keys or assets"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Research doc review"
+        },
+        {
+          "type": "manual",
+          "value": "Synthetic fixture feasibility review"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Overclaiming encrypted XP3 support",
+        "Copying incompatible reference code",
+        "Ignoring Windows-oriented patch workflows"
+      ]
+    },
+    {
+      "id": "KAIFUU-039",
+      "title": "RPG Maker MV/MZ encrypted asset research slice",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-014", "KAIFUU-034", "KAIFUU-035"],
+      "summary": "Research RPG Maker MV/MZ built-in encrypted assets, key discovery from System.json or encrypted images, and the line between JSON text support and media asset patching.",
+      "deliverables": [
+        "MV/MZ encryption notes",
+        "Synthetic encrypted asset fixture plan",
+        "Key validation proof strategy",
+        "Asset patching follow-up nodes"
+      ],
+      "acceptanceCriteria": [
+        "System.json and encrypted-image key detection paths are documented",
+        "Image no-key restoration and audio key-required behavior are represented in capability diagnostics",
+        "MVP JSON text patching remains separate from full encrypted media asset localization",
+        "Public fixtures use only synthetic/public test keys"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Research doc review"
+        },
+        {
+          "type": "manual",
+          "value": "Encrypted asset fixture review"
+        },
+        {
+          "type": "command",
+          "value": "just fixtures-validate"
+        }
+      ],
+      "auditFocus": [
+        "Conflating JSON text support with asset decryption",
+        "Unsafe key storage",
+        "Missing media localization surfaces"
+      ]
+    },
+    {
+      "id": "KAIFUU-040",
+      "title": "Wolf RPG Editor encrypted archive research slice",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-014", "KAIFUU-020", "KAIFUU-034", "KAIFUU-035", "KAIFUU-037"],
+      "summary": "Research Wolf RPG Editor archive encryption and Pro protection-key workflows so Kaifuu can triage owned Wolf games before full text patching exists.",
+      "deliverables": [
+        "Wolf archive/key notes",
+        "WolfDec/UberWolf reference review",
+        "Detector fixture requirements",
+        "Future adapter and helper DAG updates"
+      ],
+      "acceptanceCriteria": [
+        ".wolf and common archive extensions are represented in the detector matrix",
+        "Automatic decryption key detection and Pro protection-key detection are modeled as helper capabilities",
+        "Full Wolf text patching remains gated on binary patching support",
+        "Private-local validation can report aggregate readiness without publishing archives or keys"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Research doc review"
+        },
+        {
+          "type": "manual",
+          "value": "Private-local triage dry-run when corpus exists"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Assuming Wolf text patching before binary support",
+        "Missing Pro protection-key constraints",
+        "Private archive leakage"
+      ]
+    },
+    {
+      "id": "KAIFUU-041",
+      "title": "BGI/Ethornell encrypted profile research slice",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-014", "KAIFUU-020", "KAIFUU-034", "KAIFUU-035"],
+      "summary": "Research BGI/Ethornell containers, script decoding/encoding, and encrypted/compressed boundary cases enough to avoid treating BGI as purely unencrypted future work.",
+      "deliverables": [
+        "BGI/Ethornell profile notes",
+        "VNTranslationTools/BGIKit reference review",
+        "Container and key-requirement detector cases",
+        "Future binary adapter DAG split"
+      ],
+      "acceptanceCriteria": [
+        "Script decode/encode workflows, original-file-informed encoding, string-table or bytecode risks, and false-positive string references are summarized",
+        "BGI is treated as profile/container/bytecode-centric unless a concrete key workflow is identified",
+        "Encrypted or compressed cases fail with semantic capability errors instead of vague unsupported claims",
+        "Future production adapter nodes distinguish binary patching, container handling, and key/profile requirements"
+      ],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Research doc review"
+        },
+        {
+          "type": "manual",
+          "value": "Detector requirements review"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Inventing a key-discovery workflow without evidence",
+        "Heuristic string-reference overconfidence",
+        "Collapsing binary patching and encryption concerns"
+      ]
+    },
+    {
+      "id": "KAIFUU-042",
+      "title": "Encrypted corpus readiness gate",
+      "status": "planned",
+      "priority": "P1",
+      "target": "mvp",
+      "projects": ["kaifuu", "suite"],
+      "parallelGroup": "mvp-integration",
+      "dependsOn": [
+        "KAIFUU-014",
+        "KAIFUU-015",
+        "KAIFUU-034",
+        "KAIFUU-035",
+        "KAIFUU-036",
+        "KAIFUU-037",
+        "KAIFUU-038",
+        "KAIFUU-039",
+        "KAIFUU-040",
+        "KAIFUU-041"
+      ],
+      "summary": "Collect the MVP encrypted-input readiness evidence across docs, detectors, key profiles, helper boundaries, redaction tests, research slices, and private-local reports.",
+      "deliverables": [
+        "Encrypted readiness report",
+        "Release gate evidence bundle",
+        "Public CI/public fixture proof",
+        "Private-local optional validation proof"
+      ],
+      "acceptanceCriteria": [
+        "The release evidence proves encrypted corpus triage is first-class without making private corpora required for CI",
+        "Public fixtures cover detector, key-profile, helper-unavailable, missing-key, validation-failed, and redaction paths with synthetic data",
+        "Private-local runs can add aggregate readiness results for owned games without leaking keys, assets, helper dumps, decrypted scripts, local paths, or sensitive filenames",
+        "MVP release notes avoid universal decryption and broad commercial support claims"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "manual",
+          "value": "Encrypted readiness release audit"
+        }
+      ],
+      "auditFocus": [
+        "Encrypted workflow still treated as optional polish",
+        "CI coupled to private corpora",
+        "Release claims exceed evidence"
+      ]
     },
     {
       "id": "KAIFUU-016",
@@ -6008,6 +6407,7 @@
         "UNIV-008",
         "UNIV-009",
         "UNIV-010",
+        "KAIFUU-042",
         "ITOTORI-040",
         "ITOTORI-042"
       ],

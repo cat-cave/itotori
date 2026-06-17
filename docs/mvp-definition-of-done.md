@@ -45,16 +45,21 @@ The product loop is:
 
 The exact MVP engine set is fixed below.
 
-| Engine id                | MVP role                                                 | Required MVP support                                                                                                                                                           | Runtime evidence bar                                                                    | Not included in MVP                                                                        |
-| ------------------------ | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `synthetic-json`         | Public CI control and contract proof                     | `fixtures/hello-game` extraction, drafting, patching, `.kaifuu` delta, apply, verify, Utsushi trace, Utsushi capture, dashboard status                                         | E2 frame capture in CI                                                                  | Real-engine support claim                                                                  |
-| `rpg-maker-mv-mz-json`   | First real-engine vertical slice and release demo anchor | RPG Maker MV/MZ JSON project data for map events, common events, choices, database text, UI-like terms, control-code protected spans, patching, verify, and delta package      | E1 trace or E2 capture when the probe can launch/capture; report must state limitations | XP/VX/Ace, encrypted assets, plugin-owned dynamic text not represented in JSON fixtures    |
-| `renpy-plaintext-rpy`    | Engine-agnostic breadth proof                            | Plaintext `.rpy` dialogue, menus, labels, interpolation/protected spans, translatable strings, patching, verify, and capability errors for compiled or packed inputs           | E0 static evidence required; E1 route/text probe when available                         | Producing decompiled `.rpy` from `.rpyc`, unpacking `.rpa`, obfuscated scripts             |
-| `kirikiri-kag-plaintext` | Engine-agnostic breadth proof                            | Plaintext `.ks` dialogue, speaker/name context, choices, labels, comments, command-heavy lines, protected tag spans, patching, verify, and capability errors for packed inputs | E0 static evidence required; E1 trace probe when available                              | Encrypted `.xp3`, compiled plugins, unsupported macro semantics beyond the fixture profile |
+| Engine id                | MVP role                                                 | Required MVP support                                                                                                                                                                                                         | Runtime evidence bar                                                                    | Not included in MVP                                                                                            |
+| ------------------------ | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `synthetic-json`         | Public CI control and contract proof                     | `fixtures/hello-game` extraction, drafting, patching, `.kaifuu` delta, apply, verify, Utsushi trace, Utsushi capture, dashboard status                                                                                       | E2 frame capture in CI                                                                  | Real-engine support claim                                                                                      |
+| `rpg-maker-mv-mz-json`   | First real-engine vertical slice and release demo anchor | RPG Maker MV/MZ JSON project data for map events, common events, choices, database text, UI-like terms, control-code protected spans, patching, verify, delta package, and encrypted asset detection/key-profile diagnostics | E1 trace or E2 capture when the probe can launch/capture; report must state limitations | XP/VX/Ace, full encrypted asset patching, plugin-owned dynamic text not represented in JSON fixtures           |
+| `renpy-plaintext-rpy`    | Engine-agnostic breadth proof                            | Plaintext `.rpy` dialogue, menus, labels, interpolation/protected spans, translatable strings, patching, verify, and capability errors for compiled or packed inputs                                                         | E0 static evidence required; E1 route/text probe when available                         | Producing decompiled `.rpy` from `.rpyc`, unpacking `.rpa`, obfuscated scripts                                 |
+| `kirikiri-kag-plaintext` | Engine-agnostic breadth proof                            | Plaintext `.ks` dialogue, speaker/name context, choices, labels, comments, command-heavy lines, protected tag spans, patching, verify, and capability errors for packed/encrypted inputs                                     | E0 static evidence required; E1 trace probe when available                              | Production encrypted `.xp3` patching, compiled plugins, unsupported macro semantics beyond the fixture profile |
 
 SiglusEngine, Unity, Unreal, Godot, RPG Maker XP/VX/Ace, binary VN engines, OCR
 for image-only text, voice/audio localization, and commercial-grade launcher
-automation are not MVP engines.
+automation are not production MVP engine adapters. Encrypted corpus triage,
+archive/encryption detection, key-profile schema, local-only key material
+policy, platform-assisted helper boundaries, redaction tests, and engine-specific
+encrypted research slices are still MVP requirements because they determine
+whether Kaifuu can be useful on owned games without leaking keys or private
+assets. See [kaifuu-key-discovery.md](kaifuu-key-discovery.md).
 
 ## Fixture Requirements
 
@@ -91,6 +96,13 @@ Private-local benchmark inputs may be cited only by aggregate stats, private
 manifest hash, hash-list hash, tool versions, and command lines. Reports must
 not publish raw private strings, screenshots, filenames that reveal story
 content, or local paths.
+
+Private-local encrypted validation is a first-class MVP evidence lane. When a
+developer has owned or licensed encrypted corpora available, the MVP release
+evidence should include redacted engine triage, key-profile readiness, helper
+availability, key-validation proof hashes, and safe aggregate reports for those
+corpora. Public CI and public demo paths must still pass when
+`fixtures/private-local/` is absent.
 
 ## Required Dashboard Workflows
 
@@ -160,25 +172,26 @@ that target, and why.
 The table below is intentionally scanner-friendly. Keep the `Gate id` values
 stable when editing this document.
 
-| Gate id        | Area                     | Required evidence                                                                              | Pass condition                                                                                                                                                                | Blocks MVP release |
-| -------------- | ------------------------ | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
-| `GATE-MVP-001` | Scope freeze             | This document is linked from `docs/README.md` and referenced by MVP integration review         | Later MVP nodes use this scope unless this document is deliberately amended in a separate review                                                                              | Yes                |
-| `GATE-MVP-002` | Synthetic loop           | `just hello` or successor command artifacts for `synthetic-json`                               | Extract, draft, export, patch, diff, apply, verify, trace, capture, ingest, and dashboard status pass with E2 evidence                                                        | Yes                |
-| `GATE-MVP-003` | RPG Maker vertical slice | MVP-001 artifacts for `rpg-maker-mv-mz-json`                                                   | Full loop runs on public or private-local fixture profile without synthetic engine assumptions                                                                                | Yes                |
-| `GATE-MVP-004` | Multi-engine breadth     | MVP-004 matrix for `rpg-maker-mv-mz-json`, `renpy-plaintext-rpy`, and `kirikiri-kag-plaintext` | All three extract and patch through Kaifuu; Itotori state and APIs remain engine-agnostic; evidence tier is explicit                                                          | Yes                |
-| `GATE-MVP-005` | Fixture legality         | Public manifests and private-local hash summaries                                              | Public CI uses redistributable fixtures only; private data is cited only through allowed aggregate/hash metadata                                                              | Yes                |
-| `GATE-MVP-006` | Protected spans          | Golden extraction/patch/QA artifacts                                                           | Engine control codes, interpolation, variables, tags, and placeholders are represented as protected spans and survive patching                                                | Yes                |
-| `GATE-MVP-007` | Dashboard workbench      | Manual dashboard smoke plus API-backed state                                                   | Required dashboard workflows are reachable and backed by current project state, not hard-coded demo data                                                                      | Yes                |
-| `GATE-MVP-008` | Human decisions          | Decision queue test or demo artifacts                                                          | A reviewer can resolve at least one contextual decision and see durable consequences plus affected rerun behavior                                                             | Yes                |
-| `GATE-MVP-009` | Runtime evidence wording | Utsushi reports and dashboard screenshots                                                      | Every runtime claim shows E0/E1/E2/E3/E4 tier and limitations; weak evidence is not promoted                                                                                  | Yes                |
-| `GATE-MVP-010` | Feedback loop            | MVP-002 before/after artifacts                                                                 | Runtime/playable feedback becomes triage, a decision, a repair job, and updated patch output                                                                                  | Yes                |
-| `GATE-MVP-011` | Benchmark report         | `mvp-benchmark-report`                                                                         | Report names fixtures/corpora, hashes, schemas, tool versions, command lines, provider/model/preset metadata, and artifacts                                                   | Yes                |
-| `GATE-MVP-012` | Quality report           | `mvp-quality-report`                                                                           | Report includes raw MTL baseline, Itotori draft, deterministic QA, QA-agent evaluation, seeded-defect results, and blind spots                                                | Yes                |
-| `GATE-MVP-013` | Cost report              | `mvp-cost-report`                                                                              | Report includes token/cost/latency/routing/fallback data and evaluates the $25 target as measurement only                                                                     | Yes                |
-| `GATE-MVP-014` | Patch package            | Kaifuu patch, verify, diff, and apply artifacts                                                | `.kaifuu` delta package applies cleanly and verify reports structured failures for unsupported inputs                                                                         | Yes                |
-| `GATE-MVP-015` | Release checks           | Validation command output                                                                      | `node scripts/spec-dag.mjs validate`, `pnpm exec vp check`, fixture validation, TypeScript checks, Rust checks, and relevant tests pass or have explicit release-owner waiver | Yes                |
-| `GATE-MVP-016` | Public claims            | `mvp-release-summary` and docs audit                                                           | Public summary avoids claims of superiority, guaranteed price, full engine fidelity, or broad engine compatibility                                                            | Yes                |
-| `GATE-MVP-017` | Non-goals                | Known non-goals section in this document and release summary                                   | Exclusions are visible before demo and release review                                                                                                                         | Yes                |
+| Gate id        | Area                      | Required evidence                                                                                                                          | Pass condition                                                                                                                                                                     | Blocks MVP release |
+| -------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ |
+| `GATE-MVP-001` | Scope freeze              | This document is linked from `docs/README.md` and referenced by MVP integration review                                                     | Later MVP nodes use this scope unless this document is deliberately amended in a separate review                                                                                   | Yes                |
+| `GATE-MVP-002` | Synthetic loop            | `just hello` or successor command artifacts for `synthetic-json`                                                                           | Extract, draft, export, patch, diff, apply, verify, trace, capture, ingest, and dashboard status pass with E2 evidence                                                             | Yes                |
+| `GATE-MVP-003` | RPG Maker vertical slice  | MVP-001 artifacts for `rpg-maker-mv-mz-json`                                                                                               | Full loop runs on public or private-local fixture profile without synthetic engine assumptions                                                                                     | Yes                |
+| `GATE-MVP-004` | Multi-engine breadth      | MVP-004 matrix for `rpg-maker-mv-mz-json`, `renpy-plaintext-rpy`, and `kirikiri-kag-plaintext`                                             | All three extract and patch through Kaifuu; Itotori state and APIs remain engine-agnostic; evidence tier is explicit                                                               | Yes                |
+| `GATE-MVP-005` | Fixture legality          | Public manifests and private-local hash summaries                                                                                          | Public CI uses redistributable fixtures only; private data is cited only through allowed aggregate/hash metadata                                                                   | Yes                |
+| `GATE-MVP-006` | Protected spans           | Golden extraction/patch/QA artifacts                                                                                                       | Engine control codes, interpolation, variables, tags, and placeholders are represented as protected spans and survive patching                                                     | Yes                |
+| `GATE-MVP-007` | Dashboard workbench       | Manual dashboard smoke plus API-backed state                                                                                               | Required dashboard workflows are reachable and backed by current project state, not hard-coded demo data                                                                           | Yes                |
+| `GATE-MVP-008` | Human decisions           | Decision queue test or demo artifacts                                                                                                      | A reviewer can resolve at least one contextual decision and see durable consequences plus affected rerun behavior                                                                  | Yes                |
+| `GATE-MVP-009` | Runtime evidence wording  | Utsushi reports and dashboard screenshots                                                                                                  | Every runtime claim shows E0/E1/E2/E3/E4 tier and limitations; weak evidence is not promoted                                                                                       | Yes                |
+| `GATE-MVP-010` | Feedback loop             | MVP-002 before/after artifacts                                                                                                             | Runtime/playable feedback becomes triage, a decision, a repair job, and updated patch output                                                                                       | Yes                |
+| `GATE-MVP-011` | Benchmark report          | `mvp-benchmark-report`                                                                                                                     | Report names fixtures/corpora, hashes, schemas, tool versions, command lines, provider/model/preset metadata, and artifacts                                                        | Yes                |
+| `GATE-MVP-012` | Quality report            | `mvp-quality-report`                                                                                                                       | Report includes raw MTL baseline, Itotori draft, deterministic QA, QA-agent evaluation, seeded-defect results, and blind spots                                                     | Yes                |
+| `GATE-MVP-013` | Cost report               | `mvp-cost-report`                                                                                                                          | Report includes token/cost/latency/routing/fallback data and evaluates the $25 target as measurement only                                                                          | Yes                |
+| `GATE-MVP-014` | Patch package             | Kaifuu patch, verify, diff, and apply artifacts                                                                                            | `.kaifuu` delta package applies cleanly and verify reports structured failures for unsupported inputs                                                                              | Yes                |
+| `GATE-MVP-015` | Release checks            | Validation command output                                                                                                                  | `node scripts/spec-dag.mjs validate`, `pnpm exec vp check`, fixture validation, TypeScript checks, Rust checks, and relevant tests pass or have explicit release-owner waiver      | Yes                |
+| `GATE-MVP-016` | Public claims             | `mvp-release-summary` and docs audit                                                                                                       | Public summary avoids claims of superiority, guaranteed price, full engine fidelity, or broad engine compatibility                                                                 | Yes                |
+| `GATE-MVP-017` | Non-goals                 | Known non-goals section in this document and release summary                                                                               | Exclusions are visible before demo and release review                                                                                                                              | Yes                |
+| `GATE-MVP-018` | Encrypted local readiness | Kaifuu key discovery docs, redaction tests, detector fixtures, and private-local encrypted readiness report when local corpora are present | Public CI uses only public fixtures; local encrypted validation produces safe aggregate evidence with no raw keys, private assets, helper dumps, decrypted scripts, or local paths | Yes                |
 
 ## Release Checks
 
@@ -202,6 +215,8 @@ Manual release checks:
 
 - MVP gate review against every `GATE-MVP-*` row.
 - Fixture/legal review for all public and private-local inputs.
+- Encrypted corpus review for key-profile ids, helper evidence, redaction, and
+  private-local aggregate reports when private encrypted corpora are present.
 - Dashboard workflow smoke on a fresh database.
 - Artifact review for hashes, environment details, and evidence-tier wording.
 - Quality/cost report audit for missing model/provider/cost metadata and
@@ -220,24 +235,29 @@ private-local prerequisites optional.
    spans, Itotori import, draft run, deterministic QA findings, QA-agent or
    recorded-agent findings, patch export, Kaifuu verify, delta apply, runtime
    evidence tier, and dashboard status.
-4. Open the dashboard workbench. Show project import status, locale branch
+4. If private-local encrypted corpora are present, run the encrypted readiness
+   lane. Show archive/encryption detection, redacted key-profile ids, helper
+   availability, validation proof hashes, semantic failures for unsupported
+   protected variants, and confirm no raw keys or private assets appear in
+   logs/reports.
+5. Open the dashboard workbench. Show project import status, locale branch
    policy, draft/QA run status, runtime evidence, patch/delta status, and cost
    panels.
-5. Open one export blocker or style/glossary decision. Show source, draft,
+6. Open one export blocker or style/glossary decision. Show source, draft,
    context, findings, evidence, impact, options, and consequences before taking
    action.
-6. Submit one feedback item or correction from runtime/playable review, triage
+7. Submit one feedback item or correction from runtime/playable review, triage
    it, apply the repair, rerun affected work, and show the updated patch output.
-7. Run or open the multi-engine matrix for RPG Maker MV/MZ, Ren'Py plaintext,
+8. Run or open the multi-engine matrix for RPG Maker MV/MZ, Ren'Py plaintext,
    and KAG plaintext. Show that Kaifuu handles engine-specific parsing/patching
    while Itotori remains engine-agnostic.
-8. Open `mvp-benchmark-report`, `mvp-quality-report`, `mvp-cost-report`, and
+9. Open `mvp-benchmark-report`, `mvp-quality-report`, `mvp-cost-report`, and
    `mvp-runtime-evidence-report`. Point out raw MTL baseline, Itotori draft
    results, QA-agent evaluation, seeded-defect metrics, token/cost data,
    provider/model metadata, fixture hashes, evidence tiers, and limitations.
-9. Show the `mvp-release-summary` wording and confirm it does not claim
-   guaranteed price, engine-perfect fidelity, or broad commercial game support.
-10. End with the release gate matrix and mark each `GATE-MVP-*` row pass, fail,
+10. Show the `mvp-release-summary` wording and confirm it does not claim
+    guaranteed price, engine-perfect fidelity, or broad commercial game support.
+11. End with the release gate matrix and mark each `GATE-MVP-*` row pass, fail,
     or waived with owner and follow-up.
 
 ## Known Non-Goals
@@ -252,8 +272,11 @@ These exclusions are part of the MVP definition:
   `renpy-plaintext-rpy`, and `kirikiri-kag-plaintext`.
 - No claim of engine-perfect, pixel-perfect, or reference-runtime fidelity
   unless a specific E4 report exists for the covered feature scope.
-- No extraction from encrypted, packed, compiled, obfuscated, or DRM-protected
-  game assets unless an engine profile explicitly supports that case.
+- No universal extraction from encrypted, packed, compiled, obfuscated, or
+  DRM-protected game assets. MVP requires detection, key-profile, redaction, and
+  local helper boundaries; extraction or patching is allowed only when an engine
+  profile explicitly supports the exact case and required key material is
+  supplied locally.
 - No SiglusEngine production adapter in MVP.
 - No image-text OCR, font editing, voice/audio localization, video subtitling,
   save migration, controller automation, installer patching, storefront
@@ -262,7 +285,9 @@ These exclusions are part of the MVP definition:
   Recorded, fake, local, or explicitly opted-in live providers are acceptable
   when their metadata and limitations are recorded.
 - No hidden private corpus dependency. Private-local data may improve reports,
-  but absence of private data cannot break the public MVP demo path.
+  but absence of private data cannot break the public MVP demo path. Presence of
+  private encrypted data should strengthen the local readiness lane without
+  changing public CI requirements.
 - No final UX polish requirement. The dashboard must be coherent and backed by
   state, but visual polish beyond workflow clarity is post-MVP.
 
@@ -271,9 +296,11 @@ These exclusions are part of the MVP definition:
 These are useful after MVP but must not block MVP release unless a release owner
 promotes them through the DAG:
 
-- More engines and variants: SiglusEngine, Unity, Unreal, Godot, RPG Maker
-  XP/VX/Ace, packed Ren'Py projects, encrypted KiriKiri archives, and binary VN
-  formats.
+- More production adapters and variants: production SiglusEngine extraction and
+  patching, production encrypted KiriKiri/XP3 patching, Unity, Unreal, Godot,
+  RPG Maker XP/VX/Ace, packed Ren'Py projects, and binary VN formats. MVP still
+  includes encrypted-input detection, key-profile policy, helper boundaries, and
+  local encrypted corpus readiness.
 - Stronger Utsushi evidence: E3 replay review, E4 reference comparison,
   browser/WASM playback, remote Windows probe hosts, and GPU/native capture
   matrices.

@@ -68,6 +68,8 @@ Recommended local layout:
 fixtures/private-local/<corpus-id>/
   raw/                         Purchased or otherwise restricted source files.
   derived/                     Local-only extracted text, traces, or reports.
+  key-profiles.local.json      Local key profile refs and validation evidence.
+  secrets.local/               Optional ignored local secret material.
   private-manifest.local.json  Local metadata, hashes, and aggregate stats.
   README.local.md              Local notes about acquisition and scope.
 ```
@@ -86,9 +88,20 @@ Private local manifests should record:
 - Aggregate stats: file counts, text-unit counts, source locales, target
   locales, character counts, asset counts, engine type, and benchmark split.
 - Tool versions and command lines used to derive local reports.
+- Encrypted-input readiness metadata when relevant: redacted key-profile ids,
+  helper class, helper version, helper availability, key-validation proof hashes,
+  and archive/encryption detector results.
 
 Never commit private raw files, extracted raw text, screenshots, audio, video,
-font files, save files, or local manifests that reveal restricted content.
+font files, save files, raw keys, helper dumps, decrypted scripts, local secret
+stores, or local manifests that reveal restricted content.
+
+Private-local encrypted validation commands should produce safe aggregate
+readiness reports. Those reports may be cited publicly by corpus label, private
+manifest hash, hash-list hash, engine counts, redacted key-profile ids,
+redacted proof hashes, tool versions, and command lines. They must not include
+raw key material, decrypted text, raw helper logs, retail filenames that reveal
+story content, local absolute paths, or storefront/account identifiers.
 
 ## Canonical Private Corpus Hash Lists
 
@@ -137,6 +150,8 @@ Use SHA-256 for fixture and corpus identity. Benchmark reports may cite:
 - Public fixture manifest id and schema version.
 - Public fixture file hashes and byte counts.
 - Private corpus label, private manifest hash, and raw file hash-list hash.
+- Private encrypted corpus readiness status, redacted key-profile ids, and
+  key-validation proof hashes when present.
 - Git commit, tool versions, model/provider versions, prompt or preset id, and
   deterministic seed when relevant.
 
@@ -156,6 +171,9 @@ they include stable aggregate metrics:
 - Fixture or corpus labels, hashes, and schema versions.
 - Counts of files, text units, protected spans, speakers, choices, images with
   text, UI labels, and runtime traces.
+- Archive/encryption detector counts, helper availability counts, key-profile
+  readiness counts, and key-validation pass/fail counts when private encrypted
+  corpora are used.
 - Source and target locales.
 - Character counts, token counts, cost, latency, pass/fail counts, QA finding
   counts, severity distributions, and seeded-defect recall/precision.
