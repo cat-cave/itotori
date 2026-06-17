@@ -1764,6 +1764,48 @@
       ]
     },
     {
+      "id": "SHARED-024",
+      "title": "Round-trip report JSON schema",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["shared", "kaifuu"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["KAIFUU-003"],
+      "summary": "Formalize the Kaifuu round-trip golden harness report as a versioned JSON schema with positive and negative fixtures.",
+      "deliverables": [
+        "Round-trip report JSON schema",
+        "Positive report fixtures",
+        "Negative report fixtures",
+        "Report validation documentation"
+      ],
+      "acceptanceCriteria": [
+        "Round-trip report artifacts declare the schema version they satisfy",
+        "Valid fixture reports pass schema validation without depending on adapter-specific assumptions",
+        "Invalid report fixtures fail with diagnostics that name the missing or malformed field",
+        "The schema can evolve without breaking existing v0.2 compatibility checks silently"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Report fixtures drifting from generated output",
+        "Schema fields that encode fixture-engine assumptions",
+        "Compatibility report changes without versioning"
+      ]
+    },
+    {
       "id": "KAIFUU-001",
       "title": "Kaifuu adapter trait and game profile model",
       "status": "complete",
@@ -1843,7 +1885,7 @@
     {
       "id": "KAIFUU-003",
       "title": "Round-trip golden harness",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "shared"],
@@ -1879,10 +1921,7 @@
         "False positives in round-trip claims",
         "Missing negative tests",
         "Slow fixture execution"
-      ],
-      "owner": "codex-wave10",
-      "branch": "spec/kaifuu-003",
-      "worktree": "/tmp/itotori-spec-kaifuu-003"
+      ]
     },
     {
       "id": "KAIFUU-004",
@@ -2958,6 +2997,90 @@
       ]
     },
     {
+      "id": "KAIFUU-032",
+      "title": "Adapter-neutral round-trip asset assertions",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-003"],
+      "summary": "Harden the round-trip golden harness so asset assertions are driven by adapter-neutral inventory and capability data instead of fixture source.json assumptions.",
+      "deliverables": [
+        "Adapter-neutral asset assertion model",
+        "Non-fixture asset assertion fixtures",
+        "Capability-aware asset diagnostics",
+        "Round-trip harness regression tests"
+      ],
+      "acceptanceCriteria": [
+        "The golden harness can assert asset preservation or unsupported-asset diagnostics without assuming fixture source.json layout",
+        "Fixture source.json behavior remains covered as one adapter case rather than the shared harness default",
+        "Asset assertions use adapter-declared inventory identities and capabilities",
+        "A failing asset assertion reports the adapter, asset identity, and expected capability boundary"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test --workspace"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Fixture-engine asset assumptions leaking into shared harness behavior",
+        "Asset assertions that pass for the wrong adapter reason",
+        "Diagnostics that hide unsupported asset boundaries"
+      ]
+    },
+    {
+      "id": "KAIFUU-033",
+      "title": "Native source hash recomputation",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-003", "SHARED-010"],
+      "summary": "Support native v0.2 source hash recomputation so source-bridge input is optional for compatibility checks when an adapter can derive the canonical source data directly.",
+      "deliverables": [
+        "Native source hash recomputation path",
+        "Compatibility checks without source-bridge input",
+        "Positive and negative native-source fixtures",
+        "Source hash diagnostic documentation"
+      ],
+      "acceptanceCriteria": [
+        "Compatibility checks can recompute v0.2 source hashes from native adapter input when source-bridge data is absent",
+        "Source-bridge input remains accepted for existing compatibility workflows",
+        "Hash mismatches fail before patch writes with diagnostics that name the native source artifact",
+        "Fixtures prove native recomputation and source-bridge compatibility checks agree for equivalent source data"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Compatibility checks that require redundant source-bridge artifacts",
+        "Native-source hash drift from v0.2 contract semantics",
+        "Patch writes after unresolved source hash mismatches"
+      ]
+    },
+    {
       "id": "KAIFUU-020",
       "title": "Engine adapter development playbook",
       "status": "planned",
@@ -3112,7 +3235,7 @@
     {
       "id": "ITOTORI-004",
       "title": "Typed API layer and local dashboard backend",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -3145,10 +3268,7 @@
           "value": "just check"
         }
       ],
-      "auditFocus": ["Untyped request bodies", "Permission gaps", "API/dashboard drift"],
-      "owner": "codex-wave10",
-      "branch": "spec/itotori-004",
-      "worktree": "/tmp/itotori-spec-itotori-004"
+      "auditFocus": ["Untyped request bodies", "Permission gaps", "API/dashboard drift"]
     },
     {
       "id": "ITOTORI-005",
@@ -3310,7 +3430,7 @@
     {
       "id": "ITOTORI-009",
       "title": "LLM provider abstraction",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -3343,10 +3463,7 @@
           "value": "No live API required in CI"
         }
       ],
-      "auditFocus": ["OpenRouter lock-in", "Tool-call capability ambiguity", "Secret handling"],
-      "owner": "codex-wave10",
-      "branch": "spec/itotori-009",
-      "worktree": "/tmp/itotori-spec-itotori-009"
+      "auditFocus": ["OpenRouter lock-in", "Tool-call capability ambiguity", "Secret handling"]
     },
     {
       "id": "ITOTORI-010",
@@ -4903,6 +5020,132 @@
         "Stringly typed job names",
         "Worker handler registration drift",
         "Registry duplication with agent/tool metadata"
+      ]
+    },
+    {
+      "id": "ITOTORI-049",
+      "title": "Provider invocation capability guards",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "agent-runtime",
+      "dependsOn": ["ITOTORI-009"],
+      "summary": "Enforce ordinary provider tool-call and image-input capability checks at invocation time instead of relying only on registry metadata.",
+      "deliverables": [
+        "Invocation-time capability guard",
+        "Tool-call unsupported-model tests",
+        "Image-input unsupported-model tests",
+        "Provider capability diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "A model invocation that requests ordinary tool-calls fails before provider dispatch when the selected provider or model lacks that capability",
+        "A model invocation that includes image input fails before provider dispatch when image input is unsupported",
+        "Capability failures include the provider, model, requested capability, and configured source of capability data",
+        "Mock provider tests cover supported and unsupported ordinary tool-call and image-input paths"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Capability metadata recorded but not enforced",
+        "Provider dispatch attempted for unsupported tool-call requests",
+        "Image-input prompts sent to text-only models"
+      ]
+    },
+    {
+      "id": "ITOTORI-050",
+      "title": "Project mutation ownership scoping",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["ITOTORI-004"],
+      "summary": "Harden project mutation routes so they derive ProjectState and branch ownership from server-side scoped project data rather than trusting client-supplied state or branch IDs.",
+      "deliverables": [
+        "Project mutation scoping policy",
+        "Server-side project and branch ownership lookup",
+        "Cross-project branch denial tests",
+        "Route-level mutation regression tests"
+      ],
+      "acceptanceCriteria": [
+        "Project mutation routes derive project and branch scope from server-side ownership checks before writing",
+        "Client-supplied ProjectState or branch IDs cannot authorize writes to another project or locale branch",
+        "Unauthorized or mismatched project and branch combinations fail with typed denial diagnostics",
+        "Repository/service tests and API route tests cover successful scoped mutations and cross-scope denials"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Client-supplied ProjectState trusted for mutation authorization",
+        "Branch IDs accepted without project ownership checks",
+        "Dashboard and API scoping behavior drifting apart"
+      ]
+    },
+    {
+      "id": "ITOTORI-051",
+      "title": "MSW mutation contract coverage",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-004"],
+      "summary": "Extend MSW contract handlers and tests to cover project mutation routes, not only read routes and import workflows.",
+      "deliverables": [
+        "MSW project mutation handlers",
+        "Mutation request fixture coverage",
+        "Mutation response fixture coverage",
+        "Contract drift tests for mutation routes"
+      ],
+      "acceptanceCriteria": [
+        "Project mutation routes used by the dashboard have MSW handlers with request and response shapes checked against the real API contract",
+        "Mutation handlers cover success, typed validation failure, and permission or scoping denial fixtures",
+        "A mutation API shape change fails a dashboard contract test instead of silently diverging",
+        "Existing read-route and import MSW coverage remains unchanged"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Dashboard mutations untested in MSW",
+        "MSW handlers accepting shapes the real API rejects",
+        "Permission or scoping denials missing from UI contract tests"
       ]
     },
     {
