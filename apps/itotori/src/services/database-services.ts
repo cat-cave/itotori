@@ -6,7 +6,11 @@ import {
   databaseUrlFromEnv,
   migrate,
 } from "@itotori/db";
-import { localUserActor } from "../auth.js";
+import {
+  ItotoriAuthorizationService,
+  localUserActor,
+  type ItotoriAuthorizationPort,
+} from "../auth.js";
 import { ManualFeedbackImportService, type ManualFeedbackImportPort } from "../manual-feedback.js";
 import {
   ItotoriProjectWorkflowService,
@@ -14,6 +18,7 @@ import {
 } from "./project-workflow.js";
 
 export type ItotoriApplicationServices = {
+  authorization: ItotoriAuthorizationPort;
   projectWorkflow: ItotoriProjectWorkflowPort;
   manualFeedback: ManualFeedbackImportPort;
 };
@@ -43,6 +48,7 @@ export async function withDatabaseItotoriServices<T>(
     const projectRepository = new ItotoriProjectRepository(context.db);
     const feedbackRepository = new ItotoriFeedbackRepository(context.db);
     return await callback({
+      authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(projectRepository, localUserActor),
       manualFeedback: new ManualFeedbackImportService(feedbackRepository, localUserActor),
     });

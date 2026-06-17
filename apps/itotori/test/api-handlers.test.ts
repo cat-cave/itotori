@@ -1,69 +1,184 @@
-import type { ProjectDashboardStatus, RuntimeDashboardStatus } from "@itotori/db";
+import { AuthorizationError, permissionValues, type Permission } from "@itotori/db";
 import { describe, expect, it, vi } from "vitest";
-import { handleItotoriApiRequest, isItotoriApiPath } from "../src/api-handlers.js";
+import {
+  handleItotoriApiRequest,
+  isItotoriApiPath,
+  type ItotoriApiRequest,
+  type ItotoriApiServices,
+} from "../src/api-handlers.js";
+import {
+  benchmarkReportFixture,
+  bridgeFixture,
+  dashboardStatusFixture,
+  decisionEventFixture,
+  findingRecordFixture,
+  projectFixture,
+  runtimeIngestResultFixture,
+  runtimeReportFixture,
+  runtimeStatusFixture,
+} from "./api-fixtures.js";
 
 describe("Itotori API handlers", () => {
-  it("routes project status requests through the status service", async () => {
-    const service = serviceFixture();
+  it("routes project and runtime status reads without permission checks", async () => {
+    const services = serviceFixture();
 
-    const response = await handleItotoriApiRequest("/api/projects/status", service);
+    const projects = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects" },
+      services,
+    );
+    const projectStatus = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/status" },
+      services,
+    );
+    const runtimeStatus = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/hello/status" },
+      services,
+    );
 
-    expect(response).toEqual({ statusCode: 200, body: dashboardStatusFixture });
-    expect(service.getDashboardStatus).toHaveBeenCalledTimes(1);
-    expect(service.getRuntimeStatus).not.toHaveBeenCalled();
+    expect(projects).toEqual({ statusCode: 200, body: { projects: [dashboardStatusFixture] } });
+    expect(projectStatus).toEqual({ statusCode: 200, body: dashboardStatusFixture });
+    expect(runtimeStatus).toEqual({ statusCode: 200, body: runtimeStatusFixture });
+    expect(services.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(2);
+    expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(1);
+    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
   });
 
-  it("routes legacy runtime status requests through the shared status service", async () => {
-    const service = serviceFixture();
+  it.each([
+    {
+      name: "bridge import",
+      request: post("/api/imports/bridge", { bridge: bridgeFixture }),
+      permission: permissionValues.projectImport,
+      service: "importBridge",
+    },
+    {
+      name: "branch draft",
+      request: post("/api/projects/project-1/branches", {
+        project: projectFixture,
+        targetLocale: "fr-FR",
+      }),
+      permission: permissionValues.draftWrite,
+      service: "draftProject",
+    },
+    {
+      name: "finding record",
+      request: post("/api/projects/project-1/findings", {
+        localeBranchId: "locale-1",
+        finding: findingRecordFixture,
+      }),
+      permission: permissionValues.runtimeIngest,
+      service: "recordFinding",
+    },
+    {
+      name: "decision record",
+      request: post("/api/projects/project-1/decisions", {
+        localeBranchId: "locale-1",
+        event: decisionEventFixture,
+      }),
+      permission: permissionValues.runtimeIngest,
+      service: "recordDecision",
+    },
+    {
+      name: "benchmark record",
+      request: post("/api/projects/project-1/benchmarks", {
+        localeBranchId: "locale-1",
+        benchmarkReport: benchmarkReportFixture,
+      }),
+      permission: permissionValues.runtimeIngest,
+      service: "recordBenchmarkReport",
+    },
+    {
+      name: "runtime evidence ingest",
+      request: post("/api/projects/project-1/runtime-evidence", {
+        project: projectFixture,
+        runtimeReport: runtimeReportFixture,
+      }),
+      permission: permissionValues.runtimeIngest,
+      service: "ingestRuntimeReport",
+    },
+  ] as const)(
+    "checks permissions before the $name mutation",
+    async ({ request, permission, service }) => {
+      const services = serviceFixture();
 
-    const response = await handleItotoriApiRequest("/api/hello/status", service);
+      const response = await handleItotoriApiRequest(request, services);
 
-    expect(response).toEqual({ statusCode: 200, body: runtimeStatusFixture });
-    expect(service.getRuntimeStatus).toHaveBeenCalledTimes(1);
-    expect(service.getDashboardStatus).not.toHaveBeenCalled();
+      expect(response.statusCode).toBe(200);
+      expect(services.authorization.requirePermission).toHaveBeenCalledWith(permission);
+      expect(services.projectWorkflow[service]).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it("rejects malformed request bodies before checking permissions", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      post("/api/imports/bridge", { bridge: { schemaVersion: "bad" } }),
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+    expect(services.projectWorkflow.importBridge).not.toHaveBeenCalled();
   });
 
-  it("identifies known API paths without claiming static assets", () => {
+  it("returns forbidden when permission middleware rejects a mutation", async () => {
+    const services = serviceFixture();
+    services.authorization.requirePermission.mockRejectedValueOnce(
+      new AuthorizationError({ userId: "missing-grant" }, permissionValues.projectImport),
+    );
+
+    const response = await handleItotoriApiRequest(
+      post("/api/imports/bridge", { bridge: bridgeFixture }),
+      services,
+    );
+
+    expect(response.statusCode).toBe(403);
+    expect(response.body).toMatchObject({ code: "forbidden" });
+    expect(services.projectWorkflow.importBridge).not.toHaveBeenCalled();
+  });
+
+  it("identifies API paths without claiming static assets", () => {
     expect(isItotoriApiPath("/api/projects/status")).toBe(true);
-    expect(isItotoriApiPath("/api/hello/status")).toBe(true);
+    expect(isItotoriApiPath("/api/projects/project-1/findings")).toBe(true);
     expect(isItotoriApiPath("/assets/main.js")).toBe(false);
   });
 });
 
-function serviceFixture() {
-  return {
-    getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
-    getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
-  };
+function post(pathname: string, body: unknown): ItotoriApiRequest {
+  return { method: "POST", pathname, body };
 }
 
-const dashboardStatusFixture: ProjectDashboardStatus = {
-  projectId: "project-1",
-  projectKey: "project-1",
-  name: "project-1",
-  status: "runtime_ingested",
-  sourceLocale: "ja-JP",
-  sourceBundleId: "bridge-1",
-  sourceBundleHash: "hash-1",
-  sourceBundleRevisionId: "revision-1",
-  branchCount: 1,
-  unitCount: 1,
-  findingCount: 0,
-  artifactCount: 3,
-  latestEventKind: "patch_result_recorded",
-  latestEventAt: "2026-06-17T00:00:00.000Z",
-  localeBranches: [],
-};
-
-const runtimeStatusFixture: RuntimeDashboardStatus = {
-  finalStatus: "hello_world_passed",
-  runtimeReportId: "runtime-1",
-  runtimeStatus: "passed",
-  fidelityTier: "layout_probe",
-  evidenceTier: null,
-  textEventCount: 1,
-  frameCaptureCount: 1,
-  screenshotArtifactCount: 1,
-  recordingArtifactCount: 0,
-  validationFindingCount: 0,
-};
+function serviceFixture(): ItotoriApiServices {
+  return {
+    authorization: {
+      requirePermission: vi.fn<[Permission], Promise<void>>(async () => {}),
+    },
+    projectWorkflow: {
+      getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
+      getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
+      importBridge: vi.fn(async () => projectFixture),
+      draftProject: vi.fn(async () => projectFixture),
+      recordFinding: vi.fn(async () => ({
+        findingId: findingRecordFixture.findingId,
+        status: "open" as const,
+      })),
+      recordDecision: vi.fn(async () => ({
+        decisionId: decisionEventFixture.eventId,
+        eventKind: decisionEventFixture.eventKind,
+        recorded: true,
+      })),
+      recordBenchmarkReport: vi.fn(async () => ({
+        benchmarkRunId: benchmarkReportFixture.benchmarkRunId,
+        artifactId: benchmarkReportFixture.benchmarkRunId,
+        status: benchmarkReportFixture.status,
+        systemCount: benchmarkReportFixture.systemsCompared.length,
+        findingCount: benchmarkReportFixture.findingRecords.length,
+      })),
+      ingestRuntimeReport: vi.fn(async () => ({
+        project: projectFixture,
+        result: runtimeIngestResultFixture,
+      })),
+    },
+  };
+}
