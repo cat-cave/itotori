@@ -18,3 +18,29 @@ Utsushi runtime reports use `RuntimeEvidenceReportV02` from
 - The fixture runtime smoke path emits E2 evidence: deterministic text trace plus
   a referenced screenshot artifact. It does not perform reference-runtime pixel
   comparison and must not be described as E4 fidelity evidence.
+
+## Runtime Adapter Contract
+
+Rust runtime adapters implement the `RuntimeAdapter` trait in `utsushi-core`.
+The trait is engine-agnostic: adapters receive an input root and optional
+artifact root, then emit shared runtime evidence JSON for supported operations.
+
+Required API surface:
+
+| API method          | Capability enum                      | Expected evidence shape                                               |
+| ------------------- | ------------------------------------ | --------------------------------------------------------------------- |
+| `trace`             | `RuntimeCapability::Trace`           | E1 or stronger report with deterministic trace events.                |
+| `discover_branches` | `RuntimeCapability::BranchDiscovery` | Branch-point evidence when the adapter can enumerate runtime choices. |
+| `capture`           | `RuntimeCapability::FrameCapture`    | E2 or stronger report with screenshot artifact references.            |
+| `smoke_validate`    | `RuntimeCapability::SmokeValidation` | Small pass/fail evidence report for release and CI checks.            |
+
+Every adapter registers a `RuntimeAdapterDescriptor` with its name, version,
+capabilities, maximum fidelity tier, maximum evidence tier, approximation tiers,
+and limitations. `RuntimeAdapterRegistry` rejects duplicate adapter names and
+rejects descriptors whose evidence ceiling exceeds the declared fidelity tier.
+
+The synthetic fixture adapter lives in `utsushi-fixture` and uses the same trait
+and registry path as future adapters. Its descriptor advertises trace, frame
+capture, and smoke validation, but not branch discovery or reference comparison.
+Its approximation tier is `deterministic_fixture`, and its reports state that
+captures are deterministic screenshot references without pixel comparison.

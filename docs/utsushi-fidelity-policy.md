@@ -38,6 +38,34 @@ legacy v0.1 report lacks `evidenceTier`, dashboards may derive E1 from
 `trace_only` and E2 from `layout_probe`, but they must label that as legacy
 evidence. When both fields are present, `evidenceTier` is authoritative.
 
+## Adapter Capability Contract
+
+Utsushi Rust adapters report capability through `RuntimeAdapterDescriptor` in
+`utsushi-core`. The descriptor must be reviewed as evidence metadata, not as a
+marketing claim.
+
+| Runtime capability enum | Meaning                                                               | Minimum honest tier |
+| ----------------------- | --------------------------------------------------------------------- | ------------------- |
+| `Trace`                 | The adapter can load content and emit deterministic trace events.     | E1                  |
+| `BranchDiscovery`       | The adapter can identify runtime branch or choice points.             | E1                  |
+| `FrameCapture`          | The adapter can emit screenshot artifact references for known frames. | E2                  |
+| `SmokeValidation`       | The adapter can run a bounded pass/fail runtime evidence check.       | E1 or E2 by output  |
+| `ReplayReview`          | The adapter can produce branchable playback or review sessions.       | E3                  |
+| `ReferenceComparison`   | The adapter can compare covered behavior against reference output.    | E4                  |
+
+Adapter descriptors also declare an `ApproximationTier`: `none`,
+`deterministic_fixture`, `layout_probe`, `engine_partial`, or
+`reference_matched`. Any descriptor below `reference_matched` must include
+limitations, and every non-`reference_fidelity` report must include
+`approximations` in the runtime evidence payload. The registry must reject an
+adapter whose evidence ceiling is stronger than its fidelity tier permits.
+
+Fixture evidence is intentionally useful before pixel-perfect emulation. The
+fixture adapter can prove trace reachability and produce deterministic capture
+references, but it cannot prove commercial engine behavior, branch coverage, or
+pixel equivalence. Those limits belong in both the adapter descriptor and each
+runtime report.
+
 ## Runtime Environment Matrix
 
 | Environment          | Purpose                                           | MVP status               | Notes                                                                                    |
