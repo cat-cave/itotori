@@ -196,7 +196,9 @@ export const protectedSpanCheckImplementationHash =
   "sha256:01f38382cce3aa536f1ec7355b2ac3374a4e6b80f8ad6fb2847a60491aee4a57" satisfies StableJsonHash;
 
 export function protectedSpanCheck(input: ProtectedSpanCheckInput): ProtectedSpanCheckOutput {
-  const missingProtectedSpans = input.protectedSpans.filter((span) => !input.targetText.includes(span));
+  const missingProtectedSpans = input.protectedSpans.filter(
+    (span) => !input.targetText.includes(span),
+  );
   return {
     outputKind: "protected_span_check",
     missingProtectedSpans,
@@ -207,7 +209,9 @@ export function protectedSpanCheck(input: ProtectedSpanCheckInput): ProtectedSpa
   };
 }
 
-export function parseTranslationQualityJudgeOutput(value: string | null): TranslationQualityJudgeOutput {
+export function parseTranslationQualityJudgeOutput(
+  value: string | null,
+): TranslationQualityJudgeOutput {
   if (value === null) {
     throw new Error("translation quality judge returned no content");
   }

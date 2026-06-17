@@ -40,15 +40,15 @@ Each row contains:
 
 ## Detector Rows
 
-| Row id                              | Engine family      | Primary evidence                                  | Signals reported when matched                                      |
-| ----------------------------------- | ------------------ | ------------------------------------------------- | ------------------------------------------------------------------ |
-| `kirikiri-xp3`                      | KiriKiri/XP3       | `*.xp3`, XP3 magic, synthetic encrypted XP3 mark  | `packed`; encrypted fixture marks add `encrypted`, `missing_key`, `helper_required` |
-| `siglus-scene-pck`                  | SiglusEngine       | `Scene.pck`, `Gameexe.dat` aggregate presence     | `packed`, `encrypted`, `missing_key`, `helper_required`            |
-| `rpg-maker-mv-mz-encrypted-assets`  | RPG Maker MV/MZ    | `*.rpgmvp`, `*.rpgmvm`, `*.rpgmvo`, `*.png_`, `*.m4a_`, `*.ogg_`, `System.json` encryption fields | `encrypted`, `missing_key`                                         |
-| `wolf-rpg-editor-archives`          | Wolf RPG Editor    | `*.wolf`, WOLF header, synthetic protection mark  | `packed`, `encrypted`, `missing_key`, `helper_required`; protection marks add `protected` |
-| `bgi-ethornell-containers`          | BGI/Ethornell      | `BURIKO ARC20` header                             | `packed`, `unknown_variant`; encrypted fixture marks add `encrypted`, `missing_key` |
-| `renpy-packed-inputs`               | Ren'Py             | `*.rpa`, `*.rpyc` aggregate counts                | `packed`                                                          |
-| `unknown-archive-variant`           | Unknown            | Unprofiled archive-like extension counts          | `unknown_variant`                                                  |
+| Row id                             | Engine family   | Primary evidence                                                                                  | Signals reported when matched                                                             |
+| ---------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `kirikiri-xp3`                     | KiriKiri/XP3    | `*.xp3`, XP3 magic, synthetic encrypted XP3 mark                                                  | `packed`; encrypted fixture marks add `encrypted`, `missing_key`, `helper_required`       |
+| `siglus-scene-pck`                 | SiglusEngine    | `Scene.pck`, `Gameexe.dat` aggregate presence                                                     | `packed`, `encrypted`, `missing_key`, `helper_required`                                   |
+| `rpg-maker-mv-mz-encrypted-assets` | RPG Maker MV/MZ | `*.rpgmvp`, `*.rpgmvm`, `*.rpgmvo`, `*.png_`, `*.m4a_`, `*.ogg_`, `System.json` encryption fields | `encrypted`, `missing_key`                                                                |
+| `wolf-rpg-editor-archives`         | Wolf RPG Editor | `*.wolf`, WOLF header, synthetic protection mark                                                  | `packed`, `encrypted`, `missing_key`, `helper_required`; protection marks add `protected` |
+| `bgi-ethornell-containers`         | BGI/Ethornell   | `BURIKO ARC20` header                                                                             | `packed`, `unknown_variant`; encrypted fixture marks add `encrypted`, `missing_key`       |
+| `renpy-packed-inputs`              | Ren'Py          | `*.rpa`, `*.rpyc` aggregate counts                                                                | `packed`                                                                                  |
+| `unknown-archive-variant`          | Unknown         | Unprofiled archive-like extension counts                                                          | `unknown_variant`                                                                         |
 
 The matrix intentionally uses synthetic marker strings only for public tests
 where real encryption/protection markers are not redistributable. Private-local

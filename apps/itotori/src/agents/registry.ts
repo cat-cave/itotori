@@ -215,7 +215,9 @@ export class AgentRegistry {
     assertAgentDefinitionShape(definition);
     const key = registryKey(definition.agentName, definition.agentVersion);
     if (this.definitions.has(key)) {
-      throw new Error(`agent ${definition.agentName}@${definition.agentVersion} is already registered`);
+      throw new Error(
+        `agent ${definition.agentName}@${definition.agentVersion} is already registered`,
+      );
     }
     this.definitions.set(key, definition);
     return agentRegistrationMetadata(definition);
@@ -248,7 +250,9 @@ export class DeterministicToolRegistry {
     assertDeterministicToolDefinitionShape(definition);
     const key = registryKey(definition.toolName, definition.toolVersion);
     if (this.definitions.has(key)) {
-      throw new Error(`deterministic tool ${definition.toolName}@${definition.toolVersion} is already registered`);
+      throw new Error(
+        `deterministic tool ${definition.toolName}@${definition.toolVersion} is already registered`,
+      );
     }
     this.definitions.set(key, definition);
     return deterministicToolRegistrationMetadata(definition);
@@ -267,7 +271,9 @@ export class DeterministicToolRegistry {
 
   list(): DeterministicToolRegistrationMetadata[] {
     return [...this.definitions.values()].map((value) =>
-      deterministicToolRegistrationMetadata(value as DeterministicToolDefinition<JsonObject, JsonObject>),
+      deterministicToolRegistrationMetadata(
+        value as DeterministicToolDefinition<JsonObject, JsonObject>,
+      ),
     );
   }
 }
@@ -424,7 +430,9 @@ function assertDeterministicToolDefinitionShape(
     throw new Error("agent definitions cannot be registered as deterministic tools");
   }
   if (registryKind !== "deterministic_tool_definition") {
-    throw new Error("deterministic tool definitions must declare registryKind deterministic_tool_definition");
+    throw new Error(
+      "deterministic tool definitions must declare registryKind deterministic_tool_definition",
+    );
   }
   const toolName = definition["toolName"];
   if (typeof toolName !== "string" || !toolName.startsWith("tool.")) {
@@ -433,7 +441,10 @@ function assertDeterministicToolDefinitionShape(
   if ("agentName" in definition) {
     throw new Error("deterministic tool definitions must not include agentName");
   }
-  const reproducibility = asRecord(definition["reproducibility"], "deterministic tool reproducibility");
+  const reproducibility = asRecord(
+    definition["reproducibility"],
+    "deterministic tool reproducibility",
+  );
   if (reproducibility["sideEffectFree"] !== true) {
     throw new Error("deterministic tool reproducibility must declare sideEffectFree true");
   }
@@ -461,7 +472,10 @@ function assertAgentOutputContract(output: AgentOutputRecord, label: string): vo
   }
 }
 
-function assertAgentOutputFinding(value: unknown, label: string): asserts value is AgentOutputFinding {
+function assertAgentOutputFinding(
+  value: unknown,
+  label: string,
+): asserts value is AgentOutputFinding {
   const finding = asRecord(value, label);
   assertEnumValue(finding["findingKind"], FINDING_KINDS, `${label}.findingKind`);
   assertEnumValue(finding["severity"], TRIAGE_SEVERITIES, `${label}.severity`);
@@ -476,10 +490,10 @@ function assertAgentOutputFinding(value: unknown, label: string): asserts value 
   }
 }
 
-function assertAgentRequestMatchesDefinition<Input extends JsonObject, Output extends AgentOutputRecord>(
-  definition: AgentDefinition<Input, Output>,
-  request: ModelInvocationRequest,
-): void {
+function assertAgentRequestMatchesDefinition<
+  Input extends JsonObject,
+  Output extends AgentOutputRecord,
+>(definition: AgentDefinition<Input, Output>, request: ModelInvocationRequest): void {
   if (request.taskKind !== definition.taskKind) {
     throw new Error(
       `${definition.agentName} request taskKind ${request.taskKind} does not match registered taskKind ${definition.taskKind}`,
@@ -490,7 +504,9 @@ function assertAgentRequestMatchesDefinition<Input extends JsonObject, Output ex
     request.prompt.templateVersion !== definition.prompt.templateVersion ||
     request.prompt.promptHash !== definition.prompt.promptHash
   ) {
-    throw new Error(`${definition.agentName} request prompt does not match registered prompt identity`);
+    throw new Error(
+      `${definition.agentName} request prompt does not match registered prompt identity`,
+    );
   }
 }
 
@@ -640,7 +656,10 @@ function assertJsonValue(value: unknown, label: string): asserts value is JsonVa
 }
 
 function assertJsonSchemaNode(schema: JsonObject, value: JsonValue, label: string): void {
-  if ("const" in schema && stableStringify(value) !== stableStringify(schema["const"] as JsonValue)) {
+  if (
+    "const" in schema &&
+    stableStringify(value) !== stableStringify(schema["const"] as JsonValue)
+  ) {
     throw new Error(`${label} must equal ${stableStringify(schema["const"] as JsonValue)}`);
   }
 
@@ -651,7 +670,9 @@ function assertJsonSchemaNode(schema: JsonObject, value: JsonValue, label: strin
     }
     const normalizedValue = stableStringify(value);
     if (!enumValues.some((item) => stableStringify(item) === normalizedValue)) {
-      throw new Error(`${label} must be one of ${enumValues.map((item) => stableStringify(item)).join(", ")}`);
+      throw new Error(
+        `${label} must be one of ${enumValues.map((item) => stableStringify(item)).join(", ")}`,
+      );
     }
   }
 
@@ -663,7 +684,11 @@ function assertJsonSchemaNode(schema: JsonObject, value: JsonValue, label: strin
     assertJsonSchemaType(schemaType, value, label);
   }
 
-  if (schemaType === "object" || schema["properties"] !== undefined || schema["required"] !== undefined) {
+  if (
+    schemaType === "object" ||
+    schema["properties"] !== undefined ||
+    schema["required"] !== undefined
+  ) {
     assertJsonObjectSchema(schema, value, label);
   }
   if (schemaType === "array" || schema["items"] !== undefined) {
@@ -892,10 +917,7 @@ function agentRegistrationMetadata<Input extends JsonObject, Output extends Agen
   };
 }
 
-function deterministicToolRegistrationMetadata<
-  Input extends JsonObject,
-  Output extends JsonObject,
->(
+function deterministicToolRegistrationMetadata<Input extends JsonObject, Output extends JsonObject>(
   definition: DeterministicToolDefinition<Input, Output>,
 ): DeterministicToolRegistrationMetadata {
   return {

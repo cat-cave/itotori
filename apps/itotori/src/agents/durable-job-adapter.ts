@@ -102,9 +102,7 @@ export class AgentToolDurableJobAdapter {
   }
 }
 
-type RuntimeJobOutput =
-  | AgentJobOutput<AgentOutputRecord>
-  | DeterministicToolJobOutput<JsonObject>;
+type RuntimeJobOutput = AgentJobOutput<AgentOutputRecord> | DeterministicToolJobOutput<JsonObject>;
 
 function durableRuntimeResult<Result extends RuntimeJobOutput>(
   job: JobQueueRecord,
@@ -136,7 +134,10 @@ type DurableRuntimeIdentity = {
   registryId: string;
 };
 
-function durableRuntimeIdentity(job: JobQueueRecord, result: RuntimeJobOutput): DurableRuntimeIdentity {
+function durableRuntimeIdentity(
+  job: JobQueueRecord,
+  result: RuntimeJobOutput,
+): DurableRuntimeIdentity {
   const metadata = result.metadata;
   const registryId =
     metadata.runtimeKind === "llm_agent"
@@ -201,11 +202,7 @@ function durableProvenance(
   });
 }
 
-function deterministicDurableId(
-  job: JobQueueRecord,
-  idKind: string,
-  identity: JsonObject,
-): Uuid7 {
+function deterministicDurableId(job: JobQueueRecord, idKind: string, identity: JsonObject): Uuid7 {
   return deterministicUuid7(job.createdAt, {
     idKind,
     ...identity,
@@ -335,7 +332,9 @@ export function durableAgentJobInput(job: JobQueueRecord): AgentJobInput {
 
 export function durableToolJobInput(job: JobQueueRecord): DeterministicToolJobInput {
   if (job.jobType !== jobTaskTypeValues.deterministicToolTask) {
-    throw new Error(`job ${job.jobId} must have jobType ${jobTaskTypeValues.deterministicToolTask}`);
+    throw new Error(
+      `job ${job.jobId} must have jobType ${jobTaskTypeValues.deterministicToolTask}`,
+    );
   }
   const payload = asRecord(job.payload, `${job.jobId}.payload`);
   assertLiteral(payload["jobKind"], "deterministic_tool_job", `${job.jobId}.payload.jobKind`);
@@ -391,7 +390,10 @@ function durableInvocationContext(
   const causalLinks =
     contextRecord["causalLinks"] === undefined
       ? undefined
-      : causalLinksFromValue(contextRecord["causalLinks"], `${job.jobId}.payload.context.causalLinks`);
+      : causalLinksFromValue(
+          contextRecord["causalLinks"],
+          `${job.jobId}.payload.context.causalLinks`,
+        );
   const occurredAt = optionalString(
     contextRecord["occurredAt"] ?? payload["occurredAt"],
     `${job.jobId}.payload.context.occurredAt`,
@@ -411,7 +413,10 @@ function subjectRefsFromValue(value: unknown, label: string): TriageSubjectRefV0
   return value.map((item, index) => {
     const ref = asRecord(item, `${label}[${index}]`);
     const subject: TriageSubjectRefV02 = {
-      subjectKind: requiredString(ref["subjectKind"], `${label}[${index}].subjectKind`) as TriageSubjectRefV02["subjectKind"],
+      subjectKind: requiredString(
+        ref["subjectKind"],
+        `${label}[${index}].subjectKind`,
+      ) as TriageSubjectRefV02["subjectKind"],
       subjectId: requiredString(ref["subjectId"], `${label}[${index}].subjectId`) as Uuid7,
       ...(ref["label"] === undefined
         ? {}
@@ -428,9 +433,18 @@ function causalLinksFromValue(value: unknown, label: string): CausalLinkV02[] {
   return value.map((item, index) => {
     const link = asRecord(item, `${label}[${index}]`);
     return {
-      causalLinkId: requiredString(link["causalLinkId"], `${label}[${index}].causalLinkId`) as Uuid7,
-      linkKind: requiredString(link["linkKind"], `${label}[${index}].linkKind`) as CausalLinkV02["linkKind"],
-      targetKind: requiredString(link["targetKind"], `${label}[${index}].targetKind`) as CausalLinkV02["targetKind"],
+      causalLinkId: requiredString(
+        link["causalLinkId"],
+        `${label}[${index}].causalLinkId`,
+      ) as Uuid7,
+      linkKind: requiredString(
+        link["linkKind"],
+        `${label}[${index}].linkKind`,
+      ) as CausalLinkV02["linkKind"],
+      targetKind: requiredString(
+        link["targetKind"],
+        `${label}[${index}].targetKind`,
+      ) as CausalLinkV02["targetKind"],
       targetId: requiredString(link["targetId"], `${label}[${index}].targetId`) as Uuid7,
       ...(link["rationale"] === undefined
         ? {}

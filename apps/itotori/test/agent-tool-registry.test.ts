@@ -36,7 +36,11 @@ import {
   type TranslationQualityJudgeOutput,
 } from "../src/agents/index.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
-import type { JsonObject, ModelInvocationRequest, PromptPresetReference } from "../src/providers/index.js";
+import type {
+  JsonObject,
+  ModelInvocationRequest,
+  PromptPresetReference,
+} from "../src/providers/index.js";
 
 describe("agent and deterministic tool registries", () => {
   it("registers and invokes LLM agents with provider-backed metadata and model-output provenance", async () => {
@@ -307,7 +311,9 @@ describe("agent and deterministic tool registries", () => {
     await expect(runtime.runAgentJob(translationQualityJudgeJobFixture)).resolves.toMatchObject({
       output: translationQualityJudgeOutputFixture,
     });
-    await expect(runtime.runDeterministicToolJob(protectedSpanCheckJobFixture)).resolves.toMatchObject({
+    await expect(
+      runtime.runDeterministicToolJob(protectedSpanCheckJobFixture),
+    ).resolves.toMatchObject({
       output: protectedSpanCheckOutputFixture,
     });
   });
