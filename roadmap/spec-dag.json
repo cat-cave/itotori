@@ -109,7 +109,7 @@
     {
       "id": "UTSUSHI-000",
       "title": "Runtime probe environment and fidelity policy",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["utsushi", "kaifuu", "itotori"],
@@ -224,7 +224,7 @@
     {
       "id": "SHARED-000",
       "title": "Localization surface inventory and contract ADR",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
@@ -422,7 +422,7 @@
     {
       "id": "UNIV-005",
       "title": "Golden fixture and private corpus policy",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["universal", "shared"],
