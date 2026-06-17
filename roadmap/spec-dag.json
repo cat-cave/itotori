@@ -1950,25 +1950,23 @@
     },
     {
       "id": "CATALOG-001",
-      "title": "Cross-source entity resolver",
+      "title": "Cross-source resolver integration shell",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "catalog",
-      "dependsOn": ["CATALOG-000"],
-      "summary": "Implement the full-outer-join work resolver for VNDB, EGS, DLsite, DMM, Steam, IGDB, Wikidata, and local corpus inputs with deterministic provenance and reviewable conflicts.",
+      "dependsOn": ["CATALOG-008", "CATALOG-009", "CATALOG-010"],
+      "summary": "Wire exact linking, fuzzy candidate generation, and conflict review into the catalog resolver.",
       "deliverables": [
-        "Resolver service and repositories",
-        "External-id registry",
-        "Fuzzy/Wikidata fallback policy",
-        "Conflict and merge decision fixtures"
+        "Cross-source resolver integration shell integration surface",
+        "Cross-source resolver integration shell end-to-end fixture",
+        "Cross-source resolver integration shell regression coverage"
       ],
       "acceptanceCriteria": [
-        "A work can be created from any supported source without requiring a VNDB id",
-        "Exact external-id joins are deterministic and fuzzy fallback candidates remain reviewable instead of auto-merged silently",
-        "Conflicts are preserved with source provenance and can feed quality/opportunity review",
-        "Resolver fixtures cover one-to-many editions, DLsite translation parent/child links, and local-only corpus entries"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -1985,9 +1983,9 @@
         }
       ],
       "auditFocus": [
-        "False merges across editions",
-        "Dropping source provenance",
-        "Non-deterministic fuzzy matching"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
@@ -2526,37 +2524,23 @@
     },
     {
       "id": "KAIFUU-007",
-      "title": "RPG Maker MV/MZ full-surface adapter",
+      "title": "RPG Maker MV/MZ adapter integration shell",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": [
-        "KAIFUU-003",
-        "KAIFUU-004",
-        "KAIFUU-006",
-        "KAIFUU-000",
-        "KAIFUU-019",
-        "KAIFUU-020",
-        "KAIFUU-021",
-        "KAIFUU-039",
-        "KAIFUU-052",
-        "KAIFUU-053"
-      ],
-      "summary": "Implement the first positive real-engine adapter for RPG Maker MV/MZ with full JSON text coverage, protected control codes, asset inventory, encrypted-media diagnostics, and plugin-text boundaries.",
+      "dependsOn": ["KAIFUU-108", "KAIFUU-109", "KAIFUU-110", "KAIFUU-111", "KAIFUU-112"],
+      "summary": "Integrate MV/MZ readiness, JSON text surfaces, plugin diagnostics, and media diagnostics.",
       "deliverables": [
-        "RPG Maker MV/MZ adapter",
-        "Full-surface public fixture",
-        "Round-trip and patch tests",
-        "Encrypted-media capability diagnostics"
+        "RPG Maker MV/MZ adapter integration shell integration surface",
+        "RPG Maker MV/MZ adapter integration shell end-to-end fixture",
+        "RPG Maker MV/MZ adapter integration shell regression coverage"
       ],
       "acceptanceCriteria": [
-        "Adapter extracts map events, common events, choices, database text, UI-like terms, plugin-profiled text, and protected control-code spans where represented in JSON",
-        "Patch writes preserve JSON structure, control codes, encodings, and source revision compatibility",
-        "Unchanged round-trip is stable and translated patch output is deterministic",
-        "Encrypted media assets are detected and reported as per-surface key/profile requirements without blocking null-key JSON text extraction",
-        "Fixture source is documented, support boundary is explicit, and unsupported plugin-owned, encrypted, packed, or unknown variants fail with semantic capability errors"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -2573,10 +2557,9 @@
         }
       ],
       "auditFocus": [
-        "Toy MV/MZ slice instead of full surface",
-        "Control-code damage",
-        "Encrypted media silently ignored",
-        "Large project performance"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
@@ -2724,25 +2707,23 @@
     },
     {
       "id": "KAIFUU-011",
-      "title": "Binary patcher core for packed and binary engines",
+      "title": "Binary patcher integration shell",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": ["KAIFUU-003", "KAIFUU-004", "KAIFUU-019", "KAIFUU-052"],
-      "summary": "Build shared binary offset, relocation, encoding, and string-table rewriting utilities because RGSS3/VX Ace, Wolf, Majiro, BGI, and other high-value local backlog engines depend on them.",
+      "dependsOn": ["KAIFUU-081", "KAIFUU-082", "KAIFUU-083", "KAIFUU-084"],
+      "summary": "Integrate byte-span, string-slot, relocation, and rollback primitives into the shared binary patcher API.",
       "deliverables": [
-        "BinaryPatcher utility",
-        "Offset mapping tests",
-        "Encoding helpers",
-        "Negative tests"
+        "Binary patcher integration shell integration surface",
+        "Binary patcher integration shell end-to-end fixture",
+        "Binary patcher integration shell regression coverage"
       ],
       "acceptanceCriteria": [
-        "Binary patcher utilities handle offset mapping, string table rebuilds, encoding boundaries, and preflight failure before writes",
-        "Tests cover Shift-JIS/UTF variants, length expansion, duplicate strings, false-positive references, and rollback behavior",
-        "The API composes with the layered access pipeline instead of being adapter-specific glue",
-        "RGSS3/VX Ace readiness can name the exact binary patcher support it needs"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -2755,9 +2736,9 @@
         }
       ],
       "auditFocus": [
-        "Offset table corruption",
-        "Adapter-specific binary patcher shortcuts",
-        "Late discovery of RGSS/Wolf/BGI blockers"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
@@ -2886,37 +2867,23 @@
     },
     {
       "id": "KAIFUU-015",
-      "title": "Siglus key-profile and parser proof slice",
+      "title": "Siglus key-profile and parser proof integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "utsushi"],
       "parallelGroup": "engine-research",
-      "dependsOn": [
-        "KAIFUU-014",
-        "KAIFUU-034",
-        "KAIFUU-035",
-        "KAIFUU-037",
-        "KAIFUU-050",
-        "KAIFUU-051",
-        "KAIFUU-043",
-        "KAIFUU-044",
-        "KAIFUU-046"
-      ],
-      "summary": "Implement a Siglus proof slice for key-profile handoff, Scene.pck/Gameexe.dat detection, safe parser boundaries, and redacted private-local validation evidence that prepares the production adapter without making broad support claims.",
+      "dependsOn": ["KAIFUU-091", "KAIFUU-092", "KAIFUU-093", "KAIFUU-094"],
+      "summary": "Integrate Siglus detector, key-boundary, parser-boundary, and redacted validation slices.",
       "deliverables": [
-        "Siglus key-profile examples with secret refs",
-        "Scene.pck/Gameexe.dat detector fixtures or parser spike fixtures",
-        "Static and dynamic key-discovery helper contract examples",
-        "Redacted private-local validation summary renderer",
-        "Utsushi VM/runtime evidence requirements for Siglus"
+        "Siglus key-profile and parser proof integration integration surface",
+        "Siglus key-profile and parser proof integration end-to-end fixture",
+        "Siglus key-profile and parser proof integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Scene.pck/Gameexe.dat requirements are represented as validated profile fields or fixture assertions",
-        "Second-layer key requirements, key.toml-style handoff, static extraction, dynamic extraction, and known-key database paths have executable helper-boundary examples",
-        "Key discovery is separated from pure parsing and patching in code and fixtures",
-        "Private-local validation can record redacted proof hashes without raw keys",
-        "Siglus runtime/VM evidence requirements are written as adapter contract inputs, not as a decision gate"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -2932,7 +2899,11 @@
           "value": "Siglus private-local redaction dry-run when available"
         }
       ],
-      "auditFocus": ["Overcommitting without fixtures", "Legal overstatement", "VM scope creep"]
+      "auditFocus": [
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
+      ]
     },
     {
       "id": "KAIFUU-034",
@@ -3074,39 +3045,23 @@
     },
     {
       "id": "KAIFUU-037",
-      "title": "Local key discovery helper contract",
+      "title": "Local key discovery helper contract integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
-      "dependsOn": [
-        "KAIFUU-014",
-        "KAIFUU-020",
-        "KAIFUU-034",
-        "KAIFUU-035",
-        "KAIFUU-050",
-        "KAIFUU-051",
-        "KAIFUU-043",
-        "KAIFUU-044",
-        "KAIFUU-046"
-      ],
-      "summary": "Implement the local helper contract for static parser outputs, known-key imports, manual key entry, fixture-only helper stubs, and secret-ref validation without putting helper code inside pure adapters.",
+      "dependsOn": ["KAIFUU-085", "KAIFUU-086", "KAIFUU-087"],
+      "summary": "Integrate helper validation, registry capabilities, manual key entry, and known-key import boundaries.",
       "deliverables": [
-        "Helper result schema",
-        "Helper registry and capability model",
-        "Known-key database import policy",
-        "Manual key-entry helper path",
-        "Fixture-only helper stub",
-        "No-raw-key logging tests"
+        "Local key discovery helper contract integration integration surface",
+        "Local key discovery helper contract integration end-to-end fixture",
+        "Local key discovery helper contract integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Helpers return structured validated results with secret refs, proof hashes, tool versions, and remediation, not raw keys in logs",
-        "Known-key database imports are local-only, provenance-recorded, and never required by public CI or live network calls",
-        "Manual key-entry cancellation, unavailable helper, unsupported executable, and failed validation paths are deterministic and triageable",
-        "Pure adapters depend only on resolved profile data and do not call platform hooks, Wine, Windows, or network helpers directly",
-        "Linux/macOS flows work when key material has already been supplied",
-        "The fixture-only helper exercises helper result validation and secret resolution without using private games, Wine, Windows, or network calls"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -3123,32 +3078,30 @@
         }
       ],
       "auditFocus": [
-        "Platform coupling in adapters",
-        "Raw key leakage",
-        "Helper result validation gaps"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
       "id": "KAIFUU-064",
-      "title": "Wine and Windows helper execution harness",
+      "title": "Platform-assisted helper execution integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
-      "dependsOn": ["KAIFUU-037"],
-      "summary": "Implement the bounded local platform execution slice for key-discovery helpers that require Wine, Proton, or Windows process control while keeping pure adapters and public CI independent of those hosts.",
+      "dependsOn": ["KAIFUU-088", "KAIFUU-089", "KAIFUU-090"],
+      "summary": "Integrate allowlisted helper binaries, bounded execution, and platform adapters.",
       "deliverables": [
-        "Wine/Windows helper execution adapter",
-        "Process timeout and cancellation policy",
-        "Platform capability diagnostics",
-        "Redacted helper dry-run fixture"
+        "Platform-assisted helper execution integration integration surface",
+        "Platform-assisted helper execution integration end-to-end fixture",
+        "Platform-assisted helper execution integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Wine, Proton, and Windows helper paths are invoked only through the helper execution adapter, never from pure extraction or patch adapters",
-        "Unavailable platform, protected executable, timeout, cancellation, and failed helper validation paths return semantic diagnostics",
-        "Helper execution logs, reports, and dry-run fixtures do not expose raw keys, private game paths, decrypted scripts, or story filenames",
-        "Public CI can run fixture-only helper tests without Wine, Windows, private executables, or live network calls"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -3165,9 +3118,9 @@
         }
       ],
       "auditFocus": [
-        "Platform helper called from pure adapters",
-        "Hung or unbounded helper processes",
-        "Private path or key leakage"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
@@ -3215,8 +3168,8 @@
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
-      "dependsOn": ["KAIFUU-035", "KAIFUU-037", "KAIFUU-043", "KAIFUU-064"],
-      "summary": "Constrain key-discovery helpers to registered binaries, versions, hashes, schemas, temp roots, timeout controls, and redacted output boundaries.",
+      "dependsOn": ["KAIFUU-088", "KAIFUU-089"],
+      "summary": "Harden helper artifact handling on top of the allowlist and bounded runner.",
       "deliverables": [
         "Helper binary allowlist schema",
         "Registered helper runner gate",
@@ -3312,7 +3265,14 @@
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": ["KAIFUU-007", "KAIFUU-039", "KAIFUU-010", "KAIFUU-050", "KAIFUU-051"],
+      "dependsOn": [
+        "KAIFUU-007",
+        "KAIFUU-039",
+        "KAIFUU-010",
+        "KAIFUU-050",
+        "KAIFUU-051",
+        "KAIFUU-117"
+      ],
       "summary": "Turn MV/MZ encrypted asset proof work into a bounded decrypt, replace, patch, and verify slice for synthetic encrypted image/audio fixtures.",
       "deliverables": [
         "Encrypted asset decrypt path",
@@ -3440,25 +3400,23 @@
     },
     {
       "id": "KAIFUU-071",
-      "title": "XP3 archive reader and writer core",
+      "title": "Plain XP3 reader and writer integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": ["KAIFUU-038", "KAIFUU-011", "KAIFUU-052", "KAIFUU-051"],
-      "summary": "Implement deterministic plain XP3 archive read/write support and KAG handoff fixtures before adding profiled encrypted XP3 helper paths.",
+      "dependsOn": ["KAIFUU-097", "KAIFUU-098"],
+      "summary": "Integrate plain XP3 inventory and deterministic rebuild behavior.",
       "deliverables": [
-        "XP3 archive reader",
-        "XP3 archive writer",
-        "Plain XP3 round-trip fixture",
-        "KAG-in-XP3 handoff fixture"
+        "Plain XP3 reader and writer integration integration surface",
+        "Plain XP3 reader and writer integration end-to-end fixture",
+        "Plain XP3 reader and writer integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Plain XP3 fixture unpacks and rebuilds deterministically with preserved file metadata where represented",
-        "KAG text inside XP3 can round-trip through Kaifuu extraction and patch handoff paths",
-        "Encrypted, protected, unknown-compression, and helper-required XP3 cases fail with semantic diagnostics until a crypt profile is supplied",
-        "Archive reports distinguish archive support from text/patch support for contained assets"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -3475,40 +3433,30 @@
         }
       ],
       "auditFocus": [
-        "Archive reader overclaiming encrypted XP3 support",
-        "Archive metadata corruption",
-        "Contained text support misreported"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
       "id": "KAIFUU-072",
-      "title": "KiriKiri XP3 profiled crypt-helper slice",
+      "title": "Profiled KiriKiri XP3 crypt patch integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": [
-        "KAIFUU-037",
-        "KAIFUU-050",
-        "KAIFUU-054",
-        "KAIFUU-064",
-        "KAIFUU-066",
-        "KAIFUU-067",
-        "KAIFUU-071"
-      ],
-      "summary": "Implement one profiled KiriKiri XP3 crypt/helper path that extracts, trivially patches, verifies, and redacts evidence for a synthetic fixture and optional owned-game local run.",
+      "dependsOn": ["KAIFUU-100", "KAIFUU-101", "KAIFUU-102", "KAIFUU-071"],
+      "summary": "Integrate profiled XP3 crypt extraction, trivial patch rebuild, verification, and redacted summaries.",
       "deliverables": [
-        "Profiled XP3 crypt/helper adapter slice",
-        "Synthetic encrypted XP3 fixture",
-        "Trivial extract-patch-verify command",
-        "Redacted private-local validation summary"
+        "Profiled KiriKiri XP3 crypt patch integration integration surface",
+        "Profiled KiriKiri XP3 crypt patch integration end-to-end fixture",
+        "Profiled KiriKiri XP3 crypt patch integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "One declared XP3 crypt/helper profile can extract text surfaces, apply a trivial patch, verify, and produce a delta-compatible patch result",
-        "Protected executable, custom engine, helper-required, wrong-key, and out-of-profile cases are explicit semantic outcomes",
-        "KrkrExtract-style dump/patch database evidence can be represented without leaking private bytes, paths, keys, or helper dumps",
-        "Failures inside the declared XP3 crypt/helper profile are treated as bugs or compatibility regressions"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -3529,9 +3477,9 @@
         }
       ],
       "auditFocus": [
-        "XP3 helper/key leakage",
-        "Patch-back corruption",
-        "Unsupported variant hidden as pass"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
@@ -3883,37 +3831,23 @@
     },
     {
       "id": "KAIFUU-038",
-      "title": "KiriKiri XP3 encrypted profile and fixture proof",
+      "title": "KiriKiri XP3 profile proof integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
-      "dependsOn": [
-        "KAIFUU-014",
-        "KAIFUU-020",
-        "KAIFUU-034",
-        "KAIFUU-035",
-        "KAIFUU-037",
-        "KAIFUU-050",
-        "KAIFUU-051",
-        "KAIFUU-043",
-        "KAIFUU-044",
-        "KAIFUU-046"
-      ],
-      "summary": "Implement XP3 encrypted-archive profile examples, detector fixtures, helper-boundary cases, and patch-workflow constraints that directly feed the production encrypted-XP3 adapter path.",
+      "dependsOn": ["KAIFUU-095", "KAIFUU-096"],
+      "summary": "Integrate XP3 profile schema and helper-required semantic fixtures before archive support claims.",
       "deliverables": [
-        "XP3 encryption profile examples",
-        "Synthetic encrypted XP3 or XP3-like detector fixtures",
-        "Helper-required and missing-key semantic error fixtures",
-        "GARbro/KrkrExtract reference behavior notes captured in adapter tests or fixture docs",
-        "Patch-workflow constraint fixtures for encrypted XP3 profiles"
+        "KiriKiri XP3 profile proof integration integration surface",
+        "KiriKiri XP3 profile proof integration end-to-end fixture",
+        "KiriKiri XP3 profile proof integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "XP3 profiles separate plain, packed, encrypted, protected executable, helper-required, universal dump, and universal patch workflows",
-        "Synthetic fixtures exercise encrypted, missing-key, helper-unavailable, and out-of-profile cases without private bytes",
-        "Detector and helper-boundary tests fail before patching writes output",
-        "Production adapter prerequisites are represented as concrete profile fields and fixture requirements"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -3930,42 +3864,30 @@
         }
       ],
       "auditFocus": [
-        "Plaintext-only KiriKiri overclaim",
-        "Encrypted XP3 helper leakage",
-        "Profile fields too vague for production adapter work"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
       "id": "KAIFUU-039",
-      "title": "RPG Maker MV/MZ encrypted asset fixture proof",
+      "title": "MV/MZ encrypted media readiness integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
-      "dependsOn": [
-        "KAIFUU-014",
-        "KAIFUU-034",
-        "KAIFUU-035",
-        "KAIFUU-050",
-        "KAIFUU-051",
-        "KAIFUU-043",
-        "KAIFUU-044",
-        "KAIFUU-046"
-      ],
-      "summary": "Implement MV/MZ encrypted asset detection, key-validation fixtures, and asset-surface policy hooks so JSON text support and encrypted media patching are separated by tested capability boundaries.",
+      "dependsOn": ["KAIFUU-113", "KAIFUU-114"],
+      "summary": "Integrate MV/MZ encrypted-media detection and key validation.",
       "deliverables": [
-        "Synthetic MV/MZ encrypted asset fixtures",
-        "System.json or image-derived key validation fixtures",
-        "Encrypted image/audio suffix detector coverage",
-        "Asset-surface capability report fixtures",
-        "Itotori asset-policy handoff examples"
+        "MV/MZ encrypted media readiness integration integration surface",
+        "MV/MZ encrypted media readiness integration end-to-end fixture",
+        "MV/MZ encrypted media readiness integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Built-in MV/MZ encrypted image and audio extensions are detected with stable semantic outcomes",
-        "Fixture keys validate decryptable synthetic assets without storing private key material",
-        "JSON text patching remains available when encrypted media is unsupported or missing keys",
-        "Asset patching prerequisites are represented as tested capability fields and handoff examples"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -3982,44 +3904,30 @@
         }
       ],
       "auditFocus": [
-        "Media text silently omitted",
-        "Raw key leakage",
-        "JSON support coupled to encrypted media support"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
       "id": "KAIFUU-040",
-      "title": "Wolf encrypted archive profile and helper proof",
+      "title": "Wolf profile and helper-boundary readiness integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
-      "dependsOn": [
-        "KAIFUU-014",
-        "KAIFUU-020",
-        "KAIFUU-034",
-        "KAIFUU-035",
-        "KAIFUU-037",
-        "KAIFUU-050",
-        "KAIFUU-051",
-        "KAIFUU-043",
-        "KAIFUU-044",
-        "KAIFUU-046"
-      ],
-      "summary": "Implement Wolf RPG Editor encrypted-archive profile examples, detector fixtures, helper boundary cases, and protection-key semantics that feed the production encrypted Wolf adapter path.",
+      "dependsOn": ["KAIFUU-120", "KAIFUU-121"],
+      "summary": "Integrate Wolf detector and helper-boundary proof without claiming parser or patch support.",
       "deliverables": [
-        "Wolf archive and protection-key profile examples",
-        "Synthetic encrypted archive detector fixtures",
-        "Helper-required and manual-key semantic error fixtures",
-        "WolfDec/UberWolf reference behavior notes captured in fixture docs",
-        "Private-local triage report shape for owned Wolf games"
+        "Wolf profile and helper-boundary readiness integration integration surface",
+        "Wolf profile and helper-boundary readiness integration end-to-end fixture",
+        "Wolf profile and helper-boundary readiness integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Wolf profiles distinguish unencrypted, encrypted, protection-key, helper-required, and out-of-profile archive cases",
-        "Detector fixtures exercise missing-key, helper-unavailable, validation-failed, and safe-redaction paths",
-        "Private-local triage can summarize owned Wolf evidence without filenames, keys, paths, or decrypted text",
-        "Production adapter prerequisites are concrete profile fields and fixture requirements"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -4036,42 +3944,30 @@
         }
       ],
       "auditFocus": [
-        "Archive/protection-key overclaiming",
-        "Helper leakage",
-        "Private corpus dependency"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
       "id": "KAIFUU-041",
-      "title": "BGI/Ethornell encrypted profile and detector proof",
+      "title": "BGI detector and profile readiness integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
-      "dependsOn": [
-        "KAIFUU-014",
-        "KAIFUU-020",
-        "KAIFUU-034",
-        "KAIFUU-035",
-        "KAIFUU-051",
-        "KAIFUU-043",
-        "KAIFUU-044",
-        "KAIFUU-046"
-      ],
-      "summary": "Implement BGI/Ethornell container, compression, key-requirement, and script-profile detector fixtures so future binary extraction work starts from tested capability boundaries.",
+      "dependsOn": ["KAIFUU-126", "KAIFUU-127", "KAIFUU-128"],
+      "summary": "Integrate BGI detector and profile-negative fixtures without claiming parser or patch support.",
       "deliverables": [
-        "BGI/Ethornell profile examples",
-        "Container and key-requirement detector fixtures",
-        "Header and no-header bytecode profile cases",
-        "Encrypted/compressed semantic error fixtures",
-        "VNTranslationTools/BGIKit reference behavior notes captured in fixture docs"
+        "BGI detector and profile readiness integration integration surface",
+        "BGI detector and profile readiness integration end-to-end fixture",
+        "BGI detector and profile readiness integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Detector fixtures separate container, bytecode, encrypted, compressed, missing profile, and unknown opcode cases",
-        "Supported unencrypted profile requirements remain distinct from encrypted/compressed readiness evidence",
-        "Out-of-profile BGI variants fail with semantic errors before patch writes",
-        "Future binary adapter prerequisites are concrete fixture requirements, not a deferred decision"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -4088,54 +3984,30 @@
         }
       ],
       "auditFocus": [
-        "Inventing a key-discovery workflow without evidence",
-        "Heuristic string-reference overconfidence",
-        "Collapsing binary patching and encryption concerns"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
       "id": "KAIFUU-042",
-      "title": "Encrypted corpus readiness verifier",
+      "title": "Alpha encrypted-readiness evidence integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "suite"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": [
-        "KAIFUU-014",
-        "KAIFUU-015",
-        "KAIFUU-034",
-        "KAIFUU-035",
-        "KAIFUU-036",
-        "KAIFUU-037",
-        "KAIFUU-038",
-        "KAIFUU-039",
-        "KAIFUU-040",
-        "KAIFUU-041",
-        "KAIFUU-050",
-        "KAIFUU-051",
-        "KAIFUU-052",
-        "KAIFUU-053",
-        "KAIFUU-054",
-        "KAIFUU-055",
-        "CATALOG-003",
-        "KAIFUU-064",
-        "KAIFUU-043",
-        "KAIFUU-044",
-        "KAIFUU-046"
-      ],
-      "summary": "Implement an alpha encrypted-input readiness verifier that checks docs, detectors, key profiles, helper boundaries, redaction tests, fixture proofs, and optional private-local summaries without making universal decryption claims.",
+      "dependsOn": ["KAIFUU-103", "KAIFUU-104"],
+      "summary": "Integrate generated encrypted-readiness evidence into alpha readiness artifacts.",
       "deliverables": [
-        "Encrypted readiness verifier command or script",
-        "Alpha readiness evidence bundle schema",
-        "Public fixture evidence renderer",
-        "Private-local optional validation summary renderer"
+        "Alpha encrypted-readiness evidence integration integration surface",
+        "Alpha encrypted-readiness evidence integration end-to-end fixture",
+        "Alpha encrypted-readiness evidence integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "The verifier proves encrypted corpus triage is first-class without making private corpora required for CI",
-        "Public fixtures cover detector, key-profile, helper-unavailable, missing-key, validation-failed, and redaction paths with synthetic data",
-        "Private-local runs can add aggregate readiness results for owned games without leaking keys, assets, helper dumps, decrypted scripts, local paths, or sensitive filenames",
-        "Verifier output avoids universal decryption and broad commercial support claims"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -4152,9 +4024,9 @@
         }
       ],
       "auditFocus": [
-        "Private corpus leakage",
-        "Readiness mistaken for production support",
-        "Missing synthetic encrypted cases"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
@@ -4716,25 +4588,23 @@
     },
     {
       "id": "KAIFUU-060",
-      "title": "Claimed engine support compatibility suite",
+      "title": "Claimed support regression integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "suite"],
       "parallelGroup": "quality-foundation",
-      "dependsOn": ["KAIFUU-053", "KAIFUU-056"],
-      "summary": "Define and enforce the compatibility contract for claimed engine profiles so regressions on supported owned-game variants become bugs, not vague future feature requests.",
+      "dependsOn": ["KAIFUU-105", "KAIFUU-106", "KAIFUU-107"],
+      "summary": "Integrate claimed-support profiles, redacted reproduction bundles, and profile regression.",
       "deliverables": [
-        "Claimed-support compatibility policy",
-        "Engine capability profile test matrix",
-        "Bug-report reproduction bundle format with redaction rules",
-        "Compatibility regression triage workflow"
+        "Claimed support regression integration integration surface",
+        "Claimed support regression integration end-to-end fixture",
+        "Claimed support regression integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Each claimed adapter profile states the exact engine family, variant, container, crypto, codec, helper, key, and patch-back assumptions it supports",
-        "Bug reports for claimed profiles can include redacted detection, key-profile, extraction, patch, and verify evidence without raw assets or keys",
-        "Unknown and out-of-profile inputs still produce semantic capability errors with actionable next evidence",
-        "CI or private-local validation can detect regressions against claimed support profiles"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -4751,9 +4621,9 @@
         }
       ],
       "auditFocus": [
-        "Claimed support boundaries too vague to debug",
-        "Private evidence leakage in bug reports",
-        "Unsupported variants mislabeled as regressions"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
@@ -5884,24 +5754,23 @@
     },
     {
       "id": "ITOTORI-007",
-      "title": "Conversational style guide builder",
+      "title": "Conversational style guide builder integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "policy",
-      "dependsOn": ["ITOTORI-004", "ITOTORI-000", "ITOTORI-029", "ITOTORI-031", "ITOTORI-005"],
-      "summary": "Build the human-in-the-loop style guide creation workflow inspired by product-brief creation, with explicit decisions and versioned policy output.",
+      "dependsOn": ["ITOTORI-062", "ITOTORI-063", "ITOTORI-064", "ITOTORI-065", "ITOTORI-066"],
+      "summary": "Integrate style-guide persistence, structured conversation output, recorded suggestions, dashboard UX, and invalidation events.",
       "deliverables": [
-        "Style guide schema",
-        "Conversational builder flow",
-        "Policy versioning",
-        "Dashboard editor"
+        "Conversational style guide builder integration integration surface",
+        "Conversational style guide builder integration end-to-end fixture",
+        "Conversational style guide builder integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Human decisions are structured and versioned",
-        "Style guide changes can trigger affected reruns",
-        "The UX presents context instead of isolated random lines"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -5925,7 +5794,11 @@
           "value": "Policy fixture snapshots"
         }
       ],
-      "auditFocus": ["Unstructured policy blobs", "Bad HITL ergonomics", "No rerun semantics"]
+      "auditFocus": [
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
+      ]
     },
     {
       "id": "ITOTORI-008",
@@ -5935,7 +5808,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "policy",
-      "dependsOn": ["ITOTORI-002", "ITOTORI-029", "ITOTORI-030"],
+      "dependsOn": ["ITOTORI-002", "ITOTORI-029", "ITOTORI-071"],
       "summary": "Implement terminology storage, preferred translations, aliases, source references, semantic search hooks, and conflict handling.",
       "deliverables": [
         "Glossary tables",
@@ -6092,7 +5965,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "context-agents",
-      "dependsOn": ["ITOTORI-011", "ITOTORI-006", "ITOTORI-030"],
+      "dependsOn": ["ITOTORI-011", "ITOTORI-006", "ITOTORI-071"],
       "summary": "Store, version, index, and retrieve context artifacts such as scene summaries, character notes, route maps, speaker labels, and terminology candidates.",
       "deliverables": [
         "Context artifact schema",
@@ -6276,7 +6149,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "context-agents",
-      "dependsOn": ["ITOTORI-012", "ITOTORI-008", "ITOTORI-010"],
+      "dependsOn": ["ITOTORI-012", "ITOTORI-008", "ITOTORI-010", "ITOTORI-071"],
       "summary": "Suggest glossary candidates from source text with citations, frequency, context, and proposed handling without auto-escalating every term to humans.",
       "deliverables": [
         "Candidate schema",
@@ -6370,7 +6243,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "agent-runtime",
-      "dependsOn": ["ITOTORI-012", "ITOTORI-008", "ITOTORI-010"],
+      "dependsOn": ["ITOTORI-012", "ITOTORI-008", "ITOTORI-010", "ITOTORI-071"],
       "summary": "Plan translation and QA batches from units, scene boundaries, route context, glossary hits, and model context limits.",
       "deliverables": [
         "Batch planner service",
@@ -6409,36 +6282,33 @@
     },
     {
       "id": "ITOTORI-019",
-      "title": "Translation drafting engine",
+      "title": "Translation drafting engine integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "translation-loop",
       "dependsOn": [
-        "ITOTORI-007",
-        "ITOTORI-010",
-        "ITOTORI-018",
+        "ITOTORI-074",
+        "ITOTORI-075",
+        "ITOTORI-076",
+        "ITOTORI-077",
         "ITOTORI-013",
-        "ITOTORI-016",
-        "ITOTORI-017",
-        "ITOTORI-058",
-        "ITOTORI-034",
         "ITOTORI-014",
-        "ITOTORI-015"
+        "ITOTORI-015",
+        "ITOTORI-016",
+        "ITOTORI-017"
       ],
-      "summary": "Generate locale-branch drafts from batches, style guide, glossary, context artifacts, protected spans, and model routing.",
+      "summary": "Integrate draft persistence, guarded model invocation, protected-span validation, retry policy, and cost/provenance recording.",
       "deliverables": [
-        "Draft job service",
-        "Structured translation output",
-        "Draft storage",
-        "Retry/fallback policy"
+        "Translation drafting engine integration integration surface",
+        "Translation drafting engine integration end-to-end fixture",
+        "Translation drafting engine integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Protected spans are preserved or findings are emitted",
-        "Drafts are tied to source revision and style guide version",
-        "Cost and model metadata are recorded per batch",
-        "No live credential is required for CI; live runs are opt-in and recorded as non-committed artifacts"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -6462,7 +6332,11 @@
           "value": "Protected-span fixture tests"
         }
       ],
-      "auditFocus": ["Raw MTL shortcutting", "Untracked model output", "Lost markup"]
+      "auditFocus": [
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
+      ]
     },
     {
       "id": "ITOTORI-020",
@@ -6529,7 +6403,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "qa",
-      "dependsOn": ["ITOTORI-019", "ITOTORI-020", "ITOTORI-032", "SHARED-009"],
+      "dependsOn": ["ITOTORI-019", "ITOTORI-020", "ITOTORI-032", "SHARED-009", "ITOTORI-078"],
       "summary": "Implement focused LLM QA agents for style adherence, semantic drift, tone/register, and unresolved terminology, using finding-backed scores rather than confidence.",
       "deliverables": [
         "QA agent schemas",
@@ -6614,34 +6488,23 @@
     },
     {
       "id": "ITOTORI-023",
-      "title": "Human decision queue UX",
+      "title": "Reviewer queue UX integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
-      "dependsOn": [
-        "ITOTORI-005",
-        "ITOTORI-022",
-        "ITOTORI-000",
-        "ITOTORI-007",
-        "ITOTORI-008",
-        "ITOTORI-033",
-        "UTSUSHI-005",
-        "ITOTORI-055"
-      ],
-      "summary": "Build the polished queue for style disputes, important glossary conflicts, draft feedback, screenshots, comparisons, reasoning, batch actions, and rerun triggers.",
+      "dependsOn": ["ITOTORI-081", "ITOTORI-082", "ITOTORI-083", "ITOTORI-084"],
+      "summary": "Integrate reviewer queue state, context UI, batch actions, and targeted rerun wiring.",
       "deliverables": [
-        "Decision queue dashboard",
-        "Context panel",
-        "Batch action UX",
-        "Rerun command wiring"
+        "Reviewer queue UX integration integration surface",
+        "Reviewer queue UX integration end-to-end fixture",
+        "Reviewer queue UX integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "A reviewer sees source, draft, context, screenshot/evidence, and agent reasoning together",
-        "Batch approvals/rejections are possible",
-        "Low-value issues can be deferred without losing traceability",
-        "MSW handlers are generated from or checked against real API response schemas"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -6666,9 +6529,9 @@
         }
       ],
       "auditFocus": [
-        "Random-line-without-context UX",
-        "Reviewer overload",
-        "Unclear consequences of decisions"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
@@ -6753,36 +6616,23 @@
     },
     {
       "id": "ITOTORI-026",
-      "title": "Benchmark harness and MTL baseline",
+      "title": "Benchmark harness integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "benchmarks",
-      "dependsOn": [
-        "SHARED-006",
-        "ITOTORI-010",
-        "ITOTORI-020",
-        "ITOTORI-021",
-        "ITOTORI-032",
-        "ITOTORI-029",
-        "SHARED-009",
-        "CATALOG-002",
-        "CATALOG-004"
-      ],
-      "summary": "Run raw MTL baselines, deterministic QA, seeded defect tests, QA-agent evaluation, cost reports, and completeness-aware benchmark summaries through one benchmark harness.",
+      "dependsOn": ["ITOTORI-089", "ITOTORI-090", "ITOTORI-091", "ITOTORI-092"],
+      "summary": "Integrate benchmark set selection, raw MTL baseline, deterministic QA, QA-agent evaluation, and cost/quality reporting.",
       "deliverables": [
-        "Benchmark runner",
-        "MTL baseline mode",
-        "Seeded defect suite",
-        "Cost/quality report output"
+        "Benchmark harness integration integration surface",
+        "Benchmark harness integration end-to-end fixture",
+        "Benchmark harness integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Raw MTL baseline is included for every benchmark set",
-        "Seeded localization defects and deterministic QA results are recorded",
-        "QA-agent evaluation and finding-backed scores are represented without confidence fields",
-        "Cost/token/provider metadata is tied to model ledger records",
-        "Benchmark sets can be selected from MTL-only, fan-partial, conflict, official-full, public fixture, and private-local readiness pools without leaking private data"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -6807,9 +6657,9 @@
         }
       ],
       "auditFocus": [
-        "Self-deluding quality claims",
-        "Untracked model/provider versions",
-        "QA accuracy blind spots"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
@@ -6860,35 +6710,23 @@
     },
     {
       "id": "ITOTORI-028",
-      "title": "End-to-end draft iteration loop",
+      "title": "End-to-end draft iteration integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "kaifuu", "utsushi"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": [
-        "ITOTORI-023",
-        "ITOTORI-025",
-        "KAIFUU-010",
-        "UTSUSHI-006",
-        "UTSUSHI-005",
-        "ITOTORI-024",
-        "ITOTORI-038",
-        "UTSUSHI-011",
-        "ITOTORI-040",
-        "ITOTORI-042"
-      ],
-      "summary": "Wire import, context, draft, QA, decision, patch export, Kaifuu patch, Utsushi validation, feedback, triage, and rerun into one vertical iteration loop.",
+      "dependsOn": ["ITOTORI-095", "KAIFUU-010", "UTSUSHI-006", "UTSUSHI-011"],
+      "summary": "Integrate Itotori iteration with Kaifuu patch and Utsushi runtime validation for the alpha vertical.",
       "deliverables": [
-        "Loop orchestration command",
-        "Dashboard run status",
-        "Repair job examples",
-        "End-to-end fixture"
+        "End-to-end draft iteration integration integration surface",
+        "End-to-end draft iteration integration end-to-end fixture",
+        "End-to-end draft iteration integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "A P1 QA finding can trigger repair and re-audit",
-        "Human decisions update policy/glossary/draft state and rerun affected work",
-        "The loop is event-driven, not a brittle linear script"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -6912,7 +6750,11 @@
           "value": "Dashboard smoke"
         }
       ],
-      "auditFocus": ["Pipeline-only thinking", "Rerun invalidation bugs", "State divergence"]
+      "auditFocus": [
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
+      ]
     },
     {
       "id": "ITOTORI-029",
@@ -7294,24 +7136,23 @@
     },
     {
       "id": "ITOTORI-039",
-      "title": "Model and prompt experiment runner",
+      "title": "Provider experiment reporting integration",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "benchmarks",
-      "dependsOn": ["ITOTORI-010", "ITOTORI-026", "ITOTORI-031"],
-      "summary": "Run reproducible model, provider, prompt, preset, router, and tool-strategy experiments so agent defaults are benchmarked rather than assumed.",
+      "dependsOn": ["ITOTORI-099", "ITOTORI-100"],
+      "summary": "Integrate experiment matrix runs and provider route reliability/cost reports into benchmark reporting.",
       "deliverables": [
-        "Experiment matrix runner",
-        "Prompt/version registry",
-        "Provider route comparison reports",
-        "Recommended preset snapshots"
+        "Provider experiment reporting integration integration surface",
+        "Provider experiment reporting integration end-to-end fixture",
+        "Provider experiment reporting integration regression coverage"
       ],
       "acceptanceCriteria": [
-        "Reports compare cost, latency, quality taxonomy findings, structured-output reliability, and provider failure rate",
-        "Selected presets are reproducible and auditable",
-        "Live calls remain opt-in and recorded as non-committed artifacts"
+        "The integration composes the prerequisite implementation slices without expanding their scope",
+        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
         {
@@ -7328,9 +7169,9 @@
         }
       ],
       "auditFocus": [
-        "Choosing models by vibes",
-        "Prompt drift",
-        "Provider failure rates hidden from reports"
+        "Integration shell hiding new implementation work",
+        "Dependency bypass of normalized slices",
+        "Support or readiness overclaim"
       ]
     },
     {
@@ -7341,7 +7182,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
-      "dependsOn": ["ITOTORI-005", "ITOTORI-006", "ITOTORI-059", "ITOTORI-034", "ITOTORI-030"],
+      "dependsOn": ["ITOTORI-005", "ITOTORI-006", "ITOTORI-059", "ITOTORI-034", "ITOTORI-071"],
       "summary": "Build the main reviewer workspace for browsing projects, scenes, units, assets, source/draft/final comparisons, searchable context, manual corrections, and edit history.",
       "deliverables": [
         "Project/scene/unit browser",
@@ -7709,23 +7550,21 @@
       "id": "ITOTORI-049",
       "title": "Provider invocation capability guards",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-009"],
-      "summary": "Enforce ordinary provider tool-call and image-input capability checks at invocation time instead of relying only on registry metadata.",
+      "summary": "Gate provider invocations by provider/model capability, structured-output support, routing metadata, and fallback behavior before drafting or QA use them.",
       "deliverables": [
-        "Invocation-time capability guard",
-        "Tool-call unsupported-model tests",
-        "Image-input unsupported-model tests",
-        "Provider capability diagnostics"
+        "Provider capability guard",
+        "Structured-output compatibility tests",
+        "Routed-provider metadata assertions"
       ],
       "acceptanceCriteria": [
-        "A model invocation that requests ordinary tool-calls fails before provider dispatch when the selected provider or model lacks that capability",
-        "A model invocation that includes image input fails before provider dispatch when image input is unsupported",
-        "Capability failures include the provider, model, requested capability, and configured source of capability data",
-        "Mock provider tests cover supported and unsupported ordinary tool-call and image-input paths"
+        "Unsupported structured output or tool requirements fail before agent execution",
+        "Requested model, routed provider, provider policy, fallback chain, and retry state are recorded",
+        "Drafting, QA, and experiments cannot bypass provider capability checks"
       ],
       "verification": [
         {
@@ -7742,9 +7581,9 @@
         }
       ],
       "auditFocus": [
-        "Capability metadata recorded but not enforced",
-        "Provider dispatch attempted for unsupported tool-call requests",
-        "Image-input prompts sent to text-only models"
+        "Provider-specific capability drift",
+        "Fallback metadata loss",
+        "Unsupported structured output accepted"
       ]
     },
     {
@@ -7835,23 +7674,21 @@
       "id": "ITOTORI-052",
       "title": "Provider ledger hardening",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "agent-runtime",
       "dependsOn": ["ITOTORI-010"],
-      "summary": "Harden provider cost ledger ingestion and reconciliation around provider metadata, bigint-safe micros, token invariants, timestamp ordering, enum parity, and fallback cost edge cases.",
+      "summary": "Harden provider ledger records for cost, routed provider, fallback, retry, data policy, and run provenance before benchmark and drafting claims.",
       "deliverables": [
-        "Provider pricing snapshot ingestion",
-        "Ledger reconciliation checks",
-        "Bigint-safe micros handling",
-        "Fallback and unknown-cost benchmark cases"
+        "Provider ledger schema",
+        "Cost/provenance tests",
+        "Fallback/retry ledger fixtures"
       ],
       "acceptanceCriteria": [
-        "Provider pricing snapshots can be ingested from provider metadata and reconciled against ledger entries without floating-point micros loss",
-        "Ledger writes reject negative token counts and preserve deterministic timestamp ordering for usage and billing events",
-        "Provider and model enum or check constraints stay aligned with adapter metadata and schema migrations",
-        "Benchmark-to-ledger fixtures cover fallback providers and unknown-cost cases without silently recording false zero cost"
+        "Each model call persists routed provider, token/cost estimate, retry count, and fallback chain",
+        "Provider data policy flags are recorded when available",
+        "Benchmark and dashboard reports read ledger state rather than raw prompt logs"
       ],
       "verification": [
         {
@@ -7863,11 +7700,7 @@
           "value": "just check"
         }
       ],
-      "auditFocus": [
-        "Floating-point or integer overflow in micros math",
-        "Negative or reordered provider usage entries",
-        "Fallback and unknown-cost runs misreported as billed zero"
-      ]
+      "auditFocus": ["Cost drift", "Fallback chain missing", "Provider data policy hidden"]
     },
     {
       "id": "ITOTORI-053",
@@ -8204,34 +8037,23 @@
     },
     {
       "id": "UTSUSHI-006",
-      "title": "RPG Maker MV/MZ validation probe",
+      "title": "MV/MZ launched runtime text and choice trace probe",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": [
-        "UTSUSHI-001",
-        "KAIFUU-007",
-        "UTSUSHI-000",
-        "UTSUSHI-002",
-        "UTSUSHI-003",
-        "UTSUSHI-050"
-      ],
-      "summary": "Implement the first useful real-engine Utsushi proof for RPG Maker MV/MZ: use the existing browser or NW.js-style runtime where possible to emit trace, branch, screenshot, and limitation evidence, rather than starting with a Rust engine port.",
+      "dependsOn": ["UTSUSHI-050", "KAIFUU-007", "UTSUSHI-003"],
+      "summary": "Launch or instrument an MV/MZ fixture enough to observe runtime text and choice traces without owning screenshot, package, or feedback behavior.",
       "deliverables": [
-        "RPG Maker runtime adapter",
-        "Trace fixtures",
-        "Capture strategy",
-        "Capability docs"
+        "MV/MZ runtime trace probe",
+        "Text and choice fixture",
+        "Bridge-unit linkage report"
       ],
       "acceptanceCriteria": [
-        "Adapter produces useful validation evidence without requiring pixel-perfect porting",
-        "The implementation wraps or instruments an existing MV/MZ runtime; Rust runtime-port work is tracked separately by Utsushi P3 runtime-port nodes",
-        "Static route analysis remains E0 unless a launched runtime actually observed the content",
-        "Limitations are explicit",
-        "It supports the first real-engine alpha readiness loop",
-        "Evidence tier is visible wherever evidence is shown"
+        "A public MV/MZ fixture emits observed text and choice runtime events",
+        "Trace evidence links back to bridge units and source revisions",
+        "Screenshot, review packaging, and feedback import remain separate slices"
       ],
       "verification": [
         {
@@ -8256,10 +8078,9 @@
         }
       ],
       "auditFocus": [
-        "Overpromising VM fidelity",
-        "Premature Rust engine-port scope",
-        "Missing branch/text evidence",
-        "Platform assumptions"
+        "Runtime trace overclaim",
+        "Bridge linkage gaps",
+        "Screenshot/package scope creep"
       ]
     },
     {
@@ -8377,25 +8198,23 @@
     },
     {
       "id": "UTSUSHI-010",
-      "title": "MV/MZ playable review package slice",
+      "title": "MV/MZ review package manifest export command",
       "status": "planned",
       "priority": "P2",
       "target": "continuous",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-005", "UTSUSHI-006", "UTSUSHI-050"],
-      "summary": "Package the MV/MZ runtime probe, patch artifact, feedback import, and dashboard evidence into a public playable-review slice rather than a one-off prototype.",
+      "summary": "Export an MV/MZ review package manifest from runtime traces and patch artifacts without implementing annotation import in the same node.",
       "deliverables": [
-        "Playable review command",
-        "Annotation overlay concept",
-        "Feedback capture",
-        "Limitations doc"
+        "Review package manifest command",
+        "Manifest fixture",
+        "Unsupported host diagnostics"
       ],
       "acceptanceCriteria": [
-        "A named command produces a public MV/MZ playable or runtime-review fixture package",
-        "The package emits artifact manifest, runtime evidence, and feedback import output",
-        "The dashboard can show submitted feedback linked to runtime evidence and patch artifacts",
-        "Unsupported host capabilities return semantic diagnostics instead of silent prototype failure"
+        "A package manifest names patch artifacts, runtime trace evidence, limitations, and supported review actions",
+        "Manifest export does not require screenshot capture or feedback import to pass",
+        "Unsupported host capabilities are semantic diagnostics"
       ],
       "verification": [
         {
@@ -8412,9 +8231,9 @@
         }
       ],
       "auditFocus": [
-        "Scope creep into full emulator",
-        "Bad feedback context",
-        "Fragile launch assumptions"
+        "Feedback import mixed into package export",
+        "Host assumptions hidden",
+        "Manifest overclaim"
       ]
     },
     {
@@ -8462,27 +8281,24 @@
     },
     {
       "id": "UTSUSHI-012",
-      "title": "Controlled playback runtime core",
+      "title": "Controlled playback session and capability contract",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "shared", "itotori"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UTSUSHI-001", "UTSUSHI-003", "SHARED-005", "UTSUSHI-000"],
-      "summary": "Implement the reusable controlled-playback contract that future runtime wrappers, instrumented runtimes, and engine VMs use for jump targets, snapshots, replay sessions, recordings, browser embedding, and agent-reviewable state.",
+      "summary": "Implement the reusable controlled-playback session and capability contract that runtime wrappers, instrumented runtimes, and engine VMs implement.",
       "deliverables": [
         "Controlled playback session schema",
-        "Jump target and snapshot metadata model",
-        "Replay and recording capability extensions",
-        "Runtime adapter trait extensions or companion traits",
-        "Fixture adapter implementation of the controlled-playback contract"
+        "Runtime capability contract",
+        "Evidence-tier contract updates",
+        "Fixture adapter contract implementation"
       ],
       "acceptanceCriteria": [
-        "Specs build reusable runtime primitives rather than making engine-selection decisions",
-        "A controlled playback session can name bridge-linked jump targets, current runtime state, screenshots, recordings, and limitations",
-        "Adapters can honestly advertise whether they support static trace, launch/capture, instrumented runtime, partial VM, or reference VM control surfaces",
-        "The fixture runtime exercises at least one jump target, one snapshot, and one replay or recording metadata path",
-        "Itotori can ingest controlled-playback metadata without treating it as stronger evidence than its evidence tier"
+        "Adapters can advertise static trace, launch/capture, instrumented runtime, partial VM, or reference VM capabilities honestly",
+        "The base contract does not require jump, snapshot, screenshot, or recording behavior in the same PR",
+        "Itotori ingestion preserves evidence tier and runtime capability boundaries"
       ],
       "verification": [
         {
@@ -8503,10 +8319,9 @@
         }
       ],
       "auditFocus": [
-        "Decision-making disguised as a spec",
-        "Controlled playback overclaiming runtime fidelity",
-        "Adapter traits that cannot support future VMs",
-        "Itotori ingestion losing evidence-tier boundaries"
+        "Contract overclaiming runtime fidelity",
+        "Engine-selection work hidden in the base contract",
+        "Evidence tier lost during Itotori ingestion"
       ]
     },
     {
@@ -9447,7 +9262,9 @@
         "UNIV-015",
         "KAIFUU-068",
         "KAIFUU-069",
-        "KAIFUU-070"
+        "KAIFUU-070",
+        "UNIV-017",
+        "ALPHA-007"
       ],
       "summary": "Prepare the suite to start a first real localization project with executable install, docs, security, limitation, example, and readiness checks.",
       "deliverables": [
@@ -9505,7 +9322,8 @@
         "KAIFUU-067",
         "KAIFUU-072",
         "KAIFUU-048",
-        "KAIFUU-049"
+        "KAIFUU-049",
+        "KAIFUU-074"
       ],
       "summary": "Prove Kaifuu can run a real encrypted-profile loop through detect, key/profile resolution, extract, trivial patch, verify, and delta apply before the first real localization project begins.",
       "deliverables": [
@@ -11166,6 +10984,2859 @@
         "Unknown variants overclaimed as supported",
         "Variant coverage not tied to fixtures",
         "Playback claims emitted after profile rejection"
+      ]
+    },
+    {
+      "id": "UNIV-017",
+      "title": "Roadmap DAG granularity normalization",
+      "status": "in_progress",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["universal", "suite"],
+      "parallelGroup": "roadmap-infra",
+      "dependsOn": ["UNIV-015"],
+      "summary": "Normalize oversized, undersized, decision-like, report-like, and unsafe-ordering roadmap nodes from the Kaifuu, Itotori, and Utsushi DAG-shape audits.",
+      "deliverables": [
+        "P1 alpha blocker DAG split and dependency rewrite",
+        "Follow-up planned nodes for deferred P2/P3 normalization work",
+        "Validation and search checks proving the graph remains orchestratable"
+      ],
+      "acceptanceCriteria": [
+        "Every non-complete P1 alpha node remains an ancestor of ALPHA-005",
+        "P1 oversized specs are split into concrete PR-reviewable implementation nodes",
+        "Report-like or decision-like blockers are converted into validators, generators, fixtures, services, or integration nodes",
+        "Dependencies do not point at cancelled or folded nodes"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp fmt --check roadmap/spec-dag.json"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs ready --json"
+        },
+        {
+          "type": "command",
+          "value": "git diff --check main..HEAD"
+        }
+      ],
+      "auditFocus": [
+        "Hidden P1 alpha nodes outside ALPHA-005 ancestry",
+        "New decision/report-only nodes",
+        "Alpha nodes depending on continuous work",
+        "Cancelled nodes still referenced"
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/univ-017-roadmap-granularity",
+      "worktree": "/tmp/itotori-spec-univ-017-roadmap-granularity"
+    },
+    {
+      "id": "ITOTORI-062",
+      "title": "Style guide persistence and version events",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-004", "ITOTORI-029"],
+      "summary": "Persist versioned target-locale style guide policy and emit change events before conversational UX exists.",
+      "deliverables": [
+        "Style guide persistence and version events implementation",
+        "Style guide persistence and version events fixtures",
+        "Style guide persistence and version events tests"
+      ],
+      "acceptanceCriteria": [
+        "Style guide persistence and version events has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-063",
+      "title": "Style-guide conversation contract and validators",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-000", "ITOTORI-062"],
+      "summary": "Define the structured style-guide conversation contract, validators, and fixture transcripts.",
+      "deliverables": [
+        "Style-guide conversation contract and validators implementation",
+        "Style-guide conversation contract and validators fixtures",
+        "Style-guide conversation contract and validators tests"
+      ],
+      "acceptanceCriteria": [
+        "Style-guide conversation contract and validators has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-064",
+      "title": "Style-guide recorded suggestion adapter",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-010", "ITOTORI-031", "ITOTORI-063"],
+      "summary": "Implement fake and recorded style-guide suggestion adapters with structured-output parsing.",
+      "deliverables": [
+        "Style-guide recorded suggestion adapter implementation",
+        "Style-guide recorded suggestion adapter fixtures",
+        "Style-guide recorded suggestion adapter tests"
+      ],
+      "acceptanceCriteria": [
+        "Style-guide recorded suggestion adapter has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-065",
+      "title": "Style-guide builder dashboard UI",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-005", "ITOTORI-063"],
+      "summary": "Build the style-guide builder dashboard states around context, proposed policy, validation, and consequences.",
+      "deliverables": [
+        "Style-guide builder dashboard UI implementation",
+        "Style-guide builder dashboard UI fixtures",
+        "Style-guide builder dashboard UI tests"
+      ],
+      "acceptanceCriteria": [
+        "Style-guide builder dashboard UI has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-066",
+      "title": "Style-guide approval and invalidation events",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-003", "ITOTORI-062"],
+      "summary": "Wire style-guide approval into evented affected-work invalidation.",
+      "deliverables": [
+        "Style-guide approval and invalidation events implementation",
+        "Style-guide approval and invalidation events fixtures",
+        "Style-guide approval and invalidation events tests"
+      ],
+      "acceptanceCriteria": [
+        "Style-guide approval and invalidation events has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-067",
+      "title": "Glossary policy context and review service",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-008", "ITOTORI-062"],
+      "summary": "Provide glossary context and review state for downstream decision queues.",
+      "deliverables": [
+        "Glossary policy context and review service implementation",
+        "Glossary policy context and review service fixtures",
+        "Glossary policy context and review service tests"
+      ],
+      "acceptanceCriteria": [
+        "Glossary policy context and review service has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-070",
+      "title": "Exact search document table and tool v1",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-002", "ITOTORI-030"],
+      "summary": "Implement exact indexed search documents and a typed search tool for agents and dashboard APIs.",
+      "deliverables": [
+        "Exact search document table and tool v1 implementation",
+        "Exact search document table and tool v1 fixtures",
+        "Exact search document table and tool v1 tests"
+      ],
+      "acceptanceCriteria": [
+        "Exact search document table and tool v1 has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-071",
+      "title": "Semantic search recorded and exact fallback harness",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-030", "ITOTORI-070"],
+      "summary": "Implement the provider-free semantic search harness, deterministic recorded fixtures, exact fallback behavior, and typed agent tool boundary for glossary and context lookup.",
+      "deliverables": [
+        "Semantic search tool contract",
+        "Recorded deterministic embedding fixture adapter",
+        "Exact fallback path",
+        "pgvector and embedding-provider readiness guards",
+        "Agent tool usage boundary tests"
+      ],
+      "acceptanceCriteria": [
+        "Semantic search APIs can run in CI without live embeddings or provider credentials",
+        "Recorded fixtures exercise ranking, no-result, stale-index, and exact-fallback behavior deterministically",
+        "pgvector and embedding-provider fields are represented as readiness metadata rather than required public-CI infrastructure",
+        "Agents retrieve glossary and context candidates through typed tools with cited result provenance, not opaque background RAG"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Live embedding dependency in CI",
+        "Semantic search bypassing exact fallback",
+        "Uncited tool results",
+        "pgvector readiness mistaken for mandatory runtime dependency"
+      ]
+    },
+    {
+      "id": "ITOTORI-074",
+      "title": "Draft job schema and repository",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-018", "ITOTORI-058", "ITOTORI-034"],
+      "summary": "Persist draft jobs, inputs, policy versions, context refs, locale branch, and retry state.",
+      "deliverables": [
+        "Draft job schema and repository implementation",
+        "Draft job schema and repository fixtures",
+        "Draft job schema and repository tests"
+      ],
+      "acceptanceCriteria": [
+        "Draft job schema and repository has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-075",
+      "title": "Structured translation invocation and parser",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-010", "ITOTORI-049", "ITOTORI-074"],
+      "summary": "Invoke translation agents through guarded structured output and parse validated draft payloads.",
+      "deliverables": [
+        "Structured translation invocation and parser implementation",
+        "Structured translation invocation and parser fixtures",
+        "Structured translation invocation and parser tests"
+      ],
+      "acceptanceCriteria": [
+        "Structured translation invocation and parser has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-076",
+      "title": "Draft protected-span validation and retry policy",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-020", "ITOTORI-075"],
+      "summary": "Validate protected spans and classify retryable draft failures before draft acceptance.",
+      "deliverables": [
+        "Draft protected-span validation and retry policy implementation",
+        "Draft protected-span validation and retry policy fixtures",
+        "Draft protected-span validation and retry policy tests"
+      ],
+      "acceptanceCriteria": [
+        "Draft protected-span validation and retry policy has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-077",
+      "title": "Draft cost and provenance recorder",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-052", "ITOTORI-075"],
+      "summary": "Record cost, provider, fallback, prompt, policy, and context provenance for each draft attempt.",
+      "deliverables": [
+        "Draft cost and provenance recorder implementation",
+        "Draft cost and provenance recorder fixtures",
+        "Draft cost and provenance recorder tests"
+      ],
+      "acceptanceCriteria": [
+        "Draft cost and provenance recorder has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-078",
+      "title": "Structured QA invocation and parser",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-010", "ITOTORI-049", "ITOTORI-020"],
+      "summary": "Invoke LLM QA agents through guarded structured output and persist validated findings.",
+      "deliverables": [
+        "Structured QA invocation and parser implementation",
+        "Structured QA invocation and parser fixtures",
+        "Structured QA invocation and parser tests"
+      ],
+      "acceptanceCriteria": [
+        "Structured QA invocation and parser has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-081",
+      "title": "Reviewer queue action API and state machine",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": [
+        "ITOTORI-022",
+        "ITOTORI-055",
+        "ITOTORI-062",
+        "ITOTORI-067",
+        "ITOTORI-033",
+        "UTSUSHI-005"
+      ],
+      "summary": "Implement typed reviewer queue transitions for QA, style, glossary, feedback, and runtime evidence items.",
+      "deliverables": [
+        "Reviewer queue action API and state machine implementation",
+        "Reviewer queue action API and state machine fixtures",
+        "Reviewer queue action API and state machine tests"
+      ],
+      "acceptanceCriteria": [
+        "Reviewer queue action API and state machine has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-082",
+      "title": "Reviewer detail context and evidence UI",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-005", "ITOTORI-081"],
+      "summary": "Build contextual detail views with source, draft, policy, findings, screenshots, comparisons, and rationale.",
+      "deliverables": [
+        "Reviewer detail context and evidence UI implementation",
+        "Reviewer detail context and evidence UI fixtures",
+        "Reviewer detail context and evidence UI tests"
+      ],
+      "acceptanceCriteria": [
+        "Reviewer detail context and evidence UI has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-083",
+      "title": "Batch action and consequence preview UX",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-081", "ITOTORI-082"],
+      "summary": "Add batch review actions with previewed rerun, policy, glossary, and export consequences.",
+      "deliverables": [
+        "Batch action and consequence preview UX implementation",
+        "Batch action and consequence preview UX fixtures",
+        "Batch action and consequence preview UX tests"
+      ],
+      "acceptanceCriteria": [
+        "Batch action and consequence preview UX has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-084",
+      "title": "Reviewer-triggered rerun wiring",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-038", "ITOTORI-083"],
+      "summary": "Wire reviewer actions to targeted repair and rerun jobs.",
+      "deliverables": [
+        "Reviewer-triggered rerun wiring implementation",
+        "Reviewer-triggered rerun wiring fixtures",
+        "Reviewer-triggered rerun wiring tests"
+      ],
+      "acceptanceCriteria": [
+        "Reviewer-triggered rerun wiring has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-089",
+      "title": "Benchmark set selector and run schema",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "benchmarks",
+      "dependsOn": ["SHARED-006", "SHARED-009", "CATALOG-004"],
+      "summary": "Persist benchmark corpus selection, run parameters, target locale, and provenance.",
+      "deliverables": [
+        "Benchmark set selector and run schema implementation",
+        "Benchmark set selector and run schema fixtures",
+        "Benchmark set selector and run schema tests"
+      ],
+      "acceptanceCriteria": [
+        "Benchmark set selector and run schema has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-090",
+      "title": "Raw MTL and deterministic QA benchmark mode",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "benchmarks",
+      "dependsOn": ["ITOTORI-020", "ITOTORI-032", "ITOTORI-089"],
+      "summary": "Implement raw MTL and deterministic QA benchmark modes for baseline comparison.",
+      "deliverables": [
+        "Raw MTL and deterministic QA benchmark mode implementation",
+        "Raw MTL and deterministic QA benchmark mode fixtures",
+        "Raw MTL and deterministic QA benchmark mode tests"
+      ],
+      "acceptanceCriteria": [
+        "Raw MTL and deterministic QA benchmark mode has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-091",
+      "title": "QA-agent evaluation benchmark mode",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "benchmarks",
+      "dependsOn": ["ITOTORI-021", "ITOTORI-090"],
+      "summary": "Evaluate QA agents against seeded findings, false positives, false negatives, and severity calibration.",
+      "deliverables": [
+        "QA-agent evaluation benchmark mode implementation",
+        "QA-agent evaluation benchmark mode fixtures",
+        "QA-agent evaluation benchmark mode tests"
+      ],
+      "acceptanceCriteria": [
+        "QA-agent evaluation benchmark mode has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-092",
+      "title": "Cost and quality report renderer",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "benchmarks",
+      "dependsOn": ["ITOTORI-052", "ITOTORI-091"],
+      "summary": "Render benchmark cost, quality, provider, fallback, and QA accuracy reports from structured data.",
+      "deliverables": [
+        "Cost and quality report renderer implementation",
+        "Cost and quality report renderer fixtures",
+        "Cost and quality report renderer tests"
+      ],
+      "acceptanceCriteria": [
+        "Cost and quality report renderer has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-099",
+      "title": "Experiment matrix runner",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "benchmarks",
+      "dependsOn": ["ITOTORI-010", "ITOTORI-049", "ITOTORI-089"],
+      "summary": "Run controlled provider, model, and prompt experiment matrices with guarded configuration.",
+      "deliverables": [
+        "Experiment matrix runner implementation",
+        "Experiment matrix runner fixtures",
+        "Experiment matrix runner tests"
+      ],
+      "acceptanceCriteria": [
+        "Experiment matrix runner has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-100",
+      "title": "Provider route reliability and cost report renderer",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori"],
+      "parallelGroup": "benchmarks",
+      "dependsOn": ["ITOTORI-052", "ITOTORI-099"],
+      "summary": "Render provider route reliability, fallback, retry, cost, and structured-output support from ledger data.",
+      "deliverables": [
+        "Provider route reliability and cost report renderer implementation",
+        "Provider route reliability and cost report renderer fixtures",
+        "Provider route reliability and cost report renderer tests"
+      ],
+      "acceptanceCriteria": [
+        "Provider route reliability and cost report renderer has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-095",
+      "title": "Itotori fixture iteration command",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "suite"],
+      "parallelGroup": "alpha-integration",
+      "dependsOn": ["ITOTORI-084", "ITOTORI-025", "ITOTORI-040", "ITOTORI-042"],
+      "summary": "Implement the Itotori public fixture iteration command across import, draft, QA, review, export, feedback, and rerun state.",
+      "deliverables": [
+        "Itotori fixture iteration command implementation",
+        "Itotori fixture iteration command fixtures",
+        "Itotori fixture iteration command tests"
+      ],
+      "acceptanceCriteria": [
+        "Itotori fixture iteration command has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ALPHA-007",
+      "title": "Suite public fixture vertical run",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["suite", "itotori", "kaifuu", "utsushi"],
+      "parallelGroup": "alpha-integration",
+      "dependsOn": ["ITOTORI-095", "KAIFUU-010", "UTSUSHI-006", "UTSUSHI-011"],
+      "summary": "Run the public fixture vertical across Itotori, Kaifuu, and Utsushi.",
+      "deliverables": [
+        "Suite public fixture vertical run implementation",
+        "Suite public fixture vertical run fixtures",
+        "Suite public fixture vertical run tests"
+      ],
+      "acceptanceCriteria": [
+        "Suite public fixture vertical run has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "CATALOG-008",
+      "title": "Exact external-id linker",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-000"],
+      "summary": "Implement deterministic external-id linking without fuzzy matching or automatic merge behavior.",
+      "deliverables": [
+        "Exact external-id linker implementation",
+        "Exact external-id linker fixtures",
+        "Exact external-id linker tests"
+      ],
+      "acceptanceCriteria": [
+        "Exact external-id linker has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "CATALOG-009",
+      "title": "Fuzzy candidate generator with no auto-merge",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-008"],
+      "summary": "Generate reviewable fuzzy catalog candidates while preventing silent merge decisions.",
+      "deliverables": [
+        "Fuzzy candidate generator with no auto-merge implementation",
+        "Fuzzy candidate generator with no auto-merge fixtures",
+        "Fuzzy candidate generator with no auto-merge tests"
+      ],
+      "acceptanceCriteria": [
+        "Fuzzy candidate generator with no auto-merge has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "CATALOG-010",
+      "title": "Catalog conflict review read model",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-009", "SHARED-007"],
+      "summary": "Expose catalog conflicts through a provenance-preserving review read model.",
+      "deliverables": [
+        "Catalog conflict review read model implementation",
+        "Catalog conflict review read model fixtures",
+        "Catalog conflict review read model tests"
+      ],
+      "acceptanceCriteria": [
+        "Catalog conflict review read model has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-081",
+      "title": "Binary byte-span and offset-map primitives",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-003", "KAIFUU-019", "KAIFUU-052"],
+      "summary": "Implement shared byte-span, source-range, and offset-map primitives.",
+      "deliverables": [
+        "Binary byte-span and offset-map primitives implementation",
+        "Binary byte-span and offset-map primitives fixtures",
+        "Binary byte-span and offset-map primitives tests"
+      ],
+      "acceptanceCriteria": [
+        "Binary byte-span and offset-map primitives has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-082",
+      "title": "Encoded string-slot byte-budget preflight",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-081", "KAIFUU-004"],
+      "summary": "Add encoded string-slot preflight for byte budgets, encodings, terminators, and protected spans.",
+      "deliverables": [
+        "Encoded string-slot byte-budget preflight implementation",
+        "Encoded string-slot byte-budget preflight fixtures",
+        "Encoded string-slot byte-budget preflight tests"
+      ],
+      "acceptanceCriteria": [
+        "Encoded string-slot byte-budget preflight has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-083",
+      "title": "String-reference relocation and rebuild fixtures",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-082"],
+      "summary": "Implement string-reference relocation and table rebuild fixtures.",
+      "deliverables": [
+        "String-reference relocation and rebuild fixtures implementation",
+        "String-reference relocation and rebuild fixtures fixtures",
+        "String-reference relocation and rebuild fixtures tests"
+      ],
+      "acceptanceCriteria": [
+        "String-reference relocation and rebuild fixtures has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-084",
+      "title": "Binary patch rollback and no-write preflight harness",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-083", "KAIFUU-010"],
+      "summary": "Provide the binary patch harness that fails before irreversible writes.",
+      "deliverables": [
+        "Binary patch rollback and no-write preflight harness implementation",
+        "Binary patch rollback and no-write preflight harness fixtures",
+        "Binary patch rollback and no-write preflight harness tests"
+      ],
+      "acceptanceCriteria": [
+        "Binary patch rollback and no-write preflight harness has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-085",
+      "title": "Helper result schema and redacted validation",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-014", "KAIFUU-035", "KAIFUU-050", "KAIFUU-051"],
+      "summary": "Validate key-helper result payloads with secret refs, proof hashes, diagnostics, and redaction guards.",
+      "deliverables": [
+        "Helper result schema and redacted validation implementation",
+        "Helper result schema and redacted validation fixtures",
+        "Helper result schema and redacted validation tests"
+      ],
+      "acceptanceCriteria": [
+        "Helper result schema and redacted validation has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-086",
+      "title": "Helper registry capability model and fixture stub",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-085"],
+      "summary": "Implement a helper registry, capability model, and fixture-only helper stub.",
+      "deliverables": [
+        "Helper registry capability model and fixture stub implementation",
+        "Helper registry capability model and fixture stub fixtures",
+        "Helper registry capability model and fixture stub tests"
+      ],
+      "acceptanceCriteria": [
+        "Helper registry capability model and fixture stub has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-087",
+      "title": "Manual key entry and local known-key import boundary",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-086"],
+      "summary": "Implement local-only manual key and known-key import boundaries.",
+      "deliverables": [
+        "Manual key entry and local known-key import boundary implementation",
+        "Manual key entry and local known-key import boundary fixtures",
+        "Manual key entry and local known-key import boundary tests"
+      ],
+      "acceptanceCriteria": [
+        "Manual key entry and local known-key import boundary has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-088",
+      "title": "Helper binary allowlist schema and hash gate",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-085", "KAIFUU-043"],
+      "summary": "Constrain executable helpers with allowlist metadata, versions, capabilities, and hashes.",
+      "deliverables": [
+        "Helper binary allowlist schema and hash gate implementation",
+        "Helper binary allowlist schema and hash gate fixtures",
+        "Helper binary allowlist schema and hash gate tests"
+      ],
+      "acceptanceCriteria": [
+        "Helper binary allowlist schema and hash gate has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-089",
+      "title": "Bounded helper process runner with timeout and cancel",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-086", "KAIFUU-088"],
+      "summary": "Implement bounded helper process execution with timeout, cancellation, and redacted output.",
+      "deliverables": [
+        "Bounded helper process runner with timeout and cancel implementation",
+        "Bounded helper process runner with timeout and cancel fixtures",
+        "Bounded helper process runner with timeout and cancel tests"
+      ],
+      "acceptanceCriteria": [
+        "Bounded helper process runner with timeout and cancel has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-090",
+      "title": "Wine Proton and Windows helper adapters",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-089"],
+      "summary": "Add platform-assisted helper adapters without coupling pure extraction adapters to those platforms.",
+      "deliverables": [
+        "Wine Proton and Windows helper adapters implementation",
+        "Wine Proton and Windows helper adapters fixtures",
+        "Wine Proton and Windows helper adapters tests"
+      ],
+      "acceptanceCriteria": [
+        "Wine Proton and Windows helper adapters has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-091",
+      "title": "Siglus Scene.pck and Gameexe.dat detector profile fixtures",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-014", "KAIFUU-034", "KAIFUU-035", "KAIFUU-050", "KAIFUU-051"],
+      "summary": "Add Siglus detector and profile fixtures without parser or runtime behavior.",
+      "deliverables": [
+        "Siglus Scene.pck and Gameexe.dat detector profile fixtures implementation",
+        "Siglus Scene.pck and Gameexe.dat detector profile fixtures fixtures",
+        "Siglus Scene.pck and Gameexe.dat detector profile fixtures tests"
+      ],
+      "acceptanceCriteria": [
+        "Siglus Scene.pck and Gameexe.dat detector profile fixtures has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-092",
+      "title": "Siglus secondary-key helper-boundary fixtures",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-087", "KAIFUU-091"],
+      "summary": "Exercise Siglus secondary-key handoff through helper-boundary fixtures.",
+      "deliverables": [
+        "Siglus secondary-key helper-boundary fixtures implementation",
+        "Siglus secondary-key helper-boundary fixtures fixtures",
+        "Siglus secondary-key helper-boundary fixtures tests"
+      ],
+      "acceptanceCriteria": [
+        "Siglus secondary-key helper-boundary fixtures has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-093",
+      "title": "Siglus known-key parser-boundary smoke fixture",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-082", "KAIFUU-091"],
+      "summary": "Add a known-key parser-boundary smoke fixture without claiming production support.",
+      "deliverables": [
+        "Siglus known-key parser-boundary smoke fixture implementation",
+        "Siglus known-key parser-boundary smoke fixture fixtures",
+        "Siglus known-key parser-boundary smoke fixture tests"
+      ],
+      "acceptanceCriteria": [
+        "Siglus known-key parser-boundary smoke fixture has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-094",
+      "title": "Siglus private-local redacted validation renderer",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-036", "KAIFUU-092"],
+      "summary": "Render optional private-local Siglus validation summaries through the redacted boundary.",
+      "deliverables": [
+        "Siglus private-local redacted validation renderer implementation",
+        "Siglus private-local redacted validation renderer fixtures",
+        "Siglus private-local redacted validation renderer tests"
+      ],
+      "acceptanceCriteria": [
+        "Siglus private-local redacted validation renderer has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-095",
+      "title": "XP3 profile schema and aggregate detector fixtures",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-014", "KAIFUU-034", "KAIFUU-035", "KAIFUU-051"],
+      "summary": "Add XP3 profile schema coverage and aggregate detector fixtures.",
+      "deliverables": [
+        "XP3 profile schema and aggregate detector fixtures implementation",
+        "XP3 profile schema and aggregate detector fixtures fixtures",
+        "XP3 profile schema and aggregate detector fixtures tests"
+      ],
+      "acceptanceCriteria": [
+        "XP3 profile schema and aggregate detector fixtures has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-096",
+      "title": "XP3 helper-required and missing-key semantic fixtures",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-087", "KAIFUU-095"],
+      "summary": "Represent XP3 missing-key, helper-required, wrong-key, and protected-executable states.",
+      "deliverables": [
+        "XP3 helper-required and missing-key semantic fixtures implementation",
+        "XP3 helper-required and missing-key semantic fixtures fixtures",
+        "XP3 helper-required and missing-key semantic fixtures tests"
+      ],
+      "acceptanceCriteria": [
+        "XP3 helper-required and missing-key semantic fixtures has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-097",
+      "title": "Plain XP3 reader and inventory",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-095", "KAIFUU-081"],
+      "summary": "Implement plain XP3 inventory reading without crypt or contained-script patch behavior.",
+      "deliverables": [
+        "Plain XP3 reader and inventory implementation",
+        "Plain XP3 reader and inventory fixtures",
+        "Plain XP3 reader and inventory tests"
+      ],
+      "acceptanceCriteria": [
+        "Plain XP3 reader and inventory has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-098",
+      "title": "Plain XP3 deterministic writer and rebuild",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-097", "KAIFUU-084"],
+      "summary": "Implement deterministic plain XP3 rebuild behavior.",
+      "deliverables": [
+        "Plain XP3 deterministic writer and rebuild implementation",
+        "Plain XP3 deterministic writer and rebuild fixtures",
+        "Plain XP3 deterministic writer and rebuild tests"
+      ],
+      "acceptanceCriteria": [
+        "Plain XP3 deterministic writer and rebuild has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-100",
+      "title": "Profiled XP3 crypt decrypt/extract fixture",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-096", "KAIFUU-098", "KAIFUU-050"],
+      "summary": "Implement one profiled XP3 crypt fixture that decrypts and extracts through secret refs.",
+      "deliverables": [
+        "Profiled XP3 crypt decrypt/extract fixture implementation",
+        "Profiled XP3 crypt decrypt/extract fixture fixtures",
+        "Profiled XP3 crypt decrypt/extract fixture tests"
+      ],
+      "acceptanceCriteria": [
+        "Profiled XP3 crypt decrypt/extract fixture has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-101",
+      "title": "Profiled XP3 trivial patch rebuild and verify",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-100", "KAIFUU-010"],
+      "summary": "Apply a trivial patch and verify rebuild behavior for a profiled XP3 fixture.",
+      "deliverables": [
+        "Profiled XP3 trivial patch rebuild and verify implementation",
+        "Profiled XP3 trivial patch rebuild and verify fixtures",
+        "Profiled XP3 trivial patch rebuild and verify tests"
+      ],
+      "acceptanceCriteria": [
+        "Profiled XP3 trivial patch rebuild and verify has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-102",
+      "title": "XP3 private-local redacted helper summary",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-067", "KAIFUU-101"],
+      "summary": "Render private-local XP3 helper and patch summaries through the redacted validation boundary.",
+      "deliverables": [
+        "XP3 private-local redacted helper summary implementation",
+        "XP3 private-local redacted helper summary fixtures",
+        "XP3 private-local redacted helper summary tests"
+      ],
+      "acceptanceCriteria": [
+        "XP3 private-local redacted helper summary has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-103",
+      "title": "Packed-engine readiness profile validator",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["KAIFUU-052", "KAIFUU-053"],
+      "summary": "Build the reusable validator for packed-engine capability profiles.",
+      "deliverables": [
+        "Packed-engine readiness profile validator implementation",
+        "Packed-engine readiness profile validator fixtures",
+        "Packed-engine readiness profile validator tests"
+      ],
+      "acceptanceCriteria": [
+        "Packed-engine readiness profile validator has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-104",
+      "title": "Alpha public encrypted-readiness evidence generator",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "alpha-integration",
+      "dependsOn": ["KAIFUU-093", "KAIFUU-101", "KAIFUU-103", "KAIFUU-041"],
+      "summary": "Generate public alpha encrypted-readiness evidence from synthetic engine slices and profile validators.",
+      "deliverables": [
+        "Alpha public encrypted-readiness evidence generator implementation",
+        "Alpha public encrypted-readiness evidence generator fixtures",
+        "Alpha public encrypted-readiness evidence generator tests"
+      ],
+      "acceptanceCriteria": [
+        "Alpha public encrypted-readiness evidence generator has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-105",
+      "title": "Claimed-support compatibility profile schema",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["KAIFUU-053", "KAIFUU-103"],
+      "summary": "Define exact claimed-support profiles for reproducible compatibility claims.",
+      "deliverables": [
+        "Claimed-support compatibility profile schema implementation",
+        "Claimed-support compatibility profile schema fixtures",
+        "Claimed-support compatibility profile schema tests"
+      ],
+      "acceptanceCriteria": [
+        "Claimed-support compatibility profile schema has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-106",
+      "title": "Redacted compatibility reproduction bundle validator",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["KAIFUU-035", "KAIFUU-050", "KAIFUU-105"],
+      "summary": "Validate redacted reproduction bundles without committing keys or private assets.",
+      "deliverables": [
+        "Redacted compatibility reproduction bundle validator implementation",
+        "Redacted compatibility reproduction bundle validator fixtures",
+        "Redacted compatibility reproduction bundle validator tests"
+      ],
+      "acceptanceCriteria": [
+        "Redacted compatibility reproduction bundle validator has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-107",
+      "title": "Claimed-profile regression runner",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "quality-foundation",
+      "dependsOn": ["KAIFUU-051", "KAIFUU-105"],
+      "summary": "Run claimed-support profiles against fixture inputs continuously.",
+      "deliverables": [
+        "Claimed-profile regression runner implementation",
+        "Claimed-profile regression runner fixtures",
+        "Claimed-profile regression runner tests"
+      ],
+      "acceptanceCriteria": [
+        "Claimed-profile regression runner has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-108",
+      "title": "MV/MZ readiness record and public fixture generator",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-020", "KAIFUU-052", "KAIFUU-053"],
+      "summary": "Generate MV/MZ public fixtures and readiness records.",
+      "deliverables": [
+        "MV/MZ readiness record and public fixture generator implementation",
+        "MV/MZ readiness record and public fixture generator fixtures",
+        "MV/MZ readiness record and public fixture generator tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ readiness record and public fixture generator has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-109",
+      "title": "MV/MZ map and common-event extract and patch",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-108", "KAIFUU-004"],
+      "summary": "Implement MV/MZ map and common-event JSON extraction and patching.",
+      "deliverables": [
+        "MV/MZ map and common-event extract and patch implementation",
+        "MV/MZ map and common-event extract and patch fixtures",
+        "MV/MZ map and common-event extract and patch tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ map and common-event extract and patch has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-110",
+      "title": "MV/MZ database system and terms extract and patch",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-109"],
+      "summary": "Add MV/MZ database, system, terms, and UI-term extraction and patching.",
+      "deliverables": [
+        "MV/MZ database system and terms extract and patch implementation",
+        "MV/MZ database system and terms extract and patch fixtures",
+        "MV/MZ database system and terms extract and patch tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ database system and terms extract and patch has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-111",
+      "title": "MV/MZ plugin-profiled text boundary diagnostics",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-110"],
+      "summary": "Represent MV/MZ plugin-owned text through declared profiles and semantic unsupported diagnostics.",
+      "deliverables": [
+        "MV/MZ plugin-profiled text boundary diagnostics implementation",
+        "MV/MZ plugin-profiled text boundary diagnostics fixtures",
+        "MV/MZ plugin-profiled text boundary diagnostics tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ plugin-profiled text boundary diagnostics has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-112",
+      "title": "MV/MZ full adapter golden integration",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-111", "KAIFUU-039"],
+      "summary": "Integrate MV/MZ JSON text surfaces and encrypted-media diagnostics.",
+      "deliverables": [
+        "MV/MZ full adapter golden integration implementation",
+        "MV/MZ full adapter golden integration fixtures",
+        "MV/MZ full adapter golden integration tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ full adapter golden integration has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-113",
+      "title": "MV/MZ encrypted suffix detector matrix",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-034", "KAIFUU-043", "KAIFUU-046", "KAIFUU-051"],
+      "summary": "Detect MV/MZ encrypted asset suffixes and per-surface key requirements.",
+      "deliverables": [
+        "MV/MZ encrypted suffix detector matrix implementation",
+        "MV/MZ encrypted suffix detector matrix fixtures",
+        "MV/MZ encrypted suffix detector matrix tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ encrypted suffix detector matrix has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-114",
+      "title": "MV/MZ fixture-key validation from System.json and image evidence",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-050", "KAIFUU-113"],
+      "summary": "Validate MV/MZ fixture keys through System.json and asset evidence.",
+      "deliverables": [
+        "MV/MZ fixture-key validation from System.json and image evidence implementation",
+        "MV/MZ fixture-key validation from System.json and image evidence fixtures",
+        "MV/MZ fixture-key validation from System.json and image evidence tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ fixture-key validation from System.json and image evidence has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-115",
+      "title": "MV/MZ encrypted image decrypt and re-encrypt fixture path",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-114"],
+      "summary": "Implement fixture-safe encrypted image decrypt and re-encrypt behavior.",
+      "deliverables": [
+        "MV/MZ encrypted image decrypt and re-encrypt fixture path implementation",
+        "MV/MZ encrypted image decrypt and re-encrypt fixture path fixtures",
+        "MV/MZ encrypted image decrypt and re-encrypt fixture path tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ encrypted image decrypt and re-encrypt fixture path has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-116",
+      "title": "MV/MZ encrypted audio decrypt and re-encrypt fixture path",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-114"],
+      "summary": "Implement fixture-safe encrypted audio decrypt and re-encrypt behavior.",
+      "deliverables": [
+        "MV/MZ encrypted audio decrypt and re-encrypt fixture path implementation",
+        "MV/MZ encrypted audio decrypt and re-encrypt fixture path fixtures",
+        "MV/MZ encrypted audio decrypt and re-encrypt fixture path tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ encrypted audio decrypt and re-encrypt fixture path has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-117",
+      "title": "MV/MZ encrypted asset replacement patch and verify",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-115", "KAIFUU-116", "KAIFUU-010"],
+      "summary": "Patch and verify fixture-safe encrypted image and audio replacements.",
+      "deliverables": [
+        "MV/MZ encrypted asset replacement patch and verify implementation",
+        "MV/MZ encrypted asset replacement patch and verify fixtures",
+        "MV/MZ encrypted asset replacement patch and verify tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ encrypted asset replacement patch and verify has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-120",
+      "title": "Wolf archive and protection detector profile fixtures",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-034", "KAIFUU-035", "KAIFUU-051"],
+      "summary": "Add Wolf archive and protection detection fixtures.",
+      "deliverables": [
+        "Wolf archive and protection detector profile fixtures implementation",
+        "Wolf archive and protection detector profile fixtures fixtures",
+        "Wolf archive and protection detector profile fixtures tests"
+      ],
+      "acceptanceCriteria": [
+        "Wolf archive and protection detector profile fixtures has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-121",
+      "title": "Wolf key and protection helper-boundary fixtures",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-087", "KAIFUU-120"],
+      "summary": "Represent Wolf key and protection helper boundaries as local-only helper results.",
+      "deliverables": [
+        "Wolf key and protection helper-boundary fixtures implementation",
+        "Wolf key and protection helper-boundary fixtures fixtures",
+        "Wolf key and protection helper-boundary fixtures tests"
+      ],
+      "acceptanceCriteria": [
+        "Wolf key and protection helper-boundary fixtures has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-126",
+      "title": "BGI container and compression detector fixtures",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-034", "KAIFUU-035", "KAIFUU-051"],
+      "summary": "Add BGI/Ethornell detector fixtures for container, compression, and profile variants.",
+      "deliverables": [
+        "BGI container and compression detector fixtures implementation",
+        "BGI container and compression detector fixtures fixtures",
+        "BGI container and compression detector fixtures tests"
+      ],
+      "acceptanceCriteria": [
+        "BGI container and compression detector fixtures has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-127",
+      "title": "BGI header and no-header bytecode profile fixtures",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-082", "KAIFUU-126"],
+      "summary": "Represent BGI header and no-header bytecode profile variants.",
+      "deliverables": [
+        "BGI header and no-header bytecode profile fixtures implementation",
+        "BGI header and no-header bytecode profile fixtures fixtures",
+        "BGI header and no-header bytecode profile fixtures tests"
+      ],
+      "acceptanceCriteria": [
+        "BGI header and no-header bytecode profile fixtures has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-128",
+      "title": "BGI encrypted and compressed unknown-variant semantic negatives",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-126"],
+      "summary": "Add negative fixtures for encrypted, compressed, and unknown BGI variants.",
+      "deliverables": [
+        "BGI encrypted and compressed unknown-variant semantic negatives implementation",
+        "BGI encrypted and compressed unknown-variant semantic negatives fixtures",
+        "BGI encrypted and compressed unknown-variant semantic negatives tests"
+      ],
+      "acceptanceCriteria": [
+        "BGI encrypted and compressed unknown-variant semantic negatives has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "UTSUSHI-062",
+      "title": "Bridge-linked jump target and replay-log fixture",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-012", "UTSUSHI-021"],
+      "summary": "Add bridge-linked jump target and replay-log fixtures after the controlled playback contract exists.",
+      "deliverables": [
+        "Bridge-linked jump target and replay-log fixture implementation",
+        "Bridge-linked jump target and replay-log fixture fixtures",
+        "Bridge-linked jump target and replay-log fixture tests"
+      ],
+      "acceptanceCriteria": [
+        "Bridge-linked jump target and replay-log fixture has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "UTSUSHI-063",
+      "title": "Fixture snapshot restore playback smoke",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-012", "UTSUSHI-023", "UTSUSHI-028"],
+      "summary": "Smoke-test fixture snapshot save and restore through controlled playback.",
+      "deliverables": [
+        "Fixture snapshot restore playback smoke implementation",
+        "Fixture snapshot restore playback smoke fixtures",
+        "Fixture snapshot restore playback smoke tests"
+      ],
+      "acceptanceCriteria": [
+        "Fixture snapshot restore playback smoke has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "UTSUSHI-064",
+      "title": "Controlled playback recording metadata smoke",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-012", "UTSUSHI-029"],
+      "summary": "Add recording metadata smoke coverage for controlled playback artifacts.",
+      "deliverables": [
+        "Controlled playback recording metadata smoke implementation",
+        "Controlled playback recording metadata smoke fixtures",
+        "Controlled playback recording metadata smoke tests"
+      ],
+      "acceptanceCriteria": [
+        "Controlled playback recording metadata smoke has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "UTSUSHI-065",
+      "title": "MV/MZ screenshot capture evidence smoke",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-006", "UTSUSHI-029", "UTSUSHI-004"],
+      "summary": "Attach screenshot capture evidence to MV/MZ runtime traces after artifact conformance exists.",
+      "deliverables": [
+        "MV/MZ screenshot capture evidence smoke implementation",
+        "MV/MZ screenshot capture evidence smoke fixtures",
+        "MV/MZ screenshot capture evidence smoke tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ screenshot capture evidence smoke has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "UTSUSHI-066",
+      "title": "MV/MZ review annotation and feedback import slice",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "feedback",
+      "dependsOn": ["UTSUSHI-010", "ITOTORI-024", "ITOTORI-033"],
+      "summary": "Import annotations and feedback from MV/MZ review packages into Itotori workflows.",
+      "deliverables": [
+        "MV/MZ review annotation and feedback import slice implementation",
+        "MV/MZ review annotation and feedback import slice fixtures",
+        "MV/MZ review annotation and feedback import slice tests"
+      ],
+      "acceptanceCriteria": [
+        "MV/MZ review annotation and feedback import slice has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "UNIV-018",
+      "title": "Roadmap P2 P3 granularity follow-up normalizer",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["universal", "suite"],
+      "parallelGroup": "roadmap-infra",
+      "dependsOn": ["UNIV-017"],
+      "summary": "Normalize remaining P2/P3 DAG-shape findings from the Kaifuu, Itotori, Catalog, and Utsushi audits into implementation slices.",
+      "deliverables": [
+        "Roadmap P2 P3 granularity follow-up normalizer implementation",
+        "Roadmap P2 P3 granularity follow-up normalizer fixtures",
+        "Roadmap P2 P3 granularity follow-up normalizer tests"
+      ],
+      "acceptanceCriteria": [
+        "Roadmap P2 P3 granularity follow-up normalizer has concrete executable behavior or schema validation",
+        "CATALOG-005 crawler broadness is split or replaced with concrete crawler job/checkpoint, VNDB/EGS recorded importer, and storefront/source adapter nodes",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "KAIFUU-131",
+      "title": "Continuous engine adapter granularity follow-up pack",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["UNIV-017", "KAIFUU-011"],
+      "summary": "Split remaining continuous Kaifuu adapter epics for Wolf, BGI, Siglus, XP3, MV/MZ assets, and future engines into parser, patcher, profile, and conformance slices.",
+      "deliverables": [
+        "Continuous engine adapter granularity follow-up pack implementation",
+        "Continuous engine adapter granularity follow-up pack fixtures",
+        "Continuous engine adapter granularity follow-up pack tests"
+      ],
+      "acceptanceCriteria": [
+        "Continuous engine adapter granularity follow-up pack has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "ITOTORI-112",
+      "title": "Continuous Itotori UX and hardening granularity follow-up pack",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["UNIV-017", "ITOTORI-023"],
+      "summary": "Split remaining continuous Itotori UX, API hygiene, local-provider, asset-policy, and search-vector findings into concrete implementation nodes.",
+      "deliverables": [
+        "Continuous Itotori UX and hardening granularity follow-up pack implementation",
+        "Continuous Itotori UX and hardening granularity follow-up pack fixtures",
+        "Continuous Itotori UX and hardening granularity follow-up pack tests"
+      ],
+      "acceptanceCriteria": [
+        "Continuous Itotori UX and hardening granularity follow-up pack has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
+      ]
+    },
+    {
+      "id": "UTSUSHI-091",
+      "title": "Continuous runtime adapter granularity follow-up pack",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UNIV-017", "UTSUSHI-012"],
+      "summary": "Split remaining Utsushi runtime adapter, browser playback, engine VM, and command-pack findings into concrete runtime/VFS/conformance slices.",
+      "deliverables": [
+        "Continuous runtime adapter granularity follow-up pack implementation",
+        "Continuous runtime adapter granularity follow-up pack fixtures",
+        "Continuous runtime adapter granularity follow-up pack tests"
+      ],
+      "acceptanceCriteria": [
+        "Continuous runtime adapter granularity follow-up pack has concrete executable behavior or schema validation",
+        "Unsupported and negative paths return semantic diagnostics",
+        "Public validation uses fixtures or recorded data, not private local assets"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Node still too broad for one PR",
+        "Decision or report-only output instead of executable behavior",
+        "Dependency bypass of prerequisite slices"
       ]
     }
   ]
