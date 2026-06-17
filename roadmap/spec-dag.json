@@ -774,7 +774,7 @@
     {
       "id": "SHARED-002",
       "title": "Bridge contract validation",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["shared", "itotori", "kaifuu", "utsushi"],
@@ -1512,7 +1512,7 @@
     {
       "id": "KAIFUU-006",
       "title": "Engine detection and profile CLI",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu"],
@@ -2334,7 +2334,7 @@
     {
       "id": "ITOTORI-001",
       "title": "Itotori persistence schema v0.2",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori", "shared"],
