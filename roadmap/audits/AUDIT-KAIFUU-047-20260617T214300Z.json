@@ -1,0 +1,32 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-047-20260617T214300Z",
+  "generatedAt": "2026-06-17T21:43:00Z",
+  "spec": {
+    "id": "KAIFUU-047",
+    "title": "Delta apply preflight completeness",
+    "branch": "spec/kaifuu-047",
+    "worktree": "/tmp/itotori-spec-kaifuu-047"
+  },
+  "auditor": {
+    "name": "euclid-the-4th",
+    "kind": "orchestration"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final audit found no P0/P1/P2/P3 findings after reserved artifact descendant preflight repair. Slash and backslash patch-result.json descendants are rejected before staging/output allocation.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
