@@ -1,0 +1,454 @@
+{
+  "schemaVersion": "0.2.0",
+  "benchmarkRunId": "019ed006-0000-7000-8000-000000000001",
+  "taxonomyId": "itotori-lqa-1",
+  "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+  "createdAt": "2026-06-17T15:00:00.000Z",
+  "benchmarkName": "hello-game public fixture raw MTL comparison",
+  "status": "passed",
+  "fixtureOrCorpusRefs": [
+    {
+      "corpusRefId": "hello-game-public",
+      "corpusKind": "public_fixture",
+      "label": "Hello Game public fixture",
+      "manifestUri": "fixtures/public/hello-game.manifest.json",
+      "manifestHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sourceBundleHash": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+      "sourceLocale": "en-US",
+      "targetLocale": "fr-FR",
+      "engineProfile": "kaifuu-fixture-default",
+      "benchmarkSplit": "public-smoke",
+      "sourceUnitCount": 2,
+      "sourceCharacterCount": 31,
+      "publicContent": true
+    }
+  ],
+  "sourceLocale": "en-US",
+  "targetLocale": "fr-FR",
+  "engineProfile": "kaifuu-fixture-default",
+  "gitCommit": "1111111111111111111111111111111111111111",
+  "bridgeSchemaVersion": "0.2.0",
+  "deterministicSeed": "hello-game-public-smoke-0001",
+  "toolVersions": [
+    {
+      "name": "@itotori/localization-bridge-schema",
+      "version": "0.0.0",
+      "gitCommit": "1111111111111111111111111111111111111111"
+    },
+    {
+      "name": "kaifuu-fixture",
+      "version": "0.2.0"
+    }
+  ],
+  "commandLines": [
+    {
+      "commandId": "benchmark",
+      "argv": ["itotori", "benchmark", "--fixture", "hello-game", "--target", "fr-FR"]
+    },
+    {
+      "commandId": "validate-report",
+      "argv": ["pnpm", "--filter", "@itotori/localization-bridge-schema", "test"]
+    }
+  ],
+  "systemsCompared": [
+    {
+      "systemId": "raw-mtl-baseline",
+      "systemKind": "raw_mtl_baseline",
+      "displayName": "Raw recorded MTL baseline",
+      "generatedAt": "2026-06-17T15:00:10.000Z",
+      "providerRunIds": ["019ed006-0000-7000-8000-000000000101"],
+      "promptPresetId": "raw-mtl-baseline-v1",
+      "promptPresetVersion": "1.0.0",
+      "outputArtifactRef": {
+        "artifactId": "019ed006-0000-7000-8000-000000000201",
+        "artifactKind": "patch-export",
+        "uri": "artifacts/benchmark/hello/raw-mtl-patch-export.json",
+        "hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "mediaType": "application/json"
+      }
+    },
+    {
+      "systemId": "itotori-draft",
+      "systemKind": "itotori_draft",
+      "displayName": "Itotori draft agent",
+      "generatedAt": "2026-06-17T15:01:00.000Z",
+      "providerRunIds": ["019ed006-0000-7000-8000-000000000102"],
+      "promptPresetId": "itotori-draft-public-fixture-v1",
+      "promptPresetVersion": "1.0.0",
+      "outputArtifactRef": {
+        "artifactId": "019ed006-0000-7000-8000-000000000202",
+        "artifactKind": "patch-export",
+        "uri": "artifacts/benchmark/hello/itotori-draft-patch-export.json",
+        "hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "mediaType": "application/json"
+      }
+    }
+  ],
+  "providerModelCostRecords": [
+    {
+      "providerRunId": "019ed006-0000-7000-8000-000000000101",
+      "systemId": "raw-mtl-baseline",
+      "taskKind": "draft_translation",
+      "startedAt": "2026-06-17T15:00:10.000Z",
+      "completedAt": "2026-06-17T15:00:11.250Z",
+      "latencyMs": 1250,
+      "status": "succeeded",
+      "provider": {
+        "providerFamily": "external_mtl",
+        "endpointFamily": "recorded-fixture",
+        "providerName": "fixture-mtl",
+        "requestedModelId": "fixture-mtl-v1",
+        "actualModelId": "fixture-mtl-v1",
+        "routeSettingsHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "prompt": {
+        "promptPresetId": "raw-mtl-baseline-v1",
+        "promptTemplateVersion": "1.0.0",
+        "promptHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "structuredOutputMode": "json_schema",
+      "retryCount": 0,
+      "errorClasses": [],
+      "fallbackUsed": false,
+      "fallbackPlan": [],
+      "tokenUsage": {
+        "tokenCountSource": "deterministic_counter",
+        "promptTokens": 14,
+        "completionTokens": 18,
+        "totalTokens": 32
+      },
+      "cost": {
+        "costKind": "zero",
+        "currency": "USD",
+        "amountMicrosUsd": 0,
+        "pricingSnapshotId": "fixture-zero-cost"
+      }
+    },
+    {
+      "providerRunId": "019ed006-0000-7000-8000-000000000102",
+      "systemId": "itotori-draft",
+      "taskKind": "draft_translation",
+      "startedAt": "2026-06-17T15:01:00.000Z",
+      "completedAt": "2026-06-17T15:01:02.500Z",
+      "latencyMs": 2500,
+      "status": "succeeded",
+      "provider": {
+        "providerFamily": "recorded",
+        "endpointFamily": "recorded-fixture",
+        "providerName": "recorded-provider",
+        "requestedModelId": "fixture-model-v1",
+        "actualModelId": "fixture-model-v1",
+        "upstreamProvider": "fixture-upstream",
+        "routeSettingsHash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "prompt": {
+        "promptPresetId": "itotori-draft-public-fixture-v1",
+        "promptTemplateVersion": "1.0.0",
+        "promptHash": "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+      },
+      "structuredOutputMode": "json_schema",
+      "retryCount": 0,
+      "errorClasses": [],
+      "fallbackUsed": false,
+      "fallbackPlan": ["fixture-model-v1"],
+      "tokenUsage": {
+        "tokenCountSource": "provider_reported",
+        "promptTokens": 30,
+        "completionTokens": 24,
+        "totalTokens": 54
+      },
+      "cost": {
+        "costKind": "provider_estimate",
+        "currency": "USD",
+        "amountMicrosUsd": 1570,
+        "pricingSnapshotId": "recorded-fixture-pricing-2026-06-17"
+      }
+    },
+    {
+      "providerRunId": "019ed006-0000-7000-8000-000000000103",
+      "systemId": "itotori-draft",
+      "taskKind": "llm_qa",
+      "startedAt": "2026-06-17T15:01:10.000Z",
+      "completedAt": "2026-06-17T15:01:12.000Z",
+      "latencyMs": 2000,
+      "status": "succeeded",
+      "provider": {
+        "providerFamily": "recorded",
+        "endpointFamily": "recorded-fixture",
+        "providerName": "recorded-provider",
+        "requestedModelId": "fixture-qa-model-v1",
+        "actualModelId": "fixture-qa-model-v1",
+        "upstreamProvider": "fixture-upstream",
+        "routeSettingsHash": "sha256:abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+      },
+      "prompt": {
+        "promptPresetId": "itotori-qa-agent-lqa-v1",
+        "promptTemplateVersion": "1.0.0",
+        "promptHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "structuredOutputMode": "json_schema",
+      "retryCount": 0,
+      "errorClasses": [],
+      "fallbackUsed": false,
+      "fallbackPlan": ["fixture-qa-model-v1"],
+      "tokenUsage": {
+        "tokenCountSource": "provider_reported",
+        "promptTokens": 25,
+        "completionTokens": 16,
+        "totalTokens": 41
+      },
+      "cost": {
+        "costKind": "provider_estimate",
+        "currency": "USD",
+        "amountMicrosUsd": 980,
+        "pricingSnapshotId": "recorded-fixture-pricing-2026-06-17"
+      }
+    }
+  ],
+  "costLedger": {
+    "currency": "USD",
+    "reportTotalMicrosUsd": 2550,
+    "totalsBySystem": [
+      {
+        "systemId": "raw-mtl-baseline",
+        "totalMicrosUsd": 0
+      },
+      {
+        "systemId": "itotori-draft",
+        "totalMicrosUsd": 2550
+      }
+    ],
+    "includesUnknownCost": false
+  },
+  "seededDefectOracle": [
+    {
+      "seededDefectId": "seed-terminology-001",
+      "fixtureOrCorpusRefId": "hello-game-public",
+      "seedKind": "wrong_glossary_term",
+      "targetLocale": "fr-FR",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed001-0000-7000-8000-000000000202",
+          "label": "script/prologue#line-002"
+        }
+      ],
+      "category": "terminology",
+      "qualitySubcategory": "wrong_term",
+      "qualitySeverity": "major",
+      "expectedRootCause": "benchmark_seed",
+      "expectedDetectorKinds": ["llm_qa", "human_review"],
+      "matchedFindingIds": ["019ed006-0000-7000-8000-000000000302"],
+      "publicContent": true
+    }
+  ],
+  "findingRecords": [
+    {
+      "findingId": "019ed006-0000-7000-8000-000000000301",
+      "systemId": "raw-mtl-baseline",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "human_review",
+      "category": "accuracy",
+      "qualitySubcategory": "mistranslation",
+      "qualitySeverity": "major",
+      "rootCause": "model_draft_error",
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed001-0000-7000-8000-000000000201",
+          "label": "script/prologue#line-001"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed006-0000-7000-8000-000000000401",
+          "evidenceKind": "text_excerpt",
+          "summary": "Human reviewer marked the raw MTL greeting as the wrong player-facing meaning.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed001-0000-7000-8000-000000000201",
+            "label": "script/prologue#line-001"
+          },
+          "expectedValue": "friendly direct greeting preserving the player placeholder",
+          "observedValue": "literal recorded MTL output with the greeting sense changed",
+          "provenanceIds": ["019ed006-0000-7000-8000-000000000501"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed006-0000-7000-8000-000000000501",
+          "provenanceKind": "human_review",
+          "reviewerId": "019ed006-0000-7000-8000-000000000601",
+          "reviewSessionId": "019ed006-0000-7000-8000-000000000701",
+          "noteHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+        }
+      ],
+      "reviewerRationale": "The reviewed target changes the line meaning rather than preserving the greeting."
+    },
+    {
+      "findingId": "019ed006-0000-7000-8000-000000000302",
+      "systemId": "itotori-draft",
+      "taxonomyId": "itotori-lqa-1",
+      "taxonomyVersion": "itotori-quality-taxonomy-0.1.0",
+      "detectorKind": "llm_qa",
+      "category": "terminology",
+      "qualitySubcategory": "wrong_term",
+      "qualitySeverity": "major",
+      "rootCause": "benchmark_seed",
+      "adjudicationState": "confirmed",
+      "affectedRefs": [
+        {
+          "subjectKind": "bridge_unit",
+          "subjectId": "019ed001-0000-7000-8000-000000000202",
+          "label": "script/prologue#line-002"
+        }
+      ],
+      "evidence": [
+        {
+          "evidenceId": "019ed006-0000-7000-8000-000000000402",
+          "evidenceKind": "text_excerpt",
+          "summary": "QA agent found the seeded glossary term mismatch on the Itotori draft.",
+          "subjectRef": {
+            "subjectKind": "bridge_unit",
+            "subjectId": "019ed001-0000-7000-8000-000000000202",
+            "label": "script/prologue#line-002"
+          },
+          "expectedValue": "glossary term from seed-terminology-001",
+          "observedValue": "alternate term in draft output",
+          "provenanceIds": ["019ed006-0000-7000-8000-000000000502"]
+        }
+      ],
+      "provenance": [
+        {
+          "provenanceId": "019ed006-0000-7000-8000-000000000502",
+          "provenanceKind": "model_output",
+          "modelOutputId": "019ed006-0000-7000-8000-000000000801",
+          "taskId": "019ed006-0000-7000-8000-000000000901",
+          "provider": "recorded-provider",
+          "model": "fixture-qa-model-v1",
+          "outputHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "promptHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "seededDefectId": "seed-terminology-001",
+      "reviewerRationale": "The QA agent finding matched the seeded terminology oracle and was confirmed."
+    }
+  ],
+  "countsByQualitySeverity": [
+    {
+      "bucket": "major",
+      "count": 2
+    }
+  ],
+  "countsByCategory": [
+    {
+      "bucket": "accuracy",
+      "count": 1
+    },
+    {
+      "bucket": "terminology",
+      "count": 1
+    }
+  ],
+  "countsByRootCause": [
+    {
+      "bucket": "model_draft_error",
+      "count": 1
+    },
+    {
+      "bucket": "benchmark_seed",
+      "count": 1
+    }
+  ],
+  "countsByDetectorKind": [
+    {
+      "bucket": "human_review",
+      "count": 1
+    },
+    {
+      "bucket": "llm_qa",
+      "count": 1
+    }
+  ],
+  "countsByAdjudicationState": [
+    {
+      "bucket": "confirmed",
+      "count": 2
+    }
+  ],
+  "penaltySummary": {
+    "penaltyTotal": 10,
+    "penaltyPerThousandSourceChars": 322.58,
+    "penaltyPerHundredSourceUnits": 500
+  },
+  "deterministicQaResults": [
+    {
+      "deterministicQaRunId": "019ed006-0000-7000-8000-000000000901",
+      "evaluatedSystemId": "itotori-draft",
+      "checkName": "protected-span-preservation",
+      "checkVersion": "0.2.0",
+      "startedAt": "2026-06-17T15:01:05.000Z",
+      "completedAt": "2026-06-17T15:01:05.100Z",
+      "ruleCount": 2,
+      "passedRuleCount": 2,
+      "failedRuleCount": 0,
+      "findingIds": [],
+      "artifactRefs": [
+        {
+          "artifactId": "019ed006-0000-7000-8000-000000000203",
+          "artifactKind": "deterministic-qa-report",
+          "uri": "artifacts/benchmark/hello/deterministic-qa.json",
+          "hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+          "mediaType": "application/json"
+        }
+      ]
+    }
+  ],
+  "qaAgentEvaluations": [
+    {
+      "qaAgentEvaluationId": "019ed006-0000-7000-8000-000000000902",
+      "qaAgentId": "terminology-qa-agent",
+      "qaAgentVersion": "0.2.0",
+      "evaluatedSystemId": "itotori-draft",
+      "providerRunIds": ["019ed006-0000-7000-8000-000000000103"],
+      "findingIds": ["019ed006-0000-7000-8000-000000000302"],
+      "metrics": {
+        "seededRecall": 1,
+        "seededPrecision": 1,
+        "f1": 1,
+        "categoryAccuracy": 1,
+        "qualitySeverityAccuracy": 1,
+        "rootCauseAccuracy": 1,
+        "criticalRecall": 1,
+        "unscorableRate": 0,
+        "humanConfirmedPrecision": 1,
+        "findingsEmitted": 1,
+        "scorableFindings": 1,
+        "adjudicatedFindings": 1
+      },
+      "limitations": ["Single public fixture smoke example; metrics demonstrate schema shape only."]
+    }
+  ],
+  "humanEvaluationResults": [
+    {
+      "humanEvaluationId": "019ed006-0000-7000-8000-000000000903",
+      "reviewSessionId": "019ed006-0000-7000-8000-000000000701",
+      "evaluatedSystemIds": ["raw-mtl-baseline", "itotori-draft"],
+      "reviewerCount": 1,
+      "sampleUnitCount": 2,
+      "sampleSourceCharacterCount": 31,
+      "blindReview": false,
+      "adjudicatedFindingIds": [
+        "019ed006-0000-7000-8000-000000000301",
+        "019ed006-0000-7000-8000-000000000302"
+      ],
+      "reviewerAgreementNotes": "Single-reviewer smoke report; no inter-reviewer agreement claim."
+    }
+  ],
+  "knownBlindSpots": [
+    "Public smoke report is too small for product quality claims.",
+    "Recorded fixture providers avoid live API calls and do not prove live provider behavior."
+  ]
+}

@@ -23,6 +23,10 @@ The bridge package is intentionally independent from any one subproject. Kaifuu 
 - `0.2.0` also defines suite-wide triage records exported as
   `TriageBundleV02`, `TriageEventV02`, `TriageTaskV02`, `FindingRecordV02`,
   provenance/evidence/causality records, and `assertTriageBundleV02`.
+- `0.2.0` defines benchmark and cost report records exported as
+  `BenchmarkReportV02`, provider/cost/token ledger records, localization
+  benchmark finding records, deterministic QA records, QA-agent evaluation
+  records, human evaluation records, and `assertBenchmarkReportV02`.
 
 `PolicyRecordV02.scope` is a known surface category, not freeform text. Use a
 value from the exported `POLICY_SCOPES` list, which currently mirrors
@@ -32,6 +36,8 @@ The v0.2 bridge JSON example lives at `test/examples/bridge-v0.2.json`.
 `test/examples/triage-v0.2.json` is a triage fixture, not a bridge bundle.
 `test/examples/runtime-evidence-v0.2.json` is a runtime evidence fixture, not a
 bridge bundle.
+`test/examples/benchmark-report-v0.2.json` is a benchmark report fixture, not a
+bridge bundle; it includes a raw MTL baseline as a normal compared system.
 Invalid bridge fixtures live under `test/examples/invalid/` and are expected to
 fail with semantic validation errors. Migration notes from v0.1 are in
 `MIGRATING-0.2.md`.
@@ -115,6 +121,42 @@ backed by evidence and findings instead of LLM-style confidence values.
 The v0.2 triage example lives at `test/examples/triage-v0.2.json` and includes
 findings rooted in source annotation, style guide, model output, and patching
 cause provenance.
+
+## Benchmark And Cost Reports
+
+`BenchmarkReportV02` is the shared report shape for localization benchmark,
+quality, QA-agent, human evaluation, token, and cost summaries. It follows the
+`itotori-lqa-1` taxonomy and the provider-recording policy from ADR 0002.
+
+Every report records:
+
+- benchmark run id, taxonomy id/version, creation timestamp, git commit, tool
+  versions, command lines, deterministic seed, bridge schema version, fixture or
+  corpus refs, source/target locales, engine profile, and benchmark split;
+- compared systems using `systemKind`, including `raw_mtl_baseline` so raw MTL
+  runs fit the same schema as Itotori drafts and repaired drafts;
+- provider/model/prompt identity for every model-backed or recorded generation
+  or QA run: provider family, endpoint family, provider name, requested model,
+  actual model, optional upstream provider, prompt preset id, prompt template
+  version, prompt hash, timestamp, retry/fallback metadata, token usage, and
+  cost amount/source;
+- a cost ledger with USD micro-unit totals by system and a flag for unknown
+  cost records, keeping billed, provider-estimated, local-estimated, zero, and
+  unknown costs distinct;
+- benchmark finding records with taxonomy id/version, detector kind,
+  `category`, optional `qualitySubcategory`, `qualitySeverity`, `rootCause`,
+  affected refs, evidence, provenance, seeded-defect id when applicable, and
+  `adjudicationState`;
+- aggregate count buckets by quality severity, category, root cause, detector
+  kind, and adjudication state, plus penalty totals;
+- first-class deterministic QA, QA-agent evaluation, seeded-defect oracle, and
+  human evaluation records.
+
+The guard rejects confidence-only report fields, unresolved system/provider/
+finding references, mismatched cost totals, mismatched finding count buckets,
+unknown unadjudicated root causes on adjudicated findings, missing prompt preset
+identity, and unscored QA-agent metric shapes. It does not make quality claims:
+public wording still depends on `docs/quality-claims.md` and review scope.
 
 ## Binding Authority
 

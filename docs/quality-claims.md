@@ -15,6 +15,14 @@ taxonomy lives in
 validated by
 [localization-quality-taxonomy.schema.json](localization-quality-taxonomy.schema.json).
 
+Machine-readable benchmark and cost reports use `BenchmarkReportV02` and
+`assertBenchmarkReportV02` from
+`packages/localization-bridge-schema/src/index.ts`. The committed
+`packages/localization-bridge-schema/test/examples/benchmark-report-v0.2.json`
+fixture shows raw MTL baseline, Itotori draft, provider/model/prompt identity,
+token/cost ledger records, deterministic QA, QA-agent metrics, and human
+adjudication in the same schema.
+
 Quality reports must not use DAG `P0`-`P3` values as translation severities.
 Those values are implementation and audit consequences. Translation findings
 use `qualitySeverity` with these values:
