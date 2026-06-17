@@ -444,22 +444,21 @@ fn validate_engine(failures: &mut Vec<ProfileValidationFailure>, engine: Option<
         });
         return;
     }
-    required_string_value(failures, engine, "engine.adapterId").map(|_| ());
-    required_string_value(failures, engine, "engine.engineFamily").map(|_| ());
-    required_string_value(failures, engine, "engine.detectedVariant").map(|_| ());
-    if let Some(engine_version) = engine.get("engineVersion") {
-        if !engine_version.is_null()
-            && engine_version
-                .as_str()
-                .map(|version| version.trim().is_empty())
-                .unwrap_or(true)
-        {
-            failures.push(ProfileValidationFailure {
-                code: "invalid_engine_version".to_string(),
-                field: "engine.engineVersion".to_string(),
-                message: "engine.engineVersion must be null or a non-empty string".to_string(),
-            });
-        }
+    let _ = required_string_value(failures, engine, "engine.adapterId");
+    let _ = required_string_value(failures, engine, "engine.engineFamily");
+    let _ = required_string_value(failures, engine, "engine.detectedVariant");
+    if let Some(engine_version) = engine.get("engineVersion")
+        && !engine_version.is_null()
+        && engine_version
+            .as_str()
+            .map(|version| version.trim().is_empty())
+            .unwrap_or(true)
+    {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_engine_version".to_string(),
+            field: "engine.engineVersion".to_string(),
+            message: "engine.engineVersion must be null or a non-empty string".to_string(),
+        });
     }
 }
 
@@ -532,19 +531,18 @@ fn validate_assets(
         ) {
             patching_capabilities.push((format!("assets.{index}.patching.capability"), capability));
         }
-        if let Some(source_hash) = asset.get("sourceHash") {
-            if !source_hash.is_null()
-                && source_hash
-                    .as_str()
-                    .map(|hash| hash.trim().is_empty())
-                    .unwrap_or(true)
-            {
-                failures.push(ProfileValidationFailure {
-                    code: "invalid_source_hash".to_string(),
-                    field: format!("assets.{index}.sourceHash"),
-                    message: "sourceHash must be null or a non-empty string".to_string(),
-                });
-            }
+        if let Some(source_hash) = asset.get("sourceHash")
+            && !source_hash.is_null()
+            && source_hash
+                .as_str()
+                .map(|hash| hash.trim().is_empty())
+                .unwrap_or(true)
+        {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_source_hash".to_string(),
+                field: format!("assets.{index}.sourceHash"),
+                message: "sourceHash must be null or a non-empty string".to_string(),
+            });
         }
     }
     patching_capabilities
@@ -652,14 +650,14 @@ fn validate_capabilities(
     for (index, capability) in capabilities.iter().enumerate() {
         let report_field = format!("{field}.{index}");
         let capability_name = validate_capability_report(failures, Some(capability), &report_field);
-        if let Some(capability_name) = capability_name {
-            if !seen.insert(capability_name.clone()) {
-                failures.push(ProfileValidationFailure {
-                    code: "duplicate_capability".to_string(),
-                    field: field.to_string(),
-                    message: format!("capability {capability_name} appears more than once"),
-                });
-            }
+        if let Some(capability_name) = capability_name
+            && !seen.insert(capability_name.clone())
+        {
+            failures.push(ProfileValidationFailure {
+                code: "duplicate_capability".to_string(),
+                field: field.to_string(),
+                message: format!("capability {capability_name} appears more than once"),
+            });
         }
     }
     seen
@@ -852,20 +850,19 @@ fn validate_requirements(
         }
         if let (Some(category), Some(key), Some(status), Some(description)) =
             (category, key, status, description)
-        {
-            if let (Ok(category), Ok(status)) = (
+            && let (Ok(category), Ok(status)) = (
                 serde_json::from_value::<RequirementCategory>(Value::String(category)),
                 serde_json::from_value::<RequirementStatus>(Value::String(status)),
-            ) {
-                parsed.push(ProfileRequirement {
-                    category,
-                    key,
-                    status,
-                    description,
-                    placeholder,
-                    secret,
-                });
-            }
+            )
+        {
+            parsed.push(ProfileRequirement {
+                category,
+                key,
+                status,
+                description,
+                placeholder,
+                secret,
+            });
         }
     }
     parsed
@@ -1853,12 +1850,12 @@ fn assert_surface_context_v02(
         assert_speaker_name_context_v02(speaker_name, &format!("{label}.speakerName"))?;
     }
 
-    if let Some(required_context) = required_context_for_surface_kind(surface_kind) {
-        if !context.contains_key(required_context) {
-            return Err(BridgeContractValidationError::new(format!(
-                "{label}.{required_context} is required for {surface_kind}"
-            )));
-        }
+    if let Some(required_context) = required_context_for_surface_kind(surface_kind)
+        && !context.contains_key(required_context)
+    {
+        return Err(BridgeContractValidationError::new(format!(
+            "{label}.{required_context} is required for {surface_kind}"
+        )));
     }
     Ok(())
 }
