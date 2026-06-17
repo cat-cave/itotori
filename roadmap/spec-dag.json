@@ -2068,7 +2068,8 @@
         "KAIFUU-000",
         "KAIFUU-019",
         "KAIFUU-020",
-        "KAIFUU-021"
+        "KAIFUU-021",
+        "KAIFUU-039"
       ],
       "summary": "Implement extraction, patching, and verification for RPG Maker MV/MZ JSON assets across dialogue, choices, common events, database text, and UI-like strings.",
       "deliverables": [
@@ -2168,7 +2169,8 @@
         "KAIFUU-000",
         "KAIFUU-019",
         "KAIFUU-020",
-        "KAIFUU-021"
+        "KAIFUU-021",
+        "KAIFUU-038"
       ],
       "summary": "Implement KAG .ks extraction and patching for plaintext or already-extracted KiriKiri projects, including speaker/name context and inline command preservation.",
       "deliverables": ["KAG parser", "Speaker extraction", "Patch writer", "Fixture corpus"],
@@ -2576,12 +2578,14 @@
       "deliverables": [
         "Helper result schema",
         "Helper registry and capability model",
+        "Known-key database import policy",
         "Local/Wine/Windows/remote helper boundary docs",
         "Fixture-only helper stub",
         "No-raw-key logging tests"
       ],
       "acceptanceCriteria": [
         "Helpers return structured validated results with secret refs, proof hashes, tool versions, and remediation, not raw keys in logs",
+        "Known-key database imports are local-only, provenance-recorded, and never required by public CI or live network calls",
         "Pure adapters depend only on resolved profile data and do not call Windows hooks or network helpers directly",
         "Linux/macOS flows work when key material has already been supplied",
         "Unavailable helper, unsupported protected executable, and failed validation paths are deterministic and triageable"
