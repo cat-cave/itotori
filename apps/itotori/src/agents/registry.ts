@@ -20,6 +20,7 @@ import type {
   PromptPresetReference,
   ProviderRunRecord,
 } from "../providers/types.js";
+import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
 
 export type StableJsonHash = `sha256:${string}`;
 export type AgentName = `agent.${string}`;
@@ -293,6 +294,11 @@ export class AgentToolRuntime {
     const request = definition.createRequest(job.input, job.context);
     assertAgentRequestMatchesDefinition(definition, request);
     const inputHash = hashJson(job.input);
+    assertProviderInvocationSupported({
+      descriptor: definition.provider.descriptor,
+      request,
+      requestedModelId: request.modelId ?? definition.provider.descriptor.defaultModelId,
+    });
     const result = await definition.provider.invoke(request);
     const output = definition.parseResult(result, job.input, job.context);
     assertRegistrySchemaValue(definition.outputSchema, output, `${definition.agentName} output`);

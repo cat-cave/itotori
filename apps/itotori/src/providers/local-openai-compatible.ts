@@ -1,5 +1,5 @@
-import { assertProviderInputAllowed, safeLocalDataHandlingPolicy } from "./policy.js";
-import { assertStructuredOutputModeSupported } from "./structured-output.js";
+import { assertProviderInvocationSupported } from "./capability-guard.js";
+import { safeLocalDataHandlingPolicy } from "./policy.js";
 import {
   type JsonObject,
   type JsonValue,
@@ -11,7 +11,6 @@ import {
   ModelProviderError,
   type ModelTool,
   type ModelToolCall,
-  type ModelToolChoice,
   type ProviderDescriptor,
   type ProviderLiveRunOptions,
   type ProviderRunArtifact,
@@ -59,16 +58,9 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
         false,
       );
     }
-    assertProviderInputAllowed(this.descriptor.capabilities, request.inputClassification);
-    if (request.structuredOutput) {
-      assertStructuredOutputModeSupported(
-        this.descriptor.capabilities,
-        request.structuredOutput.mode,
-      );
-    }
-    assertToolCallArgumentsCanBeForced(request);
 
     const requestedModelId = request.modelId ?? this.descriptor.defaultModelId;
+    assertProviderInvocationSupported({ descriptor: this.descriptor, request, requestedModelId });
     const startedAt = new Date();
     let response: Response;
     try {
@@ -351,37 +343,6 @@ function toolsForRequest(request: ModelInvocationRequest): JsonValue[] {
 
 function forcedToolChoice(toolName: string): JsonObject {
   return { type: "function", function: { name: toolName } };
-}
-
-function assertToolCallArgumentsCanBeForced(request: ModelInvocationRequest): void {
-  if (request.structuredOutput?.mode !== "tool_call_arguments") {
-    return;
-  }
-  const toolName = request.structuredOutput.toolName;
-  if (request.tools?.some((tool) => tool.name === toolName)) {
-    throw new ModelProviderError(
-      `structured output tool ${toolName} conflicts with request tools`,
-      "configuration_error",
-      false,
-    );
-  }
-  if (!toolChoiceMatchesForcedTool(request.toolChoice, toolName)) {
-    throw new ModelProviderError(
-      `structured output mode tool_call_arguments requires forced tool choice ${toolName}`,
-      "configuration_error",
-      false,
-    );
-  }
-}
-
-function toolChoiceMatchesForcedTool(
-  toolChoice: ModelToolChoice | undefined,
-  toolName: string,
-): boolean {
-  return (
-    toolChoice === undefined ||
-    (typeof toolChoice === "object" && toolChoice.functionName === toolName)
-  );
 }
 
 function normalizeResponse(

@@ -37,8 +37,10 @@ import {
 } from "../src/agents/index.js";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import type {
+  CapabilitySupport,
   JsonObject,
   ModelInvocationRequest,
+  ModelProvider,
   PromptPresetReference,
 } from "../src/providers/index.js";
 
@@ -112,6 +114,41 @@ describe("agent and deterministic tool registries", () => {
       actualModelId: "itotori-fake-judge-v0",
     });
     expect(JSON.stringify(result.output)).not.toMatch(/confidence/iu);
+  });
+
+  it("rejects unsupported agent structured-output requirements before provider execution", async () => {
+    const events: TriageEventV02[] = [];
+    const agents = new AgentRegistry();
+    const tools = new DeterministicToolRegistry();
+    const baseDefinition = translationQualityJudgeAgent();
+    const invoke = vi.fn(baseDefinition.provider.invoke.bind(baseDefinition.provider));
+    const jsonObjectSupport = "unsupported" satisfies CapabilitySupport;
+    const provider: ModelProvider = {
+      descriptor: {
+        ...baseDefinition.provider.descriptor,
+        capabilities: {
+          ...baseDefinition.provider.descriptor.capabilities,
+          structuredOutputs: {
+            ...baseDefinition.provider.descriptor.capabilities.structuredOutputs,
+            jsonObject: jsonObjectSupport,
+          },
+        },
+      },
+      invoke,
+    };
+
+    agents.register({ ...baseDefinition, provider });
+    const runtime = new AgentToolRuntime(agents, tools, {
+      emit: (event) => {
+        events.push(event);
+      },
+    });
+
+    await expect(runtime.runAgentJob(translationQualityJudgeJobFixture)).rejects.toMatchObject({
+      code: "capability_unsupported",
+    });
+    expect(invoke).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
   });
 
   it("records deterministic tool reproducibility metadata and deterministic-check provenance", async () => {

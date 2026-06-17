@@ -22,6 +22,7 @@ import type {
   TriageEventV02,
 } from "@itotori/localization-bridge-schema";
 import { FakeModelProvider } from "../providers/fake.js";
+import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
 import {
   ModelProviderError,
   type JsonObject,
@@ -171,6 +172,11 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       let result: ModelInvocationResult;
       const invocationStartedAt = new Date();
       try {
+        assertProviderInvocationSupported({
+          descriptor: this.draftModelProvider.descriptor,
+          request,
+          requestedModelId: request.modelId ?? this.draftModelProvider.descriptor.defaultModelId,
+        });
         result = await this.draftModelProvider.invoke(request);
       } catch (error) {
         await this.recordProviderFailure(nextProject, request, invocationStartedAt, error);

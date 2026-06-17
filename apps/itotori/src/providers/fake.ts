@@ -1,4 +1,5 @@
 import { deterministicFixtureDataHandlingPolicy } from "./policy.js";
+import { assertProviderInvocationSupported } from "./capability-guard.js";
 import type {
   ModelCapabilities,
   ModelInvocationRequest,
@@ -32,6 +33,7 @@ export class FakeModelProvider implements ModelProvider {
   }
 
   async invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult> {
+    assertProviderInvocationSupported({ descriptor: this.descriptor, request });
     const startedAt = new Date().toISOString();
     const content = this.generate(request);
     const completedAt = new Date().toISOString();

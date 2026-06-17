@@ -18,6 +18,7 @@ import { describe, expect, it, vi } from "vitest";
 import { FakeModelProvider } from "../src/providers/fake.js";
 import {
   ModelProviderError,
+  openRouterDefaultCapabilities,
   type ModelInvocationRequest,
   type ModelProvider,
   type ProviderRunRecord,
@@ -151,6 +152,36 @@ describe("ItotoriProjectWorkflowService", () => {
         }),
         prompt: expect.objectContaining({
           promptPresetId: "itotori-draft-default-v1",
+        }),
+      }),
+    );
+    expect(repository.saveDrafts).not.toHaveBeenCalled();
+  });
+
+  it("rejects drafting provider policy violations before provider execution", async () => {
+    const repository = repositoryFixture();
+    const ledger = ledgerFixture();
+    const invoke = vi.fn(async () => {
+      throw new Error("provider execution should have been guarded");
+    });
+    const provider = policyBlockedProvider(invoke);
+    const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
+
+    await expect(
+      service.draftProject(projectFixture({ drafts: {} }), "fr-FR"),
+    ).rejects.toMatchObject({
+      code: "policy_blocked",
+    });
+
+    expect(invoke).not.toHaveBeenCalled();
+    expect(ledger.recordProviderRun).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        status: "failed",
+        errorClasses: ["policy_blocked"],
+        provider: expect.objectContaining({
+          providerFamily: "fake",
+          requestedModelId: "itotori-fake-draft-v0",
         }),
       }),
     );
@@ -450,6 +481,21 @@ function nullContentProvider(): ModelProvider {
         providerRun: run,
       };
     }),
+  };
+}
+
+function policyBlockedProvider(invoke: ModelProvider["invoke"]): ModelProvider {
+  const descriptor = new FakeModelProvider().descriptor;
+  return {
+    descriptor: {
+      ...descriptor,
+      capabilities: {
+        ...descriptor.capabilities,
+        dataHandling: openRouterDefaultCapabilities.dataHandling,
+        accountPrivacy: openRouterDefaultCapabilities.accountPrivacy,
+      },
+    },
+    invoke,
   };
 }
 

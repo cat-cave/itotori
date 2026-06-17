@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  FakeModelProvider,
   LocalOpenAICompatibleProvider,
   ModelProviderError,
   OpenRouterProvider,
@@ -8,6 +9,7 @@ import {
   selectStructuredOutputMode,
   type ModelCapabilities,
   type ModelInvocationRequest,
+  type ModelTool,
   type ProviderRunArtifact,
   type ProviderRunArtifactRecorder,
 } from "../src/providers/index.js";
@@ -39,6 +41,26 @@ describe("provider policy and capabilities", () => {
 });
 
 describe("OpenRouterProvider", () => {
+  it("rejects unconfirmed structured output support before contacting OpenRouter", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      live: { enabled: true, artifactRecorder: memoryRecorder(), rawCapture: "disabled" },
+    });
+
+    await expect(
+      provider.invoke({
+        ...jsonSchemaRequest(),
+        inputClassification: "public",
+      }),
+    ).rejects.toMatchObject({
+      code: "capability_unsupported",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("maps neutral JSON-schema requests into OpenRouter routing without exposing router fields to callers", async () => {
     const recorder = memoryRecorder();
     const fetchCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
@@ -362,6 +384,117 @@ describe("OpenRouterProvider", () => {
     expect(result.providerRun.structuredOutputMode).toBe("tool_call_arguments");
     expect(recorder.artifacts[0]?.request.structuredOutputMode).toBe("tool_call_arguments");
   });
+
+  it("rejects empty synthetic tool schemas before contacting OpenRouter", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesWithToolCallArguments(),
+      live: { enabled: true, artifactRecorder: memoryRecorder(), rawCapture: "disabled" },
+    });
+
+    await expect(provider.invoke(emptyToolCallArgumentsRequest())).rejects.toMatchObject({
+      code: "capability_unsupported",
+      retryable: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("records routed provider, policy, fallback chain, and retry state", async () => {
+    const recorder = memoryRecorder();
+    const fetchCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetchCalls.push({ input, init });
+      return jsonResponse({
+        id: "gen-fallback-test",
+        model: "anthropic/claude-3-haiku",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: '{"targetText":"Hello."}',
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 9,
+          completion_tokens: 5,
+          total_tokens: 14,
+        },
+        openrouter_metadata: {
+          requested: "openai/gpt-4o-mini",
+          strategy: "fallback",
+          attempt: 1,
+          endpoints: {
+            available: [
+              {
+                provider: "Anthropic",
+                model: "anthropic/claude-3-haiku",
+                selected: true,
+              },
+            ],
+          },
+        },
+      });
+    }) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: openRouterCapabilitiesForPrivateInputs(),
+      routing: { order: ["OpenAI", "Anthropic"], allowFallbacks: true },
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    const result = await provider.invoke({
+      ...jsonSchemaRequest(),
+      fallbackModels: ["anthropic/claude-3-haiku"],
+    });
+
+    const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {
+      models?: string[];
+      provider: { order?: string[]; allow_fallbacks?: boolean };
+    };
+    expect(requestBody.models).toEqual(["openai/gpt-4o-mini", "anthropic/claude-3-haiku"]);
+    expect(requestBody.provider).toMatchObject({
+      order: ["OpenAI", "Anthropic"],
+      allow_fallbacks: true,
+    });
+    expect(result.providerRun).toMatchObject({
+      retryCount: 0,
+      fallbackUsed: true,
+      fallbackPlan: ["openai/gpt-4o-mini", "anthropic/claude-3-haiku"],
+      provider: {
+        requestedModelId: "openai/gpt-4o-mini",
+        actualModelId: "anthropic/claude-3-haiku",
+        upstreamProvider: "Anthropic",
+        routeSettingsHash: expect.stringMatching(/^sha256:/u),
+      },
+      providerPreset: expect.objectContaining({
+        slug: "openrouter/itotori-test",
+      }),
+      dataHandling: expect.objectContaining({
+        costTier: "paid",
+        dataCollection: "deny",
+      }),
+      accountPrivacy: expect.objectContaining({
+        inputOutputLogging: "disabled",
+      }),
+    });
+    expect(recorder.artifacts[0]?.adapterMetadata).toMatchObject({
+      providerRouting: expect.objectContaining({
+        order: ["OpenAI", "Anthropic"],
+        allow_fallbacks: true,
+      }),
+      openrouterMetadata: expect.objectContaining({
+        strategy: "fallback",
+        attempt: 1,
+      }),
+    });
+  });
 });
 
 describe("LocalOpenAICompatibleProvider", () => {
@@ -515,6 +648,92 @@ describe("LocalOpenAICompatibleProvider", () => {
     expect(result.providerRun.structuredOutputMode).toBe("tool_call_arguments");
     expect(recorder.artifacts[0]?.request.structuredOutputMode).toBe("tool_call_arguments");
   });
+
+  it("rejects empty synthetic tool schemas before contacting local providers", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+    const provider = new LocalOpenAICompatibleProvider({
+      modelId: "local-model",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      fetch: fetchMock,
+      capabilities: localCapabilitiesWithToolCallArguments(),
+      live: { enabled: true, artifactRecorder: memoryRecorder(), rawCapture: "disabled" },
+    });
+
+    await expect(provider.invoke(emptyToolCallArgumentsRequest())).rejects.toMatchObject({
+      code: "capability_unsupported",
+      retryable: false,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects tool requirements before contacting providers that have not confirmed tool support", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+    const provider = new LocalOpenAICompatibleProvider({
+      modelId: "local-model",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      fetch: fetchMock,
+      capabilities: localCapabilities(),
+      live: { enabled: true, artifactRecorder: memoryRecorder(), rawCapture: "disabled" },
+    });
+
+    await expect(
+      provider.invoke({
+        taskKind: "experiment",
+        inputClassification: "private_corpus",
+        prompt: promptFixture(),
+        messages: [{ role: "user", content: "call the tool" }],
+        tools: [toolFixture()],
+      }),
+    ).rejects.toMatchObject({
+      code: "capability_unsupported",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects fallback chains before contacting providers without fallback support", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({})) as unknown as typeof fetch;
+    const provider = new LocalOpenAICompatibleProvider({
+      modelId: "local-model",
+      baseUrl: "http://127.0.0.1:11434/v1",
+      fetch: fetchMock,
+      capabilities: localCapabilities(),
+      live: { enabled: true, artifactRecorder: memoryRecorder(), rawCapture: "disabled" },
+    });
+
+    await expect(
+      provider.invoke({
+        taskKind: "experiment",
+        inputClassification: "private_corpus",
+        prompt: promptFixture(),
+        messages: [{ role: "user", content: "try fallback" }],
+        fallbackModels: ["backup-local-model"],
+      }),
+    ).rejects.toMatchObject({
+      code: "capability_unsupported",
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("FakeModelProvider", () => {
+  it("rejects empty synthetic tool schemas before generation when required", async () => {
+    const generate = vi.fn(() => "generated");
+    const provider = new FakeModelProvider({ generate });
+    const originalRequiresSchemaPerRequest =
+      provider.descriptor.capabilities.toolCalls.requiresSchemaPerRequest;
+    provider.descriptor.capabilities.toolCalls.requiresSchemaPerRequest = true;
+
+    try {
+      await expect(provider.invoke(emptyToolCallArgumentsRequest())).rejects.toMatchObject({
+        code: "capability_unsupported",
+        retryable: false,
+      });
+    } finally {
+      provider.descriptor.capabilities.toolCalls.requiresSchemaPerRequest =
+        originalRequiresSchemaPerRequest;
+    }
+    expect(generate).not.toHaveBeenCalled();
+  });
 });
 
 function jsonSchemaRequest(): ModelInvocationRequest {
@@ -555,6 +774,18 @@ function toolCallArgumentsRequest(): ModelInvocationRequest {
   };
 }
 
+function emptyToolCallArgumentsRequest(): ModelInvocationRequest {
+  return {
+    ...toolCallArgumentsRequest(),
+    structuredOutput: {
+      mode: "tool_call_arguments",
+      toolName: "emit_translation",
+      strict: true,
+      schema: {},
+    },
+  };
+}
+
 function promptFixture() {
   return {
     presetId: "test-prompt-v1",
@@ -587,6 +818,21 @@ function toolCallSchema() {
     },
     required: ["targetText"],
     additionalProperties: false,
+  };
+}
+
+function toolFixture(): ModelTool {
+  return {
+    name: "lookup_term",
+    description: "Looks up glossary terms.",
+    parameters: {
+      type: "object",
+      properties: {
+        term: { type: "string" },
+      },
+      required: ["term"],
+      additionalProperties: false,
+    },
   };
 }
 

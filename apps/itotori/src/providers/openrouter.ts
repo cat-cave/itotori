@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
-import { assertProviderInputAllowed } from "./policy.js";
-import { assertStructuredOutputModeSupported } from "./structured-output.js";
+import {
+  assertProviderInvocationSupported,
+  type ProviderRoutingCapabilityRequirement,
+} from "./capability-guard.js";
 import {
   type JsonObject,
   type JsonValue,
@@ -12,7 +14,6 @@ import {
   ModelProviderError,
   type ModelTool,
   type ModelToolCall,
-  type ModelToolChoice,
   type ProviderDataHandlingPolicy,
   type ProviderDescriptor,
   type ProviderInputClassification,
@@ -86,20 +87,16 @@ export class OpenRouterProvider implements ModelProvider {
       this.descriptor.capabilities.dataHandling,
       providerRouting,
     );
-    assertProviderInputAllowed(
-      {
+    assertProviderInvocationSupported({
+      descriptor: this.descriptor,
+      request,
+      requestedModelId,
+      capabilities: {
         ...this.descriptor.capabilities,
         dataHandling: effectiveDataHandling,
       },
-      request.inputClassification,
-    );
-    if (request.structuredOutput) {
-      assertStructuredOutputModeSupported(
-        this.descriptor.capabilities,
-        request.structuredOutput.mode,
-      );
-    }
-    assertToolCallArgumentsCanBeForced(request);
+      routingRequirements: openRouterRoutingRequirements(this.routing, providerRouting),
+    });
 
     const apiKey = this.resolveApiKey();
     if (!apiKey) {
@@ -453,6 +450,26 @@ function openRouterDataHandlingForRouting(
   };
 }
 
+function openRouterRoutingRequirements(
+  routing: OpenRouterProviderRouting,
+  providerRouting: JsonObject,
+): ProviderRoutingCapabilityRequirement[] {
+  const requirements = new Set<ProviderRoutingCapabilityRequirement>([
+    "providerRouting",
+    "dataCollectionControl",
+  ]);
+  if (providerRouting.require_parameters === true) {
+    requirements.add("requireParameters");
+  }
+  if (routing.allowFallbacks !== undefined) {
+    requirements.add("modelFallbacks");
+  }
+  if (routing.zdr === true) {
+    requirements.add("zeroDataRetentionRouting");
+  }
+  return [...requirements];
+}
+
 function toOpenAiMessage(message: ModelMessage): JsonObject {
   const mapped: Record<string, JsonValue> = { role: message.role };
   if (typeof message.content === "string" || message.content === null) {
@@ -517,37 +534,6 @@ function toolsForRequest(request: ModelInvocationRequest): JsonValue[] {
 
 function forcedToolChoice(toolName: string): JsonObject {
   return { type: "function", function: { name: toolName } };
-}
-
-function assertToolCallArgumentsCanBeForced(request: ModelInvocationRequest): void {
-  if (request.structuredOutput?.mode !== "tool_call_arguments") {
-    return;
-  }
-  const toolName = request.structuredOutput.toolName;
-  if (request.tools?.some((tool) => tool.name === toolName)) {
-    throw new ModelProviderError(
-      `structured output tool ${toolName} conflicts with request tools`,
-      "configuration_error",
-      false,
-    );
-  }
-  if (!toolChoiceMatchesForcedTool(request.toolChoice, toolName)) {
-    throw new ModelProviderError(
-      `structured output mode tool_call_arguments requires forced tool choice ${toolName}`,
-      "configuration_error",
-      false,
-    );
-  }
-}
-
-function toolChoiceMatchesForcedTool(
-  toolChoice: ModelToolChoice | undefined,
-  toolName: string,
-): boolean {
-  return (
-    toolChoice === undefined ||
-    (typeof toolChoice === "object" && toolChoice.functionName === toolName)
-  );
 }
 
 function normalizeOpenRouterResponse(

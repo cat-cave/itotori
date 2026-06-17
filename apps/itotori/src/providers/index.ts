@@ -1,4 +1,9 @@
 export { LocalProviderRunArtifactRecorder } from "./artifacts.js";
+export {
+  assertProviderInvocationSupported,
+  type ProviderInvocationGuardInput,
+  type ProviderRoutingCapabilityRequirement,
+} from "./capability-guard.js";
 export { FakeModelProvider, fakeModelCapabilities } from "./fake.js";
 export {
   LocalOpenAICompatibleProvider,
