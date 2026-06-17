@@ -370,6 +370,46 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("rejects duplicate v0.2 bridge unit ids before project import writes", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const bridge = bridgeV02Fixture();
+      const duplicateBridge: BridgeBundleV02 = {
+        ...bridge,
+        units: bridge.units.map((unit, index) =>
+          index === 1 ? { ...unit, bridgeUnitId: bridge.units[0]!.bridgeUnitId } : unit,
+        ),
+      };
+
+      await expect(
+        repo.importSourceBundle(localActor, projectV02Fixture(duplicateBridge)),
+      ).rejects.toThrow(/bridgeUnitId must be unique/);
+
+      const counts = await context.pool.query<{
+        projects: number;
+        source_bundles: number;
+        source_units: number;
+        bridge_imports: number;
+      }>(`
+        select
+          (select count(*)::int from itotori_projects) as projects,
+          (select count(*)::int from itotori_source_bundles) as source_bundles,
+          (select count(*)::int from itotori_source_units) as source_units,
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports
+      `);
+      expect(counts.rows[0]).toEqual({
+        projects: 0,
+        source_bundles: 0,
+        source_units: 0,
+        bridge_imports: 0,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("records source revision diffs on v0.2 reimport without duplicating revisions", async () => {
     const context = await migratedContext();
     try {
@@ -446,6 +486,245 @@ describe("ItotoriProjectRepository", () => {
         ["project-v02"],
       );
       expect(revisions.rows[0]?.count).toBe(firstImport.sourceRevisionCount + 1);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("reads dashboard bundle fields and import status from the same latest import", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const firstProject = projectFixture();
+      const firstUnit = firstProject.bridge.units[0]!;
+      const secondProject = projectFixture({
+        bridge: {
+          ...firstProject.bridge,
+          bridgeId: "bridge-second",
+          sourceBundleHash: "hash-second",
+          units: [
+            {
+              ...firstUnit,
+              bridgeUnitId: "bridge-unit-second",
+              sourceUnitKey: "hello.scene.001.line.002",
+              occurrenceId: "occurrence-2",
+              sourceHash: "source-hash-second",
+              patchRef: {
+                ...firstUnit.patchRef,
+                assetId: "source-second.json",
+                sourceUnitKey: "hello.scene.001.line.002",
+              },
+            },
+          ],
+        },
+      });
+
+      await repo.importSourceBundle(localActor, firstProject);
+      await repo.importSourceBundle(localActor, secondProject);
+      await context.pool.query(
+        `
+        update itotori_source_bundles
+        set imported_at = case source_bundle_id
+          when $1 then $3::timestamptz
+          when $2 then $4::timestamptz
+        end
+        where source_bundle_id in ($1, $2)
+      `,
+        ["bridge-test", "bridge-second", "2026-06-17T00:30:00.000Z", "2026-06-17T00:00:00.000Z"],
+      );
+      await context.pool.query(
+        `
+        update itotori_bridge_imports
+        set imported_at = case source_bundle_id
+          when $1 then $3::timestamptz
+          when $2 then $4::timestamptz
+        end
+        where source_bundle_id in ($1, $2)
+      `,
+        ["bridge-test", "bridge-second", "2026-06-17T00:00:00.000Z", "2026-06-17T00:30:00.000Z"],
+      );
+
+      const status = await repo.getDashboardStatus();
+      expect(status.sourceBundleId).toBe("bridge-second");
+      expect(status.sourceBundleHash).toBe("hash-second");
+      expect(status.importStatus).toMatchObject({
+        bridgeId: "bridge-second",
+        sourceBundleId: "bridge-second",
+        sourceBundleHash: "hash-second",
+        sourceBundleRevisionId: "bridge-second:bundle-revision",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects reused bridge unit ids from another source bundle before mutation", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const firstProject = projectFixture();
+      const firstUnit = firstProject.bridge.units[0]!;
+      const conflictingProject = projectFixture({
+        bridge: {
+          ...firstProject.bridge,
+          bridgeId: "bridge-conflict",
+          sourceBundleHash: "hash-conflict",
+          units: [
+            {
+              ...firstUnit,
+              sourceUnitKey: "hello.scene.001.line.002",
+              occurrenceId: "occurrence-2",
+              sourceHash: "source-hash-conflict",
+              patchRef: {
+                ...firstUnit.patchRef,
+                assetId: "source-conflict.json",
+                sourceUnitKey: "hello.scene.001.line.002",
+              },
+            },
+          ],
+        },
+      });
+
+      await repo.importSourceBundle(localActor, firstProject);
+      await expect(repo.importSourceBundle(localActor, conflictingProject)).rejects.toThrow(
+        /bridge unit bridge-unit-test already belongs to project project-test source bundle bridge-test/,
+      );
+
+      const counts = await context.pool.query<{
+        source_bundles: number;
+        bridge_imports: number;
+      }>(`
+        select
+          (select count(*)::int from itotori_source_bundles) as source_bundles,
+          (select count(*)::int from itotori_bridge_imports) as bridge_imports
+      `);
+      expect(counts.rows[0]).toEqual({
+        source_bundles: 1,
+        bridge_imports: 1,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("reimports a migrated legacy bridge through its existing source bundle id", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      await context.pool.query(
+        `
+        insert into itotori_workspaces (workspace_id, name)
+        values ('local-workspace', 'Local workspace')
+      `,
+      );
+      await context.pool.query(
+        `
+        insert into itotori_projects (
+          project_id,
+          workspace_id,
+          project_key,
+          name,
+          source_locale,
+          status,
+          created_by_user_id
+        )
+        values (
+          'project-test',
+          'local-workspace',
+          'project-test',
+          'project-test',
+          'ja-JP',
+          'runtime_ingested',
+          'local-user'
+        )
+      `,
+      );
+      await context.pool.query(
+        `
+        insert into itotori_source_revisions (
+          source_revision_id,
+          project_id,
+          revision_kind,
+          value
+        )
+        values (
+          'legacy:project-test:bundle-revision',
+          'project-test',
+          'legacy_bridge_id',
+          'bridge-test'
+        )
+      `,
+      );
+      await context.pool.query(
+        `
+        insert into itotori_source_bundles (
+          source_bundle_id,
+          project_id,
+          source_bundle_revision_id,
+          bridge_id,
+          schema_version,
+          source_bundle_hash,
+          source_locale,
+          extractor_name,
+          extractor_version,
+          unit_count,
+          asset_count
+        )
+        values (
+          'legacy:project-test:source-bundle',
+          'project-test',
+          'legacy:project-test:bundle-revision',
+          'bridge-test',
+          '0.1.0',
+          'legacy:bridge-test',
+          'ja-JP',
+          'legacy-hello-world',
+          '0.1.0',
+          0,
+          0
+        )
+      `,
+      );
+
+      const importStatus = await repo.importSourceBundle(localActor, projectFixture());
+
+      expect(importStatus).toMatchObject({
+        bridgeId: "bridge-test",
+        sourceBundleId: "legacy:project-test:source-bundle",
+        sourceBundleRevisionId: "bridge-test:bundle-revision",
+        unitCount: 1,
+        assetCount: 1,
+      });
+
+      const bundles = await context.pool.query<{
+        source_bundle_id: string;
+        bridge_id: string;
+        source_bundle_revision_id: string;
+        unit_count: number;
+        asset_count: number;
+      }>(
+        `
+        select
+          source_bundle_id,
+          bridge_id,
+          source_bundle_revision_id,
+          unit_count,
+          asset_count
+        from itotori_source_bundles
+      `,
+      );
+      expect(bundles.rows).toEqual([
+        {
+          source_bundle_id: "legacy:project-test:source-bundle",
+          bridge_id: "bridge-test",
+          source_bundle_revision_id: "bridge-test:bundle-revision",
+          unit_count: 1,
+          asset_count: 1,
+        },
+      ]);
     } finally {
       await context.close();
     }

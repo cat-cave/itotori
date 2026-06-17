@@ -780,6 +780,18 @@ describe("localization bridge schema guards", () => {
     expect(speakerStates).toContain("reader_unknown");
   });
 
+  it("rejects duplicate v0.2 bridge unit ids", () => {
+    const bridge = bridgeV02Example();
+    const units = bridge.units as Array<Record<string, unknown>>;
+    const firstUnit = units[0]!;
+    const secondUnit = units[1]!;
+    units[1] = { ...secondUnit, bridgeUnitId: firstUnit.bridgeUnitId };
+
+    expect(() => assertBridgeBundleV02(bridge)).toThrow(
+      /BridgeBundleV02\.units\[1\]\.bridgeUnitId must be unique/,
+    );
+  });
+
   it("keeps raw MTL baselines in the benchmark report schema", () => {
     const report = benchmarkReportV02Example();
 

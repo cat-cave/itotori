@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   type AuthorizationActor,
   feedbackTypeValues,
@@ -6,7 +7,7 @@ import {
   type ProjectCostReport,
   type ProjectDashboardStatus,
 } from "@itotori/db";
-import type { BridgeBundle } from "@itotori/localization-bridge-schema";
+import type { BridgeBundle, BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
 import { runItotoriCliCommand, type ItotoriCliServices } from "../src/cli-handlers.js";
 import { ManualFeedbackImportService } from "../src/manual-feedback.js";
@@ -89,6 +90,25 @@ describe("Itotori CLI handlers", () => {
     });
   });
 
+  it("accepts v0.2 bridge input before calling the import service", async () => {
+    const services = servicesFixture();
+    const bridge = bridgeV02Fixture();
+    const reads = new Map<string, unknown>([["bridge.json", bridge]]);
+    const writes = new Map<string, unknown>();
+
+    await runItotoriCliCommand(["import", "--bridge", "bridge.json", "--project", "project.json"], {
+      io: jsonStoreFixture(reads, writes),
+      migrateDatabase: vi.fn(async () => {}),
+      withServices: async (callback) => await callback(services),
+    });
+
+    expect(services.projectWorkflow.importBridge).toHaveBeenCalledWith(bridge);
+    expect(writes.get("project.json")).toMatchObject({
+      projectId: "project-1",
+      importStatus: dashboardStatusFixture.importStatus,
+    });
+  });
+
   it("imports manual feedback through the feedback service", async () => {
     const services = servicesFixture();
     const feedback = {
@@ -142,7 +162,7 @@ function servicesFixture(): ItotoriCliServices {
         recordingArtifactCount: 0,
         validationFindingCount: 0,
       })),
-      importBridge: vi.fn(async (_bridge: BridgeBundle) => projectFixture()),
+      importBridge: vi.fn(async (_bridge: BridgeBundle | BridgeBundleV02) => projectFixture()),
       draftProject: vi.fn(async (project: ProjectState) => project),
       exportPatch: vi.fn(async (project: ProjectState) => ({
         project,
@@ -205,6 +225,15 @@ function projectFixture(): ProjectState {
       units: [],
     },
   };
+}
+
+function bridgeV02Fixture(): BridgeBundleV02 {
+  return JSON.parse(
+    readFileSync(
+      new URL("../../../packages/localization-bridge-schema/test/examples/bridge-v0.2.json", import.meta.url),
+      "utf8",
+    ),
+  ) as BridgeBundleV02;
 }
 
 const costReportFixture: ProjectCostReport = {

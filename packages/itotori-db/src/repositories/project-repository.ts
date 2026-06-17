@@ -254,9 +254,11 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     const normalized = normalizeSourceBundle(project);
 
     return await this.db.transaction(async (tx) => {
-      const diff = await diffSourceBundleImport(tx, normalized);
+      const importTarget = await resolveSourceBundleImportTarget(tx, project.projectId, normalized);
+      await assertImportOwnership(tx, project.projectId, importTarget);
+      const diff = await diffSourceBundleImport(tx, importTarget);
       const importedAt = new Date();
-      const importStatus = bridgeImportStatusFor(project.projectId, normalized, diff, importedAt);
+      const importStatus = bridgeImportStatusFor(project.projectId, importTarget, diff, importedAt);
 
       await tx
         .insert(workspaces)
@@ -270,26 +272,26 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           workspaceId: defaultWorkspaceId,
           projectKey: project.projectId,
           name: project.projectId,
-          sourceLocale: normalized.sourceLocale,
+          sourceLocale: importTarget.sourceLocale,
           status: projectStatusValues.imported,
-          gameId: normalized.sourceGame.gameId,
-          gameVersion: normalized.sourceGame.gameVersion,
-          sourceProfileId: normalized.sourceGame.sourceProfileId,
+          gameId: importTarget.sourceGame.gameId,
+          gameVersion: importTarget.sourceGame.gameVersion,
+          sourceProfileId: importTarget.sourceGame.sourceProfileId,
           createdByUserId: actor.userId,
         })
         .onConflictDoUpdate({
           target: projects.projectId,
           set: {
-            sourceLocale: normalized.sourceLocale,
+            sourceLocale: importTarget.sourceLocale,
             status: projectStatusValues.imported,
-            gameId: normalized.sourceGame.gameId,
-            gameVersion: normalized.sourceGame.gameVersion,
-            sourceProfileId: normalized.sourceGame.sourceProfileId,
+            gameId: importTarget.sourceGame.gameId,
+            gameVersion: importTarget.sourceGame.gameVersion,
+            sourceProfileId: importTarget.sourceGame.sourceProfileId,
             updatedAt: sql`now()`,
           },
         });
 
-      for (const revision of normalized.revisions) {
+      for (const revision of importTarget.revisions) {
         await tx
           .insert(sourceRevisions)
           .values({
@@ -305,38 +307,39 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       await tx
         .insert(sourceBundles)
         .values({
-          sourceBundleId: normalized.sourceBundleId,
+          sourceBundleId: importTarget.sourceBundleId,
           projectId: project.projectId,
-          sourceBundleRevisionId: normalized.sourceBundleRevision.revisionId,
-          bridgeId: normalized.bridgeId,
-          schemaVersion: normalized.schemaVersion,
-          sourceBundleHash: normalized.sourceBundleHash,
-          sourceLocale: normalized.sourceLocale,
-          extractorName: normalized.extractor.name,
-          extractorVersion: normalized.extractor.version,
-          unitCount: normalized.units.length,
-          assetCount: normalized.assets.length,
+          sourceBundleRevisionId: importTarget.sourceBundleRevision.revisionId,
+          bridgeId: importTarget.bridgeId,
+          schemaVersion: importTarget.schemaVersion,
+          sourceBundleHash: importTarget.sourceBundleHash,
+          sourceLocale: importTarget.sourceLocale,
+          extractorName: importTarget.extractor.name,
+          extractorVersion: importTarget.extractor.version,
+          unitCount: importTarget.units.length,
+          assetCount: importTarget.assets.length,
         })
         .onConflictDoUpdate({
           target: sourceBundles.sourceBundleId,
           set: {
-            sourceBundleRevisionId: normalized.sourceBundleRevision.revisionId,
-            sourceBundleHash: normalized.sourceBundleHash,
-            sourceLocale: normalized.sourceLocale,
-            extractorName: normalized.extractor.name,
-            extractorVersion: normalized.extractor.version,
-            unitCount: normalized.units.length,
-            assetCount: normalized.assets.length,
+            sourceBundleRevisionId: importTarget.sourceBundleRevision.revisionId,
+            schemaVersion: importTarget.schemaVersion,
+            sourceBundleHash: importTarget.sourceBundleHash,
+            sourceLocale: importTarget.sourceLocale,
+            extractorName: importTarget.extractor.name,
+            extractorVersion: importTarget.extractor.version,
+            unitCount: importTarget.units.length,
+            assetCount: importTarget.assets.length,
           },
         });
 
-      for (const asset of normalized.assets) {
+      for (const asset of importTarget.assets) {
         await tx
           .insert(assets)
           .values({
             assetId: asset.assetId,
             projectId: project.projectId,
-            sourceBundleId: normalized.sourceBundleId,
+            sourceBundleId: importTarget.sourceBundleId,
             sourceRevisionId: asset.sourceRevision.revisionId,
             assetKey: asset.assetKey,
             assetKind: asset.assetKind,
@@ -355,13 +358,13 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           });
       }
 
-      for (const unit of normalized.units) {
+      for (const unit of importTarget.units) {
         await tx
           .insert(sourceUnits)
           .values({
             bridgeUnitId: unit.bridgeUnitId,
             projectId: project.projectId,
-            sourceBundleId: normalized.sourceBundleId,
+            sourceBundleId: importTarget.sourceBundleId,
             sourceAssetId: unit.sourceAssetRef.assetId,
             sourceRevisionId: unit.sourceRevision.revisionId,
             surfaceId: unit.surfaceId,
@@ -382,7 +385,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           .onConflictDoUpdate({
             target: sourceUnits.bridgeUnitId,
             set: {
-              sourceBundleId: normalized.sourceBundleId,
+              sourceBundleId: importTarget.sourceBundleId,
               sourceAssetId: unit.sourceAssetRef.assetId,
               sourceRevisionId: unit.sourceRevision.revisionId,
               surfaceId: unit.surfaceId,
@@ -419,7 +422,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         .values({
           localeBranchId: project.localeBranchId,
           projectId: project.projectId,
-          sourceBundleId: normalized.sourceBundleId,
+          sourceBundleId: importTarget.sourceBundleId,
           targetLocale: project.targetLocale,
           branchName: project.targetLocale,
           status: localeBranchStatusValues.active,
@@ -428,7 +431,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         .onConflictDoUpdate({
           target: localeBranches.localeBranchId,
           set: {
-            sourceBundleId: normalized.sourceBundleId,
+            sourceBundleId: importTarget.sourceBundleId,
             targetLocale: project.targetLocale,
             branchName: project.targetLocale,
             status: localeBranchStatusValues.active,
@@ -436,7 +439,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           },
         });
 
-      for (const unit of normalized.units) {
+      for (const unit of importTarget.units) {
         await tx
           .insert(localeBranchUnits)
           .values({
@@ -458,12 +461,12 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         .values({
           bridgeImportId: importStatus.bridgeImportId,
           projectId: project.projectId,
-          sourceBundleId: normalized.sourceBundleId,
-          sourceBundleRevisionId: normalized.sourceBundleRevision.revisionId,
-          bridgeId: normalized.bridgeId,
-          schemaVersion: normalized.schemaVersion,
-          sourceBundleHash: normalized.sourceBundleHash,
-          sourceLocale: normalized.sourceLocale,
+          sourceBundleId: importTarget.sourceBundleId,
+          sourceBundleRevisionId: importTarget.sourceBundleRevision.revisionId,
+          bridgeId: importTarget.bridgeId,
+          schemaVersion: importTarget.schemaVersion,
+          sourceBundleHash: importTarget.sourceBundleHash,
+          sourceLocale: importTarget.sourceLocale,
           unitCount: importStatus.unitCount,
           assetCount: importStatus.assetCount,
           sourceRevisionCount: importStatus.sourceRevisionCount,
@@ -482,16 +485,16 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           localCorpusEntryId: importStatus.futureReferences.localCorpusEntryId,
           readinessProfileId: importStatus.futureReferences.readinessProfileId,
           completenessStatusId: importStatus.futureReferences.completenessStatusId,
-          metadata: bridgeImportMetadata(normalized),
+          metadata: bridgeImportMetadata(importTarget),
           importedAt,
         })
         .onConflictDoUpdate({
           target: [bridgeImports.sourceBundleId, bridgeImports.sourceBundleRevisionId],
           set: {
-            bridgeId: normalized.bridgeId,
-            schemaVersion: normalized.schemaVersion,
-            sourceBundleHash: normalized.sourceBundleHash,
-            sourceLocale: normalized.sourceLocale,
+            bridgeId: importTarget.bridgeId,
+            schemaVersion: importTarget.schemaVersion,
+            sourceBundleHash: importTarget.sourceBundleHash,
+            sourceLocale: importTarget.sourceLocale,
             unitCount: importStatus.unitCount,
             assetCount: importStatus.assetCount,
             sourceRevisionCount: importStatus.sourceRevisionCount,
@@ -510,7 +513,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             localCorpusEntryId: importStatus.futureReferences.localCorpusEntryId,
             readinessProfileId: importStatus.futureReferences.readinessProfileId,
             completenessStatusId: importStatus.futureReferences.completenessStatusId,
-            metadata: bridgeImportMetadata(normalized),
+            metadata: bridgeImportMetadata(importTarget),
             importedAt,
           },
         });
@@ -1082,6 +1085,52 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         order by updated_at desc
         limit 1
       ),
+      latest_import_bundle as (
+        select
+          sb.source_bundle_id,
+          sb.bridge_id,
+          sb.project_id,
+          sb.schema_version,
+          sb.source_bundle_hash,
+          sb.source_bundle_revision_id,
+          sb.source_locale,
+          sb.unit_count,
+          sb.asset_count,
+          sb.imported_at,
+          li.bridge_import_id,
+          li.source_bundle_id as import_source_bundle_id,
+          li.source_bundle_hash as import_source_bundle_hash,
+          li.source_bundle_revision_id as import_source_bundle_revision_id,
+          li.bridge_id as import_bridge_id,
+          li.schema_version as import_schema_version,
+          li.source_locale as import_source_locale,
+          li.imported_at as import_imported_at,
+          li.unit_count as import_unit_count,
+          li.asset_count as import_asset_count,
+          li.source_revision_count as import_source_revision_count,
+          li.validation_failure_count as import_validation_failure_count,
+          li.added_unit_count as import_added_unit_count,
+          li.updated_unit_count as import_updated_unit_count,
+          li.removed_unit_count as import_removed_unit_count,
+          li.unchanged_unit_count as import_unchanged_unit_count,
+          li.added_asset_count as import_added_asset_count,
+          li.updated_asset_count as import_updated_asset_count,
+          li.removed_asset_count as import_removed_asset_count,
+          li.unchanged_asset_count as import_unchanged_asset_count,
+          li.added_source_revision_count as import_added_source_revision_count,
+          li.existing_source_revision_count as import_existing_source_revision_count,
+          li.catalog_work_id as import_catalog_work_id,
+          li.local_corpus_entry_id as import_local_corpus_entry_id,
+          li.readiness_profile_id as import_readiness_profile_id,
+          li.completeness_status_id as import_completeness_status_id
+        from ${bridgeImports} li
+        join ${sourceBundles} sb
+          on sb.source_bundle_id = li.source_bundle_id
+          and sb.source_bundle_revision_id = li.source_bundle_revision_id
+        where li.project_id in (select project_id from latest_project)
+        order by li.imported_at desc
+        limit 1
+      ),
       latest_bundle as (
         select
           source_bundle_id,
@@ -1096,15 +1145,52 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           imported_at
         from ${sourceBundles}
         where project_id in (select project_id from latest_project)
+          and not exists (select 1 from latest_import_bundle)
         order by imported_at desc
         limit 1
       ),
-      latest_import as (
+      selected_bundle as (
         select *
-        from ${bridgeImports}
-        where project_id in (select project_id from latest_project)
-        order by imported_at desc
-        limit 1
+        from latest_import_bundle
+        union all
+        select
+          lb.source_bundle_id,
+          lb.bridge_id,
+          lb.project_id,
+          lb.schema_version,
+          lb.source_bundle_hash,
+          lb.source_bundle_revision_id,
+          lb.source_locale,
+          lb.unit_count,
+          lb.asset_count,
+          lb.imported_at,
+          null as bridge_import_id,
+          null as import_source_bundle_id,
+          null as import_source_bundle_hash,
+          null as import_source_bundle_revision_id,
+          null as import_bridge_id,
+          null as import_schema_version,
+          null as import_source_locale,
+          null as import_imported_at,
+          null as import_unit_count,
+          null as import_asset_count,
+          null as import_source_revision_count,
+          null as import_validation_failure_count,
+          null as import_added_unit_count,
+          null as import_updated_unit_count,
+          null as import_removed_unit_count,
+          null as import_unchanged_unit_count,
+          null as import_added_asset_count,
+          null as import_updated_asset_count,
+          null as import_removed_asset_count,
+          null as import_unchanged_asset_count,
+          null as import_added_source_revision_count,
+          null as import_existing_source_revision_count,
+          null as import_catalog_work_id,
+          null as import_local_corpus_entry_id,
+          null as import_readiness_profile_id,
+          null as import_completeness_status_id
+        from latest_bundle lb
       )
       select
         p.project_id,
@@ -1112,39 +1198,39 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         p.name,
         p.status,
         p.source_locale,
-        lb.source_bundle_id,
-        lb.source_bundle_hash,
-        lb.source_bundle_revision_id,
+        sb.source_bundle_id,
+        sb.source_bundle_hash,
+        sb.source_bundle_revision_id,
         coalesce(
-          li.bridge_import_id,
-          'bridge-import:' || p.project_id || ':' || lb.source_bundle_id || ':' || lb.source_bundle_revision_id
+          sb.bridge_import_id,
+          'bridge-import:' || p.project_id || ':' || sb.source_bundle_id || ':' || sb.source_bundle_revision_id
         ) as bridge_import_id,
-        coalesce(li.source_bundle_id, lb.source_bundle_id) as import_source_bundle_id,
-        coalesce(li.source_bundle_hash, lb.source_bundle_hash) as import_source_bundle_hash,
-        coalesce(li.source_bundle_revision_id, lb.source_bundle_revision_id)
+        coalesce(sb.import_source_bundle_id, sb.source_bundle_id) as import_source_bundle_id,
+        coalesce(sb.import_source_bundle_hash, sb.source_bundle_hash) as import_source_bundle_hash,
+        coalesce(sb.import_source_bundle_revision_id, sb.source_bundle_revision_id)
           as import_source_bundle_revision_id,
-        coalesce(li.bridge_id, lb.bridge_id) as bridge_id,
-        coalesce(li.schema_version, lb.schema_version) as import_schema_version,
-        coalesce(li.source_locale, lb.source_locale) as import_source_locale,
-        coalesce(li.imported_at, lb.imported_at) as imported_at,
-        coalesce(li.unit_count, lb.unit_count)::int as import_unit_count,
-        coalesce(li.asset_count, lb.asset_count)::int as import_asset_count,
-        coalesce(li.source_revision_count, 0)::int as import_source_revision_count,
-        coalesce(li.validation_failure_count, 0)::int as import_validation_failure_count,
-        coalesce(li.added_unit_count, 0)::int as import_added_unit_count,
-        coalesce(li.updated_unit_count, 0)::int as import_updated_unit_count,
-        coalesce(li.removed_unit_count, 0)::int as import_removed_unit_count,
-        coalesce(li.unchanged_unit_count, lb.unit_count)::int as import_unchanged_unit_count,
-        coalesce(li.added_asset_count, 0)::int as import_added_asset_count,
-        coalesce(li.updated_asset_count, 0)::int as import_updated_asset_count,
-        coalesce(li.removed_asset_count, 0)::int as import_removed_asset_count,
-        coalesce(li.unchanged_asset_count, lb.asset_count)::int as import_unchanged_asset_count,
-        coalesce(li.added_source_revision_count, 0)::int as import_added_source_revision_count,
-        coalesce(li.existing_source_revision_count, 0)::int as import_existing_source_revision_count,
-        li.catalog_work_id as import_catalog_work_id,
-        li.local_corpus_entry_id as import_local_corpus_entry_id,
-        li.readiness_profile_id as import_readiness_profile_id,
-        li.completeness_status_id as import_completeness_status_id,
+        coalesce(sb.import_bridge_id, sb.bridge_id) as bridge_id,
+        coalesce(sb.import_schema_version, sb.schema_version) as import_schema_version,
+        coalesce(sb.import_source_locale, sb.source_locale) as import_source_locale,
+        coalesce(sb.import_imported_at, sb.imported_at) as imported_at,
+        coalesce(sb.import_unit_count, sb.unit_count)::int as import_unit_count,
+        coalesce(sb.import_asset_count, sb.asset_count)::int as import_asset_count,
+        coalesce(sb.import_source_revision_count, 0)::int as import_source_revision_count,
+        coalesce(sb.import_validation_failure_count, 0)::int as import_validation_failure_count,
+        coalesce(sb.import_added_unit_count, 0)::int as import_added_unit_count,
+        coalesce(sb.import_updated_unit_count, 0)::int as import_updated_unit_count,
+        coalesce(sb.import_removed_unit_count, 0)::int as import_removed_unit_count,
+        coalesce(sb.import_unchanged_unit_count, sb.unit_count)::int as import_unchanged_unit_count,
+        coalesce(sb.import_added_asset_count, 0)::int as import_added_asset_count,
+        coalesce(sb.import_updated_asset_count, 0)::int as import_updated_asset_count,
+        coalesce(sb.import_removed_asset_count, 0)::int as import_removed_asset_count,
+        coalesce(sb.import_unchanged_asset_count, sb.asset_count)::int as import_unchanged_asset_count,
+        coalesce(sb.import_added_source_revision_count, 0)::int as import_added_source_revision_count,
+        coalesce(sb.import_existing_source_revision_count, 0)::int as import_existing_source_revision_count,
+        sb.import_catalog_work_id,
+        sb.import_local_corpus_entry_id,
+        sb.import_readiness_profile_id,
+        sb.import_completeness_status_id,
         b.locale_branch_id,
         b.target_locale,
         b.status as branch_status,
@@ -1158,10 +1244,9 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         latest_event.occurred_at as latest_event_at
       from ${projects} p
       join latest_project lp on lp.project_id = p.project_id
-      join latest_bundle lb on lb.project_id = p.project_id
-      left join latest_import li on true
+      join selected_bundle sb on sb.project_id = p.project_id
       left join ${localeBranches} b on b.project_id = p.project_id
-      left join ${sourceUnits} su on su.source_bundle_id = lb.source_bundle_id
+      left join ${sourceUnits} su on su.source_bundle_id = sb.source_bundle_id
       left join ${localeBranchUnits} lbu
         on lbu.locale_branch_id = b.locale_branch_id
         and lbu.bridge_unit_id = su.bridge_unit_id
@@ -1193,41 +1278,41 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         p.name,
         p.status,
         p.source_locale,
-        lb.source_bundle_id,
-        lb.bridge_id,
-        lb.schema_version,
-        lb.source_bundle_hash,
-        lb.source_bundle_revision_id,
-        lb.source_locale,
-        lb.unit_count,
-        lb.asset_count,
-        lb.imported_at,
-        li.bridge_import_id,
-        li.source_bundle_id,
-        li.source_bundle_hash,
-        li.source_bundle_revision_id,
-        li.bridge_id,
-        li.schema_version,
-        li.source_locale,
-        li.imported_at,
-        li.unit_count,
-        li.asset_count,
-        li.source_revision_count,
-        li.validation_failure_count,
-        li.added_unit_count,
-        li.updated_unit_count,
-        li.removed_unit_count,
-        li.unchanged_unit_count,
-        li.added_asset_count,
-        li.updated_asset_count,
-        li.removed_asset_count,
-        li.unchanged_asset_count,
-        li.added_source_revision_count,
-        li.existing_source_revision_count,
-        li.catalog_work_id,
-        li.local_corpus_entry_id,
-        li.readiness_profile_id,
-        li.completeness_status_id,
+        sb.source_bundle_id,
+        sb.bridge_id,
+        sb.schema_version,
+        sb.source_bundle_hash,
+        sb.source_bundle_revision_id,
+        sb.source_locale,
+        sb.unit_count,
+        sb.asset_count,
+        sb.imported_at,
+        sb.bridge_import_id,
+        sb.import_source_bundle_id,
+        sb.import_source_bundle_hash,
+        sb.import_source_bundle_revision_id,
+        sb.import_bridge_id,
+        sb.import_schema_version,
+        sb.import_source_locale,
+        sb.import_imported_at,
+        sb.import_unit_count,
+        sb.import_asset_count,
+        sb.import_source_revision_count,
+        sb.import_validation_failure_count,
+        sb.import_added_unit_count,
+        sb.import_updated_unit_count,
+        sb.import_removed_unit_count,
+        sb.import_unchanged_unit_count,
+        sb.import_added_asset_count,
+        sb.import_updated_asset_count,
+        sb.import_removed_asset_count,
+        sb.import_unchanged_asset_count,
+        sb.import_added_source_revision_count,
+        sb.import_existing_source_revision_count,
+        sb.import_catalog_work_id,
+        sb.import_local_corpus_entry_id,
+        sb.import_readiness_profile_id,
+        sb.import_completeness_status_id,
         b.locale_branch_id,
         b.target_locale,
         b.status,
@@ -1428,6 +1513,137 @@ type NormalizedSourceBundle = {
   assets: BridgeAssetV02[];
   units: LocalizationUnitV02[];
 };
+
+async function resolveSourceBundleImportTarget(
+  tx: ItotoriTransaction,
+  projectId: string,
+  normalized: NormalizedSourceBundle,
+): Promise<NormalizedSourceBundle> {
+  const [sourceBundleMatch] = await tx
+    .select({
+      sourceBundleId: sourceBundles.sourceBundleId,
+      projectId: sourceBundles.projectId,
+      bridgeId: sourceBundles.bridgeId,
+    })
+    .from(sourceBundles)
+    .where(eq(sourceBundles.sourceBundleId, normalized.sourceBundleId))
+    .limit(1);
+
+  if (sourceBundleMatch !== undefined) {
+    if (sourceBundleMatch.projectId !== projectId) {
+      throw new Error(
+        `source bundle ${normalized.sourceBundleId} already belongs to project ${sourceBundleMatch.projectId}`,
+      );
+    }
+    if (sourceBundleMatch.bridgeId !== normalized.bridgeId) {
+      throw new Error(
+        `source bundle ${normalized.sourceBundleId} already belongs to bridge ${sourceBundleMatch.bridgeId}`,
+      );
+    }
+  }
+
+  const [bridgeMatch] = await tx
+    .select({
+      sourceBundleId: sourceBundles.sourceBundleId,
+      projectId: sourceBundles.projectId,
+      bridgeId: sourceBundles.bridgeId,
+    })
+    .from(sourceBundles)
+    .where(eq(sourceBundles.bridgeId, normalized.bridgeId))
+    .limit(1);
+
+  if (bridgeMatch === undefined) {
+    return normalized;
+  }
+  if (bridgeMatch.projectId !== projectId) {
+    throw new Error(
+      `bridge ${normalized.bridgeId} already belongs to project ${bridgeMatch.projectId}`,
+    );
+  }
+  if (sourceBundleMatch !== undefined && sourceBundleMatch.sourceBundleId !== bridgeMatch.sourceBundleId) {
+    throw new Error(
+      `bridge ${normalized.bridgeId} is already linked to source bundle ${bridgeMatch.sourceBundleId}`,
+    );
+  }
+  if (bridgeMatch.sourceBundleId === normalized.sourceBundleId) {
+    return normalized;
+  }
+  return { ...normalized, sourceBundleId: bridgeMatch.sourceBundleId };
+}
+
+async function assertImportOwnership(
+  tx: ItotoriTransaction,
+  projectId: string,
+  normalized: NormalizedSourceBundle,
+): Promise<void> {
+  assertUniqueNormalizedUnitIds(normalized.units);
+
+  const revisionIds = normalized.revisions.map((revisionRecord) => revisionRecord.revisionId);
+  if (revisionIds.length > 0) {
+    const revisionRows = await tx
+      .select({
+        sourceRevisionId: sourceRevisions.sourceRevisionId,
+        projectId: sourceRevisions.projectId,
+      })
+      .from(sourceRevisions)
+      .where(inArray(sourceRevisions.sourceRevisionId, revisionIds));
+    for (const row of revisionRows) {
+      if (row.projectId !== projectId) {
+        throw new Error(
+          `source revision ${row.sourceRevisionId} already belongs to project ${row.projectId}`,
+        );
+      }
+    }
+  }
+
+  const assetIds = normalized.assets.map((asset) => asset.assetId);
+  if (assetIds.length > 0) {
+    const assetRows = await tx
+      .select({
+        assetId: assets.assetId,
+        projectId: assets.projectId,
+        sourceBundleId: assets.sourceBundleId,
+      })
+      .from(assets)
+      .where(inArray(assets.assetId, assetIds));
+    for (const row of assetRows) {
+      if (row.projectId !== projectId || row.sourceBundleId !== normalized.sourceBundleId) {
+        throw new Error(
+          `asset ${row.assetId} already belongs to project ${row.projectId} source bundle ${row.sourceBundleId}`,
+        );
+      }
+    }
+  }
+
+  const bridgeUnitIds = normalized.units.map((unit) => unit.bridgeUnitId);
+  if (bridgeUnitIds.length > 0) {
+    const unitRows = await tx
+      .select({
+        bridgeUnitId: sourceUnits.bridgeUnitId,
+        projectId: sourceUnits.projectId,
+        sourceBundleId: sourceUnits.sourceBundleId,
+      })
+      .from(sourceUnits)
+      .where(inArray(sourceUnits.bridgeUnitId, bridgeUnitIds));
+    for (const row of unitRows) {
+      if (row.projectId !== projectId || row.sourceBundleId !== normalized.sourceBundleId) {
+        throw new Error(
+          `bridge unit ${row.bridgeUnitId} already belongs to project ${row.projectId} source bundle ${row.sourceBundleId}`,
+        );
+      }
+    }
+  }
+}
+
+function assertUniqueNormalizedUnitIds(units: LocalizationUnitV02[]): void {
+  const bridgeUnitIds = new Set<string>();
+  for (const unit of units) {
+    if (bridgeUnitIds.has(unit.bridgeUnitId)) {
+      throw new Error(`bridgeUnitId ${unit.bridgeUnitId} must be unique within the import`);
+    }
+    bridgeUnitIds.add(unit.bridgeUnitId);
+  }
+}
 
 async function diffSourceBundleImport(
   tx: ItotoriTransaction,

@@ -1685,9 +1685,14 @@ export function assertBridgeBundleV02(value: unknown): asserts value is BridgeBu
   }
 
   const units = asArray(bundle.units, "BridgeBundleV02.units");
+  const bridgeUnitIds = new Set<Uuid7>();
   for (const [index, unit] of units.entries()) {
     const label = `BridgeBundleV02.units[${index}]`;
     assertLocalizationUnitV02(unit, label);
+    if (bridgeUnitIds.has(unit.bridgeUnitId)) {
+      throw new Error(`${label}.bridgeUnitId must be unique within BridgeBundleV02.units`);
+    }
+    bridgeUnitIds.add(unit.bridgeUnitId);
     assertLocalizationUnitAssetRefsExist(unit, label, assetIds);
     assertPatchRefMatchesUnitV02(unit, label);
   }

@@ -1,4 +1,5 @@
-import { assertBridgeBundle, assertRuntimeReport } from "@itotori/localization-bridge-schema";
+import { assertRuntimeReport } from "@itotori/localization-bridge-schema";
+import { assertBridgeInput } from "./api-schema.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
 
@@ -68,7 +69,7 @@ async function runImport(args: string[], dependencies: ItotoriCliDependencies): 
   const bridgePath = requiredFlag(args, "--bridge");
   const projectPath = requiredFlag(args, "--project");
   const bridge = dependencies.io.readJson(bridgePath);
-  assertBridgeBundle(bridge);
+  assertBridgeInput(bridge);
   const project = await dependencies.withServices((services) =>
     services.projectWorkflow.importBridge(bridge),
   );

@@ -303,6 +303,12 @@ function assertBridgeImportStatus(value: unknown, label: string): void {
   const sourceRevisions = asRecord(status.sourceRevisions, `${label}.sourceRevisions`);
   assertNonNegativeInteger(sourceRevisions.added, `${label}.sourceRevisions.added`);
   assertNonNegativeInteger(sourceRevisions.existing, `${label}.sourceRevisions.existing`);
+  assertCountTotal(status.units, status.unitCount, `${label}.units`, `${label}.unitCount`);
+  assertCountTotal(status.assets, status.assetCount, `${label}.assets`, `${label}.assetCount`);
+  const sourceRevisionTotal = Number(sourceRevisions.added) + Number(sourceRevisions.existing);
+  if (sourceRevisionTotal !== Number(status.sourceRevisionCount)) {
+    throw new Error(`${label}.sourceRevisions must add up to ${label}.sourceRevisionCount`);
+  }
   const futureReferences = asRecord(status.futureReferences, `${label}.futureReferences`);
   assertNullableString(futureReferences.catalogWorkId, `${label}.futureReferences.catalogWorkId`);
   assertNullableString(
@@ -325,6 +331,14 @@ function assertDiffCounts(value: unknown, label: string): void {
   assertNonNegativeInteger(counts.updated, `${label}.updated`);
   assertNonNegativeInteger(counts.removed, `${label}.removed`);
   assertNonNegativeInteger(counts.unchanged, `${label}.unchanged`);
+}
+
+function assertCountTotal(value: unknown, total: unknown, label: string, totalLabel: string): void {
+  const counts = asRecord(value, label);
+  const countTotal = Number(counts.added) + Number(counts.updated) + Number(counts.unchanged);
+  if (countTotal !== Number(total)) {
+    throw new Error(`${label} current counts must add up to ${totalLabel}`);
+  }
 }
 
 export function assertProjectCostReport(
@@ -515,7 +529,7 @@ function assertRuntimeEvidenceResponse(
   assertProjectDashboardStatus(response.dashboard, "ApiRuntimeEvidenceResponse.dashboard");
 }
 
-function assertBridgeInput(value: unknown): asserts value is BridgeBundle | BridgeBundleV02 {
+export function assertBridgeInput(value: unknown): asserts value is BridgeBundle | BridgeBundleV02 {
   const bridge = asRecord(value, "BridgeInput");
   if (bridge.schemaVersion === BRIDGE_SCHEMA_VERSION_V02) {
     assertBridgeBundleV02(value);
