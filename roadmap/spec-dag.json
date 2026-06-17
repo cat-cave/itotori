@@ -8360,6 +8360,89 @@
       ]
     },
     {
+      "id": "ITOTORI-060",
+      "title": "Bridge import source-unit retention",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["ITOTORI-006"],
+      "summary": "Replace hard-delete behavior for source units and assets removed during bridge reimport with tombstone, archive, or validity-window semantics so locale branch and runtime evidence history is preserved.",
+      "deliverables": [
+        "Source-unit retention model",
+        "Asset retention model",
+        "Repository reimport update",
+        "Dashboard/runtime query filtering updates",
+        "Reimport history regression tests"
+      ],
+      "acceptanceCriteria": [
+        "Reimporting a bundle that omits prior source units or assets no longer cascades away locale branch unit rows, runtime evidence refs, or historical findings",
+        "Current dashboard and export queries ignore inactive units/assets unless explicitly requesting history",
+        "Retention semantics preserve enough provenance to explain which source revision removed or superseded a unit"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Historical runtime evidence lost on reimport",
+        "Inactive units leaking into current exports",
+        "Retention model breaking source revision diffs"
+      ]
+    },
+    {
+      "id": "ITOTORI-061",
+      "title": "Bridge import guard coverage hardening",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["ITOTORI-006"],
+      "summary": "Broaden bridge import regression tests around ownership guards, source revision reuse, and import-status invariants after the alpha import foundation is stable.",
+      "deliverables": [
+        "Asset ownership guard regression tests",
+        "Source revision ownership guard regression tests",
+        "Negative import-status invariant tests",
+        "Import error diagnostic fixture updates"
+      ],
+      "acceptanceCriteria": [
+        "Asset ids and source revision ids reused outside the current project or bundle are rejected with semantic diagnostics",
+        "Import-status fixtures fail when totals, schema version, date fields, or future refs are inconsistent",
+        "Guard tests cover both repository and API or CLI-facing error surfaces where applicable"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Ownership guard branches untested",
+        "Import-status invariants accepted by shape-only validators",
+        "Repository/API diagnostic drift"
+      ]
+    },
+    {
       "id": "KAIFUU-047",
       "title": "Delta apply preflight completeness",
       "status": "in_progress",
