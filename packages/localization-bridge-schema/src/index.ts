@@ -157,6 +157,35 @@ export const SOURCE_REVISION_KINDS = [
 ] as const;
 export type SourceRevisionKindV02 = (typeof SOURCE_REVISION_KINDS)[number];
 
+export const HASH_ALGORITHMS = ["sha256"] as const;
+export type HashAlgorithmV02 = (typeof HASH_ALGORITHMS)[number];
+
+export const HASH_NORMALIZATIONS = ["utf8-nfc-lf-json-stable-v1", "bytes"] as const;
+export type HashNormalizationV02 = (typeof HASH_NORMALIZATIONS)[number];
+
+export const HASH_SCOPES = [
+  "source_profile",
+  "source_bundle",
+  "source_asset",
+  "source_unit",
+  "patch_export",
+  "delta_package",
+] as const;
+export type HashScopeV02 = (typeof HASH_SCOPES)[number];
+
+export const PATCH_RESULT_STATUSES_V02 = ["passed", "failed", "incompatible_source"] as const;
+export type PatchResultStatusV02 = (typeof PATCH_RESULT_STATUSES_V02)[number];
+
+export const PATCH_COMPATIBILITY_STATUSES_V02 = ["compatible", "incompatible"] as const;
+export type PatchCompatibilityStatusV02 = (typeof PATCH_COMPATIBILITY_STATUSES_V02)[number];
+
+export const PATCH_INCOMPATIBILITY_REASONS_V02 = [
+  "source_hash_mismatch",
+  "missing_source_unit",
+  "duplicate_source_unit_key",
+] as const;
+export type PatchIncompatibilityReasonV02 = (typeof PATCH_INCOMPATIBILITY_REASONS_V02)[number];
+
 export const RUNTIME_EXPECTATION_KINDS = [
   "trace_text",
   "layout_probe",
@@ -227,11 +256,34 @@ export const IMAGE_REPLACEMENT_MODES = [
 ] as const;
 export type ImageReplacementModeV02 = (typeof IMAGE_REPLACEMENT_MODES)[number];
 
+export type HashRuleV02<Scope extends HashScopeV02 = HashScopeV02> = {
+  scope: Scope;
+  algorithm: HashAlgorithmV02;
+  normalization: HashNormalizationV02;
+  fields?: string[];
+};
+
+export type HashStrategyV02 = {
+  sourceProfile: HashRuleV02<"source_profile">;
+  sourceBundle: HashRuleV02<"source_bundle">;
+  sourceAsset: HashRuleV02<"source_asset">;
+  sourceUnit: HashRuleV02<"source_unit">;
+  patchExport: HashRuleV02<"patch_export">;
+  deltaPackage: HashRuleV02<"delta_package">;
+};
+
 export type SourceRevisionV02 = {
   revisionId: Uuid7;
   revisionKind: SourceRevisionKindV02;
   value: string;
   createdAt?: string;
+};
+
+export type SourceGameRevisionV02 = {
+  gameId: string;
+  gameVersion: string;
+  sourceProfileId: string;
+  sourceProfileRevision: SourceRevisionV02;
 };
 
 export type AssetRefV02 = {
@@ -446,8 +498,11 @@ export type PolicyRecordV02 = {
 export type BridgeBundleV02 = {
   schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
   bridgeId: Uuid7;
+  sourceGame: SourceGameRevisionV02;
   sourceBundleHash: string;
+  sourceBundleRevision: SourceRevisionV02;
   sourceLocale: Bcp47Locale;
+  hashStrategy: HashStrategyV02;
   extractor: {
     name: string;
     version: string;
@@ -455,6 +510,77 @@ export type BridgeBundleV02 = {
   assets: BridgeAssetV02[];
   units: LocalizationUnitV02[];
   policyRecords: PolicyRecordV02[];
+};
+
+export type PatchExportEntryV02 = {
+  entryId: Uuid7;
+  bridgeUnitId: Uuid7;
+  sourceUnitKey: string;
+  sourceHash: string;
+  sourceRevision: SourceRevisionV02;
+  targetText: string;
+  protectedSpanMappings: Array<{ raw: string; targetStart: number; targetEnd: number }>;
+};
+
+export type PatchExportV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  patchExportId: Uuid7;
+  sourceBridgeId: Uuid7;
+  sourceGame: SourceGameRevisionV02;
+  sourceBundleHash: string;
+  sourceBundleRevision: SourceRevisionV02;
+  sourceLocale: Bcp47Locale;
+  targetLocale: Bcp47Locale;
+  hashStrategy: HashStrategyV02;
+  patchExportHash?: string;
+  generatedAt?: string;
+  entries: PatchExportEntryV02[];
+};
+
+export type UnitSourceCompatibilityV02 = {
+  entryId: Uuid7;
+  bridgeUnitId: Uuid7;
+  sourceUnitKey: string;
+  status: PatchCompatibilityStatusV02;
+  expectedSourceHash: string;
+  actualSourceHash?: string;
+  reason?: PatchIncompatibilityReasonV02;
+};
+
+export type PatchSourceCompatibilityReportV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  patchExportId: Uuid7;
+  sourceBridgeId: Uuid7;
+  status: PatchCompatibilityStatusV02;
+  expectedSourceBundleHash: string;
+  actualSourceBundleHash: string;
+  sourceBundleHashMatches: boolean;
+  compatibleUnits: UnitSourceCompatibilityV02[];
+  incompatibleUnits: UnitSourceCompatibilityV02[];
+};
+
+export type PatchResultV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  patchResultId: Uuid7;
+  patchExportId: Uuid7;
+  status: PatchResultStatusV02;
+  outputHash?: string;
+  failures: string[];
+  sourceCompatibility?: PatchSourceCompatibilityReportV02;
+};
+
+export type DeltaPackageMetadataV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  deltaPackageId: Uuid7;
+  sourceBridgeId: Uuid7;
+  sourceGame: SourceGameRevisionV02;
+  sourceBundleHash: string;
+  sourceBundleRevision: SourceRevisionV02;
+  generatedPatchExportId: Uuid7;
+  generatedPatchExportHash: string;
+  targetLocale: Bcp47Locale;
+  hashStrategy: HashStrategyV02;
+  createdAt?: string;
 };
 
 export function assertBridgeBundle(value: unknown): asserts value is BridgeBundle {
@@ -470,8 +596,16 @@ export function assertBridgeBundleV02(value: unknown): asserts value is BridgeBu
   const bundle = asRecord(value, "BridgeBundleV02");
   assertEqual(bundle.schemaVersion, BRIDGE_SCHEMA_VERSION_V02, "BridgeBundleV02.schemaVersion");
   assertUuid7(bundle.bridgeId, "BridgeBundleV02.bridgeId");
-  assertString(bundle.sourceBundleHash, "BridgeBundleV02.sourceBundleHash");
+  assertSourceGameRevisionV02(bundle.sourceGame, "BridgeBundleV02.sourceGame");
+  assertHashStringV02(bundle.sourceBundleHash, "BridgeBundleV02.sourceBundleHash");
+  assertSourceRevisionV02(bundle.sourceBundleRevision, "BridgeBundleV02.sourceBundleRevision");
+  assertRevisionHashMatchesV02(
+    bundle.sourceBundleRevision,
+    bundle.sourceBundleHash,
+    "BridgeBundleV02.sourceBundleRevision",
+  );
   assertString(bundle.sourceLocale, "BridgeBundleV02.sourceLocale");
+  assertHashStrategyV02(bundle.hashStrategy, "BridgeBundleV02.hashStrategy");
   assertExtractor(bundle.extractor, "BridgeBundleV02.extractor");
 
   const assets = asArray(bundle.assets, "BridgeBundleV02.assets");
@@ -490,6 +624,7 @@ export function assertBridgeBundleV02(value: unknown): asserts value is BridgeBu
     const label = `BridgeBundleV02.units[${index}]`;
     assertLocalizationUnitV02(unit, label);
     assertLocalizationUnitAssetRefsExist(unit, label, assetIds);
+    assertPatchRefMatchesUnitV02(unit, label);
   }
 
   const policyRecords = asArray(bundle.policyRecords, "BridgeBundleV02.policyRecords");
@@ -505,6 +640,185 @@ export function assertPatchExport(value: unknown): asserts value is PatchExport 
   assertString(patch.sourceBridgeId, "PatchExport.sourceBridgeId");
   assertString(patch.targetLocale, "PatchExport.targetLocale");
   assertArray(patch.entries, "PatchExport.entries");
+}
+
+export function assertPatchExportV02(value: unknown): asserts value is PatchExportV02 {
+  const patch = asRecord(value, "PatchExportV02");
+  assertEqual(patch.schemaVersion, BRIDGE_SCHEMA_VERSION_V02, "PatchExportV02.schemaVersion");
+  assertUuid7(patch.patchExportId, "PatchExportV02.patchExportId");
+  assertUuid7(patch.sourceBridgeId, "PatchExportV02.sourceBridgeId");
+  assertSourceGameRevisionV02(patch.sourceGame, "PatchExportV02.sourceGame");
+  assertHashStringV02(patch.sourceBundleHash, "PatchExportV02.sourceBundleHash");
+  assertSourceRevisionV02(patch.sourceBundleRevision, "PatchExportV02.sourceBundleRevision");
+  assertRevisionHashMatchesV02(
+    patch.sourceBundleRevision,
+    patch.sourceBundleHash,
+    "PatchExportV02.sourceBundleRevision",
+  );
+  assertString(patch.sourceLocale, "PatchExportV02.sourceLocale");
+  assertString(patch.targetLocale, "PatchExportV02.targetLocale");
+  assertHashStrategyV02(patch.hashStrategy, "PatchExportV02.hashStrategy");
+  assertOptionalHashStringV02(patch.patchExportHash, "PatchExportV02.patchExportHash");
+  assertOptionalString(patch.generatedAt, "PatchExportV02.generatedAt");
+  const entries = asArray(patch.entries, "PatchExportV02.entries");
+  const entryKeys = new Set<string>();
+  for (const [index, entry] of entries.entries()) {
+    const label = `PatchExportV02.entries[${index}]`;
+    assertPatchExportEntryV02(entry, label);
+    const entryKey = `${entry.bridgeUnitId}\0${entry.sourceUnitKey}`;
+    if (entryKeys.has(entryKey)) {
+      throw new Error(`${label} must be unique by bridgeUnitId and sourceUnitKey`);
+    }
+    entryKeys.add(entryKey);
+  }
+}
+
+export function assertPatchResultV02(value: unknown): asserts value is PatchResultV02 {
+  const result = asRecord(value, "PatchResultV02");
+  assertEqual(result.schemaVersion, BRIDGE_SCHEMA_VERSION_V02, "PatchResultV02.schemaVersion");
+  assertUuid7(result.patchResultId, "PatchResultV02.patchResultId");
+  assertUuid7(result.patchExportId, "PatchResultV02.patchExportId");
+  assertEnum(result.status, PATCH_RESULT_STATUSES_V02, "PatchResultV02.status");
+  assertOptionalHashStringV02(result.outputHash, "PatchResultV02.outputHash");
+  assertStringArray(result.failures, "PatchResultV02.failures");
+  if (result.sourceCompatibility !== undefined) {
+    assertPatchSourceCompatibilityReportV02(
+      result.sourceCompatibility,
+      "PatchResultV02.sourceCompatibility",
+    );
+    if (result.sourceCompatibility.patchExportId !== result.patchExportId) {
+      throw new Error(
+        "PatchResultV02.sourceCompatibility.patchExportId must match PatchResultV02.patchExportId",
+      );
+    }
+    if (
+      result.sourceCompatibility.status === "incompatible" &&
+      result.status !== "incompatible_source"
+    ) {
+      throw new Error(
+        "PatchResultV02.status must be incompatible_source when sourceCompatibility.status is incompatible",
+      );
+    }
+  }
+  if (result.status === "incompatible_source" && result.sourceCompatibility === undefined) {
+    throw new Error("PatchResultV02.sourceCompatibility is required for incompatible_source");
+  }
+  if (
+    result.status === "incompatible_source" &&
+    result.sourceCompatibility?.status !== "incompatible"
+  ) {
+    throw new Error(
+      "PatchResultV02.sourceCompatibility.status must be incompatible for incompatible_source",
+    );
+  }
+}
+
+export function assertDeltaPackageMetadataV02(
+  value: unknown,
+): asserts value is DeltaPackageMetadataV02 {
+  const metadata = asRecord(value, "DeltaPackageMetadataV02");
+  assertEqual(
+    metadata.schemaVersion,
+    BRIDGE_SCHEMA_VERSION_V02,
+    "DeltaPackageMetadataV02.schemaVersion",
+  );
+  assertUuid7(metadata.deltaPackageId, "DeltaPackageMetadataV02.deltaPackageId");
+  assertUuid7(metadata.sourceBridgeId, "DeltaPackageMetadataV02.sourceBridgeId");
+  assertSourceGameRevisionV02(metadata.sourceGame, "DeltaPackageMetadataV02.sourceGame");
+  assertHashStringV02(metadata.sourceBundleHash, "DeltaPackageMetadataV02.sourceBundleHash");
+  assertSourceRevisionV02(
+    metadata.sourceBundleRevision,
+    "DeltaPackageMetadataV02.sourceBundleRevision",
+  );
+  assertRevisionHashMatchesV02(
+    metadata.sourceBundleRevision,
+    metadata.sourceBundleHash,
+    "DeltaPackageMetadataV02.sourceBundleRevision",
+  );
+  assertUuid7(metadata.generatedPatchExportId, "DeltaPackageMetadataV02.generatedPatchExportId");
+  assertHashStringV02(
+    metadata.generatedPatchExportHash,
+    "DeltaPackageMetadataV02.generatedPatchExportHash",
+  );
+  assertString(metadata.targetLocale, "DeltaPackageMetadataV02.targetLocale");
+  assertHashStrategyV02(metadata.hashStrategy, "DeltaPackageMetadataV02.hashStrategy");
+  assertOptionalString(metadata.createdAt, "DeltaPackageMetadataV02.createdAt");
+}
+
+export function evaluatePatchExportCompatibilityV02(
+  patchExport: unknown,
+  bridgeBundle: unknown,
+): PatchSourceCompatibilityReportV02 {
+  assertPatchExportV02(patchExport);
+  assertBridgeBundleV02(bridgeBundle);
+
+  const unitsByKey = new Map<string, LocalizationUnitV02>();
+  const duplicateKeys = new Set<string>();
+  for (const unit of bridgeBundle.units) {
+    if (unitsByKey.has(unit.sourceUnitKey)) {
+      duplicateKeys.add(unit.sourceUnitKey);
+      continue;
+    }
+    unitsByKey.set(unit.sourceUnitKey, unit);
+  }
+
+  const compatibleUnits: UnitSourceCompatibilityV02[] = [];
+  const incompatibleUnits: UnitSourceCompatibilityV02[] = [];
+
+  for (const entry of patchExport.entries) {
+    const base: Omit<UnitSourceCompatibilityV02, "status"> = {
+      entryId: entry.entryId,
+      bridgeUnitId: entry.bridgeUnitId,
+      sourceUnitKey: entry.sourceUnitKey,
+      expectedSourceHash: entry.sourceHash,
+    };
+    if (duplicateKeys.has(entry.sourceUnitKey)) {
+      incompatibleUnits.push({
+        ...base,
+        status: "incompatible",
+        reason: "duplicate_source_unit_key",
+      });
+      continue;
+    }
+
+    const currentUnit = unitsByKey.get(entry.sourceUnitKey);
+    if (currentUnit === undefined) {
+      incompatibleUnits.push({
+        ...base,
+        status: "incompatible",
+        reason: "missing_source_unit",
+      });
+      continue;
+    }
+
+    if (currentUnit.sourceHash !== entry.sourceHash) {
+      incompatibleUnits.push({
+        ...base,
+        status: "incompatible",
+        actualSourceHash: currentUnit.sourceHash,
+        reason: "source_hash_mismatch",
+      });
+      continue;
+    }
+
+    compatibleUnits.push({
+      ...base,
+      status: "compatible",
+      actualSourceHash: currentUnit.sourceHash,
+    });
+  }
+
+  return {
+    schemaVersion: BRIDGE_SCHEMA_VERSION_V02,
+    patchExportId: patchExport.patchExportId,
+    sourceBridgeId: patchExport.sourceBridgeId,
+    status: incompatibleUnits.length === 0 ? "compatible" : "incompatible",
+    expectedSourceBundleHash: patchExport.sourceBundleHash,
+    actualSourceBundleHash: bridgeBundle.sourceBundleHash,
+    sourceBundleHashMatches: patchExport.sourceBundleHash === bridgeBundle.sourceBundleHash,
+    compatibleUnits,
+    incompatibleUnits,
+  };
 }
 
 export function assertRuntimeVerificationReport(
@@ -529,8 +843,9 @@ function assertBridgeAssetV02(value: unknown, label: string): asserts value is B
   assertUuid7(asset.assetId, `${label}.assetId`);
   assertString(asset.assetKey, `${label}.assetKey`);
   assertEnum(asset.assetKind, ASSET_KINDS, `${label}.assetKind`);
-  assertString(asset.sourceHash, `${label}.sourceHash`);
+  assertHashStringV02(asset.sourceHash, `${label}.sourceHash`);
   assertSourceRevisionV02(asset.sourceRevision, `${label}.sourceRevision`);
+  assertRevisionHashMatchesV02(asset.sourceRevision, asset.sourceHash, `${label}.sourceRevision`);
   assertOptionalString(asset.path, `${label}.path`);
 }
 
@@ -546,7 +861,7 @@ function assertLocalizationUnitV02(
   assertString(unit.occurrenceId, `${label}.occurrenceId`);
   assertString(unit.sourceLocale, `${label}.sourceLocale`);
   assertString(unit.sourceText, `${label}.sourceText`);
-  assertString(unit.sourceHash, `${label}.sourceHash`);
+  assertHashStringV02(unit.sourceHash, `${label}.sourceHash`);
   assertSourceRevisionV02(unit.sourceRevision, `${label}.sourceRevision`);
   assertAssetRefV02(unit.sourceAssetRef, `${label}.sourceAssetRef`);
   assertSourceLocationV02(unit.sourceLocation, `${label}.sourceLocation`);
@@ -589,6 +904,67 @@ function assertKnownAssetIdV02(assetId: Uuid7, label: string, assetIds: Readonly
   }
 }
 
+function assertHashStrategyV02(value: unknown, label: string): asserts value is HashStrategyV02 {
+  const strategy = asRecord(value, label);
+  const sourceProfile = strategy.sourceProfile;
+  const sourceBundle = strategy.sourceBundle;
+  const sourceAsset = strategy.sourceAsset;
+  const sourceUnit = strategy.sourceUnit;
+  const patchExport = strategy.patchExport;
+  const deltaPackage = strategy.deltaPackage;
+  assertHashRuleV02(sourceProfile, `${label}.sourceProfile`, "source_profile");
+  assertHashRuleV02(sourceBundle, `${label}.sourceBundle`, "source_bundle");
+  assertHashRuleV02(sourceAsset, `${label}.sourceAsset`, "source_asset");
+  assertHashRuleV02(sourceUnit, `${label}.sourceUnit`, "source_unit");
+  assertHashRuleV02(patchExport, `${label}.patchExport`, "patch_export");
+  assertHashRuleV02(deltaPackage, `${label}.deltaPackage`, "delta_package");
+  assertHashRuleNormalizationV02(sourceProfile, `${label}.sourceProfile`, [
+    "utf8-nfc-lf-json-stable-v1",
+  ]);
+  assertHashRuleNormalizationV02(sourceBundle, `${label}.sourceBundle`, [
+    "utf8-nfc-lf-json-stable-v1",
+  ]);
+  assertHashRuleNormalizationV02(sourceAsset, `${label}.sourceAsset`, ["bytes"]);
+  assertHashRuleNormalizationV02(sourceUnit, `${label}.sourceUnit`, ["utf8-nfc-lf-json-stable-v1"]);
+  assertHashRuleNormalizationV02(patchExport, `${label}.patchExport`, [
+    "utf8-nfc-lf-json-stable-v1",
+  ]);
+  assertHashRuleNormalizationV02(deltaPackage, `${label}.deltaPackage`, [
+    "utf8-nfc-lf-json-stable-v1",
+  ]);
+  assertRequiredHashRuleFieldsV02(sourceUnit, `${label}.sourceUnit`);
+}
+
+function assertHashRuleV02<Scope extends HashScopeV02>(
+  value: unknown,
+  label: string,
+  scope: Scope,
+): asserts value is HashRuleV02<Scope> {
+  const rule = asRecord(value, label);
+  assertEqual(rule.scope, scope, `${label}.scope`);
+  assertEnum(rule.algorithm, HASH_ALGORITHMS, `${label}.algorithm`);
+  assertEnum(rule.normalization, HASH_NORMALIZATIONS, `${label}.normalization`);
+  if (rule.fields !== undefined) {
+    assertStringArray(rule.fields, `${label}.fields`);
+  }
+}
+
+function assertHashRuleNormalizationV02(
+  rule: HashRuleV02,
+  label: string,
+  allowedNormalizations: readonly HashNormalizationV02[],
+): void {
+  if (!allowedNormalizations.includes(rule.normalization)) {
+    throw new Error(`${label}.normalization must be ${allowedNormalizations.join(" or ")}`);
+  }
+}
+
+function assertRequiredHashRuleFieldsV02(rule: HashRuleV02, label: string): void {
+  if (rule.fields === undefined || rule.fields.length === 0) {
+    throw new Error(`${label}.fields must not be empty`);
+  }
+}
+
 function assertSourceRevisionV02(
   value: unknown,
   label: string,
@@ -597,7 +973,31 @@ function assertSourceRevisionV02(
   assertUuid7(revision.revisionId, `${label}.revisionId`);
   assertEnum(revision.revisionKind, SOURCE_REVISION_KINDS, `${label}.revisionKind`);
   assertString(revision.value, `${label}.value`);
+  if (revision.revisionKind === "content_hash") {
+    assertHashStringV02(revision.value, `${label}.value`);
+  }
   assertOptionalString(revision.createdAt, `${label}.createdAt`);
+}
+
+function assertSourceGameRevisionV02(
+  value: unknown,
+  label: string,
+): asserts value is SourceGameRevisionV02 {
+  const sourceGame = asRecord(value, label);
+  assertString(sourceGame.gameId, `${label}.gameId`);
+  assertString(sourceGame.gameVersion, `${label}.gameVersion`);
+  assertString(sourceGame.sourceProfileId, `${label}.sourceProfileId`);
+  assertSourceRevisionV02(sourceGame.sourceProfileRevision, `${label}.sourceProfileRevision`);
+}
+
+function assertRevisionHashMatchesV02(
+  revision: SourceRevisionV02,
+  hash: string,
+  label: string,
+): void {
+  if (revision.revisionKind === "content_hash" && revision.value !== hash) {
+    throw new Error(`${label}.value must equal the matching content hash`);
+  }
 }
 
 function assertAssetRefV02(value: unknown, label: string): asserts value is AssetRefV02 {
@@ -872,6 +1272,109 @@ function assertPatchRefV02(value: unknown, label: string): asserts value is Patc
   }
 }
 
+function assertPatchRefMatchesUnitV02(unit: LocalizationUnitV02, label: string): void {
+  if (unit.patchRef.sourceUnitKey !== unit.sourceUnitKey) {
+    throw new Error(`${label}.patchRef.sourceUnitKey must match ${label}.sourceUnitKey`);
+  }
+  if (unit.patchRef.sourceRevision.revisionId !== unit.sourceRevision.revisionId) {
+    throw new Error(`${label}.patchRef.sourceRevision.revisionId must match unit sourceRevision`);
+  }
+  if (unit.patchRef.sourceRevision.value !== unit.sourceRevision.value) {
+    throw new Error(`${label}.patchRef.sourceRevision.value must match unit sourceRevision`);
+  }
+}
+
+function assertPatchExportEntryV02(
+  value: unknown,
+  label: string,
+): asserts value is PatchExportEntryV02 {
+  const entry = asRecord(value, label);
+  assertUuid7(entry.entryId, `${label}.entryId`);
+  assertUuid7(entry.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertString(entry.sourceUnitKey, `${label}.sourceUnitKey`);
+  assertHashStringV02(entry.sourceHash, `${label}.sourceHash`);
+  assertSourceRevisionV02(entry.sourceRevision, `${label}.sourceRevision`);
+  assertString(entry.targetText, `${label}.targetText`);
+  const mappings = asArray(entry.protectedSpanMappings, `${label}.protectedSpanMappings`);
+  for (const [index, mapping] of mappings.entries()) {
+    assertProtectedSpanMappingV02(mapping, `${label}.protectedSpanMappings[${index}]`);
+  }
+}
+
+function assertProtectedSpanMappingV02(value: unknown, label: string): void {
+  const mapping = asRecord(value, label);
+  assertString(mapping.raw, `${label}.raw`);
+  assertNonNegativeInteger(mapping.targetStart, `${label}.targetStart`);
+  assertNonNegativeInteger(mapping.targetEnd, `${label}.targetEnd`);
+  if ((mapping.targetEnd as number) <= mapping.targetStart) {
+    throw new Error(`${label}.targetEnd must be greater than ${label}.targetStart`);
+  }
+}
+
+function assertPatchSourceCompatibilityReportV02(
+  value: unknown,
+  label: string,
+): asserts value is PatchSourceCompatibilityReportV02 {
+  const report = asRecord(value, label);
+  assertEqual(report.schemaVersion, BRIDGE_SCHEMA_VERSION_V02, `${label}.schemaVersion`);
+  assertUuid7(report.patchExportId, `${label}.patchExportId`);
+  assertUuid7(report.sourceBridgeId, `${label}.sourceBridgeId`);
+  assertEnum(report.status, PATCH_COMPATIBILITY_STATUSES_V02, `${label}.status`);
+  assertHashStringV02(report.expectedSourceBundleHash, `${label}.expectedSourceBundleHash`);
+  assertHashStringV02(report.actualSourceBundleHash, `${label}.actualSourceBundleHash`);
+  assertBoolean(report.sourceBundleHashMatches, `${label}.sourceBundleHashMatches`);
+  if (
+    report.sourceBundleHashMatches !==
+    (report.expectedSourceBundleHash === report.actualSourceBundleHash)
+  ) {
+    throw new Error(`${label}.sourceBundleHashMatches must match source bundle hashes`);
+  }
+  const compatibleUnits = asArray(report.compatibleUnits, `${label}.compatibleUnits`);
+  for (const [index, unit] of compatibleUnits.entries()) {
+    const unitLabel = `${label}.compatibleUnits[${index}]`;
+    assertUnitSourceCompatibilityV02(unit, unitLabel);
+    if (unit.status !== "compatible") {
+      throw new Error(`${unitLabel}.status must be compatible`);
+    }
+  }
+  const incompatibleUnits = asArray(report.incompatibleUnits, `${label}.incompatibleUnits`);
+  for (const [index, unit] of incompatibleUnits.entries()) {
+    const unitLabel = `${label}.incompatibleUnits[${index}]`;
+    assertUnitSourceCompatibilityV02(unit, unitLabel);
+    if (unit.status !== "incompatible") {
+      throw new Error(`${unitLabel}.status must be incompatible`);
+    }
+  }
+  if (report.status === "compatible" && incompatibleUnits.length > 0) {
+    throw new Error(`${label}.status cannot be compatible with incompatibleUnits`);
+  }
+  if (report.status === "incompatible" && incompatibleUnits.length === 0) {
+    throw new Error(`${label}.status cannot be incompatible with empty incompatibleUnits`);
+  }
+}
+
+function assertUnitSourceCompatibilityV02(
+  value: unknown,
+  label: string,
+): asserts value is UnitSourceCompatibilityV02 {
+  const unit = asRecord(value, label);
+  assertUuid7(unit.entryId, `${label}.entryId`);
+  assertUuid7(unit.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertString(unit.sourceUnitKey, `${label}.sourceUnitKey`);
+  assertEnum(unit.status, PATCH_COMPATIBILITY_STATUSES_V02, `${label}.status`);
+  assertHashStringV02(unit.expectedSourceHash, `${label}.expectedSourceHash`);
+  assertOptionalHashStringV02(unit.actualSourceHash, `${label}.actualSourceHash`);
+  if (unit.reason !== undefined) {
+    assertEnum(unit.reason, PATCH_INCOMPATIBILITY_REASONS_V02, `${label}.reason`);
+  }
+  if (unit.status === "incompatible" && unit.reason === undefined) {
+    throw new Error(`${label}.reason is required for incompatible units`);
+  }
+  if (unit.status === "compatible" && unit.reason !== undefined) {
+    throw new Error(`${label}.reason is only valid for incompatible units`);
+  }
+}
+
 function assertPolicyRecordV02(value: unknown, label: string): asserts value is PolicyRecordV02 {
   const record = asRecord(value, label);
   assertUuid7(record.policyRecordId, `${label}.policyRecordId`);
@@ -921,9 +1424,25 @@ function assertString(value: unknown, label: string): asserts value is string {
   }
 }
 
+function assertHashStringV02(value: unknown, label: string): asserts value is string {
+  assertString(value, label);
+  if (!/^sha256:[0-9a-f]{64}$/.test(value)) {
+    throw new Error(`${label} must be a canonical sha256 hash string`);
+  }
+}
+
 function assertOptionalString(value: unknown, label: string): asserts value is string | undefined {
   if (value !== undefined) {
     assertString(value, label);
+  }
+}
+
+function assertOptionalHashStringV02(
+  value: unknown,
+  label: string,
+): asserts value is string | undefined {
+  if (value !== undefined) {
+    assertHashStringV02(value, label);
   }
 }
 

@@ -28,6 +28,10 @@ of:
 | ------------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `schemaVersion: "0.1.0"`                         | `schemaVersion: "0.2.0"`               | Versioned readers must dispatch explicitly.                                                                          |
 | `bridgeId`                                       | `bridgeId`                             | Must be a valid UUID7 string.                                                                                        |
+| none                                             | `sourceGame`                           | Identifies the source game version and extraction profile revision used for this bundle.                             |
+| `sourceBundleHash`                               | `sourceBundleHash`                     | Must be a canonical lowercase `sha256:` hash with a 64-hex SHA-256 digest.                                           |
+| none                                             | `sourceBundleRevision`                 | Mirrors the bundle content hash when `revisionKind` is `content_hash`; delta metadata traces back to this revision.  |
+| none                                             | `hashStrategy`                         | Declares per-scope hash rules for source profile, bundle, asset, unit, patch export, and delta package hashes.       |
 | `extractorName`, `extractorVersion`              | `extractor.name`, `extractor.version`  | Removes fixture-specific extractor naming from the shared shape.                                                     |
 | none                                             | `assets[]`                             | Assets are first-class and carry UUID7 ids, neutral `assetKind`, source hash, and `sourceRevision`.                  |
 | `units[].bridgeUnitId`                           | `units[].bridgeUnitId`                 | Must be a valid UUID7 string.                                                                                        |
@@ -61,6 +65,25 @@ Do not collapse unknown speakers into a single string or boolean.
 
 - v0.1 hello-world payloads should keep using the existing v0.1 guard until the
   Kaifuu, Itotori, and Utsushi fixture pipeline is intentionally versioned.
+- v0.2 hashes use canonical lowercase `sha256:` strings plus `hashStrategy` to
+  name the algorithm, normalization, and source scope. The current source-unit
+  text strategy is `utf8-nfc-lf-json-stable-v1` with explicit source fields;
+  the source-asset strategy uses `bytes` so binary asset hashing is not
+  confused with text normalization.
+- v0.2 patch exports carry source game/profile, source bundle revision, and
+  per-entry source hash/revision metadata. Patch application compatibility is
+  decided by `sourceUnitKey` plus unit-level `sourceHash`. A bundle hash change
+  must be reported for traceability, but it must not invalidate unchanged units
+  whose unit hash still matches.
+- `evaluatePatchExportCompatibilityV02` returns compatible and incompatible
+  unit lists. `source_hash_mismatch` includes both expected and actual source
+  hashes so stale patches cannot pass silently.
+- `PatchResultV02.status: "incompatible_source"` requires a
+  `sourceCompatibility` report. Use it when patch application rejects or skips
+  stale entries.
+- `DeltaPackageMetadataV02` traces delta packages to the source bridge, source
+  game/profile revision, source bundle revision, generated patch export id/hash,
+  target locale, and hash strategy.
 - v0.2 rejects non-UUID7 ids for bridge, asset, unit, surface, span, source
   revision, choice, route, speaker, policy, and locale branch ids.
 - v0.2 rejects unknown category strings for known enums such as surface kinds,

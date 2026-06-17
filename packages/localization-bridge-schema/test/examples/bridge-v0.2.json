@@ -1,8 +1,56 @@
 {
   "schemaVersion": "0.2.0",
   "bridgeId": "019ed001-0000-7000-8000-000000000001",
-  "sourceBundleHash": "sha256:bundle-v02-example",
+  "sourceGame": {
+    "gameId": "itotori-demo",
+    "gameVersion": "1.0.0",
+    "sourceProfileId": "kaifuu-fixture-default",
+    "sourceProfileRevision": {
+      "revisionId": "019ed001-0000-7000-8000-000000000111",
+      "revisionKind": "content_hash",
+      "value": "sha256:740db868d01d40e5077dcc39dc348897d5249928c479304a111068295d9d2732"
+    }
+  },
+  "sourceBundleHash": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+  "sourceBundleRevision": {
+    "revisionId": "019ed001-0000-7000-8000-000000000112",
+    "revisionKind": "content_hash",
+    "value": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647"
+  },
   "sourceLocale": "en-US",
+  "hashStrategy": {
+    "sourceProfile": {
+      "scope": "source_profile",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    },
+    "sourceBundle": {
+      "scope": "source_bundle",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    },
+    "sourceAsset": {
+      "scope": "source_asset",
+      "algorithm": "sha256",
+      "normalization": "bytes"
+    },
+    "sourceUnit": {
+      "scope": "source_unit",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1",
+      "fields": ["sourceLocale", "sourceUnitKey", "sourceText", "spans.raw"]
+    },
+    "patchExport": {
+      "scope": "patch_export",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    },
+    "deltaPackage": {
+      "scope": "delta_package",
+      "algorithm": "sha256",
+      "normalization": "utf8-nfc-lf-json-stable-v1"
+    }
+  },
   "extractor": {
     "name": "kaifuu-contract-example",
     "version": "0.2.0"
@@ -12,11 +60,11 @@
       "assetId": "019ed001-0000-7000-8000-000000000002",
       "assetKey": "script/prologue",
       "assetKind": "script",
-      "sourceHash": "sha256:script-prologue",
+      "sourceHash": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000101",
         "revisionKind": "content_hash",
-        "value": "sha256:script-prologue"
+        "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
       },
       "path": "scenario/prologue.txt"
     },
@@ -24,11 +72,11 @@
       "assetId": "019ed001-0000-7000-8000-000000000003",
       "assetKey": "image/sign-caution",
       "assetKind": "image",
-      "sourceHash": "sha256:image-sign-caution",
+      "sourceHash": "sha256:6cede90c0fb92d984efc734f7a1670dd63094c315113a011b55c53856f33ab9b",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000102",
         "revisionKind": "content_hash",
-        "value": "sha256:image-sign-caution"
+        "value": "sha256:6cede90c0fb92d984efc734f7a1670dd63094c315113a011b55c53856f33ab9b"
       },
       "path": "images/sign-caution.png"
     },
@@ -36,11 +84,11 @@
       "assetId": "019ed001-0000-7000-8000-000000000004",
       "assetKey": "database/items",
       "assetKind": "database",
-      "sourceHash": "sha256:database-items",
+      "sourceHash": "sha256:1d6609b0d72ec09db19b88e111a61aa5d073b5acc4e1b58fa9eeb62c9818f8a0",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000103",
         "revisionKind": "content_hash",
-        "value": "sha256:database-items"
+        "value": "sha256:1d6609b0d72ec09db19b88e111a61aa5d073b5acc4e1b58fa9eeb62c9818f8a0"
       },
       "path": "data/items.json"
     },
@@ -48,11 +96,11 @@
       "assetId": "019ed001-0000-7000-8000-000000000005",
       "assetKey": "ui/menu",
       "assetKind": "ui_texture",
-      "sourceHash": "sha256:ui-menu",
+      "sourceHash": "sha256:feb90c1c674f9c91f984d997336c94a7445e6624b41334ec9aea927b4db68b93",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000104",
         "revisionKind": "content_hash",
-        "value": "sha256:ui-menu"
+        "value": "sha256:feb90c1c674f9c91f984d997336c94a7445e6624b41334ec9aea927b4db68b93"
       },
       "path": "ui/menu.json"
     },
@@ -60,11 +108,11 @@
       "assetId": "019ed001-0000-7000-8000-000000000006",
       "assetKey": "audio/bgm/moonlit-path",
       "assetKind": "audio",
-      "sourceHash": "sha256:audio-moonlit-path",
+      "sourceHash": "sha256:46428e1eaf0d6f2d7137f61281efa72bdc2b17ca0bd06ac9f1f6fc5f6c4ceb4e",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000105",
         "revisionKind": "content_hash",
-        "value": "sha256:audio-moonlit-path"
+        "value": "sha256:46428e1eaf0d6f2d7137f61281efa72bdc2b17ca0bd06ac9f1f6fc5f6c4ceb4e"
       },
       "path": "audio/bgm/moonlit-path.ogg"
     },
@@ -72,11 +120,11 @@
       "assetId": "019ed001-0000-7000-8000-000000000007",
       "assetKey": "metadata/package",
       "assetKind": "metadata",
-      "sourceHash": "sha256:metadata-package",
+      "sourceHash": "sha256:c1a2780fe5ae066f93e516700c34d84fd3eb3d3f179116c47aea9af50a4b1335",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000106",
         "revisionKind": "content_hash",
-        "value": "sha256:metadata-package"
+        "value": "sha256:c1a2780fe5ae066f93e516700c34d84fd3eb3d3f179116c47aea9af50a4b1335"
       },
       "path": "package.json"
     }
@@ -90,11 +138,11 @@
       "occurrenceId": "prologue-001",
       "sourceLocale": "en-US",
       "sourceText": "Hello, {player}.",
-      "sourceHash": "sha256:unit-dialogue-known",
+      "sourceHash": "sha256:fa01799c693dbf37732740572dde0106c2d67bed57a5955528687642896968e1",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000101",
         "revisionKind": "content_hash",
-        "value": "sha256:script-prologue"
+        "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000002",
@@ -145,7 +193,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000101",
           "revisionKind": "content_hash",
-          "value": "sha256:script-prologue"
+          "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
         }
       },
       "runtimeExpectation": {
@@ -161,11 +209,11 @@
       "occurrenceId": "prologue-002",
       "sourceLocale": "en-US",
       "sourceText": "The gate opens.",
-      "sourceHash": "sha256:unit-narration",
+      "sourceHash": "sha256:8566707ead9fabf49905b018e40ab4772e166d6f0c6e126ebdb5e6af7a7258ca",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000101",
         "revisionKind": "content_hash",
-        "value": "sha256:script-prologue"
+        "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000002"
@@ -196,7 +244,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000101",
           "revisionKind": "content_hash",
-          "value": "sha256:script-prologue"
+          "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
         }
       },
       "runtimeExpectation": {
@@ -212,11 +260,11 @@
       "occurrenceId": "prologue-name-001",
       "sourceLocale": "en-US",
       "sourceText": "Mira",
-      "sourceHash": "sha256:unit-speaker-name",
+      "sourceHash": "sha256:bc0dc0cd5dfa12579df9e1690fda5535debb59ce4e12cd7814ab6939986f27f3",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000101",
         "revisionKind": "content_hash",
-        "value": "sha256:script-prologue"
+        "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000002"
@@ -253,7 +301,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000101",
           "revisionKind": "content_hash",
-          "value": "sha256:script-prologue"
+          "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
         }
       },
       "runtimeExpectation": {
@@ -268,11 +316,11 @@
       "occurrenceId": "prologue-choice-001",
       "sourceLocale": "en-US",
       "sourceText": "Open the gate",
-      "sourceHash": "sha256:unit-choice",
+      "sourceHash": "sha256:e4f4fb349ffe195d1fbd8380b3b652078ad732423b93d0c6db2b745510f89041",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000101",
         "revisionKind": "content_hash",
-        "value": "sha256:script-prologue"
+        "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000002"
@@ -305,7 +353,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000101",
           "revisionKind": "content_hash",
-          "value": "sha256:script-prologue"
+          "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
         }
       },
       "runtimeExpectation": {
@@ -320,11 +368,11 @@
       "occurrenceId": "ui-menu-001",
       "sourceLocale": "en-US",
       "sourceText": "Inventory",
-      "sourceHash": "sha256:unit-ui",
+      "sourceHash": "sha256:101d2e286651dab1568aed57386129965b00fc23b99f63015d63d8831f2b3837",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000104",
         "revisionKind": "content_hash",
-        "value": "sha256:ui-menu"
+        "value": "sha256:feb90c1c674f9c91f984d997336c94a7445e6624b41334ec9aea927b4db68b93"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000005"
@@ -352,7 +400,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000104",
           "revisionKind": "content_hash",
-          "value": "sha256:ui-menu"
+          "value": "sha256:feb90c1c674f9c91f984d997336c94a7445e6624b41334ec9aea927b4db68b93"
         }
       },
       "runtimeExpectation": {
@@ -367,11 +415,11 @@
       "occurrenceId": "tutorial-001",
       "sourceLocale": "en-US",
       "sourceText": "Press {confirm} to inspect.",
-      "sourceHash": "sha256:unit-tutorial",
+      "sourceHash": "sha256:2a3dbcf17fc67f2bf68e4e3d287cbf049b7819d9ade2f185a51b989e3b63f9a0",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000101",
         "revisionKind": "content_hash",
-        "value": "sha256:script-prologue"
+        "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000002"
@@ -409,7 +457,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000101",
           "revisionKind": "content_hash",
-          "value": "sha256:script-prologue"
+          "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
         }
       },
       "runtimeExpectation": {
@@ -424,11 +472,11 @@
       "occurrenceId": "item-silver-key-name",
       "sourceLocale": "en-US",
       "sourceText": "Silver Key",
-      "sourceHash": "sha256:unit-database",
+      "sourceHash": "sha256:3d23f2692dc4aec948d4a4a8022f41f34ad4a2673335abb989263d266cb9efe1",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000103",
         "revisionKind": "content_hash",
-        "value": "sha256:database-items"
+        "value": "sha256:1d6609b0d72ec09db19b88e111a61aa5d073b5acc4e1b58fa9eeb62c9818f8a0"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000004"
@@ -457,7 +505,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000103",
           "revisionKind": "content_hash",
-          "value": "sha256:database-items"
+          "value": "sha256:1d6609b0d72ec09db19b88e111a61aa5d073b5acc4e1b58fa9eeb62c9818f8a0"
         }
       },
       "runtimeExpectation": {
@@ -472,11 +520,11 @@
       "occurrenceId": "song-title-001",
       "sourceLocale": "en-US",
       "sourceText": "Moonlit Path",
-      "sourceHash": "sha256:unit-song",
+      "sourceHash": "sha256:b077504094ec7b6c7d7bcdc29ede26252e029c00f600f92e151a7764679a4a55",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000105",
         "revisionKind": "content_hash",
-        "value": "sha256:audio-moonlit-path"
+        "value": "sha256:46428e1eaf0d6f2d7137f61281efa72bdc2b17ca0bd06ac9f1f6fc5f6c4ceb4e"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000006"
@@ -513,7 +561,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000105",
           "revisionKind": "content_hash",
-          "value": "sha256:audio-moonlit-path"
+          "value": "sha256:46428e1eaf0d6f2d7137f61281efa72bdc2b17ca0bd06ac9f1f6fc5f6c4ceb4e"
         }
       },
       "runtimeExpectation": {
@@ -528,11 +576,11 @@
       "occurrenceId": "image-text-001",
       "sourceLocale": "en-US",
       "sourceText": "CAUTION",
-      "sourceHash": "sha256:unit-image-text",
+      "sourceHash": "sha256:de2e0c229fba152ae0bb84c83452048b20f30e25b2a7c76b13862bb6096a72d0",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000102",
         "revisionKind": "content_hash",
-        "value": "sha256:image-sign-caution"
+        "value": "sha256:6cede90c0fb92d984efc734f7a1670dd63094c315113a011b55c53856f33ab9b"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000003"
@@ -567,7 +615,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000102",
           "revisionKind": "content_hash",
-          "value": "sha256:image-sign-caution"
+          "value": "sha256:6cede90c0fb92d984efc734f7a1670dd63094c315113a011b55c53856f33ab9b"
         },
         "constraints": ["preserve transparent background"]
       },
@@ -589,11 +637,11 @@
       "occurrenceId": "metadata-title-001",
       "sourceLocale": "en-US",
       "sourceText": "Itotori Demo",
-      "sourceHash": "sha256:unit-metadata",
+      "sourceHash": "sha256:79576c48aa7b37deacba266a71169b1e7ac5794fb58601300abf8b19925a9ddf",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000106",
         "revisionKind": "content_hash",
-        "value": "sha256:metadata-package"
+        "value": "sha256:c1a2780fe5ae066f93e516700c34d84fd3eb3d3f179116c47aea9af50a4b1335"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000007"
@@ -621,7 +669,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000106",
           "revisionKind": "content_hash",
-          "value": "sha256:metadata-package"
+          "value": "sha256:c1a2780fe5ae066f93e516700c34d84fd3eb3d3f179116c47aea9af50a4b1335"
         }
       },
       "runtimeExpectation": {
@@ -636,11 +684,11 @@
       "occurrenceId": "prologue-003",
       "sourceLocale": "en-US",
       "sourceText": "You found me.",
-      "sourceHash": "sha256:unit-dialogue-reader-unknown",
+      "sourceHash": "sha256:5efa573768919ae47892111b6055af8c225790f944a186b6f6762e18548406ff",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000101",
         "revisionKind": "content_hash",
-        "value": "sha256:script-prologue"
+        "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000002"
@@ -674,7 +722,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000101",
           "revisionKind": "content_hash",
-          "value": "sha256:script-prologue"
+          "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
         }
       },
       "runtimeExpectation": {
@@ -689,11 +737,11 @@
       "occurrenceId": "prologue-004",
       "sourceLocale": "en-US",
       "sourceText": "A voice calls.",
-      "sourceHash": "sha256:unit-dialogue-parser-unknown",
+      "sourceHash": "sha256:342f24f66608a50d3f4a621b0be7972b51ea233ba0bbd9d777b9e0f2847b9fa2",
       "sourceRevision": {
         "revisionId": "019ed001-0000-7000-8000-000000000101",
         "revisionKind": "content_hash",
-        "value": "sha256:script-prologue"
+        "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
       },
       "sourceAssetRef": {
         "assetId": "019ed001-0000-7000-8000-000000000002"
@@ -725,7 +773,7 @@
         "sourceRevision": {
           "revisionId": "019ed001-0000-7000-8000-000000000101",
           "revisionKind": "content_hash",
-          "value": "sha256:script-prologue"
+          "value": "sha256:81376ceef2e973d056e2be9d30b97a37b038527d102fe04feaa426a29ea0c155"
         }
       },
       "runtimeExpectation": {
