@@ -22,11 +22,13 @@ import {
 import {
   artifacts,
   assets,
+  eventOutbox,
   events,
   feedbackReportEvidence,
   feedbackReports,
   feedbackSources,
   findings,
+  jobQueue,
   localeBranches,
   localeBranchStatusValues,
   localeBranchUnits,
@@ -147,6 +149,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     await requirePermission(this.db, actor, permissionValues.systemReset);
     await this.db.execute(sql`
       truncate
+        ${jobQueue},
+        ${eventOutbox},
         ${feedbackReportEvidence},
         ${feedbackReports},
         ${feedbackSources},

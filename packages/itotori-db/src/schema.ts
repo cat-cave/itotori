@@ -8,6 +8,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 export const projectStatusValues = {
   imported: "imported",
@@ -26,6 +27,57 @@ export const localeBranchStatusValues = {
 
 export type LocaleBranchStatus =
   (typeof localeBranchStatusValues)[keyof typeof localeBranchStatusValues];
+
+export const outboxEventTypeValues = {
+  agentTaskRequested: "agent_task_requested",
+  deterministicToolTaskRequested: "deterministic_tool_task_requested",
+  rerunRequested: "rerun_requested",
+  triageLoopRequested: "triage_loop_requested",
+  jobScheduled: "job_scheduled",
+  jobCompleted: "job_completed",
+  jobFailed: "job_failed",
+  jobDeadLettered: "job_dead_lettered",
+} as const;
+
+export type OutboxEventType = (typeof outboxEventTypeValues)[keyof typeof outboxEventTypeValues];
+
+export const outboxStatusValues = {
+  pending: "pending",
+  publishing: "publishing",
+  published: "published",
+  retryWaiting: "retry_waiting",
+  deadLetter: "dead_letter",
+} as const;
+
+export type OutboxStatus = (typeof outboxStatusValues)[keyof typeof outboxStatusValues];
+
+export const jobTaskTypeValues = {
+  agentTask: "agent_task",
+  deterministicToolTask: "deterministic_tool_task",
+  rerun: "rerun",
+  triageLoop: "triage_loop",
+} as const;
+
+export type JobTaskType = (typeof jobTaskTypeValues)[keyof typeof jobTaskTypeValues];
+
+export const jobStatusValues = {
+  queued: "queued",
+  running: "running",
+  retryWaiting: "retry_waiting",
+  succeeded: "succeeded",
+  deadLetter: "dead_letter",
+  cancelled: "cancelled",
+} as const;
+
+export type JobStatus = (typeof jobStatusValues)[keyof typeof jobStatusValues];
+
+export const jobIdempotencyPolicyValues = {
+  idempotent: "idempotent",
+  nonIdempotent: "non_idempotent",
+} as const;
+
+export type JobIdempotencyPolicy =
+  (typeof jobIdempotencyPolicyValues)[keyof typeof jobIdempotencyPolicyValues];
 
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
@@ -269,6 +321,108 @@ export const events = pgTable(
     index("itotori_events_kind_time_idx").on(table.eventKind, table.occurredAt),
     index("itotori_events_task_idx").on(table.taskId),
     index("itotori_events_finding_idx").on(table.findingId),
+  ],
+);
+
+export const eventOutbox = pgTable(
+  "itotori_event_outbox",
+  {
+    outboxEventId: text("outbox_event_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id").references(() => localeBranches.localeBranchId, {
+      onDelete: "set null",
+    }),
+    sourceEventId: text("source_event_id").references(() => events.eventId, {
+      onDelete: "set null",
+    }),
+    eventType: text("event_type").notNull(),
+    status: text("status").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    correlationId: text("correlation_id").notNull(),
+    causationId: text("causation_id"),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(25),
+    lockedBy: text("locked_by"),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    errorHistory: jsonb("error_history")
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_event_outbox_idempotency_key_idx").on(table.idempotencyKey),
+    index("itotori_event_outbox_ready_idx").on(table.status, table.availableAt, table.createdAt),
+    index("itotori_event_outbox_project_type_idx").on(table.projectId, table.eventType),
+    index("itotori_event_outbox_source_event_idx").on(table.sourceEventId),
+    index("itotori_event_outbox_correlation_idx").on(table.correlationId),
+  ],
+);
+
+export const jobQueue = pgTable(
+  "itotori_jobs",
+  {
+    jobId: text("job_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id").references(() => localeBranches.localeBranchId, {
+      onDelete: "set null",
+    }),
+    sourceEventId: text("source_event_id").references(() => events.eventId, {
+      onDelete: "set null",
+    }),
+    triggerOutboxEventId: text("trigger_outbox_event_id").references(
+      () => eventOutbox.outboxEventId,
+      { onDelete: "set null" },
+    ),
+    jobType: text("job_type").notNull(),
+    jobName: text("job_name").notNull(),
+    queueName: text("queue_name").notNull().default("default"),
+    status: text("status").notNull(),
+    idempotencyPolicy: text("idempotency_policy").notNull(),
+    idempotencyKey: text("idempotency_key"),
+    correlationId: text("correlation_id").notNull(),
+    causationId: text("causation_id"),
+    subjectRefs: jsonb("subject_refs").$type<unknown[]>().notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    priority: integer("priority").notNull().default(0),
+    availableAt: timestamp("available_at", { withTimezone: true }).notNull().defaultNow(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(3),
+    lockedBy: text("locked_by"),
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    errorHistory: jsonb("error_history")
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    result: jsonb("result").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_jobs_idempotency_key_idx").on(table.idempotencyKey),
+    index("itotori_jobs_ready_idx").on(
+      table.queueName,
+      table.status,
+      table.availableAt,
+      table.priority,
+    ),
+    index("itotori_jobs_project_type_status_idx").on(table.projectId, table.jobType, table.status),
+    index("itotori_jobs_trigger_outbox_event_idx").on(table.triggerOutboxEventId),
+    index("itotori_jobs_source_event_idx").on(table.sourceEventId),
+    index("itotori_jobs_correlation_idx").on(table.correlationId),
   ],
 );
 
