@@ -15,6 +15,8 @@ export type DashboardServerOptions = {
   webRoot?: URL;
 };
 
+const dashboardListenHost = "127.0.0.1";
+
 export function createItotoriServer(options: DashboardServerOptions = {}) {
   const webRoot = options.webRoot ?? new URL("../web-dist/", import.meta.url);
   const serviceFactory =
@@ -85,8 +87,8 @@ function databaseOptions(options: DashboardServerOptions) {
 export function startItotoriServer(options: DashboardServerOptions = {}) {
   const port = options.port ?? Number(process.env.PORT ?? "4173");
   const server = createItotoriServer(options);
-  server.listen(port, () => {
-    console.log(`Itotori dashboard listening on http://127.0.0.1:${port}`);
+  server.listen(port, dashboardListenHost, () => {
+    console.log(`Itotori dashboard listening on http://${dashboardListenHost}:${port}`);
   });
   return server;
 }

@@ -18,7 +18,7 @@ const getDashboardStatus = vi.fn(async () => dashboardStatusFixture);
 const getRuntimeStatus = vi.fn(async () => runtimeStatusFixture);
 const importBridge = vi.fn(async () => projectFixture);
 
-const { createItotoriServer } = await import("../src/server.js");
+const { createItotoriServer, startItotoriServer } = await import("../src/server.js");
 
 afterEach(() => {
   vi.clearAllMocks();
@@ -58,6 +58,28 @@ describe("Itotori server API contracts", () => {
     });
     expect(requirePermission).toHaveBeenCalledWith("project.import");
     expect(importBridge).toHaveBeenCalledWith(bridgeFixture);
+  });
+
+  it("binds the dashboard server to loopback by default", async () => {
+    const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+    const server = startItotoriServer({
+      port: 0,
+      serviceFactory,
+      webRoot: new URL("file:///tmp/itotori-empty-web/"),
+    });
+    try {
+      await waitForListening(server);
+      const address = server.address() as AddressInfo;
+
+      expect(address.address).toBe("127.0.0.1");
+
+      const response = await fetch(`http://127.0.0.1:${address.port}/api/projects/status`);
+      expect(response.status).toBe(200);
+      await expect(response.json()).resolves.toMatchObject({ projectId: "project-1" });
+    } finally {
+      consoleLog.mockRestore();
+      await closeServer(server);
+    }
   });
 
   it("returns a typed bad request response for malformed JSON", async () => {
@@ -103,6 +125,16 @@ async function requestJson(options: {
   } finally {
     await closeServer(server);
   }
+}
+
+async function waitForListening(server: ReturnType<typeof createItotoriServer>): Promise<void> {
+  if (server.listening) {
+    return;
+  }
+  await new Promise<void>((resolve, reject) => {
+    server.once("listening", resolve);
+    server.once("error", reject);
+  });
 }
 
 async function closeServer(server: ReturnType<typeof createItotoriServer>): Promise<void> {
