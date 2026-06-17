@@ -2858,8 +2858,48 @@ pub struct PatchExportEntry {
     pub source_unit_key: String,
     pub source_hash: String,
     pub target_text: String,
-    #[serde(default)]
-    pub protected_spans: Vec<ProtectedSpan>,
+    pub protected_span_mappings: Vec<ProtectedSpanMapping>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProtectedSpanMapping {
+    pub raw: String,
+    pub target_start: u64,
+    pub target_end: u64,
+}
+
+impl ProtectedSpanMapping {
+    pub fn new(raw: impl Into<String>, target_start: u64, target_end: u64) -> Self {
+        Self {
+            raw: raw.into(),
+            target_start,
+            target_end,
+        }
+    }
+
+    pub fn first_in_target(raw: &str, target_text: &str) -> Option<Self> {
+        let start = target_text.find(raw)?;
+        let end = start + raw.len();
+        Some(Self::new(raw, start as u64, end as u64))
+    }
+
+    pub fn matches_target_text(&self, target_text: &str) -> bool {
+        let Ok(start) = usize::try_from(self.target_start) else {
+            return false;
+        };
+        let Ok(end) = usize::try_from(self.target_end) else {
+            return false;
+        };
+        if end <= start
+            || end > target_text.len()
+            || !target_text.is_char_boundary(start)
+            || !target_text.is_char_boundary(end)
+        {
+            return false;
+        }
+        target_text[start..end] == self.raw
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

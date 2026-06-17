@@ -109,9 +109,21 @@ impl FixtureAdapter {
     fn protected_span_patch_failures(entry: &kaifuu_core::PatchExportEntry) -> Vec<AdapterFailure> {
         let mut failures = Vec::new();
         let mut required_counts = BTreeMap::<&str, usize>::new();
-        for span in &entry.protected_spans {
-            if !span.raw.is_empty() {
-                *required_counts.entry(span.raw.as_str()).or_default() += 1;
+        for mapping in &entry.protected_span_mappings {
+            if mapping.raw.is_empty() {
+                continue;
+            }
+            *required_counts.entry(mapping.raw.as_str()).or_default() += 1;
+            if !mapping.matches_target_text(&entry.target_text) {
+                failures.push(Self::patch_failure(
+                    "protected_span_mapping_mismatch",
+                    format!("source.json#{}", entry.source_unit_key),
+                    "fixture patching requires protectedSpanMappings to point at raw text in targetText",
+                    format!(
+                        "Align protectedSpanMappings for protected span {:?} in sourceUnitKey {}",
+                        mapping.raw, entry.source_unit_key
+                    ),
+                ));
             }
         }
         for (raw, required_count) in required_counts {
@@ -620,7 +632,15 @@ impl FixtureAdapter {
 
     fn parse_backslash_markup(text: &str, start: usize) -> Option<(ProtectedSpan, usize)> {
         let after_slash = start + 1;
-        let next = text[after_slash..].chars().next()?;
+        let Some(next) = text[after_slash..].chars().next() else {
+            return Some(Self::unknown_backslash_markup(
+                text,
+                start,
+                text.len(),
+                "unknown_trailing_backslash",
+                vec![],
+            ));
+        };
         if matches!(next, '.' | '|' | '!') {
             let end = after_slash + next.len_utf8();
             return Some((
@@ -634,16 +654,40 @@ impl FixtureAdapter {
                 end,
             ));
         }
+        if !next.is_ascii_alphabetic() {
+            return Some(Self::parse_symbol_backslash_markup(
+                text,
+                start,
+                after_slash,
+                next,
+            ));
+        }
         let code_end = text[after_slash..]
             .char_indices()
             .take_while(|(_, character)| character.is_ascii_alphabetic())
             .last()
             .map(|(index, character)| after_slash + index + character.len_utf8())?;
         if !text[code_end..].starts_with('[') {
-            return None;
+            let code = &text[after_slash..code_end];
+            return Some(Self::unknown_backslash_markup(
+                text,
+                start,
+                code_end,
+                Self::normalize_fixture_markup_name(code),
+                vec!["missing_bracket".to_string()],
+            ));
         }
         let argument_start = code_end + 1;
-        let relative_end = text[argument_start..].find(']')?;
+        let Some(relative_end) = text[argument_start..].find(']') else {
+            let code = &text[after_slash..code_end];
+            return Some(Self::unknown_backslash_markup(
+                text,
+                start,
+                text.len(),
+                "unknown_unclosed_backslash_command",
+                vec![code.to_string()],
+            ));
+        };
         let argument_end = argument_start + relative_end;
         let end = argument_end + 1;
         let code = &text[after_slash..code_end];
@@ -686,6 +730,66 @@ impl FixtureAdapter {
         });
         span.arguments = Some(vec![argument.to_string()]);
         Some((span, end))
+    }
+
+    fn parse_symbol_backslash_markup(
+        text: &str,
+        start: usize,
+        after_slash: usize,
+        command: char,
+    ) -> (ProtectedSpan, usize) {
+        let command_end = after_slash + command.len_utf8();
+        if text[command_end..].starts_with('[') {
+            let argument_start = command_end + 1;
+            if let Some(relative_end) = text[argument_start..].find(']') {
+                let argument_end = argument_start + relative_end;
+                let end = argument_end + 1;
+                return Self::unknown_backslash_markup(
+                    text,
+                    start,
+                    end,
+                    "unknown_backslash_command",
+                    vec![
+                        command.to_string(),
+                        text[argument_start..argument_end].to_string(),
+                    ],
+                );
+            }
+            return Self::unknown_backslash_markup(
+                text,
+                start,
+                text.len(),
+                "unknown_unclosed_backslash_command",
+                vec![command.to_string()],
+            );
+        }
+
+        Self::unknown_backslash_markup(
+            text,
+            start,
+            command_end,
+            "unknown_backslash_command",
+            vec![command.to_string()],
+        )
+    }
+
+    fn unknown_backslash_markup(
+        text: &str,
+        start: usize,
+        end: usize,
+        parsed_name: impl Into<String>,
+        arguments: Vec<String>,
+    ) -> (ProtectedSpan, usize) {
+        (
+            ProtectedSpan::control_markup(
+                &text[start..end],
+                start as u64,
+                end as u64,
+                parsed_name,
+                arguments,
+            ),
+            end,
+        )
     }
 }
 
@@ -1052,7 +1156,7 @@ pub fn registry() -> kaifuu_core::AdapterRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kaifuu_core::PatchExport;
+    use kaifuu_core::{PatchExport, ProtectedSpanMapping};
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::PathBuf;
 
@@ -1109,6 +1213,7 @@ mod tests {
     }
 
     fn patch_export_for(extraction: &ExtractionResult) -> PatchExport {
+        let target_text = "Hello, {player}.".to_string();
         PatchExport {
             patch_export_id: deterministic_id("patch", 1),
             source_locale: "ja-JP".to_string(),
@@ -1117,10 +1222,33 @@ mod tests {
                 bridge_unit_id: extraction.bridge.units[0].bridge_unit_id.clone(),
                 source_unit_key: extraction.bridge.units[0].source_unit_key.clone(),
                 source_hash: extraction.bridge.units[0].source_hash.clone(),
-                target_text: "Hello, {player}.".to_string(),
-                protected_spans: extraction.bridge.units[0].protected_spans.clone(),
+                protected_span_mappings: protected_span_mappings_for_target(
+                    &target_text,
+                    &extraction.bridge.units[0].protected_spans,
+                ),
+                target_text,
             }],
         }
+    }
+
+    fn protected_span_mappings_for_target(
+        target_text: &str,
+        protected_spans: &[ProtectedSpan],
+    ) -> Vec<ProtectedSpanMapping> {
+        let mut search_start = 0;
+        protected_spans
+            .iter()
+            .filter(|span| !span.raw.is_empty())
+            .map(|span| {
+                let relative_start = target_text[search_start..]
+                    .find(&span.raw)
+                    .unwrap_or_else(|| panic!("target text should contain {:?}", span.raw));
+                let target_start = search_start + relative_start;
+                let target_end = target_start + span.raw.len();
+                search_start = target_end;
+                ProtectedSpanMapping::new(&span.raw, target_start as u64, target_end as u64)
+            })
+            .collect()
     }
 
     #[test]
@@ -1183,6 +1311,49 @@ mod tests {
         assert_eq!(unknown.kind, "control_markup");
         assert_eq!(unknown.parsed_name.as_deref(), Some("mystery"));
         assert_eq!(unknown.arguments.as_deref(), Some(&["tag".to_string()][..]));
+    }
+
+    #[test]
+    fn protects_unknown_and_malformed_backslash_markup_conservatively() {
+        let text = "未知\\Q[alpha]と\\1[42]と\\#と\\N[broken";
+        let unit = json!({ "protectedSpans": [] });
+        let spans = FixtureAdapter::protected_spans_for_unit(&unit, text).unwrap();
+
+        for raw in ["\\Q[alpha]", "\\1[42]", "\\#", "\\N[broken"] {
+            let span = spans
+                .iter()
+                .find(|span| span.raw == raw)
+                .unwrap_or_else(|| panic!("missing protected span {raw}"));
+            assert_eq!(span.kind, "control_markup");
+            assert_eq!(
+                &text[span.start as usize..span.end as usize],
+                span.raw,
+                "span should map back to source bytes: {span:?}"
+            );
+        }
+
+        let symbol_command = spans
+            .iter()
+            .find(|span| span.raw == "\\1[42]")
+            .expect("symbol command span");
+        assert_eq!(
+            symbol_command.parsed_name.as_deref(),
+            Some("unknown_backslash_command")
+        );
+        assert_eq!(
+            symbol_command.arguments.as_deref(),
+            Some(&["1".to_string(), "42".to_string()][..])
+        );
+
+        let malformed = spans
+            .iter()
+            .find(|span| span.raw == "\\N[broken")
+            .expect("malformed command span");
+        assert_eq!(
+            malformed.parsed_name.as_deref(),
+            Some("unknown_unclosed_backslash_command")
+        );
+        assert_eq!(malformed.arguments.as_deref(), Some(&["N".to_string()][..]));
     }
 
     #[test]
@@ -1458,6 +1629,69 @@ mod tests {
     }
 
     #[test]
+    fn shared_contract_mappings_missing_from_target_fail_without_writing_output() {
+        let game_dir = temp_game("shared-contract-missing-protected-span");
+        let adapter = FixtureAdapter;
+        let extraction = adapter
+            .extract(ExtractRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+        let unit = &extraction.bridge.units[0];
+        let patch_export_value = json!({
+            "schemaVersion": "0.1.0",
+            "patchExportId": deterministic_id("patch", 11),
+            "sourceBridgeId": extraction.bridge.bridge_id.clone(),
+            "sourceLocale": extraction.bridge.source_locale.clone(),
+            "targetLocale": "en-US",
+            "entries": [
+                {
+                    "entryId": deterministic_id("patchentry", 11),
+                    "bridgeUnitId": unit.bridge_unit_id.clone(),
+                    "sourceUnitKey": unit.source_unit_key.clone(),
+                    "sourceHash": unit.source_hash.clone(),
+                    "targetText": "Hello.",
+                    "protectedSpanMappings": [
+                        {
+                            "raw": "{player}",
+                            "targetStart": 7,
+                            "targetEnd": 15
+                        }
+                    ]
+                }
+            ]
+        });
+        assert!(
+            patch_export_value["entries"][0]
+                .get("protectedSpans")
+                .is_none(),
+            "regression payload must not use Rust-only protectedSpans"
+        );
+        let patch_export = PatchExport::from_value(&patch_export_value).unwrap();
+
+        let output_dir = game_dir.join("patched");
+        let patch = adapter
+            .patch(PatchRequest {
+                game_dir: &game_dir,
+                patch_export: &patch_export,
+                output_dir: &output_dir,
+            })
+            .unwrap();
+
+        assert_eq!(patch.status, OperationStatus::Failed);
+        assert!(patch.failures.iter().any(|failure| {
+            failure.error_code == "protected_span_missing"
+                && failure
+                    .remediation
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("{player}")
+        }));
+        assert!(!output_dir.join("source.json").exists());
+        let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
     fn validation_failure_preserves_existing_output_file() {
         let game_dir = temp_game("failed-preserves-output");
         let adapter = FixtureAdapter;
@@ -1575,7 +1809,7 @@ mod tests {
                 source_unit_key: "hello.scene.001.line.001".to_string(),
                 source_hash: content_hash("二番目の行。"),
                 target_text: "Second line.".to_string(),
-                protected_spans: vec![],
+                protected_span_mappings: vec![],
             }],
         };
 
