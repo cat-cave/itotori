@@ -614,10 +614,7 @@
     {
       "id": "UNIV-010",
       "title": "Large-project synthetic scale harness",
-      "status": "in_progress",
-      "owner": "codex-wave12",
-      "branch": "spec/univ-010",
-      "worktree": "/tmp/itotori-spec-univ-010",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["universal", "shared", "itotori"],
@@ -730,24 +727,26 @@
     },
     {
       "id": "UNIV-013",
-      "title": "Self-contained DB test recipe",
+      "title": "Self-contained DB test and scale smoke recipe",
       "status": "planned",
       "priority": "P2",
       "target": "post_mvp",
       "projects": ["universal", "itotori", "shared"],
       "parallelGroup": "tooling",
-      "dependsOn": ["ITOTORI-002"],
-      "summary": "Add a local and CI-friendly database test recipe that provisions a fresh database or skips with a clear diagnostic when DATABASE_URL is unset.",
+      "dependsOn": ["ITOTORI-002", "UNIV-010"],
+      "summary": "Add local and CI-friendly database test recipes, including a scale smoke gate, that provision a fresh database or skip with clear diagnostics when DATABASE_URL is unset.",
       "deliverables": [
         "DB test recipe",
         "Fresh database provisioning path",
         "DATABASE_URL unset skip behavior",
+        "CI-safe scale smoke target wiring",
         "Contributor test documentation"
       ],
       "acceptanceCriteria": [
         "The recipe can create or reset an isolated test database without relying on a developer's existing state",
         "When DATABASE_URL is unset, the command exits with an explicit skip message instead of a misleading failure",
         "Itotori repository and service tests can use the recipe consistently",
+        "The scale smoke harness runs under a CI-safe Itotori DB job or a separate required smoke target documented next to just ci",
         "Docs name the expected local and CI environment variables without requiring secrets in committed files"
       ],
       "verification": [
@@ -762,11 +761,16 @@
         {
           "type": "manual",
           "value": "Run DB recipe against a disposable local database"
+        },
+        {
+          "type": "manual",
+          "value": "CI-safe scale smoke target dry-run"
         }
       ],
       "auditFocus": [
         "DB tests that depend on hidden local state",
         "Unset DATABASE_URL producing noisy failures",
+        "Required scale smoke docs without a runnable CI-safe target",
         "Shared tooling that leaks implementation-specific setup"
       ]
     },
@@ -2436,10 +2440,7 @@
     {
       "id": "KAIFUU-034",
       "title": "Archive and encryption detection matrix",
-      "status": "in_progress",
-      "owner": "codex-wave12",
-      "branch": "spec/kaifuu-034",
-      "worktree": "/tmp/itotori-spec-kaifuu-034",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu"],
@@ -3643,6 +3644,48 @@
       ]
     },
     {
+      "id": "KAIFUU-046",
+      "title": "Archive detection report semantics hardening",
+      "status": "planned",
+      "priority": "P2",
+      "target": "post_mvp",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-034"],
+      "summary": "Harden Kaifuu archive and encryption detection reports so adapter status, archive-only matches, marker-only subtype signals, and RPG Maker encrypted suffix coverage cannot overstate support.",
+      "deliverables": [
+        "Adapter/archive status split",
+        "Unknown-variant marker diagnostics",
+        "RPG Maker encrypted suffix regression matrix",
+        "Report fixture updates"
+      ],
+      "acceptanceCriteria": [
+        "Top-level adapter status remains distinct from archive detection status so archive-only unsupported inputs do not make the whole report look adapter-matched",
+        "Archive-only unsupported inputs report a separate archive detection status with stable semantic capability diagnostics",
+        "Marker-only subtype signals and key requirements on non-detected rows are normalized away or reported as unknown-variant diagnostics",
+        "Committed regression fixtures instantiate every RPG Maker MV/MZ encrypted suffix and assert stable diagnostics for each suffix"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core detection"
+        },
+        {
+          "type": "command",
+          "value": "just fixtures-validate"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Archive-only matches shown as adapter support",
+        "Marker-only subtype metadata implying detected variants",
+        "RPG Maker encrypted suffix coverage gaps"
+      ]
+    },
+    {
       "id": "ITOTORI-001",
       "title": "Itotori persistence schema v0.2",
       "status": "complete",
@@ -4027,10 +4070,7 @@
     {
       "id": "ITOTORI-011",
       "title": "Agent and deterministic tool registry",
-      "status": "in_progress",
-      "owner": "codex-wave12",
-      "branch": "spec/itotori-011",
-      "worktree": "/tmp/itotori-spec-itotori-011",
+      "status": "complete",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori"],
@@ -5746,6 +5786,48 @@
         "Cost filters that change aggregate totals incorrectly",
         "Unknown cost rendered as numeric zero",
         "Provider metadata drilldown exposing raw provider payloads"
+      ]
+    },
+    {
+      "id": "ITOTORI-054",
+      "title": "Implementation hash provenance verification",
+      "status": "planned",
+      "priority": "P3",
+      "target": "post_mvp",
+      "projects": ["itotori"],
+      "parallelGroup": "agent-runtime",
+      "dependsOn": ["ITOTORI-011"],
+      "summary": "Derive or verify deterministic tool implementationHash values from versioned implementation artifacts instead of treating registry metadata as proof of implementation identity.",
+      "deliverables": [
+        "Implementation hash derivation policy",
+        "Registry validation checks",
+        "Hash mismatch diagnostics",
+        "Provenance regression fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Registry implementationHash values are derived from canonical implementation artifacts or verified against source or binary inputs before they are treated as implementation identity",
+        "Hash mismatches fail with diagnostics that name the tool, declared hash, and verification source without trusting the declared metadata",
+        "Externally supplied hashes that cannot be verified are labeled as declared metadata rather than verified implementation identity",
+        "Deterministic tool provenance events distinguish verified implementation hashes from declared or unknown implementation hashes"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "manual",
+          "value": "Registry provenance review"
+        }
+      ],
+      "auditFocus": [
+        "Trusted metadata mistaken for code identity",
+        "Hash mismatch diagnostics that trust the declared hash",
+        "Tool provenance events that hide unverifiable implementation hashes"
       ]
     },
     {

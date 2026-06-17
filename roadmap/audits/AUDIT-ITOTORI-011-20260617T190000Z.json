@@ -1,0 +1,92 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-011-20260617T190000Z",
+  "generatedAt": "2026-06-17T19:00:00Z",
+  "spec": {
+    "id": "ITOTORI-011",
+    "title": "Agent and deterministic tool registry",
+    "branch": "spec/itotori-011",
+    "worktree": "/tmp/itotori-spec-itotori-011"
+  },
+  "auditor": {
+    "name": "wave12-final-audit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final audit found no P0/P1 blockers for ITOTORI-011. The remaining implementationHash provenance concern is tracked as a non-blocking P3 DAG follow-up.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-011-F001"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-011-F001",
+      "severity": "P3",
+      "title": "implementationHash remains declared metadata",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "symbol": "ITOTORI-011"
+        }
+      ],
+      "description": "The registry can record implementationHash metadata, but the hash is trusted as declared metadata rather than derived from or verified against the deterministic tool implementation.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final wave 12 audit recorded implementationHash provenance as a possible P3 follow-up with no P0/P1 completion blocker."
+        }
+      ],
+      "impact": "Tool provenance can imply stronger implementation identity than the system has verified, which weakens later reproducibility and forensic checks.",
+      "actionableAcceptanceCriteria": [
+        "Registry implementationHash values are derived from canonical implementation artifacts or verified against source or binary inputs before they are treated as implementation identity.",
+        "Hash mismatches fail with diagnostics that name the tool, declared hash, and verification source without trusting the declared metadata.",
+        "Externally supplied hashes that cannot be verified are labeled as declared metadata rather than verified implementation identity.",
+        "Deterministic tool provenance events distinguish verified implementation hashes from declared or unknown implementation hashes."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "ITOTORI-054",
+          "acceptanceCriteria": [
+            "Registry implementationHash values are derived from canonical implementation artifacts or verified against source or binary inputs before they are treated as implementation identity",
+            "Hash mismatches fail with diagnostics that name the tool, declared hash, and verification source without trusting the declared metadata",
+            "Externally supplied hashes that cannot be verified are labeled as declared metadata rather than verified implementation identity",
+            "Deterministic tool provenance events distinguish verified implementation hashes from declared or unknown implementation hashes"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm exec vp run ts:test"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            },
+            {
+              "type": "manual",
+              "value": "Registry provenance review"
+            }
+          ],
+          "auditFocus": [
+            "Trusted metadata mistaken for code identity",
+            "Hash mismatch diagnostics that trust the declared hash",
+            "Tool provenance events that hide unverifiable implementation hashes"
+          ],
+          "notes": "Tracked as planned DAG node ITOTORI-054 for wave 12 completion bookkeeping."
+        }
+      }
+    }
+  ]
+}

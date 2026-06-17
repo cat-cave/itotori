@@ -1,0 +1,86 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UNIV-010-20260617T192000Z",
+  "generatedAt": "2026-06-17T19:20:00Z",
+  "spec": {
+    "id": "UNIV-010",
+    "title": "Large-project synthetic scale harness",
+    "branch": "spec/univ-010",
+    "worktree": "/tmp/itotori-spec-univ-010"
+  },
+  "auditor": {
+    "name": "wave12-final-audit",
+    "kind": "performance"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final audit found no P0/P1 blockers for UNIV-010. The remaining scale-smoke CI gate gap is tracked as a non-blocking P2 DAG follow-up.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UNIV-010-F001"]
+  },
+  "findings": [
+    {
+      "id": "UNIV-010-F001",
+      "severity": "P2",
+      "title": "Scale smoke harness is not wired into a CI-safe required target",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "symbol": "UNIV-010"
+        }
+      ],
+      "description": "The scale smoke harness is documented as a required local/performance gate, but just ci does not run it and there is not yet a separate CI-safe required smoke target.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final wave 12 audit recorded CI-safe scale smoke wiring as a P2 follow-up with no P0/P1 completion blocker."
+        }
+      ],
+      "impact": "A required performance smoke can be skipped accidentally because the documented gate is not represented by a CI-safe job or separate required target.",
+      "actionableAcceptanceCriteria": [
+        "The scale smoke harness runs under a CI-safe Itotori DB job or a separate required smoke target documented next to just ci.",
+        "When DATABASE_URL is unset, the smoke target skips or fails with an explicit diagnostic that matches the DB recipe policy.",
+        "The chosen target is documented as the durable required gate for scale-smoke verification."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UNIV-013",
+          "acceptanceCriteria": [
+            "The scale smoke harness runs under a CI-safe Itotori DB job or a separate required smoke target documented next to just ci",
+            "When DATABASE_URL is unset, the smoke target skips or fails with an explicit diagnostic that matches the DB recipe policy",
+            "The chosen target is documented as the durable required gate for scale-smoke verification"
+          ],
+          "verification": [
+            {
+              "type": "manual",
+              "value": "CI-safe scale smoke target dry-run"
+            },
+            {
+              "type": "command",
+              "value": "node scripts/spec-dag.mjs validate"
+            }
+          ],
+          "auditFocus": [
+            "Required scale smoke docs without a runnable CI-safe target",
+            "DATABASE_URL unset behavior that hides skipped scale coverage",
+            "Scale performance gates drifting away from just ci documentation"
+          ],
+          "notes": "Tracked in planned DAG node UNIV-013 for wave 12 completion bookkeeping."
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,183 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-034-20260617T191000Z",
+  "generatedAt": "2026-06-17T19:10:00Z",
+  "spec": {
+    "id": "KAIFUU-034",
+    "title": "Archive and encryption detection matrix",
+    "branch": "spec/kaifuu-034",
+    "worktree": "/tmp/itotori-spec-kaifuu-034"
+  },
+  "auditor": {
+    "name": "wave12-final-audit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final audit found no P0/P1 blockers for KAIFUU-034. Remaining archive-report semantics and detector coverage issues are tracked as non-blocking DAG follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-034-F001", "KAIFUU-034-F002", "KAIFUU-034-F003"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-034-F001",
+      "severity": "P2",
+      "title": "Archive-only matches can look adapter-matched",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "symbol": "KAIFUU-034"
+        }
+      ],
+      "description": "Archive-only unsupported inputs can currently make the top-level report look adapter-matched instead of separating adapter status from archive detection status.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final wave 12 audit recorded adapter-status versus archive-status separation as a P2 follow-up with no P0/P1 completion blocker."
+        }
+      ],
+      "impact": "Operators can read archive recognition as adapter support, causing unsupported packed inputs to appear more actionable than they are.",
+      "actionableAcceptanceCriteria": [
+        "Top-level adapter status remains distinct from archive detection status so archive-only unsupported inputs do not make the whole report look adapter-matched.",
+        "Archive-only unsupported inputs report a separate archive detection status with stable semantic capability diagnostics."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-046",
+          "acceptanceCriteria": [
+            "Top-level adapter status remains distinct from archive detection status so archive-only unsupported inputs do not make the whole report look adapter-matched",
+            "Archive-only unsupported inputs report a separate archive detection status with stable semantic capability diagnostics"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core detection"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Archive-only matches shown as adapter support",
+            "Unsupported packed inputs hidden behind matched status"
+          ],
+          "notes": "Tracked as planned DAG node KAIFUU-046 for wave 12 completion bookkeeping."
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-034-F002",
+      "severity": "P3",
+      "title": "Marker-only subtype signals need normalization or unknown-variant diagnostics",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "symbol": "KAIFUU-034"
+        }
+      ],
+      "description": "Marker-only subtype signals and requirements can remain attached to non-detected rows instead of being normalized away or emitted as explicit unknown-variant diagnostics.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final wave 12 audit recorded marker-only subtype signal handling as a P3 follow-up with no P0/P1 completion blocker."
+        }
+      ],
+      "impact": "Non-detected rows can carry subtype or key-requirement hints that look like detected variants even when the detector did not establish support.",
+      "actionableAcceptanceCriteria": [
+        "Marker-only subtype signals and key requirements on non-detected rows are normalized away or reported as unknown-variant diagnostics.",
+        "Unknown-variant diagnostics identify the marker family without implying adapter support or a known decryptable subtype."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-046",
+          "acceptanceCriteria": [
+            "Marker-only subtype signals and key requirements on non-detected rows are normalized away or reported as unknown-variant diagnostics",
+            "Unknown-variant diagnostics identify the marker family without implying adapter support or a known decryptable subtype"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core detection"
+            },
+            {
+              "type": "command",
+              "value": "just fixtures-validate"
+            }
+          ],
+          "auditFocus": [
+            "Marker-only subtype metadata implying detected variants",
+            "Unknown variants reported as known key requirements"
+          ],
+          "notes": "Tracked as planned DAG node KAIFUU-046 for wave 12 completion bookkeeping."
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-034-F003",
+      "severity": "P3",
+      "title": "RPG Maker encrypted suffix coverage is representative only",
+      "category": "test",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json",
+          "symbol": "KAIFUU-034"
+        }
+      ],
+      "description": "Committed regression coverage instantiates representative RPG Maker MV/MZ encrypted suffixes, but does not instantiate every encrypted suffix.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final wave 12 audit recorded full RPG Maker MV/MZ encrypted suffix fixture coverage as a P3 follow-up with no P0/P1 completion blocker."
+        }
+      ],
+      "impact": "A suffix-specific regression could escape if only representative encrypted asset suffixes are tested.",
+      "actionableAcceptanceCriteria": [
+        "Committed regression fixtures instantiate every RPG Maker MV/MZ encrypted suffix and assert stable diagnostics for each suffix.",
+        "Representative suffix helper code cannot accidentally drop a supported suffix without a failing detector regression."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-046",
+          "acceptanceCriteria": [
+            "Committed regression fixtures instantiate every RPG Maker MV/MZ encrypted suffix and assert stable diagnostics for each suffix",
+            "Representative suffix helper code cannot accidentally drop a supported suffix without a failing detector regression"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core detection"
+            },
+            {
+              "type": "command",
+              "value": "just fixtures-validate"
+            }
+          ],
+          "auditFocus": [
+            "RPG Maker encrypted suffix coverage gaps",
+            "Representative suffix helpers hiding missing committed cases"
+          ],
+          "notes": "Tracked as planned DAG node KAIFUU-046 for wave 12 completion bookkeeping."
+        }
+      }
+    }
+  ]
+}
