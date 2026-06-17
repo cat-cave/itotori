@@ -182,14 +182,15 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
     input: ManualFeedbackImportInput,
   ): Promise<ManualFeedbackImportResult> {
     await requirePermission(this.db, actor, permissionValues.feedbackImport);
-    const normalized = normalizeManualFeedback(input);
+    const parsedInput = parseManualFeedbackImportInput(input);
+    const normalized = normalizeManualFeedback(parsedInput);
 
     return this.db.transaction(async (tx) => {
       await tx
         .insert(feedbackSources)
         .values({
           feedbackSourceId: normalized.feedbackSourceId,
-          projectId: input.projectId,
+          projectId: parsedInput.projectId,
           sourceKind: normalized.feedbackSource.sourceKind,
           label: normalized.feedbackSource.label,
           sourceChannel: normalized.feedbackSource.sourceChannel,
@@ -225,19 +226,19 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
       if (!existing) {
         await tx.insert(feedbackReports).values({
           feedbackReportId,
-          projectId: input.projectId,
-          localeBranchId: input.localeBranchId ?? null,
-          sourceBundleId: input.sourceBundleId ?? null,
-          bridgeUnitId: input.lineReference?.bridgeUnitId ?? null,
-          targetLocale: input.targetLocale,
+          projectId: parsedInput.projectId,
+          localeBranchId: parsedInput.localeBranchId ?? null,
+          sourceBundleId: parsedInput.sourceBundleId ?? null,
+          bridgeUnitId: parsedInput.lineReference?.bridgeUnitId ?? null,
+          targetLocale: parsedInput.targetLocale,
           feedbackSourceId: normalized.feedbackSourceId,
-          feedbackType: input.feedbackType,
+          feedbackType: parsedInput.feedbackType,
           triageLabel: normalized.triageLabel,
           reportStatus: normalized.reportStatus,
           contextStatus: normalized.contextStatus,
           privacyClassification: normalized.privacyClassification,
           redactionState: normalized.redactionState,
-          reporterRole: input.reporter.role,
+          reporterRole: parsedInput.reporter.role,
           reporterNote: normalized.reporterNote,
           dedupeKey: normalized.dedupeKey,
           lineReference: normalized.lineReference,
@@ -255,12 +256,15 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
           feedbackEvidenceId: normalized.feedbackEvidenceId,
           feedbackReportId,
           feedbackSourceId: normalized.feedbackSourceId,
-          reporter: input.reporter,
+          reporter: parsedInput.reporter,
           reporterNote: normalized.reporterNote,
           lineReference: normalized.lineReference,
           attachments: normalized.attachments,
           contextSignals: normalized.contextSignals,
-          metadata: normalized.metadata,
+          metadata: {
+            ...normalized.metadata,
+            importedFeedbackType: parsedInput.feedbackType,
+          },
           reportedAt: normalized.reportedAt,
         })
         .onConflictDoNothing();
@@ -275,10 +279,10 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
           .insert(artifacts)
           .values({
             artifactId,
-            projectId: input.projectId,
-            localeBranchId: input.localeBranchId ?? null,
-            sourceBundleId: input.sourceBundleId ?? null,
-            bridgeUnitId: input.lineReference?.bridgeUnitId ?? null,
+            projectId: parsedInput.projectId,
+            localeBranchId: parsedInput.localeBranchId ?? null,
+            sourceBundleId: parsedInput.sourceBundleId ?? null,
+            bridgeUnitId: parsedInput.lineReference?.bridgeUnitId ?? null,
             artifactKind: artifactKindForAttachment(attachment),
             uri: attachment.uri ?? null,
             hash: attachment.hash ?? null,
@@ -291,9 +295,9 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
           .onConflictDoUpdate({
             target: artifacts.artifactId,
             set: {
-              localeBranchId: input.localeBranchId ?? null,
-              sourceBundleId: input.sourceBundleId ?? null,
-              bridgeUnitId: input.lineReference?.bridgeUnitId ?? null,
+              localeBranchId: parsedInput.localeBranchId ?? null,
+              sourceBundleId: parsedInput.sourceBundleId ?? null,
+              bridgeUnitId: parsedInput.lineReference?.bridgeUnitId ?? null,
               artifactKind: artifactKindForAttachment(attachment),
               uri: attachment.uri ?? null,
               hash: attachment.hash ?? null,
@@ -315,16 +319,16 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
         .insert(events)
         .values({
           eventId: eventIdFor(eventKind, normalized.feedbackEvidenceId),
-          projectId: input.projectId,
-          localeBranchId: input.localeBranchId ?? null,
+          projectId: parsedInput.projectId,
+          localeBranchId: parsedInput.localeBranchId ?? null,
           eventKind,
           occurredAt: normalized.reportedAt,
           actor: {
             actorKind: "human",
             userId: actor.userId,
-            displayName: input.reporter.displayName ?? input.reporter.role,
+            displayName: parsedInput.reporter.displayName ?? parsedInput.reporter.role,
           },
-          subjectRefs: subjectRefsFor(feedbackReportId, input),
+          subjectRefs: subjectRefsFor(feedbackReportId, parsedInput),
           provenance: [
             {
               provenanceKind: "feedback_source",
@@ -334,7 +338,7 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
           causalLinks: [],
           payload: {
             feedbackEvidenceId: normalized.feedbackEvidenceId,
-            feedbackType: input.feedbackType,
+            feedbackType: parsedInput.feedbackType,
             triageLabel: existing?.triageLabel ?? normalized.triageLabel,
             contextStatus: existing?.contextStatus ?? normalized.contextStatus,
             dedupeKey: normalized.dedupeKey,
@@ -359,12 +363,60 @@ export class ItotoriFeedbackRepository implements ItotoriFeedbackRepositoryPort 
   }
 }
 
+export function parseManualFeedbackImportInput(value: unknown): ManualFeedbackImportInput {
+  const input = requireRecord(value, "manual feedback input");
+  const parsed: ManualFeedbackImportInput = {
+    projectId: requiredString(input, "projectId"),
+    targetLocale: requiredString(input, "targetLocale"),
+    feedbackType: requiredEnum(input, "feedbackType", Object.values(feedbackTypeValues)),
+    reporter: parseReporter(input.reporter),
+    reporterNote: requiredString(input, "reporterNote"),
+  };
+
+  assignOptionalString(parsed, input, "feedbackReportId");
+  assignOptionalString(parsed, input, "feedbackEvidenceId");
+  assignOptionalString(parsed, input, "feedbackSourceId");
+  assignOptionalString(parsed, input, "localeBranchId");
+  assignOptionalString(parsed, input, "sourceBundleId");
+  assignOptionalString(parsed, input, "privacyClassification");
+  assignOptionalString(parsed, input, "redactionState");
+  assignOptionalString(parsed, input, "reportedAt");
+  assignOptionalString(parsed, input, "dedupeKey");
+  assignOptionalString(parsed, input, "suggestedEdit");
+
+  if (input.feedbackSource !== undefined) {
+    parsed.feedbackSource = parseFeedbackSourceInput(input.feedbackSource);
+  }
+  if (input.lineReference !== undefined) {
+    parsed.lineReference = parseLineReference(input.lineReference);
+  }
+  if (input.attachments !== undefined) {
+    if (!Array.isArray(input.attachments)) {
+      throw new Error("manual feedback attachments must be an array");
+    }
+    parsed.attachments = input.attachments.map((attachment, index) =>
+      parseAttachment(attachment, `manual feedback attachments[${index}]`),
+    );
+  }
+  if (input.metadata !== undefined) {
+    parsed.metadata = requireRecord(input.metadata, "manual feedback metadata");
+  }
+  if (parsed.reportedAt !== undefined && Number.isNaN(new Date(parsed.reportedAt).getTime())) {
+    throw new Error("manual feedback reportedAt must be a valid date string");
+  }
+
+  return parsed;
+}
+
 export function deriveFeedbackDedupeKey(input: ManualFeedbackImportInput): string {
   if (input.dedupeKey) {
     return `feedback:manual:${hashJson({
       projectId: input.projectId,
       localeBranchId: input.localeBranchId ?? null,
-      dedupeKey: normalizeText(input.dedupeKey),
+      targetLocale: input.targetLocale,
+      feedbackType: input.feedbackType,
+      externalDedupeKey: normalizeText(input.dedupeKey),
+      anchor: primaryDedupeAnchor(input),
     })}`;
   }
 
@@ -439,7 +491,7 @@ function normalizeManualFeedback(input: ManualFeedbackImportInput): NormalizedMa
     ...(input.suggestedEdit ? { suggestedEdit: input.suggestedEdit } : {}),
   };
   const attachments = input.attachments ?? [];
-  const lineReference = input.lineReference ? compactRecord(input.lineReference) : null;
+  const lineReference = normalizeLineReference(input.lineReference);
   const reportedAt = input.reportedAt ? new Date(input.reportedAt) : new Date();
   const reportSeed = {
     projectId: input.projectId,
@@ -532,10 +584,10 @@ function summarizeAttachments(attachments: ManualFeedbackAttachment[]): Record<s
 }
 
 function contextSignalsFor(input: ManualFeedbackImportInput): Record<string, unknown> {
-  const lineReference = input.lineReference ? compactRecord(input.lineReference) : null;
+  const lineReference = contextSignalForLineReference(input.lineReference);
   const attachmentSignals = (input.attachments ?? [])
-    .map((attachment) => compactRecord(contextSignalForAttachment(attachment)))
-    .filter((signal) => Object.keys(signal).length > 0);
+    .map((attachment) => contextSignalForAttachment(attachment))
+    .filter((signal): signal is Record<string, unknown> => signal !== null);
 
   return compactRecord({
     lineReference,
@@ -543,27 +595,54 @@ function contextSignalsFor(input: ManualFeedbackImportInput): Record<string, unk
   });
 }
 
-function contextSignalForAttachment(attachment: ManualFeedbackAttachment): Record<string, unknown> {
+function contextSignalForLineReference(
+  lineReference: ManualFeedbackLineReference | undefined,
+): Record<string, unknown> | null {
+  const signal = normalizeLineReference(lineReference);
+  if (!signal || !hasUsableLineReferenceSignal(signal)) {
+    return null;
+  }
+  return signal;
+}
+
+function contextSignalForAttachment(
+  attachment: ManualFeedbackAttachment,
+): Record<string, unknown> | null {
+  let signal: Record<string, unknown>;
   switch (attachment.attachmentKind) {
     case "screenshot":
-      return {
+      signal = compactRecord({
         attachmentKind: attachment.attachmentKind,
         artifactId: attachment.artifactId,
         uri: attachment.uri,
         hash: attachment.hash,
         capturePosition: attachment.capturePosition,
-      };
+      });
+      return hasAnySignalField(signal, ["artifactId", "uri", "hash", "capturePosition"])
+        ? signal
+        : null;
     case "save_context":
-      return {
+      signal = compactRecord({
         attachmentKind: attachment.attachmentKind,
+        artifactId: attachment.artifactId,
         contextToken: attachment.contextToken,
         routeRef: attachment.routeRef,
         sceneRef: attachment.sceneRef,
         uri: attachment.uri,
         hash: attachment.hash,
-      };
+      });
+      return hasAnySignalField(signal, [
+        "artifactId",
+        "contextToken",
+        "routeRef",
+        "sceneRef",
+        "uri",
+        "hash",
+      ])
+        ? signal
+        : null;
     case "context":
-      return {
+      signal = compactRecord({
         attachmentKind: attachment.attachmentKind,
         contextKind: attachment.contextKind,
         contextId: attachment.contextId,
@@ -571,33 +650,54 @@ function contextSignalForAttachment(attachment: ManualFeedbackAttachment): Recor
         sceneRef: attachment.sceneRef,
         speakerRef: attachment.speakerRef,
         visibleText: attachment.visibleText,
-      };
+      });
+      return hasAnySignalField(signal, [
+        "contextId",
+        "routeRef",
+        "sceneRef",
+        "speakerRef",
+        "visibleText",
+      ])
+        ? signal
+        : null;
     case "runtime_artifact":
-      return {
+      signal = compactRecord({
         attachmentKind: attachment.attachmentKind,
+        artifactId: attachment.artifactId,
+        uri: attachment.uri,
+        hash: attachment.hash,
         runtimeArtifactId: attachment.runtimeArtifactId,
         evidenceTier: attachment.evidenceTier,
-      };
+      });
+      return hasAnySignalField(signal, ["artifactId", "uri", "hash", "runtimeArtifactId"])
+        ? signal
+        : null;
   }
 }
 
 function hasContextSignals(contextSignals: Record<string, unknown>): boolean {
-  if (contextSignals.lineReference !== undefined) {
+  if (
+    isRecord(contextSignals.lineReference) &&
+    hasUsableLineReferenceSignal(contextSignals.lineReference)
+  ) {
     return true;
   }
   const attachmentSignals = contextSignals.attachmentSignals;
-  return Array.isArray(attachmentSignals) && attachmentSignals.length > 0;
+  return (
+    Array.isArray(attachmentSignals) &&
+    attachmentSignals.some((signal) => isRecord(signal) && hasUsableAttachmentSignal(signal))
+  );
 }
 
 function primaryDedupeAnchor(input: ManualFeedbackImportInput): Record<string, unknown> {
-  const lineReference = input.lineReference ? compactRecord(input.lineReference) : null;
-  if (lineReference && Object.keys(lineReference).length > 0) {
+  const lineReference = contextSignalForLineReference(input.lineReference);
+  if (lineReference) {
     return { lineReference };
   }
 
   const attachmentSignals = (input.attachments ?? [])
-    .map((attachment) => compactRecord(contextSignalForAttachment(attachment)))
-    .filter((signal) => Object.keys(signal).length > 0);
+    .map((attachment) => contextSignalForAttachment(attachment))
+    .filter((signal): signal is Record<string, unknown> => signal !== null);
   if (attachmentSignals.length > 0) {
     return { attachmentSignals };
   }
@@ -688,9 +788,76 @@ function compactRecord(value: Record<string, unknown>): Record<string, unknown> 
     if (Array.isArray(entry) && entry.length === 0) {
       continue;
     }
+    if (isRecord(entry)) {
+      const nested = compactRecord(entry);
+      if (Object.keys(nested).length === 0) {
+        continue;
+      }
+      compacted[key] = nested;
+      continue;
+    }
     compacted[key] = entry;
   }
   return compacted;
+}
+
+function normalizeLineReference(
+  lineReference: ManualFeedbackLineReference | undefined,
+): Record<string, unknown> | null {
+  if (!lineReference) {
+    return null;
+  }
+  const normalized = compactRecord(lineReference);
+  return Object.keys(normalized).length > 0 ? normalized : null;
+}
+
+function hasUsableLineReferenceSignal(signal: Record<string, unknown>): boolean {
+  return hasAnySignalField(signal, [
+    "bridgeUnitId",
+    "sourceUnitKey",
+    "sourceHash",
+    "assetId",
+    "path",
+    "line",
+    "sourceLocation",
+    "quotedText",
+  ]);
+}
+
+function hasUsableAttachmentSignal(signal: Record<string, unknown>): boolean {
+  return hasAnySignalField(signal, [
+    "artifactId",
+    "uri",
+    "hash",
+    "capturePosition",
+    "contextToken",
+    "routeRef",
+    "sceneRef",
+    "contextId",
+    "speakerRef",
+    "visibleText",
+    "runtimeArtifactId",
+  ]);
+}
+
+function hasAnySignalField(signal: Record<string, unknown>, fields: string[]): boolean {
+  return fields.some((field) => hasMeaningfulSignalValue(signal[field]));
+}
+
+function hasMeaningfulSignalValue(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+  if (isRecord(value)) {
+    return Object.keys(value).length > 0;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value);
+  }
+  return true;
 }
 
 function normalizeText(value: string): string {
@@ -714,4 +881,181 @@ function stableStringify(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value) ?? "null";
+}
+
+function parseReporter(value: unknown): FeedbackReporter {
+  const reporter = requireRecord(value, "manual feedback reporter");
+  const parsed: FeedbackReporter = {
+    role: requiredString(reporter, "reporter.role"),
+  };
+  assignOptionalString(parsed, reporter, "reporterId");
+  assignOptionalString(parsed, reporter, "displayName");
+  assignOptionalString(parsed, reporter, "contact");
+  return parsed;
+}
+
+function parseFeedbackSourceInput(value: unknown): ManualFeedbackSourceInput {
+  const source = requireRecord(value, "manual feedback feedbackSource");
+  const parsed: ManualFeedbackSourceInput = {};
+  assignOptionalString(parsed, source, "feedbackSourceId");
+  if (source.sourceKind !== undefined) {
+    parsed.sourceKind = requiredEnum(
+      source,
+      "feedbackSource.sourceKind",
+      Object.values(feedbackSourceKindValues),
+    );
+  }
+  assignOptionalString(parsed, source, "label");
+  assignOptionalString(parsed, source, "sourceChannel");
+  assignOptionalString(parsed, source, "privacyReviewState");
+  if (source.metadata !== undefined) {
+    parsed.metadata = requireRecord(source.metadata, "feedbackSource.metadata");
+  }
+  return parsed;
+}
+
+function parseLineReference(value: unknown): ManualFeedbackLineReference {
+  const reference = requireRecord(value, "manual feedback lineReference");
+  const parsed: ManualFeedbackLineReference = {};
+  assignOptionalString(parsed, reference, "bridgeUnitId");
+  assignOptionalString(parsed, reference, "sourceUnitKey");
+  assignOptionalString(parsed, reference, "sourceHash");
+  assignOptionalString(parsed, reference, "assetId");
+  assignOptionalString(parsed, reference, "path");
+  assignOptionalNumber(parsed, reference, "line");
+  assignOptionalNumber(parsed, reference, "column");
+  assignOptionalString(parsed, reference, "quotedText");
+  if (reference.sourceLocation !== undefined) {
+    parsed.sourceLocation = requireRecord(reference.sourceLocation, "lineReference.sourceLocation");
+  }
+  return parsed;
+}
+
+function parseAttachment(value: unknown, context: string): ManualFeedbackAttachment {
+  const attachment = requireRecord(value, context);
+  const base: ManualFeedbackAttachmentBase = {};
+  assignOptionalString(base, attachment, "attachmentId");
+  assignOptionalString(base, attachment, "artifactId");
+  assignOptionalString(base, attachment, "uri");
+  assignOptionalString(base, attachment, "hash");
+  if (attachment.metadata !== undefined) {
+    base.metadata = requireRecord(attachment.metadata, `${context}.metadata`);
+  }
+
+  const attachmentKind = requiredEnum(attachment, `${context}.attachmentKind`, [
+    "screenshot",
+    "save_context",
+    "context",
+    "runtime_artifact",
+  ] as const);
+  switch (attachmentKind) {
+    case "screenshot": {
+      const screenshot: ManualFeedbackScreenshotAttachment = {
+        ...base,
+        attachmentKind,
+      };
+      assignOptionalString(screenshot, attachment, "caption");
+      assignOptionalString(screenshot, attachment, "capturePosition");
+      assignOptionalString(screenshot, attachment, "evidenceTier");
+      return screenshot;
+    }
+    case "save_context": {
+      const saveContext: ManualFeedbackSaveContextAttachment = {
+        ...base,
+        attachmentKind,
+      };
+      assignOptionalString(saveContext, attachment, "contextToken");
+      assignOptionalString(saveContext, attachment, "routeRef");
+      assignOptionalString(saveContext, attachment, "sceneRef");
+      assignOptionalString(saveContext, attachment, "createdAt");
+      return saveContext;
+    }
+    case "context": {
+      const contextAttachment: ManualFeedbackContextAttachment = {
+        ...base,
+        attachmentKind,
+        contextKind: requiredString(attachment, `${context}.contextKind`),
+      };
+      assignOptionalString(contextAttachment, attachment, "contextId");
+      assignOptionalString(contextAttachment, attachment, "routeRef");
+      assignOptionalString(contextAttachment, attachment, "sceneRef");
+      assignOptionalString(contextAttachment, attachment, "speakerRef");
+      assignOptionalString(contextAttachment, attachment, "visibleText");
+      return contextAttachment;
+    }
+    case "runtime_artifact": {
+      const runtimeArtifact: ManualFeedbackRuntimeArtifactAttachment = {
+        ...base,
+        attachmentKind,
+        runtimeArtifactId: requiredString(attachment, `${context}.runtimeArtifactId`),
+      };
+      assignOptionalString(runtimeArtifact, attachment, "evidenceTier");
+      return runtimeArtifact;
+    }
+  }
+}
+
+function requireRecord(value: unknown, context: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new Error(`${context} must be an object`);
+  }
+  return value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function requiredString(record: Record<string, unknown>, field: string): string {
+  const value = record[fieldName(field)];
+  if (typeof value !== "string") {
+    throw new Error(`manual feedback ${field} must be a string`);
+  }
+  return value;
+}
+
+function assignOptionalString(
+  target: object,
+  source: Record<string, unknown>,
+  field: string,
+): void {
+  const value = source[field];
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "string") {
+    throw new Error(`manual feedback ${field} must be a string`);
+  }
+  (target as Record<string, unknown>)[field] = value;
+}
+
+function assignOptionalNumber(
+  target: object,
+  source: Record<string, unknown>,
+  field: string,
+): void {
+  const value = source[field];
+  if (value === undefined) {
+    return;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`manual feedback ${field} must be a finite number`);
+  }
+  (target as Record<string, unknown>)[field] = value;
+}
+
+function requiredEnum<const T extends readonly string[]>(
+  record: Record<string, unknown>,
+  field: string,
+  values: T,
+): T[number] {
+  const value = record[fieldName(field)];
+  if (typeof value !== "string" || !values.includes(value)) {
+    throw new Error(`manual feedback ${field} must be one of: ${values.join(", ")}`);
+  }
+  return value;
+}
+
+function fieldName(field: string): string {
+  return field.slice(field.lastIndexOf(".") + 1);
 }

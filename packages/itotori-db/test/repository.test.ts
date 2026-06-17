@@ -432,6 +432,49 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("does not treat empty line references or bare screenshots as context", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      const feedbackRepo = new ItotoriFeedbackRepository(context.db);
+      await repo.reset(localActor);
+      await repo.importSourceBundle(localActor, projectFixture());
+
+      const result = await feedbackRepo.importManualFeedback(
+        localActor,
+        manualFeedbackFixture({
+          feedbackType: feedbackTypeValues.objectiveDefect,
+          reporterNote: "Something looked wrong in a screenshot, but no location was exported.",
+          lineReference: {},
+          attachments: [{ attachmentKind: "screenshot" }],
+        }),
+      );
+
+      expect(result).toMatchObject({
+        contextStatus: feedbackContextStatusValues.needsContext,
+        reportStatus: feedbackReportStatusValues.needsContext,
+        triageLabel: feedbackTriageLabelValues.needsContext,
+      });
+
+      const report = await context.db
+        .select()
+        .from(feedbackReports)
+        .where(eq(feedbackReports.feedbackReportId, result.feedbackReportId))
+        .limit(1);
+      expect(report[0]?.lineReference).toBeNull();
+
+      const evidence = await context.db
+        .select()
+        .from(feedbackReportEvidence)
+        .where(eq(feedbackReportEvidence.feedbackReportId, result.feedbackReportId))
+        .limit(1);
+      expect(evidence[0]?.contextSignals).toEqual({});
+      expect(evidence[0]?.attachments).toEqual([{ attachmentKind: "screenshot" }]);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("labels style preferences separately from objective defect candidates", async () => {
     const context = await migratedContext();
     try {
@@ -462,6 +505,59 @@ describe("ItotoriProjectRepository", () => {
 
       expect(style.triageLabel).toBe(feedbackTriageLabelValues.styleDisputeCandidate);
       expect(objective.triageLabel).toBe(feedbackTriageLabelValues.objectiveDefectCandidate);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("does not aggregate different feedback types with the same explicit dedupe key", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      const feedbackRepo = new ItotoriFeedbackRepository(context.db);
+      await repo.reset(localActor);
+      await repo.importSourceBundle(localActor, projectFixture());
+
+      const style = await feedbackRepo.importManualFeedback(
+        localActor,
+        manualFeedbackFixture({
+          dedupeKey: "external-ticket-123",
+          reporterNote: "The protagonist should sound less formal here.",
+        }),
+      );
+      const objective = await feedbackRepo.importManualFeedback(
+        localActor,
+        manualFeedbackFixture({
+          dedupeKey: "external-ticket-123",
+          feedbackType: feedbackTypeValues.objectiveDefect,
+          reporterNote: "The player-facing line contains the wrong term.",
+        }),
+      );
+
+      expect(style.dedupeKey).not.toBe(objective.dedupeKey);
+      expect(objective).toMatchObject({
+        duplicate: false,
+        reportCount: 1,
+        triageLabel: feedbackTriageLabelValues.objectiveDefectCandidate,
+      });
+
+      const reports = await context.db
+        .select()
+        .from(feedbackReports)
+        .where(eq(feedbackReports.projectId, "project-test"));
+      expect(reports).toHaveLength(2);
+      expect(new Set(reports.map((report) => report.feedbackType))).toEqual(
+        new Set([feedbackTypeValues.stylePreference, feedbackTypeValues.objectiveDefect]),
+      );
+
+      const evidence = await context.db
+        .select()
+        .from(feedbackReportEvidence)
+        .where(eq(feedbackReportEvidence.feedbackReportId, objective.feedbackReportId))
+        .limit(1);
+      expect(evidence[0]?.metadata).toMatchObject({
+        importedFeedbackType: feedbackTypeValues.objectiveDefect,
+      });
     } finally {
       await context.close();
     }

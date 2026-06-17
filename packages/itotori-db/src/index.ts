@@ -34,6 +34,7 @@ export {
   feedbackTriageLabelValues,
   feedbackTypeValues,
   ItotoriFeedbackRepository,
+  parseManualFeedbackImportInput,
 } from "./repositories/feedback-repository.js";
 export type {
   FeedbackContextStatus,

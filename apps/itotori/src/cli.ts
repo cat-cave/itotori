@@ -5,7 +5,6 @@ import {
   createDatabaseContext,
   databaseUrlFromEnv,
   migrate,
-  type ManualFeedbackImportInput,
   type ItotoriProjectRecord,
 } from "@itotori/db";
 import {
@@ -160,7 +159,7 @@ async function runIngestRuntime(): Promise<void> {
 async function runImportFeedback(): Promise<void> {
   const feedbackPath = requiredFlag("--feedback");
   const outputPath = requiredFlag("--output");
-  const feedback = readJson(feedbackPath) as ManualFeedbackImportInput;
+  const feedback = readJson(feedbackPath);
   const result = await importManualFeedbackWithDatabase(feedback);
   writeJson(outputPath, result);
 }
