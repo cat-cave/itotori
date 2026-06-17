@@ -22,6 +22,9 @@ import {
   artifacts,
   assets,
   events,
+  feedbackReportEvidence,
+  feedbackReports,
+  feedbackSources,
   findings,
   localeBranches,
   localeBranchStatusValues,
@@ -139,6 +142,9 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     await requirePermission(this.db, actor, permissionValues.systemReset);
     await this.db.execute(sql`
       truncate
+        ${feedbackReportEvidence},
+        ${feedbackReports},
+        ${feedbackSources},
         ${artifacts},
         ${findings},
         ${events},

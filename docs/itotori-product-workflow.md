@@ -501,6 +501,26 @@ dedupe before external integrations. Public or semi-public feedback may contain
 spoilers, private save data, harassment, copyrighted screenshots, or inaccurate
 claims, so imports must preserve source channel metadata and redaction status.
 
+The initial DB-backed intake model stores feedback sources, canonical feedback
+reports, and report evidence separately:
+
+- `feedback_sources` identifies the channel, such as manual playtest, internal
+  review note, runtime review package, or later imported community export.
+- `feedback_reports` is the canonical triage item keyed by a deterministic
+  dedupe key and labeled as an objective-defect candidate, style-dispute
+  candidate, glossary/canon candidate, runtime issue candidate, asset issue
+  candidate, or `needs_context`.
+- `feedback_report_evidence` appends each imported report, screenshot, save
+  context, route/context attachment, line reference, reporter role, and note to
+  the canonical report.
+
+The dedupe key is scoped to project, locale branch, target locale, feedback
+type, normalized report text, and the best available anchor. The anchor prefers
+source identity or line reference, then save/context/runtime/screenshot
+attachments, then a missing-context marker. Reimporting the same evidence does
+not create a new unresolved item; new duplicate evidence increments the
+canonical report count and appends a duplicate-aggregation event.
+
 Style preference feedback is routed differently from objective defects. A typo
 with a screenshot and source reference can become a repair job or batch draft
 edit. A preference such as "this character should sound harsher" becomes a

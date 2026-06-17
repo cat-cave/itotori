@@ -1,0 +1,38 @@
+{
+  "projectId": "project-test",
+  "localeBranchId": "locale-en-us",
+  "sourceBundleId": "bridge-test",
+  "targetLocale": "en-US",
+  "feedbackType": "style_preference",
+  "reporter": {
+    "role": "playtester",
+    "displayName": "Fixture reviewer"
+  },
+  "reporterNote": "The protagonist sounds too formal in this line.",
+  "lineReference": {
+    "bridgeUnitId": "bridge-unit-test",
+    "sourceUnitKey": "hello.scene.001.line.001",
+    "path": "source.json",
+    "line": 1
+  },
+  "attachments": [
+    {
+      "attachmentKind": "screenshot",
+      "artifactId": "feedback-screenshot-fixture",
+      "uri": "fixture://feedback/screenshot/formal-tone",
+      "hash": "sha256:feedback-screenshot-fixture",
+      "caption": "message window with formal protagonist line",
+      "capturePosition": "hello.scene.001:frame001",
+      "evidenceTier": "E2"
+    },
+    {
+      "attachmentKind": "save_context",
+      "contextToken": "fixture-save-before-line",
+      "routeRef": "hello-route",
+      "sceneRef": "hello.scene.001"
+    }
+  ],
+  "privacyClassification": "internal",
+  "redactionState": "reviewed",
+  "reportedAt": "2026-06-17T00:00:00.000Z"
+}

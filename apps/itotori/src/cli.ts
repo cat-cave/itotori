@@ -14,6 +14,7 @@ import {
   assertRuntimeVerificationReport,
 } from "@itotori/localization-bridge-schema";
 import { localUserActor } from "./auth.js";
+import { importManualFeedbackWithDatabase } from "./manual-feedback.js";
 
 type ProjectState = ItotoriProjectRecord & { bridge: BridgeBundle };
 
@@ -47,6 +48,9 @@ async function main(): Promise<void> {
       break;
     case "ingest-runtime":
       await runIngestRuntime();
+      break;
+    case "import-feedback":
+      await runImportFeedback();
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -150,6 +154,14 @@ async function runIngestRuntime(): Promise<void> {
     runtimeReportId: report.runtimeReportId,
     dashboard,
   });
+}
+
+async function runImportFeedback(): Promise<void> {
+  const feedbackPath = requiredFlag("--feedback");
+  const outputPath = requiredFlag("--output");
+  const feedback = readJson(feedbackPath);
+  const result = await importManualFeedbackWithDatabase(feedback);
+  writeJson(outputPath, result);
 }
 
 function fakeTranslate(sourceText: string): string {
