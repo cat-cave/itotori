@@ -198,6 +198,14 @@ Utsushi owns runtime probes, traces, captures, replay sessions, and VM/playback
 adapters. It must be useful even when imperfect, as long as its reports state the
 capability level honestly.
 
+Engine VMs are not the entry bar. The first real-engine target is an evidence
+probe that uses an existing runtime when that is cheaper and more reliable. For
+RPG Maker MV/MZ, that likely means launching or instrumenting the browser/NW.js
+runtime and capturing trace plus frame evidence before attempting any Rust
+reimplementation. A VM becomes the right answer only when it provides concrete
+validation leverage that wrapper-based probes cannot: deterministic jumping,
+branch control, replay, browser-distributable review, or reference comparison.
+
 ## Alpha Bar
 
 For alpha readiness, Utsushi must support synthetic fixture evidence through E2:
@@ -210,3 +218,10 @@ For alpha readiness, Utsushi must support synthetic fixture evidence through E2:
 
 Engine-specific VM/playback work can start before E4 fidelity is possible, but
 must label itself as E1, E2, or E3 until reference comparison exists.
+
+The first real-engine alpha proof should be an RPG Maker MV/MZ validation probe
+that demonstrates at least one patched project can produce evidence useful to
+Itotori review: reachable text or choice trace, screenshot artifact references,
+semantic launch/capture errors when unsupported, and visible fidelity limits.
+Static route analysis may accompany that report, but it must remain E0 unless an
+actual runtime path observed the content.

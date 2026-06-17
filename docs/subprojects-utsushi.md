@@ -4,6 +4,41 @@ Utsushi owns runtime validation evidence: trace, replay, capture, smoke reports,
 
 The scaffold implements a fixture runtime. It optimizes for validation usefulness first; pixel-perfect compatibility is an upside target, not the entry bar.
 
+## First Useful Target
+
+Utsushi is not primarily "the Rust game engine project." It is the runtime
+evidence layer for Itotori and Kaifuu. Engine VMs, WASM playback, browser
+review, Wine launchers, and screenshot capture are adapter strategies under that
+goal.
+
+The degenerate useful case is:
+
+1. Kaifuu patches a small real-engine project.
+2. Utsushi runs or probes that patched project through the best available
+   runtime path.
+3. Utsushi emits a typed report saying which bridge units were observed, which
+   branch or choice points were reachable, which screenshots or frames were
+   captured, and what the evidence cannot prove.
+4. Itotori ingests that report so humans and QA agents can review source,
+   translation, runtime evidence, findings, and feedback together.
+
+That is valuable even before Utsushi can emulate a full engine. It catches
+broken protected markup, missing text, wrong patch output, glyph/font problems,
+line overflow, branch reachability gaps, untranslated UI/image surfaces, and
+runtime-only strings that static extraction missed.
+
+The first real-engine proof should be an RPG Maker MV/MZ validation probe that
+uses the existing MV/MZ runtime where possible, such as browser or NW.js-style
+launch/capture plus injected observation hooks, rather than a Rust reimplementation
+of RPG Maker. A Rust-side adapter still owns orchestration, capability reporting,
+artifact storage, semantic errors, and normalized runtime evidence.
+
+Full or partial VMs are justified later when they clearly improve branch
+navigation, jump-to-moment review, deterministic replay, screenshot automation,
+browser playback, or cross-platform validation beyond what launch/capture hooks
+can provide. Siglus, KiriKiri, RPG Maker, and Ren'Py should be evaluated through
+that build-vs-wrap lens before Utsushi commits to a large engine-port effort.
+
 ## Runtime Evidence v0.2
 
 Utsushi runtime reports use `RuntimeEvidenceReportV02` from

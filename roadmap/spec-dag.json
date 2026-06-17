@@ -6822,7 +6822,7 @@
       "id": "UTSUSHI-004",
       "title": "Artifact storage foundation",
       "status": "planned",
-      "priority": "P2",
+      "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "utsushi-core",
@@ -6911,8 +6911,15 @@
       "target": "alpha",
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-001", "KAIFUU-007", "UTSUSHI-000", "UTSUSHI-002", "UTSUSHI-003"],
-      "summary": "Implement a pragmatic validation probe for RPG Maker MV/MZ projects: route/text trace extraction, lightweight launch or static validation, and screenshot hooks where feasible.",
+      "dependsOn": [
+        "UTSUSHI-001",
+        "KAIFUU-007",
+        "UTSUSHI-000",
+        "UTSUSHI-002",
+        "UTSUSHI-003",
+        "UTSUSHI-014"
+      ],
+      "summary": "Implement the first useful real-engine Utsushi proof for RPG Maker MV/MZ: use the existing browser or NW.js-style runtime where possible to emit trace, branch, screenshot, and limitation evidence, rather than starting with a Rust engine port.",
       "deliverables": [
         "RPG Maker runtime adapter",
         "Trace fixtures",
@@ -6921,6 +6928,8 @@
       ],
       "acceptanceCriteria": [
         "Adapter produces useful validation evidence without requiring pixel-perfect porting",
+        "The first implementation wraps or instruments an existing MV/MZ runtime before attempting a Rust reimplementation",
+        "Static route analysis remains E0 unless a launched runtime actually observed the content",
         "Limitations are explicit",
         "It supports the first real-engine alpha readiness loop",
         "Evidence tier is visible wherever evidence is shown"
@@ -6941,6 +6950,7 @@
       ],
       "auditFocus": [
         "Overpromising VM fidelity",
+        "Premature Rust engine-port scope",
         "Missing branch/text evidence",
         "Platform assumptions"
       ]
@@ -7151,7 +7161,7 @@
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["UTSUSHI-001", "KAIFUU-020", "UTSUSHI-000"],
-      "summary": "Evaluate when engine-specific VMs are worth building for validation, branch navigation, screenshots, recordings, and browser playback.",
+      "summary": "Evaluate when engine-specific VMs are worth building for validation, branch navigation, screenshots, recordings, and browser playback, using launch/capture probes as the baseline alternative.",
       "deliverables": [
         "VM feasibility report",
         "Engine ranking",
@@ -7160,6 +7170,7 @@
       ],
       "acceptanceCriteria": [
         "Accuracy target is validation usefulness first, pixel-perfect second",
+        "Each candidate is compared against wrapper, hook, Wine, browser, and static-probe alternatives",
         "Siglus, RPG Maker, and KiriKiri are compared",
         "Build-vs-skip criteria are explicit",
         "The report can create follow-up DAG nodes without blocking alpha readiness runtime probes"
@@ -7225,7 +7236,7 @@
       "id": "UTSUSHI-014",
       "title": "Cross-platform launch and capture harness",
       "status": "planned",
-      "priority": "P2",
+      "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
