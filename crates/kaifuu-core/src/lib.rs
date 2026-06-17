@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub type KaifuuResult<T> = Result<T, Box<dyn std::error::Error>>;
+pub const PROFILE_SCHEMA_VERSION: &str = "0.1.0";
 
 pub trait EngineAdapter {
     fn id(&self) -> &'static str;
@@ -48,10 +49,19 @@ impl AdapterRegistry {
             .map(Box::as_ref)
     }
 
+    pub fn detect_all(&self, game_dir: &Path) -> KaifuuResult<Vec<DetectionResult>> {
+        let mut results = Vec::new();
+        for adapter in &self.adapters {
+            let mut result = adapter.detect(DetectRequest { game_dir })?;
+            result.normalize();
+            results.push(result);
+        }
+        Ok(results)
+    }
+
     pub fn detect(&self, game_dir: &Path) -> KaifuuResult<Option<DetectionResult>> {
         let mut best = None;
-        for adapter in &self.adapters {
-            let result = adapter.detect(DetectRequest { game_dir })?;
+        for result in self.detect_all(game_dir)? {
             if result.detected {
                 best = Some(result);
                 break;
@@ -189,25 +199,92 @@ impl AdapterCapabilities {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DetectionResult {
     pub adapter_id: String,
     pub detected: bool,
-    pub confidence: f32,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub engine_family: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub engine_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub detected_variant: Option<String>,
-    pub indicators: Vec<DetectionIndicator>,
+    pub evidence: Vec<DetectionEvidence>,
+    pub requirements: Vec<ProfileRequirement>,
     pub capabilities: Vec<CapabilityReport>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct DetectionIndicator {
+pub struct DetectionEvidence {
     pub path: String,
     pub kind: String,
-    pub evidence: String,
+    pub status: EvidenceStatus,
+    pub detail: String,
+}
+
+impl DetectionResult {
+    pub fn normalize(&mut self) {
+        self.evidence
+            .sort_by_key(|evidence| (evidence.path.clone(), evidence.kind.clone()));
+        self.requirements.sort_by_key(ProfileRequirement::sort_key);
+        self.capabilities.sort_by_key(|report| {
+            (
+                serde_json::to_string(&report.capability).unwrap_or_default(),
+                serde_json::to_string(&report.status).unwrap_or_default(),
+                report.limitation.clone(),
+            )
+        });
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EvidenceStatus {
+    Matched,
+    Missing,
+    Invalid,
+    Informational,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetectionReport {
+    pub schema_version: String,
+    pub game_dir: String,
+    pub status: DetectionReportStatus,
+    pub detections: Vec<DetectionResult>,
+    pub warnings: Vec<String>,
+}
+
+impl DetectionReport {
+    pub fn from_results(game_dir: &Path, detections: Vec<DetectionResult>) -> Self {
+        let status = if detections.iter().any(|detection| detection.detected) {
+            DetectionReportStatus::Matched
+        } else {
+            DetectionReportStatus::Unknown
+        };
+        let warnings = if status == DetectionReportStatus::Unknown {
+            vec!["no registered adapter matched this directory".to_string()]
+        } else {
+            vec![]
+        };
+        Self {
+            schema_version: "0.1.0".to_string(),
+            game_dir: game_dir.display().to_string(),
+            status,
+            detections,
+            warnings,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DetectionReportStatus {
+    Matched,
+    Unknown,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -221,6 +298,7 @@ pub struct GameProfile {
     pub engine: EngineProfile,
     pub assets: Vec<AssetProfile>,
     pub capabilities: Vec<CapabilityReport>,
+    pub requirements: Vec<ProfileRequirement>,
     pub metadata: BTreeMap<String, String>,
 }
 
@@ -240,12 +318,649 @@ impl GameProfile {
                 report.limitation.clone(),
             )
         });
+        self.requirements.sort_by_key(ProfileRequirement::sort_key);
     }
 
     pub fn stable_json(&self) -> KaifuuResult<String> {
         let mut normalized = self.clone();
         normalized.normalize();
         Ok(format!("{}\n", serde_json::to_string_pretty(&normalized)?))
+    }
+
+    pub fn validate(&self) -> ProfileValidationResult {
+        let Ok(value) = serde_json::to_value(self) else {
+            return ProfileValidationResult {
+                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                profile_id: Some(self.profile_id.clone()),
+                status: OperationStatus::Failed,
+                failures: vec![ProfileValidationFailure {
+                    code: "profile_serialization_failed".to_string(),
+                    field: "$".to_string(),
+                    message: "profile could not be serialized for validation".to_string(),
+                }],
+                requirements: self.requirements.clone(),
+            };
+        };
+        let mut validation = validate_profile_value(&value);
+        if validation.requirements.is_empty() {
+            validation.requirements = self.requirements.clone();
+        }
+        validation
+    }
+}
+
+pub fn validate_profile_value(value: &Value) -> ProfileValidationResult {
+    let mut failures = Vec::new();
+    if !value.is_object() {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_profile_shape".to_string(),
+            field: "$".to_string(),
+            message: "profile must be a JSON object".to_string(),
+        });
+        return profile_validation_result(None, failures, vec![]);
+    }
+
+    let profile_id = required_string_value(&mut failures, value, "profileId");
+    validate_schema_version(&mut failures, value);
+    required_string_value(&mut failures, value, "gameId");
+    required_string_value(&mut failures, value, "title");
+    validate_locale_field(&mut failures, value, "sourceLocale");
+    validate_engine(&mut failures, value.get("engine"));
+    let asset_patching_capabilities = validate_assets(&mut failures, value.get("assets"));
+    let profile_capabilities =
+        validate_capabilities(&mut failures, value.get("capabilities"), "capabilities");
+    for (field, capability) in asset_patching_capabilities {
+        if !profile_capabilities.contains(&capability) {
+            failures.push(ProfileValidationFailure {
+                code: "inconsistent_capability".to_string(),
+                field,
+                message: format!(
+                    "asset patching capability {capability} must also appear in profile capabilities"
+                ),
+            });
+        }
+    }
+    let requirements = validate_requirements(&mut failures, value.get("requirements"));
+
+    profile_validation_result(profile_id, failures, requirements)
+}
+
+fn profile_validation_result(
+    profile_id: Option<String>,
+    failures: Vec<ProfileValidationFailure>,
+    requirements: Vec<ProfileRequirement>,
+) -> ProfileValidationResult {
+    ProfileValidationResult {
+        schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+        profile_id,
+        status: if failures.is_empty() {
+            OperationStatus::Passed
+        } else {
+            OperationStatus::Failed
+        },
+        failures,
+        requirements,
+    }
+}
+
+fn validate_schema_version(failures: &mut Vec<ProfileValidationFailure>, value: &Value) {
+    match value.get("schemaVersion").and_then(Value::as_str) {
+        Some(PROFILE_SCHEMA_VERSION) => {}
+        Some(version) if version.trim().is_empty() => failures.push(ProfileValidationFailure {
+            code: "missing_required_field".to_string(),
+            field: "schemaVersion".to_string(),
+            message: "schemaVersion must not be empty".to_string(),
+        }),
+        Some(version) => failures.push(ProfileValidationFailure {
+            code: "unsupported_schema_version".to_string(),
+            field: "schemaVersion".to_string(),
+            message: format!("schemaVersion must be {PROFILE_SCHEMA_VERSION}, got {version}"),
+        }),
+        None => failures.push(ProfileValidationFailure {
+            code: "missing_required_field".to_string(),
+            field: "schemaVersion".to_string(),
+            message: "schemaVersion must not be empty".to_string(),
+        }),
+    }
+}
+
+fn validate_engine(failures: &mut Vec<ProfileValidationFailure>, engine: Option<&Value>) {
+    let Some(engine) = engine else {
+        failures.push(ProfileValidationFailure {
+            code: "missing_required_field".to_string(),
+            field: "engine".to_string(),
+            message: "engine must be a JSON object".to_string(),
+        });
+        return;
+    };
+    if !engine.is_object() {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: "engine".to_string(),
+            message: "engine must be a JSON object".to_string(),
+        });
+        return;
+    }
+    required_string_value(failures, engine, "engine.adapterId").map(|_| ());
+    required_string_value(failures, engine, "engine.engineFamily").map(|_| ());
+    required_string_value(failures, engine, "engine.detectedVariant").map(|_| ());
+    if let Some(engine_version) = engine.get("engineVersion") {
+        if !engine_version.is_null()
+            && engine_version
+                .as_str()
+                .map(|version| version.trim().is_empty())
+                .unwrap_or(true)
+        {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_engine_version".to_string(),
+                field: "engine.engineVersion".to_string(),
+                message: "engine.engineVersion must be null or a non-empty string".to_string(),
+            });
+        }
+    }
+}
+
+fn validate_assets(
+    failures: &mut Vec<ProfileValidationFailure>,
+    assets: Option<&Value>,
+) -> Vec<(String, String)> {
+    let mut patching_capabilities = Vec::new();
+    let Some(assets) = assets else {
+        failures.push(ProfileValidationFailure {
+            code: "missing_assets".to_string(),
+            field: "assets".to_string(),
+            message: "profile must identify at least one asset or manifest surface".to_string(),
+        });
+        return patching_capabilities;
+    };
+    let Some(assets) = assets.as_array() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: "assets".to_string(),
+            message: "assets must be an array".to_string(),
+        });
+        return patching_capabilities;
+    };
+    if assets.is_empty() {
+        failures.push(ProfileValidationFailure {
+            code: "missing_assets".to_string(),
+            field: "assets".to_string(),
+            message: "profile must identify at least one asset or manifest surface".to_string(),
+        });
+    }
+    for (index, asset) in assets.iter().enumerate() {
+        let field = format!("assets.{index}");
+        if !asset.is_object() {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_field_type".to_string(),
+                field,
+                message: "asset must be a JSON object".to_string(),
+            });
+            continue;
+        }
+        let asset_id = required_string_value(failures, asset, &format!("assets.{index}.assetId"));
+        if asset_id
+            .as_deref()
+            .is_some_and(|id| id.chars().any(char::is_whitespace) || id.contains('\0'))
+        {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_asset_id".to_string(),
+                field: format!("assets.{index}.assetId"),
+                message: "assetId must not contain whitespace or null bytes".to_string(),
+            });
+        }
+        if let Some(path) = required_string_value(failures, asset, &format!("assets.{index}.path"))
+        {
+            validate_relative_path(failures, &format!("assets.{index}.path"), &path);
+        }
+        validate_enum_string(
+            failures,
+            asset,
+            &format!("assets.{index}.assetKind"),
+            &[
+                "script", "database", "metadata", "image", "audio", "archive", "unknown",
+            ],
+        );
+        validate_text_surfaces(failures, asset.get("textSurfaces"), index);
+        if let Some(capability) = validate_capability_report(
+            failures,
+            asset.get("patching"),
+            &format!("assets.{index}.patching"),
+        ) {
+            patching_capabilities.push((format!("assets.{index}.patching.capability"), capability));
+        }
+        if let Some(source_hash) = asset.get("sourceHash") {
+            if !source_hash.is_null()
+                && source_hash
+                    .as_str()
+                    .map(|hash| hash.trim().is_empty())
+                    .unwrap_or(true)
+            {
+                failures.push(ProfileValidationFailure {
+                    code: "invalid_source_hash".to_string(),
+                    field: format!("assets.{index}.sourceHash"),
+                    message: "sourceHash must be null or a non-empty string".to_string(),
+                });
+            }
+        }
+    }
+    patching_capabilities
+}
+
+fn validate_text_surfaces(
+    failures: &mut Vec<ProfileValidationFailure>,
+    text_surfaces: Option<&Value>,
+    asset_index: usize,
+) {
+    let field = format!("assets.{asset_index}.textSurfaces");
+    let Some(text_surfaces) = text_surfaces else {
+        failures.push(ProfileValidationFailure {
+            code: "missing_text_surfaces".to_string(),
+            field,
+            message: "textSurfaces must list at least one known text surface".to_string(),
+        });
+        return;
+    };
+    let Some(text_surfaces) = text_surfaces.as_array() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field,
+            message: "textSurfaces must be an array".to_string(),
+        });
+        return;
+    };
+    if text_surfaces.is_empty() {
+        failures.push(ProfileValidationFailure {
+            code: "missing_text_surfaces".to_string(),
+            field: format!("assets.{asset_index}.textSurfaces"),
+            message: "textSurfaces must list at least one known text surface".to_string(),
+        });
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    for (surface_index, surface) in text_surfaces.iter().enumerate() {
+        let field = format!("assets.{asset_index}.textSurfaces.{surface_index}");
+        let Some(surface) = surface.as_str() else {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_text_surface".to_string(),
+                field,
+                message: "text surface must be a known string enum value".to_string(),
+            });
+            continue;
+        };
+        if ![
+            "dialogue",
+            "narration",
+            "speaker_name",
+            "choice_label",
+            "ui_label",
+            "tutorial_text",
+            "database_entry",
+            "song_title",
+            "image_text",
+            "metadata_text",
+        ]
+        .contains(&surface)
+        {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_text_surface".to_string(),
+                field,
+                message: format!("unknown text surface {surface}"),
+            });
+        }
+        if !seen.insert(surface.to_string()) {
+            failures.push(ProfileValidationFailure {
+                code: "duplicate_text_surface".to_string(),
+                field: format!("assets.{asset_index}.textSurfaces"),
+                message: format!("text surface {surface} is duplicated"),
+            });
+        }
+    }
+}
+
+fn validate_capabilities(
+    failures: &mut Vec<ProfileValidationFailure>,
+    capabilities: Option<&Value>,
+    field: &str,
+) -> std::collections::BTreeSet<String> {
+    let mut seen = std::collections::BTreeSet::new();
+    let Some(capabilities) = capabilities else {
+        failures.push(ProfileValidationFailure {
+            code: "missing_capabilities".to_string(),
+            field: field.to_string(),
+            message: "capabilities must list at least one capability report".to_string(),
+        });
+        return seen;
+    };
+    let Some(capabilities) = capabilities.as_array() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: field.to_string(),
+            message: "capabilities must be an array".to_string(),
+        });
+        return seen;
+    };
+    if capabilities.is_empty() {
+        failures.push(ProfileValidationFailure {
+            code: "missing_capabilities".to_string(),
+            field: field.to_string(),
+            message: "capabilities must list at least one capability report".to_string(),
+        });
+    }
+    for (index, capability) in capabilities.iter().enumerate() {
+        let report_field = format!("{field}.{index}");
+        let capability_name = validate_capability_report(failures, Some(capability), &report_field);
+        if let Some(capability_name) = capability_name {
+            if !seen.insert(capability_name.clone()) {
+                failures.push(ProfileValidationFailure {
+                    code: "duplicate_capability".to_string(),
+                    field: field.to_string(),
+                    message: format!("capability {capability_name} appears more than once"),
+                });
+            }
+        }
+    }
+    seen
+}
+
+fn validate_capability_report(
+    failures: &mut Vec<ProfileValidationFailure>,
+    report: Option<&Value>,
+    field: &str,
+) -> Option<String> {
+    let Some(report) = report else {
+        failures.push(ProfileValidationFailure {
+            code: "missing_capability_report".to_string(),
+            field: field.to_string(),
+            message: "capability report must be present".to_string(),
+        });
+        return None;
+    };
+    if !report.is_object() {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: field.to_string(),
+            message: "capability report must be a JSON object".to_string(),
+        });
+        return None;
+    }
+    let capability = validate_enum_string(
+        failures,
+        report,
+        &format!("{field}.capability"),
+        &[
+            "detection",
+            "extraction",
+            "patching",
+            "verification",
+            "asset_listing",
+            "profile_generation",
+            "line_parity_patching",
+            "asset_text_patching",
+            "delta_patching",
+            "encrypted_input",
+            "key_profile",
+            "runtime_vm",
+        ],
+    );
+    let status = validate_enum_string(
+        failures,
+        report,
+        &format!("{field}.status"),
+        &["supported", "limited", "unsupported", "requires_user_input"],
+    );
+    let limitation = report.get("limitation").and_then(Value::as_str);
+    if matches!(
+        status.as_deref(),
+        Some("limited" | "unsupported" | "requires_user_input")
+    ) && limitation.map(str::trim).unwrap_or("").is_empty()
+    {
+        failures.push(ProfileValidationFailure {
+            code: "missing_capability_limitation".to_string(),
+            field: format!("{field}.limitation"),
+            message: "limited, unsupported, and user-input capabilities require a limitation"
+                .to_string(),
+        });
+    }
+    if status.as_deref() == Some("supported")
+        && limitation.is_some_and(|text| !text.trim().is_empty())
+    {
+        failures.push(ProfileValidationFailure {
+            code: "unexpected_capability_limitation".to_string(),
+            field: format!("{field}.limitation"),
+            message: "supported capabilities must not carry a limitation".to_string(),
+        });
+    }
+    capability
+}
+
+fn validate_requirements(
+    failures: &mut Vec<ProfileValidationFailure>,
+    requirements: Option<&Value>,
+) -> Vec<ProfileRequirement> {
+    let Some(requirements) = requirements else {
+        failures.push(ProfileValidationFailure {
+            code: "missing_requirements".to_string(),
+            field: "requirements".to_string(),
+            message: "requirements must be an array".to_string(),
+        });
+        return vec![];
+    };
+    let Some(requirements) = requirements.as_array() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: "requirements".to_string(),
+            message: "requirements must be an array".to_string(),
+        });
+        return vec![];
+    };
+    let mut parsed = Vec::new();
+    let mut seen_keys = std::collections::BTreeSet::new();
+    for (index, requirement) in requirements.iter().enumerate() {
+        let field = format!("requirements.{index}");
+        if !requirement.is_object() {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_field_type".to_string(),
+                field,
+                message: "requirement must be a JSON object".to_string(),
+            });
+            continue;
+        }
+        let category = validate_enum_string(
+            failures,
+            requirement,
+            &format!("requirements.{index}.category"),
+            &["file", "platform", "secret_key"],
+        );
+        let key =
+            required_string_value(failures, requirement, &format!("requirements.{index}.key"));
+        let status = validate_enum_string(
+            failures,
+            requirement,
+            &format!("requirements.{index}.status"),
+            &["satisfied", "missing", "not_required", "unsupported"],
+        );
+        let description = required_string_value(
+            failures,
+            requirement,
+            &format!("requirements.{index}.description"),
+        );
+        let secret = requirement
+            .get("secret")
+            .and_then(Value::as_bool)
+            .unwrap_or_else(|| {
+                failures.push(ProfileValidationFailure {
+                    code: "invalid_field_type".to_string(),
+                    field: format!("requirements.{index}.secret"),
+                    message: "requirement secret must be a boolean".to_string(),
+                });
+                false
+            });
+        let placeholder = requirement
+            .get("placeholder")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+
+        if let Some(key) = key.as_deref() {
+            if !seen_keys.insert(key.to_string()) {
+                failures.push(ProfileValidationFailure {
+                    code: "duplicate_requirement_key".to_string(),
+                    field: "requirements".to_string(),
+                    message: format!("requirement key {key} appears more than once"),
+                });
+            }
+            if key.chars().any(char::is_whitespace) || key.contains('\0') {
+                failures.push(ProfileValidationFailure {
+                    code: "invalid_requirement_key".to_string(),
+                    field: format!("requirements.{index}.key"),
+                    message: "requirement key must not contain whitespace or null bytes"
+                        .to_string(),
+                });
+            }
+        }
+        if secret && status.as_deref() == Some("missing") && placeholder.is_none() {
+            failures.push(ProfileValidationFailure {
+                code: "missing_secret_placeholder".to_string(),
+                field: format!("requirements.{index}.placeholder"),
+                message: "missing secret requirements must name a placeholder and never store the secret value".to_string(),
+            });
+        }
+        if !secret && placeholder.is_some() {
+            failures.push(ProfileValidationFailure {
+                code: "unexpected_non_secret_placeholder".to_string(),
+                field: format!("requirements.{index}.placeholder"),
+                message: "only secret requirements may name placeholders".to_string(),
+            });
+        }
+        if matches!(status.as_deref(), Some("missing" | "unsupported")) {
+            failures.push(ProfileValidationFailure {
+                code: if status.as_deref() == Some("missing") {
+                    "missing_requirement".to_string()
+                } else {
+                    "unsupported_requirement".to_string()
+                },
+                field: key
+                    .as_deref()
+                    .map(|key| format!("requirements.{key}"))
+                    .unwrap_or_else(|| format!("requirements.{index}")),
+                message: description
+                    .clone()
+                    .unwrap_or_else(|| "profile requirement is not satisfied".to_string()),
+            });
+        }
+        if let (Some(category), Some(key), Some(status), Some(description)) =
+            (category, key, status, description)
+        {
+            if let (Ok(category), Ok(status)) = (
+                serde_json::from_value::<RequirementCategory>(Value::String(category)),
+                serde_json::from_value::<RequirementStatus>(Value::String(status)),
+            ) {
+                parsed.push(ProfileRequirement {
+                    category,
+                    key,
+                    status,
+                    description,
+                    placeholder,
+                    secret,
+                });
+            }
+        }
+    }
+    parsed
+}
+
+fn required_string_value(
+    failures: &mut Vec<ProfileValidationFailure>,
+    value: &Value,
+    field: &str,
+) -> Option<String> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    match value.get(key).and_then(Value::as_str) {
+        Some(text) if !text.trim().is_empty() => Some(text.to_string()),
+        Some(_) => {
+            failures.push(ProfileValidationFailure {
+                code: "missing_required_field".to_string(),
+                field: field.to_string(),
+                message: format!("{field} must not be empty"),
+            });
+            None
+        }
+        None => {
+            failures.push(ProfileValidationFailure {
+                code: "missing_required_field".to_string(),
+                field: field.to_string(),
+                message: format!("{field} must not be empty"),
+            });
+            None
+        }
+    }
+}
+
+fn validate_enum_string(
+    failures: &mut Vec<ProfileValidationFailure>,
+    value: &Value,
+    field: &str,
+    allowed: &[&str],
+) -> Option<String> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    let Some(text) = value.get(key).and_then(Value::as_str) else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_enum_value".to_string(),
+            field: field.to_string(),
+            message: format!("{field} must be one of {}", allowed.join(", ")),
+        });
+        return None;
+    };
+    if !allowed.contains(&text) {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_enum_value".to_string(),
+            field: field.to_string(),
+            message: format!("{field} must be one of {}", allowed.join(", ")),
+        });
+        return None;
+    }
+    Some(text.to_string())
+}
+
+fn validate_locale_field(failures: &mut Vec<ProfileValidationFailure>, value: &Value, field: &str) {
+    let Some(locale) = required_string_value(failures, value, field) else {
+        return;
+    };
+    if !is_bcp47_like_locale(&locale) {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_locale".to_string(),
+            field: field.to_string(),
+            message: format!("{field} must be a BCP 47-style locale tag"),
+        });
+    }
+}
+
+fn is_bcp47_like_locale(locale: &str) -> bool {
+    let parts = locale.split('-').collect::<Vec<_>>();
+    let Some(language) = parts.first() else {
+        return false;
+    };
+    if !(2..=8).contains(&language.len()) || !language.chars().all(|c| c.is_ascii_alphabetic()) {
+        return false;
+    }
+    parts.iter().skip(1).all(|part| {
+        !part.is_empty() && part.len() <= 8 && part.chars().all(|c| c.is_ascii_alphanumeric())
+    })
+}
+
+fn validate_relative_path(failures: &mut Vec<ProfileValidationFailure>, field: &str, path: &str) {
+    let has_parent_component = path.split(['/', '\\']).any(|component| component == "..");
+    if path.starts_with('/')
+        || path.starts_with('\\')
+        || path.contains('\0')
+        || has_parent_component
+        || path.split(['/', '\\']).any(str::is_empty)
+    {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_asset_path".to_string(),
+            field: field.to_string(),
+            message: "asset path must be relative and must not contain parent traversal"
+                .to_string(),
+        });
     }
 }
 
@@ -256,6 +971,62 @@ pub struct EngineProfile {
     pub engine_family: String,
     pub engine_version: Option<String>,
     pub detected_variant: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileRequirement {
+    pub category: RequirementCategory,
+    pub key: String,
+    pub status: RequirementStatus,
+    pub description: String,
+    pub placeholder: Option<String>,
+    pub secret: bool,
+}
+
+impl ProfileRequirement {
+    pub fn sort_key(&self) -> (String, String, String) {
+        (
+            serde_json::to_string(&self.category).unwrap_or_default(),
+            self.key.clone(),
+            serde_json::to_string(&self.status).unwrap_or_default(),
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequirementCategory {
+    File,
+    Platform,
+    SecretKey,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RequirementStatus {
+    Satisfied,
+    Missing,
+    NotRequired,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileValidationResult {
+    pub schema_version: String,
+    pub profile_id: Option<String>,
+    pub status: OperationStatus,
+    pub failures: Vec<ProfileValidationFailure>,
+    pub requirements: Vec<ProfileRequirement>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProfileValidationFailure {
+    pub code: String,
+    pub field: String,
+    pub message: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -521,6 +1292,14 @@ mod tests {
                 ),
                 CapabilityReport::supported(Capability::Detection),
             ],
+            requirements: vec![ProfileRequirement {
+                category: RequirementCategory::SecretKey,
+                key: "decryption_key".to_string(),
+                status: RequirementStatus::NotRequired,
+                description: "plain JSON fixture does not require decryption keys".to_string(),
+                placeholder: None,
+                secret: true,
+            }],
             metadata,
         };
 
@@ -564,6 +1343,16 @@ mod tests {
       "limitation": null
     }
   ],
+  "requirements": [
+    {
+      "category": "secret_key",
+      "key": "decryption_key",
+      "status": "not_required",
+      "description": "plain JSON fixture does not require decryption keys",
+      "placeholder": null,
+      "secret": true
+    }
+  ],
   "metadata": {
     "source": "fixture",
     "supportBoundary": "plain JSON fixture"
@@ -575,6 +1364,42 @@ mod tests {
             profile.stable_json().unwrap(),
             profile.stable_json().unwrap()
         );
+    }
+
+    #[test]
+    fn detection_result_omits_unknown_optional_engine_fields() {
+        let unknown = DetectionResult {
+            adapter_id: "kaifuu.fixture".to_string(),
+            detected: false,
+            engine_family: None,
+            engine_version: None,
+            detected_variant: None,
+            evidence: vec![],
+            requirements: vec![],
+            capabilities: vec![],
+        };
+
+        let unknown_json = serde_json::to_value(&unknown).unwrap();
+        let unknown_object = unknown_json.as_object().unwrap();
+        assert!(!unknown_object.contains_key("engineFamily"));
+        assert!(!unknown_object.contains_key("engineVersion"));
+        assert!(!unknown_object.contains_key("detectedVariant"));
+
+        let detected = DetectionResult {
+            adapter_id: "kaifuu.fixture".to_string(),
+            detected: true,
+            engine_family: Some("fixture".to_string()),
+            engine_version: Some("0.0.0".to_string()),
+            detected_variant: Some("plain-json".to_string()),
+            evidence: vec![],
+            requirements: vec![],
+            capabilities: vec![],
+        };
+
+        let detected_json = serde_json::to_value(&detected).unwrap();
+        assert_eq!(detected_json["engineFamily"], "fixture");
+        assert_eq!(detected_json["engineVersion"], "0.0.0");
+        assert_eq!(detected_json["detectedVariant"], "plain-json");
     }
 
     #[test]
@@ -598,11 +1423,11 @@ mod tests {
                 Ok(DetectionResult {
                     adapter_id: self.0.to_string(),
                     detected: true,
-                    confidence: 1.0,
                     engine_family: Some(self.0.to_string()),
                     engine_version: None,
                     detected_variant: Some("test".to_string()),
-                    indicators: vec![],
+                    evidence: vec![],
+                    requirements: vec![],
                     capabilities: vec![],
                 })
             }

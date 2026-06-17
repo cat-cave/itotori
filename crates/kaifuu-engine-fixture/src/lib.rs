@@ -4,11 +4,12 @@ use std::path::Path;
 
 use kaifuu_core::{
     AdapterCapabilities, AdapterFailure, AssetKind, AssetList, AssetListRequest, AssetProfile,
-    BridgeBundle, BridgeUnit, Capability, CapabilityReport, DetectRequest, DetectionIndicator,
-    DetectionResult, EngineAdapter, EngineProfile, ExtractRequest, ExtractionResult, GameProfile,
-    KaifuuResult, OperationStatus, PatchRef, PatchRequest, PatchResult, ProfileRequest,
-    ProtectedSpan, TextSurface, VerificationResult, VerifyRequest, content_hash, deterministic_id,
-    require_str, require_u64,
+    BridgeBundle, BridgeUnit, Capability, CapabilityReport, DetectRequest, DetectionEvidence,
+    DetectionResult, EngineAdapter, EngineProfile, EvidenceStatus, ExtractRequest,
+    ExtractionResult, GameProfile, KaifuuResult, OperationStatus, PatchRef, PatchRequest,
+    PatchResult, ProfileRequest, ProfileRequirement, ProtectedSpan, RequirementCategory,
+    RequirementStatus, TextSurface, VerificationResult, VerifyRequest, content_hash,
+    deterministic_id, require_str, require_u64,
 };
 use serde_json::{Value, json};
 
@@ -33,6 +34,39 @@ impl FixtureAdapter {
             .as_str()
             .unwrap_or("ja-JP")
             .to_string()
+    }
+
+    fn requirements(source_present: bool) -> Vec<ProfileRequirement> {
+        vec![
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: "source.json".to_string(),
+                status: if source_present {
+                    RequirementStatus::Satisfied
+                } else {
+                    RequirementStatus::Missing
+                },
+                description: "fixture games require a plaintext source.json manifest".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::Platform,
+                key: "host_os".to_string(),
+                status: RequirementStatus::Satisfied,
+                description: "fixture adapter uses portable JSON file IO and has no engine runtime platform constraint".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::SecretKey,
+                key: "decryption_key".to_string(),
+                status: RequirementStatus::NotRequired,
+                description: "fixture projects are plaintext JSON and do not require user-provided keys".to_string(),
+                placeholder: None,
+                secret: true,
+            },
+        ]
     }
 
     fn text_surface_from_fixture_name(name: &str) -> TextSurface {
@@ -95,6 +129,7 @@ impl FixtureAdapter {
             },
             assets: vec![self.asset_from_source(source_text, source)?],
             capabilities: self.capabilities().reports,
+            requirements: Self::requirements(true),
             metadata,
         };
         profile.normalize();
@@ -185,32 +220,59 @@ impl EngineAdapter for FixtureAdapter {
             return Ok(DetectionResult {
                 adapter_id: FIXTURE_ADAPTER_ID.to_string(),
                 detected: false,
-                confidence: 0.0,
                 engine_family: None,
                 engine_version: None,
                 detected_variant: None,
-                indicators: vec![],
+                evidence: vec![DetectionEvidence {
+                    path: "source.json".to_string(),
+                    kind: "required_manifest".to_string(),
+                    status: EvidenceStatus::Missing,
+                    detail: "source.json is required for the fixture engine".to_string(),
+                }],
+                requirements: Self::requirements(false),
                 capabilities: self.capabilities().reports,
             });
         }
-        let (_source_text, source) = Self::read_source(request.game_dir)?;
+        let source_text = fs::read_to_string(&source_path)?;
+        let Ok(source) = serde_json::from_str::<Value>(&source_text) else {
+            return Ok(DetectionResult {
+                adapter_id: FIXTURE_ADAPTER_ID.to_string(),
+                detected: false,
+                engine_family: None,
+                engine_version: None,
+                detected_variant: None,
+                evidence: vec![DetectionEvidence {
+                    path: "source.json".to_string(),
+                    kind: "fixture_source".to_string(),
+                    status: EvidenceStatus::Invalid,
+                    detail: "source.json exists but is not valid JSON".to_string(),
+                }],
+                requirements: Self::requirements(true),
+                capabilities: self.capabilities().reports,
+            });
+        };
         let detected = source["units"].is_array();
         Ok(DetectionResult {
             adapter_id: FIXTURE_ADAPTER_ID.to_string(),
             detected,
-            confidence: if detected { 1.0 } else { 0.25 },
             engine_family: detected.then(|| "fixture".to_string()),
-            engine_version: Some(env!("CARGO_PKG_VERSION").to_string()),
+            engine_version: detected.then(|| env!("CARGO_PKG_VERSION").to_string()),
             detected_variant: detected.then(|| "plain-json-source".to_string()),
-            indicators: vec![DetectionIndicator {
+            evidence: vec![DetectionEvidence {
                 path: "source.json".to_string(),
                 kind: "fixture_source".to_string(),
-                evidence: if detected {
+                status: if detected {
+                    EvidenceStatus::Matched
+                } else {
+                    EvidenceStatus::Missing
+                },
+                detail: if detected {
                     "source.json contains a units array".to_string()
                 } else {
                     "source.json exists but is missing units".to_string()
                 },
             }],
+            requirements: Self::requirements(true),
             capabilities: self.capabilities().reports,
         })
     }

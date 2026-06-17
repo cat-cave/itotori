@@ -2,8 +2,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use kaifuu_core::{
-    AdapterRegistry, DetectionResult, EngineAdapter, ExtractRequest, GameProfile, KaifuuResult,
-    PatchExport, PatchRequest, ProfileRequest, VerifyRequest, read_json, write_json,
+    AdapterRegistry, DetectionReport, DetectionResult, EngineAdapter, ExtractRequest, GameProfile,
+    KaifuuResult, PatchExport, PatchRequest, ProfileRequest, VerifyRequest, read_json,
+    validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -31,7 +32,11 @@ fn run_with_args_and_registry(
         Some("detect") => {
             let game_dir = PathBuf::from(positional(&args, 1)?);
             let output = PathBuf::from(flag(&args, "--output")?);
-            write_json(&output, &detect_registered_adapter(registry, &game_dir)?)?;
+            let detections = registry.detect_all(&game_dir)?;
+            write_json(
+                &output,
+                &DetectionReport::from_results(&game_dir, detections),
+            )?;
         }
         Some("extract") => {
             let game_dir = PathBuf::from(positional(&args, 1)?);
@@ -87,13 +92,7 @@ fn run_with_args_and_registry(
             )?;
         }
         Some("profile") => {
-            let game_dir = PathBuf::from(positional(&args, 1)?);
-            let output = PathBuf::from(flag(&args, "--output")?);
-            let adapter = registered_adapter_for_game(registry, &game_dir)?;
-            let profile = adapter.profile(ProfileRequest {
-                game_dir: &game_dir,
-            })?;
-            write_stable_profile(&output, &profile)?;
+            run_profile_command(&args, registry)?;
         }
         Some("capabilities") => {
             let output = PathBuf::from(flag(&args, "--output")?);
@@ -109,6 +108,52 @@ fn run_with_args_and_registry(
                 "usage: kaifuu <detect|extract|patch|diff|apply|verify|profile|capabilities> ..."
                     .into(),
             );
+        }
+    }
+    Ok(())
+}
+
+fn run_profile_command(
+    args: &[String],
+    registry: &AdapterRegistry,
+) -> Result<(), Box<dyn std::error::Error>> {
+    match positional(args, 1)? {
+        "init" => {
+            let game_dir = PathBuf::from(positional(args, 2)?);
+            let output = PathBuf::from(flag(args, "--output")?);
+            let adapter = registered_adapter_for_game(registry, &game_dir)?;
+            let profile = adapter.profile(ProfileRequest {
+                game_dir: &game_dir,
+            })?;
+            let validation = profile.validate();
+            if validation.status == kaifuu_core::OperationStatus::Failed {
+                return Err(format!(
+                    "generated profile failed validation: {}",
+                    validation
+                        .failures
+                        .iter()
+                        .map(|failure| failure.code.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+                .into());
+            }
+            write_stable_profile(&output, &profile)?;
+        }
+        "validate" => {
+            let profile_path = PathBuf::from(positional(args, 2)?);
+            let output = PathBuf::from(flag(args, "--output")?);
+            let profile: serde_json::Value = read_json(&profile_path)?;
+            write_json(&output, &validate_profile_value(&profile))?;
+        }
+        _ => {
+            let game_dir = PathBuf::from(positional(args, 1)?);
+            let output = PathBuf::from(flag(args, "--output")?);
+            let adapter = registered_adapter_for_game(registry, &game_dir)?;
+            let profile = adapter.profile(ProfileRequest {
+                game_dir: &game_dir,
+            })?;
+            write_stable_profile(&output, &profile)?;
         }
     }
     Ok(())
@@ -172,9 +217,10 @@ mod tests {
     use kaifuu_core::{
         AdapterCapabilities, AdapterWarning, AssetKind, AssetList, AssetListRequest, AssetProfile,
         BridgeBundle, BridgeUnit, Capability, CapabilityReport, CapabilityStatus, DetectRequest,
-        DetectionIndicator, EngineProfile, ExtractionResult, OperationStatus, PatchExportEntry,
-        PatchRef, PatchResult, ProtectedSpan, TextSurface, VerificationResult, deterministic_id,
-        read_json,
+        DetectionEvidence, DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult,
+        OperationStatus, PatchExportEntry, PatchRef, PatchResult, ProfileRequirement,
+        ProtectedSpan, RequirementCategory, RequirementStatus, TextSurface, VerificationResult,
+        deterministic_id, read_json,
     };
     use std::cell::RefCell;
     use std::rc::Rc;
@@ -279,6 +325,7 @@ mod tests {
                     patching: CapabilityReport::supported(Capability::Patching),
                 }],
                 capabilities: test_capabilities().reports,
+                requirements: vec![],
                 metadata: Default::default(),
             };
             profile.normalize();
@@ -305,14 +352,22 @@ mod tests {
             Ok(DetectionResult {
                 adapter_id: TEST_ADAPTER_ID.to_string(),
                 detected: true,
-                confidence: 0.9,
                 engine_family: Some("registry-test".to_string()),
                 engine_version: Some("9.9.9".to_string()),
                 detected_variant: Some("injected-adapter".to_string()),
-                indicators: vec![DetectionIndicator {
+                evidence: vec![DetectionEvidence {
                     path: request.game_dir.display().to_string(),
                     kind: "injected_registry".to_string(),
-                    evidence: "custom registry adapter was called".to_string(),
+                    status: EvidenceStatus::Matched,
+                    detail: "custom registry adapter was called".to_string(),
+                }],
+                requirements: vec![ProfileRequirement {
+                    category: RequirementCategory::SecretKey,
+                    key: "test_key".to_string(),
+                    status: RequirementStatus::NotRequired,
+                    description: "test adapter does not need secrets".to_string(),
+                    placeholder: None,
+                    secret: true,
                 }],
                 capabilities: test_capabilities().reports,
             })
@@ -435,18 +490,28 @@ mod tests {
             ],
             &registry,
         );
-        let detection: DetectionResult = read_json(&detect_path).unwrap();
+        let detection_report: DetectionReport = read_json(&detect_path).unwrap();
+        assert_eq!(detection_report.status, DetectionReportStatus::Matched);
+        assert_eq!(detection_report.detections.len(), 1);
+        let detection = &detection_report.detections[0];
         assert_eq!(detection.adapter_id, TEST_ADAPTER_ID);
         assert_eq!(
             detection.detected_variant.as_deref(),
             Some("injected-adapter")
         );
+        assert_eq!(detection.evidence[0].status, EvidenceStatus::Matched);
+        let serialized_detection: serde_json::Value = read_json(&detect_path).unwrap();
+        let detection_json = &serialized_detection["detections"][0];
+        assert_eq!(detection_json["engineFamily"], "registry-test");
+        assert_eq!(detection_json["engineVersion"], "9.9.9");
+        assert_eq!(detection_json["detectedVariant"], "injected-adapter");
         assert_calls(&calls, &["detect"]);
 
         let profile_path = root.join("profile.json");
         run_cli_with_registry(
             &[
                 "profile",
+                "init",
                 game_dir.to_str().unwrap(),
                 "--output",
                 profile_path.to_str().unwrap(),
@@ -457,6 +522,21 @@ mod tests {
         assert_eq!(profile.engine.adapter_id, TEST_ADAPTER_ID);
         assert_eq!(profile.game_id, "registry-dispatch-game");
         assert_calls(&calls, &["detect", "profile"]);
+
+        let validation_path = root.join("profile-validation.json");
+        run_cli_with_registry(
+            &[
+                "profile",
+                "validate",
+                profile_path.to_str().unwrap(),
+                "--output",
+                validation_path.to_str().unwrap(),
+            ],
+            &registry,
+        );
+        let validation: kaifuu_core::ProfileValidationResult = read_json(&validation_path).unwrap();
+        assert_eq!(validation.status, OperationStatus::Passed);
+        assert_calls(&calls, &[]);
 
         let bridge_path = root.join("bridge.json");
         run_cli_with_registry(
@@ -544,16 +624,22 @@ mod tests {
             "--output",
             detect_path.to_str().unwrap(),
         ]);
-        let detection: DetectionResult = read_json(&detect_path).unwrap();
+        let detection_report: DetectionReport = read_json(&detect_path).unwrap();
+        assert_eq!(detection_report.status, DetectionReportStatus::Matched);
+        let detection = &detection_report.detections[0];
         assert!(detection.detected);
         assert_eq!(
             detection.adapter_id,
             kaifuu_engine_fixture::FIXTURE_ADAPTER_ID
         );
+        assert!(detection.evidence.iter().any(|evidence| {
+            evidence.path == "source.json" && evidence.status == EvidenceStatus::Matched
+        }));
 
         let profile_path = root.join("profile.json");
         run_cli(&[
             "profile",
+            "init",
             game_dir.to_str().unwrap(),
             "--output",
             profile_path.to_str().unwrap(),
@@ -563,6 +649,23 @@ mod tests {
             profile.engine.adapter_id,
             kaifuu_engine_fixture::FIXTURE_ADAPTER_ID
         );
+        assert!(profile.requirements.iter().any(|requirement| {
+            requirement.category == RequirementCategory::SecretKey
+                && requirement.status == RequirementStatus::NotRequired
+                && requirement.secret
+                && requirement.placeholder.is_none()
+        }));
+
+        let validation_path = root.join("profile-validation.json");
+        run_cli(&[
+            "profile",
+            "validate",
+            profile_path.to_str().unwrap(),
+            "--output",
+            validation_path.to_str().unwrap(),
+        ]);
+        let validation: kaifuu_core::ProfileValidationResult = read_json(&validation_path).unwrap();
+        assert_eq!(validation.status, OperationStatus::Passed);
 
         let bridge_path = root.join("bridge.json");
         run_cli(&[
@@ -621,6 +724,282 @@ mod tests {
         ]);
         let verify: VerificationResult = read_json(&verify_path).unwrap();
         assert_eq!(verify.status, OperationStatus::Passed);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn detect_unknown_directory_is_non_fatal_and_evidence_based() {
+        let root = temp_dir("unknown-detect");
+        let game_dir = root.join("unknown-game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let detect_path = root.join("detect.json");
+
+        run_cli(&[
+            "detect",
+            game_dir.to_str().unwrap(),
+            "--output",
+            detect_path.to_str().unwrap(),
+        ]);
+
+        let detection_report: DetectionReport = read_json(&detect_path).unwrap();
+        assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
+        assert_eq!(detection_report.detections.len(), 1);
+        assert!(!detection_report.detections[0].detected);
+        assert!(
+            detection_report.detections[0]
+                .evidence
+                .iter()
+                .any(|evidence| {
+                    evidence.path == "source.json" && evidence.status == EvidenceStatus::Missing
+                })
+        );
+        assert!(detection_report.warnings[0].contains("no registered adapter"));
+
+        let serialized = fs::read_to_string(&detect_path).unwrap();
+        assert!(!serialized.contains("confidence"));
+        let serialized_report: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+        let detection_json = serialized_report["detections"][0].as_object().unwrap();
+        assert!(!detection_json.contains_key("engineFamily"));
+        assert!(!detection_json.contains_key("engineVersion"));
+        assert!(!detection_json.contains_key("detectedVariant"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn detect_source_without_units_has_no_engine_version() {
+        let root = temp_dir("source-without-units-detect");
+        let game_dir = root.join("unknown-fixture-like-game");
+        fs::create_dir_all(&game_dir).unwrap();
+        fs::write(
+            game_dir.join("source.json"),
+            r#"{
+  "gameId": "not-fixture-yet",
+  "title": "Not Fixture Yet",
+  "sourceLocale": "ja-JP"
+}
+"#,
+        )
+        .unwrap();
+        let detect_path = root.join("detect.json");
+
+        run_cli(&[
+            "detect",
+            game_dir.to_str().unwrap(),
+            "--output",
+            detect_path.to_str().unwrap(),
+        ]);
+
+        let detection_report: DetectionReport = read_json(&detect_path).unwrap();
+        assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
+        let detection = &detection_report.detections[0];
+        assert!(!detection.detected);
+        assert_eq!(detection.engine_family, None);
+        assert_eq!(detection.engine_version, None);
+        assert_eq!(detection.detected_variant, None);
+        assert!(detection.evidence.iter().any(|evidence| {
+            evidence.path == "source.json"
+                && evidence.status == EvidenceStatus::Missing
+                && evidence.detail.contains("missing units")
+        }));
+        let serialized: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&detect_path).unwrap()).unwrap();
+        let detection_json = serialized["detections"][0].as_object().unwrap();
+        assert!(!detection_json.contains_key("engineFamily"));
+        assert!(!detection_json.contains_key("engineVersion"));
+        assert!(!detection_json.contains_key("detectedVariant"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn profile_init_is_stable_across_repeated_cli_runs() {
+        let root = temp_dir("profile-init-stability");
+        let game_dir = temp_game(&root);
+        let first_path = root.join("profile-first.json");
+        let second_path = root.join("profile-second.json");
+
+        run_cli(&[
+            "profile",
+            "init",
+            game_dir.to_str().unwrap(),
+            "--output",
+            first_path.to_str().unwrap(),
+        ]);
+        run_cli(&[
+            "profile",
+            "init",
+            game_dir.to_str().unwrap(),
+            "--output",
+            second_path.to_str().unwrap(),
+        ]);
+
+        assert_eq!(
+            fs::read_to_string(&first_path).unwrap(),
+            fs::read_to_string(&second_path).unwrap()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn profile_validation_reports_missing_required_fields() {
+        let root = temp_dir("profile-validation-failure");
+        let profile_path = root.join("profile.json");
+        let validation_path = root.join("validation.json");
+        fs::write(
+            &profile_path,
+            r#"{
+  "schemaVersion": "0.1.0",
+  "profileId": "",
+  "gameId": "broken-game",
+  "title": "Broken Game",
+  "sourceLocale": "ja-JP",
+  "engine": {
+    "adapterId": "kaifuu.fixture",
+    "engineFamily": "fixture",
+    "engineVersion": null,
+    "detectedVariant": ""
+  },
+  "assets": [],
+  "capabilities": [],
+  "requirements": [
+    {
+      "category": "secret_key",
+      "key": "archive_key",
+      "status": "missing",
+      "description": "archive key must be provided out of band",
+      "placeholder": "KAIFUU_ARCHIVE_KEY",
+      "secret": true
+    }
+  ],
+  "metadata": {}
+}
+"#,
+        )
+        .unwrap();
+
+        run_cli(&[
+            "profile",
+            "validate",
+            profile_path.to_str().unwrap(),
+            "--output",
+            validation_path.to_str().unwrap(),
+        ]);
+
+        let validation: kaifuu_core::ProfileValidationResult = read_json(&validation_path).unwrap();
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(validation.failures.iter().any(|failure| {
+            failure.code == "missing_required_field" && failure.field == "profileId"
+        }));
+        assert!(validation.failures.iter().any(|failure| {
+            failure.code == "missing_requirement" && failure.field == "requirements.archive_key"
+        }));
+        let serialized = fs::read_to_string(&validation_path).unwrap();
+        assert!(serialized.contains("KAIFUU_ARCHIVE_KEY"));
+        assert!(!serialized.contains("actual-secret"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn profile_validation_reports_malformed_profile_fields() {
+        let root = temp_dir("profile-validation-malformed");
+        let profile_path = root.join("profile.json");
+        let validation_path = root.join("validation.json");
+        fs::write(
+            &profile_path,
+            r#"{
+  "schemaVersion": "9.9.9",
+  "profileId": "bad profile id",
+  "gameId": "broken-game",
+  "title": "Broken Game",
+  "sourceLocale": "ja_JP",
+  "engine": {
+    "adapterId": "kaifuu.fixture",
+    "engineFamily": "fixture",
+    "engineVersion": "",
+    "detectedVariant": "plain-json-source"
+  },
+  "assets": [
+    {
+      "assetId": "bad asset",
+      "path": "../source.json",
+      "assetKind": "scriptish",
+      "textSurfaces": ["dialogue", "dialogue", "bad_surface"],
+      "sourceHash": "",
+      "patching": {
+        "capability": "line_parity_patching",
+        "status": "limited",
+        "limitation": ""
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "capability": "detection",
+      "status": "supported",
+      "limitation": "unexpected"
+    },
+    {
+      "capability": "detection",
+      "status": "supported",
+      "limitation": null
+    }
+  ],
+  "requirements": [
+    {
+      "category": "secret_key",
+      "key": "archive key",
+      "status": "blocked",
+      "description": "",
+      "placeholder": null,
+      "secret": true
+    }
+  ],
+  "metadata": {}
+}
+"#,
+        )
+        .unwrap();
+
+        run_cli(&[
+            "profile",
+            "validate",
+            profile_path.to_str().unwrap(),
+            "--output",
+            validation_path.to_str().unwrap(),
+        ]);
+
+        let validation: kaifuu_core::ProfileValidationResult = read_json(&validation_path).unwrap();
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for expected_code in [
+            "unsupported_schema_version",
+            "invalid_locale",
+            "invalid_engine_version",
+            "invalid_asset_id",
+            "invalid_asset_path",
+            "invalid_enum_value",
+            "duplicate_text_surface",
+            "invalid_text_surface",
+            "invalid_source_hash",
+            "missing_capability_limitation",
+            "unexpected_capability_limitation",
+            "duplicate_capability",
+            "invalid_requirement_key",
+            "inconsistent_capability",
+        ] {
+            assert!(
+                validation
+                    .failures
+                    .iter()
+                    .any(|failure| failure.code == expected_code),
+                "missing validation failure code {expected_code}: {:#?}",
+                validation.failures
+            );
+        }
+        let serialized = fs::read_to_string(&validation_path).unwrap();
+        assert!(!serialized.contains("confidence"));
+        assert!(!serialized.contains("actual-secret"));
 
         let _ = fs::remove_dir_all(root);
     }

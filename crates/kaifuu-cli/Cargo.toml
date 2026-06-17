@@ -9,3 +9,4 @@ repository.workspace = true
 kaifuu-core = { path = "../kaifuu-core" }
 kaifuu-delta = { path = "../kaifuu-delta" }
 kaifuu-engine-fixture = { path = "../kaifuu-engine-fixture" }
+serde_json.workspace = true
