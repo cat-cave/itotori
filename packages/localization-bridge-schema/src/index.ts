@@ -140,6 +140,107 @@ export type PolicyRecordKindV02 = (typeof POLICY_RECORD_KINDS)[number];
 export const POLICY_SCOPES = SURFACE_KINDS;
 export type PolicyScopeV02 = SurfaceKindV02;
 
+export const TRIAGE_SEVERITIES = ["P0", "P1", "P2", "P3"] as const;
+export type TriageSeverityV02 = (typeof TRIAGE_SEVERITIES)[number];
+
+export const LOCALIZATION_QUALITY_CATEGORIES = [
+  "accuracy",
+  "terminology",
+  "style",
+  "tone_register",
+  "locale_convention",
+  "protected_content",
+  "layout",
+  "technical_integrity",
+] as const;
+export type LocalizationQualityCategoryV02 = (typeof LOCALIZATION_QUALITY_CATEGORIES)[number];
+
+export const TRIAGE_EVENT_KINDS = [
+  "task_requested",
+  "task_started",
+  "model_output_recorded",
+  "qa_finding_reported",
+  "patch_result_recorded",
+  "triage_decision_recorded",
+  "repair_requested",
+  "finding_superseded",
+] as const;
+export type TriageEventKindV02 = (typeof TRIAGE_EVENT_KINDS)[number];
+
+export const TRIAGE_TASK_KINDS = [
+  "extract",
+  "draft_translation",
+  "deterministic_qa",
+  "llm_qa",
+  "patch",
+  "runtime_verify",
+  "human_review",
+  "repair",
+] as const;
+export type TriageTaskKindV02 = (typeof TRIAGE_TASK_KINDS)[number];
+
+export const FINDING_KINDS = [
+  "source_annotation_issue",
+  "style_guide_violation",
+  "model_output_issue",
+  "patching_issue",
+  "runtime_issue",
+  "policy_issue",
+  "protected_span_issue",
+] as const;
+export type FindingKindV02 = (typeof FINDING_KINDS)[number];
+
+export const PROVENANCE_KINDS = [
+  "source_annotation",
+  "style_guide",
+  "model_output",
+  "patching_cause",
+  "runtime_evidence",
+  "human_review",
+  "deterministic_check",
+] as const;
+export type ProvenanceKindV02 = (typeof PROVENANCE_KINDS)[number];
+
+export const EVIDENCE_KINDS = [
+  "text_excerpt",
+  "json_pointer",
+  "artifact",
+  "trace",
+  "screenshot_region",
+  "diff",
+  "validator_message",
+] as const;
+export type EvidenceKindV02 = (typeof EVIDENCE_KINDS)[number];
+
+export const TRIAGE_SUBJECT_KINDS = [
+  "bridge_unit",
+  "bridge_span",
+  "asset",
+  "source_revision",
+  "locale_branch",
+  "style_guide_rule",
+  "model_output",
+  "patch_export",
+  "patch_result",
+  "runtime_report",
+  "artifact",
+  "finding",
+  "task",
+] as const;
+export type TriageSubjectKindV02 = (typeof TRIAGE_SUBJECT_KINDS)[number];
+
+export const CAUSAL_LINK_KINDS = [
+  "caused_by",
+  "derived_from",
+  "supersedes",
+  "blocks",
+  "unblocks",
+] as const;
+export type CausalLinkKindV02 = (typeof CAUSAL_LINK_KINDS)[number];
+
+export const CAUSAL_TARGET_KINDS = ["event", "task", "finding"] as const;
+export type CausalTargetKindV02 = (typeof CAUSAL_TARGET_KINDS)[number];
+
 export const PATCH_WRITE_MODES = [
   "replace",
   "insert",
@@ -443,6 +544,184 @@ export type PolicyRecordV02 = {
   reviewRequired?: boolean;
 };
 
+export type TriageActorV02 = {
+  actorKind: "human" | "agent" | "tool" | "system";
+  actorId?: Uuid7;
+  displayName?: string;
+};
+
+export type TriageSubjectRefV02 = {
+  subjectKind: TriageSubjectKindV02;
+  subjectId: Uuid7;
+  label?: string;
+};
+
+export type TriageArtifactRefV02 = {
+  artifactId: Uuid7;
+  artifactKind: string;
+  uri?: string;
+  hash?: string;
+};
+
+export type SourceAnnotationProvenanceV02 = {
+  provenanceId: Uuid7;
+  provenanceKind: "source_annotation";
+  bridgeUnitId: Uuid7;
+  spanId?: Uuid7;
+  sourceAssetRef?: AssetRefV02;
+  sourceLocation?: SourceLocationV02;
+  annotationText?: string;
+  observedAt?: string;
+};
+
+export type StyleGuideProvenanceV02 = {
+  provenanceId: Uuid7;
+  provenanceKind: "style_guide";
+  styleGuideId: Uuid7;
+  styleGuideVersionId: Uuid7;
+  ruleId: string;
+  rulePath?: string;
+  excerptHash?: string;
+};
+
+export type ModelOutputProvenanceV02 = {
+  provenanceId: Uuid7;
+  provenanceKind: "model_output";
+  modelOutputId: Uuid7;
+  taskId?: Uuid7;
+  provider: string;
+  model: string;
+  outputHash: string;
+  promptHash?: string;
+  artifactRef?: TriageArtifactRefV02;
+};
+
+export type PatchingCauseProvenanceV02 = {
+  provenanceId: Uuid7;
+  provenanceKind: "patching_cause";
+  patchResultId?: Uuid7;
+  patchExportId?: Uuid7;
+  bridgeUnitId?: Uuid7;
+  assetRef?: AssetRefV02;
+  writeMode?: PatchWriteModeV02;
+  failureCode?: string;
+  failureDetail?: string;
+};
+
+export type RuntimeEvidenceProvenanceV02 = {
+  provenanceId: Uuid7;
+  provenanceKind: "runtime_evidence";
+  runtimeReportId: Uuid7;
+  bridgeUnitId?: Uuid7;
+  artifactRef?: TriageArtifactRefV02;
+  evidenceTier?: string;
+};
+
+export type HumanReviewProvenanceV02 = {
+  provenanceId: Uuid7;
+  provenanceKind: "human_review";
+  reviewerId?: Uuid7;
+  reviewSessionId?: Uuid7;
+  noteHash: string;
+};
+
+export type DeterministicCheckProvenanceV02 = {
+  provenanceId: Uuid7;
+  provenanceKind: "deterministic_check";
+  checkId: Uuid7;
+  checkName: string;
+  checkVersion: string;
+  artifactRef?: TriageArtifactRefV02;
+};
+
+export type ProvenanceRecordV02 =
+  | SourceAnnotationProvenanceV02
+  | StyleGuideProvenanceV02
+  | ModelOutputProvenanceV02
+  | PatchingCauseProvenanceV02
+  | RuntimeEvidenceProvenanceV02
+  | HumanReviewProvenanceV02
+  | DeterministicCheckProvenanceV02;
+
+export type EvidenceRecordV02 = {
+  evidenceId: Uuid7;
+  evidenceKind: EvidenceKindV02;
+  summary: string;
+  subjectRef?: TriageSubjectRefV02;
+  artifactRef?: TriageArtifactRefV02;
+  sourceLocation?: SourceLocationV02;
+  expectedValue?: string;
+  observedValue?: string;
+  provenanceIds: Uuid7[];
+};
+
+export type CausalLinkV02 = {
+  causalLinkId: Uuid7;
+  linkKind: CausalLinkKindV02;
+  targetKind: CausalTargetKindV02;
+  targetId: Uuid7;
+  rationale?: string;
+};
+
+export type TriageEventV02 = {
+  eventId: Uuid7;
+  eventKind: TriageEventKindV02;
+  occurredAt: string;
+  actor: TriageActorV02;
+  taskId?: Uuid7;
+  findingId?: Uuid7;
+  subjectRefs: TriageSubjectRefV02[];
+  provenance: ProvenanceRecordV02[];
+  causalLinks: CausalLinkV02[];
+  payload?: Record<string, unknown>;
+};
+
+export type TriageTaskV02 = {
+  taskId: Uuid7;
+  taskKind: TriageTaskKindV02;
+  createdAt: string;
+  summary: string;
+  createdByEventId?: Uuid7;
+  inputRefs: TriageSubjectRefV02[];
+  provenance: ProvenanceRecordV02[];
+  causalLinks: CausalLinkV02[];
+};
+
+export type FindingRecordV02 = {
+  findingId: Uuid7;
+  findingKind: FindingKindV02;
+  severity: TriageSeverityV02;
+  qualityCategory?: LocalizationQualityCategoryV02;
+  title: string;
+  description: string;
+  impact: string;
+  createdAt: string;
+  reportedByTaskId?: Uuid7;
+  firstSeenEventId?: Uuid7;
+  affectedRefs: TriageSubjectRefV02[];
+  evidence: EvidenceRecordV02[];
+  provenance: ProvenanceRecordV02[];
+  causalLinks: CausalLinkV02[];
+};
+
+export type TriageBundleV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  triageBundleId: Uuid7;
+  projectId?: Uuid7;
+  sourceBridgeId?: Uuid7;
+  localeBranchId?: Uuid7;
+  events: TriageEventV02[];
+  tasks: TriageTaskV02[];
+  findings: FindingRecordV02[];
+};
+
+type TriageBundleReferenceIndexV02 = {
+  eventIds: ReadonlySet<Uuid7>;
+  taskIds: ReadonlySet<Uuid7>;
+  findingIds: ReadonlySet<Uuid7>;
+  provenanceIds: ReadonlySet<Uuid7>;
+};
+
 export type BridgeBundleV02 = {
   schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
   bridgeId: Uuid7;
@@ -496,6 +775,63 @@ export function assertBridgeBundleV02(value: unknown): asserts value is BridgeBu
   for (const [index, record] of policyRecords.entries()) {
     assertPolicyRecordV02(record, `BridgeBundleV02.policyRecords[${index}]`);
   }
+}
+
+export function assertTriageBundleV02(value: unknown): asserts value is TriageBundleV02 {
+  assertNoConfidenceFields(value, "TriageBundleV02");
+  const bundle = asRecord(value, "TriageBundleV02");
+  assertEqual(bundle.schemaVersion, BRIDGE_SCHEMA_VERSION_V02, "TriageBundleV02.schemaVersion");
+  assertUuid7(bundle.triageBundleId, "TriageBundleV02.triageBundleId");
+  assertOptionalUuid7(bundle.projectId, "TriageBundleV02.projectId");
+  assertOptionalUuid7(bundle.sourceBridgeId, "TriageBundleV02.sourceBridgeId");
+  assertOptionalUuid7(bundle.localeBranchId, "TriageBundleV02.localeBranchId");
+
+  const events = asArray(bundle.events, "TriageBundleV02.events");
+  const triageEvents: TriageEventV02[] = [];
+  const seenEventIds = new Set<Uuid7>();
+  for (const [index, event] of events.entries()) {
+    const label = `TriageBundleV02.events[${index}]`;
+    assertTriageEventV02(event, label);
+    if (seenEventIds.has(event.eventId)) {
+      throw new Error(`${label}.eventId must be unique within TriageBundleV02.events`);
+    }
+    assertEventLinksReferToPriorEvents(event, label, seenEventIds);
+    seenEventIds.add(event.eventId);
+    triageEvents.push(event);
+  }
+
+  const tasks = asArray(bundle.tasks, "TriageBundleV02.tasks");
+  const triageTasks: TriageTaskV02[] = [];
+  const taskIds = new Set<Uuid7>();
+  for (const [index, task] of tasks.entries()) {
+    const label = `TriageBundleV02.tasks[${index}]`;
+    assertTriageTaskV02(task, label);
+    if (taskIds.has(task.taskId)) {
+      throw new Error(`${label}.taskId must be unique within TriageBundleV02.tasks`);
+    }
+    taskIds.add(task.taskId);
+    triageTasks.push(task);
+  }
+
+  const findings = asArray(bundle.findings, "TriageBundleV02.findings");
+  const triageFindings: FindingRecordV02[] = [];
+  const findingIds = new Set<Uuid7>();
+  for (const [index, finding] of findings.entries()) {
+    const label = `TriageBundleV02.findings[${index}]`;
+    assertFindingRecordV02(finding, label);
+    if (findingIds.has(finding.findingId)) {
+      throw new Error(`${label}.findingId must be unique within TriageBundleV02.findings`);
+    }
+    findingIds.add(finding.findingId);
+    triageFindings.push(finding);
+  }
+
+  const referenceIndex = buildTriageBundleReferenceIndexV02(
+    triageEvents,
+    triageTasks,
+    triageFindings,
+  );
+  assertTriageBundleReferencesV02(triageEvents, triageTasks, triageFindings, referenceIndex);
 }
 
 export function assertPatchExport(value: unknown): asserts value is PatchExport {
@@ -895,6 +1231,407 @@ function assertPolicyRecordV02(value: unknown, label: string): asserts value is 
   }
 }
 
+function assertTriageEventV02(value: unknown, label: string): asserts value is TriageEventV02 {
+  assertNoMutableEventBucketFields(value, label);
+  const event = asRecord(value, label);
+  assertUuid7(event.eventId, `${label}.eventId`);
+  assertEnum(event.eventKind, TRIAGE_EVENT_KINDS, `${label}.eventKind`);
+  assertString(event.occurredAt, `${label}.occurredAt`);
+  assertTriageActorV02(event.actor, `${label}.actor`);
+  assertOptionalUuid7(event.taskId, `${label}.taskId`);
+  assertOptionalUuid7(event.findingId, `${label}.findingId`);
+  assertTriageSubjectRefsV02(event.subjectRefs, `${label}.subjectRefs`);
+  assertProvenanceArrayV02(event.provenance, `${label}.provenance`);
+  assertCausalLinksV02(event.causalLinks, `${label}.causalLinks`);
+  if (event.payload !== undefined) {
+    asRecord(event.payload, `${label}.payload`);
+  }
+}
+
+function assertTriageTaskV02(value: unknown, label: string): asserts value is TriageTaskV02 {
+  const task = asRecord(value, label);
+  assertUuid7(task.taskId, `${label}.taskId`);
+  assertEnum(task.taskKind, TRIAGE_TASK_KINDS, `${label}.taskKind`);
+  assertString(task.createdAt, `${label}.createdAt`);
+  assertString(task.summary, `${label}.summary`);
+  assertOptionalUuid7(task.createdByEventId, `${label}.createdByEventId`);
+  assertTriageSubjectRefsV02(task.inputRefs, `${label}.inputRefs`);
+  assertProvenanceArrayV02(task.provenance, `${label}.provenance`);
+  assertCausalLinksV02(task.causalLinks, `${label}.causalLinks`);
+}
+
+function assertFindingRecordV02(value: unknown, label: string): asserts value is FindingRecordV02 {
+  const finding = asRecord(value, label);
+  assertUuid7(finding.findingId, `${label}.findingId`);
+  assertEnum(finding.findingKind, FINDING_KINDS, `${label}.findingKind`);
+  assertEnum(finding.severity, TRIAGE_SEVERITIES, `${label}.severity`);
+  if (finding.qualityCategory !== undefined) {
+    assertEnum(
+      finding.qualityCategory,
+      LOCALIZATION_QUALITY_CATEGORIES,
+      `${label}.qualityCategory`,
+    );
+  }
+  assertString(finding.title, `${label}.title`);
+  assertString(finding.description, `${label}.description`);
+  assertString(finding.impact, `${label}.impact`);
+  assertString(finding.createdAt, `${label}.createdAt`);
+  assertOptionalUuid7(finding.reportedByTaskId, `${label}.reportedByTaskId`);
+  assertOptionalUuid7(finding.firstSeenEventId, `${label}.firstSeenEventId`);
+  assertTriageSubjectRefsV02(finding.affectedRefs, `${label}.affectedRefs`);
+  assertEvidenceArrayV02(finding.evidence, `${label}.evidence`);
+  assertProvenanceArrayV02(finding.provenance, `${label}.provenance`);
+  assertCausalLinksV02(finding.causalLinks, `${label}.causalLinks`);
+}
+
+function assertTriageActorV02(value: unknown, label: string): asserts value is TriageActorV02 {
+  const actor = asRecord(value, label);
+  assertEnum(actor.actorKind, ["human", "agent", "tool", "system"] as const, `${label}.actorKind`);
+  assertOptionalUuid7(actor.actorId, `${label}.actorId`);
+  assertOptionalString(actor.displayName, `${label}.displayName`);
+}
+
+function assertTriageSubjectRefsV02(
+  value: unknown,
+  label: string,
+): asserts value is TriageSubjectRefV02[] {
+  const refs = asArray(value, label);
+  for (const [index, ref] of refs.entries()) {
+    assertTriageSubjectRefV02(ref, `${label}[${index}]`);
+  }
+}
+
+function assertTriageSubjectRefV02(
+  value: unknown,
+  label: string,
+): asserts value is TriageSubjectRefV02 {
+  const ref = asRecord(value, label);
+  assertEnum(ref.subjectKind, TRIAGE_SUBJECT_KINDS, `${label}.subjectKind`);
+  assertUuid7(ref.subjectId, `${label}.subjectId`);
+  assertOptionalString(ref.label, `${label}.label`);
+}
+
+function assertArtifactRefV02(
+  value: unknown,
+  label: string,
+): asserts value is TriageArtifactRefV02 {
+  const ref = asRecord(value, label);
+  assertUuid7(ref.artifactId, `${label}.artifactId`);
+  assertString(ref.artifactKind, `${label}.artifactKind`);
+  assertOptionalString(ref.uri, `${label}.uri`);
+  assertOptionalString(ref.hash, `${label}.hash`);
+}
+
+function assertEvidenceArrayV02(
+  value: unknown,
+  label: string,
+): asserts value is EvidenceRecordV02[] {
+  const evidence = asArray(value, label);
+  if (evidence.length === 0) {
+    throw new Error(`${label} must contain at least one evidence record`);
+  }
+  for (const [index, record] of evidence.entries()) {
+    assertEvidenceRecordV02(record, `${label}[${index}]`);
+  }
+}
+
+function assertEvidenceRecordV02(
+  value: unknown,
+  label: string,
+): asserts value is EvidenceRecordV02 {
+  const evidence = asRecord(value, label);
+  assertUuid7(evidence.evidenceId, `${label}.evidenceId`);
+  assertEnum(evidence.evidenceKind, EVIDENCE_KINDS, `${label}.evidenceKind`);
+  assertString(evidence.summary, `${label}.summary`);
+  if (evidence.subjectRef !== undefined) {
+    assertTriageSubjectRefV02(evidence.subjectRef, `${label}.subjectRef`);
+  }
+  if (evidence.artifactRef !== undefined) {
+    assertArtifactRefV02(evidence.artifactRef, `${label}.artifactRef`);
+  }
+  if (evidence.sourceLocation !== undefined) {
+    assertSourceLocationV02(evidence.sourceLocation, `${label}.sourceLocation`);
+  }
+  assertOptionalString(evidence.expectedValue, `${label}.expectedValue`);
+  assertOptionalString(evidence.observedValue, `${label}.observedValue`);
+  assertUuid7Array(evidence.provenanceIds, `${label}.provenanceIds`);
+}
+
+function assertProvenanceArrayV02(
+  value: unknown,
+  label: string,
+): asserts value is ProvenanceRecordV02[] {
+  const provenance = asArray(value, label);
+  if (provenance.length === 0) {
+    throw new Error(`${label} must contain at least one provenance record`);
+  }
+  for (const [index, record] of provenance.entries()) {
+    assertProvenanceRecordV02(record, `${label}[${index}]`);
+  }
+}
+
+function assertProvenanceRecordV02(
+  value: unknown,
+  label: string,
+): asserts value is ProvenanceRecordV02 {
+  const provenance = asRecord(value, label);
+  assertUuid7(provenance.provenanceId, `${label}.provenanceId`);
+  assertEnum(provenance.provenanceKind, PROVENANCE_KINDS, `${label}.provenanceKind`);
+  switch (provenance.provenanceKind) {
+    case "source_annotation":
+      assertUuid7(provenance.bridgeUnitId, `${label}.bridgeUnitId`);
+      assertOptionalUuid7(provenance.spanId, `${label}.spanId`);
+      if (provenance.sourceAssetRef !== undefined) {
+        assertAssetRefV02(provenance.sourceAssetRef, `${label}.sourceAssetRef`);
+      }
+      if (provenance.sourceLocation !== undefined) {
+        assertSourceLocationV02(provenance.sourceLocation, `${label}.sourceLocation`);
+      }
+      assertOptionalString(provenance.annotationText, `${label}.annotationText`);
+      assertOptionalString(provenance.observedAt, `${label}.observedAt`);
+      break;
+    case "style_guide":
+      assertUuid7(provenance.styleGuideId, `${label}.styleGuideId`);
+      assertUuid7(provenance.styleGuideVersionId, `${label}.styleGuideVersionId`);
+      assertString(provenance.ruleId, `${label}.ruleId`);
+      assertOptionalString(provenance.rulePath, `${label}.rulePath`);
+      assertOptionalString(provenance.excerptHash, `${label}.excerptHash`);
+      break;
+    case "model_output":
+      assertUuid7(provenance.modelOutputId, `${label}.modelOutputId`);
+      assertOptionalUuid7(provenance.taskId, `${label}.taskId`);
+      assertString(provenance.provider, `${label}.provider`);
+      assertString(provenance.model, `${label}.model`);
+      assertString(provenance.outputHash, `${label}.outputHash`);
+      assertOptionalString(provenance.promptHash, `${label}.promptHash`);
+      if (provenance.artifactRef !== undefined) {
+        assertArtifactRefV02(provenance.artifactRef, `${label}.artifactRef`);
+      }
+      break;
+    case "patching_cause":
+      assertOptionalUuid7(provenance.patchResultId, `${label}.patchResultId`);
+      assertOptionalUuid7(provenance.patchExportId, `${label}.patchExportId`);
+      assertOptionalUuid7(provenance.bridgeUnitId, `${label}.bridgeUnitId`);
+      if (provenance.assetRef !== undefined) {
+        assertAssetRefV02(provenance.assetRef, `${label}.assetRef`);
+      }
+      if (provenance.writeMode !== undefined) {
+        assertEnum(provenance.writeMode, PATCH_WRITE_MODES, `${label}.writeMode`);
+      }
+      assertOptionalString(provenance.failureCode, `${label}.failureCode`);
+      assertOptionalString(provenance.failureDetail, `${label}.failureDetail`);
+      if (provenance.patchResultId === undefined && provenance.patchExportId === undefined) {
+        throw new Error(`${label} must include patchResultId or patchExportId`);
+      }
+      break;
+    case "runtime_evidence":
+      assertUuid7(provenance.runtimeReportId, `${label}.runtimeReportId`);
+      assertOptionalUuid7(provenance.bridgeUnitId, `${label}.bridgeUnitId`);
+      if (provenance.artifactRef !== undefined) {
+        assertArtifactRefV02(provenance.artifactRef, `${label}.artifactRef`);
+      }
+      assertOptionalString(provenance.evidenceTier, `${label}.evidenceTier`);
+      break;
+    case "human_review":
+      assertOptionalUuid7(provenance.reviewerId, `${label}.reviewerId`);
+      assertOptionalUuid7(provenance.reviewSessionId, `${label}.reviewSessionId`);
+      assertString(provenance.noteHash, `${label}.noteHash`);
+      break;
+    case "deterministic_check":
+      assertUuid7(provenance.checkId, `${label}.checkId`);
+      assertString(provenance.checkName, `${label}.checkName`);
+      assertString(provenance.checkVersion, `${label}.checkVersion`);
+      if (provenance.artifactRef !== undefined) {
+        assertArtifactRefV02(provenance.artifactRef, `${label}.artifactRef`);
+      }
+      break;
+  }
+}
+
+function assertCausalLinksV02(value: unknown, label: string): asserts value is CausalLinkV02[] {
+  const links = asArray(value, label);
+  for (const [index, link] of links.entries()) {
+    assertCausalLinkV02(link, `${label}[${index}]`);
+  }
+}
+
+function assertCausalLinkV02(value: unknown, label: string): asserts value is CausalLinkV02 {
+  const link = asRecord(value, label);
+  assertUuid7(link.causalLinkId, `${label}.causalLinkId`);
+  assertEnum(link.linkKind, CAUSAL_LINK_KINDS, `${label}.linkKind`);
+  assertEnum(link.targetKind, CAUSAL_TARGET_KINDS, `${label}.targetKind`);
+  assertUuid7(link.targetId, `${label}.targetId`);
+  assertOptionalString(link.rationale, `${label}.rationale`);
+}
+
+function assertEventLinksReferToPriorEvents(
+  event: TriageEventV02,
+  label: string,
+  seenEventIds: ReadonlySet<Uuid7>,
+): void {
+  for (const [index, link] of event.causalLinks.entries()) {
+    if (link.targetKind === "event" && !seenEventIds.has(link.targetId)) {
+      throw new Error(`${label}.causalLinks[${index}].targetId must reference a prior event`);
+    }
+  }
+}
+
+function buildTriageBundleReferenceIndexV02(
+  events: readonly TriageEventV02[],
+  tasks: readonly TriageTaskV02[],
+  findings: readonly FindingRecordV02[],
+): TriageBundleReferenceIndexV02 {
+  const provenanceIds = new Set<Uuid7>();
+  for (const event of events) {
+    addProvenanceIdsV02(event.provenance, provenanceIds);
+  }
+  for (const task of tasks) {
+    addProvenanceIdsV02(task.provenance, provenanceIds);
+  }
+  for (const finding of findings) {
+    addProvenanceIdsV02(finding.provenance, provenanceIds);
+  }
+
+  return {
+    eventIds: new Set(events.map((event) => event.eventId)),
+    taskIds: new Set(tasks.map((task) => task.taskId)),
+    findingIds: new Set(findings.map((finding) => finding.findingId)),
+    provenanceIds,
+  };
+}
+
+function addProvenanceIdsV02(
+  provenanceRecords: readonly ProvenanceRecordV02[],
+  provenanceIds: Set<Uuid7>,
+): void {
+  for (const provenance of provenanceRecords) {
+    provenanceIds.add(provenance.provenanceId);
+  }
+}
+
+function assertTriageBundleReferencesV02(
+  events: readonly TriageEventV02[],
+  tasks: readonly TriageTaskV02[],
+  findings: readonly FindingRecordV02[],
+  referenceIndex: TriageBundleReferenceIndexV02,
+): void {
+  for (const [index, event] of events.entries()) {
+    const label = `TriageBundleV02.events[${index}]`;
+    assertOptionalKnownReferenceV02(event.taskId, `${label}.taskId`, "task", referenceIndex);
+    assertOptionalKnownReferenceV02(
+      event.findingId,
+      `${label}.findingId`,
+      "finding",
+      referenceIndex,
+    );
+    assertCausalLinkTargetsExistV02(event.causalLinks, `${label}.causalLinks`, referenceIndex);
+  }
+
+  for (const [index, task] of tasks.entries()) {
+    const label = `TriageBundleV02.tasks[${index}]`;
+    assertOptionalKnownReferenceV02(
+      task.createdByEventId,
+      `${label}.createdByEventId`,
+      "event",
+      referenceIndex,
+    );
+    assertCausalLinkTargetsExistV02(task.causalLinks, `${label}.causalLinks`, referenceIndex);
+  }
+
+  for (const [index, finding] of findings.entries()) {
+    const label = `TriageBundleV02.findings[${index}]`;
+    assertOptionalKnownReferenceV02(
+      finding.reportedByTaskId,
+      `${label}.reportedByTaskId`,
+      "task",
+      referenceIndex,
+    );
+    assertOptionalKnownReferenceV02(
+      finding.firstSeenEventId,
+      `${label}.firstSeenEventId`,
+      "event",
+      referenceIndex,
+    );
+    assertCausalLinkTargetsExistV02(finding.causalLinks, `${label}.causalLinks`, referenceIndex);
+    assertFindingEvidenceProvenanceV02(finding, label, referenceIndex);
+  }
+}
+
+function assertOptionalKnownReferenceV02(
+  id: Uuid7 | undefined,
+  label: string,
+  targetKind: CausalTargetKindV02,
+  referenceIndex: TriageBundleReferenceIndexV02,
+): void {
+  if (id !== undefined) {
+    assertKnownTriageReferenceV02(id, label, targetKind, referenceIndex);
+  }
+}
+
+function assertCausalLinkTargetsExistV02(
+  causalLinks: readonly CausalLinkV02[],
+  label: string,
+  referenceIndex: TriageBundleReferenceIndexV02,
+): void {
+  for (const [index, link] of causalLinks.entries()) {
+    assertKnownTriageReferenceV02(
+      link.targetId,
+      `${label}[${index}].targetId`,
+      link.targetKind,
+      referenceIndex,
+    );
+  }
+}
+
+function assertKnownTriageReferenceV02(
+  id: Uuid7,
+  label: string,
+  targetKind: CausalTargetKindV02,
+  referenceIndex: TriageBundleReferenceIndexV02,
+): void {
+  const targetIds = triageReferenceIdsForKindV02(targetKind, referenceIndex);
+  if (!targetIds.has(id)) {
+    throw new Error(`${label} must reference an existing triage ${targetKind}`);
+  }
+}
+
+function triageReferenceIdsForKindV02(
+  targetKind: CausalTargetKindV02,
+  referenceIndex: TriageBundleReferenceIndexV02,
+): ReadonlySet<Uuid7> {
+  switch (targetKind) {
+    case "event":
+      return referenceIndex.eventIds;
+    case "task":
+      return referenceIndex.taskIds;
+    case "finding":
+      return referenceIndex.findingIds;
+  }
+}
+
+function assertFindingEvidenceProvenanceV02(
+  finding: FindingRecordV02,
+  label: string,
+  referenceIndex: TriageBundleReferenceIndexV02,
+): void {
+  const findingProvenanceIds = new Set(finding.provenance.map((record) => record.provenanceId));
+  for (const [evidenceIndex, evidence] of finding.evidence.entries()) {
+    const evidenceLabel = `${label}.evidence[${evidenceIndex}]`;
+    if (evidence.provenanceIds.length === 0) {
+      throw new Error(`${evidenceLabel}.provenanceIds must contain at least one provenance id`);
+    }
+    for (const [provenanceIndex, provenanceId] of evidence.provenanceIds.entries()) {
+      const provenanceLabel = `${evidenceLabel}.provenanceIds[${provenanceIndex}]`;
+      if (!referenceIndex.provenanceIds.has(provenanceId)) {
+        throw new Error(`${provenanceLabel} must reference provenance in TriageBundleV02`);
+      }
+      if (!findingProvenanceIds.has(provenanceId)) {
+        throw new Error(`${provenanceLabel} must reference provenance on the same finding`);
+      }
+    }
+  }
+}
+
 function assertExtractor(value: unknown, label: string): void {
   const extractor = asRecord(value, label);
   assertString(extractor.name, `${label}.name`);
@@ -937,6 +1674,13 @@ function assertStringArray(value: unknown, label: string): asserts value is stri
   const array = asArray(value, label);
   for (const [index, item] of array.entries()) {
     assertString(item, `${label}[${index}]`);
+  }
+}
+
+function assertUuid7Array(value: unknown, label: string): asserts value is Uuid7[] {
+  const array = asArray(value, label);
+  for (const [index, item] of array.entries()) {
+    assertUuid7(item, `${label}[${index}]`);
   }
 }
 
@@ -1022,5 +1766,42 @@ function assertSpanRawMatchesSource(
   const spanText = sourceBytes.subarray(startByte, endByte).toString("utf8");
   if (spanText !== raw) {
     throw new Error(`${label}.raw must match sourceText byte range`);
+  }
+}
+
+function assertNoConfidenceFields(value: unknown, label: string): void {
+  if (typeof value !== "object" || value === null) {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      assertNoConfidenceFields(item, `${label}[${index}]`);
+    }
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (key.toLowerCase().includes("confidence")) {
+      throw new Error(`${label}.${key} is not allowed; record evidence instead of confidence`);
+    }
+    assertNoConfidenceFields(child, `${label}.${key}`);
+  }
+}
+
+function assertNoMutableEventBucketFields(value: unknown, label: string): void {
+  const mutableKeys = new Set(["status", "currentStatus", "updatedAt", "deletedAt"]);
+  if (typeof value !== "object" || value === null) {
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      assertNoMutableEventBucketFields(item, `${label}[${index}]`);
+    }
+    return;
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (mutableKeys.has(key)) {
+      throw new Error(`${label}.${key} is not allowed on append-only events`);
+    }
+    assertNoMutableEventBucketFields(child, `${label}.${key}`);
   }
 }
