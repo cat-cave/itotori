@@ -7,7 +7,10 @@ The bridge package is intentionally independent from any one subproject. Kaifuu 
 ## Versions
 
 - `0.1.0` remains the fixture hello-world contract exported as `BridgeBundle`,
-  `PatchExport`, `RuntimeVerificationReport`, and their existing guards.
+  `PatchExport`, `RuntimeVerificationReport`, and their existing guards. v0.1
+  bridge JSON is intentionally rejected by `assertBridgeBundleV02` and by the
+  Rust v0.2 bridge contract validator; callers must route v0.1 data through the
+  legacy guards.
 - `0.2.0` adds the bridge domain model exported as `BridgeBundleV02`,
   enum-backed category lists, bundle-level asset reference integrity, source
   game/profile revision identity, hash strategy metadata, v0.2 patch
@@ -20,8 +23,11 @@ The bridge package is intentionally independent from any one subproject. Kaifuu 
 value from the exported `POLICY_SCOPES` list, which currently mirrors
 `SURFACE_KINDS`.
 
-The v0.2 JSON example lives at `test/examples/bridge-v0.2.json`. Migration notes
-from v0.1 are in `MIGRATING-0.2.md`.
+The v0.2 bridge JSON example lives at `test/examples/bridge-v0.2.json`.
+`test/examples/triage-v0.2.json` is a triage fixture, not a bridge bundle.
+Invalid bridge fixtures live under `test/examples/invalid/` and are expected to
+fail with semantic validation errors. Migration notes from v0.1 are in
+`MIGRATING-0.2.md`.
 
 ## Patch And Source Revisions
 
@@ -78,3 +84,12 @@ Per ADR 0001, the TypeScript source in `src/index.ts` is the hand-edited
 contract authority. JSON Schema artifacts and Rust serde structs are downstream
 bindings that must validate against the same versioned fixtures; generated
 outputs should not be patched directly.
+
+The Rust compatibility scope for SHARED-002 is a focused v0.2 bridge bundle
+validator in `kaifuu-core`. It deserializes the shared `bridge-v0.2.json`
+fixture with serde and checks the same contract-critical semantics as the TS
+guard: schema version, UUID7 identifiers, canonical SHA-256 hashes, revision
+hash consistency, hash strategy scopes, asset reference integrity, patch refs,
+protected span byte ranges, speaker knowledge states, and policy record scopes.
+Runtime, patch, benchmark, and finding contracts remain layered on top of this
+bridge compatibility check.
