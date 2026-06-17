@@ -66,6 +66,40 @@ It is controlled playback evidence: jump to a known localized moment, observe th
 line and state, capture an artifact, attach reviewer or agent findings, and
 repeat the run deterministically enough that a failed validation is debuggable.
 
+## Rust Engine Port Track
+
+The practical alpha path starts with probes, launch/capture, and instrumentation
+where those methods can produce useful evidence quickly. The long-term Utsushi
+track still includes full or partial Rust ports of common engines because they
+unlock a stronger product shape: cross-platform play, browser/WASM review,
+deterministic jump-to-moment, snapshots, recordings, agent-readable state, and
+patch validation without depending on a brittle host runtime.
+
+This is deliberately P3 continuous work, but it is not speculative
+decision-making. The roadmap contains executable Rust-port specs:
+
+- `UTSUSHI-020` builds the shared runtime substrate: virtual filesystem, asset
+  resolver, input/clock model, render/audio/text boundaries, snapshot state,
+  WASM/embed ABI, and engine-port implementation maps.
+- `UTSUSHI-021` builds the conformance harness for traces, branch points,
+  screenshots, recordings, snapshots, reference comparisons, and Itotori
+  ingestion.
+- `UTSUSHI-022` through `UTSUSHI-027` create engine-specific skeletons for RPG
+  Maker MV/MZ, Siglus, KiriKiri/KAG, Ren'Py, Wolf RPG Editor, and
+  BGI/Ethornell.
+
+Each engine-port node must produce code, fixtures, conformance output, and a
+subsystem coverage map. A worker can research an engine deeply, but the accepted
+artifact cannot be a feasibility report. It must leave behind an executable
+skeleton or a concrete conformance fixture that future workers can expand.
+
+The intended pattern is one engine-focused worker per port node. Each worker
+maps the engine's script model, asset model, state model, rendering/text
+surfaces, save/snapshot behavior, patch handoff, and validation strategy against
+the shared substrate. The result should make the next split of subsystem work
+obvious, such as KAG macro handling, Siglus opcode coverage, MV/MZ event
+commands, Wolf common events, or BGI bytecode opcodes.
+
 ## Runtime Evidence v0.2
 
 Utsushi runtime reports use `RuntimeEvidenceReportV02` from

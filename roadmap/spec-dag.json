@@ -7966,6 +7966,366 @@
         "Evidence rows moving between reports",
         "Adapter-local ids treated as global ids"
       ]
+    },
+    {
+      "id": "UTSUSHI-020",
+      "title": "Cross-engine Rust runtime substrate",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "shared"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-012", "UTSUSHI-004", "SHARED-005"],
+      "summary": "Build the reusable Rust substrate that full and partial engine ports share: virtual filesystem, asset resolver, input and clock model, audio and render sink boundaries, save/snapshot state, WASM/embed ABI, and inspectable runtime state.",
+      "deliverables": [
+        "Virtual filesystem and asset resolver traits",
+        "Input, clock, audio, render, and text-surface abstractions",
+        "Save, snapshot, replay, and inspectable-state primitives",
+        "WASM/embed ABI draft with fixture implementation",
+        "Runtime-port worker implementation-map template"
+      ],
+      "acceptanceCriteria": [
+        "A future engine port can load assets through Utsushi-managed virtual filesystem APIs without direct host path assumptions",
+        "Snapshot, replay, input, clock, and inspectable-state primitives are engine-agnostic and exercised by a fixture adapter",
+        "The WASM/embed ABI can expose controlled playback metadata without embedding private local assets in public fixtures",
+        "The implementation-map template captures engine subsystems, fixture sources, reference behavior, unsupported areas, and validation flows for per-engine workers",
+        "The substrate does not require a decision about which engine is easiest; it gives every engine-port node concrete primitives to build on"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Host path leakage into portable runtime ports",
+        "Engine-specific abstractions in shared substrate",
+        "WASM/embed ABI exposing private assets or raw local paths",
+        "Implementation-map template ending as unstructured notes"
+      ]
+    },
+    {
+      "id": "UTSUSHI-021",
+      "title": "Runtime port conformance harness",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-020", "UTSUSHI-003"],
+      "summary": "Implement the shared conformance harness for Rust engine ports so traces, branch points, screenshots, recordings, snapshots, and validation reports can be compared against declared fixture expectations.",
+      "deliverables": [
+        "Runtime-port conformance test harness",
+        "Trace, branch, screenshot, recording, and snapshot expectation fixtures",
+        "Reference-output comparison report schema",
+        "Determinism and tolerance policy",
+        "Itotori ingestion fixture for conformance reports"
+      ],
+      "acceptanceCriteria": [
+        "A port can declare supported conformance profiles and receive pass, fail, skipped, or unsupported results with semantic diagnostics",
+        "Trace order, branch discovery, snapshot restore, screenshot artifact, and recording metadata can be validated independently",
+        "Reference comparisons distinguish exact match, tolerated approximation, unsupported feature, and regression",
+        "Conformance reports can be ingested by Itotori without being mistaken for stronger evidence than their declared evidence tier",
+        "Fixture adapter tests prove the harness fails on intentional trace, branch, and screenshot mismatches"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "manual",
+          "value": "Conformance fixture review"
+        }
+      ],
+      "auditFocus": [
+        "Conformance results overclaiming pixel-perfect fidelity",
+        "Skipped features hidden as pass results",
+        "Unstable screenshot or timing expectations",
+        "Itotori ingestion losing evidence-tier boundaries"
+      ]
+    },
+    {
+      "id": "UTSUSHI-022",
+      "title": "RPG Maker MV/MZ Rust runtime port skeleton",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "kaifuu"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "UTSUSHI-006", "KAIFUU-007"],
+      "summary": "Create a Rust runtime-port skeleton for RPG Maker MV/MZ that loads public MV/MZ data, executes a small event-command subset, emits controlled playback evidence, and documents the subsystem coverage needed for a fuller port.",
+      "deliverables": [
+        "RPG Maker MV/MZ runtime-port crate skeleton",
+        "Map, event, command, message-window, and choice subsystem coverage map",
+        "Public fixture exercising movement, dialogue, choice, and switch-variable state",
+        "Controlled playback and conformance smoke output",
+        "Known-missing subsystem diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "The port skeleton loads MV/MZ JSON data through the shared virtual filesystem and emits runtime evidence through the shared adapter contract",
+        "At least one public fixture can step through dialogue and a choice branch with deterministic trace and snapshot metadata",
+        "Unsupported event commands fail or skip with semantic subsystem diagnostics rather than panics or silent no-ops",
+        "The coverage map names concrete next subsystems for future port work, including plugins, battle, menus, rendering, audio, saves, and text layout",
+        "The implementation remains separate from the alpha MV/MZ validation probe and does not block that practical path"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-rpgmaker-mv"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "manual",
+          "value": "MV/MZ conformance smoke review"
+        }
+      ],
+      "auditFocus": [
+        "Rust port blocking the practical MV/MZ probe",
+        "Event commands silently ignored",
+        "Coverage map not tied to executable fixtures",
+        "Plugin and text-layout limitations hidden"
+      ]
+    },
+    {
+      "id": "UTSUSHI-023",
+      "title": "Siglus Rust VM integration skeleton",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "kaifuu"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "KAIFUU-015"],
+      "summary": "Create a Siglus VM integration skeleton that connects Kaifuu key-profile handoff, Scene.pck/Gameexe.dat parsing boundaries, controlled playback evidence, and siglus_rs-inspired VM subsystem mapping without committing private keys or retail assets.",
+      "deliverables": [
+        "Siglus VM integration crate skeleton",
+        "Scene, Gameexe, asset, text, choice, and VM-state subsystem map",
+        "Key-profile handoff fixture using local-only secret references",
+        "Synthetic or public controlled playback fixture",
+        "Conformance report for the implemented Siglus subset"
+      ],
+      "acceptanceCriteria": [
+        "The skeleton consumes Kaifuu-style key profiles by reference and never serializes raw key material in public reports or fixtures",
+        "A synthetic or redistributable fixture exercises at least text trace and VM-state snapshot metadata through Utsushi evidence contracts",
+        "The subsystem map captures concrete siglus_rs reference concepts to port or integrate, including scene VM state, assets, text rendering boundaries, and save/snapshot behavior",
+        "Unsupported opcodes, asset formats, or encrypted variants fail with semantic diagnostics tied to declared support profiles",
+        "Private-local validation can summarize owned-game readiness without filenames, paths, keys, or decrypted text"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-siglus"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "Siglus secret-redaction and conformance review"
+        }
+      ],
+      "auditFocus": [
+        "Raw Siglus key leakage",
+        "Retail asset leakage in fixtures",
+        "VM opcode gaps hidden as successful playback",
+        "siglus_rs concepts copied without license/provenance review"
+      ]
+    },
+    {
+      "id": "UTSUSHI-024",
+      "title": "KiriKiri KAG runtime port skeleton",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "kaifuu"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "KAIFUU-009", "KAIFUU-038"],
+      "summary": "Create a KiriKiri/KAG runtime-port skeleton around XP3 virtual filesystem handoff, KAG command execution, text-window state, branch control, and controlled playback evidence.",
+      "deliverables": [
+        "KiriKiri/KAG runtime-port crate skeleton",
+        "XP3 virtual filesystem integration boundary",
+        "KAG command coverage map and executable fixture",
+        "Text, choice, macro, layer, and storage subsystem diagnostics",
+        "Controlled playback conformance smoke output"
+      ],
+      "acceptanceCriteria": [
+        "The skeleton can load plaintext or profiled XP3-backed KAG fixture data through the shared virtual filesystem boundary",
+        "A fixture exercises message text, speaker/name state, choice or jump flow, macro handling, and snapshot metadata for the supported subset",
+        "Unsupported KAG/TJS commands and plugin-dependent behavior produce semantic diagnostics that name the missing subsystem",
+        "The coverage map separates KAG script semantics, TJS execution, layer/rendering behavior, storage, input, and audio rather than treating KiriKiri as one parser",
+        "XP3/key-profile handling remains Kaifuu-owned and Utsushi-owned playback does not leak private archive details"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-kirikiri"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "KAG command conformance review"
+        }
+      ],
+      "auditFocus": [
+        "KAG-only support overclaiming full KiriKiri/TJS compatibility",
+        "XP3 archive details leaking from runtime reports",
+        "Macro or jump semantics drifting from fixtures",
+        "Unsupported commands treated as harmless no-ops"
+      ]
+    },
+    {
+      "id": "UTSUSHI-025",
+      "title": "RenPy controlled runtime port skeleton",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "kaifuu"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "UTSUSHI-007", "KAIFUU-008"],
+      "summary": "Create a RenPy controlled-runtime skeleton that models labels, menus, text events, save/snapshot metadata, and packaging or browser constraints while respecting that full RenPy compatibility may remain hybrid rather than pure Rust.",
+      "deliverables": [
+        "RenPy controlled-runtime crate or adapter skeleton",
+        "Label, menu, say, variable, and screen-language coverage map",
+        "Public fixture for route replay and branch evidence",
+        "Hybrid native/Python/browser boundary diagnostics",
+        "Controlled playback conformance smoke output"
+      ],
+      "acceptanceCriteria": [
+        "The skeleton can replay at least one public fixture label path with menu branching, text trace, and snapshot metadata",
+        "The coverage map names pure-Rust, hybrid, and unsupported RenPy subsystems explicitly rather than claiming broad engine parity",
+        "Packaging and browser/WASM constraints are represented as runtime capabilities and semantic diagnostics",
+        "Evidence links back to Kaifuu extracted units where the reference adapter can provide bridge ids",
+        "Unsupported Python or screen-language behavior cannot be silently skipped in conformance results"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-renpy"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "manual",
+          "value": "RenPy hybrid-boundary conformance review"
+        }
+      ],
+      "auditFocus": [
+        "Broad RenPy compatibility overclaim",
+        "Python execution hidden inside supposedly portable Rust path",
+        "Screen-language gaps hidden from reviewers",
+        "Route replay evidence detached from bridge units"
+      ]
+    },
+    {
+      "id": "UTSUSHI-026",
+      "title": "Wolf RPG runtime port skeleton",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "kaifuu"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "KAIFUU-011", "KAIFUU-040"],
+      "summary": "Create a Wolf RPG Editor runtime-port skeleton around map/event command execution, database state, message windows, common events, asset resolution, and encrypted-archive profile boundaries.",
+      "deliverables": [
+        "Wolf RPG runtime-port crate skeleton",
+        "Map, event, common-event, database, message, battle, and asset subsystem map",
+        "Synthetic or public fixture for dialogue and event-state replay",
+        "Encrypted archive/key-profile boundary diagnostics",
+        "Controlled playback conformance smoke output"
+      ],
+      "acceptanceCriteria": [
+        "The skeleton loads a public or synthetic Wolf-style fixture through Utsushi virtual filesystem and Kaifuu profile boundaries",
+        "A fixture executes a small event-command subset with dialogue trace, variable/switch state, and snapshot metadata",
+        "Unsupported common events, database features, battle systems, asset formats, or protected archive variants fail with semantic diagnostics",
+        "The subsystem map is concrete enough that future workers can split engine-port expansion specs by subsystem",
+        "Private-local validation summaries never include raw paths, decrypted text, or protection keys"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-wolf"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "Wolf runtime-port conformance review"
+        }
+      ],
+      "auditFocus": [
+        "Wolf event-command subset overclaiming full engine support",
+        "Database or common-event state drift",
+        "Protected archive/key material leakage",
+        "Subsystem map not actionable for follow-up workers"
+      ]
+    },
+    {
+      "id": "UTSUSHI-027",
+      "title": "BGI/Ethornell runtime port skeleton",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "kaifuu"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-020", "UTSUSHI-021", "KAIFUU-012", "KAIFUU-041"],
+      "summary": "Create a BGI/Ethornell runtime-port skeleton around bytecode script stepping, Shift-JIS/UTF text surfaces, string-table references, choice flow, asset lookup, and conformance against synthetic script fixtures.",
+      "deliverables": [
+        "BGI/Ethornell runtime-port crate skeleton",
+        "Bytecode, string-table, message, choice, asset, save, and render subsystem map",
+        "Synthetic or redistributable script fixture",
+        "Controlled playback conformance smoke output",
+        "Unsupported opcode and encoding diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "The skeleton can step through a synthetic or redistributable BGI-like script fixture and emit text trace plus snapshot metadata",
+        "String-table references, encoding boundaries, and patched text surfaces remain linked to Kaifuu extraction units where available",
+        "Unsupported opcodes, format versions, asset commands, or encoding cases fail with semantic diagnostics rather than silent skips",
+        "The subsystem map separates script VM, rendering, asset lookup, save state, and patch-back concerns",
+        "Conformance fixtures prove at least one intentional opcode and one encoding mismatch fail predictably"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-bgi"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "manual",
+          "value": "BGI runtime-port conformance review"
+        }
+      ],
+      "auditFocus": [
+        "BGI bytecode subset overclaiming full engine support",
+        "Encoding or string-table linkage drift",
+        "Unsupported opcodes treated as no-ops",
+        "Runtime evidence detached from Kaifuu patch-back constraints"
+      ]
     }
   ]
 }
