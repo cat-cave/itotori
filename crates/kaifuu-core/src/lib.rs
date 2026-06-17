@@ -822,9 +822,7 @@ fn validate_helper_evidence(
     failures: &mut Vec<ProfileValidationFailure>,
     helper_evidence: Option<&Value>,
 ) -> Option<HelperEvidence> {
-    let Some(helper_evidence) = helper_evidence else {
-        return None;
-    };
+    let helper_evidence = helper_evidence?;
     let Some(helper_object) = helper_evidence.as_object() else {
         failures.push(ProfileValidationFailure {
             code: "invalid_field_type".to_string(),
@@ -995,9 +993,7 @@ fn validate_optional_positive_u32(
     value: Option<&Value>,
     field: &str,
 ) -> Option<u32> {
-    let Some(value) = value else {
-        return None;
-    };
+    let value = value?;
     let Some(value) = value.as_u64() else {
         failures.push(ProfileValidationFailure {
             code: "invalid_field_type".to_string(),
@@ -4182,26 +4178,73 @@ pub struct AdapterFailure {
     pub remediation: Option<String>,
 }
 
-impl AdapterFailure {
-    pub fn semantic(
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdapterFailureSemanticParams {
+    error_code: SemanticErrorCode,
+    adapter: String,
+    engine: Option<String>,
+    detected_variant: Option<String>,
+    asset_ref: Option<String>,
+    required_capability: Option<Capability>,
+    support_boundary: String,
+    remediation: Option<String>,
+}
+
+impl AdapterFailureSemanticParams {
+    pub fn new(
         error_code: SemanticErrorCode,
         adapter: impl Into<String>,
-        engine: Option<String>,
-        detected_variant: Option<String>,
-        asset_ref: Option<String>,
-        required_capability: Option<Capability>,
         support_boundary: impl Into<String>,
-        remediation: Option<String>,
     ) -> Self {
         Self {
-            error_code: error_code.to_string(),
+            error_code,
             adapter: adapter.into(),
-            engine,
-            detected_variant,
-            asset_ref,
-            required_capability,
+            engine: None,
+            detected_variant: None,
+            asset_ref: None,
+            required_capability: None,
             support_boundary: support_boundary.into(),
-            remediation,
+            remediation: None,
+        }
+    }
+
+    pub fn engine(mut self, engine: impl Into<String>) -> Self {
+        self.engine = Some(engine.into());
+        self
+    }
+
+    pub fn detected_variant(mut self, detected_variant: impl Into<String>) -> Self {
+        self.detected_variant = Some(detected_variant.into());
+        self
+    }
+
+    pub fn asset_ref(mut self, asset_ref: impl Into<String>) -> Self {
+        self.asset_ref = Some(asset_ref.into());
+        self
+    }
+
+    pub fn required_capability(mut self, required_capability: Capability) -> Self {
+        self.required_capability = Some(required_capability);
+        self
+    }
+
+    pub fn remediation(mut self, remediation: impl Into<String>) -> Self {
+        self.remediation = Some(remediation.into());
+        self
+    }
+}
+
+impl AdapterFailure {
+    pub fn semantic(params: AdapterFailureSemanticParams) -> Self {
+        Self {
+            error_code: params.error_code.to_string(),
+            adapter: params.adapter,
+            engine: params.engine,
+            detected_variant: params.detected_variant,
+            asset_ref: params.asset_ref,
+            required_capability: params.required_capability,
+            support_boundary: params.support_boundary,
+            remediation: params.remediation,
         }
     }
 
@@ -4212,14 +4255,15 @@ impl AdapterFailure {
         support_boundary: impl Into<String>,
     ) -> Self {
         Self::semantic(
-            SemanticErrorCode::MissingKeyProfile,
-            adapter,
-            Some(engine.into()),
-            Some(detected_variant.into()),
-            None,
-            Some(Capability::KeyProfile),
-            support_boundary,
-            Some("provide a key profile that references local secret refs".to_string()),
+            AdapterFailureSemanticParams::new(
+                SemanticErrorCode::MissingKeyProfile,
+                adapter,
+                support_boundary,
+            )
+            .engine(engine)
+            .detected_variant(detected_variant)
+            .required_capability(Capability::KeyProfile)
+            .remediation("provide a key profile that references local secret refs"),
         )
     }
 
@@ -4231,16 +4275,17 @@ impl AdapterFailure {
         support_boundary: impl Into<String>,
     ) -> Self {
         Self::semantic(
-            SemanticErrorCode::MissingKeyMaterial,
-            adapter,
-            Some(engine.into()),
-            Some(detected_variant.into()),
-            Some(requirement_id.into()),
-            Some(Capability::KeyProfile),
-            support_boundary,
-            Some(
-                "resolve the referenced local secret material before extraction or patching"
-                    .to_string(),
+            AdapterFailureSemanticParams::new(
+                SemanticErrorCode::MissingKeyMaterial,
+                adapter,
+                support_boundary,
+            )
+            .engine(engine)
+            .detected_variant(detected_variant)
+            .asset_ref(requirement_id)
+            .required_capability(Capability::KeyProfile)
+            .remediation(
+                "resolve the referenced local secret material before extraction or patching",
             ),
         )
     }
@@ -4252,16 +4297,16 @@ impl AdapterFailure {
         support_boundary: impl Into<String>,
     ) -> Self {
         Self::semantic(
-            SemanticErrorCode::HelperUnavailable,
-            adapter,
-            Some(engine.into()),
-            Some(detected_variant.into()),
-            None,
-            Some(Capability::KeyProfile),
-            support_boundary,
-            Some(
-                "run an available local helper or provide validated key material manually"
-                    .to_string(),
+            AdapterFailureSemanticParams::new(
+                SemanticErrorCode::HelperUnavailable,
+                adapter,
+                support_boundary,
+            )
+            .engine(engine)
+            .detected_variant(detected_variant)
+            .required_capability(Capability::KeyProfile)
+            .remediation(
+                "run an available local helper or provide validated key material manually",
             ),
         )
     }
@@ -4274,14 +4319,16 @@ impl AdapterFailure {
         support_boundary: impl Into<String>,
     ) -> Self {
         Self::semantic(
-            SemanticErrorCode::KeyValidationFailed,
-            adapter,
-            Some(engine.into()),
-            Some(detected_variant.into()),
-            Some(requirement_id.into()),
-            Some(Capability::KeyProfile),
-            support_boundary,
-            Some("replace or revalidate the local key material".to_string()),
+            AdapterFailureSemanticParams::new(
+                SemanticErrorCode::KeyValidationFailed,
+                adapter,
+                support_boundary,
+            )
+            .engine(engine)
+            .detected_variant(detected_variant)
+            .asset_ref(requirement_id)
+            .required_capability(Capability::KeyProfile)
+            .remediation("replace or revalidate the local key material"),
         )
     }
 }
