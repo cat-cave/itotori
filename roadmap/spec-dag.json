@@ -823,7 +823,7 @@
     {
       "id": "UNIV-015",
       "title": "Canonical research-to-DAG crosswalk",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["universal", "suite"],
@@ -860,7 +860,10 @@
         "Stale research misleading planning agents",
         "Duplicate DAG nodes from historical proposals",
         "MVP framing drifting back into canonical docs"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/univ-015",
+      "worktree": "/tmp/itotori-spec-univ-015"
     },
     {
       "id": "UNIV-016",
