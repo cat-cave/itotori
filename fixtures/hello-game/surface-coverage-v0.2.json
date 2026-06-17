@@ -78,12 +78,12 @@
   ],
   "protectedSpanCoverage": [
     {
-      "spanKind": "placeholder",
+      "spanKind": "variable_placeholder",
       "raw": "{player}",
       "unitKey": "hello.scene.001.line.001"
     },
     {
-      "spanKind": "placeholder",
+      "spanKind": "variable_placeholder",
       "raw": "{confirm}",
       "unitKey": "tutorial.inspect"
     },

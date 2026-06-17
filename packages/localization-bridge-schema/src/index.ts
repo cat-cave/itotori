@@ -2,8 +2,12 @@ export type Uuid7 = string;
 export type Bcp47Locale = string;
 
 export type TextSurface = "dialogue" | "system";
-export type ProtectedSpanKind = "placeholder";
-export type PreserveMode = "exact";
+export type ProtectedSpanKind =
+  | "placeholder"
+  | "control_markup"
+  | "variable_placeholder"
+  | "ruby_annotation";
+export type PreserveMode = "exact" | "map" | "transform" | "locale_policy";
 export type PatchWriteMode = "replace";
 export type RuntimeFidelityTier = "trace_only" | "layout_probe";
 
@@ -13,6 +17,18 @@ export type ProtectedSpan = {
   start: number;
   end: number;
   preserveMode: PreserveMode;
+  parsedName?: string;
+  arguments?: string[];
+  variableName?: string;
+  formatHint?: string;
+  exampleValues?: string[];
+  baseStartByte?: number;
+  baseEndByte?: number;
+  annotationStartByte?: number;
+  annotationEndByte?: number;
+  annotationText?: string;
+  annotationLocale?: Bcp47Locale;
+  displayMode?: string;
 };
 
 export type BridgeUnit = {
@@ -225,6 +241,13 @@ export type SpanKindV02 = (typeof SPAN_KINDS)[number];
 
 export const PRESERVE_MODES = ["exact", "map", "transform", "locale_policy"] as const;
 export type PreserveModeV02 = (typeof PRESERVE_MODES)[number];
+
+const LEGACY_PROTECTED_SPAN_KINDS = [
+  "placeholder",
+  "control_markup",
+  "variable_placeholder",
+  "ruby_annotation",
+] as const;
 
 export const POLICY_ACTIONS = ["localize", "romanize", "do_not_translate"] as const;
 export type PolicyActionV02 = (typeof POLICY_ACTIONS)[number];
@@ -1576,7 +1599,62 @@ export function assertBridgeBundle(value: unknown): asserts value is BridgeBundl
   assertString(bundle.bridgeId, "BridgeBundle.bridgeId");
   assertString(bundle.sourceBundleHash, "BridgeBundle.sourceBundleHash");
   assertString(bundle.sourceLocale, "BridgeBundle.sourceLocale");
-  assertArray(bundle.units, "BridgeBundle.units");
+  const units = asArray(bundle.units, "BridgeBundle.units");
+  for (const [index, unit] of units.entries()) {
+    assertBridgeUnit(unit, `BridgeBundle.units[${index}]`);
+  }
+}
+
+function assertBridgeUnit(value: unknown, label: string): asserts value is BridgeUnit {
+  const unit = asRecord(value, label);
+  assertString(unit.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertString(unit.sourceUnitKey, `${label}.sourceUnitKey`);
+  assertString(unit.occurrenceId, `${label}.occurrenceId`);
+  assertString(unit.sourceHash, `${label}.sourceHash`);
+  assertString(unit.sourceLocale, `${label}.sourceLocale`);
+  assertString(unit.sourceText, `${label}.sourceText`);
+  if (unit.speaker !== undefined && typeof unit.speaker !== "string") {
+    throw new Error(`${label}.speaker must be a string`);
+  }
+  assertString(unit.textSurface, `${label}.textSurface`);
+  const spans = asArray(unit.protectedSpans, `${label}.protectedSpans`);
+  for (const [index, span] of spans.entries()) {
+    assertProtectedSpan(span, `${label}.protectedSpans[${index}]`, unit.sourceText);
+  }
+  const patchRef = asRecord(unit.patchRef, `${label}.patchRef`);
+  assertString(patchRef.assetId, `${label}.patchRef.assetId`);
+  assertEqual(patchRef.writeMode, "replace", `${label}.patchRef.writeMode`);
+  assertString(patchRef.sourceUnitKey, `${label}.patchRef.sourceUnitKey`);
+}
+
+function assertProtectedSpan(
+  value: unknown,
+  label: string,
+  sourceText: string,
+): asserts value is ProtectedSpan {
+  const span = asRecord(value, label);
+  assertEnum(span.kind, LEGACY_PROTECTED_SPAN_KINDS, `${label}.kind`);
+  assertString(span.raw, `${label}.raw`);
+  const [startByte, endByte] = asByteRangeNumbers(span.start, span.end, label);
+  assertEnum(span.preserveMode, PRESERVE_MODES, `${label}.preserveMode`);
+  assertOptionalString(span.parsedName, `${label}.parsedName`);
+  if (span.arguments !== undefined) {
+    assertStringArray(span.arguments, `${label}.arguments`);
+  }
+  assertOptionalString(span.variableName, `${label}.variableName`);
+  assertOptionalString(span.formatHint, `${label}.formatHint`);
+  if (span.exampleValues !== undefined) {
+    assertStringArray(span.exampleValues, `${label}.exampleValues`);
+  }
+  assertSpanRawMatchesSource(sourceText, span.raw, startByte, endByte, label);
+
+  if (span.kind === "ruby_annotation") {
+    asByteRangeNumbers(span.baseStartByte, span.baseEndByte, `${label}.base`);
+    asByteRangeNumbers(span.annotationStartByte, span.annotationEndByte, `${label}.annotation`);
+    assertString(span.annotationText, `${label}.annotationText`);
+    assertOptionalString(span.annotationLocale, `${label}.annotationLocale`);
+    assertOptionalString(span.displayMode, `${label}.displayMode`);
+  }
 }
 
 export function assertBridgeBundleV02(value: unknown): asserts value is BridgeBundleV02 {

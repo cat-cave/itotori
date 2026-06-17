@@ -17,11 +17,12 @@
       "textSurface": "dialogue",
       "protectedSpans": [
         {
-          "kind": "placeholder",
+          "kind": "variable_placeholder",
           "raw": "{player}",
-          "start": 6,
-          "end": 14,
-          "preserveMode": "exact"
+          "start": 18,
+          "end": 26,
+          "preserveMode": "map",
+          "variableName": "player"
         }
       ],
       "patchRef": {
@@ -59,9 +60,13 @@
         {
           "kind": "control_markup",
           "raw": "<wait=30>",
-          "start": 9,
-          "end": 18,
-          "preserveMode": "exact"
+          "start": 27,
+          "end": 36,
+          "preserveMode": "exact",
+          "parsedName": "wait",
+          "arguments": [
+            "30"
+          ]
         }
       ],
       "patchRef": {
@@ -129,11 +134,12 @@
       "textSurface": "tutorial_text",
       "protectedSpans": [
         {
-          "kind": "placeholder",
+          "kind": "variable_placeholder",
           "raw": "{confirm}",
-          "start": 5,
-          "end": 14,
-          "preserveMode": "exact"
+          "start": 15,
+          "end": 24,
+          "preserveMode": "map",
+          "variableName": "confirm"
         }
       ],
       "patchRef": {

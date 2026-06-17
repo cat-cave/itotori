@@ -12,8 +12,8 @@ use kaifuu_core::{
     EvidenceStatus, ExtractRequest, ExtractionResult, GameProfile, KaifuuResult, OperationStatus,
     PatchRef, PatchRequest, PatchResult, ProfileRequest, ProfileRequirement, ProtectedSpan,
     RequirementCategory, RequirementStatus, TextSurface, VerificationResult, VerifyRequest,
-    atomic_write_text, content_hash, deterministic_id, require_str, require_u64,
-    safe_join_relative,
+    atomic_write_text, content_hash, deterministic_id, normalize_protected_spans, require_str,
+    require_u64, safe_join_relative,
 };
 use serde_json::{Value, json};
 
@@ -104,6 +104,31 @@ impl FixtureAdapter {
             support_boundary: support_boundary.into(),
             remediation: Some(remediation.into()),
         }
+    }
+
+    fn protected_span_patch_failures(entry: &kaifuu_core::PatchExportEntry) -> Vec<AdapterFailure> {
+        let mut failures = Vec::new();
+        let mut required_counts = BTreeMap::<&str, usize>::new();
+        for span in &entry.protected_spans {
+            if !span.raw.is_empty() {
+                *required_counts.entry(span.raw.as_str()).or_default() += 1;
+            }
+        }
+        for (raw, required_count) in required_counts {
+            let actual_count = entry.target_text.match_indices(raw).count();
+            if actual_count < required_count {
+                failures.push(Self::patch_failure(
+                    "protected_span_missing",
+                    format!("source.json#{}", entry.source_unit_key),
+                    "fixture patching requires targetText to preserve protected span raw text",
+                    format!(
+                        "Restore protected span {raw:?} in targetText for sourceUnitKey {}",
+                        entry.source_unit_key
+                    ),
+                ));
+            }
+        }
+        failures
     }
 
     fn profile_from_source(&self, source_text: &str, source: &Value) -> KaifuuResult<GameProfile> {
@@ -332,6 +357,336 @@ impl FixtureAdapter {
     fn asset_inventory_patch_mode(kind: &str) -> KaifuuResult<AssetInventoryPatchMode> {
         Ok(serde_json::from_value(Value::String(kind.to_string()))?)
     }
+
+    fn protected_spans_for_unit(unit: &Value, text: &str) -> KaifuuResult<Vec<ProtectedSpan>> {
+        let mut spans = Self::parse_fixture_markup_spans(text)?;
+        spans.extend(Self::explicit_protected_spans_for_unit(unit, text)?);
+        normalize_protected_spans(text, spans)
+    }
+
+    fn explicit_protected_spans_for_unit(
+        unit: &Value,
+        text: &str,
+    ) -> KaifuuResult<Vec<ProtectedSpan>> {
+        unit["protectedSpans"]
+            .as_array()
+            .map(Vec::as_slice)
+            .unwrap_or(&[])
+            .iter()
+            .map(|span| {
+                let raw = require_str(span, "raw")?;
+                let (start, end) = Self::fixture_span_offsets(
+                    text,
+                    raw,
+                    require_u64(span, "start")?,
+                    require_u64(span, "end")?,
+                );
+                Ok(ProtectedSpan::new(
+                    require_str(span, "kind")?,
+                    raw,
+                    start,
+                    end,
+                    span["preserveMode"].as_str().unwrap_or(""),
+                ))
+            })
+            .collect()
+    }
+
+    fn fixture_span_offsets(text: &str, raw: &str, start: u64, end: u64) -> (u64, u64) {
+        if Self::span_range_matches(text, raw, start, end) {
+            return (start, end);
+        }
+        let Some(byte_start) = Self::char_offset_to_byte(text, start) else {
+            return (start, end);
+        };
+        let Some(byte_end) = Self::char_offset_to_byte(text, end) else {
+            return (start, end);
+        };
+        if Self::span_range_matches(text, raw, byte_start, byte_end) {
+            return (byte_start, byte_end);
+        }
+        (start, end)
+    }
+
+    fn span_range_matches(text: &str, raw: &str, start: u64, end: u64) -> bool {
+        let Ok(start) = usize::try_from(start) else {
+            return false;
+        };
+        let Ok(end) = usize::try_from(end) else {
+            return false;
+        };
+        start < end
+            && end <= text.len()
+            && text.is_char_boundary(start)
+            && text.is_char_boundary(end)
+            && &text[start..end] == raw
+    }
+
+    fn char_offset_to_byte(text: &str, offset: u64) -> Option<u64> {
+        let offset = usize::try_from(offset).ok()?;
+        if offset == text.chars().count() {
+            return Some(text.len() as u64);
+        }
+        text.char_indices()
+            .nth(offset)
+            .map(|(byte_offset, _)| byte_offset as u64)
+    }
+
+    fn parse_fixture_markup_spans(text: &str) -> KaifuuResult<Vec<ProtectedSpan>> {
+        let mut spans = Vec::new();
+        let mut index = 0;
+        while index < text.len() {
+            let parsed = match text.as_bytes()[index] {
+                b'{' => Some(Self::parse_braced_placeholder(text, index)),
+                b'<' => Some(Self::parse_angle_markup(text, index)),
+                b'\\' => Self::parse_backslash_markup(text, index),
+                _ => None,
+            };
+            if let Some((span, next_index)) = parsed {
+                spans.push(span);
+                index = next_index;
+                continue;
+            }
+            let next_char = text[index..]
+                .chars()
+                .next()
+                .ok_or("fixture parser index must point at a UTF-8 character")?;
+            index += next_char.len_utf8();
+        }
+        Ok(spans)
+    }
+
+    fn parse_braced_placeholder(text: &str, start: usize) -> (ProtectedSpan, usize) {
+        let content_start = start + 1;
+        let Some(relative_end) = text[content_start..].find('}') else {
+            let raw = &text[start..];
+            return (
+                ProtectedSpan::control_markup(
+                    raw,
+                    start as u64,
+                    text.len() as u64,
+                    "unknown_unclosed_placeholder",
+                    vec![],
+                ),
+                text.len(),
+            );
+        };
+        let content_end = content_start + relative_end;
+        let end = content_end + 1;
+        let raw = &text[start..end];
+        let name = &text[content_start..content_end];
+        let span = if Self::is_fixture_placeholder_name(name) {
+            ProtectedSpan::variable_placeholder(raw, start as u64, end as u64, name)
+        } else {
+            ProtectedSpan::control_markup(
+                raw,
+                start as u64,
+                end as u64,
+                "unknown_placeholder",
+                vec![name.to_string()],
+            )
+        };
+        (span, end)
+    }
+
+    fn is_fixture_placeholder_name(name: &str) -> bool {
+        !name.is_empty()
+            && name.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric()
+                    || matches!(byte, b'_' | b'-' | b'.' | b':' | b'[' | b']')
+            })
+    }
+
+    fn parse_angle_markup(text: &str, start: usize) -> (ProtectedSpan, usize) {
+        let content_start = start + 1;
+        let Some(relative_end) = text[content_start..].find('>') else {
+            let raw = &text[start..];
+            return (
+                ProtectedSpan::control_markup(
+                    raw,
+                    start as u64,
+                    text.len() as u64,
+                    "unknown_unclosed_tag",
+                    vec![],
+                ),
+                text.len(),
+            );
+        };
+        let content_end = content_start + relative_end;
+        let end = content_end + 1;
+        if let Some(span) = Self::parse_ruby_markup(text, start, content_start, content_end, end) {
+            return (span, end);
+        }
+        (
+            Self::parse_control_tag(text, start, content_start, content_end, end),
+            end,
+        )
+    }
+
+    fn parse_ruby_markup(
+        text: &str,
+        start: usize,
+        content_start: usize,
+        content_end: usize,
+        end: usize,
+    ) -> Option<ProtectedSpan> {
+        let content = &text[content_start..content_end];
+        let equals_index = content.find('=')?;
+        let name = content[..equals_index].trim();
+        if !matches!(name, "ruby" | "furigana") {
+            return None;
+        }
+        let values_start = content_start + equals_index + 1;
+        let values = &text[values_start..content_end];
+        let separator_index = values.find('|')?;
+        let base_start = values_start;
+        let base_end = values_start + separator_index;
+        let annotation_start = base_end + 1;
+        let annotation_end = content_end;
+        let annotation_text = &text[annotation_start..annotation_end];
+        let raw = &text[start..end];
+        let mut span = ProtectedSpan::new(
+            "ruby_annotation",
+            raw,
+            start as u64,
+            end as u64,
+            "locale_policy",
+        );
+        span.parsed_name = Some(name.to_string());
+        span.arguments = Some(vec![
+            text[base_start..base_end].to_string(),
+            annotation_text.to_string(),
+        ]);
+        span.base_start_byte = Some(base_start as u64);
+        span.base_end_byte = Some(base_end as u64);
+        span.annotation_start_byte = Some(annotation_start as u64);
+        span.annotation_end_byte = Some(annotation_end as u64);
+        span.annotation_text = Some(annotation_text.to_string());
+        span.display_mode = Some(name.to_string());
+        Some(span)
+    }
+
+    fn parse_control_tag(
+        text: &str,
+        start: usize,
+        content_start: usize,
+        content_end: usize,
+        end: usize,
+    ) -> ProtectedSpan {
+        let content = text[content_start..content_end].trim();
+        let raw = &text[start..end];
+        let (parsed_name, arguments) = Self::control_tag_metadata(content);
+        ProtectedSpan::control_markup(raw, start as u64, end as u64, parsed_name, arguments)
+    }
+
+    fn control_tag_metadata(content: &str) -> (String, Vec<String>) {
+        if content.is_empty() {
+            return ("unknown_empty_tag".to_string(), vec![]);
+        }
+        if let Some(closing) = content.strip_prefix('/') {
+            let name = Self::normalize_fixture_markup_name(closing);
+            return (name, vec!["close".to_string()]);
+        }
+        let separator = content
+            .char_indices()
+            .find(|(_, character)| matches!(character, '=' | ':' | ' ' | '\t'))
+            .map(|(index, character)| (index, character));
+        let Some((separator_index, separator_char)) = separator else {
+            return (Self::normalize_fixture_markup_name(content), vec![]);
+        };
+        let name = Self::normalize_fixture_markup_name(&content[..separator_index]);
+        let argument_text = content[separator_index + separator_char.len_utf8()..].trim();
+        let arguments = if argument_text.is_empty() {
+            vec![]
+        } else {
+            argument_text
+                .split([',', '|'])
+                .map(str::trim)
+                .filter(|argument| !argument.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
+        (name, arguments)
+    }
+
+    fn normalize_fixture_markup_name(name: &str) -> String {
+        let name = name.trim();
+        if name.is_empty() {
+            "unknown_markup".to_string()
+        } else {
+            name.to_ascii_lowercase()
+        }
+    }
+
+    fn parse_backslash_markup(text: &str, start: usize) -> Option<(ProtectedSpan, usize)> {
+        let after_slash = start + 1;
+        let next = text[after_slash..].chars().next()?;
+        if matches!(next, '.' | '|' | '!') {
+            let end = after_slash + next.len_utf8();
+            return Some((
+                ProtectedSpan::control_markup(
+                    &text[start..end],
+                    start as u64,
+                    end as u64,
+                    "wait",
+                    vec![next.to_string()],
+                ),
+                end,
+            ));
+        }
+        let code_end = text[after_slash..]
+            .char_indices()
+            .take_while(|(_, character)| character.is_ascii_alphabetic())
+            .last()
+            .map(|(index, character)| after_slash + index + character.len_utf8())?;
+        if !text[code_end..].starts_with('[') {
+            return None;
+        }
+        let argument_start = code_end + 1;
+        let relative_end = text[argument_start..].find(']')?;
+        let argument_end = argument_start + relative_end;
+        let end = argument_end + 1;
+        let code = &text[after_slash..code_end];
+        let argument = &text[argument_start..argument_end];
+        let raw = &text[start..end];
+        let upper_code = code.to_ascii_uppercase();
+        let mut span = match upper_code.as_str() {
+            "N" | "NAME" => ProtectedSpan::variable_placeholder(
+                raw,
+                start as u64,
+                end as u64,
+                format!("name[{argument}]"),
+            ),
+            "V" | "VAR" => ProtectedSpan::variable_placeholder(
+                raw,
+                start as u64,
+                end as u64,
+                format!("variable[{argument}]"),
+            ),
+            "C" | "COLOR" => ProtectedSpan::control_markup(
+                raw,
+                start as u64,
+                end as u64,
+                "color",
+                vec![argument.to_string()],
+            ),
+            _ => ProtectedSpan::control_markup(
+                raw,
+                start as u64,
+                end as u64,
+                Self::normalize_fixture_markup_name(code),
+                vec![argument.to_string()],
+            ),
+        };
+        span.parsed_name = Some(match upper_code.as_str() {
+            "N" | "NAME" => "name_variable".to_string(),
+            "V" | "VAR" => "runtime_variable".to_string(),
+            "C" | "COLOR" => "color".to_string(),
+            _ => Self::normalize_fixture_markup_name(code),
+        });
+        span.arguments = Some(vec![argument.to_string()]);
+        Some((span, end))
+    }
 }
 
 impl EngineAdapter for FixtureAdapter {
@@ -486,21 +841,7 @@ impl EngineAdapter for FixtureAdapter {
             .map(|(index, unit)| {
                 let source_unit_key = require_str(unit, "sourceUnitKey")?;
                 let text = require_str(unit, "sourceText")?;
-                let protected_spans = unit["protectedSpans"]
-                    .as_array()
-                    .map(Vec::as_slice)
-                    .unwrap_or(&[])
-                    .iter()
-                    .map(|span| {
-                        Ok(ProtectedSpan {
-                            kind: require_str(span, "kind")?.to_string(),
-                            raw: require_str(span, "raw")?.to_string(),
-                            start: require_u64(span, "start")?,
-                            end: require_u64(span, "end")?,
-                            preserve_mode: "exact".to_string(),
-                        })
-                    })
-                    .collect::<KaifuuResult<Vec<_>>>()?;
+                let protected_spans = Self::protected_spans_for_unit(unit, text)?;
                 Ok(BridgeUnit {
                     bridge_unit_id: deterministic_id("bridge-unit", index + 1),
                     source_unit_key: source_unit_key.to_string(),
@@ -622,6 +963,8 @@ impl EngineAdapter for FixtureAdapter {
                     ),
                 ));
             }
+
+            failures.extend(Self::protected_span_patch_failures(entry));
         }
 
         if !failures.is_empty() {
@@ -781,6 +1124,91 @@ mod tests {
     }
 
     #[test]
+    fn parses_fixture_markup_into_engine_neutral_spans() {
+        let text = "名前は\\N[1]、{player}<color=red><wait=30><ruby=依代|よりしろ><mystery tag>";
+        let unit = json!({ "protectedSpans": [] });
+        let spans = FixtureAdapter::protected_spans_for_unit(&unit, text).unwrap();
+
+        for span in &spans {
+            assert_eq!(
+                &text[span.start as usize..span.end as usize],
+                span.raw,
+                "span should map back to source bytes: {span:?}"
+            );
+        }
+
+        let placeholder = spans
+            .iter()
+            .find(|span| span.raw == "{player}")
+            .expect("placeholder span");
+        assert_eq!(placeholder.kind, "variable_placeholder");
+        assert_eq!(placeholder.preserve_mode, "map");
+        assert_eq!(placeholder.variable_name.as_deref(), Some("player"));
+
+        let name_variable = spans
+            .iter()
+            .find(|span| span.raw == "\\N[1]")
+            .expect("name variable span");
+        assert_eq!(name_variable.kind, "variable_placeholder");
+        assert_eq!(name_variable.parsed_name.as_deref(), Some("name_variable"));
+        assert_eq!(name_variable.variable_name.as_deref(), Some("name[1]"));
+
+        let color = spans
+            .iter()
+            .find(|span| span.raw == "<color=red>")
+            .expect("color span");
+        assert_eq!(color.kind, "control_markup");
+        assert_eq!(color.parsed_name.as_deref(), Some("color"));
+        assert_eq!(color.arguments.as_deref(), Some(&["red".to_string()][..]));
+
+        let wait = spans
+            .iter()
+            .find(|span| span.raw == "<wait=30>")
+            .expect("wait span");
+        assert_eq!(wait.parsed_name.as_deref(), Some("wait"));
+        assert_eq!(wait.arguments.as_deref(), Some(&["30".to_string()][..]));
+
+        let ruby = spans
+            .iter()
+            .find(|span| span.raw == "<ruby=依代|よりしろ>")
+            .expect("ruby span");
+        assert_eq!(ruby.kind, "ruby_annotation");
+        assert_eq!(ruby.annotation_text.as_deref(), Some("よりしろ"));
+        assert_eq!(ruby.display_mode.as_deref(), Some("ruby"));
+
+        let unknown = spans
+            .iter()
+            .find(|span| span.raw == "<mystery tag>")
+            .expect("unknown tag span");
+        assert_eq!(unknown.kind, "control_markup");
+        assert_eq!(unknown.parsed_name.as_deref(), Some("mystery"));
+        assert_eq!(unknown.arguments.as_deref(), Some(&["tag".to_string()][..]));
+    }
+
+    #[test]
+    fn explicit_fixture_spans_are_normalized_to_byte_offsets() {
+        let text = "こんにちは、{player}。";
+        let unit = json!({
+            "protectedSpans": [
+                {
+                    "kind": "placeholder",
+                    "raw": "{player}",
+                    "start": 6,
+                    "end": 14
+                }
+            ]
+        });
+
+        let spans = FixtureAdapter::protected_spans_for_unit(&unit, text).unwrap();
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].kind, "variable_placeholder");
+        assert_eq!(spans[0].start, 18);
+        assert_eq!(spans[0].end, 26);
+        assert_eq!(spans[0].variable_name.as_deref(), Some("player"));
+    }
+
+    #[test]
     fn extracts_multi_surface_public_fixture_to_golden_bridge_snapshot() {
         let fixture_dir = public_fixture_dir();
         let extraction = FixtureAdapter
@@ -825,7 +1253,7 @@ mod tests {
             .flat_map(|unit| unit.protected_spans.iter())
             .map(|span| span.kind.as_str())
             .collect::<BTreeSet<_>>();
-        assert!(span_kinds.contains("placeholder"));
+        assert!(span_kinds.contains("variable_placeholder"));
         assert!(span_kinds.contains("control_markup"));
     }
 
@@ -879,7 +1307,7 @@ mod tests {
             .iter()
             .map(|span| span["spanKind"].as_str().unwrap())
             .collect::<BTreeSet<_>>();
-        assert!(span_kinds.contains("placeholder"));
+        assert!(span_kinds.contains("variable_placeholder"));
         assert!(span_kinds.contains("control_markup"));
 
         for bundle in matrix["expectedBridgeBundles"].as_array().unwrap() {
@@ -990,6 +1418,40 @@ mod tests {
         assert!(patch.failures.iter().any(|failure| {
             failure.error_code == "source_hash_mismatch"
                 && failure.required_capability == Some(Capability::LineParityPatching)
+        }));
+        assert!(!output_dir.join("source.json").exists());
+        let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn missing_protected_span_in_patch_target_fails_without_writing_output() {
+        let game_dir = temp_game("missing-protected-span");
+        let adapter = FixtureAdapter;
+        let extraction = adapter
+            .extract(ExtractRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+        let mut patch_export = patch_export_for(&extraction);
+        patch_export.entries[0].target_text = "Hello.".to_string();
+
+        let output_dir = game_dir.join("patched");
+        let patch = adapter
+            .patch(PatchRequest {
+                game_dir: &game_dir,
+                patch_export: &patch_export,
+                output_dir: &output_dir,
+            })
+            .unwrap();
+
+        assert_eq!(patch.status, OperationStatus::Failed);
+        assert!(patch.failures.iter().any(|failure| {
+            failure.error_code == "protected_span_missing"
+                && failure
+                    .asset_ref
+                    .as_deref()
+                    .unwrap_or("")
+                    .contains("hello.scene.001.line.001")
         }));
         assert!(!output_dir.join("source.json").exists());
         let _ = fs::remove_dir_all(game_dir);

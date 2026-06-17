@@ -1630,6 +1630,261 @@ pub struct ProtectedSpan {
     pub start: u64,
     pub end: u64,
     pub preserve_mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parsed_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variable_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format_hint: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub example_values: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_start_byte: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_end_byte: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub annotation_start_byte: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub annotation_end_byte: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub annotation_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub annotation_locale: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_mode: Option<String>,
+}
+
+impl ProtectedSpan {
+    pub fn new(
+        kind: impl Into<String>,
+        raw: impl Into<String>,
+        start: u64,
+        end: u64,
+        preserve_mode: impl Into<String>,
+    ) -> Self {
+        Self {
+            kind: kind.into(),
+            raw: raw.into(),
+            start,
+            end,
+            preserve_mode: preserve_mode.into(),
+            parsed_name: None,
+            arguments: None,
+            variable_name: None,
+            format_hint: None,
+            example_values: None,
+            base_start_byte: None,
+            base_end_byte: None,
+            annotation_start_byte: None,
+            annotation_end_byte: None,
+            annotation_text: None,
+            annotation_locale: None,
+            display_mode: None,
+        }
+    }
+
+    pub fn variable_placeholder(
+        raw: impl Into<String>,
+        start: u64,
+        end: u64,
+        variable_name: impl Into<String>,
+    ) -> Self {
+        let variable_name = variable_name.into();
+        let mut span = Self::new("variable_placeholder", raw, start, end, "map");
+        span.variable_name = Some(variable_name);
+        span
+    }
+
+    pub fn control_markup(
+        raw: impl Into<String>,
+        start: u64,
+        end: u64,
+        parsed_name: impl Into<String>,
+        arguments: Vec<String>,
+    ) -> Self {
+        let mut span = Self::new("control_markup", raw, start, end, "exact");
+        span.parsed_name = Some(parsed_name.into());
+        if !arguments.is_empty() {
+            span.arguments = Some(arguments);
+        }
+        span
+    }
+
+    fn normalized(mut self, source_text: &str) -> KaifuuResult<Self> {
+        let original_kind = self.kind.clone();
+        self.kind = normalize_protected_span_kind(&self.kind)
+            .ok_or_else(|| format!("unsupported protected span kind {}", self.kind))?
+            .to_string();
+        if self.preserve_mode.trim().is_empty()
+            || original_kind == "placeholder"
+            || (self.kind == "variable_placeholder" && self.preserve_mode == "exact")
+        {
+            self.preserve_mode = default_preserve_mode_for_span_kind(&self.kind).to_string();
+        }
+        if !["exact", "map", "transform", "locale_policy"].contains(&self.preserve_mode.as_str()) {
+            return Err(format!(
+                "unsupported protected span preserveMode {}",
+                self.preserve_mode
+            )
+            .into());
+        }
+        self.raw = source_slice_for_span(source_text, self.start, self.end, &self.raw)?.to_string();
+        if self.kind == "variable_placeholder" && self.variable_name.is_none() {
+            self.variable_name = variable_name_from_raw_placeholder(&self.raw);
+        }
+        self.arguments = normalize_non_empty_string_vec(self.arguments);
+        self.example_values = normalize_non_empty_string_vec(self.example_values);
+        Ok(self)
+    }
+
+    fn merge_missing_metadata_from(&mut self, other: &Self) {
+        if self.parsed_name.is_none() {
+            self.parsed_name = other.parsed_name.clone();
+        }
+        if self.arguments.is_none() {
+            self.arguments = other.arguments.clone();
+        }
+        if self.variable_name.is_none() {
+            self.variable_name = other.variable_name.clone();
+        }
+        if self.format_hint.is_none() {
+            self.format_hint = other.format_hint.clone();
+        }
+        if self.example_values.is_none() {
+            self.example_values = other.example_values.clone();
+        }
+        if self.base_start_byte.is_none() {
+            self.base_start_byte = other.base_start_byte;
+        }
+        if self.base_end_byte.is_none() {
+            self.base_end_byte = other.base_end_byte;
+        }
+        if self.annotation_start_byte.is_none() {
+            self.annotation_start_byte = other.annotation_start_byte;
+        }
+        if self.annotation_end_byte.is_none() {
+            self.annotation_end_byte = other.annotation_end_byte;
+        }
+        if self.annotation_text.is_none() {
+            self.annotation_text = other.annotation_text.clone();
+        }
+        if self.annotation_locale.is_none() {
+            self.annotation_locale = other.annotation_locale.clone();
+        }
+        if self.display_mode.is_none() {
+            self.display_mode = other.display_mode.clone();
+        }
+    }
+}
+
+pub fn normalize_protected_spans(
+    source_text: &str,
+    spans: Vec<ProtectedSpan>,
+) -> KaifuuResult<Vec<ProtectedSpan>> {
+    let mut normalized = spans
+        .into_iter()
+        .map(|span| span.normalized(source_text))
+        .collect::<KaifuuResult<Vec<_>>>()?;
+    normalized.sort_by_key(|span| {
+        (
+            span.start,
+            span.end,
+            span.kind.clone(),
+            span.raw.clone(),
+            span.parsed_name.clone(),
+        )
+    });
+
+    let mut merged: Vec<ProtectedSpan> = Vec::new();
+    for span in normalized {
+        if let Some(existing) = merged.last_mut()
+            && existing.start == span.start
+            && existing.end == span.end
+            && existing.kind == span.kind
+            && existing.raw == span.raw
+        {
+            existing.merge_missing_metadata_from(&span);
+            continue;
+        }
+        if let Some(previous) = merged.last()
+            && previous.end > span.start
+        {
+            return Err(format!(
+                "protected spans must not overlap: {}..{} overlaps {}..{}",
+                previous.start, previous.end, span.start, span.end
+            )
+            .into());
+        }
+        merged.push(span);
+    }
+
+    Ok(merged)
+}
+
+fn normalize_protected_span_kind(kind: &str) -> Option<&'static str> {
+    match kind {
+        "control_markup" => Some("control_markup"),
+        "variable_placeholder" | "placeholder" => Some("variable_placeholder"),
+        "ruby_annotation" => Some("ruby_annotation"),
+        _ => None,
+    }
+}
+
+fn default_preserve_mode_for_span_kind(kind: &str) -> &'static str {
+    match kind {
+        "variable_placeholder" => "map",
+        "ruby_annotation" => "locale_policy",
+        _ => "exact",
+    }
+}
+
+fn normalize_non_empty_string_vec(values: Option<Vec<String>>) -> Option<Vec<String>> {
+    let values = values?
+        .into_iter()
+        .filter(|value| !value.trim().is_empty())
+        .collect::<Vec<_>>();
+    if values.is_empty() {
+        None
+    } else {
+        Some(values)
+    }
+}
+
+fn source_slice_for_span<'a>(
+    source_text: &'a str,
+    start: u64,
+    end: u64,
+    expected_raw: &str,
+) -> KaifuuResult<&'a str> {
+    if end <= start {
+        return Err("protected span end must be greater than start".into());
+    }
+    let start = usize::try_from(start).map_err(|_| "protected span start is too large")?;
+    let end = usize::try_from(end).map_err(|_| "protected span end is too large")?;
+    if end > source_text.len() {
+        return Err("protected span end must be within sourceText bytes".into());
+    }
+    if !source_text.is_char_boundary(start) || !source_text.is_char_boundary(end) {
+        return Err("protected span boundaries must align to UTF-8 character boundaries".into());
+    }
+    let actual = &source_text[start..end];
+    if actual != expected_raw {
+        return Err(format!(
+            "protected span raw {:?} must match sourceText byte range {:?}",
+            expected_raw, actual
+        )
+        .into());
+    }
+    Ok(actual)
+}
+
+fn variable_name_from_raw_placeholder(raw: &str) -> Option<String> {
+    raw.strip_prefix('{')
+        .and_then(|value| value.strip_suffix('}'))
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_string)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -3738,6 +3993,47 @@ mod tests {
         assert_eq!(detected_json["engineFamily"], "fixture");
         assert_eq!(detected_json["engineVersion"], "0.0.0");
         assert_eq!(detected_json["detectedVariant"], "plain-json");
+    }
+
+    #[test]
+    fn protected_span_normalizer_uses_engine_neutral_byte_spans() {
+        let source_text = "こんにちは、{player}。";
+        let spans = normalize_protected_spans(
+            source_text,
+            vec![ProtectedSpan::new(
+                "placeholder",
+                "{player}",
+                18,
+                26,
+                "exact",
+            )],
+        )
+        .unwrap();
+
+        assert_eq!(spans.len(), 1);
+        assert_eq!(spans[0].kind, "variable_placeholder");
+        assert_eq!(spans[0].preserve_mode, "map");
+        assert_eq!(spans[0].variable_name.as_deref(), Some("player"));
+        assert_eq!(
+            &source_text[spans[0].start as usize..spans[0].end as usize],
+            spans[0].raw
+        );
+    }
+
+    #[test]
+    fn protected_span_normalizer_rejects_overlapping_spans() {
+        let error = normalize_protected_spans(
+            "abc {name}",
+            vec![
+                ProtectedSpan::control_markup("{name}", 4, 10, "unknown_placeholder", vec![]),
+                ProtectedSpan::variable_placeholder("{name}", 4, 10, "name"),
+                ProtectedSpan::control_markup("name", 5, 9, "bad_nested_span", vec![]),
+            ],
+        )
+        .expect_err("overlapping spans should fail")
+        .to_string();
+
+        assert!(error.contains("must not overlap"), "{error}");
     }
 
     #[test]
