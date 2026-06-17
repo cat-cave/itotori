@@ -3,7 +3,9 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use kaifuu_core::{KaifuuResult, deterministic_id, read_json, safe_join_relative};
+use kaifuu_core::{
+    KaifuuResult, deterministic_id, read_json, safe_join_relative, validate_safe_relative_path,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -643,6 +645,11 @@ fn relative_package_path(root: &Path, path: &Path) -> KaifuuResult<String> {
             .as_os_str()
             .to_str()
             .ok_or("delta package paths must be UTF-8")?;
+        if part.contains('/') || part.contains('\\') {
+            return Err(
+                "delta package path components must not contain separator characters".into(),
+            );
+        }
         parts.push(part.to_string());
     }
     let relative_path = parts.join("/");
@@ -651,8 +658,7 @@ fn relative_package_path(root: &Path, path: &Path) -> KaifuuResult<String> {
 }
 
 fn validate_relative_package_path(path: &str) -> KaifuuResult<()> {
-    safe_join_relative(Path::new("."), path)?;
-    Ok(())
+    validate_safe_relative_path(path)
 }
 
 fn validate_not_ignored_artifact_path(path: &str) -> KaifuuResult<()> {
@@ -675,7 +681,13 @@ fn validate_materializable_file_paths<'a>(
 ) -> KaifuuResult<()> {
     let mut files = BTreeSet::new();
     for path in paths {
-        files.insert(path.to_string());
+        let normalized_path = materializable_path_key(path)?;
+        if !files.insert(normalized_path.clone()) {
+            return Err(format!(
+                "{context} contains duplicate materialized path {normalized_path}"
+            )
+            .into());
+        }
     }
     for path in &files {
         let mut ancestor = String::new();
@@ -694,6 +706,11 @@ fn validate_materializable_file_paths<'a>(
         }
     }
     Ok(())
+}
+
+fn materializable_path_key(path: &str) -> KaifuuResult<String> {
+    validate_relative_package_path(path)?;
+    Ok(path.split(['/', '\\']).collect::<Vec<_>>().join("/"))
 }
 
 fn file_records(files: &BTreeMap<String, FileSnapshot>) -> Vec<FileRecord> {
@@ -941,6 +958,31 @@ mod tests {
         (original, patched)
     }
 
+    const UNSAFE_PACKAGE_PATH_FIXTURES: &[(&str, &str)] = &[
+        ("empty", ""),
+        ("absolute slash", "/source.json"),
+        ("absolute backslash", "\\source.json"),
+        ("drive absolute slash", "C:/source.json"),
+        ("drive absolute backslash", "C:\\source.json"),
+        ("drive relative upper", "C:source.json"),
+        ("drive relative lower", "c:source.json"),
+        ("drive prefix component slash", "data/C:source.json"),
+        ("drive prefix component backslash", "data\\C:source.json"),
+        ("dot only", "."),
+        ("leading dot slash", "./source.json"),
+        ("leading dot backslash", ".\\source.json"),
+        ("dot component slash", "data/./source.json"),
+        ("dot component backslash", "data\\.\\source.json"),
+        ("trailing dot component", "data/."),
+        ("parent leading slash", "../source.json"),
+        ("parent leading backslash", "..\\source.json"),
+        ("parent component slash", "data/../source.json"),
+        ("parent component backslash", "data\\..\\source.json"),
+        ("empty component slash", "data//source.json"),
+        ("empty component backslash", "data\\\\source.json"),
+        ("nul byte", "source.json\0suffix"),
+    ];
+
     #[test]
     fn create_delta_emits_deterministic_v02_changed_file_package() {
         let root = temp_dir("create-v02");
@@ -1044,38 +1086,20 @@ mod tests {
     }
 
     #[test]
-    fn apply_delta_rejects_traversal_path_without_writing_output() {
-        let root = temp_dir("traversal-path");
-        let (original, patched) = write_sample_dirs(&root);
-        let output_dir = root.join("output");
-        let delta_path = root.join("unsafe.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
-        package["changedEntries"][0]["path"] = json!("../escaped.dat");
-        write_json(&delta_path, &package).unwrap();
-
-        let error = apply_delta(&original, &delta_path, &output_dir)
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("unsafe relative output path"));
-        assert!(!root.join("escaped.dat").exists());
-        assert!(!output_dir.exists());
-        assert_no_staging_dirs(&root, "output");
-        let _ = fs::remove_dir_all(root);
+    fn validate_relative_package_path_rejects_shared_negative_matrix() {
+        assert!(validate_relative_package_path("data/source.json").is_ok());
+        for (case, unsafe_path) in UNSAFE_PACKAGE_PATH_FIXTURES {
+            assert!(
+                validate_relative_package_path(unsafe_path).is_err(),
+                "{case}: {unsafe_path:?} should be rejected"
+            );
+        }
     }
 
     #[test]
-    fn apply_delta_rejects_windows_drive_relative_path_without_writing_output() {
-        for (index, unsafe_path) in [
-            "C:source.json",
-            "c:source.json",
-            "data/C:source.json",
-            "data\\C:source.json",
-        ]
-        .iter()
-        .enumerate()
-        {
-            let root = temp_dir(&format!("drive-relative-path-{index}"));
+    fn apply_delta_rejects_shared_unsafe_path_matrix_without_writing_output() {
+        for (index, (case, unsafe_path)) in UNSAFE_PACKAGE_PATH_FIXTURES.iter().enumerate() {
+            let root = temp_dir(&format!("unsafe-path-{index}"));
             let (original, patched) = write_sample_dirs(&root);
             let output_dir = root.join("output");
             let delta_path = root.join("unsafe.kaifuu");
@@ -1087,11 +1111,28 @@ mod tests {
                 .unwrap_err()
                 .to_string();
 
-            assert!(error.contains("unsafe relative output path"));
+            assert!(
+                error.contains("unsafe relative output path"),
+                "{case}: {unsafe_path:?} returned unexpected error: {error}"
+            );
+            assert!(!root.join("escaped.dat").exists());
             assert!(!output_dir.exists());
             assert_no_staging_dirs(&root, "output");
             let _ = fs::remove_dir_all(root);
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn create_delta_rejects_backslash_filename_component() {
+        let root = temp_dir("backslash-filename-component");
+        let (original, patched) = write_sample_dirs(&root);
+        fs::write(patched.join("data\\ambiguous.txt"), b"ambiguous\n").unwrap();
+
+        let error = create_delta(&original, &patched).unwrap_err().to_string();
+
+        assert!(error.contains("separator characters"));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -1140,6 +1181,59 @@ mod tests {
             .to_string();
 
         assert!(error.contains("file/dir prefix conflict"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_backslash_target_file_dir_prefix_conflict_before_staging_allocation() {
+        let root = temp_dir("target-backslash-prefix-conflict");
+        let original = root.join("original");
+        fs::create_dir_all(&original).unwrap();
+        write_file(&original, "data", b"source\n");
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("conflict.kaifuu");
+        let mut package = create_delta(&original, &original).unwrap();
+        add_utf8_changed_entry(&mut package, "data\\nested.txt", b"nested\n");
+        add_target_file_record(&mut package, "data\\nested.txt", b"nested\n");
+        refresh_manifest(&mut package, "target");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("file/dir prefix conflict"));
+        assert!(error.contains("data blocks data/nested.txt"));
+        assert!(!output_dir.exists());
+        assert!(!output_parent.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_delta_rejects_backslash_descendant_blocked_by_added_file_before_staging_allocation() {
+        let root = temp_dir("target-backslash-descendant-conflict");
+        let original = root.join("original");
+        fs::create_dir_all(&original).unwrap();
+        write_file(&original, "data/nested.txt", b"source\n");
+        let output_parent = root.join("new-output-parent");
+        let output_dir = output_parent.join("output");
+        let delta_path = root.join("conflict.kaifuu");
+        let mut package = create_delta(&original, &original).unwrap();
+        add_utf8_changed_entry(&mut package, "data", b"file\n");
+        add_target_file_record(&mut package, "data", b"file\n");
+        package["target"]["files"].as_array_mut().unwrap()[0]["path"] = json!("data\\nested.txt");
+        refresh_manifest(&mut package, "target");
+        write_json(&delta_path, &package).unwrap();
+
+        let error = apply_delta(&original, &delta_path, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(error.contains("file/dir prefix conflict"));
+        assert!(error.contains("data blocks data/nested.txt"));
         assert!(!output_dir.exists());
         assert!(!output_parent.exists());
         let _ = fs::remove_dir_all(root);

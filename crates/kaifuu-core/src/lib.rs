@@ -1566,7 +1566,7 @@ fn validate_source_fingerprint(
             });
             continue;
         }
-        validate_relative_path(failures, &field, evidence);
+        validate_profile_relative_path(failures, &field, evidence);
     }
 }
 
@@ -2046,7 +2046,7 @@ fn validate_assets(
         }
         if let Some(path) = required_string_value(failures, asset, &format!("assets.{index}.path"))
         {
-            validate_relative_path(failures, &format!("assets.{index}.path"), &path);
+            validate_profile_relative_path(failures, &format!("assets.{index}.path"), &path);
         }
         validate_enum_string(
             failures,
@@ -2501,20 +2501,17 @@ fn is_bcp47_like_locale(locale: &str) -> bool {
     })
 }
 
-fn validate_relative_path(failures: &mut Vec<ProfileValidationFailure>, field: &str, path: &str) {
-    let has_parent_component = path.split(['/', '\\']).any(|component| component == "..");
-    if path.starts_with('/')
-        || path.starts_with('\\')
-        || path.contains('\0')
-        || has_parent_component
-        || path_has_windows_drive_prefix_component(path)
-        || path.split(['/', '\\']).any(str::is_empty)
-    {
+fn validate_profile_relative_path(
+    failures: &mut Vec<ProfileValidationFailure>,
+    field: &str,
+    path: &str,
+) {
+    if validate_safe_relative_path(path).is_err() {
         failures.push(ProfileValidationFailure {
             code: "invalid_asset_path".to_string(),
             field: field.to_string(),
             message:
-                "asset path must be relative and must not contain parent traversal or drive prefixes"
+                "asset path must be relative and must not contain dot components, parent traversal, or drive prefixes"
                     .to_string(),
         });
     }
@@ -3735,7 +3732,7 @@ fn validate_asset_inventory_relative_path(
     path: &str,
 ) {
     let mut profile_failures = Vec::new();
-    validate_relative_path(&mut profile_failures, field, path);
+    validate_profile_relative_path(&mut profile_failures, field, path);
     if !profile_failures.is_empty() {
         failures.extend(profile_failures.into_iter().map(|failure| {
             AssetInventoryValidationFailure {
@@ -6259,6 +6256,21 @@ pub fn safe_join_relative(root: &Path, relative_path: &str) -> KaifuuResult<Path
     Ok(output_path)
 }
 
+/// Validates Kaifuu's portable relative path rule for package-controlled writes
+/// and profile asset paths.
+///
+/// This only validates the caller-provided string. It does not normalize,
+/// canonicalize, or return a safe output path. Use [`safe_join_relative`] when a
+/// validated relative path must be materialized under a trusted root.
+///
+/// The rule treats `/` and `\` as separators and rejects empty paths, absolute
+/// paths, empty components, `.` components, `..` components, NUL bytes, and
+/// Windows drive-prefix components anywhere in the path.
+pub fn validate_safe_relative_path(relative_path: &str) -> KaifuuResult<()> {
+    safe_relative_path_parts(relative_path)?;
+    Ok(())
+}
+
 fn safe_relative_path_parts(relative_path: &str) -> KaifuuResult<Vec<&str>> {
     if relative_path.is_empty()
         || relative_path.starts_with('/')
@@ -6282,19 +6294,19 @@ fn safe_relative_path_parts(relative_path: &str) -> KaifuuResult<Vec<&str>> {
     Ok(parts)
 }
 
-fn path_has_windows_drive_prefix_component(path: &str) -> bool {
-    path.split(['/', '\\'])
-        .any(is_windows_drive_prefix_component)
-}
-
 fn is_windows_drive_prefix_component(component: &str) -> bool {
     let bytes = component.as_bytes();
     bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':'
 }
 
+fn path_has_windows_drive_prefix_component(path: &str) -> bool {
+    path.split(['/', '\\'])
+        .any(is_windows_drive_prefix_component)
+}
+
 fn unsafe_relative_path_error(relative_path: &str) -> Box<dyn std::error::Error> {
     format!(
-        "unsafe relative output path {relative_path:?}: path must be relative and must not contain traversal or drive prefixes"
+        "unsafe relative output path {relative_path:?}: path must be relative and must not contain dot components, traversal, or drive prefixes"
     )
     .into()
 }
@@ -8166,90 +8178,115 @@ mod tests {
         let _ = fs::remove_dir_all(root);
     }
 
+    const UNSAFE_RELATIVE_PATH_FIXTURES: &[(&str, &str)] = &[
+        ("empty", ""),
+        ("absolute slash", "/source.json"),
+        ("absolute backslash", "\\source.json"),
+        ("drive absolute slash", "C:/source.json"),
+        ("drive absolute backslash", "C:\\source.json"),
+        ("drive relative upper", "C:source.json"),
+        ("drive relative lower", "c:source.json"),
+        ("drive prefix component slash", "data/C:source.json"),
+        ("drive prefix component backslash", "data\\C:source.json"),
+        ("dot only", "."),
+        ("leading dot slash", "./source.json"),
+        ("leading dot backslash", ".\\source.json"),
+        ("dot component slash", "data/./source.json"),
+        ("dot component backslash", "data\\.\\source.json"),
+        ("trailing dot component", "data/."),
+        ("parent leading slash", "../source.json"),
+        ("parent leading backslash", "..\\source.json"),
+        ("parent component slash", "data/../source.json"),
+        ("parent component backslash", "data\\..\\source.json"),
+        ("empty component slash", "data//source.json"),
+        ("empty component backslash", "data\\\\source.json"),
+        ("nul byte", "source.json\0suffix"),
+    ];
+
+    fn profile_with_asset_path(path: &str) -> Value {
+        serde_json::json!({
+            "schemaVersion": PROFILE_SCHEMA_VERSION,
+            "profileId": deterministic_id("profile", 1),
+            "gameId": "hello-fixture",
+            "title": "Hello Fixture",
+            "sourceLocale": "ja-JP",
+            "engine": {
+                "adapterId": "kaifuu.fixture",
+                "engineFamily": "fixture",
+                "engineVersion": null,
+                "detectedVariant": "plain-json"
+            },
+            "assets": [
+                {
+                    "assetId": deterministic_id("asset", 1),
+                    "path": path,
+                    "assetKind": "script",
+                    "textSurfaces": ["dialogue"],
+                    "patching": {
+                        "capability": "patching",
+                        "status": "supported",
+                        "limitation": null
+                    }
+                }
+            ],
+            "capabilities": [
+                {
+                    "capability": "patching",
+                    "status": "supported",
+                    "limitation": null
+                }
+            ],
+            "requirements": []
+        })
+    }
+
     #[test]
-    fn safe_join_relative_rejects_absolute_and_traversal_paths() {
+    fn safe_relative_path_validator_and_join_share_negative_matrix() {
         let root = Path::new("patched-game");
         let safe = safe_join_relative(root, "data/source.json").unwrap();
         assert_eq!(safe, root.join("data").join("source.json"));
+        assert!(validate_safe_relative_path("data/source.json").is_ok());
 
-        for unsafe_path in [
-            "",
-            "/source.json",
-            "\\source.json",
-            "C:/source.json",
-            "C:\\source.json",
-            "C:source.json",
-            "c:source.json",
-            "data/C:source.json",
-            "data\\C:source.json",
-            "../source.json",
-            "data/../source.json",
-            "data\\..\\source.json",
-            "data//source.json",
-            "./source.json",
-            "data/./source.json",
-            "source.json\0suffix",
-        ] {
+        for (case, unsafe_path) in UNSAFE_RELATIVE_PATH_FIXTURES {
+            assert!(
+                validate_safe_relative_path(unsafe_path).is_err(),
+                "{case}: {unsafe_path:?} should be rejected by shared validation"
+            );
             assert!(
                 safe_join_relative(root, unsafe_path).is_err(),
-                "{unsafe_path:?} should be rejected"
+                "{case}: {unsafe_path:?} should be rejected by safe_join_relative"
             );
         }
     }
 
     #[test]
-    fn profile_validation_rejects_windows_drive_relative_asset_paths() {
-        for unsafe_path in [
-            "C:source.json",
-            "c:source.json",
-            "data/C:source.json",
-            "data\\C:source.json",
-        ] {
-            let profile = serde_json::json!({
-                "schemaVersion": PROFILE_SCHEMA_VERSION,
-                "profileId": deterministic_id("profile", 1),
-                "gameId": "hello-fixture",
-                "title": "Hello Fixture",
-                "sourceLocale": "ja-JP",
-                "engine": {
-                    "adapterId": "kaifuu.fixture",
-                    "engineFamily": "fixture",
-                    "engineVersion": null,
-                    "detectedVariant": "plain-json"
-                },
-                "assets": [
-                    {
-                        "assetId": deterministic_id("asset", 1),
-                        "path": unsafe_path,
-                        "assetKind": "script",
-                        "textSurfaces": ["dialogue"],
-                        "patching": {
-                            "capability": "patching",
-                            "status": "supported",
-                            "limitation": null
-                        }
-                    }
-                ],
-                "capabilities": [
-                    {
-                        "capability": "patching",
-                        "status": "supported",
-                        "limitation": null
-                    }
-                ],
-                "requirements": []
-            });
-
+    fn profile_validation_uses_shared_relative_path_negative_matrix() {
+        for (case, unsafe_path) in UNSAFE_RELATIVE_PATH_FIXTURES {
+            let profile = profile_with_asset_path(unsafe_path);
             let validation = validate_profile_value(&profile);
 
-            assert_eq!(validation.status, OperationStatus::Failed);
-            assert!(
-                validation.failures.iter().any(|failure| {
-                    failure.code == "invalid_asset_path" && failure.field == "assets.0.path"
-                }),
-                "{unsafe_path:?} should be rejected, got {:?}",
-                validation.failures
+            assert_eq!(
+                validation.status,
+                OperationStatus::Failed,
+                "{case}: {unsafe_path:?} should fail profile validation"
             );
+            if unsafe_path.is_empty() {
+                assert!(
+                    validation.failures.iter().any(|failure| {
+                        failure.code == "missing_required_field" && failure.field == "assets.0.path"
+                    }),
+                    "{case}: empty path should be rejected as a missing required field, got {:?}",
+                    validation.failures
+                );
+            } else {
+                assert!(
+                    validation.failures.iter().any(|failure| {
+                        failure.code == "invalid_asset_path" && failure.field == "assets.0.path"
+                    }),
+                    "{case}: {unsafe_path:?} should be rejected as invalid asset path, got {:?}",
+                    validation.failures
+                );
+            }
         }
     }
 

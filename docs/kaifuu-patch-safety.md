@@ -74,7 +74,10 @@ Patch packages and adapter profiles must store asset paths as relative paths.
 Writers must reject absolute paths, empty components, `.` components, `..`
 components, Windows drive prefixes, NUL bytes, and both slash and backslash
 traversal forms before joining with an output root. In Rust code, use
-`kaifuu_core::safe_join_relative` for package-controlled output paths.
+`kaifuu_core::validate_safe_relative_path` when only validation is needed, and
+`kaifuu_core::safe_join_relative` for package-controlled output paths. The
+validator only validates the caller-provided string; it does not normalize,
+canonicalize, or return a safe output path.
 
 The caller may choose an output directory. Package-controlled asset paths may
 not escape that directory. Kaifuu patch commands should write into a new output
