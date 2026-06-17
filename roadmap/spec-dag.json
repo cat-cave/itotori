@@ -2491,7 +2491,7 @@
     {
       "id": "KAIFUU-035",
       "title": "Safe redaction and helper error boundaries",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["kaifuu", "shared"],
@@ -2528,7 +2528,10 @@
         "Secret leakage",
         "Untriageable helper failures",
         "Over-redaction that hides actionable remediation"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/kaifuu-035",
+      "worktree": "/tmp/itotori-spec-kaifuu-035"
     },
     {
       "id": "KAIFUU-036",
@@ -4017,7 +4020,7 @@
     {
       "id": "ITOTORI-006",
       "title": "Bridge import workflow",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["itotori", "kaifuu"],
@@ -4053,7 +4056,10 @@
           "value": "just hello"
         }
       ],
-      "auditFocus": ["Partial imports", "Duplicate unit handling", "Source revision semantics"]
+      "auditFocus": ["Partial imports", "Duplicate unit handling", "Source revision semantics"],
+      "owner": "orchestrator",
+      "branch": "spec/itotori-006",
+      "worktree": "/tmp/itotori-spec-itotori-006"
     },
     {
       "id": "ITOTORI-007",
@@ -6086,7 +6092,7 @@
     {
       "id": "UTSUSHI-004",
       "title": "Screenshot and artifact store",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "mvp",
       "projects": ["utsushi", "itotori"],
@@ -6118,7 +6124,10 @@
           "value": "Manual smoke"
         }
       ],
-      "auditFocus": ["Unsafe file deletion", "Path traversal", "Large DB blobs"]
+      "auditFocus": ["Unsafe file deletion", "Path traversal", "Large DB blobs"],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-004",
+      "worktree": "/tmp/itotori-spec-utsushi-004"
     },
     {
       "id": "UTSUSHI-005",
