@@ -162,7 +162,7 @@ names are illustrative and should be refined by schema work.
     "occurrenceId": "occurrence_...",
     "sourceLocale": "ja-JP",
     "sourceText": "...",
-    "sourceHash": "sha256:...",
+    "sourceHash": "sha256:fa01799c693dbf37732740572dde0106c2d67bed57a5955528687642896968e1",
     "sourceRevision": "rev_...",
     "sourceLocation": {
       "assetId": "asset_...",
