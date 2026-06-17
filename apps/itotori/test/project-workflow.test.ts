@@ -7,6 +7,7 @@ import type {
 } from "@itotori/db";
 import type { BridgeBundle, RuntimeVerificationReport } from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
+import { FakeModelProvider } from "../src/providers/fake.js";
 import {
   ItotoriProjectWorkflowService,
   type ProjectState,
@@ -41,6 +42,28 @@ describe("ItotoriProjectWorkflowService", () => {
     expect(drafted.drafts["bridge-unit-test"]).toBe("Hello, {player}.");
     expect(repository.saveDrafts).toHaveBeenCalledWith(actor, drafted);
     expect(project.drafts).toEqual({});
+  });
+
+  it("drafts through the provider-neutral model boundary when one is supplied", async () => {
+    const repository = repositoryFixture();
+    const generate = vi.fn(() => "Bonjour, {player}.");
+    const service = new ItotoriProjectWorkflowService(
+      repository,
+      actor,
+      new FakeModelProvider({ modelId: "fixture-provider-model", generate }),
+    );
+    const project = projectFixture({ drafts: {} });
+
+    const drafted = await service.draftProject(project, "fr-FR");
+
+    expect(drafted.drafts["bridge-unit-test"]).toBe("Bonjour, {player}.");
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        taskKind: "draft_translation",
+        modelId: "fixture-provider-model",
+        inputClassification: "private_corpus",
+      }),
+    );
   });
 
   it("validates protected spans before writing patch exports", async () => {
