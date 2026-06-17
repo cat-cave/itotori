@@ -8,6 +8,10 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./synthetic-large-project": {
+      "types": "./src/synthetic-large-project.ts",
+      "import": "./dist/synthetic-large-project.js"
     }
   },
   "scripts": {
