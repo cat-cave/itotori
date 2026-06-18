@@ -263,7 +263,7 @@ pub fn apply_delta(game_dir: &Path, delta_path: &Path, output_dir: &Path) -> Kai
         promote_staged_directory_no_clobber(&staging_dir, output_dir, "delta output directory")
     {
         let _ = fs::remove_dir_all(&staging_dir);
-        return Err(error.into());
+        return Err(error);
     }
 
     Ok(json!({
