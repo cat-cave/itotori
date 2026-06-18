@@ -2459,17 +2459,18 @@ function artifactLinkFromRef(
   metadata: Record<string, unknown>,
 ): RuntimeArtifactLink {
   assertPortableRelativeArtifactUri(artifactRef.uri);
+  const storedArtifactRef = runtimeArtifactRefForDb(artifactRef);
   return {
-    artifactId: artifactRef.artifactId,
-    artifactKind: artifactRef.artifactKind,
-    uri: artifactRef.uri,
-    hash: artifactRef.hash,
+    artifactId: storedArtifactRef.artifactId,
+    artifactKind: storedArtifactRef.artifactKind,
+    uri: storedArtifactRef.uri,
+    hash: storedArtifactRef.hash,
     bridgeUnitId,
     metadata: {
       ...metadata,
-      artifactRef,
-      mediaType: artifactRef.mediaType ?? null,
-      byteSize: artifactRef.byteSize ?? null,
+      artifactRef: storedArtifactRef,
+      mediaType: storedArtifactRef.mediaType ?? null,
+      byteSize: storedArtifactRef.byteSize ?? null,
     },
   };
 }
@@ -2492,7 +2493,7 @@ function runtimeEvidenceEventArtifacts(report: RuntimeReportInput): RuntimeEvide
         traceKey: event.traceKey,
         sourceUnitKey: event.bridgeUnitRef.sourceUnitKey,
         bridgeUnitRefs: [event.bridgeUnitRef],
-        event,
+        event: runtimeTraceEventForDb(event),
       },
     })),
     ...report.branchEvents.map((event) => ({
@@ -2507,7 +2508,7 @@ function runtimeEvidenceEventArtifacts(report: RuntimeReportInput): RuntimeEvide
         sourceUnitKey: event.bridgeUnitRef.sourceUnitKey,
         selectedOptionId: event.selectedOptionId,
         bridgeUnitRefs: runtimeBranchEventBridgeUnitRefs(event),
-        event,
+        event: runtimeBranchEventForDb(event),
       },
     })),
   ];
@@ -2577,8 +2578,8 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
           eventKind: event.eventKind,
           traceKey: event.traceKey,
           observedText: event.observedText,
-          artifactRef: artifactRef ?? null,
-          event,
+          artifactRef: artifactRef === undefined ? null : runtimeArtifactRefForDb(artifactRef),
+          event: runtimeTraceEventForDb(event),
         },
         bridgeUnitRefs: [
           bridgeUnitLink(event.bridgeUnitRef, runtimeBridgeUnitRefRoleValues.primary),
@@ -2597,7 +2598,7 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
       metadata: {
         branchPointKey: event.branchPointKey,
         selectedOptionId: event.selectedOptionId,
-        event,
+        event: runtimeBranchEventForDb(event),
       },
       bridgeUnitRefs: runtimeBranchEventBridgeUnitLinks(event),
     })),
@@ -2613,12 +2614,12 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
         evidenceTier: capture.evidenceTier,
         frame: capture.frame,
         metadata: {
-          capture,
           width: capture.width,
           height: capture.height,
           nonZeroPixels: capture.nonZeroPixels,
           region: capture.region ?? null,
-          artifactRef: capture.artifactRef,
+          artifactRef: runtimeArtifactRefForDb(capture.artifactRef),
+          capture: runtimeCaptureForDb(capture),
         },
         bridgeUnitRefs: [
           bridgeUnitLink(capture.bridgeUnitRef, runtimeBridgeUnitRefRoleValues.primary),
@@ -2637,12 +2638,12 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
         evidenceTier: recording.evidenceTier,
         frame: recording.startedAtFrame,
         metadata: {
-          recording,
+          recording: runtimeRecordingForDb(recording),
           frameCount: recording.frameCount,
           width: recording.width,
           height: recording.height,
           encoding: recording.encoding,
-          artifactRef: recording.artifactRef,
+          artifactRef: runtimeArtifactRefForDb(recording.artifactRef),
         },
         bridgeUnitRefs: [
           bridgeUnitLink(recording.bridgeUnitRef, runtimeBridgeUnitRefRoleValues.primary),
@@ -2674,7 +2675,10 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
         portableArtifactUri: comparison.artifactRef.uri,
         evidenceTier: "E4",
         frame: undefined,
-        metadata: { comparison, artifactRef: comparison.artifactRef },
+        metadata: {
+          comparison: runtimeReferenceComparisonForDb(comparison),
+          artifactRef: runtimeArtifactRefForDb(comparison.artifactRef),
+        },
         bridgeUnitRefs: comparison.coveredBridgeUnitRefs.map((ref) =>
           bridgeUnitLink(ref, runtimeBridgeUnitRefRoleValues.covered),
         ),
@@ -2759,6 +2763,8 @@ function runtimeValidationFindingRecord(
   report: RuntimeEvidenceReportV02,
   finding: RuntimeValidationFindingV02,
 ): RuntimeValidationFindingRecord {
+  const artifactRef =
+    finding.artifactRef === undefined ? undefined : runtimeArtifactRefForDb(finding.artifactRef);
   if (finding.artifactRef !== undefined) {
     assertPortableRelativeArtifactUri(finding.artifactRef.uri);
   }
@@ -2781,7 +2787,7 @@ function runtimeValidationFindingRecord(
       evidenceKind: "runtime_validation",
       runtimeReportId: report.runtimeReportId,
       evidenceTier: finding.evidenceTier,
-      artifactRef: finding.artifactRef ?? null,
+      artifactRef: artifactRef ?? null,
     },
   ];
   const provenance = [
@@ -2800,7 +2806,7 @@ function runtimeValidationFindingRecord(
     message: finding.message,
     evidenceTier: finding.evidenceTier,
     bridgeUnitId: finding.bridgeUnitRef?.bridgeUnitId,
-    artifactRef: finding.artifactRef,
+    artifactRef,
     title: `Runtime validation: ${finding.findingKind}`,
     impact: "Runtime evidence may be incomplete or invalid for this report.",
     affectedRefs,
@@ -2809,10 +2815,117 @@ function runtimeValidationFindingRecord(
     metadata: {
       schemaVersion: report.schemaVersion,
       runtimeReportId: report.runtimeReportId,
-      finding,
+      finding: runtimeValidationFindingForDb(finding),
       bridgeUnitRef: finding.bridgeUnitRef ?? null,
-      artifactRef: finding.artifactRef ?? null,
+      artifactRef: artifactRef ?? null,
     },
+  };
+}
+
+function runtimeArtifactRefForDb(artifactRef: RuntimeArtifactRefV02): RuntimeArtifactRefV02 {
+  assertPortableRelativeArtifactUri(artifactRef.uri);
+  return {
+    artifactId: artifactRef.artifactId,
+    artifactKind: artifactRef.artifactKind,
+    uri: artifactRef.uri,
+    ...(artifactRef.hash === undefined ? {} : { hash: artifactRef.hash }),
+    ...(artifactRef.mediaType === undefined ? {} : { mediaType: artifactRef.mediaType }),
+    ...(artifactRef.byteSize === undefined ? {} : { byteSize: artifactRef.byteSize }),
+  };
+}
+
+function runtimeTraceEventForDb(
+  event: RuntimeEvidenceReportV02["traceEvents"][number],
+): Record<string, unknown> {
+  return {
+    traceEventId: event.traceEventId,
+    eventKind: event.eventKind,
+    bridgeUnitRef: event.bridgeUnitRef,
+    frame: event.frame,
+    traceKey: event.traceKey ?? null,
+    observedText: event.observedText ?? null,
+    artifactRef:
+      event.artifactRef === undefined ? null : runtimeArtifactRefForDb(event.artifactRef),
+  };
+}
+
+function runtimeBranchEventForDb(
+  event: RuntimeEvidenceReportV02["branchEvents"][number],
+): Record<string, unknown> {
+  return {
+    branchEventId: event.branchEventId,
+    bridgeUnitRef: event.bridgeUnitRef,
+    frame: event.frame,
+    branchPointKey: event.branchPointKey ?? null,
+    promptText: event.promptText ?? null,
+    selectedOptionId: event.selectedOptionId ?? null,
+    options: event.options.map((option) => ({
+      optionId: option.optionId,
+      label: option.label ?? null,
+      labelBridgeUnitRef: option.labelBridgeUnitRef ?? null,
+      targetRouteKey: option.targetRouteKey ?? null,
+      targetBridgeUnitRef: option.targetBridgeUnitRef ?? null,
+    })),
+  };
+}
+
+function runtimeCaptureForDb(
+  capture: RuntimeEvidenceReportV02["captures"][number],
+): Record<string, unknown> {
+  return {
+    captureId: capture.captureId,
+    bridgeUnitRef: capture.bridgeUnitRef,
+    evidenceTier: capture.evidenceTier,
+    frame: capture.frame,
+    width: capture.width,
+    height: capture.height,
+    nonZeroPixels: capture.nonZeroPixels ?? null,
+    region: capture.region ?? null,
+    artifactRef: runtimeArtifactRefForDb(capture.artifactRef),
+  };
+}
+
+function runtimeRecordingForDb(
+  recording: RuntimeEvidenceReportV02["recordings"][number],
+): Record<string, unknown> {
+  return {
+    recordingId: recording.recordingId,
+    bridgeUnitRef: recording.bridgeUnitRef,
+    evidenceTier: recording.evidenceTier,
+    startedAtFrame: recording.startedAtFrame,
+    frameCount: recording.frameCount,
+    width: recording.width,
+    height: recording.height,
+    encoding: recording.encoding,
+    artifactRef: runtimeArtifactRefForDb(recording.artifactRef),
+  };
+}
+
+function runtimeReferenceComparisonForDb(
+  comparison: NonNullable<RuntimeEvidenceReportV02["referenceComparisons"]>[number],
+): Record<string, unknown> {
+  return {
+    comparisonId: comparison.comparisonId,
+    comparisonKind: comparison.comparisonKind,
+    status: comparison.status,
+    scope: comparison.scope,
+    coveredBridgeUnitRefs: comparison.coveredBridgeUnitRefs,
+    artifactRef: runtimeArtifactRefForDb(comparison.artifactRef),
+  };
+}
+
+function runtimeValidationFindingForDb(
+  finding: RuntimeValidationFindingV02,
+): Record<string, unknown> {
+  return {
+    findingId: finding.findingId,
+    findingKind: finding.findingKind,
+    severity: finding.severity,
+    bridgeUnitRef: finding.bridgeUnitRef ?? null,
+    artifactRef:
+      finding.artifactRef === undefined ? null : runtimeArtifactRefForDb(finding.artifactRef),
+    message: finding.message,
+    evidenceTier: finding.evidenceTier,
   };
 }
 
@@ -2841,6 +2954,11 @@ function assertPortableRuntimeArtifactUri(
     hasTraversalSegment
   ) {
     throw new Error(`runtime artifact uri must be a portable relative artifact path: ${uri}`);
+  }
+  if (!options.allowFixtureUri && !uri.startsWith("artifacts/utsushi/runtime/")) {
+    throw new Error(
+      `runtime artifact uri must be under managed runtime artifact root artifacts/utsushi/runtime/: ${uri}`,
+    );
   }
 }
 

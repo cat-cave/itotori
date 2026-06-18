@@ -4,9 +4,9 @@ use std::path::Path;
 use serde_json::{Value, json};
 use utsushi_core::{
     ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier, RuntimeAdapter,
-    RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeCapability, RuntimeCapabilityClass,
-    RuntimeCapabilityContract, RuntimeFeatureSupport, RuntimePlaybackFeature, RuntimeRequest,
-    UtsushiResult,
+    RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeArtifactKind, RuntimeArtifactRoot,
+    RuntimeCapability, RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
+    RuntimePlaybackFeature, RuntimeRequest, UtsushiResult, runtime_artifact_uri,
 };
 
 pub struct FixtureRuntimeAdapter;
@@ -79,12 +79,14 @@ impl RuntimeAdapter for FixtureRuntimeAdapter {
     fn capture(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
         let source = read_source(request.input_root)?;
         let unit = first_unit(&source)?;
+        let capture = capture_event(unit, 1)?;
+        materialize_fixture_capture(request, &capture)?;
         Ok(runtime_report(
             &self.descriptor(),
             &source,
             RuntimeReportInput {
                 trace_events: vec![trace_event(unit, 1)?],
-                captures: vec![capture_event(unit, 1)?],
+                captures: vec![capture],
                 operation: RuntimeOperationLabel::Capture,
                 fidelity_tier: FidelityTier::LayoutProbe,
                 evidence_tier: EvidenceTier::E2,
@@ -314,6 +316,12 @@ fn trace_event(unit: &Value, frame: usize) -> UtsushiResult<Value> {
 }
 
 fn capture_event(unit: &Value, frame: usize) -> UtsushiResult<Value> {
+    let artifact_id = deterministic_uuid("screenshot", frame);
+    let uri = runtime_artifact_uri(
+        &deterministic_uuid("runtime-report", 1),
+        RuntimeArtifactKind::Screenshot,
+        &artifact_id,
+    )?;
     Ok(json!({
         "captureId": deterministic_uuid("capture", frame),
         "bridgeUnitRef": bridge_unit_ref(unit, 1)?,
@@ -323,12 +331,28 @@ fn capture_event(unit: &Value, frame: usize) -> UtsushiResult<Value> {
         "height": 180,
         "nonZeroPixels": 57600,
         "artifactRef": {
-            "artifactId": deterministic_uuid("screenshot", frame),
+            "artifactId": artifact_id,
             "artifactKind": "screenshot",
-            "uri": format!("artifacts/utsushi/hello/frame-{frame:04}.png"),
+            "uri": uri,
             "mediaType": "image/png"
         }
     }))
+}
+
+fn materialize_fixture_capture(request: &RuntimeRequest<'_>, capture: &Value) -> UtsushiResult<()> {
+    let Some(artifact_root) = request.artifact_root else {
+        return Ok(());
+    };
+    let uri = capture["artifactRef"]["uri"]
+        .as_str()
+        .ok_or("fixture capture missing artifactRef.uri")?;
+    let root = RuntimeArtifactRoot::new(artifact_root);
+    root.prepare()?;
+    root.write_bytes(
+        uri,
+        b"utsushi fixture deterministic screenshot placeholder\n",
+    )?;
+    Ok(())
 }
 
 fn bridge_unit_ref(unit: &Value, index: usize) -> UtsushiResult<Value> {
@@ -559,7 +583,7 @@ mod tests {
         assert_eq!(report["captures"].as_array().unwrap().len(), 1);
         assert_eq!(
             report["captures"][0]["artifactRef"]["uri"],
-            "artifacts/utsushi/hello/frame-0001.png"
+            "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png"
         );
         assert!(report["captures"][0].get("bytes").is_none());
         assert!(report["captures"][0].get("data").is_none());
@@ -595,5 +619,36 @@ mod tests {
         assert_eq!(report["captures"].as_array().unwrap().len(), 0);
         assert_eq!(report["approximations"][0]["evidenceTierCeiling"], "E1");
         let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn capture_materializes_artifact_under_managed_root_when_requested() {
+        let root = temp_game("artifact-root");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        fs::rename(root.join("source.json"), game_dir.join("source.json")).unwrap();
+        let artifact_root = root.join("runtime-artifacts");
+
+        let adapter = FixtureRuntimeAdapter::new();
+        let report = adapter
+            .capture(&RuntimeRequest::new(&game_dir).with_artifact_root(&artifact_root))
+            .unwrap();
+        let uri = report["captures"][0]["artifactRef"]["uri"]
+            .as_str()
+            .unwrap();
+        let artifact_path = utsushi_core::RuntimeArtifactRoot::new(&artifact_root)
+            .artifact_path(uri)
+            .unwrap();
+
+        assert!(
+            artifact_root
+                .join(utsushi_core::RUNTIME_ARTIFACT_ROOT_MARKER)
+                .is_file()
+        );
+        assert!(artifact_path.is_file());
+        assert!(artifact_path.starts_with(&artifact_root));
+        let contents = fs::read_to_string(artifact_path).unwrap();
+        assert!(contents.contains("deterministic screenshot placeholder"));
+        let _ = fs::remove_dir_all(root);
     }
 }

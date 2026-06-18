@@ -75,6 +75,7 @@ create table if not exists itotori_runtime_evidence_items (
       portable_artifact_uri !~ '^[A-Za-z][A-Za-z0-9+.-]*:'
       and portable_artifact_uri !~ '^/'
       and portable_artifact_uri !~ '[\\]'
+      and portable_artifact_uri like 'artifacts/utsushi/runtime/%'
     )
   )
 );

@@ -5,7 +5,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 
 fn main() {
     if let Err(error) = run() {
@@ -34,8 +34,12 @@ fn run_cli_with_registry(
             let input_root = PathBuf::from(args.get(1).ok_or("missing game_dir")?);
             let output = flag(args, "--output")?;
             let adapter_name = selected_adapter_name(args, registry)?;
-            let value =
-                registry.run(&adapter_name, operation, &RuntimeRequest::new(&input_root))?;
+            let artifact_root = optional_flag(args, "--artifact-root").map(PathBuf::from);
+            let mut request = RuntimeRequest::new(&input_root);
+            if let Some(artifact_root) = artifact_root.as_deref() {
+                request = request.with_artifact_root(artifact_root);
+            }
+            let value = registry.run(&adapter_name, operation, &request)?;
             write_json(&PathBuf::from(output), &value)?;
         }
         None => return Err(USAGE.into()),
@@ -145,7 +149,8 @@ mod tests {
             Ok(json!({
                 "adapterName": TEST_ADAPTER_NAME,
                 "operation": operation,
-                "inputRoot": request.input_root.display().to_string()
+                "inputRoot": request.input_root.display().to_string(),
+                "artifactRoot": request.artifact_root.map(|path| path.display().to_string())
             }))
         }
     }
@@ -338,6 +343,7 @@ mod tests {
             report["inputRoot"],
             game_dir.as_path().display().to_string()
         );
+        assert!(report["artifactRoot"].is_null());
         assert_eq!(&*calls.borrow(), &["capture"]);
         let _ = fs::remove_dir_all(root);
     }
@@ -367,6 +373,41 @@ mod tests {
         assert_eq!(report["adapterName"], TEST_ADAPTER_NAME);
         assert_eq!(report["operation"], "smoke");
         assert_eq!(&*calls.borrow(), &["smoke"]);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn runtime_commands_pass_optional_artifact_root_to_adapter() {
+        let root = temp_dir("artifact-root");
+        let game_dir = root.join("game");
+        let artifact_root = root.join("runtime-artifacts");
+        fs::create_dir_all(&game_dir).unwrap();
+        let calls = Rc::new(RefCell::new(Vec::new()));
+        let adapter = RecordingRuntimeAdapter::new(Rc::clone(&calls));
+        let registry = registry_with(&adapter);
+        let output = root.join("capture.json");
+
+        run_cli_with_registry(
+            &args(&[
+                Path::new("capture"),
+                game_dir.as_path(),
+                Path::new("--adapter"),
+                Path::new(TEST_ADAPTER_NAME),
+                Path::new("--artifact-root"),
+                artifact_root.as_path(),
+                Path::new("--output"),
+                output.as_path(),
+            ]),
+            &registry,
+        )
+        .unwrap();
+
+        let report: Value = serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
+        assert_eq!(
+            report["artifactRoot"],
+            artifact_root.as_path().display().to_string()
+        );
+        assert_eq!(&*calls.borrow(), &["capture"]);
         let _ = fs::remove_dir_all(root);
     }
 }

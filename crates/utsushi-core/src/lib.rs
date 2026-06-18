@@ -1,9 +1,12 @@
 use std::fs;
-use std::path::Path;
+use std::path::{Component, Path, PathBuf};
 
 use serde_json::Value;
 
 pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
+
+pub const RUNTIME_ARTIFACT_URI_ROOT: &str = "artifacts/utsushi/runtime";
+pub const RUNTIME_ARTIFACT_ROOT_MARKER: &str = ".utsushi-runtime-artifacts";
 
 #[derive(Clone, Copy, Debug)]
 pub struct RuntimeRequest<'a> {
@@ -23,6 +26,210 @@ impl<'a> RuntimeRequest<'a> {
         self.artifact_root = Some(artifact_root);
         self
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RuntimeArtifactKind {
+    TraceLog,
+    Screenshot,
+    FrameCapture,
+    Recording,
+    ConformanceReport,
+}
+
+impl RuntimeArtifactKind {
+    pub fn artifact_kind(self) -> &'static str {
+        match self {
+            Self::TraceLog => "trace_log",
+            Self::Screenshot => "screenshot",
+            Self::FrameCapture => "frame_capture",
+            Self::Recording => "recording",
+            Self::ConformanceReport => "reference_comparison",
+        }
+    }
+
+    pub fn directory(self) -> &'static str {
+        match self {
+            Self::TraceLog => "traces",
+            Self::Screenshot => "screenshots",
+            Self::FrameCapture => "frame-captures",
+            Self::Recording => "recordings",
+            Self::ConformanceReport => "conformance-reports",
+        }
+    }
+
+    pub fn default_extension(self) -> &'static str {
+        match self {
+            Self::TraceLog | Self::ConformanceReport => "json",
+            Self::Screenshot | Self::FrameCapture => "png",
+            Self::Recording => "webm",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeArtifactName {
+    pub run_id: String,
+    pub kind: RuntimeArtifactKind,
+    pub artifact_id: String,
+    pub extension: String,
+}
+
+impl RuntimeArtifactName {
+    pub fn new(
+        run_id: impl Into<String>,
+        kind: RuntimeArtifactKind,
+        artifact_id: impl Into<String>,
+    ) -> UtsushiResult<Self> {
+        Self::with_extension(run_id, kind, artifact_id, kind.default_extension())
+    }
+
+    pub fn with_extension(
+        run_id: impl Into<String>,
+        kind: RuntimeArtifactKind,
+        artifact_id: impl Into<String>,
+        extension: impl Into<String>,
+    ) -> UtsushiResult<Self> {
+        let name = Self {
+            run_id: run_id.into(),
+            kind,
+            artifact_id: artifact_id.into(),
+            extension: extension.into(),
+        };
+        validate_artifact_segment("run id", &name.run_id)?;
+        validate_artifact_segment("artifact id", &name.artifact_id)?;
+        validate_artifact_extension(&name.extension)?;
+        Ok(name)
+    }
+
+    pub fn uri(&self) -> String {
+        format!(
+            "{}/{}/{}/{}.{}",
+            RUNTIME_ARTIFACT_URI_ROOT,
+            self.run_id,
+            self.kind.directory(),
+            self.artifact_id,
+            self.extension
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeArtifactRoot {
+    root: PathBuf,
+}
+
+impl RuntimeArtifactRoot {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn prepare(&self) -> UtsushiResult<()> {
+        fs::create_dir_all(&self.root)?;
+        fs::write(
+            self.root.join(RUNTIME_ARTIFACT_ROOT_MARKER),
+            "managed-by=utsushi-runtime\n",
+        )?;
+        Ok(())
+    }
+
+    pub fn artifact_path(&self, uri: &str) -> UtsushiResult<PathBuf> {
+        let relative = validate_runtime_artifact_uri(uri)?;
+        Ok(self.root.join(relative))
+    }
+
+    pub fn write_bytes(&self, uri: &str, contents: &[u8]) -> UtsushiResult<PathBuf> {
+        let path = self.artifact_path(uri)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, contents)?;
+        Ok(path)
+    }
+
+    pub fn cleanup_contents(&self) -> UtsushiResult<()> {
+        self.assert_managed_root()?;
+        for entry in fs::read_dir(&self.root)? {
+            let entry = entry?;
+            if entry.file_name() == RUNTIME_ARTIFACT_ROOT_MARKER {
+                continue;
+            }
+            remove_artifact_entry(&entry.path())?;
+        }
+        Ok(())
+    }
+
+    fn assert_managed_root(&self) -> UtsushiResult<()> {
+        let canonical = fs::canonicalize(&self.root)?;
+        if canonical.parent().is_none() {
+            return Err("refusing to clean filesystem root as a runtime artifact root".into());
+        }
+        let marker = canonical.join(RUNTIME_ARTIFACT_ROOT_MARKER);
+        if !marker.is_file() {
+            return Err(format!(
+                "runtime artifact cleanup requires managed root marker {} under {}",
+                RUNTIME_ARTIFACT_ROOT_MARKER,
+                canonical.display()
+            )
+            .into());
+        }
+        Ok(())
+    }
+}
+
+pub fn runtime_artifact_uri(
+    run_id: &str,
+    kind: RuntimeArtifactKind,
+    artifact_id: &str,
+) -> UtsushiResult<String> {
+    Ok(RuntimeArtifactName::new(run_id, kind, artifact_id)?.uri())
+}
+
+pub fn validate_runtime_artifact_uri(uri: &str) -> UtsushiResult<PathBuf> {
+    if uri.starts_with('/')
+        || uri.contains('\\')
+        || uri.starts_with("data:")
+        || uri.starts_with("blob:")
+        || uri.starts_with("file:")
+        || has_uri_scheme(uri)
+    {
+        return Err(format!("runtime artifact uri must be managed and portable: {uri}").into());
+    }
+
+    let Some(relative) = uri.strip_prefix(&format!("{RUNTIME_ARTIFACT_URI_ROOT}/")) else {
+        return Err(format!(
+            "runtime artifact uri must live under {RUNTIME_ARTIFACT_URI_ROOT}: {uri}"
+        )
+        .into());
+    };
+    if relative
+        .split('/')
+        .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        return Err(format!("runtime artifact uri must not contain traversal: {uri}").into());
+    }
+    let path = Path::new(relative);
+    let mut clean = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(segment) => clean.push(segment),
+            _ => {
+                return Err(
+                    format!("runtime artifact uri must not contain traversal: {uri}").into(),
+                );
+            }
+        }
+    }
+    if clean.components().count() < 3 {
+        return Err(
+            format!("runtime artifact uri is missing run, kind, or filename: {uri}").into(),
+        );
+    }
+    Ok(clean)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -636,6 +843,59 @@ pub fn write_json(path: &Path, value: &Value) -> UtsushiResult<()> {
     Ok(())
 }
 
+fn has_uri_scheme(value: &str) -> bool {
+    let Some(colon) = value.find(':') else {
+        return false;
+    };
+    let scheme = &value[..colon];
+    !scheme.is_empty()
+        && scheme.chars().enumerate().all(|(index, character)| {
+            character.is_ascii_alphabetic()
+                || (index > 0
+                    && (character.is_ascii_digit()
+                        || character == '+'
+                        || character == '.'
+                        || character == '-'))
+        })
+}
+
+fn validate_artifact_segment(label: &str, value: &str) -> UtsushiResult<()> {
+    if value.is_empty()
+        || value == "."
+        || value == ".."
+        || value.contains('/')
+        || value.contains('\\')
+        || !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+        })
+    {
+        return Err(format!("runtime artifact {label} is not a safe path segment: {value}").into());
+    }
+    Ok(())
+}
+
+fn validate_artifact_extension(extension: &str) -> UtsushiResult<()> {
+    if extension.is_empty()
+        || extension.starts_with('.')
+        || !extension
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric())
+    {
+        return Err(format!("runtime artifact extension is not safe: {extension}").into());
+    }
+    Ok(())
+}
+
+fn remove_artifact_entry(path: &Path) -> UtsushiResult<()> {
+    let metadata = fs::symlink_metadata(path)?;
+    if metadata.is_dir() {
+        fs::remove_dir_all(path)?;
+    } else {
+        fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
 fn unsupported_operation(
     descriptor: &RuntimeAdapterDescriptor,
     operation: RuntimeOperation,
@@ -651,6 +911,7 @@ fn unsupported_operation(
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     struct FakeTraceAdapter;
 
@@ -689,6 +950,20 @@ mod tests {
             ],
             vec!["unit test adapter".to_string()],
         )
+    }
+
+    fn temp_root(name: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "utsushi-core-{name}-{}-{nonce}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).unwrap();
+        root
     }
 
     impl RuntimeAdapter for FakeTraceAdapter {
@@ -867,5 +1142,101 @@ mod tests {
             .to_string();
 
         assert!(error.contains("does not support capture"));
+    }
+
+    #[test]
+    fn runtime_artifact_names_are_deterministic_and_managed() {
+        let uri = runtime_artifact_uri(
+            "019ed003-0000-7000-8000-000000001000",
+            RuntimeArtifactKind::Screenshot,
+            "019ed003-0000-7000-8000-000000002000",
+        )
+        .unwrap();
+
+        assert_eq!(
+            uri,
+            "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000001000/screenshots/019ed003-0000-7000-8000-000000002000.png"
+        );
+        assert_eq!(RuntimeArtifactKind::TraceLog.artifact_kind(), "trace_log");
+        assert_eq!(
+            RuntimeArtifactKind::FrameCapture.artifact_kind(),
+            "frame_capture"
+        );
+        assert_eq!(RuntimeArtifactKind::Recording.artifact_kind(), "recording");
+        assert_eq!(
+            RuntimeArtifactKind::ConformanceReport.artifact_kind(),
+            "reference_comparison"
+        );
+        assert!(validate_runtime_artifact_uri(&uri).is_ok());
+    }
+
+    #[test]
+    fn runtime_artifact_paths_reject_traversal_and_external_uris() {
+        for uri in [
+            "../capture.png",
+            "artifacts/utsushi/runtime/run/screenshots/../capture.png",
+            "artifacts/utsushi/runtime/run/screenshots/./capture.png",
+            "/tmp/capture.png",
+            "file:///tmp/capture.png",
+            "data:image/png;base64,AAAA",
+            "artifacts\\utsushi\\runtime\\run\\capture.png",
+            "artifacts/utsushi/hello/frame.png",
+        ] {
+            assert!(
+                validate_runtime_artifact_uri(uri).is_err(),
+                "{uri} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_artifact_root_maps_uris_inside_managed_root() {
+        let temp = temp_root("artifact-path");
+        let root = RuntimeArtifactRoot::new(temp.join("runtime-artifacts"));
+        let uri = runtime_artifact_uri("run-1", RuntimeArtifactKind::TraceLog, "trace-1").unwrap();
+
+        let path = root.artifact_path(&uri).unwrap();
+
+        assert!(path.starts_with(root.path()));
+        assert_eq!(path.file_name().unwrap(), "trace-1.json");
+        assert!(root.artifact_path("../source.json").is_err());
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn runtime_artifact_cleanup_requires_marker_and_keeps_other_roots() {
+        let temp = temp_root("cleanup");
+        let source_game = temp.join("game");
+        let local_corpus = temp.join("local-corpus");
+        let benchmark = temp.join("benchmark-output");
+        let patch_output = temp.join("patch-output");
+        for dir in [&source_game, &local_corpus, &benchmark, &patch_output] {
+            fs::create_dir_all(dir).unwrap();
+            fs::write(dir.join("keep.txt"), "not managed by utsushi runtime\n").unwrap();
+        }
+
+        let source_root = RuntimeArtifactRoot::new(&source_game);
+        assert!(source_root.cleanup_contents().is_err());
+        assert!(source_game.join("keep.txt").is_file());
+
+        let managed_path = temp.join("runtime-artifacts");
+        let managed_root = RuntimeArtifactRoot::new(&managed_path);
+        managed_root.prepare().unwrap();
+        let uri =
+            runtime_artifact_uri("run-cleanup", RuntimeArtifactKind::Recording, "recording-1")
+                .unwrap();
+        let artifact_path = managed_root
+            .write_bytes(&uri, b"runtime recording reference")
+            .unwrap();
+        assert!(artifact_path.is_file());
+
+        managed_root.cleanup_contents().unwrap();
+
+        assert!(managed_path.join(RUNTIME_ARTIFACT_ROOT_MARKER).is_file());
+        assert!(!artifact_path.exists());
+        for dir in [&source_game, &local_corpus, &benchmark, &patch_output] {
+            assert!(dir.join("keep.txt").is_file());
+        }
+        let _ = fs::remove_dir_all(temp);
     }
 }
