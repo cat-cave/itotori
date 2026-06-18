@@ -583,6 +583,30 @@ describe("localization bridge schema guards", () => {
     });
   });
 
+  it("rejects detached accepted style-guide proposals before projection", () => {
+    const transcript = styleGuideConversationFixture("accepted");
+    const turns = transcript.turns as Array<Record<string, unknown>>;
+    const proposalTurn = asTestRecord(
+      turns.find((turn) => turn.turnId === "turn-assistant-proposals"),
+      "style-guide proposal turn",
+    );
+    proposalTurn.proposalIds = [];
+
+    const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-assistant-proposals",
+        field: "$.turns[2].proposalIds",
+        rule: "style_guide_conversation.proposal.turn_proposal_id_membership",
+        proposalId: "019ed063-0000-7000-8000-000000000201",
+      }),
+    );
+    expect(() => projectStyleGuideConversationToPolicyDraft(transcript)).toThrow(
+      /turn_proposal_id_membership/,
+    );
+  });
+
   it("reports malformed style-guide transcript diagnostics with turn, field, and rule", () => {
     const transcript = styleGuideConversationFixture("malformed");
 

@@ -179,6 +179,11 @@ export type StyleGuideProjectedVersionDraft = {
   policy: StyleGuidePolicyV0Draft;
 };
 
+type TurnProposalIds = {
+  proposalIds: Set<string>;
+  field: string;
+};
+
 type MutableStyleGuideSections = Record<StyleGuidePolicySection, Map<string, string>>;
 
 export function assertStyleGuideConversationTranscript(
@@ -294,6 +299,7 @@ export function validateStyleGuideConversationTranscript(
   const turnIds = new Set<string>();
   const citationIds = new Set<string>();
   const proposalIdsFromTurns = new Set<string>();
+  const proposalIdsByTurnId = new Map<string, TurnProposalIds>();
   for (const [index, turnValue] of turns.entries()) {
     validateTurn(
       turnValue,
@@ -303,6 +309,7 @@ export function validateStyleGuideConversationTranscript(
       turnIds,
       citationIds,
       proposalIdsFromTurns,
+      proposalIdsByTurnId,
       diagnostics,
     );
   }
@@ -316,6 +323,7 @@ export function validateStyleGuideConversationTranscript(
       value.basePolicyVersionId,
       turnIds,
       citationIds,
+      proposalIdsByTurnId,
       proposalIds,
       diagnostics,
     );
@@ -389,6 +397,7 @@ function validateTurn(
   turnIds: Set<string>,
   citationIds: Set<string>,
   proposalIdsFromTurns: Set<string>,
+  proposalIdsByTurnId: Map<string, TurnProposalIds>,
   diagnostics: StyleGuideConversationDiagnostic[],
 ): void {
   const fallbackTurnId = `turns[${index}]`;
@@ -465,7 +474,7 @@ function validateTurn(
     diagnostics,
   );
   validateRedaction(value.redaction, turnId, `$.turns[${index}].redaction`, diagnostics);
-  validateStringArray(
+  const proposalIds = validateStringArray(
     value.proposalIds,
     turnId,
     `$.turns[${index}].proposalIds`,
@@ -473,6 +482,12 @@ function validateTurn(
     diagnostics,
     proposalIdsFromTurns,
   );
+  if (typeof value.turnId === "string" && Array.isArray(value.proposalIds)) {
+    proposalIdsByTurnId.set(value.turnId, {
+      proposalIds: new Set(proposalIds),
+      field: `$.turns[${index}].proposalIds`,
+    });
+  }
   validateCitations(value.citations, turnId, `$.turns[${index}].citations`, citationIds, diagnostics);
   checkNonBlankString(
     value.publicSummary,
@@ -490,6 +505,7 @@ function validateProposal(
   transcriptPolicyVersionId: unknown,
   turnIds: Set<string>,
   citationIds: Set<string>,
+  proposalIdsByTurnId: Map<string, TurnProposalIds>,
   proposalIds: Set<string>,
   diagnostics: StyleGuideConversationDiagnostic[],
 ): void {
@@ -544,6 +560,23 @@ function validateProposal(
         `$.proposals[${index}].turnId`,
         "style_guide_conversation.proposal.turn_id_known",
         `proposal turnId ${value.turnId} must reference a known turn`,
+        proposalId,
+      ),
+    );
+  }
+  const turnProposalIds =
+    typeof value.turnId === "string" ? proposalIdsByTurnId.get(value.turnId) : undefined;
+  if (
+    proposalId !== undefined &&
+    turnProposalIds !== undefined &&
+    !turnProposalIds.proposalIds.has(proposalId)
+  ) {
+    diagnostics.push(
+      diagnostic(
+        turnId,
+        turnProposalIds.field,
+        "style_guide_conversation.proposal.turn_proposal_id_membership",
+        `proposal id ${proposalId} must be listed in turn ${turnId} proposalIds`,
         proposalId,
       ),
     );
