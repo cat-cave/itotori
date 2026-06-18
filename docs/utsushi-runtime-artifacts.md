@@ -78,3 +78,17 @@ Postgres rows store only references:
 
 Large payload fields such as raw screenshot bytes, trace blobs, recording data,
 or conformance report bodies are not persisted in runtime metadata.
+
+## Re-Ingest Repair Semantics
+
+`runtimeReportId` is the replacement identity for normalized runtime evidence in
+Itotori. If a corrected report is ingested with the same id, the latest report
+body replaces the prior normalized projection for that run.
+
+Before writing the corrected projection, Itotori removes child evidence items,
+bridge-unit reference rows, runtime validation rows, report-scoped artifact
+rows, and runtime-validation findings from the earlier projection. It then
+recreates only the trace, branch, capture, recording, approximation, reference
+comparison, artifact, and validation-finding rows present in the corrected
+report. Dashboard runtime counts and pending runtime validation decisions must
+therefore match the latest report shape, not the union of all attempts.

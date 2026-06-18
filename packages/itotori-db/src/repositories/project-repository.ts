@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, not, sql } from "drizzle-orm";
 import {
   assertBridgeBundle,
   assertBridgeBundleV02,
@@ -685,6 +685,14 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         tx,
         project,
       );
+      const retainedRuntimeArtifactIds = runtimeProjectionArtifactIds(
+        runtimeReportId,
+        patchResultId,
+        artifactLinks,
+        eventArtifacts,
+        validationRecords,
+      );
+
       await tx
         .insert(artifacts)
         .values({
@@ -781,6 +789,13 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             },
           });
       }
+
+      await cleanupRuntimeReportProjection(
+        tx,
+        runtimeReportId,
+        project.projectId,
+        retainedRuntimeArtifactIds,
+      );
 
       await tx
         .insert(runtimeEvidenceRuns)
@@ -2422,6 +2437,56 @@ type RuntimeValidationFindingRecord = {
   provenance: unknown[];
   metadata: Record<string, unknown>;
 };
+
+function runtimeProjectionArtifactIds(
+  runtimeReportId: string,
+  patchResultId: string,
+  artifactLinks: RuntimeArtifactLink[],
+  eventArtifacts: RuntimeEvidenceEventArtifact[],
+  validationRecords: RuntimeValidationFindingRecord[],
+): string[] {
+  return Array.from(
+    new Set([
+      runtimeReportId,
+      patchResultId,
+      ...artifactLinks.map((artifact) => artifact.artifactId),
+      ...eventArtifacts.map((artifact) => artifact.artifactId),
+      ...validationRecords.flatMap((validation) =>
+        validation.artifactRef === undefined ? [] : [validation.artifactRef.artifactId],
+      ),
+    ]),
+  );
+}
+
+async function cleanupRuntimeReportProjection(
+  tx: ItotoriTransaction,
+  runtimeReportId: string,
+  projectId: string,
+  retainedArtifactIds: string[],
+): Promise<void> {
+  await tx.execute(sql`
+    delete from ${findings}
+    where finding_id in (
+      select finding_id
+      from ${runtimeValidationFindings}
+      where runtime_run_id = ${runtimeReportId}
+    )
+  `);
+
+  await tx
+    .delete(runtimeEvidenceItems)
+    .where(eq(runtimeEvidenceItems.runtimeRunId, runtimeReportId));
+
+  await tx
+    .delete(artifacts)
+    .where(
+      and(
+        eq(artifacts.projectId, projectId),
+        sql`${artifacts.metadata}->>'runtimeReportId' = ${runtimeReportId}`,
+        not(inArray(artifacts.artifactId, retainedArtifactIds)),
+      ),
+    );
+}
 
 function runtimeReportIdFor(report: RuntimeReportInput): string {
   return report.runtimeReportId;
