@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-081-20260618T205843Z",
+  "generatedAt": "2026-06-18T20:58:43Z",
+  "spec": {
+    "id": "KAIFUU-081",
+    "title": "Binary byte-span and offset-map primitives",
+    "branch": "spec/kaifuu-081",
+    "worktree": "/tmp/itotori-spec-kaifuu-081",
+    "commit": "97eab58"
+  },
+  "auditor": {
+    "name": "kaifuu-081-focused-reaudit",
+    "kind": "architecture"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Initial audit found P1 validation gaps around detached decoded/source spans and unchecked public constructors. Repair commit 97eab58 fixed those blockers. Focused re-audit found no remaining P0/P1/P2/P3 findings.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}

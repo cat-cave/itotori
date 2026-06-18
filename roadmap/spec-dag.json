@@ -2048,7 +2048,7 @@
     {
       "id": "CATALOG-002",
       "title": "Translation completeness intelligence",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -2086,10 +2086,7 @@
         "Source-specific adapter behavior hidden in the framework node",
         "MTL and partial statuses collapsed into full translations",
         "Recorded-source provenance or redaction class lost"
-      ],
-      "owner": "orchestrator-20260618-wave7",
-      "branch": "spec/catalog-002",
-      "worktree": "/tmp/itotori-spec-catalog-002"
+      ]
     },
     {
       "id": "CATALOG-003",
@@ -6887,7 +6884,7 @@
     {
       "id": "ITOTORI-029",
       "title": "Locale branch repository and migration drift regression",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -6924,10 +6921,7 @@
         "Single-target assumptions returning through repository APIs",
         "Locale branch schema drift hidden by existing migrations",
         "Policy or draft scope creep into branch identity tests"
-      ],
-      "owner": "orchestrator-20260618-wave7",
-      "branch": "spec/itotori-029",
-      "worktree": "/tmp/itotori-spec-itotori-029"
+      ]
     },
     {
       "id": "ITOTORI-030",
@@ -12678,7 +12672,7 @@
     {
       "id": "KAIFUU-081",
       "title": "Binary byte-span and offset-map primitives",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12710,10 +12704,7 @@
         "Binary offsets represented as unchecked numbers",
         "Decoded text ranges detached from source byte ranges",
         "Engine adapters defining incompatible span models"
-      ],
-      "owner": "orchestrator-20260618-wave7",
-      "branch": "spec/kaifuu-081",
-      "worktree": "/tmp/itotori-spec-kaifuu-081"
+      ]
     },
     {
       "id": "KAIFUU-082",
@@ -18282,6 +18273,96 @@
         "Docs implying unimplemented external backends exist",
         "Missing redaction expectations for key resolver errors"
       ]
+    },
+    {
+      "id": "CATALOG-077",
+      "status": "planned",
+      "title": "Completeness API enum response guards",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-002"],
+      "summary": "Tighten CATALOG-002 API response validation so enum-backed completeness, provenance, conflict, and report fields reject arbitrary strings.",
+      "deliverables": [
+        "Enum-backed completeness API validators",
+        "Negative API schema fixtures for invalid completeness response enum values"
+      ],
+      "acceptanceCriteria": [
+        "Response validation rejects invalid language status, confidence, redaction class, source kind, source record kind, conflict status, report pool, and report status values.",
+        "Valid CATALOG-002 fixture responses continue to pass without weakening field presence checks."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": [
+        "Arbitrary strings accepted for enum-backed API fields",
+        "Validator constants drifting from DB/repository enums"
+      ]
+    },
+    {
+      "id": "CATALOG-078",
+      "status": "planned",
+      "title": "Completeness report overlap-safe aggregation",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-002"],
+      "summary": "Make public completeness report aggregate counts unique across overlapping benchmark and opportunity pools while preserving pool-local work counts.",
+      "deliverables": [
+        "Overlap-safe public completeness aggregation",
+        "DB-backed overlap fixture for multi-pool works and conflicts"
+      ],
+      "acceptanceCriteria": [
+        "Aggregate status and conflict counts use unique language status and conflict identities.",
+        "A work appearing in fan_partial and conflict pools contributes once to aggregate work/status/conflict totals where applicable.",
+        "Pool-local work counts still describe each pool independently."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": [
+        "Aggregate counts inflated by overlapping pools",
+        "Pool-local and global report semantics collapsed"
+      ]
+    },
+    {
+      "id": "CATALOG-079",
+      "status": "planned",
+      "title": "Completeness conflict evidence identity validation",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-002"],
+      "summary": "Prevent CATALOG-002 conflict evidence from dangling or pointing across normalized works by validating evidence subject identity during writes.",
+      "deliverables": [
+        "Conflict evidence subject identity validation",
+        "Dangling and cross-work rejection fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Conflict evidence writes reject unknown subject ids for the declared subject kind.",
+        "Conflict evidence writes reject subject ids that belong to a different normalized work.",
+        "Valid same-work language status and source record evidence remains accepted."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": ["Dangling polymorphic subject ids", "Cross-work conflict evidence accepted"]
     }
   ]
 }

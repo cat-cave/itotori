@@ -1,0 +1,222 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-002-20260618T205843Z",
+  "generatedAt": "2026-06-18T20:58:43Z",
+  "spec": {
+    "id": "CATALOG-002",
+    "title": "Translation completeness intelligence",
+    "branch": "spec/catalog-002",
+    "worktree": "/tmp/itotori-spec-catalog-002",
+    "commit": "9bda45a"
+  },
+  "auditor": {
+    "name": "catalog-002-schema-and-db-audit",
+    "kind": "architecture"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Independent audit found no P0/P1 findings. CATALOG-002 satisfies the alpha blocking criteria; three P2 hardening findings were converted into follow-up DAG nodes.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 3,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["CATALOG-002-F001", "CATALOG-002-F002", "CATALOG-002-F003"]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-002-F001",
+      "severity": "P2",
+      "title": "Completeness API schema accepts arbitrary enum strings",
+      "category": "test",
+      "locations": [
+        {
+          "path": "apps/itotori/src/api-schema.ts",
+          "line": 305
+        },
+        {
+          "path": "apps/itotori/src/api-schema.ts",
+          "line": 396
+        },
+        {
+          "path": "apps/itotori/src/api-schema.ts",
+          "line": 1051
+        }
+      ],
+      "description": "The CATALOG-002 API response validator checks several enum-backed fields with generic string assertions instead of constraining them to the canonical enum values.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found status, confidence, rawContentRedactionClass, catalogSource, sourceRecordKind, conflict status, report pool, and report status accepted as arbitrary non-empty strings."
+        }
+      ],
+      "impact": "A malformed API response could pass schema validation and later be treated as a valid completeness status or provenance class.",
+      "actionableAcceptanceCriteria": [
+        "Completeness API response schema validates status, confidence, redaction class, source kind, record kind, conflict status, pool, and report status against canonical enum constants.",
+        "Negative API schema fixtures reject at least one invalid value for each enum-backed CATALOG-002 response group."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Completeness API enum response guards",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-002"],
+          "summary": "Tighten CATALOG-002 API response validation so enum-backed completeness, provenance, conflict, and report fields reject arbitrary strings.",
+          "deliverables": [
+            "Enum-backed completeness API validators",
+            "Negative API schema fixtures for invalid completeness response enum values"
+          ],
+          "acceptanceCriteria": [
+            "Response validation rejects invalid language status, confidence, redaction class, source kind, source record kind, conflict status, report pool, and report status values.",
+            "Valid CATALOG-002 fixture responses continue to pass without weakening field presence checks."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec vp run ts:test"
+            }
+          ],
+          "auditFocus": [
+            "Arbitrary strings accepted for enum-backed API fields",
+            "Validator constants drifting from DB/repository enums"
+          ]
+        }
+      }
+    },
+    {
+      "id": "CATALOG-002-F002",
+      "severity": "P2",
+      "title": "Public completeness reports can double-count overlapping pools",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/catalog-repository.ts",
+          "line": 1493
+        }
+      ],
+      "description": "The public completeness report increments aggregate conflict and status counts per pool occurrence, so a work that appears in overlapping pools can inflate aggregate counts.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit identified that pool-local iteration can count the same work, conflict, or language status more than once in aggregate public report totals."
+        }
+      ],
+      "impact": "Public opportunity reports can overstate completeness evidence when benchmark pools overlap.",
+      "actionableAcceptanceCriteria": [
+        "Public report aggregate counts are computed over unique work ids, conflict ids, and language status ids.",
+        "Pool-local work counts remain pool-local and intentionally allow overlap.",
+        "A DB-backed overlap fixture proves aggregate counts do not double-count a work present in multiple pools."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Completeness report overlap-safe aggregation",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-002"],
+          "summary": "Make public completeness report aggregate counts unique across overlapping benchmark and opportunity pools while preserving pool-local work counts.",
+          "deliverables": [
+            "Overlap-safe public completeness aggregation",
+            "DB-backed overlap fixture for multi-pool works and conflicts"
+          ],
+          "acceptanceCriteria": [
+            "Aggregate status and conflict counts use unique language status and conflict identities.",
+            "A work appearing in fan_partial and conflict pools contributes once to aggregate work/status/conflict totals where applicable.",
+            "Pool-local work counts still describe each pool independently."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "Aggregate counts inflated by overlapping pools",
+            "Pool-local and global report semantics collapsed"
+          ]
+        }
+      }
+    },
+    {
+      "id": "CATALOG-002-F003",
+      "severity": "P2",
+      "title": "Completeness conflict evidence subjects are not identity-checked",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/schema.ts",
+          "line": 553
+        },
+        {
+          "path": "packages/itotori-db/src/repositories/catalog-repository.ts",
+          "line": 2419
+        }
+      ],
+      "description": "Conflict evidence stores polymorphic subject kind and subject id as text, and repository validation currently checks only enum/non-empty shape rather than whether the subject belongs to the same normalized work.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found no rejection path for dangling or cross-work evidence subjects inside CATALOG-002 conflict evidence writes."
+        }
+      ],
+      "impact": "Conflict evidence can point to stale or unrelated records, weakening auditability of translation-completeness disputes.",
+      "actionableAcceptanceCriteria": [
+        "Completeness conflict evidence subjects are validated against records for the same normalized work during writes, or stored in typed FK-backed tables/triggers.",
+        "Repository tests reject dangling subject ids and subject ids belonging to a different work.",
+        "Existing valid conflict evidence fixtures remain accepted."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Completeness conflict evidence identity validation",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-002"],
+          "summary": "Prevent CATALOG-002 conflict evidence from dangling or pointing across normalized works by validating evidence subject identity during writes.",
+          "deliverables": [
+            "Conflict evidence subject identity validation",
+            "Dangling and cross-work rejection fixtures"
+          ],
+          "acceptanceCriteria": [
+            "Conflict evidence writes reject unknown subject ids for the declared subject kind.",
+            "Conflict evidence writes reject subject ids that belong to a different normalized work.",
+            "Valid same-work language status and source record evidence remains accepted."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "Dangling polymorphic subject ids",
+            "Cross-work conflict evidence accepted"
+          ]
+        }
+      }
+    }
+  ]
+}
