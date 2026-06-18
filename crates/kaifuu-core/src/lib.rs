@@ -6306,14 +6306,36 @@ impl LayeredAccessPreflightReport {
                 }
             }
 
-            if let Some(contract) = patch_contract {
-                surface.add_unsupported_transform_failures(
-                    contract,
-                    &adapter_id,
-                    &engine,
-                    &detected_variant,
-                    &mut failures,
-                );
+            match patch_contract {
+                Some(contract) => {
+                    if !matches!(
+                        contract.status,
+                        CapabilityStatus::Supported | CapabilityStatus::Limited
+                    ) {
+                        failures.push(surface.patch_contract_status_failure(
+                            contract,
+                            &adapter_id,
+                            &engine,
+                            &detected_variant,
+                        ));
+                    }
+                    surface.add_unsupported_transform_failures(
+                        contract,
+                        &adapter_id,
+                        &engine,
+                        &detected_variant,
+                        &mut failures,
+                    );
+                }
+                None if surface.requires_patch_access_contract() => {
+                    surface.add_missing_patch_contract_failures(
+                        &adapter_id,
+                        &engine,
+                        &detected_variant,
+                        &mut failures,
+                    );
+                }
+                None => {}
             }
 
             if surface.key_material_status == LayeredAccessKeyMaterialStatus::Missing {
@@ -6364,6 +6386,128 @@ impl LayeredAccessPreflightReport {
 }
 
 impl LayeredTextSurfaceAccess {
+    fn requires_patch_access_contract(&self) -> bool {
+        !matches!(
+            self.surface_transform,
+            SurfaceTransform::Identity | SurfaceTransform::JsonPointer
+        ) || !matches!(
+            self.container,
+            ContainerTransform::Identity | ContainerTransform::LooseFile
+        ) || !matches!(self.crypto, CryptoTransform::NullKey)
+            || !matches!(
+                self.codec,
+                CodecTransform::Identity | CodecTransform::JsonText
+            )
+            || !matches!(
+                self.patch_back,
+                PatchBackTransform::Identity | PatchBackTransform::RewriteJson
+            )
+            || !matches!(
+                self.key_material_status,
+                LayeredAccessKeyMaterialStatus::NotRequired
+                    | LayeredAccessKeyMaterialStatus::Resolved
+            )
+            || !matches!(
+                self.helper_status,
+                LayeredAccessHelperStatus::NotRequired | LayeredAccessHelperStatus::Available
+            )
+    }
+
+    fn add_missing_patch_contract_failures(
+        &self,
+        adapter_id: &str,
+        engine: &str,
+        detected_variant: &str,
+        failures: &mut Vec<AdapterFailure>,
+    ) {
+        let support_boundary =
+            "patch access contract is required before patching non-identity layered transforms";
+        if !matches!(
+            self.surface_transform,
+            SurfaceTransform::Identity | SurfaceTransform::JsonPointer
+        ) {
+            failures.push(self.unsupported_transform_failure(
+                LayeredAccessStage::Container,
+                format!("{:?}", self.surface_transform),
+                support_boundary,
+                adapter_id,
+                engine,
+                detected_variant,
+            ));
+        }
+        if !matches!(
+            self.container,
+            ContainerTransform::Identity | ContainerTransform::LooseFile
+        ) {
+            failures.push(self.unsupported_transform_failure(
+                LayeredAccessStage::Container,
+                format!("{:?}", self.container),
+                support_boundary,
+                adapter_id,
+                engine,
+                detected_variant,
+            ));
+        }
+        if !matches!(self.crypto, CryptoTransform::NullKey) {
+            failures.push(self.unsupported_transform_failure(
+                LayeredAccessStage::Crypto,
+                format!("{:?}", self.crypto),
+                support_boundary,
+                adapter_id,
+                engine,
+                detected_variant,
+            ));
+        }
+        if !matches!(
+            self.codec,
+            CodecTransform::Identity | CodecTransform::JsonText
+        ) {
+            failures.push(self.unsupported_transform_failure(
+                LayeredAccessStage::Codec,
+                format!("{:?}", self.codec),
+                support_boundary,
+                adapter_id,
+                engine,
+                detected_variant,
+            ));
+        }
+        if !matches!(
+            self.patch_back,
+            PatchBackTransform::Identity | PatchBackTransform::RewriteJson
+        ) {
+            failures.push(self.unsupported_transform_failure(
+                LayeredAccessStage::PatchBack,
+                format!("{:?}", self.patch_back),
+                support_boundary,
+                adapter_id,
+                engine,
+                detected_variant,
+            ));
+        }
+    }
+
+    fn patch_contract_status_failure(
+        &self,
+        contract: &LayeredAccessOperationContract,
+        adapter_id: &str,
+        engine: &str,
+        detected_variant: &str,
+    ) -> AdapterFailure {
+        let support_boundary = contract
+            .support_boundary
+            .as_deref()
+            .unwrap_or("patch access contract status does not permit preparing patched output");
+        LayeredAccessPreflightRequirement::missing_capability(
+            LayeredAccessStage::PatchBack,
+            &self.surface_id,
+            format!(
+                "{support_boundary}; patch access contract status: {:?}",
+                contract.status
+            ),
+        )
+        .to_adapter_failure(adapter_id, engine, detected_variant)
+    }
+
     fn add_unsupported_transform_failures(
         &self,
         contract: &LayeredAccessOperationContract,
@@ -10619,6 +10763,148 @@ mod tests {
                 .iter()
                 .all(AdapterFailure::is_preflight_blocking)
         );
+    }
+
+    #[test]
+    fn layered_access_preflight_allows_plaintext_identity_without_patch_contract() {
+        let capabilities = AdapterCapabilities::new(
+            "kaifuu.layered-test",
+            vec![
+                CapabilityReport::supported(Capability::ContainerAccess),
+                CapabilityReport::supported(Capability::CryptoAccess),
+                CapabilityReport::supported(Capability::CodecAccess),
+                CapabilityReport::supported(Capability::PatchBack),
+            ],
+        );
+        let access_profile = LayeredAccessProfile::plaintext_identity_for_asset(
+            "source-json",
+            "source.json",
+            &[TextSurface::Dialogue],
+            "$.lines[*]",
+        );
+
+        let report = LayeredAccessPreflightReport::from_access_profile(
+            "kaifuu.layered-test",
+            "fixture",
+            "plaintext-identity",
+            &capabilities,
+            &access_profile,
+        );
+
+        assert_eq!(report.status, OperationStatus::Passed);
+        assert_eq!(report.failures, Vec::<AdapterFailure>::new());
+    }
+
+    #[test]
+    fn layered_access_preflight_fails_closed_without_patch_contract_for_non_identity_transforms() {
+        let capabilities = AdapterCapabilities::new(
+            "kaifuu.layered-test",
+            vec![
+                CapabilityReport::supported(Capability::ContainerAccess),
+                CapabilityReport::supported(Capability::CryptoAccess),
+                CapabilityReport::supported(Capability::CodecAccess),
+                CapabilityReport::supported(Capability::PatchBack),
+            ],
+        );
+        let access_profile = LayeredAccessProfile {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            surfaces: vec![LayeredTextSurfaceAccess {
+                surface_id: "xp3-bytecode-route".to_string(),
+                asset_id: "data.xp3".to_string(),
+                path: "data.xp3".to_string(),
+                text_surface: TextSurface::Dialogue,
+                surface_transform: SurfaceTransform::ArchiveEntry,
+                surface_selector: "scenario/route.ks".to_string(),
+                container: ContainerTransform::Xp3,
+                crypto: CryptoTransform::NullKey,
+                codec: CodecTransform::BytecodeDecompile,
+                patch_back: PatchBackTransform::RepackArchive,
+                key_material_status: LayeredAccessKeyMaterialStatus::Resolved,
+                helper_status: LayeredAccessHelperStatus::Available,
+                key_requirement_refs: vec![],
+                notes: vec![],
+            }],
+        };
+
+        let report = LayeredAccessPreflightReport::from_access_profile(
+            "kaifuu.layered-test",
+            "kirikiri",
+            "xp3-bytecode",
+            &capabilities,
+            &access_profile,
+        );
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        for required_capability in [
+            Capability::ContainerAccess,
+            Capability::CodecAccess,
+            Capability::PatchBack,
+        ] {
+            assert!(
+                report.failures.iter().any(|failure| {
+                    failure.error_code == SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM
+                        && failure.required_capability == Some(required_capability.clone())
+                }),
+                "missing unsupported transform failure for {required_capability:?}: {:#?}",
+                report.failures
+            );
+        }
+        assert!(
+            report
+                .failures
+                .iter()
+                .all(AdapterFailure::is_preflight_blocking)
+        );
+    }
+
+    #[test]
+    fn layered_access_preflight_blocks_patch_contract_status_before_transform_match_passes() {
+        for status in [
+            CapabilityStatus::Unsupported,
+            CapabilityStatus::RequiresUserInput,
+        ] {
+            let mut access_contract = LayeredAccessCapabilityContract::plaintext_identity();
+            access_contract.patch.status = status.clone();
+            access_contract.patch.support_boundary = Some(format!(
+                "patch contract status {status:?} requires local evidence before writing"
+            ));
+            let capabilities = AdapterCapabilities::new(
+                "kaifuu.layered-test",
+                vec![
+                    CapabilityReport::supported(Capability::ContainerAccess),
+                    CapabilityReport::supported(Capability::CryptoAccess),
+                    CapabilityReport::supported(Capability::CodecAccess),
+                    CapabilityReport::supported(Capability::PatchBack),
+                ],
+            )
+            .with_access_contract(access_contract);
+            let access_profile = LayeredAccessProfile::plaintext_identity_for_asset(
+                "source-json",
+                "source.json",
+                &[TextSurface::Dialogue],
+                "$.lines[*]",
+            );
+
+            let report = LayeredAccessPreflightReport::from_access_profile(
+                "kaifuu.layered-test",
+                "fixture",
+                "patch-status",
+                &capabilities,
+                &access_profile,
+            );
+
+            assert_eq!(report.status, OperationStatus::Failed);
+            assert!(report.failures.iter().any(|failure| {
+                failure.error_code == SEMANTIC_MISSING_PATCH_BACK_CAPABILITY
+                    && failure.required_capability == Some(Capability::PatchBack)
+            }));
+            assert!(
+                report
+                    .failures
+                    .iter()
+                    .all(AdapterFailure::is_preflight_blocking)
+            );
+        }
     }
 
     #[test]

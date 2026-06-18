@@ -613,11 +613,12 @@ mod tests {
         AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
         CapabilityReport, CapabilityStatus, DetectRequest, DetectionEvidence,
         DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult,
-        GoldenAssertionStatus, GoldenRoundTripReport, LayeredAccessPreflightReport,
-        LayeredAccessPreflightRequirement, LayeredAccessStage, OperationStatus, PatchExportEntry,
-        PatchRef, PatchResult, ProfileRequirement, ProtectedSpanMapping,
-        REDACTED_DETECTION_GAME_DIR, RequirementCategory, RequirementStatus, SemanticErrorCode,
-        TextSurface, VerificationResult, content_hash, deterministic_id, read_json,
+        GoldenAssertionStatus, GoldenRoundTripReport, LayeredAccessCapabilityContract,
+        LayeredAccessPreflightReport, LayeredAccessPreflightRequirement, LayeredAccessProfile,
+        LayeredAccessStage, OperationStatus, PatchExportEntry, PatchRef, PatchResult,
+        ProfileRequirement, ProtectedSpanMapping, REDACTED_DETECTION_GAME_DIR, RequirementCategory,
+        RequirementStatus, SemanticErrorCode, TextSurface, VerificationResult, content_hash,
+        deterministic_id, read_json,
     };
     use std::cell::RefCell;
     use std::collections::BTreeMap;
@@ -1056,6 +1057,121 @@ mod tests {
     fn preflight_registry() -> AdapterRegistry {
         let mut registry = AdapterRegistry::new();
         registry.register(PreflightBlockingAdapter);
+        registry
+    }
+
+    struct ContractStatusPreflightAdapter;
+
+    impl EngineAdapter for ContractStatusPreflightAdapter {
+        fn id(&self) -> &'static str {
+            "kaifuu.test.contract-status-preflight"
+        }
+
+        fn name(&self) -> &'static str {
+            "Kaifuu contract status preflight test adapter"
+        }
+
+        fn capabilities(&self) -> AdapterCapabilities {
+            let mut access_contract = LayeredAccessCapabilityContract::plaintext_identity();
+            access_contract.patch.status = CapabilityStatus::RequiresUserInput;
+            access_contract.patch.support_boundary =
+                Some("patch access requires local helper confirmation before writing".to_string());
+            AdapterCapabilities::new(
+                self.id(),
+                vec![
+                    CapabilityReport::supported(Capability::Detection),
+                    CapabilityReport::supported(Capability::Patching),
+                    CapabilityReport::supported(Capability::ContainerAccess),
+                    CapabilityReport::supported(Capability::CryptoAccess),
+                    CapabilityReport::supported(Capability::CodecAccess),
+                    CapabilityReport::supported(Capability::PatchBack),
+                ],
+            )
+            .with_access_contract(access_contract)
+        }
+
+        fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+            Ok(DetectionResult {
+                adapter_id: self.id().to_string(),
+                detected: true,
+                engine_family: Some("contract-status-preflight-test".to_string()),
+                engine_version: None,
+                detected_variant: Some("requires-user-input".to_string()),
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: self.capabilities().reports,
+            })
+        }
+
+        fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+            Err("profile is not used by the contract status preflight test".into())
+        }
+
+        fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+            Err("list_assets is not used by the contract status preflight test".into())
+        }
+
+        fn asset_inventory(
+            &self,
+            _request: AssetInventoryRequest<'_>,
+        ) -> KaifuuResult<AssetInventoryManifest> {
+            Err("asset_inventory is not used by the contract status preflight test".into())
+        }
+
+        fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+            Err("extract is not used by the contract status preflight test".into())
+        }
+
+        fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
+            let access_profile = LayeredAccessProfile::plaintext_identity_for_asset(
+                "source-json",
+                "source.json",
+                &[TextSurface::Dialogue],
+                "$.lines[*]",
+            );
+            let preflight = LayeredAccessPreflightReport::from_access_profile(
+                self.id(),
+                "contract-status-preflight-test",
+                "requires-user-input",
+                &self.capabilities(),
+                &access_profile,
+            );
+            Ok(PatchResult {
+                schema_version: "0.1.0".to_string(),
+                patch_result_id: deterministic_id("patch-result", 82),
+                patch_export_id: request.patch_export.patch_export_id.clone(),
+                status: preflight.status,
+                output_hash: content_hash("contract status preflight without output"),
+                failures: preflight.failures,
+            })
+        }
+
+        fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+            fs::create_dir_all(request.output_dir)?;
+            fs::write(
+                request
+                    .output_dir
+                    .join("contract-status-preflight-bypassed.txt"),
+                "patch should not have run\n",
+            )?;
+            Ok(PatchResult {
+                schema_version: "0.1.0".to_string(),
+                patch_result_id: deterministic_id("patch-result", 83),
+                patch_export_id: request.patch_export.patch_export_id.clone(),
+                status: OperationStatus::Passed,
+                output_hash: content_hash("contract status preflight bypassed"),
+                failures: vec![],
+            })
+        }
+
+        fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+            Err("verify is not used by the contract status preflight test".into())
+        }
+    }
+
+    fn contract_status_preflight_registry() -> AdapterRegistry {
+        let mut registry = AdapterRegistry::new();
+        registry.register(ContractStatusPreflightAdapter);
         registry
     }
 
@@ -2668,6 +2784,48 @@ mod tests {
         assert!(!error.contains("Private Route Spoiler Game"));
         assert!(!error.contains("private-route-name"));
         assert!(!error.contains("helper dump"));
+        assert!(!output_dir.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_command_preflight_blocks_layered_contract_status_before_output_prepare() {
+        let root = temp_dir("patch-preflight-contract-status");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let patch_export = PatchExport {
+            patch_export_id: deterministic_id("patch", 82),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![],
+        };
+        let patch_export_path = root.join("patch-export.json");
+        write_json(&patch_export_path, &patch_export).unwrap();
+        let output_dir = root.join("patched-output");
+        let registry = contract_status_preflight_registry();
+
+        let result = run_with_args_and_registry(
+            [
+                "patch",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+            &registry,
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("patch preflight failed"), "{error}");
+        assert!(
+            error.contains(kaifuu_core::SEMANTIC_MISSING_PATCH_BACK_CAPABILITY),
+            "{error}"
+        );
         assert!(!output_dir.exists());
 
         let _ = fs::remove_dir_all(root);
