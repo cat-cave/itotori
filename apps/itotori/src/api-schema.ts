@@ -607,6 +607,7 @@ export function assertRuntimeDashboardStatus(
 ): asserts value is RuntimeDashboardStatus {
   const status = asRecord(value, label);
   assertString(status.finalStatus, `${label}.finalStatus`);
+  assertNullableString(status.runtimeRunId, `${label}.runtimeRunId`);
   assertNullableString(status.runtimeReportId, `${label}.runtimeReportId`);
   assertNullableString(status.runtimeStatus, `${label}.runtimeStatus`);
   assertNullableString(status.fidelityTier, `${label}.fidelityTier`);
@@ -616,6 +617,88 @@ export function assertRuntimeDashboardStatus(
   assertNonNegativeInteger(status.screenshotArtifactCount, `${label}.screenshotArtifactCount`);
   assertNonNegativeInteger(status.recordingArtifactCount, `${label}.recordingArtifactCount`);
   assertNonNegativeInteger(status.validationFindingCount, `${label}.validationFindingCount`);
+  assertRuntimeDashboardTraceEvents(status.traceEvents, `${label}.traceEvents`);
+  assertRuntimeDashboardFindings(status.findings, `${label}.findings`);
+  assertRuntimeDashboardArtifacts(status.artifacts, `${label}.artifacts`);
+  assertRuntimeDashboardApproximations(status.approximations, `${label}.approximations`);
+  assertRuntimeDashboardUnsupportedCapabilities(
+    status.unsupportedCapabilities,
+    `${label}.unsupportedCapabilities`,
+  );
+  assertStringArray(status.limitations, `${label}.limitations`);
+}
+
+function assertRuntimeDashboardTraceEvents(value: unknown, label: string): void {
+  const rows = asArray(value, label);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asRecord(rowValue, `${label}[${index}]`);
+    assertString(row.runtimeEventId, `${label}[${index}].runtimeEventId`);
+    assertString(row.eventKind, `${label}[${index}].eventKind`);
+    assertNullableString(row.bridgeUnitId, `${label}[${index}].bridgeUnitId`);
+    assertNullableString(row.sourceUnitKey, `${label}[${index}].sourceUnitKey`);
+    assertNullableString(row.draftId, `${label}[${index}].draftId`);
+    assertNullableString(row.runtimeTargetId, `${label}[${index}].runtimeTargetId`);
+    assertNullableString(row.evidenceTier, `${label}[${index}].evidenceTier`);
+    assertNullableNonNegativeInteger(row.frame, `${label}[${index}].frame`);
+    assertNullableString(row.textPreview, `${label}[${index}].textPreview`);
+    assertStringArray(row.artifactIds, `${label}[${index}].artifactIds`);
+  }
+}
+
+function assertRuntimeDashboardFindings(value: unknown, label: string): void {
+  const rows = asArray(value, label);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asRecord(rowValue, `${label}[${index}]`);
+    assertString(row.findingId, `${label}[${index}].findingId`);
+    assertString(row.findingKind, `${label}[${index}].findingKind`);
+    assertString(row.severity, `${label}[${index}].severity`);
+    assertString(row.message, `${label}[${index}].message`);
+    assertString(row.evidenceTier, `${label}[${index}].evidenceTier`);
+    assertNullableString(row.bridgeUnitId, `${label}[${index}].bridgeUnitId`);
+    assertNullableString(row.sourceUnitKey, `${label}[${index}].sourceUnitKey`);
+    assertNullableString(row.artifactId, `${label}[${index}].artifactId`);
+  }
+}
+
+function assertRuntimeDashboardArtifacts(value: unknown, label: string): void {
+  const rows = asArray(value, label);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asRecord(rowValue, `${label}[${index}]`);
+    assertString(row.artifactId, `${label}[${index}].artifactId`);
+    assertString(row.artifactKind, `${label}[${index}].artifactKind`);
+    assertNullableString(row.uri, `${label}[${index}].uri`);
+    assertNullableString(row.hash, `${label}[${index}].hash`);
+    assertNullableString(row.mediaType, `${label}[${index}].mediaType`);
+    assertNullableNonNegativeInteger(row.byteSize, `${label}[${index}].byteSize`);
+    assertNullableString(row.bridgeUnitId, `${label}[${index}].bridgeUnitId`);
+    assertNullableString(row.sourceUnitKey, `${label}[${index}].sourceUnitKey`);
+    assertNullableString(row.diagnostic, `${label}[${index}].diagnostic`);
+  }
+}
+
+function assertRuntimeDashboardApproximations(value: unknown, label: string): void {
+  const rows = asArray(value, label);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asRecord(rowValue, `${label}[${index}]`);
+    assertString(row.approximationId, `${label}[${index}].approximationId`);
+    assertString(row.approximationTier, `${label}[${index}].approximationTier`);
+    assertString(row.scope, `${label}[${index}].scope`);
+    assertString(row.description, `${label}[${index}].description`);
+    assertString(row.evidenceTierCeiling, `${label}[${index}].evidenceTierCeiling`);
+    assertStringArray(row.bridgeUnitIds, `${label}[${index}].bridgeUnitIds`);
+  }
+}
+
+function assertRuntimeDashboardUnsupportedCapabilities(value: unknown, label: string): void {
+  const rows = asArray(value, label);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asRecord(rowValue, `${label}[${index}]`);
+    assertString(row.feature, `${label}[${index}].feature`);
+    assertString(row.status, `${label}[${index}].status`);
+    assertNullableString(row.fidelityTierCeiling, `${label}[${index}].fidelityTierCeiling`);
+    assertNullableString(row.evidenceTierCeiling, `${label}[${index}].evidenceTierCeiling`);
+    assertStringArray(row.limitations, `${label}[${index}].limitations`);
+  }
 }
 
 export function assertProjectState(
@@ -862,6 +945,15 @@ function assertDateLike(value: unknown, label: string): void {
 function assertNonNegativeInteger(value: unknown, label: string): asserts value is number {
   if (!Number.isInteger(value) || (value as number) < 0) {
     throw new Error(`${label} must be a non-negative integer`);
+  }
+}
+
+function assertNullableNonNegativeInteger(
+  value: unknown,
+  label: string,
+): asserts value is number | null {
+  if (value !== null) {
+    assertNonNegativeInteger(value, label);
   }
 }
 

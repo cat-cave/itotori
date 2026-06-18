@@ -127,6 +127,10 @@ describe("Itotori API handlers", () => {
       { method: "GET", pathname: "/api/hello/status" },
       services,
     );
+    const runtimeV02Status = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/runtime/v0.2/status" },
+      services,
+    );
     const costStatus = await handleItotoriApiRequest(
       { method: "GET", pathname: "/api/projects/cost" },
       services,
@@ -143,11 +147,30 @@ describe("Itotori API handlers", () => {
     expect(projects).toEqual({ statusCode: 200, body: { projects: [dashboardStatusFixture] } });
     expect(projectStatus).toEqual({ statusCode: 200, body: dashboardStatusFixture });
     expect(runtimeStatus).toEqual({ statusCode: 200, body: runtimeStatusFixture });
+    expect(runtimeV02Status).toEqual({ statusCode: 200, body: runtimeStatusFixture });
+    expect(runtimeV02Status.body).toMatchObject({
+      traceEvents: [
+        {
+          runtimeEventId: "runtime-1:trace-1",
+          bridgeUnitId: "bridge-unit-1",
+          sourceUnitKey: "hello.scene.001.line.001",
+          draftId: "locale-1:bridge-unit-1",
+        },
+      ],
+      artifacts: expect.arrayContaining([
+        expect.objectContaining({
+          artifactId: "runtime-1:screenshot-1",
+          uri: "artifacts/utsushi/runtime/runtime-1/screenshots/screenshot-1.png",
+          hash: "sha256:runtime-screenshot",
+          mediaType: "image/png",
+        }),
+      ]),
+    });
     expect(costStatus).toEqual({ statusCode: 200, body: costReportFixture });
     expect(decisions).toEqual({ statusCode: 200, body: dashboardDecisionsFixture });
     expect(catalogConflicts).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
     expect(services.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(2);
-    expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(1);
+    expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getCostReport).toHaveBeenCalledTimes(1);
     expect(services.projectWorkflow.getDashboardDecisions).toHaveBeenCalledTimes(1);
     expect(services.catalogRepository.catalogConflictReview).toHaveBeenCalledWith({});

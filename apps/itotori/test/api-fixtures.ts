@@ -310,15 +310,86 @@ export const dashboardDecisionsFixture: DashboardDecisionReadModel = {
 
 export const runtimeStatusFixture: RuntimeDashboardStatus = {
   finalStatus: "hello_world_failed",
+  runtimeRunId: "runtime-1",
   runtimeReportId: "runtime-1",
   runtimeStatus: "failed",
   fidelityTier: "layout_probe",
-  evidenceTier: null,
+  evidenceTier: "E2",
   textEventCount: 1,
   frameCaptureCount: 1,
   screenshotArtifactCount: 1,
   recordingArtifactCount: 0,
   validationFindingCount: 1,
+  traceEvents: [
+    {
+      runtimeEventId: "runtime-1:trace-1",
+      eventKind: "text_seen",
+      bridgeUnitId: "bridge-unit-1",
+      sourceUnitKey: "hello.scene.001.line.001",
+      draftId: "locale-1:bridge-unit-1",
+      runtimeTargetId: "hello.scene.001.line.001",
+      evidenceTier: null,
+      frame: 12,
+      textPreview: "Hello, {player}.",
+      artifactIds: ["runtime-1:trace-artifact-1"],
+    },
+  ],
+  findings: [
+    {
+      findingId: "runtime-1:finding-1",
+      findingKind: "text_mismatch",
+      severity: "error",
+      message: "Observed runtime text did not match the draft text.",
+      evidenceTier: "E2",
+      bridgeUnitId: "bridge-unit-1",
+      sourceUnitKey: "hello.scene.001.line.001",
+      artifactId: "runtime-1:trace-artifact-1",
+    },
+  ],
+  artifacts: [
+    {
+      artifactId: "runtime-1:screenshot-1",
+      artifactKind: "screenshot",
+      uri: "artifacts/utsushi/runtime/runtime-1/screenshots/screenshot-1.png",
+      hash: "sha256:runtime-screenshot",
+      mediaType: "image/png",
+      byteSize: 2048,
+      bridgeUnitId: "bridge-unit-1",
+      sourceUnitKey: "hello.scene.001.line.001",
+      diagnostic: null,
+    },
+    {
+      artifactId: "runtime-1:trace-artifact-1",
+      artifactKind: "trace_log",
+      uri: "artifacts/utsushi/runtime/runtime-1/traces/trace-1.json",
+      hash: "sha256:runtime-trace",
+      mediaType: "application/json",
+      byteSize: 512,
+      bridgeUnitId: "bridge-unit-1",
+      sourceUnitKey: "hello.scene.001.line.001",
+      diagnostic: null,
+    },
+  ],
+  approximations: [
+    {
+      approximationId: "runtime-1:approximation-1",
+      approximationTier: "synthetic_fixture",
+      scope: "capture",
+      description: "Fixture capture approximates a host runtime frame.",
+      evidenceTierCeiling: "E2",
+      bridgeUnitIds: ["bridge-unit-1"],
+    },
+  ],
+  unsupportedCapabilities: [
+    {
+      feature: "recording",
+      status: "unsupported",
+      fidelityTierCeiling: null,
+      evidenceTierCeiling: null,
+      limitations: ["Fixture adapter does not emit recordings."],
+    },
+  ],
+  limitations: ["No reference-runtime pixel comparison is performed."],
 };
 
 export const bridgeFixture: BridgeBundle = {

@@ -181,6 +181,7 @@ export type ProjectDashboardStatus = {
 
 export type RuntimeDashboardStatus = {
   finalStatus: string;
+  runtimeRunId: string | null;
   runtimeReportId: string | null;
   runtimeStatus: string | null;
   fidelityTier: string | null;
@@ -190,6 +191,65 @@ export type RuntimeDashboardStatus = {
   screenshotArtifactCount: number;
   recordingArtifactCount: number;
   validationFindingCount: number;
+  traceEvents: RuntimeDashboardTraceEvent[];
+  findings: RuntimeDashboardFinding[];
+  artifacts: RuntimeDashboardArtifact[];
+  approximations: RuntimeDashboardApproximation[];
+  unsupportedCapabilities: RuntimeDashboardUnsupportedCapability[];
+  limitations: string[];
+};
+
+export type RuntimeDashboardTraceEvent = {
+  runtimeEventId: string;
+  eventKind: string;
+  bridgeUnitId: string | null;
+  sourceUnitKey: string | null;
+  draftId: string | null;
+  runtimeTargetId: string | null;
+  evidenceTier: string | null;
+  frame: number | null;
+  textPreview: string | null;
+  artifactIds: string[];
+};
+
+export type RuntimeDashboardFinding = {
+  findingId: string;
+  findingKind: string;
+  severity: string;
+  message: string;
+  evidenceTier: string;
+  bridgeUnitId: string | null;
+  sourceUnitKey: string | null;
+  artifactId: string | null;
+};
+
+export type RuntimeDashboardArtifact = {
+  artifactId: string;
+  artifactKind: string;
+  uri: string | null;
+  hash: string | null;
+  mediaType: string | null;
+  byteSize: number | null;
+  bridgeUnitId: string | null;
+  sourceUnitKey: string | null;
+  diagnostic: string | null;
+};
+
+export type RuntimeDashboardApproximation = {
+  approximationId: string;
+  approximationTier: string;
+  scope: string;
+  description: string;
+  evidenceTierCeiling: string;
+  bridgeUnitIds: string[];
+};
+
+export type RuntimeDashboardUnsupportedCapability = {
+  feature: string;
+  status: string;
+  fidelityTierCeiling: string | null;
+  evidenceTierCeiling: string | null;
+  limitations: string[];
 };
 
 export type DashboardPendingDecisionKind =
@@ -1568,6 +1628,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       latest_runtime_run as (
         select
           runtime_run_id,
+          runtime_report_artifact_id,
           status,
           fidelity_tier,
           evidence_tier,
@@ -1626,7 +1687,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             else latest_patch_result.metadata->>'status'
           end
         ) as final_status,
-        coalesce(latest_runtime_run.runtime_run_id, latest_runtime_report.artifact_id)
+        latest_runtime_run.runtime_run_id as runtime_run_id,
+        coalesce(latest_runtime_run.runtime_report_artifact_id, latest_runtime_report.artifact_id)
           as runtime_report_id,
         coalesce(latest_runtime_run.status, latest_runtime_report.metadata->>'status')
           as runtime_status,
@@ -1655,9 +1717,23 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       throw new Error("no Itotori runtime status found");
     }
 
+    const runtimeRunId = nullableString(first.runtime_run_id);
+    const runtimeReportId = nullableString(first.runtime_report_id);
+    const [traceEvents, findings, dashboardArtifacts, approximations, unsupportedCapabilities] =
+      runtimeRunId === null
+        ? [[], [], [], [], []]
+        : await Promise.all([
+            this.runtimeDashboardTraceEvents(runtimeRunId),
+            this.runtimeDashboardFindings(runtimeRunId),
+            this.runtimeDashboardArtifacts(runtimeRunId),
+            this.runtimeDashboardApproximations(runtimeRunId),
+            this.runtimeDashboardUnsupportedCapabilities(runtimeRunId),
+          ]);
+
     return {
       finalStatus: String(first.final_status ?? "missing"),
-      runtimeReportId: nullableString(first.runtime_report_id),
+      runtimeRunId,
+      runtimeReportId,
       runtimeStatus: nullableString(first.runtime_status),
       fidelityTier: nullableString(first.fidelity_tier),
       evidenceTier: nullableString(first.evidence_tier),
@@ -1666,7 +1742,247 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       screenshotArtifactCount: Number(first.screenshot_artifact_count ?? 0),
       recordingArtifactCount: Number(first.recording_artifact_count ?? 0),
       validationFindingCount: Number(first.validation_finding_count ?? 0),
+      traceEvents,
+      findings,
+      artifacts: dashboardArtifacts,
+      approximations,
+      unsupportedCapabilities,
+      limitations: await this.runtimeDashboardLimitations(runtimeRunId, runtimeReportId),
     };
+  }
+
+  private async runtimeDashboardTraceEvents(
+    runtimeRunId: string,
+  ): Promise<RuntimeDashboardTraceEvent[]> {
+    const result = await this.db.execute(sql`
+      select
+        rei.runtime_evidence_id,
+        rei.evidence_kind,
+        rei.locale_branch_id,
+        rei.bridge_unit_id,
+        coalesce(nullif(refs.source_unit_key, ''), su.source_unit_key) as source_unit_key,
+        coalesce(rei.metadata->>'eventKind', rei.evidence_kind) as event_kind,
+        coalesce(
+          rei.metadata->>'runtimeTargetId',
+          rei.metadata->'event'->>'runtimeTargetId',
+          rei.metadata->>'traceKey',
+          rei.metadata->>'branchPointKey'
+        ) as runtime_target_id,
+        rei.evidence_tier,
+        rei.frame,
+        coalesce(
+          rei.metadata->>'observedText',
+          rei.metadata->'event'->>'observedText',
+          rei.metadata->>'promptText'
+        ) as text_preview,
+        rei.artifact_id
+      from ${runtimeEvidenceItems} rei
+      left join lateral (
+        select ref.source_unit_key
+        from ${runtimeEvidenceBridgeUnitRefs} ref
+        where ref.runtime_evidence_id = rei.runtime_evidence_id
+        order by case when ref.ref_role = 'primary' then 0 else 1 end, ref.created_at
+        limit 1
+      ) refs on true
+      left join ${sourceUnits} su on su.bridge_unit_id = rei.bridge_unit_id
+      where rei.runtime_run_id = ${runtimeRunId}
+        and rei.evidence_kind in ('trace_event', 'branch_event')
+      order by rei.frame nulls last, rei.runtime_evidence_id
+    `);
+
+    return result.rows.map((row) => {
+      const record = row as Record<string, unknown>;
+      const bridgeUnitId = nullableString(record.bridge_unit_id);
+      return {
+        runtimeEventId: String(record.runtime_evidence_id),
+        eventKind: String(record.event_kind ?? record.evidence_kind ?? "unknown"),
+        bridgeUnitId,
+        sourceUnitKey: nullableString(record.source_unit_key),
+        draftId:
+          bridgeUnitId === null
+            ? null
+            : `${String(record.locale_branch_id ?? "runtime")}:${bridgeUnitId}`,
+        runtimeTargetId: nullableString(record.runtime_target_id),
+        evidenceTier: nullableString(record.evidence_tier),
+        frame: nullableNumber(record.frame),
+        textPreview: nullableString(record.text_preview),
+        artifactIds:
+          record.artifact_id === null || record.artifact_id === undefined
+            ? []
+            : [String(record.artifact_id)],
+      };
+    });
+  }
+
+  private async runtimeDashboardFindings(
+    runtimeRunId: string,
+  ): Promise<RuntimeDashboardFinding[]> {
+    const result = await this.db.execute(sql`
+      select
+        rvf.finding_id,
+        rvf.finding_kind,
+        rvf.severity,
+        rvf.message,
+        rvf.evidence_tier,
+        rvf.bridge_unit_id,
+        coalesce(
+          nullif(rvf.metadata->'bridgeUnitRef'->>'sourceUnitKey', ''),
+          su.source_unit_key
+        ) as source_unit_key,
+        rvf.artifact_id
+      from ${runtimeValidationFindings} rvf
+      left join ${sourceUnits} su on su.bridge_unit_id = rvf.bridge_unit_id
+      where rvf.runtime_run_id = ${runtimeRunId}
+      order by rvf.created_at, rvf.finding_id
+    `);
+
+    return result.rows.map((row) => {
+      const record = row as Record<string, unknown>;
+      return {
+        findingId: String(record.finding_id),
+        findingKind: String(record.finding_kind),
+        severity: String(record.severity),
+        message: String(record.message),
+        evidenceTier: String(record.evidence_tier),
+        bridgeUnitId: nullableString(record.bridge_unit_id),
+        sourceUnitKey: nullableString(record.source_unit_key),
+        artifactId: nullableString(record.artifact_id),
+      };
+    });
+  }
+
+  private async runtimeDashboardArtifacts(
+    runtimeRunId: string,
+  ): Promise<RuntimeDashboardArtifact[]> {
+    const result = await this.db.execute(sql`
+      select
+        a.artifact_id,
+        a.artifact_kind,
+        a.uri,
+        a.hash,
+        a.bridge_unit_id,
+        su.source_unit_key,
+        coalesce(a.metadata->>'mediaType', a.metadata->'artifactRef'->>'mediaType') as media_type,
+        coalesce(a.metadata->>'byteSize', a.metadata->'artifactRef'->>'byteSize') as byte_size,
+        a.metadata
+      from ${artifacts} a
+      left join ${sourceUnits} su on su.bridge_unit_id = a.bridge_unit_id
+      where a.metadata->>'runtimeReportId' = ${runtimeRunId}
+        and a.artifact_kind in (
+          'screenshot',
+          'recording',
+          'trace_log',
+          'frame_capture',
+          'reference_comparison',
+          'runtime_trace_event',
+          'runtime_branch_event'
+        )
+      order by a.created_at, a.artifact_id
+    `);
+
+    return result.rows.map((row) => {
+      const record = row as Record<string, unknown>;
+      const uri = nullableString(record.uri);
+      return {
+        artifactId: String(record.artifact_id),
+        artifactKind: String(record.artifact_kind),
+        uri,
+        hash: nullableString(record.hash),
+        mediaType: nullableString(record.media_type),
+        byteSize: nullableNumber(record.byte_size),
+        bridgeUnitId: nullableString(record.bridge_unit_id),
+        sourceUnitKey: nullableString(record.source_unit_key),
+        diagnostic: runtimeArtifactDiagnostic(uri, record.metadata),
+      };
+    });
+  }
+
+  private async runtimeDashboardApproximations(
+    runtimeRunId: string,
+  ): Promise<RuntimeDashboardApproximation[]> {
+    const result = await this.db.execute(sql`
+      select
+        rei.runtime_evidence_id,
+        rei.metadata->'approximation'->>'approximationId' as approximation_id,
+        rei.metadata->'approximation'->>'approximationTier' as approximation_tier,
+        rei.metadata->'approximation'->>'scope' as scope,
+        rei.metadata->'approximation'->>'description' as description,
+        coalesce(
+          rei.metadata->'approximation'->>'evidenceTierCeiling',
+          rei.evidence_tier
+        ) as evidence_tier_ceiling,
+        coalesce(
+          jsonb_agg(distinct ref.bridge_unit_id) filter (where ref.bridge_unit_id is not null),
+          '[]'::jsonb
+        ) as bridge_unit_ids
+      from ${runtimeEvidenceItems} rei
+      left join ${runtimeEvidenceBridgeUnitRefs} ref
+        on ref.runtime_evidence_id = rei.runtime_evidence_id
+      where rei.runtime_run_id = ${runtimeRunId}
+        and rei.evidence_kind = 'approximation'
+      group by rei.runtime_evidence_id, rei.metadata, rei.evidence_tier
+      order by rei.runtime_evidence_id
+    `);
+
+    return result.rows.map((row) => {
+      const record = row as Record<string, unknown>;
+      return {
+        approximationId: String(record.approximation_id ?? record.runtime_evidence_id),
+        approximationTier: String(record.approximation_tier ?? "unknown"),
+        scope: String(record.scope ?? "runtime"),
+        description: String(record.description ?? "Runtime approximation"),
+        evidenceTierCeiling: String(record.evidence_tier_ceiling ?? "unknown"),
+        bridgeUnitIds: stringArray(record.bridge_unit_ids),
+      };
+    });
+  }
+
+  private async runtimeDashboardUnsupportedCapabilities(
+    runtimeRunId: string,
+  ): Promise<RuntimeDashboardUnsupportedCapability[]> {
+    const result = await this.db.execute(sql`
+      select metadata->'runtimeCapabilities'->'features' as features
+      from ${runtimeEvidenceRuns}
+      where runtime_run_id = ${runtimeRunId}
+      limit 1
+    `);
+    const features = (result.rows[0] as Record<string, unknown> | undefined)?.features;
+    if (!Array.isArray(features)) {
+      return [];
+    }
+
+    return features.flatMap((feature) => {
+      if (!isRecord(feature) || feature.status !== "unsupported") {
+        return [];
+      }
+      return [
+        {
+          feature: String(feature.feature ?? "unknown"),
+          status: String(feature.status),
+          fidelityTierCeiling: nullableString(feature.fidelityTierCeiling),
+          evidenceTierCeiling: nullableString(feature.evidenceTierCeiling),
+          limitations: stringArray(feature.limitations),
+        },
+      ];
+    });
+  }
+
+  private async runtimeDashboardLimitations(
+    runtimeRunId: string | null,
+    runtimeReportId: string | null,
+  ): Promise<string[]> {
+    const id = runtimeRunId ?? runtimeReportId;
+    if (id === null) {
+      return [];
+    }
+    const result = await this.db.execute(sql`
+      select coalesce(run.metadata->'limitations', report.metadata->'limitations') as limitations
+      from (select ${id}::text as id) ids
+      left join ${runtimeEvidenceRuns} run on run.runtime_run_id = ids.id
+      left join ${artifacts} report on report.artifact_id = ids.id
+      limit 1
+    `);
+    return stringArray((result.rows[0] as Record<string, unknown> | undefined)?.limitations);
   }
 }
 
@@ -3311,4 +3627,45 @@ function isRuntimeEvidenceReportV02(
 
 function nullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
+}
+
+function nullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((entry) =>
+    typeof entry === "string" && entry.length > 0 ? [entry] : [],
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function runtimeArtifactDiagnostic(uri: string | null, metadata: unknown): string | null {
+  const redactedFields =
+    isRecord(metadata) && Array.isArray(metadata.redactedFields)
+      ? stringArray(metadata.redactedFields)
+      : [];
+  if (redactedFields.length > 0) {
+    return `redacted fields: ${redactedFields.join(", ")}`;
+  }
+  if (uri === null) {
+    return "artifact record has no managed artifact-store URI";
+  }
+  try {
+    assertPortableRelativeArtifactUri(uri);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return `blocked unmanaged artifact link: ${message}`;
+  }
+  return null;
 }

@@ -373,6 +373,7 @@ describe("ItotoriProjectRepository", () => {
       const runtimeStatus = await repo.getRuntimeStatus();
       expect(runtimeStatus).toEqual({
         finalStatus: "hello_world_passed",
+        runtimeRunId: "runtime-test",
         runtimeReportId: "runtime-test",
         runtimeStatus: "passed",
         fidelityTier: "layout_probe",
@@ -382,6 +383,38 @@ describe("ItotoriProjectRepository", () => {
         screenshotArtifactCount: 1,
         recordingArtifactCount: 0,
         validationFindingCount: 0,
+        traceEvents: [
+          {
+            runtimeEventId: "runtime-test:runtime-text-1",
+            eventKind: "trace_event",
+            bridgeUnitId: "bridge-unit-1",
+            sourceUnitKey: "hello.scene.001.line.001",
+            draftId: "locale-test:bridge-unit-1",
+            runtimeTargetId: null,
+            evidenceTier: null,
+            frame: 1,
+            textPreview: null,
+            artifactIds: [],
+          },
+        ],
+        findings: [],
+        artifacts: [
+          {
+            artifactId: "runtime-test:frame-1",
+            artifactKind: "frame_capture",
+            uri: "fixture://frame/1",
+            hash: null,
+            mediaType: null,
+            byteSize: null,
+            bridgeUnitId: "bridge-unit-1",
+            sourceUnitKey: "hello.scene.001.line.001",
+            diagnostic:
+              "blocked unmanaged artifact link: runtime artifact uri must be a portable relative artifact path: fixture://frame/1",
+          },
+        ],
+        approximations: [],
+        unsupportedCapabilities: [],
+        limitations: [],
       });
     } finally {
       await context.close();
@@ -1162,6 +1195,7 @@ describe("ItotoriProjectRepository", () => {
 
       const runtimeStatus = await repo.getRuntimeStatus();
       expect(runtimeStatus).toMatchObject({
+        runtimeRunId: "019ed003-0000-7000-8000-000000000001",
         runtimeReportId: "019ed003-0000-7000-8000-000000000001",
         runtimeStatus: "passed",
         fidelityTier: "layout_probe",
@@ -1171,6 +1205,30 @@ describe("ItotoriProjectRepository", () => {
         screenshotArtifactCount: 1,
         recordingArtifactCount: 0,
         validationFindingCount: 0,
+        traceEvents: [
+          {
+            runtimeEventId:
+              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+            draftId: "locale-test:bridge-unit-test",
+            runtimeTargetId: "hello.line.001",
+            evidenceTier: null,
+            frame: 1,
+            textPreview: "Hello, {player}.",
+          },
+        ],
+        artifacts: [
+          expect.objectContaining({
+            artifactId:
+              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000401",
+            artifactKind: "screenshot",
+            uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000001/screenshots/019ed003-0000-7000-8000-000000000401.png",
+            hash: null,
+            mediaType: "image/png",
+            diagnostic: null,
+          }),
+        ],
       });
 
       const runtimeReportArtifact = await context.pool.query<{

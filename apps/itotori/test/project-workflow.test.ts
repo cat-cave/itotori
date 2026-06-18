@@ -828,6 +828,7 @@ const dashboardStatusFixture: ProjectDashboardStatus = {
 
 const runtimeStatusFixture: RuntimeDashboardStatus = {
   finalStatus: "hello_world_passed",
+  runtimeRunId: "runtime-test",
   runtimeReportId: "runtime-test",
   runtimeStatus: "passed",
   fidelityTier: "layout_probe",
@@ -837,6 +838,12 @@ const runtimeStatusFixture: RuntimeDashboardStatus = {
   screenshotArtifactCount: 0,
   recordingArtifactCount: 0,
   validationFindingCount: 0,
+  traceEvents: [],
+  findings: [],
+  artifacts: [],
+  approximations: [],
+  unsupportedCapabilities: [],
+  limitations: [],
 };
 
 const dashboardDecisionsFixture: DashboardDecisionReadModel = {
