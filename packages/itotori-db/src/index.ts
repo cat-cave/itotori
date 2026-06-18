@@ -27,6 +27,8 @@ export {
   catalogConflictKindValues,
   catalogConflictStatusValues,
   catalogConflictSubjectKindValues,
+  catalogCrawlerJobStatusValues,
+  catalogCrawlerStepStatusValues,
   catalogEngineSourceValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusScopeValues,
@@ -43,6 +45,8 @@ export type {
   CatalogConflictKind,
   CatalogConflictStatus,
   CatalogConflictSubjectKind,
+  CatalogCrawlerJobStatus,
+  CatalogCrawlerStepStatus,
   CatalogEngineSource,
   CatalogExternalIdKind,
   CatalogLanguageStatus,
@@ -171,6 +175,41 @@ export type {
   CatalogWorkSnapshot,
   ItotoriCatalogRepositoryPort,
 } from "./repositories/catalog-repository.js";
+export { InMemoryCatalogCrawlerRepository } from "./repositories/catalog-crawler-memory-repository.js";
+export { ItotoriCatalogCrawlerRepository } from "./repositories/catalog-crawler-repository.js";
+export type {
+  CatalogCrawlerCheckpointInput,
+  CatalogCrawlerCheckpointRecord,
+  CatalogCrawlerCursor,
+  CatalogCrawlerDateInput,
+  CatalogCrawlerJobInput,
+  CatalogCrawlerJobRecord,
+  CatalogCrawlerJsonRecord,
+  CatalogCrawlerKey,
+  CatalogCrawlerRateLimitInput,
+  CatalogCrawlerRateLimitRecord,
+  CatalogCrawlerStepInput,
+  CatalogCrawlerStepRecord,
+  CatalogCrawlerStepResult,
+  ItotoriCatalogCrawlerRepositoryPort,
+} from "./repositories/catalog-crawler-repository.js";
+export {
+  catalogCrawlerPublicSources,
+  createRecordedCatalogCrawlerAdapter,
+  ItotoriCatalogCrawlerRunner,
+} from "./services/catalog-crawler-runner.js";
+export type {
+  CatalogCrawlerAdapterContext,
+  CatalogCrawlerAdapterStep,
+  CatalogCrawlerIngestContext,
+  CatalogCrawlerIngestStep,
+  CatalogCrawlerPublicSource,
+  CatalogCrawlerRateLimitMetadata,
+  CatalogCrawlerRunnerOptions,
+  CatalogCrawlerRunResult,
+  CatalogCrawlerSourceAdapter,
+  RecordedCatalogCrawlerFixture,
+} from "./services/catalog-crawler-runner.js";
 export {
   ItotoriJobWorkerService,
   ItotoriOutboxPublisherService,

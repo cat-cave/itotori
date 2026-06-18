@@ -2,6 +2,8 @@ import {
   ItotoriFeedbackRepository,
   ItotoriCatalogExactExternalIdLinkerService,
   ItotoriCatalogFuzzyCandidateGeneratorService,
+  ItotoriCatalogCrawlerRepository,
+  ItotoriCatalogCrawlerRunner,
   ItotoriCatalogRepository,
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
@@ -11,6 +13,7 @@ import {
   migrate,
   type ItotoriCatalogExactExternalIdLinkerPort,
   type ItotoriCatalogFuzzyCandidateGeneratorPort,
+  type ItotoriCatalogCrawlerRepositoryPort,
 } from "@itotori/db";
 import {
   ItotoriAuthorizationService,
@@ -29,6 +32,8 @@ export type ItotoriApplicationServices = {
   manualFeedback: ManualFeedbackImportPort;
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
+  catalogCrawlerRepository: ItotoriCatalogCrawlerRepositoryPort;
+  catalogCrawlerRunner: ItotoriCatalogCrawlerRunner;
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -57,6 +62,7 @@ export async function withDatabaseItotoriServices<T>(
     const feedbackRepository = new ItotoriFeedbackRepository(context.db);
     const modelLedgerRepository = new ItotoriModelLedgerRepository(context.db);
     const catalogRepository = new ItotoriCatalogRepository(context.db);
+    const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -74,6 +80,8 @@ export async function withDatabaseItotoriServices<T>(
         catalogRepository,
         localUserActor,
       ),
+      catalogCrawlerRepository,
+      catalogCrawlerRunner: new ItotoriCatalogCrawlerRunner(),
     });
   } finally {
     await context.close();

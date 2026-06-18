@@ -100,6 +100,10 @@ const migrations = [
     id: "0010_catalog_candidate_matches",
     file: "0010_catalog_candidate_matches.sql",
   },
+  {
+    id: "0011_catalog_crawler_jobs",
+    file: "0011_catalog_crawler_jobs.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

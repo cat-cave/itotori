@@ -299,6 +299,25 @@ export const catalogCandidateMatchStatusValues = {
 export type CatalogCandidateMatchStatus =
   (typeof catalogCandidateMatchStatusValues)[keyof typeof catalogCandidateMatchStatusValues];
 
+export const catalogCrawlerJobStatusValues = {
+  running: "running",
+  succeeded: "succeeded",
+  failed: "failed",
+  cancelled: "cancelled",
+} as const;
+
+export type CatalogCrawlerJobStatus =
+  (typeof catalogCrawlerJobStatusValues)[keyof typeof catalogCrawlerJobStatusValues];
+
+export const catalogCrawlerStepStatusValues = {
+  fetched: "fetched",
+  imported: "imported",
+  failed: "failed",
+} as const;
+
+export type CatalogCrawlerStepStatus =
+  (typeof catalogCrawlerStepStatusValues)[keyof typeof catalogCrawlerStepStatusValues];
+
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -725,6 +744,142 @@ export const catalogCandidateMatches = pgTable(
     ),
     index("itotori_catalog_candidate_matches_target_idx").on(table.targetWorkId),
     index("itotori_catalog_candidate_matches_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogCrawlerJobs = pgTable(
+  "itotori_catalog_crawler_jobs",
+  {
+    crawlerJobId: text("crawler_job_id").primaryKey(),
+    catalogSource: text("catalog_source").notNull(),
+    adapterName: text("adapter_name").notNull(),
+    adapterVersion: text("adapter_version").notNull(),
+    sourceVersion: text("source_version").notNull(),
+    parserVersion: text("parser_version").notNull(),
+    partitionKey: text("partition_key").notNull(),
+    status: text("status").notNull(),
+    checkpointCursor: jsonb("checkpoint_cursor").$type<unknown | null>(),
+    lockedBy: text("locked_by").notNull(),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }).notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_catalog_crawler_jobs_active_partition_idx")
+      .on(table.catalogSource, table.adapterName, table.partitionKey)
+      .where(sql`${table.status} = 'running'`),
+    index("itotori_catalog_crawler_jobs_source_status_idx").on(
+      table.catalogSource,
+      table.status,
+      table.updatedAt,
+    ),
+    index("itotori_catalog_crawler_jobs_lease_idx").on(table.leaseExpiresAt),
+  ],
+);
+
+export const catalogCrawlerCheckpoints = pgTable(
+  "itotori_catalog_crawler_checkpoints",
+  {
+    catalogSource: text("catalog_source").notNull(),
+    adapterName: text("adapter_name").notNull(),
+    partitionKey: text("partition_key").notNull(),
+    checkpointCursor: jsonb("checkpoint_cursor").$type<unknown | null>(),
+    sourceVersion: text("source_version").notNull(),
+    parserVersion: text("parser_version").notNull(),
+    lastCrawlerJobId: text("last_crawler_job_id").references(
+      () => catalogCrawlerJobs.crawlerJobId,
+      { onDelete: "set null" },
+    ),
+    lastStepKey: text("last_step_key"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+  },
+  (table) => [
+    primaryKey({ columns: [table.catalogSource, table.adapterName, table.partitionKey] }),
+    index("itotori_catalog_crawler_checkpoints_job_idx").on(table.lastCrawlerJobId),
+  ],
+);
+
+export const catalogCrawlerRateLimits = pgTable(
+  "itotori_catalog_crawler_rate_limits",
+  {
+    catalogSource: text("catalog_source").notNull(),
+    adapterName: text("adapter_name").notNull(),
+    partitionKey: text("partition_key").notNull(),
+    nextAvailableAt: timestamp("next_available_at", { withTimezone: true }),
+    resetAt: timestamp("reset_at", { withTimezone: true }),
+    remaining: integer("remaining"),
+    limit: integer("limit"),
+    retryAfterSeconds: integer("retry_after_seconds"),
+    requestIdentity: text("request_identity"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.catalogSource, table.adapterName, table.partitionKey] }),
+    index("itotori_catalog_crawler_rate_limits_next_idx").on(table.nextAvailableAt),
+  ],
+);
+
+export const catalogCrawlerJobSteps = pgTable(
+  "itotori_catalog_crawler_job_steps",
+  {
+    crawlerJobStepId: text("crawler_job_step_id").primaryKey(),
+    crawlerJobId: text("crawler_job_id")
+      .notNull()
+      .references(() => catalogCrawlerJobs.crawlerJobId, { onDelete: "cascade" }),
+    stepKey: text("step_key").notNull(),
+    catalogSource: text("catalog_source").notNull(),
+    adapterName: text("adapter_name").notNull(),
+    partitionKey: text("partition_key").notNull(),
+    sourceId: text("source_id").notNull(),
+    requestIdentity: text("request_identity").notNull(),
+    sourceVersion: text("source_version").notNull(),
+    parserVersion: text("parser_version").notNull(),
+    checkpointCursor: jsonb("checkpoint_cursor").$type<unknown | null>(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    httpStatus: integer("http_status"),
+    ok: boolean("ok").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    sourceProvenanceId: text("source_provenance_id")
+      .notNull()
+      .references(() => catalogSourceProvenance.sourceProvenanceId, { onDelete: "restrict" }),
+    status: text("status").notNull(),
+    importedAt: timestamp("imported_at", { withTimezone: true }),
+    error: text("error"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_catalog_crawler_job_steps_job_step_idx").on(
+      table.crawlerJobId,
+      table.stepKey,
+    ),
+    index("itotori_catalog_crawler_job_steps_source_request_idx").on(
+      table.catalogSource,
+      table.adapterName,
+      table.partitionKey,
+      table.requestIdentity,
+      table.fetchedAt,
+    ),
+    index("itotori_catalog_crawler_job_steps_provenance_idx").on(table.sourceProvenanceId),
+    index("itotori_catalog_crawler_job_steps_status_idx").on(table.status, table.updatedAt),
   ],
 );
 

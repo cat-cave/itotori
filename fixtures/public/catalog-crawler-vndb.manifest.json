@@ -1,0 +1,45 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "catalog-crawler-vndb",
+    "title": "Catalog Crawler VNDB Replay Fixture",
+    "kind": "synthetic",
+    "summary": "Synthetic recorded crawler steps for deterministic checkpoint, rate-limit, and replay verification without live network access.",
+    "sourceLocale": "ja-JP",
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Hand-authored synthetic request identities, payloads, and normalized facts; no third-party raw assets or private credentials."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic VNDB-shaped crawler replay bundle for CATALOG-005 verification.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/catalog-crawler-vndb/replay.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "09fa43b5c39184fd873010eb3b6a46bbb8f75e5a4234329b24037834aacc852c",
+      "bytes": 1432,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 1,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "engineKinds": ["catalog-crawler-synthetic"],
+    "notes": "Covers two recorded public crawler steps with fetched-at timestamps, request identities, source/parser versions supplied by the adapter, checkpoint cursors, and rate-limit metadata; it contains no live VNDB payload or credential material."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:catalog-crawler-vndb"
+  }
+}

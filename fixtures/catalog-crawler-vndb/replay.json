@@ -1,0 +1,39 @@
+{
+  "fixtureName": "catalog-crawler-public-vndb-replay",
+  "catalogSource": "vndb",
+  "adapterName": "vndb-recorded-public-fixture",
+  "adapterVersion": "adapter-fixture-v1",
+  "sourceVersion": "vndb-public-snapshot-2026-06-18",
+  "parserVersion": "parser-contract-v1",
+  "partitionKey": "public-fixture",
+  "steps": [
+    {
+      "stepKey": "step-001",
+      "sourceId": "v1",
+      "requestIdentity": "GET /kana/v1",
+      "fetchedAt": "2026-06-18T12:00:00.000Z",
+      "checkpointCursor": { "afterStepKey": "step-001", "cursor": "page-1" },
+      "httpStatus": 200,
+      "payload": { "id": "v1", "title": "Fixture VN 1" },
+      "facts": [{ "sourceId": "v1", "normalizedTitle": "Fixture VN 1" }],
+      "metadata": { "fixturePath": "fixtures/catalog-crawler-vndb/replay.json" },
+      "rateLimit": {
+        "remaining": 42,
+        "limit": 60,
+        "resetAt": "2026-06-18T12:01:00.000Z",
+        "metadata": { "policy": "recorded" }
+      }
+    },
+    {
+      "stepKey": "step-002",
+      "sourceId": "v2",
+      "requestIdentity": "GET /kana/v2",
+      "fetchedAt": "2026-06-18T12:00:05.000Z",
+      "checkpointCursor": { "afterStepKey": "step-002", "cursor": "page-2" },
+      "httpStatus": 200,
+      "payload": { "id": "v2", "title": "Fixture VN 2" },
+      "facts": [{ "sourceId": "v2", "normalizedTitle": "Fixture VN 2" }],
+      "metadata": { "fixturePath": "fixtures/catalog-crawler-vndb/replay.json" }
+    }
+  ]
+}
