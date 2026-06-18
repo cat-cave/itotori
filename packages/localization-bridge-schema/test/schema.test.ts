@@ -1868,6 +1868,26 @@ describe("localization bridge schema guards", () => {
     expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
   });
 
+  it("rejects observation hook events without advertised instrumentation hook support", () => {
+    const report = runtimeEvidenceV02Example();
+    report.observationHookEvents = [observationHookEventExample()];
+    const runtimeCapabilities = asTestRecord(
+      report.runtimeCapabilities,
+      "runtime capability contract",
+    );
+    const features = runtimeCapabilities.features as Array<Record<string, unknown>>;
+    const hookFeature = asTestRecord(
+      features.find((feature) => feature.feature === "instrumentation_hooks"),
+      "instrumentation hooks feature",
+    );
+    hookFeature.status = "unsupported";
+    delete hookFeature.evidenceTierCeiling;
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(
+      /instrumentation_hooks capability/,
+    );
+  });
+
   it("rejects observation hook events with invalid observedAt timestamps", () => {
     const report = runtimeEvidenceV02Example();
     const event = observationHookEventExample();

@@ -177,11 +177,13 @@ impl RuntimeOperationLabel {
             Self::Trace => vec![
                 RuntimePlaybackFeature::StaticTrace,
                 RuntimePlaybackFeature::TextTrace,
+                RuntimePlaybackFeature::InstrumentationHooks,
             ],
             Self::Capture => vec![
                 RuntimePlaybackFeature::StaticTrace,
                 RuntimePlaybackFeature::TextTrace,
                 RuntimePlaybackFeature::FrameCapture,
+                RuntimePlaybackFeature::InstrumentationHooks,
             ],
         }
     }
@@ -237,9 +239,14 @@ fn fixture_capability_contract() -> RuntimeCapabilityContract {
                 RuntimePlaybackFeature::Recording,
                 "The fixture does not record playback video.",
             ),
-            RuntimeFeatureSupport::unsupported(
+            RuntimeFeatureSupport::partial(
                 RuntimePlaybackFeature::InstrumentationHooks,
-                "The fixture does not expose instrumented runtime hooks.",
+                EvidenceTier::E2,
+                "Emits deterministic observation hook envelopes for fixture text and frame evidence.",
+                vec![
+                    "Observation hook events are fixture-generated and are not live commercial engine callbacks."
+                        .to_string(),
+                ],
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::VmStateInspection,
@@ -617,6 +624,17 @@ mod tests {
                 .features
                 .iter()
                 .any(|feature| {
+                    feature.feature == RuntimePlaybackFeature::InstrumentationHooks
+                        && feature.status == utsushi_core::RuntimeFeatureStatus::Partial
+                        && feature.evidence_tier_ceiling == Some(EvidenceTier::E2)
+                })
+        );
+        assert!(
+            descriptor
+                .capability_contract
+                .features
+                .iter()
+                .any(|feature| {
                     feature.feature == RuntimePlaybackFeature::Recording
                         && feature.status == utsushi_core::RuntimeFeatureStatus::Unsupported
                 })
@@ -722,6 +740,17 @@ mod tests {
                 .unwrap()
                 .iter()
                 .any(|feature| {
+                    feature["feature"] == "instrumentation_hooks"
+                        && feature["status"] == "partial"
+                        && feature["evidenceTierCeiling"] == "E2"
+                })
+        );
+        assert!(
+            report["runtimeCapabilities"]["features"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|feature| {
                     feature["feature"] == "screenshot" && feature["status"] == "unsupported"
                 })
         );
@@ -734,6 +763,13 @@ mod tests {
             "capture"
         );
         assert_eq!(report["controlledPlaybackSession"]["evidenceTier"], "E2");
+        assert!(
+            report["controlledPlaybackSession"]["featuresUsed"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|feature| feature == "instrumentation_hooks")
+        );
         assert_eq!(report["traceEvents"].as_array().unwrap().len(), 1);
         assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 2);
         assert_eq!(
@@ -792,6 +828,13 @@ mod tests {
         assert_eq!(report["evidenceTier"], "E1");
         assert_eq!(report["fidelityTier"], "trace_only");
         assert_eq!(report["controlledPlaybackSession"]["evidenceTier"], "E1");
+        assert!(
+            report["controlledPlaybackSession"]["featuresUsed"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|feature| feature == "instrumentation_hooks")
+        );
         assert_eq!(report["captures"].as_array().unwrap().len(), 0);
         assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 1);
         assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");

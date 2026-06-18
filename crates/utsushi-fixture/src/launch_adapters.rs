@@ -516,9 +516,14 @@ fn browser_capability_contract() -> RuntimeCapabilityContract {
                 RuntimePlaybackFeature::Recording,
                 "Playback recording is not implemented for browser launch smoke validation.",
             ),
-            RuntimeFeatureSupport::unsupported(
+            RuntimeFeatureSupport::partial(
                 RuntimePlaybackFeature::InstrumentationHooks,
-                "Observation hooks are planned for the RPG Maker MV/MZ adapter layer, not this launch slice.",
+                EvidenceTier::E2,
+                "Emits browser launch observation hook envelopes for text reachability and screenshot frame evidence.",
+                vec![
+                    "Hook events are produced by the launch adapter envelope and are not injected RPG Maker runtime callbacks."
+                        .to_string(),
+                ],
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::VmStateInspection,
@@ -758,6 +763,7 @@ fn browser_features_used(operation: RuntimeOperation) -> Vec<RuntimePlaybackFeat
             vec![
                 RuntimePlaybackFeature::Launch,
                 RuntimePlaybackFeature::TextTrace,
+                RuntimePlaybackFeature::InstrumentationHooks,
             ]
         }
         RuntimeOperation::Capture | RuntimeOperation::SmokeValidation => {
@@ -766,6 +772,7 @@ fn browser_features_used(operation: RuntimeOperation) -> Vec<RuntimePlaybackFeat
                 RuntimePlaybackFeature::TextTrace,
                 RuntimePlaybackFeature::Screenshot,
                 RuntimePlaybackFeature::FrameCapture,
+                RuntimePlaybackFeature::InstrumentationHooks,
             ]
         }
         RuntimeOperation::BranchDiscovery => vec![RuntimePlaybackFeature::BranchDiscovery],
@@ -944,6 +951,17 @@ mod tests {
                         && feature.status != utsushi_core::RuntimeFeatureStatus::Unsupported
                 )
         );
+        assert!(
+            descriptor
+                .capability_contract
+                .features
+                .iter()
+                .any(
+                    |feature| feature.feature == RuntimePlaybackFeature::InstrumentationHooks
+                        && feature.status == utsushi_core::RuntimeFeatureStatus::Partial
+                        && feature.evidence_tier_ceiling == Some(EvidenceTier::E2)
+                )
+        );
     }
 
     #[test]
@@ -1011,6 +1029,24 @@ printf '\211PNG\r\n\032\nutsushi fake browser screenshot\n' > "$screenshot"
         );
         assert_eq!(report["captures"].as_array().unwrap().len(), 1);
         assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 2);
+        assert!(
+            report["runtimeCapabilities"]["features"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|feature| {
+                    feature["feature"] == "instrumentation_hooks"
+                        && feature["status"] == "partial"
+                        && feature["evidenceTierCeiling"] == "E2"
+                })
+        );
+        assert!(
+            report["controlledPlaybackSession"]["featuresUsed"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|feature| feature == "instrumentation_hooks")
+        );
         assert_eq!(
             report["observationHookEvents"][0]["schemaVersion"],
             utsushi_core::OBSERVATION_HOOK_SCHEMA_VERSION

@@ -434,6 +434,24 @@ mod tests {
             utsushi_fixture::FixtureRuntimeAdapter::NAME
         );
         assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 2);
+        assert!(
+            report["runtimeCapabilities"]["features"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|feature| {
+                    feature["feature"] == "instrumentation_hooks"
+                        && feature["status"] == "partial"
+                        && feature["evidenceTierCeiling"] == "E2"
+                })
+        );
+        assert!(
+            report["controlledPlaybackSession"]["featuresUsed"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|feature| feature == "instrumentation_hooks")
+        );
         assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
         assert_eq!(
             report["observationHookEvents"][0]["schemaVersion"],
