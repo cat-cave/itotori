@@ -11296,7 +11296,7 @@
     {
       "id": "ITOTORI-063",
       "title": "Style-guide conversation contract and validators",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11329,7 +11329,10 @@
         "Conversation text accepted without structured policy projection",
         "Private examples leaking through transcript fixtures",
         "Provider-specific transcripts encoded as the only valid path"
-      ]
+      ],
+      "owner": "codex-orchestrator-wave9",
+      "branch": "spec/itotori-063",
+      "worktree": "/tmp/itotori-spec-itotori-063"
     },
     {
       "id": "ITOTORI-064",
@@ -12590,7 +12593,7 @@
     {
       "id": "CATALOG-012",
       "title": "DLsite and Steam recorded storefront adapters",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -12626,7 +12629,10 @@
         "Storefront demand scope bypassed by alpha selection",
         "Rate-limit metadata loss",
         "Live-network CI coupling"
-      ]
+      ],
+      "owner": "codex-orchestrator-wave9",
+      "branch": "spec/catalog-012",
+      "worktree": "/tmp/itotori-spec-catalog-012"
     },
     {
       "id": "CATALOG-013",
@@ -12746,7 +12752,7 @@
     {
       "id": "KAIFUU-083",
       "title": "String-reference relocation and rebuild fixtures",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12778,7 +12784,10 @@
         "Relocation writes without pointer provenance",
         "Shared strings duplicated silently",
         "Unsupported pointer formats treated as patchable"
-      ]
+      ],
+      "owner": "codex-orchestrator-wave9",
+      "branch": "spec/kaifuu-083",
+      "worktree": "/tmp/itotori-spec-kaifuu-083"
     },
     {
       "id": "KAIFUU-084",
