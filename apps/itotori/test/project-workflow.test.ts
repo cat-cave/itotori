@@ -88,7 +88,7 @@ describe("ItotoriProjectWorkflowService", () => {
     expect(project.drafts).toEqual({});
   });
 
-  it("drafts explicit non-Japanese-to-non-English locale pairs", async () => {
+  it("drafts explicit non-Japanese-to-English locale pairs", async () => {
     const repository = repositoryFixture();
     const ledger = ledgerFixture();
     const provider = new FakeModelProvider({
@@ -100,21 +100,21 @@ describe("ItotoriProjectWorkflowService", () => {
           sourceText: string;
         };
         expect(body.sourceLocale).toBe("de-DE");
-        expect(body.targetLocale).toBe("it-IT");
+        expect(body.targetLocale).toBe("en-US");
         return `[${body.targetLocale}] ${body.sourceText}`;
       },
     });
     const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
     const project = nonJapaneseSourceProjectFixture({ drafts: {} });
 
-    const drafted = await service.draftProject(project, "it-IT");
+    const drafted = await service.draftProject(project, "en-US");
 
-    expect(drafted.targetLocale).toBe("it-IT");
-    expect(drafted.drafts["bridge-unit-test"]).toBe("[it-IT] Guten Tag, {player}.");
+    expect(drafted.targetLocale).toBe("en-US");
+    expect(drafted.drafts["bridge-unit-test"]).toBe("[en-US] Guten Tag, {player}.");
     expect(repository.saveDrafts).toHaveBeenCalledWith(
       actor,
       expect.objectContaining({
-        targetLocale: "it-IT",
+        targetLocale: "en-US",
         bridge: expect.objectContaining({ sourceLocale: "de-DE" }),
       }),
     );
@@ -693,7 +693,7 @@ function bridgeFixture(): BridgeBundle {
 
 function nonJapaneseSourceProjectFixture(overrides: Partial<ProjectState> = {}): ProjectState {
   return projectFixture({
-    targetLocale: "it-IT",
+    targetLocale: "en-US",
     bridge: {
       ...bridgeFixture(),
       sourceLocale: "de-DE",

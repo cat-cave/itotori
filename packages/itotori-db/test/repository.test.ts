@@ -2562,6 +2562,45 @@ describe("ItotoriProjectRepository", () => {
           drafts: { "bridge-unit-test": "Annyeonghaseyo, {player}." },
         }),
       );
+      await repo.savePatchExport(
+        localActor,
+        projectFixture({
+          localeBranchId: "locale-fr-fr",
+          targetLocale: "fr-FR",
+          drafts: { "bridge-unit-test": "Bonjour, {player}." },
+        }),
+        {
+          schemaVersion: "0.1.0",
+          patchExportId: "patch-fr-fr",
+          sourceBridgeId: "bridge-test",
+          sourceBundleHash: "hash-test",
+          sourceLocale: "ja-JP",
+          targetLocale: "fr-FR",
+          entries: [
+            {
+              entryId: "entry-fr-fr",
+              bridgeUnitId: "bridge-unit-test",
+              sourceUnitKey: "hello.scene.001.line.001",
+              sourceHash: "source-hash",
+              targetText: "Bonjour, {player}.",
+              protectedSpanMappings: [{ raw: "{player}", targetStart: 9, targetEnd: 17 }],
+            },
+          ],
+        },
+      );
+      await repo.recordBenchmarkArtifactWithProviderLedger(localActor, {
+        artifact: {
+          artifactId: "benchmark-ko-kr",
+          projectId: "project-test",
+          localeBranchId: "locale-ko-kr",
+          artifactKind: "benchmark_report",
+          metadata: {
+            schemaVersion: "0.2.0",
+            benchmarkName: "ko-KR branch identity fixture",
+          },
+        },
+        providerRuns: [],
+      });
 
       const firstIdentities = await repo.listLocaleBranchIdentities("project-test");
       expect(firstIdentities.map((branch) => branch.localeBranchId)).toEqual([
@@ -2596,6 +2635,26 @@ describe("ItotoriProjectRepository", () => {
             : branch,
         ),
       );
+      const artifactRows = await context.db.execute(sql`
+        select artifact_id, locale_branch_id, artifact_kind, metadata->>'targetLocale' as target_locale
+        from ${artifacts}
+        where artifact_id in ('patch-fr-fr', 'benchmark-ko-kr')
+        order by artifact_id
+      `);
+      expect(artifactRows.rows).toEqual([
+        expect.objectContaining({
+          artifact_id: "benchmark-ko-kr",
+          artifact_kind: "benchmark_report",
+          locale_branch_id: "locale-ko-kr",
+          target_locale: null,
+        }),
+        expect.objectContaining({
+          artifact_id: "patch-fr-fr",
+          artifact_kind: "patch_export",
+          locale_branch_id: "locale-fr-fr",
+          target_locale: "fr-FR",
+        }),
+      ]);
     } finally {
       await context.close();
     }

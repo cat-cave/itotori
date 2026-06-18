@@ -147,6 +147,14 @@ describe("Itotori API handlers", () => {
 
     expect(projects).toEqual({ statusCode: 200, body: { projects: [dashboardStatusFixture] } });
     expect(projectStatus).toEqual({ statusCode: 200, body: dashboardStatusFixture });
+    expect(projects.body.projects[0]?.localeBranches).toEqual([
+      expect.objectContaining({ localeBranchId: "locale-1", targetLocale: "en-US" }),
+      expect.objectContaining({ localeBranchId: "locale-fr-fr", targetLocale: "fr-FR" }),
+    ]);
+    expect(projectStatus.body.localeBranches).toEqual([
+      expect.objectContaining({ localeBranchId: "locale-1", targetLocale: "en-US" }),
+      expect.objectContaining({ localeBranchId: "locale-fr-fr", targetLocale: "fr-FR" }),
+    ]);
     expect(runtimeStatus).toEqual({ statusCode: 200, body: runtimeStatusFixture });
     expect(runtimeV02Status).toEqual({ statusCode: 200, body: runtimeStatusFixture });
     expect(runtimeV02Status.body).toMatchObject({
@@ -323,13 +331,13 @@ describe("Itotori API handlers", () => {
     },
   );
 
-  it("passes explicit non-Japanese-to-non-English draft locale pairs through the API", async () => {
+  it("passes explicit non-Japanese-to-English draft locale pairs through the API", async () => {
     const services = serviceFixture();
 
     const response = await handleItotoriApiRequest(
-      post("/api/projects/project-de-it/branches", {
+      post("/api/projects/project-de-en/branches", {
         project: nonJapaneseTargetProjectFixture,
-        targetLocale: "it-IT",
+        targetLocale: "en-US",
       }),
       services,
     );
@@ -337,7 +345,7 @@ describe("Itotori API handlers", () => {
     expect(response.statusCode).toBe(200);
     expect(services.projectWorkflow.draftProject).toHaveBeenCalledWith(
       nonJapaneseTargetProjectFixture,
-      "it-IT",
+      "en-US",
     );
   });
 
