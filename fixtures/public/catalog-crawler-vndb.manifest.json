@@ -23,8 +23,8 @@
       "path": "fixtures/catalog-crawler-vndb/replay.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "09fa43b5c39184fd873010eb3b6a46bbb8f75e5a4234329b24037834aacc852c",
-      "bytes": 1432,
+      "sha256": "795cad18dd719e23acf5f741be353544b31e5a315d69b6e6053ed38e2c80a5ad",
+      "bytes": 1819,
       "redistributable": true
     }
   ],
