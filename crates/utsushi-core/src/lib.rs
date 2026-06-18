@@ -1,6 +1,9 @@
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -8,6 +11,10 @@ pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 pub const RUNTIME_ARTIFACT_URI_ROOT: &str = "artifacts/utsushi/runtime";
 pub const RUNTIME_ARTIFACT_ROOT_MARKER: &str = ".utsushi-runtime-artifacts";
+
+const DEFAULT_HARNESS_TIMEOUT: Duration = Duration::from_secs(30);
+const DEFAULT_HARNESS_SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
+const DEFAULT_HARNESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 const OBVIOUS_UNMANAGED_ROOT_SENTINELS: &[&str] = &[
     ".git",
@@ -823,6 +830,678 @@ impl ControlledPlaybackSession {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeLaunchCommand {
+    pub program: PathBuf,
+    pub args: Vec<String>,
+    pub current_dir: Option<PathBuf>,
+    pub env: Vec<(String, String)>,
+}
+
+impl RuntimeLaunchCommand {
+    pub fn new(program: impl Into<PathBuf>) -> Self {
+        Self {
+            program: program.into(),
+            args: Vec::new(),
+            current_dir: None,
+            env: Vec::new(),
+        }
+    }
+
+    pub fn arg(mut self, arg: impl Into<String>) -> Self {
+        self.args.push(arg.into());
+        self
+    }
+
+    pub fn args<I, S>(mut self, args: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.args.extend(args.into_iter().map(Into::into));
+        self
+    }
+
+    pub fn current_dir(mut self, current_dir: impl Into<PathBuf>) -> Self {
+        self.current_dir = Some(current_dir.into());
+        self
+    }
+
+    pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.env.push((key.into(), value.into()));
+        self
+    }
+
+    fn to_command(&self) -> Command {
+        let mut command = Command::new(&self.program);
+        command
+            .args(&self.args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        if let Some(current_dir) = &self.current_dir {
+            command.current_dir(current_dir);
+        }
+        for (key, value) in &self.env {
+            command.env(key, value);
+        }
+        command
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeLaunchCapturePlan {
+    pub run_id: String,
+    pub operation: RuntimeOperation,
+    pub command: RuntimeLaunchCommand,
+    pub timeout: Duration,
+    pub shutdown_grace: Duration,
+    pub poll_interval: Duration,
+    pub artifact_root: Option<PathBuf>,
+}
+
+impl RuntimeLaunchCapturePlan {
+    pub fn new(
+        run_id: impl Into<String>,
+        operation: RuntimeOperation,
+        command: RuntimeLaunchCommand,
+    ) -> Self {
+        Self {
+            run_id: run_id.into(),
+            operation,
+            command,
+            timeout: DEFAULT_HARNESS_TIMEOUT,
+            shutdown_grace: DEFAULT_HARNESS_SHUTDOWN_GRACE,
+            poll_interval: DEFAULT_HARNESS_POLL_INTERVAL,
+            artifact_root: None,
+        }
+    }
+
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
+        self
+    }
+
+    pub fn with_shutdown_grace(mut self, shutdown_grace: Duration) -> Self {
+        self.shutdown_grace = shutdown_grace;
+        self
+    }
+
+    pub fn with_poll_interval(mut self, poll_interval: Duration) -> Self {
+        self.poll_interval = poll_interval;
+        self
+    }
+
+    pub fn with_artifact_root(mut self, artifact_root: impl Into<PathBuf>) -> Self {
+        self.artifact_root = Some(artifact_root.into());
+        self
+    }
+
+    fn validate(&self) -> Result<(), RuntimeHarnessError> {
+        if let Err(error) = validate_artifact_segment("run id", &self.run_id) {
+            return Err(RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::InvalidPlan,
+                self.operation,
+                format!("invalid runtime harness run id: {error}"),
+            ));
+        }
+        if self.command.program.as_os_str().is_empty() {
+            return Err(RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::InvalidPlan,
+                self.operation,
+                "runtime launch command program must not be empty",
+            ));
+        }
+        if self.timeout.is_zero() {
+            return Err(RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::InvalidPlan,
+                self.operation,
+                "runtime launch timeout must be greater than zero",
+            ));
+        }
+        if self.shutdown_grace.is_zero() {
+            return Err(RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::InvalidPlan,
+                self.operation,
+                "runtime launch shutdown grace must be greater than zero",
+            ));
+        }
+        if self.poll_interval.is_zero() {
+            return Err(RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::InvalidPlan,
+                self.operation,
+                "runtime launch poll interval must be greater than zero",
+            ));
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RuntimeCaptureBoundary {
+    AfterLaunch,
+    BeforeTerminate,
+    AfterExit,
+}
+
+impl RuntimeCaptureBoundary {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::AfterLaunch => "after_launch",
+            Self::BeforeTerminate => "before_terminate",
+            Self::AfterExit => "after_exit",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RuntimeHarnessErrorKind {
+    InvalidPlan,
+    LaunchFailed,
+    Timeout,
+    ProcessFailed,
+    ProcessWaitFailed,
+    ProcessCleanupFailed,
+    CaptureFailed,
+    ArtifactStoreUnavailable,
+    ArtifactWriteFailed,
+}
+
+impl RuntimeHarnessErrorKind {
+    pub fn code(self) -> &'static str {
+        match self {
+            Self::InvalidPlan => "runtime_harness_invalid_plan",
+            Self::LaunchFailed => "runtime_launch_failed",
+            Self::Timeout => "runtime_launch_timeout",
+            Self::ProcessFailed => "runtime_process_failed",
+            Self::ProcessWaitFailed => "runtime_process_wait_failed",
+            Self::ProcessCleanupFailed => "runtime_process_cleanup_failed",
+            Self::CaptureFailed => "runtime_capture_failed",
+            Self::ArtifactStoreUnavailable => "runtime_artifact_store_unavailable",
+            Self::ArtifactWriteFailed => "runtime_artifact_write_failed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeProcessCleanup {
+    pub attempted: bool,
+    pub completed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeHarnessError {
+    pub kind: RuntimeHarnessErrorKind,
+    pub operation: RuntimeOperation,
+    pub message: String,
+    pub boundary: Option<RuntimeCaptureBoundary>,
+    pub process_id: Option<u32>,
+    pub cleanup: Option<RuntimeProcessCleanup>,
+    pub details: Vec<(String, String)>,
+}
+
+impl RuntimeHarnessError {
+    pub fn new(
+        kind: RuntimeHarnessErrorKind,
+        operation: RuntimeOperation,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            kind,
+            operation,
+            message: message.into(),
+            boundary: None,
+            process_id: None,
+            cleanup: None,
+            details: Vec::new(),
+        }
+    }
+
+    pub fn capture_failed(operation: RuntimeOperation, message: impl Into<String>) -> Self {
+        Self::new(RuntimeHarnessErrorKind::CaptureFailed, operation, message)
+    }
+
+    pub fn code(&self) -> &'static str {
+        self.kind.code()
+    }
+
+    pub fn with_boundary(mut self, boundary: RuntimeCaptureBoundary) -> Self {
+        self.boundary = Some(boundary);
+        self
+    }
+
+    pub fn with_process_id(mut self, process_id: u32) -> Self {
+        self.process_id = Some(process_id);
+        self
+    }
+
+    pub fn with_cleanup(mut self, cleanup: RuntimeProcessCleanup) -> Self {
+        self.cleanup = Some(cleanup);
+        if !cleanup.completed && self.kind != RuntimeHarnessErrorKind::Timeout {
+            self.kind = RuntimeHarnessErrorKind::ProcessCleanupFailed;
+        }
+        self
+    }
+
+    pub fn with_detail(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.details.push((key.into(), value.into()));
+        self
+    }
+
+    pub fn to_json(&self) -> Value {
+        let details = self
+            .details
+            .iter()
+            .map(|(key, value)| (key.clone(), Value::String(value.clone())))
+            .collect::<serde_json::Map<_, _>>();
+        let mut value = serde_json::Map::new();
+        value.insert("errorCode".to_string(), self.code().into());
+        value.insert("message".to_string(), self.message.clone().into());
+        value.insert("operation".to_string(), self.operation.as_str().into());
+        if let Some(boundary) = self.boundary {
+            value.insert("boundary".to_string(), boundary.as_str().into());
+        }
+        if let Some(process_id) = self.process_id {
+            value.insert("processId".to_string(), process_id.into());
+        }
+        if let Some(cleanup) = self.cleanup {
+            value.insert(
+                "cleanup".to_string(),
+                serde_json::json!({
+                    "attempted": cleanup.attempted,
+                    "completed": cleanup.completed
+                }),
+            );
+        }
+        if !details.is_empty() {
+            value.insert("details".to_string(), Value::Object(details));
+        }
+        Value::Object(value)
+    }
+
+    pub fn to_validation_finding(
+        &self,
+        finding_id: impl Into<String>,
+        finding_kind: impl Into<String>,
+        severity: impl Into<String>,
+        evidence_tier: EvidenceTier,
+    ) -> Value {
+        serde_json::json!({
+            "findingId": finding_id.into(),
+            "findingKind": finding_kind.into(),
+            "severity": severity.into(),
+            "message": format!("{}: {}", self.code(), self.message),
+            "evidenceTier": evidence_tier.as_str()
+        })
+    }
+}
+
+impl std::fmt::Display for RuntimeHarnessError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(formatter, "{}: {}", self.code(), self.message)
+    }
+}
+
+impl std::error::Error for RuntimeHarnessError {}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeCapturedArtifact {
+    pub artifact_id: String,
+    pub artifact_kind: RuntimeArtifactKind,
+    pub uri: String,
+    pub media_type: Option<String>,
+    pub byte_size: u64,
+    pub path: PathBuf,
+    pub boundary: Option<RuntimeCaptureBoundary>,
+}
+
+impl RuntimeCapturedArtifact {
+    pub fn artifact_ref_json(&self) -> Value {
+        let mut value = serde_json::Map::new();
+        value.insert("artifactId".to_string(), self.artifact_id.clone().into());
+        value.insert(
+            "artifactKind".to_string(),
+            self.artifact_kind.artifact_kind().into(),
+        );
+        value.insert("uri".to_string(), self.uri.clone().into());
+        if let Some(media_type) = &self.media_type {
+            value.insert("mediaType".to_string(), media_type.clone().into());
+        }
+        value.insert("byteSize".to_string(), self.byte_size.into());
+        Value::Object(value)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeCaptureArtifactStore {
+    root: RuntimeArtifactRoot,
+    run_id: String,
+}
+
+impl RuntimeCaptureArtifactStore {
+    pub fn prepare(
+        root: impl Into<PathBuf>,
+        run_id: impl Into<String>,
+        operation: RuntimeOperation,
+    ) -> Result<Self, RuntimeHarnessError> {
+        let run_id = run_id.into();
+        if let Err(error) = validate_artifact_segment("run id", &run_id) {
+            return Err(RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::InvalidPlan,
+                operation,
+                format!("invalid runtime artifact run id: {error}"),
+            ));
+        }
+        let store = Self {
+            root: RuntimeArtifactRoot::new(root.into()),
+            run_id,
+        };
+        store.root.prepare().map_err(|error| {
+            RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::ArtifactWriteFailed,
+                operation,
+                format!("failed to prepare runtime artifact root: {error}"),
+            )
+        })?;
+        Ok(store)
+    }
+
+    pub fn root(&self) -> &RuntimeArtifactRoot {
+        &self.root
+    }
+
+    pub fn write_artifact(
+        &self,
+        kind: RuntimeArtifactKind,
+        artifact_id: impl Into<String>,
+        media_type: impl Into<Option<String>>,
+        contents: &[u8],
+    ) -> UtsushiResult<RuntimeCapturedArtifact> {
+        self.write_artifact_with_extension(
+            kind,
+            artifact_id,
+            kind.default_extension(),
+            media_type,
+            contents,
+        )
+    }
+
+    pub fn write_artifact_with_extension(
+        &self,
+        kind: RuntimeArtifactKind,
+        artifact_id: impl Into<String>,
+        extension: impl Into<String>,
+        media_type: impl Into<Option<String>>,
+        contents: &[u8],
+    ) -> UtsushiResult<RuntimeCapturedArtifact> {
+        let artifact_id = artifact_id.into();
+        let name = RuntimeArtifactName::with_extension(
+            &self.run_id,
+            kind,
+            artifact_id.clone(),
+            extension.into(),
+        )?;
+        let uri = name.uri();
+        let path = self.root.write_bytes(&uri, contents)?;
+        Ok(RuntimeCapturedArtifact {
+            artifact_id,
+            artifact_kind: kind,
+            uri,
+            media_type: media_type.into(),
+            byte_size: contents.len() as u64,
+            path,
+            boundary: None,
+        })
+    }
+}
+
+pub struct RuntimeCaptureContext<'a> {
+    pub operation: RuntimeOperation,
+    pub boundary: RuntimeCaptureBoundary,
+    pub process_id: u32,
+    pub run_id: &'a str,
+    artifact_store: Option<&'a RuntimeCaptureArtifactStore>,
+    artifacts: Vec<RuntimeCapturedArtifact>,
+}
+
+impl<'a> RuntimeCaptureContext<'a> {
+    fn new(
+        operation: RuntimeOperation,
+        boundary: RuntimeCaptureBoundary,
+        process_id: u32,
+        run_id: &'a str,
+        artifact_store: Option<&'a RuntimeCaptureArtifactStore>,
+    ) -> Self {
+        Self {
+            operation,
+            boundary,
+            process_id,
+            run_id,
+            artifact_store,
+            artifacts: Vec::new(),
+        }
+    }
+
+    pub fn write_artifact(
+        &mut self,
+        kind: RuntimeArtifactKind,
+        artifact_id: impl Into<String>,
+        media_type: impl Into<Option<String>>,
+        contents: &[u8],
+    ) -> Result<RuntimeCapturedArtifact, RuntimeHarnessError> {
+        let Some(store) = self.artifact_store else {
+            return Err(RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::ArtifactStoreUnavailable,
+                self.operation,
+                "capture hook requested artifact storage but no managed runtime artifact root was configured",
+            )
+            .with_boundary(self.boundary)
+            .with_process_id(self.process_id));
+        };
+        let mut artifact = store
+            .write_artifact(kind, artifact_id, media_type, contents)
+            .map_err(|error| {
+                RuntimeHarnessError::new(
+                    RuntimeHarnessErrorKind::ArtifactWriteFailed,
+                    self.operation,
+                    format!("capture hook failed to write runtime artifact: {error}"),
+                )
+                .with_boundary(self.boundary)
+                .with_process_id(self.process_id)
+            })?;
+        artifact.boundary = Some(self.boundary);
+        self.artifacts.push(artifact.clone());
+        Ok(artifact)
+    }
+
+    pub fn artifacts(&self) -> &[RuntimeCapturedArtifact] {
+        &self.artifacts
+    }
+
+    fn into_artifacts(self) -> Vec<RuntimeCapturedArtifact> {
+        self.artifacts
+    }
+}
+
+pub trait RuntimeCaptureHook {
+    fn boundary(&self) -> RuntimeCaptureBoundary;
+
+    fn capture(
+        &mut self,
+        context: &mut RuntimeCaptureContext<'_>,
+    ) -> Result<(), RuntimeHarnessError>;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuntimeProcessExit {
+    pub success: bool,
+    pub code: Option<i32>,
+}
+
+impl RuntimeProcessExit {
+    fn from_status(status: ExitStatus) -> Self {
+        Self {
+            success: status.success(),
+            code: status.code(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeLaunchCaptureOutcome {
+    pub process_id: u32,
+    pub exit: RuntimeProcessExit,
+    pub elapsed: Duration,
+    pub artifacts: Vec<RuntimeCapturedArtifact>,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct RuntimeLaunchCaptureHarness;
+
+impl RuntimeLaunchCaptureHarness {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn run(
+        &self,
+        plan: &RuntimeLaunchCapturePlan,
+        hooks: &mut [&mut dyn RuntimeCaptureHook],
+    ) -> Result<RuntimeLaunchCaptureOutcome, RuntimeHarnessError> {
+        plan.validate()?;
+        let artifact_store = plan
+            .artifact_root
+            .as_ref()
+            .map(|artifact_root| {
+                RuntimeCaptureArtifactStore::prepare(
+                    artifact_root.clone(),
+                    plan.run_id.clone(),
+                    plan.operation,
+                )
+            })
+            .transpose()?;
+
+        let started_at = Instant::now();
+        let mut command = plan.command.to_command();
+        let mut child = command.spawn().map_err(|error| {
+            RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::LaunchFailed,
+                plan.operation,
+                format!(
+                    "failed to launch runtime command {}: {error}",
+                    plan.command.program.display()
+                ),
+            )
+            .with_detail("ioKind", error.kind().to_string())
+        })?;
+        let process_id = child.id();
+        let mut artifacts = Vec::new();
+
+        if let Err(error) = self.run_hooks(
+            RuntimeCaptureBoundary::AfterLaunch,
+            plan,
+            process_id,
+            artifact_store.as_ref(),
+            hooks,
+            &mut artifacts,
+        ) {
+            let cleanup = terminate_child(&mut child, plan.shutdown_grace, plan.poll_interval);
+            return Err(error.with_process_id(process_id).with_cleanup(cleanup));
+        }
+
+        let status = match wait_for_child_exit(&mut child, plan.timeout, plan.poll_interval) {
+            Ok(Some(status)) => status,
+            Ok(None) => {
+                let _ = self.run_hooks(
+                    RuntimeCaptureBoundary::BeforeTerminate,
+                    plan,
+                    process_id,
+                    artifact_store.as_ref(),
+                    hooks,
+                    &mut artifacts,
+                );
+                let cleanup = terminate_child(&mut child, plan.shutdown_grace, plan.poll_interval);
+                return Err(RuntimeHarnessError::new(
+                    RuntimeHarnessErrorKind::Timeout,
+                    plan.operation,
+                    format!("runtime command exceeded timeout of {:?}", plan.timeout),
+                )
+                .with_process_id(process_id)
+                .with_cleanup(cleanup)
+                .with_detail("timeoutMillis", plan.timeout.as_millis().to_string()));
+            }
+            Err(error) => {
+                let cleanup = terminate_child(&mut child, plan.shutdown_grace, plan.poll_interval);
+                return Err(RuntimeHarnessError::new(
+                    RuntimeHarnessErrorKind::ProcessWaitFailed,
+                    plan.operation,
+                    format!("failed while waiting for runtime process: {error}"),
+                )
+                .with_process_id(process_id)
+                .with_cleanup(cleanup)
+                .with_detail("ioKind", error.kind().to_string()));
+            }
+        };
+
+        self.run_hooks(
+            RuntimeCaptureBoundary::AfterExit,
+            plan,
+            process_id,
+            artifact_store.as_ref(),
+            hooks,
+            &mut artifacts,
+        )?;
+
+        let exit = RuntimeProcessExit::from_status(status);
+        if !exit.success {
+            let mut error = RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::ProcessFailed,
+                plan.operation,
+                "runtime process exited with a non-zero status",
+            )
+            .with_process_id(process_id);
+            if let Some(code) = exit.code {
+                error = error.with_detail("exitCode", code.to_string());
+            }
+            return Err(error);
+        }
+
+        Ok(RuntimeLaunchCaptureOutcome {
+            process_id,
+            exit,
+            elapsed: started_at.elapsed(),
+            artifacts,
+        })
+    }
+
+    fn run_hooks(
+        &self,
+        boundary: RuntimeCaptureBoundary,
+        plan: &RuntimeLaunchCapturePlan,
+        process_id: u32,
+        artifact_store: Option<&RuntimeCaptureArtifactStore>,
+        hooks: &mut [&mut dyn RuntimeCaptureHook],
+        artifacts: &mut Vec<RuntimeCapturedArtifact>,
+    ) -> Result<(), RuntimeHarnessError> {
+        for hook in hooks.iter_mut() {
+            if hook.boundary() != boundary {
+                continue;
+            }
+            let mut context = RuntimeCaptureContext::new(
+                plan.operation,
+                boundary,
+                process_id,
+                &plan.run_id,
+                artifact_store,
+            );
+            hook.capture(&mut context)
+                .map_err(|error| error.with_boundary(boundary).with_process_id(process_id))?;
+            artifacts.extend(context.into_artifacts());
+        }
+        Ok(())
+    }
+}
+
 pub trait RuntimeAdapter {
     fn descriptor(&self) -> RuntimeAdapterDescriptor;
 
@@ -1173,13 +1852,86 @@ fn unsupported_operation(
     )
 }
 
+fn wait_for_child_exit(
+    child: &mut Child,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> io::Result<Option<ExitStatus>> {
+    let started_at = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(Some(status));
+        }
+        let elapsed = started_at.elapsed();
+        if elapsed >= timeout {
+            return Ok(None);
+        }
+        let remaining = timeout.saturating_sub(elapsed);
+        thread::sleep(if remaining < poll_interval {
+            remaining
+        } else {
+            poll_interval
+        });
+    }
+}
+
+fn terminate_child(
+    child: &mut Child,
+    shutdown_grace: Duration,
+    poll_interval: Duration,
+) -> RuntimeProcessCleanup {
+    if matches!(child.try_wait(), Ok(Some(_))) {
+        return RuntimeProcessCleanup {
+            attempted: false,
+            completed: true,
+        };
+    }
+
+    let attempted = child.kill().is_ok();
+    let started_at = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                return RuntimeProcessCleanup {
+                    attempted,
+                    completed: true,
+                };
+            }
+            Ok(None) => {}
+            Err(_) => {
+                return RuntimeProcessCleanup {
+                    attempted,
+                    completed: false,
+                };
+            }
+        }
+        let elapsed = started_at.elapsed();
+        if elapsed >= shutdown_grace {
+            return RuntimeProcessCleanup {
+                attempted,
+                completed: false,
+            };
+        }
+        let remaining = shutdown_grace.saturating_sub(elapsed);
+        thread::sleep(if remaining < poll_interval {
+            remaining
+        } else {
+            poll_interval
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     struct FakeTraceAdapter;
+
+    const HARNESS_RUN_ID: &str = "019ed003-0000-7000-8000-000000001014";
+    const HARNESS_SCREENSHOT_ID: &str = "019ed003-0000-7000-8000-000000004014";
+    const HARNESS_FRAME_ID: &str = "019ed003-0000-7000-8000-000000004015";
 
     fn trace_contract() -> RuntimeCapabilityContract {
         RuntimeCapabilityContract::new(
@@ -1230,6 +1982,85 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).unwrap();
         root
+    }
+
+    fn harness_child_command(test_name: &str) -> RuntimeLaunchCommand {
+        RuntimeLaunchCommand::new(std::env::current_exe().unwrap()).args([
+            "--exact",
+            test_name,
+            "--ignored",
+            "--nocapture",
+        ])
+    }
+
+    #[test]
+    #[ignore]
+    fn harness_child_exits() {}
+
+    #[test]
+    #[ignore]
+    fn harness_child_sleeps() {
+        std::thread::sleep(Duration::from_secs(5));
+    }
+
+    struct WritingCaptureHook {
+        boundary: RuntimeCaptureBoundary,
+        calls: usize,
+    }
+
+    impl WritingCaptureHook {
+        fn new(boundary: RuntimeCaptureBoundary) -> Self {
+            Self { boundary, calls: 0 }
+        }
+    }
+
+    impl RuntimeCaptureHook for WritingCaptureHook {
+        fn boundary(&self) -> RuntimeCaptureBoundary {
+            self.boundary
+        }
+
+        fn capture(
+            &mut self,
+            context: &mut RuntimeCaptureContext<'_>,
+        ) -> Result<(), RuntimeHarnessError> {
+            self.calls += 1;
+            assert_eq!(context.boundary, self.boundary);
+            assert_eq!(context.run_id, HARNESS_RUN_ID);
+            context.write_artifact(
+                RuntimeArtifactKind::Screenshot,
+                HARNESS_SCREENSHOT_ID,
+                Some("image/png".to_string()),
+                b"runtime screenshot bytes",
+            )?;
+            context.write_artifact(
+                RuntimeArtifactKind::FrameCapture,
+                HARNESS_FRAME_ID,
+                Some("image/png".to_string()),
+                b"runtime frame capture bytes",
+            )?;
+            Ok(())
+        }
+    }
+
+    struct ArtifactRequiredHook;
+
+    impl RuntimeCaptureHook for ArtifactRequiredHook {
+        fn boundary(&self) -> RuntimeCaptureBoundary {
+            RuntimeCaptureBoundary::AfterLaunch
+        }
+
+        fn capture(
+            &mut self,
+            context: &mut RuntimeCaptureContext<'_>,
+        ) -> Result<(), RuntimeHarnessError> {
+            context.write_artifact(
+                RuntimeArtifactKind::Screenshot,
+                HARNESS_SCREENSHOT_ID,
+                Some("image/png".to_string()),
+                b"requires an artifact root",
+            )?;
+            Ok(())
+        }
     }
 
     impl RuntimeAdapter for FakeTraceAdapter {
@@ -1408,6 +2239,159 @@ mod tests {
             .to_string();
 
         assert!(error.contains("does not support capture"));
+    }
+
+    #[test]
+    fn launch_capture_harness_runs_process_and_persists_hook_artifacts() {
+        let temp = temp_root("harness-success");
+        let artifact_root = temp.join("runtime-artifacts");
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command("tests::harness_child_exits"),
+        )
+        .with_artifact_root(&artifact_root)
+        .with_timeout(Duration::from_secs(5))
+        .with_shutdown_grace(Duration::from_secs(1));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hook = WritingCaptureHook::new(RuntimeCaptureBoundary::AfterLaunch);
+        let mut hooks: Vec<&mut dyn RuntimeCaptureHook> = vec![&mut hook];
+
+        let outcome = harness.run(&plan, &mut hooks).unwrap();
+
+        assert!(outcome.exit.success);
+        assert_eq!(hook.calls, 1);
+        assert_eq!(outcome.artifacts.len(), 2);
+        let screenshot = &outcome.artifacts[0];
+        assert_eq!(screenshot.artifact_kind, RuntimeArtifactKind::Screenshot);
+        assert_eq!(
+            screenshot.boundary,
+            Some(RuntimeCaptureBoundary::AfterLaunch)
+        );
+        assert!(screenshot.path.starts_with(&artifact_root));
+        assert!(screenshot.path.is_file());
+        assert_eq!(
+            fs::read(&screenshot.path).unwrap(),
+            b"runtime screenshot bytes"
+        );
+        let frame_capture = &outcome.artifacts[1];
+        assert_eq!(
+            frame_capture.artifact_kind,
+            RuntimeArtifactKind::FrameCapture
+        );
+        assert!(frame_capture.path.starts_with(&artifact_root));
+        assert!(frame_capture.path.is_file());
+
+        let artifact_ref = screenshot.artifact_ref_json();
+        assert_eq!(artifact_ref["artifactKind"], "screenshot");
+        assert_eq!(
+            artifact_ref["uri"],
+            format!(
+                "{}/{}/screenshots/{}.png",
+                RUNTIME_ARTIFACT_URI_ROOT, HARNESS_RUN_ID, HARNESS_SCREENSHOT_ID
+            )
+        );
+        assert!(artifact_ref.get("data").is_none());
+        assert!(artifact_ref.get("bytes").is_none());
+        assert!(artifact_ref.get("localPath").is_none());
+        assert!(artifact_root.join(RUNTIME_ARTIFACT_ROOT_MARKER).is_file());
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn launch_capture_harness_times_out_and_reaps_child() {
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command("tests::harness_child_sleeps"),
+        )
+        .with_timeout(Duration::from_millis(50))
+        .with_shutdown_grace(Duration::from_secs(1))
+        .with_poll_interval(Duration::from_millis(5));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let started_at = Instant::now();
+        let mut hooks: Vec<&mut dyn RuntimeCaptureHook> = Vec::new();
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert!(started_at.elapsed() < Duration::from_secs(3));
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::Timeout);
+        assert_eq!(error.code(), "runtime_launch_timeout");
+        let cleanup = error.cleanup.unwrap();
+        assert!(cleanup.attempted);
+        assert!(cleanup.completed);
+        assert!(error.process_id.is_some());
+    }
+
+    #[test]
+    fn launch_failures_report_semantic_errors() {
+        let temp = temp_root("harness-launch-error");
+        let missing_command = temp.join("missing-runtime-command");
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            RuntimeLaunchCommand::new(&missing_command),
+        );
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hooks: Vec<&mut dyn RuntimeCaptureHook> = Vec::new();
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::LaunchFailed);
+        let semantic = error.to_json();
+        assert_eq!(semantic["errorCode"], "runtime_launch_failed");
+        assert_eq!(semantic["operation"], "capture");
+        assert!(
+            semantic["message"]
+                .as_str()
+                .unwrap()
+                .contains("failed to launch")
+        );
+
+        let finding = error.to_validation_finding(
+            "019ed003-0000-7000-8000-000000009014",
+            "unsupported_runtime_feature",
+            "critical",
+            EvidenceTier::E1,
+        );
+        assert_eq!(finding["findingKind"], "unsupported_runtime_feature");
+        assert!(
+            finding["message"]
+                .as_str()
+                .unwrap()
+                .contains("runtime_launch_failed")
+        );
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn capture_hooks_require_managed_artifact_store_boundary() {
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command("tests::harness_child_sleeps"),
+        )
+        .with_timeout(Duration::from_secs(5))
+        .with_shutdown_grace(Duration::from_secs(1))
+        .with_poll_interval(Duration::from_millis(5));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hook = ArtifactRequiredHook;
+        let mut hooks: Vec<&mut dyn RuntimeCaptureHook> = vec![&mut hook];
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert_eq!(
+            error.kind,
+            RuntimeHarnessErrorKind::ArtifactStoreUnavailable
+        );
+        assert_eq!(error.boundary, Some(RuntimeCaptureBoundary::AfterLaunch));
+        let cleanup = error.cleanup.unwrap();
+        assert!(cleanup.attempted);
+        assert!(cleanup.completed);
+        assert_eq!(
+            error.to_json()["errorCode"],
+            "runtime_artifact_store_unavailable"
+        );
     }
 
     #[test]
