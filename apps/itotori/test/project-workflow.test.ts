@@ -341,6 +341,14 @@ describe("ItotoriProjectWorkflowService", () => {
     const benchmarkReport = benchmarkReportFixture();
     benchmarkReport.providerModelCostRecords[1] = {
       ...benchmarkReport.providerModelCostRecords[1]!,
+      provider: {
+        ...benchmarkReport.providerModelCostRecords[1]!.provider,
+        actualModelId: "fixture-model-v2",
+      },
+      retryCount: 1,
+      errorClasses: ["provider_timeout_retry"],
+      fallbackUsed: true,
+      fallbackPlan: ["fixture-model-v1", "fixture-model-v2"],
       prompt: {
         ...benchmarkReport.providerModelCostRecords[1]!.prompt,
         remotePresetSlug: "openrouter/itotori-draft",
@@ -359,6 +367,15 @@ describe("ItotoriProjectWorkflowService", () => {
       actor,
       expect.objectContaining({
         providerRunId: benchmarkReport.providerModelCostRecords[1]!.providerRunId,
+        fallbackPlan: expect.arrayContaining([
+          benchmarkReport.providerModelCostRecords[1]!.provider.requestedModelId,
+          benchmarkReport.providerModelCostRecords[1]!.provider.actualModelId,
+        ]),
+        dataHandling: expect.objectContaining({
+          costTier: "unknown",
+          dataCollection: "unknown",
+          trainingUse: "unknown",
+        }),
         providerPreset: expect.objectContaining({
           slug: "openrouter/itotori-draft",
           version: "2026-06-17",
@@ -419,10 +436,19 @@ function driftDetectingLedgerFixture(): ItotoriModelLedgerRepositoryPort {
         promptPresetId: input.prompt.promptPresetId,
         promptTemplateVersion: input.prompt.promptTemplateVersion,
         promptHash: input.prompt.promptHash,
+        structuredOutputMode: input.structuredOutputMode,
+        retryCount: input.retryCount,
+        errorClasses: input.errorClasses,
         costKind: input.cost.costKind,
         amountMicrosUsd: input.cost.amountMicrosUsd ?? null,
         tokenCountSource: input.tokenUsage.tokenCountSource,
+        promptTokens: input.tokenUsage.promptTokens ?? null,
+        completionTokens: input.tokenUsage.completionTokens ?? null,
+        reasoningTokens: input.tokenUsage.reasoningTokens ?? null,
+        cachedInputTokens: input.tokenUsage.cachedInputTokens ?? null,
         totalTokens: input.tokenUsage.totalTokens ?? null,
+        dataHandling: input.dataHandling,
+        accountPrivacy: input.accountPrivacy ?? null,
       };
     }),
     getProjectCostReport: vi.fn(async () => costReportFixture),
@@ -670,6 +696,9 @@ const costReportFixture: ProjectCostReport = {
       taskKind: "draft_translation",
       status: "succeeded",
       startedAt: "2026-06-17T00:00:00.000Z",
+      structuredOutputMode: "json_schema",
+      retryCount: 0,
+      errorClasses: [],
       providerFamily: "fake",
       endpointFamily: "chat-completions",
       providerName: "itotori-fixture",
@@ -685,7 +714,13 @@ const costReportFixture: ProjectCostReport = {
       costKind: "zero",
       amountMicrosUsd: 0,
       tokenCountSource: "deterministic_counter",
+      promptTokens: 10,
+      completionTokens: 4,
+      reasoningTokens: null,
+      cachedInputTokens: null,
       totalTokens: 14,
+      dataHandling: descriptorDataHandling(),
+      accountPrivacy: null,
     },
   ],
 };

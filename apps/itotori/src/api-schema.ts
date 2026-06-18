@@ -384,6 +384,12 @@ export function assertProjectCostReport(
     assertString(run.taskKind, `${label}.recentRuns[${index}].taskKind`);
     assertString(run.status, `${label}.recentRuns[${index}].status`);
     assertString(run.startedAt, `${label}.recentRuns[${index}].startedAt`);
+    assertString(run.structuredOutputMode, `${label}.recentRuns[${index}].structuredOutputMode`);
+    assertNonNegativeInteger(run.retryCount, `${label}.recentRuns[${index}].retryCount`);
+    const errorClasses = asArray(run.errorClasses, `${label}.recentRuns[${index}].errorClasses`);
+    for (const [errorIndex, errorClass] of errorClasses.entries()) {
+      assertString(errorClass, `${label}.recentRuns[${index}].errorClasses[${errorIndex}]`);
+    }
     assertString(run.providerFamily, `${label}.recentRuns[${index}].providerFamily`);
     assertString(run.endpointFamily, `${label}.recentRuns[${index}].endpointFamily`);
     assertString(run.providerName, `${label}.recentRuns[${index}].providerName`);
@@ -411,8 +417,22 @@ export function assertProjectCostReport(
       );
     }
     assertString(run.tokenCountSource, `${label}.recentRuns[${index}].tokenCountSource`);
+    for (const tokenField of [
+      "promptTokens",
+      "completionTokens",
+      "reasoningTokens",
+      "cachedInputTokens",
+    ] as const) {
+      if (run[tokenField] !== null) {
+        assertNonNegativeInteger(run[tokenField], `${label}.recentRuns[${index}].${tokenField}`);
+      }
+    }
     if (run.totalTokens !== null) {
       assertNonNegativeInteger(run.totalTokens, `${label}.recentRuns[${index}].totalTokens`);
+    }
+    asRecord(run.dataHandling, `${label}.recentRuns[${index}].dataHandling`);
+    if (run.accountPrivacy !== null) {
+      asRecord(run.accountPrivacy, `${label}.recentRuns[${index}].accountPrivacy`);
     }
   }
 }

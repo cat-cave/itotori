@@ -578,10 +578,10 @@ function providerRunLedgerInputFromBenchmark(
     retryCount: providerRun.retryCount,
     errorClasses: providerRun.errorClasses,
     fallbackUsed: providerRun.fallbackUsed,
-    fallbackPlan: providerRun.fallbackPlan ?? [],
+    fallbackPlan: normalizeBenchmarkFallbackPlan(providerRun),
     tokenUsage: providerRun.tokenUsage,
     cost: providerRun.cost,
-    dataHandling: {},
+    dataHandling: unknownBenchmarkDataHandlingPolicy,
     ...(providerPreset === undefined ? {} : { providerPreset }),
     adapterMetadata: {
       source: "benchmark_report",
@@ -589,6 +589,27 @@ function providerRunLedgerInputFromBenchmark(
     },
   };
 }
+
+function normalizeBenchmarkFallbackPlan(
+  providerRun: BenchmarkReportV02["providerModelCostRecords"][number],
+): string[] {
+  const fallbackPlan = providerRun.fallbackPlan ?? [];
+  const normalized = new Set([providerRun.provider.requestedModelId, ...fallbackPlan]);
+  if (providerRun.fallbackUsed) {
+    normalized.add(providerRun.provider.actualModelId);
+  }
+  return [...normalized];
+}
+
+const unknownBenchmarkDataHandlingPolicy = {
+  costTier: "unknown",
+  promptLogging: "unknown",
+  completionLogging: "unknown",
+  retention: "unknown",
+  trainingUse: "unknown",
+  dataCollection: "unknown",
+  rawCaptureDefault: "unknown",
+} satisfies JsonObject;
 
 function providerPresetFromBenchmarkPrompt(
   prompt: BenchmarkReportV02["providerModelCostRecords"][number]["prompt"],

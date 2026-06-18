@@ -351,6 +351,9 @@ function renderJobs(cost: ProjectCostReport): string {
           <td>${escapeHtml(run.providerFamily)} / ${escapeHtml(run.providerName)}</td>
           <td>${escapeHtml(run.actualModelId)}</td>
           <td>${escapeHtml(run.promptPresetId)}@${escapeHtml(run.promptTemplateVersion)}</td>
+          <td>${run.retryCount}</td>
+          <td>${formatFallback(run)}</td>
+          <td>${formatDataPolicy(run)}</td>
           <td>${formatMicrosUsd(run.amountMicrosUsd)}</td>
           <td>${formatTokens(run.totalTokens)}</td>
         </tr>
@@ -369,6 +372,9 @@ function renderJobs(cost: ProjectCostReport): string {
             <th>Provider</th>
             <th>Model</th>
             <th>Prompt</th>
+            <th>Retries</th>
+            <th>Fallback</th>
+            <th>Data policy</th>
             <th>Cost</th>
             <th>Tokens</th>
           </tr>
@@ -462,6 +468,9 @@ function renderBenchmarks(cost: ProjectCostReport, status: ProjectDashboardStatu
           <td>${escapeHtml(run.taskKind)}</td>
           <td>${statusBadge(run.status)}</td>
           <td>${escapeHtml(run.promptPresetId)}@${escapeHtml(run.promptTemplateVersion)}</td>
+          <td>${run.retryCount}</td>
+          <td>${formatFallback(run)}</td>
+          <td>${formatDataPolicy(run)}</td>
           <td>${formatMicrosUsd(run.amountMicrosUsd)}</td>
         </tr>
       `,
@@ -477,6 +486,9 @@ function renderBenchmarks(cost: ProjectCostReport, status: ProjectDashboardStatu
             <th>Run</th>
             <th>Status</th>
             <th>Prompt</th>
+            <th>Retries</th>
+            <th>Fallback</th>
+            <th>Data policy</th>
             <th>Cost</th>
           </tr>
         </thead>
@@ -665,6 +677,27 @@ function formatMicrosUsd(value: number | null): string {
 
 function formatTokens(value: number | null): string {
   return value === null ? "unknown" : String(value);
+}
+
+function formatFallback(run: ProjectCostReport["recentRuns"][number]): string {
+  if (!run.fallbackUsed) {
+    return "none";
+  }
+  return escapeHtml(run.fallbackPlan.join(" -> "));
+}
+
+function formatDataPolicy(run: ProjectCostReport["recentRuns"][number]): string {
+  const dataCollection = stringValue(run.dataHandling.dataCollection) ?? "unknown";
+  const trainingUse = stringValue(run.dataHandling.trainingUse) ?? "unknown";
+  const inputOutputLogging = stringValue(run.accountPrivacy?.inputOutputLogging);
+  const policy = `collection:${dataCollection} training:${trainingUse}`;
+  return escapeHtml(
+    inputOutputLogging === undefined ? policy : `${policy} io:${inputOutputLogging}`,
+  );
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function formatDiff(diff: ProjectDashboardStatus["importStatus"]["units"], total: number): string {

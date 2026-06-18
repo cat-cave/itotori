@@ -84,6 +84,9 @@ export type ProviderRunCostSummary = {
   taskKind: string;
   status: string;
   startedAt: string;
+  structuredOutputMode: string;
+  retryCount: number;
+  errorClasses: string[];
   providerFamily: string;
   endpointFamily: string;
   providerName: string;
@@ -99,7 +102,13 @@ export type ProviderRunCostSummary = {
   costKind: ProviderCostKind;
   amountMicrosUsd: number | null;
   tokenCountSource: string;
+  promptTokens: number | null;
+  completionTokens: number | null;
+  reasoningTokens: number | null;
+  cachedInputTokens: number | null;
   totalTokens: number | null;
+  dataHandling: LedgerJsonRecord;
+  accountPrivacy: LedgerJsonRecord | null;
 };
 
 export type ProjectCostReport = {
@@ -324,6 +333,9 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
         pr.task_kind,
         pr.status,
         pr.started_at,
+        pr.structured_output_mode,
+        pr.retry_count,
+        pr.error_classes,
         mp.provider_family,
         mp.endpoint_family,
         mp.provider_name,
@@ -339,7 +351,13 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
         cle.cost_kind,
         cle.amount_micros_usd::text as amount_micros_usd,
         cle.token_count_source,
-        cle.total_tokens
+        cle.prompt_tokens,
+        cle.completion_tokens,
+        cle.reasoning_tokens,
+        cle.cached_input_tokens,
+        cle.total_tokens,
+        pr.data_handling,
+        pr.account_privacy
       from ${providerRuns} pr
       join ${modelProviders} mp on mp.provider_id = pr.provider_id
       join ${costLedgerEntries} cle on cle.provider_run_id = pr.provider_run_id
@@ -381,6 +399,9 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
         pr.task_kind,
         pr.status,
         pr.started_at,
+        pr.structured_output_mode,
+        pr.retry_count,
+        pr.error_classes,
         mp.provider_family,
         mp.endpoint_family,
         mp.provider_name,
@@ -396,7 +417,13 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
         cle.cost_kind,
         cle.amount_micros_usd::text as amount_micros_usd,
         cle.token_count_source,
-        cle.total_tokens
+        cle.prompt_tokens,
+        cle.completion_tokens,
+        cle.reasoning_tokens,
+        cle.cached_input_tokens,
+        cle.total_tokens,
+        pr.data_handling,
+        pr.account_privacy
       from ${providerRuns} pr
       join ${modelProviders} mp on mp.provider_id = pr.provider_id
       join ${costLedgerEntries} cle on cle.provider_run_id = pr.provider_run_id
@@ -478,6 +505,15 @@ function assertProviderRunLedgerInput(input: ProviderRunLedgerInput): void {
   assertNonEmpty(input.prompt.promptPresetId, "prompt.promptPresetId");
   assertNonEmpty(input.prompt.promptTemplateVersion, "prompt.promptTemplateVersion");
   assertHash(input.prompt.promptHash, "prompt.promptHash");
+  assertNonNegativeInteger(input.latencyMs, "latencyMs");
+  assertNonNegativeInteger(input.retryCount, "retryCount");
+  assertStringArray(input.errorClasses, "errorClasses");
+  assertFallbackPlan(input);
+  assertTokenUsage(input.tokenUsage);
+  assertJsonRecord(input.dataHandling, "dataHandling");
+  if (input.accountPrivacy !== undefined) {
+    assertJsonRecord(input.accountPrivacy, "accountPrivacy");
+  }
   if (!costKinds.includes(input.cost.costKind)) {
     throw new Error(`unsupported cost kind: ${input.cost.costKind}`);
   }
@@ -532,10 +568,64 @@ function assertNonEmpty(value: string, label: string): void {
   }
 }
 
+function assertNonNegativeInteger(value: number, label: string): void {
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+}
+
 function assertHash(value: string, label: string): void {
   assertNonEmpty(value, label);
   if (!value.startsWith("sha256:")) {
     throw new Error(`${label} must be a sha256 hash`);
+  }
+}
+
+function assertStringArray(value: string[], label: string): void {
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+    throw new Error(`${label} must be an array of strings`);
+  }
+}
+
+function assertFallbackPlan(input: ProviderRunLedgerInput): void {
+  assertStringArray(input.fallbackPlan, "fallbackPlan");
+  if (input.fallbackPlan.length === 0) {
+    throw new Error("fallbackPlan must include at least the requested model");
+  }
+  if (!input.fallbackPlan.includes(input.provider.requestedModelId)) {
+    throw new Error("fallbackPlan must include the requested model");
+  }
+  if (input.fallbackUsed && input.fallbackPlan.length < 2) {
+    throw new Error("fallbackUsed provider runs must include a fallback chain");
+  }
+  if (input.fallbackUsed && !input.fallbackPlan.includes(input.provider.actualModelId)) {
+    throw new Error("fallbackPlan must include the actual routed model when fallback is used");
+  }
+}
+
+function assertTokenUsage(tokenUsage: ProviderRunLedgerInput["tokenUsage"]): void {
+  assertNonEmpty(tokenUsage.tokenCountSource, "tokenUsage.tokenCountSource");
+  const tokenFields = [
+    ["promptTokens", tokenUsage.promptTokens],
+    ["completionTokens", tokenUsage.completionTokens],
+    ["reasoningTokens", tokenUsage.reasoningTokens],
+    ["cachedInputTokens", tokenUsage.cachedInputTokens],
+    ["totalTokens", tokenUsage.totalTokens],
+  ] as const;
+  for (const [field, value] of tokenFields) {
+    if (value !== undefined) {
+      assertNonNegativeInteger(value, `tokenUsage.${field}`);
+    }
+  }
+  const subtotal = (tokenUsage.promptTokens ?? 0) + (tokenUsage.completionTokens ?? 0);
+  if (tokenUsage.totalTokens !== undefined && tokenUsage.totalTokens < subtotal) {
+    throw new Error("tokenUsage.totalTokens must cover promptTokens and completionTokens");
+  }
+}
+
+function assertJsonRecord(value: LedgerJsonRecord, label: string): void {
+  if (value === null || Array.isArray(value) || typeof value !== "object") {
+    throw new Error(`${label} must be a JSON object`);
   }
 }
 
@@ -553,6 +643,9 @@ function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
     status: String(row.status),
     startedAt:
       row.started_at instanceof Date ? row.started_at.toISOString() : String(row.started_at),
+    structuredOutputMode: String(row.structured_output_mode),
+    retryCount: Number(row.retry_count ?? 0),
+    errorClasses: stringArray(row.error_classes),
     providerFamily: String(row.provider_family),
     endpointFamily: String(row.endpoint_family),
     providerName: String(row.provider_name),
@@ -568,7 +661,13 @@ function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
     costKind: asCostKind(row.cost_kind),
     amountMicrosUsd: nullableNumber(row.amount_micros_usd),
     tokenCountSource: String(row.token_count_source),
+    promptTokens: nullableNumber(row.prompt_tokens),
+    completionTokens: nullableNumber(row.completion_tokens),
+    reasoningTokens: nullableNumber(row.reasoning_tokens),
+    cachedInputTokens: nullableNumber(row.cached_input_tokens),
     totalTokens: nullableNumber(row.total_tokens),
+    dataHandling: recordOrEmpty(row.data_handling),
+    accountPrivacy: nullableRecord(row.account_privacy),
   };
 }
 
@@ -585,6 +684,20 @@ function stringArray(value: unknown): string[] {
     return [];
   }
   return value.map(String);
+}
+
+function recordOrEmpty(value: unknown): LedgerJsonRecord {
+  if (value === null || value === undefined || Array.isArray(value) || typeof value !== "object") {
+    return {};
+  }
+  return value as LedgerJsonRecord;
+}
+
+function nullableRecord(value: unknown): LedgerJsonRecord | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return recordOrEmpty(value);
 }
 
 function zeroBreakdown(costKind: ProviderCostKind): CostKindBreakdown {
