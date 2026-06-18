@@ -11254,7 +11254,7 @@
     {
       "id": "ITOTORI-062",
       "title": "Style guide persistence and version events",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11291,7 +11291,10 @@
         "Style policy leaking across locale branches",
         "Version events missing source revision context",
         "Stale style guide approvals accepted"
-      ]
+      ],
+      "owner": "orchestrator-20260618-wave8",
+      "branch": "spec/itotori-062",
+      "worktree": "/tmp/itotori-spec-itotori-062"
     },
     {
       "id": "ITOTORI-063",
@@ -12546,7 +12549,7 @@
     {
       "id": "CATALOG-011",
       "title": "VNDB and EGS recorded importers",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -12585,7 +12588,10 @@
         "Importer idempotency",
         "Live-network coupling",
         "External-id provenance loss"
-      ]
+      ],
+      "owner": "orchestrator-20260618-wave8",
+      "branch": "spec/catalog-011",
+      "worktree": "/tmp/itotori-spec-catalog-011"
     },
     {
       "id": "CATALOG-012",
@@ -12709,7 +12715,7 @@
     {
       "id": "KAIFUU-082",
       "title": "Encoded string-slot byte-budget preflight",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12741,7 +12747,10 @@
         "String slots patched before byte-budget validation",
         "Encoding failures reported without slot ids",
         "Protected tokens corrupted during preflight"
-      ]
+      ],
+      "owner": "orchestrator-20260618-wave8",
+      "branch": "spec/kaifuu-082",
+      "worktree": "/tmp/itotori-spec-kaifuu-082"
     },
     {
       "id": "KAIFUU-083",
