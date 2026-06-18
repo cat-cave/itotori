@@ -375,16 +375,16 @@ fn collect_report_artifacts(
         artifacts.push(artifact);
     }
     for event in events {
-        if let ObservationHookPayload::Frame(payload) = &event.payload {
-            if let Some(artifact_ref) = &payload.artifact_ref {
-                artifacts.push(ReportArtifactRef {
-                    artifact_id: artifact_ref.artifact_id.clone(),
-                    artifact_kind: artifact_ref.artifact_kind.clone(),
-                    observation_event_id: Some(event.event_id.clone()),
-                    uri: artifact_ref.uri.clone(),
-                    media_type: artifact_ref.media_type.clone(),
-                });
-            }
+        if let ObservationHookPayload::Frame(payload) = &event.payload
+            && let Some(artifact_ref) = &payload.artifact_ref
+        {
+            artifacts.push(ReportArtifactRef {
+                artifact_id: artifact_ref.artifact_id.clone(),
+                artifact_kind: artifact_ref.artifact_kind.clone(),
+                observation_event_id: Some(event.event_id.clone()),
+                uri: artifact_ref.uri.clone(),
+                media_type: artifact_ref.media_type.clone(),
+            });
         }
     }
     Ok(artifacts)
@@ -497,14 +497,13 @@ fn validate_artifact_hashes(
         }
         if let (Some(expected_media_type), Some(actual_media_type)) =
             (&expected.media_type, &report_artifact.media_type)
+            && expected_media_type != actual_media_type
         {
-            if expected_media_type != actual_media_type {
-                return Err(format!(
-                    "{label} artifact {} mediaType {} does not match runtime report mediaType {}",
-                    expected.artifact_id, expected_media_type, actual_media_type
-                )
-                .into());
-            }
+            return Err(format!(
+                "{label} artifact {} mediaType {} does not match runtime report mediaType {}",
+                expected.artifact_id, expected_media_type, actual_media_type
+            )
+            .into());
         }
 
         let artifact_path = artifact_root.artifact_path(&expected.uri)?;
