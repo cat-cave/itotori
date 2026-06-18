@@ -1,0 +1,217 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-004-20260618T022550Z",
+  "generatedAt": "2026-06-18T02:25:50Z",
+  "spec": {
+    "id": "UTSUSHI-004",
+    "title": "Runtime artifact storage foundation",
+    "branch": "spec/utsushi-004",
+    "worktree": "/tmp/itotori-spec-utsushi-004",
+    "commit": "8acc33f6e50b0d6bf0033f3b6e48941433238469"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-bernoulli-mill-gauss",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audits found P1 symlink escape and root-adoption cleanup risks. The branch repaired both and re-audit found no remaining P0/P1 blockers. Remaining P2/P3 hardening issues are recorded as DAG follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 3,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "UTSUSHI-004-F001",
+      "UTSUSHI-004-F002",
+      "UTSUSHI-004-F003",
+      "UTSUSHI-004-F004"
+    ]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-004-F001",
+      "severity": "P2",
+      "title": "Path-based runtime artifact defense retains TOCTOU race",
+      "category": "security",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/lib.rs",
+          "symbol": "RuntimeArtifactRoot::write_bytes"
+        },
+        {
+          "path": "crates/utsushi-core/src/lib.rs",
+          "symbol": "RuntimeArtifactRoot::cleanup_contents"
+        }
+      ],
+      "description": "The repaired implementation rejects existing symlink parents and destinations, but still validates paths before later path-based rename/read_dir operations. A malicious concurrent actor could swap a validated directory for a symlink between validation and use.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Focused re-audit identified residual TOCTOU windows in write and cleanup paths and recommended fd-relative/no-follow hardening as follow-up work."
+        }
+      ],
+      "impact": "The foundation is safe for non-malicious local use but not yet hardened against concurrent filesystem mutation inside the artifact root.",
+      "actionableAcceptanceCriteria": [
+        "Artifact writes use fd-relative/no-follow operations or an equivalent directory capability API.",
+        "Cleanup traverses only verified managed-root directory handles or an equivalent no-follow mechanism.",
+        "Regression tests cover symlink root, symlink marker, symlink parent, symlink destination, and concurrent-swap approximations where practical."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-093",
+          "acceptanceCriteria": [
+            "Runtime artifact writes and cleanup are hardened against TOCTOU symlink swaps using fd-relative/no-follow operations or equivalent capabilities."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core runtime_artifact"
+            }
+          ],
+          "auditFocus": ["Concurrent symlink swap between validation and use"],
+          "notes": "Follow-up node UTSUSHI-093 records this non-blocking hardening finding."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-004-F002",
+      "severity": "P2",
+      "title": "Runtime artifact DB constraint is weaker than repository URI policy",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/migrations/0007_runtime_evidence_ingestion.sql"
+        },
+        {
+          "path": "packages/itotori-db/src/repositories/project-repository.ts",
+          "symbol": "validateRuntimeArtifactRef"
+        }
+      ],
+      "description": "The DB check constraint enforces the managed prefix and rejects schemes, absolute paths, and backslashes, but does not reject dot segments, dot-dot segments, empty segments, or all malformed refs rejected by repository and Rust validation.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Architecture audit compared migration constraints against repository and Rust validation and found direct SQL writes can persist malformed managed artifact refs."
+        }
+      ],
+      "impact": "Direct database writes can bypass runtime artifact URI policy and persist refs that application code would reject.",
+      "actionableAcceptanceCriteria": [
+        "DB constraints reject the same invalid runtime artifact ref examples as repository validation.",
+        "Direct-SQL tests cover dot, dot-dot, empty segment, scheme, absolute path, backslash, and missing-prefix cases."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-094",
+          "acceptanceCriteria": [
+            "Database constraints and repository validation reject the same malformed runtime artifact refs."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": ["Direct SQL bypass of runtime artifact ref policy"],
+          "notes": "Follow-up node UTSUSHI-094 records this non-blocking parity finding."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-004-F003",
+      "severity": "P2",
+      "title": "Runtime artifact docs overstate shared v0.2 evidence naming",
+      "category": "documentation",
+      "locations": [
+        {
+          "path": "docs/utsushi-runtime-artifacts.md"
+        },
+        {
+          "path": "packages/localization-bridge-schema/test/examples/runtime-evidence-v0.2.json"
+        }
+      ],
+      "description": "The new docs state all v0.2 runtime artifact refs use the managed runtime prefix, while existing shared schema fixtures still use older artifacts/utsushi/hello refs. The boundary between bridge evidence refs and Itotori managed storage refs needs clarification or fixture migration.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Architecture audit found docs and shared runtime evidence fixtures using different artifact ref conventions."
+        }
+      ],
+      "impact": "Future agents may update schema fixtures, DB ingestion, or docs inconsistently because the ownership boundary for managed storage refs is unclear.",
+      "actionableAcceptanceCriteria": [
+        "Docs and fixtures agree on whether artifacts/utsushi/runtime is required by v0.2 evidence or only by Itotori managed storage.",
+        "Tests cover any conversion boundary between bridge evidence refs and managed storage refs."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-095",
+          "acceptanceCriteria": [
+            "Runtime artifact docs and bridge-schema fixtures agree on the managed storage prefix boundary."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/localization-bridge-schema test"
+            }
+          ],
+          "auditFocus": ["Docs and schema fixture artifact ref drift"],
+          "notes": "Follow-up node UTSUSHI-095 records this non-blocking documentation/contract finding."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-004-F004",
+      "severity": "P3",
+      "title": "Symlink managed-root and marker rejection need focused tests",
+      "category": "test",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/lib.rs",
+          "symbol": "RuntimeArtifactRoot"
+        }
+      ],
+      "description": "The implementation checks symlink managed-root paths and marker files, but tests currently focus on artifact parent and destination symlinks. Additional coverage would keep managed-root and marker checks from regressing.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Focused re-audit noted the code checks symlink root and marker cases but the new symlink tests cover parent and destination cases only."
+        }
+      ],
+      "impact": "A future refactor could weaken root or marker symlink rejection without failing the current targeted tests.",
+      "actionableAcceptanceCriteria": [
+        "Tests reject a symlink used as the managed runtime artifact root.",
+        "Tests reject a symlink used as the managed-root marker file."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-093",
+          "acceptanceCriteria": [
+            "Runtime artifact hardening tests cover symlink managed-root paths and symlink marker files."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core runtime_artifact"
+            }
+          ],
+          "auditFocus": ["Untested symlink root and marker rejection paths"],
+          "notes": "Folded into UTSUSHI-093 because it belongs with runtime artifact no-follow hardening."
+        }
+      }
+    }
+  ]
+}

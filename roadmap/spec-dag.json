@@ -7949,7 +7949,7 @@
     {
       "id": "UTSUSHI-004",
       "title": "Runtime artifact storage foundation",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "itotori"],
@@ -7991,10 +7991,7 @@
         "Path traversal",
         "Large DB blobs",
         "Catalog sidecar scope leaking into runtime storage"
-      ],
-      "owner": "orchestrator-utsushi-004",
-      "branch": "spec/utsushi-004",
-      "worktree": "/tmp/itotori-spec-utsushi-004"
+      ]
     },
     {
       "id": "UTSUSHI-049",
@@ -14527,6 +14524,118 @@
         "Schema-only smoke metadata coverage",
         "Fixture adapter overclaiming unsupported runtime operations",
         "Smoke validation path drifting from controlled playback contract"
+      ]
+    },
+    {
+      "id": "UTSUSHI-093",
+      "title": "Runtime artifact fd-relative no-follow hardening",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-004"],
+      "summary": "Harden runtime artifact writes and cleanup against malicious concurrent filesystem mutation using fd-relative/no-follow operations or an equivalent directory capability API.",
+      "deliverables": [
+        "Directory-capability or fd-relative artifact root implementation",
+        "No-follow write and cleanup regression tests",
+        "Symlink managed-root and symlink marker rejection tests"
+      ],
+      "acceptanceCriteria": [
+        "Artifact writes cannot escape the managed root even if a concurrent actor swaps validated directories for symlinks during write or rename",
+        "Cleanup traverses only directory handles or equivalent no-follow capabilities inside the managed runtime artifact root",
+        "Tests cover symlink managed-root paths, symlink marker files, symlink parent components, symlink destinations, and concurrent-swap approximations where practical"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core runtime_artifact"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "TOCTOU path checks around artifact write and cleanup",
+        "Symlink marker or managed-root bypasses",
+        "Portability of fd-relative/no-follow APIs across supported platforms"
+      ]
+    },
+    {
+      "id": "UTSUSHI-094",
+      "title": "Runtime artifact DB constraint parity",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-004"],
+      "summary": "Align Postgres runtime artifact reference constraints with Rust and repository URI policy so direct DB writes cannot persist malformed managed artifact references.",
+      "deliverables": [
+        "Postgres check constraint or validation migration for dot, dot-dot, empty segment, and malformed runtime artifact refs",
+        "Repository and direct-SQL regression coverage for invalid artifact refs",
+        "Documentation update for DB/runtime URI parity"
+      ],
+      "acceptanceCriteria": [
+        "Direct DB writes reject runtime artifact refs with dot segments, dot-dot segments, empty segments, unsupported schemes, absolute paths, backslashes, or missing artifacts/utsushi/runtime prefix",
+        "Repository validation and database constraints reject the same invalid examples",
+        "Existing valid runtime evidence fixtures and DB repository tests continue passing"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "DB constraint weaker than repository runtime artifact policy",
+        "Migration drift for runtime evidence artifact refs",
+        "Direct SQL bypass of path traversal defenses"
+      ]
+    },
+    {
+      "id": "UTSUSHI-095",
+      "title": "Runtime artifact schema fixture convention alignment",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi", "shared", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["UTSUSHI-004"],
+      "summary": "Align runtime artifact docs, shared schema examples, and Itotori storage conventions so v0.2 runtime evidence refs are not overclaimed or contradictory.",
+      "deliverables": [
+        "Updated runtime evidence fixture or clarified storage-convention documentation",
+        "Bridge-schema compatibility test for managed runtime artifact refs or documented conversion boundary",
+        "Itotori ingestion note explaining schema refs versus storage refs when they differ"
+      ],
+      "acceptanceCriteria": [
+        "Docs no longer claim all v0.2 runtime artifact refs use artifacts/utsushi/runtime unless the shared schema examples and validators also use that convention",
+        "If bridge evidence refs and Itotori storage refs intentionally differ, the conversion boundary is documented and covered by tests",
+        "Runtime evidence fixtures, DB ingestion tests, and Utsushi artifact docs agree on which layer owns the managed storage prefix"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/localization-bridge-schema test"
+        },
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Docs overstating shared schema artifact naming",
+        "Runtime evidence fixture drift from DB ingestion rules",
+        "Unclear conversion boundary between bridge refs and managed storage refs"
       ]
     },
     {
