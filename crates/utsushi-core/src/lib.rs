@@ -1,7 +1,10 @@
+use std::any::Any;
 use std::fs;
 use std::io::{self, Write};
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -14,6 +17,7 @@ pub const RUNTIME_ARTIFACT_ROOT_MARKER: &str = ".utsushi-runtime-artifacts";
 
 const DEFAULT_HARNESS_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_HARNESS_SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
+const DEFAULT_HARNESS_HOOK_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_HARNESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
 const OBVIOUS_UNMANAGED_ROOT_SENTINELS: &[&str] = &[
@@ -896,6 +900,7 @@ pub struct RuntimeLaunchCapturePlan {
     pub command: RuntimeLaunchCommand,
     pub timeout: Duration,
     pub shutdown_grace: Duration,
+    pub hook_timeout: Duration,
     pub poll_interval: Duration,
     pub artifact_root: Option<PathBuf>,
 }
@@ -912,6 +917,7 @@ impl RuntimeLaunchCapturePlan {
             command,
             timeout: DEFAULT_HARNESS_TIMEOUT,
             shutdown_grace: DEFAULT_HARNESS_SHUTDOWN_GRACE,
+            hook_timeout: DEFAULT_HARNESS_HOOK_TIMEOUT,
             poll_interval: DEFAULT_HARNESS_POLL_INTERVAL,
             artifact_root: None,
         }
@@ -924,6 +930,11 @@ impl RuntimeLaunchCapturePlan {
 
     pub fn with_shutdown_grace(mut self, shutdown_grace: Duration) -> Self {
         self.shutdown_grace = shutdown_grace;
+        self
+    }
+
+    pub fn with_hook_timeout(mut self, hook_timeout: Duration) -> Self {
+        self.hook_timeout = hook_timeout;
         self
     }
 
@@ -966,6 +977,13 @@ impl RuntimeLaunchCapturePlan {
                 "runtime launch shutdown grace must be greater than zero",
             ));
         }
+        if self.hook_timeout.is_zero() {
+            return Err(RuntimeHarnessError::new(
+                RuntimeHarnessErrorKind::InvalidPlan,
+                self.operation,
+                "runtime capture hook timeout must be greater than zero",
+            ));
+        }
         if self.poll_interval.is_zero() {
             return Err(RuntimeHarnessError::new(
                 RuntimeHarnessErrorKind::InvalidPlan,
@@ -1002,6 +1020,7 @@ pub enum RuntimeHarnessErrorKind {
     ProcessFailed,
     ProcessWaitFailed,
     ProcessCleanupFailed,
+    CaptureTimeout,
     CaptureFailed,
     ArtifactStoreUnavailable,
     ArtifactWriteFailed,
@@ -1016,6 +1035,7 @@ impl RuntimeHarnessErrorKind {
             Self::ProcessFailed => "runtime_process_failed",
             Self::ProcessWaitFailed => "runtime_process_wait_failed",
             Self::ProcessCleanupFailed => "runtime_process_cleanup_failed",
+            Self::CaptureTimeout => "runtime_capture_timeout",
             Self::CaptureFailed => "runtime_capture_failed",
             Self::ArtifactStoreUnavailable => "runtime_artifact_store_unavailable",
             Self::ArtifactWriteFailed => "runtime_artifact_write_failed",
@@ -1024,9 +1044,24 @@ impl RuntimeHarnessErrorKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuntimeProcessCleanupScope {
+    ProcessTree,
+}
+
+impl RuntimeProcessCleanupScope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::ProcessTree => "process_tree",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct RuntimeProcessCleanup {
     pub attempted: bool,
     pub completed: bool,
+    pub scope: RuntimeProcessCleanupScope,
+    pub escalated: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1109,7 +1144,9 @@ impl RuntimeHarnessError {
                 "cleanup".to_string(),
                 serde_json::json!({
                     "attempted": cleanup.attempted,
-                    "completed": cleanup.completed
+                    "completed": cleanup.completed,
+                    "scope": cleanup.scope.as_str(),
+                    "escalated": cleanup.escalated
                 }),
             );
         }
@@ -1255,28 +1292,28 @@ impl RuntimeCaptureArtifactStore {
     }
 }
 
-pub struct RuntimeCaptureContext<'a> {
+pub struct RuntimeCaptureContext {
     pub operation: RuntimeOperation,
     pub boundary: RuntimeCaptureBoundary,
     pub process_id: u32,
-    pub run_id: &'a str,
-    artifact_store: Option<&'a RuntimeCaptureArtifactStore>,
+    pub run_id: String,
+    artifact_store: Option<RuntimeCaptureArtifactStore>,
     artifacts: Vec<RuntimeCapturedArtifact>,
 }
 
-impl<'a> RuntimeCaptureContext<'a> {
+impl RuntimeCaptureContext {
     fn new(
         operation: RuntimeOperation,
         boundary: RuntimeCaptureBoundary,
         process_id: u32,
-        run_id: &'a str,
-        artifact_store: Option<&'a RuntimeCaptureArtifactStore>,
+        run_id: impl Into<String>,
+        artifact_store: Option<RuntimeCaptureArtifactStore>,
     ) -> Self {
         Self {
             operation,
             boundary,
             process_id,
-            run_id,
+            run_id: run_id.into(),
             artifact_store,
             artifacts: Vec::new(),
         }
@@ -1289,7 +1326,7 @@ impl<'a> RuntimeCaptureContext<'a> {
         media_type: impl Into<Option<String>>,
         contents: &[u8],
     ) -> Result<RuntimeCapturedArtifact, RuntimeHarnessError> {
-        let Some(store) = self.artifact_store else {
+        let Some(store) = &self.artifact_store else {
             return Err(RuntimeHarnessError::new(
                 RuntimeHarnessErrorKind::ArtifactStoreUnavailable,
                 self.operation,
@@ -1323,13 +1360,42 @@ impl<'a> RuntimeCaptureContext<'a> {
     }
 }
 
-pub trait RuntimeCaptureHook {
+pub trait RuntimeCaptureHook: Send + 'static {
     fn boundary(&self) -> RuntimeCaptureBoundary;
 
-    fn capture(
-        &mut self,
-        context: &mut RuntimeCaptureContext<'_>,
-    ) -> Result<(), RuntimeHarnessError>;
+    fn capture(&mut self, context: &mut RuntimeCaptureContext) -> Result<(), RuntimeHarnessError>;
+}
+
+#[derive(Default)]
+pub struct RuntimeCaptureHooks {
+    hooks: Vec<Box<dyn RuntimeCaptureHook>>,
+}
+
+impl RuntimeCaptureHooks {
+    pub fn new() -> Self {
+        Self { hooks: Vec::new() }
+    }
+
+    pub fn push<H>(&mut self, hook: H)
+    where
+        H: RuntimeCaptureHook,
+    {
+        self.hooks.push(Box::new(hook));
+    }
+
+    pub fn push_boxed(&mut self, hook: Box<dyn RuntimeCaptureHook>) {
+        self.hooks.push(hook);
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.hooks.is_empty()
+    }
+}
+
+impl From<Vec<Box<dyn RuntimeCaptureHook>>> for RuntimeCaptureHooks {
+    fn from(hooks: Vec<Box<dyn RuntimeCaptureHook>>) -> Self {
+        Self { hooks }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1366,7 +1432,7 @@ impl RuntimeLaunchCaptureHarness {
     pub fn run(
         &self,
         plan: &RuntimeLaunchCapturePlan,
-        hooks: &mut [&mut dyn RuntimeCaptureHook],
+        hooks: &mut RuntimeCaptureHooks,
     ) -> Result<RuntimeLaunchCaptureOutcome, RuntimeHarnessError> {
         plan.validate()?;
         let artifact_store = plan
@@ -1382,7 +1448,9 @@ impl RuntimeLaunchCaptureHarness {
             .transpose()?;
 
         let started_at = Instant::now();
+        let deadline = started_at + plan.timeout;
         let mut command = plan.command.to_command();
+        configure_runtime_process_tree(&mut command, plan.operation)?;
         let mut child = command.spawn().map_err(|error| {
             RuntimeHarnessError::new(
                 RuntimeHarnessErrorKind::LaunchFailed,
@@ -1404,44 +1472,62 @@ impl RuntimeLaunchCaptureHarness {
             artifact_store.as_ref(),
             hooks,
             &mut artifacts,
+            bounded_hook_timeout(plan, deadline),
         ) {
-            let cleanup = terminate_child(&mut child, plan.shutdown_grace, plan.poll_interval);
+            let cleanup =
+                terminate_runtime_process(&mut child, plan.shutdown_grace, plan.poll_interval);
             return Err(error.with_process_id(process_id).with_cleanup(cleanup));
         }
 
-        let status = match wait_for_child_exit(&mut child, plan.timeout, plan.poll_interval) {
-            Ok(Some(status)) => status,
-            Ok(None) => {
-                let _ = self.run_hooks(
-                    RuntimeCaptureBoundary::BeforeTerminate,
-                    plan,
-                    process_id,
-                    artifact_store.as_ref(),
-                    hooks,
-                    &mut artifacts,
-                );
-                let cleanup = terminate_child(&mut child, plan.shutdown_grace, plan.poll_interval);
-                return Err(RuntimeHarnessError::new(
-                    RuntimeHarnessErrorKind::Timeout,
-                    plan.operation,
-                    format!("runtime command exceeded timeout of {:?}", plan.timeout),
-                )
-                .with_process_id(process_id)
-                .with_cleanup(cleanup)
-                .with_detail("timeoutMillis", plan.timeout.as_millis().to_string()));
-            }
-            Err(error) => {
-                let cleanup = terminate_child(&mut child, plan.shutdown_grace, plan.poll_interval);
-                return Err(RuntimeHarnessError::new(
-                    RuntimeHarnessErrorKind::ProcessWaitFailed,
-                    plan.operation,
-                    format!("failed while waiting for runtime process: {error}"),
-                )
-                .with_process_id(process_id)
-                .with_cleanup(cleanup)
-                .with_detail("ioKind", error.kind().to_string()));
-            }
-        };
+        let status =
+            match wait_for_child_exit(&mut child, remaining_until(deadline), plan.poll_interval) {
+                Ok(Some(status)) => status,
+                Ok(None) => {
+                    let before_terminate_error = self.run_hooks(
+                        RuntimeCaptureBoundary::BeforeTerminate,
+                        plan,
+                        process_id,
+                        artifact_store.as_ref(),
+                        hooks,
+                        &mut artifacts,
+                        plan.hook_timeout,
+                    );
+                    let cleanup = terminate_runtime_process(
+                        &mut child,
+                        plan.shutdown_grace,
+                        plan.poll_interval,
+                    );
+                    let mut error = RuntimeHarnessError::new(
+                        RuntimeHarnessErrorKind::Timeout,
+                        plan.operation,
+                        format!("runtime command exceeded timeout of {:?}", plan.timeout),
+                    )
+                    .with_process_id(process_id)
+                    .with_cleanup(cleanup)
+                    .with_detail("timeoutMillis", plan.timeout.as_millis().to_string());
+                    if let Err(hook_error) = before_terminate_error {
+                        error = error
+                            .with_detail("beforeTerminateHookError", hook_error.code())
+                            .with_detail("beforeTerminateHookMessage", hook_error.message);
+                    }
+                    return Err(error);
+                }
+                Err(error) => {
+                    let cleanup = terminate_runtime_process(
+                        &mut child,
+                        plan.shutdown_grace,
+                        plan.poll_interval,
+                    );
+                    return Err(RuntimeHarnessError::new(
+                        RuntimeHarnessErrorKind::ProcessWaitFailed,
+                        plan.operation,
+                        format!("failed while waiting for runtime process: {error}"),
+                    )
+                    .with_process_id(process_id)
+                    .with_cleanup(cleanup)
+                    .with_detail("ioKind", error.kind().to_string()));
+                }
+            };
 
         self.run_hooks(
             RuntimeCaptureBoundary::AfterExit,
@@ -1450,6 +1536,7 @@ impl RuntimeLaunchCaptureHarness {
             artifact_store.as_ref(),
             hooks,
             &mut artifacts,
+            plan.hook_timeout,
         )?;
 
         let exit = RuntimeProcessExit::from_status(status);
@@ -1480,26 +1567,189 @@ impl RuntimeLaunchCaptureHarness {
         plan: &RuntimeLaunchCapturePlan,
         process_id: u32,
         artifact_store: Option<&RuntimeCaptureArtifactStore>,
-        hooks: &mut [&mut dyn RuntimeCaptureHook],
+        hooks: &mut RuntimeCaptureHooks,
         artifacts: &mut Vec<RuntimeCapturedArtifact>,
+        hook_timeout: Duration,
     ) -> Result<(), RuntimeHarnessError> {
-        for hook in hooks.iter_mut() {
-            if hook.boundary() != boundary {
+        let mut index = 0;
+        while index < hooks.hooks.len() {
+            if hooks.hooks[index].boundary() != boundary {
+                index += 1;
                 continue;
             }
-            let mut context = RuntimeCaptureContext::new(
+            let hook = hooks.hooks.remove(index);
+            let context = RuntimeCaptureContext::new(
                 plan.operation,
                 boundary,
                 process_id,
-                &plan.run_id,
-                artifact_store,
+                plan.run_id.clone(),
+                artifact_store.cloned(),
             );
-            hook.capture(&mut context)
-                .map_err(|error| error.with_boundary(boundary).with_process_id(process_id))?;
-            artifacts.extend(context.into_artifacts());
+            match run_capture_hook_with_timeout(hook, context, hook_timeout) {
+                Ok((hook, hook_artifacts)) => {
+                    artifacts.extend(hook_artifacts);
+                    hooks.hooks.insert(index, hook);
+                    index += 1;
+                }
+                Err(RuntimeHookExecutionError::Failed { hook, error }) => {
+                    hooks.hooks.insert(index, hook);
+                    return Err(error.with_boundary(boundary).with_process_id(process_id));
+                }
+                Err(RuntimeHookExecutionError::Unrecoverable(error)) => return Err(error),
+            }
         }
         Ok(())
     }
+}
+
+struct RuntimeHookThreadResult {
+    hook: Box<dyn RuntimeCaptureHook>,
+    result: Result<Vec<RuntimeCapturedArtifact>, RuntimeHarnessError>,
+}
+
+enum RuntimeHookExecutionError {
+    Failed {
+        hook: Box<dyn RuntimeCaptureHook>,
+        error: RuntimeHarnessError,
+    },
+    Unrecoverable(RuntimeHarnessError),
+}
+
+fn run_capture_hook_with_timeout(
+    mut hook: Box<dyn RuntimeCaptureHook>,
+    mut context: RuntimeCaptureContext,
+    timeout: Duration,
+) -> Result<(Box<dyn RuntimeCaptureHook>, Vec<RuntimeCapturedArtifact>), RuntimeHookExecutionError>
+{
+    if timeout.is_zero() {
+        return Err(RuntimeHookExecutionError::Unrecoverable(
+            capture_hook_timeout_error(
+                context.operation,
+                context.boundary,
+                context.process_id,
+                timeout,
+            ),
+        ));
+    }
+
+    let operation = context.operation;
+    let boundary = context.boundary;
+    let process_id = context.process_id;
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let result = match panic::catch_unwind(AssertUnwindSafe(|| hook.capture(&mut context))) {
+            Ok(Ok(())) => Ok(context.into_artifacts()),
+            Ok(Err(error)) => Err(error),
+            Err(payload) => Err(RuntimeHarnessError::capture_failed(
+                operation,
+                format!(
+                    "capture hook panicked at {}: {}",
+                    boundary.as_str(),
+                    panic_payload_message(payload.as_ref())
+                ),
+            )
+            .with_boundary(boundary)
+            .with_process_id(process_id)),
+        };
+        let _ = sender.send(RuntimeHookThreadResult { hook, result });
+    });
+
+    match receiver.recv_timeout(timeout) {
+        Ok(RuntimeHookThreadResult {
+            hook,
+            result: Ok(artifacts),
+        }) => Ok((hook, artifacts)),
+        Ok(RuntimeHookThreadResult {
+            hook,
+            result: Err(error),
+        }) => Err(RuntimeHookExecutionError::Failed { hook, error }),
+        Err(mpsc::RecvTimeoutError::Timeout) => Err(RuntimeHookExecutionError::Unrecoverable(
+            capture_hook_timeout_error(operation, boundary, process_id, timeout),
+        )),
+        Err(mpsc::RecvTimeoutError::Disconnected) => Err(RuntimeHookExecutionError::Unrecoverable(
+            RuntimeHarnessError::capture_failed(
+                operation,
+                format!(
+                    "capture hook worker stopped before reporting {}",
+                    boundary.as_str()
+                ),
+            )
+            .with_boundary(boundary)
+            .with_process_id(process_id),
+        )),
+    }
+}
+
+fn capture_hook_timeout_error(
+    operation: RuntimeOperation,
+    boundary: RuntimeCaptureBoundary,
+    process_id: u32,
+    timeout: Duration,
+) -> RuntimeHarnessError {
+    RuntimeHarnessError::new(
+        RuntimeHarnessErrorKind::CaptureTimeout,
+        operation,
+        format!(
+            "capture hook at {} exceeded timeout of {:?}",
+            boundary.as_str(),
+            timeout
+        ),
+    )
+    .with_boundary(boundary)
+    .with_process_id(process_id)
+    .with_detail("hookTimeoutMillis", timeout.as_millis().to_string())
+}
+
+fn panic_payload_message(payload: &(dyn Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        return (*message).to_string();
+    }
+    if let Some(message) = payload.downcast_ref::<String>() {
+        return message.clone();
+    }
+    "non-string panic payload".to_string()
+}
+
+fn bounded_hook_timeout(plan: &RuntimeLaunchCapturePlan, deadline: Instant) -> Duration {
+    let remaining = remaining_until(deadline);
+    if remaining < plan.hook_timeout {
+        remaining
+    } else {
+        plan.hook_timeout
+    }
+}
+
+fn remaining_until(deadline: Instant) -> Duration {
+    deadline
+        .checked_duration_since(Instant::now())
+        .unwrap_or(Duration::ZERO)
+}
+
+#[cfg(unix)]
+fn configure_runtime_process_tree(
+    command: &mut Command,
+    _operation: RuntimeOperation,
+) -> Result<(), RuntimeHarnessError> {
+    use std::os::unix::process::CommandExt;
+
+    command.process_group(0);
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn configure_runtime_process_tree(
+    _command: &mut Command,
+    operation: RuntimeOperation,
+) -> Result<(), RuntimeHarnessError> {
+    Err(RuntimeHarnessError::new(
+        RuntimeHarnessErrorKind::InvalidPlan,
+        operation,
+        "runtime launch process-tree cleanup is unsupported on this platform",
+    )
+    .with_detail(
+        "cleanupScope",
+        RuntimeProcessCleanupScope::ProcessTree.as_str(),
+    ))
 }
 
 pub trait RuntimeAdapter {
@@ -1875,7 +2125,7 @@ fn wait_for_child_exit(
     }
 }
 
-fn terminate_child(
+fn terminate_runtime_process(
     child: &mut Child,
     shutdown_grace: Duration,
     poll_interval: Duration,
@@ -1884,35 +2134,66 @@ fn terminate_child(
         return RuntimeProcessCleanup {
             attempted: false,
             completed: true,
+            scope: RuntimeProcessCleanupScope::ProcessTree,
+            escalated: false,
         };
     }
 
-    let attempted = child.kill().is_ok();
-    let started_at = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => {
-                return RuntimeProcessCleanup {
-                    attempted,
-                    completed: true,
-                };
-            }
-            Ok(None) => {}
-            Err(_) => {
-                return RuntimeProcessCleanup {
-                    attempted,
-                    completed: false,
-                };
-            }
+    let attempted = terminate_process_tree(child.id()).is_ok();
+    match wait_for_runtime_process_tree_exit(child, child.id(), shutdown_grace, poll_interval) {
+        Ok(true) => {
+            return RuntimeProcessCleanup {
+                attempted,
+                completed: true,
+                scope: RuntimeProcessCleanupScope::ProcessTree,
+                escalated: false,
+            };
         }
-        let elapsed = started_at.elapsed();
-        if elapsed >= shutdown_grace {
+        Ok(false) => {}
+        Err(_) => {
             return RuntimeProcessCleanup {
                 attempted,
                 completed: false,
+                scope: RuntimeProcessCleanupScope::ProcessTree,
+                escalated: false,
             };
         }
-        let remaining = shutdown_grace.saturating_sub(elapsed);
+    }
+
+    let escalated = kill_process_tree(child.id()).is_ok();
+    match wait_for_runtime_process_tree_exit(child, child.id(), shutdown_grace, poll_interval) {
+        Ok(true) => RuntimeProcessCleanup {
+            attempted,
+            completed: true,
+            scope: RuntimeProcessCleanupScope::ProcessTree,
+            escalated,
+        },
+        Ok(false) | Err(_) => RuntimeProcessCleanup {
+            attempted,
+            completed: false,
+            scope: RuntimeProcessCleanupScope::ProcessTree,
+            escalated,
+        },
+    }
+}
+
+fn wait_for_runtime_process_tree_exit(
+    child: &mut Child,
+    process_id: u32,
+    timeout: Duration,
+    poll_interval: Duration,
+) -> io::Result<bool> {
+    let started_at = Instant::now();
+    loop {
+        let child_exited = child.try_wait()?.is_some();
+        if child_exited && !process_tree_exists(process_id)? {
+            return Ok(true);
+        }
+        let elapsed = started_at.elapsed();
+        if elapsed >= timeout {
+            return Ok(false);
+        }
+        let remaining = timeout.saturating_sub(elapsed);
         thread::sleep(if remaining < poll_interval {
             remaining
         } else {
@@ -1921,10 +2202,93 @@ fn terminate_child(
     }
 }
 
+#[cfg(unix)]
+fn terminate_process_tree(process_id: u32) -> io::Result<()> {
+    unix_signal_process_group(process_id, unix_signals::SIGTERM)
+}
+
+#[cfg(unix)]
+fn kill_process_tree(process_id: u32) -> io::Result<()> {
+    unix_signal_process_group(process_id, unix_signals::SIGKILL)
+}
+
+#[cfg(unix)]
+fn process_tree_exists(process_id: u32) -> io::Result<bool> {
+    match unix_signal_process_group_raw(process_id, 0) {
+        Ok(()) => Ok(true),
+        Err(error) if error.raw_os_error() == Some(unix_signals::ESRCH) => Ok(false),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(not(unix))]
+fn terminate_process_tree(_process_id: u32) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "process-tree cleanup is unsupported on this platform",
+    ))
+}
+
+#[cfg(not(unix))]
+fn kill_process_tree(_process_id: u32) -> io::Result<()> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "process-tree cleanup is unsupported on this platform",
+    ))
+}
+
+#[cfg(not(unix))]
+fn process_tree_exists(_process_id: u32) -> io::Result<bool> {
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "process-tree cleanup is unsupported on this platform",
+    ))
+}
+
+#[cfg(unix)]
+fn unix_signal_process_group(process_id: u32, signal: i32) -> io::Result<()> {
+    match unix_signal_process_group_raw(process_id, signal) {
+        Ok(()) => Ok(()),
+        Err(error) if error.raw_os_error() == Some(unix_signals::ESRCH) => Ok(()),
+        Err(error) => Err(error),
+    }
+}
+
+#[cfg(unix)]
+fn unix_signal_process_group_raw(process_id: u32, signal: i32) -> io::Result<()> {
+    let process_group_id = i32::try_from(process_id).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("process id {process_id} cannot be represented as a Unix process group id"),
+        )
+    })?;
+    let result = unsafe { unix_signals::kill(-process_group_id, signal) };
+    if result == 0 {
+        return Ok(());
+    }
+    Err(io::Error::last_os_error())
+}
+
+#[cfg(unix)]
+mod unix_signals {
+    pub const ESRCH: i32 = 3;
+    pub const SIGTERM: i32 = 15;
+    pub const SIGKILL: i32 = 9;
+
+    unsafe extern "C" {
+        pub fn kill(pid: i32, sig: i32) -> i32;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::process::Command as StdCommand;
+    use std::sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    };
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     struct FakeTraceAdapter;
@@ -1993,6 +2357,28 @@ mod tests {
         ])
     }
 
+    fn harness_child_command_with_env(
+        test_name: &str,
+        env: &[(&str, &Path)],
+    ) -> RuntimeLaunchCommand {
+        let mut command = harness_child_command(test_name);
+        for (key, value) in env {
+            command = command.env(*key, value.display().to_string());
+        }
+        command
+    }
+
+    fn wait_for_path(path: &Path, timeout: Duration) -> bool {
+        let started_at = Instant::now();
+        while started_at.elapsed() < timeout {
+            if path.exists() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        path.exists()
+    }
+
     #[test]
     #[ignore]
     fn harness_child_exits() {}
@@ -2003,14 +2389,55 @@ mod tests {
         std::thread::sleep(Duration::from_secs(5));
     }
 
+    #[test]
+    #[ignore]
+    fn harness_child_spawns_grandchild() {
+        let heartbeat_path =
+            PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT").unwrap());
+        let pid_path = PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_PID").unwrap());
+        let mut child = StdCommand::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::harness_grandchild_heartbeats",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT", &heartbeat_path)
+            .env("UTSUSHI_TEST_GRANDCHILD_PID", &pid_path)
+            .spawn()
+            .unwrap();
+        assert!(wait_for_path(&pid_path, Duration::from_secs(1)));
+        loop {
+            if let Ok(Some(_)) = child.try_wait() {
+                panic!("grandchild exited before harness cleanup");
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
+
+    #[test]
+    #[ignore]
+    fn harness_grandchild_heartbeats() {
+        let heartbeat_path =
+            PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT").unwrap());
+        let pid_path = PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_PID").unwrap());
+        fs::write(&pid_path, std::process::id().to_string()).unwrap();
+        let mut heartbeat = 0_u64;
+        loop {
+            fs::write(&heartbeat_path, heartbeat.to_string()).unwrap();
+            heartbeat += 1;
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+
     struct WritingCaptureHook {
         boundary: RuntimeCaptureBoundary,
-        calls: usize,
+        calls: Arc<AtomicUsize>,
     }
 
     impl WritingCaptureHook {
-        fn new(boundary: RuntimeCaptureBoundary) -> Self {
-            Self { boundary, calls: 0 }
+        fn new(boundary: RuntimeCaptureBoundary, calls: Arc<AtomicUsize>) -> Self {
+            Self { boundary, calls }
         }
     }
 
@@ -2021,9 +2448,9 @@ mod tests {
 
         fn capture(
             &mut self,
-            context: &mut RuntimeCaptureContext<'_>,
+            context: &mut RuntimeCaptureContext,
         ) -> Result<(), RuntimeHarnessError> {
-            self.calls += 1;
+            self.calls.fetch_add(1, Ordering::SeqCst);
             assert_eq!(context.boundary, self.boundary);
             assert_eq!(context.run_id, HARNESS_RUN_ID);
             context.write_artifact(
@@ -2051,7 +2478,7 @@ mod tests {
 
         fn capture(
             &mut self,
-            context: &mut RuntimeCaptureContext<'_>,
+            context: &mut RuntimeCaptureContext,
         ) -> Result<(), RuntimeHarnessError> {
             context.write_artifact(
                 RuntimeArtifactKind::Screenshot,
@@ -2060,6 +2487,44 @@ mod tests {
                 b"requires an artifact root",
             )?;
             Ok(())
+        }
+    }
+
+    struct SleepingCaptureHook {
+        boundary: RuntimeCaptureBoundary,
+        started: Arc<AtomicBool>,
+        sleep: Duration,
+    }
+
+    impl RuntimeCaptureHook for SleepingCaptureHook {
+        fn boundary(&self) -> RuntimeCaptureBoundary {
+            self.boundary
+        }
+
+        fn capture(
+            &mut self,
+            _context: &mut RuntimeCaptureContext,
+        ) -> Result<(), RuntimeHarnessError> {
+            self.started.store(true, Ordering::SeqCst);
+            std::thread::sleep(self.sleep);
+            Ok(())
+        }
+    }
+
+    struct PanickingCaptureHook {
+        boundary: RuntimeCaptureBoundary,
+    }
+
+    impl RuntimeCaptureHook for PanickingCaptureHook {
+        fn boundary(&self) -> RuntimeCaptureBoundary {
+            self.boundary
+        }
+
+        fn capture(
+            &mut self,
+            _context: &mut RuntimeCaptureContext,
+        ) -> Result<(), RuntimeHarnessError> {
+            std::panic::resume_unwind(Box::new("intentional capture hook panic"))
         }
     }
 
@@ -2254,13 +2719,17 @@ mod tests {
         .with_timeout(Duration::from_secs(5))
         .with_shutdown_grace(Duration::from_secs(1));
         let harness = RuntimeLaunchCaptureHarness::new();
-        let mut hook = WritingCaptureHook::new(RuntimeCaptureBoundary::AfterLaunch);
-        let mut hooks: Vec<&mut dyn RuntimeCaptureHook> = vec![&mut hook];
+        let calls = Arc::new(AtomicUsize::new(0));
+        let mut hooks = RuntimeCaptureHooks::new();
+        hooks.push(WritingCaptureHook::new(
+            RuntimeCaptureBoundary::AfterLaunch,
+            Arc::clone(&calls),
+        ));
 
         let outcome = harness.run(&plan, &mut hooks).unwrap();
 
         assert!(outcome.exit.success);
-        assert_eq!(hook.calls, 1);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
         assert_eq!(outcome.artifacts.len(), 2);
         let screenshot = &outcome.artifacts[0];
         assert_eq!(screenshot.artifact_kind, RuntimeArtifactKind::Screenshot);
@@ -2310,7 +2779,7 @@ mod tests {
         .with_poll_interval(Duration::from_millis(5));
         let harness = RuntimeLaunchCaptureHarness::new();
         let started_at = Instant::now();
-        let mut hooks: Vec<&mut dyn RuntimeCaptureHook> = Vec::new();
+        let mut hooks = RuntimeCaptureHooks::new();
 
         let error = harness.run(&plan, &mut hooks).unwrap_err();
 
@@ -2320,6 +2789,7 @@ mod tests {
         let cleanup = error.cleanup.unwrap();
         assert!(cleanup.attempted);
         assert!(cleanup.completed);
+        assert_eq!(cleanup.scope, RuntimeProcessCleanupScope::ProcessTree);
         assert!(error.process_id.is_some());
     }
 
@@ -2333,7 +2803,7 @@ mod tests {
             RuntimeLaunchCommand::new(&missing_command),
         );
         let harness = RuntimeLaunchCaptureHarness::new();
-        let mut hooks: Vec<&mut dyn RuntimeCaptureHook> = Vec::new();
+        let mut hooks = RuntimeCaptureHooks::new();
 
         let error = harness.run(&plan, &mut hooks).unwrap_err();
 
@@ -2375,8 +2845,8 @@ mod tests {
         .with_shutdown_grace(Duration::from_secs(1))
         .with_poll_interval(Duration::from_millis(5));
         let harness = RuntimeLaunchCaptureHarness::new();
-        let mut hook = ArtifactRequiredHook;
-        let mut hooks: Vec<&mut dyn RuntimeCaptureHook> = vec![&mut hook];
+        let mut hooks = RuntimeCaptureHooks::new();
+        hooks.push(ArtifactRequiredHook);
 
         let error = harness.run(&plan, &mut hooks).unwrap_err();
 
@@ -2388,9 +2858,183 @@ mod tests {
         let cleanup = error.cleanup.unwrap();
         assert!(cleanup.attempted);
         assert!(cleanup.completed);
+        assert_eq!(cleanup.scope, RuntimeProcessCleanupScope::ProcessTree);
         assert_eq!(
             error.to_json()["errorCode"],
             "runtime_artifact_store_unavailable"
+        );
+    }
+
+    #[test]
+    fn after_launch_hook_timeout_cleans_up_runtime_process() {
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command("tests::harness_child_sleeps"),
+        )
+        .with_timeout(Duration::from_secs(5))
+        .with_hook_timeout(Duration::from_millis(50))
+        .with_shutdown_grace(Duration::from_secs(1))
+        .with_poll_interval(Duration::from_millis(5));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let started = Arc::new(AtomicBool::new(false));
+        let mut hooks = RuntimeCaptureHooks::new();
+        hooks.push(SleepingCaptureHook {
+            boundary: RuntimeCaptureBoundary::AfterLaunch,
+            started: Arc::clone(&started),
+            sleep: Duration::from_secs(2),
+        });
+        let started_at = Instant::now();
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert!(started.load(Ordering::SeqCst));
+        assert!(started_at.elapsed() < Duration::from_secs(2));
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::CaptureTimeout);
+        assert_eq!(error.boundary, Some(RuntimeCaptureBoundary::AfterLaunch));
+        assert_eq!(error.code(), "runtime_capture_timeout");
+        let cleanup = error.cleanup.unwrap();
+        assert!(cleanup.attempted);
+        assert!(cleanup.completed);
+        assert_eq!(cleanup.scope, RuntimeProcessCleanupScope::ProcessTree);
+    }
+
+    #[test]
+    fn panicking_capture_hooks_are_contained_and_cleanup_runtime_process() {
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command("tests::harness_child_sleeps"),
+        )
+        .with_timeout(Duration::from_secs(5))
+        .with_hook_timeout(Duration::from_secs(1))
+        .with_shutdown_grace(Duration::from_secs(1))
+        .with_poll_interval(Duration::from_millis(5));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hooks = RuntimeCaptureHooks::new();
+        hooks.push(PanickingCaptureHook {
+            boundary: RuntimeCaptureBoundary::AfterLaunch,
+        });
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::CaptureFailed);
+        assert_eq!(error.boundary, Some(RuntimeCaptureBoundary::AfterLaunch));
+        assert!(error.message.contains("capture hook panicked"));
+        let cleanup = error.cleanup.unwrap();
+        assert!(cleanup.attempted);
+        assert!(cleanup.completed);
+        assert_eq!(cleanup.scope, RuntimeProcessCleanupScope::ProcessTree);
+    }
+
+    #[test]
+    fn before_terminate_hook_timeout_does_not_delay_cleanup() {
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command("tests::harness_child_sleeps"),
+        )
+        .with_timeout(Duration::from_millis(50))
+        .with_hook_timeout(Duration::from_millis(50))
+        .with_shutdown_grace(Duration::from_secs(1))
+        .with_poll_interval(Duration::from_millis(5));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let started = Arc::new(AtomicBool::new(false));
+        let mut hooks = RuntimeCaptureHooks::new();
+        hooks.push(SleepingCaptureHook {
+            boundary: RuntimeCaptureBoundary::BeforeTerminate,
+            started: Arc::clone(&started),
+            sleep: Duration::from_secs(2),
+        });
+        let started_at = Instant::now();
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert!(started.load(Ordering::SeqCst));
+        assert!(started_at.elapsed() < Duration::from_secs(2));
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::Timeout);
+        assert!(
+            error
+                .details
+                .iter()
+                .any(|(key, value)| key == "beforeTerminateHookError"
+                    && value == "runtime_capture_timeout")
+        );
+        let cleanup = error.cleanup.unwrap();
+        assert!(cleanup.attempted);
+        assert!(cleanup.completed);
+        assert_eq!(cleanup.scope, RuntimeProcessCleanupScope::ProcessTree);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn timeout_cleanup_terminates_runtime_process_tree() {
+        let temp = temp_root("process-tree");
+        let heartbeat_path = temp.join("grandchild-heartbeat");
+        let pid_path = temp.join("grandchild.pid");
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command_with_env(
+                "tests::harness_child_spawns_grandchild",
+                &[
+                    ("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT", &heartbeat_path),
+                    ("UTSUSHI_TEST_GRANDCHILD_PID", &pid_path),
+                ],
+            ),
+        )
+        .with_timeout(Duration::from_millis(250))
+        .with_shutdown_grace(Duration::from_secs(1))
+        .with_poll_interval(Duration::from_millis(5));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hooks = RuntimeCaptureHooks::new();
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::Timeout);
+        let cleanup = error.cleanup.unwrap();
+        assert!(cleanup.attempted);
+        assert!(cleanup.completed);
+        assert_eq!(cleanup.scope, RuntimeProcessCleanupScope::ProcessTree);
+        assert!(pid_path.is_file(), "grandchild should have started");
+        assert!(
+            heartbeat_path.is_file(),
+            "grandchild should have written at least one heartbeat"
+        );
+        let heartbeat_after_cleanup = fs::read_to_string(&heartbeat_path).unwrap();
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(
+            fs::read_to_string(&heartbeat_path).unwrap(),
+            heartbeat_after_cleanup,
+            "grandchild heartbeat changed after process-tree cleanup"
+        );
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn launch_capture_harness_fails_closed_without_process_tree_cleanup_support() {
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command("tests::harness_child_exits"),
+        );
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hooks = RuntimeCaptureHooks::new();
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::InvalidPlan);
+        assert!(
+            error
+                .message
+                .contains("process-tree cleanup is unsupported")
+        );
+        assert!(
+            error
+                .details
+                .iter()
+                .any(|(key, value)| key == "cleanupScope" && value == "process_tree")
         );
     }
 

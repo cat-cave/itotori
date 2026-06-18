@@ -68,6 +68,13 @@ surface it can honestly provide:
 | Partial VM/playback core | Enough script semantics can be implemented for review, replay, branch, and snapshots. | The feature needs pixel/reference fidelity outside the implemented semantic subset.   |
 | Reference runtime/VM     | Engine behavior is matched against reference output for a declared feature profile.   | The profile is too broad to validate or cannot be tested against reference behavior.  |
 
+Launch/capture wrappers must be bounded as a whole lifecycle, not only as a
+direct child process. The Rust harness starts launched runtimes in an isolated
+Unix process group, applies deadlines to capture hooks, contains hook panics,
+and terminates the process group on timeout or hook failure. Platforms without
+process-tree cleanup support fail closed with a semantic harness error instead
+of silently falling back to direct-child-only cleanup.
+
 The first credible long-term Utsushi proof is not merely "a screenshot exists."
 It is controlled playback evidence: jump to a known localized moment, observe the
 line and state, capture an artifact, attach reviewer or agent findings, and
