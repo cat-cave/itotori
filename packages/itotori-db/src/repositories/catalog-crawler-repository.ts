@@ -59,6 +59,7 @@ export type CatalogCrawlerCheckpointInput = Required<CatalogCrawlerKey> & {
   parserVersion: string;
   lastCrawlerJobId?: string;
   lastStepKey?: string;
+  workerId?: string;
   metadata?: CatalogCrawlerJsonRecord;
 };
 
@@ -73,6 +74,8 @@ export type CatalogCrawlerCheckpointRecord = Required<CatalogCrawlerKey> & {
 };
 
 export type CatalogCrawlerRateLimitInput = Required<CatalogCrawlerKey> & {
+  crawlerJobId?: string;
+  workerId?: string;
   nextAvailableAt?: CatalogCrawlerDateInput;
   resetAt?: CatalogCrawlerDateInput;
   remaining?: number;
@@ -95,6 +98,7 @@ export type CatalogCrawlerRateLimitRecord = Required<CatalogCrawlerKey> & {
 
 export type CatalogCrawlerStepInput = {
   crawlerJobId: string;
+  workerId?: string;
   crawlerJobStepId?: string;
   stepKey: string;
   catalogSource: CatalogSource;
@@ -144,6 +148,20 @@ export type CatalogCrawlerStepResult = {
   alreadyImported: boolean;
 };
 
+export type CatalogCrawlerCommitStepInput = {
+  crawlerJobId: string;
+  workerId: string;
+  crawlerJobStepId: string;
+  checkpoint: CatalogCrawlerCheckpointInput;
+  rateLimit?: CatalogCrawlerRateLimitInput;
+};
+
+export type CatalogCrawlerCommitStepResult = {
+  step: CatalogCrawlerStepRecord;
+  checkpoint: CatalogCrawlerCheckpointRecord;
+  rateLimit: CatalogCrawlerRateLimitRecord | null;
+};
+
 export interface ItotoriCatalogCrawlerRepositoryPort {
   getCheckpoint(
     actor: AuthorizationActor,
@@ -158,14 +176,20 @@ export interface ItotoriCatalogCrawlerRepositoryPort {
     actor: AuthorizationActor,
     input: CatalogCrawlerStepInput,
   ): Promise<CatalogCrawlerStepResult>;
+  commitStepImport(
+    actor: AuthorizationActor,
+    input: CatalogCrawlerCommitStepInput,
+  ): Promise<CatalogCrawlerCommitStepResult>;
   markStepImported(
     actor: AuthorizationActor,
     crawlerJobStepId: string,
+    workerId?: string,
   ): Promise<CatalogCrawlerStepRecord>;
   markStepFailed(
     actor: AuthorizationActor,
     crawlerJobStepId: string,
     error: unknown,
+    workerId?: string,
   ): Promise<CatalogCrawlerStepRecord>;
   saveCheckpoint(
     actor: AuthorizationActor,
@@ -267,6 +291,9 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
     input: CatalogCrawlerStepInput,
   ): Promise<CatalogCrawlerStepResult> {
     await requirePermission(this.db, actor, permissionValues.catalogWrite);
+    if (input.workerId !== undefined) {
+      await assertActiveCrawlerJob(this.db, input.crawlerJobId, input.workerId);
+    }
     const normalized = normalizeCrawlerStepInput(input);
     const sourceProvenanceId = stableId("catalog-crawler-provenance", [
       normalized.crawlerJobId,
@@ -285,7 +312,7 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
           eq(catalogCrawlerJobSteps.sourceVersion, normalized.sourceVersion),
           eq(catalogCrawlerJobSteps.parserVersion, normalized.parserVersion),
           eq(catalogCrawlerJobSteps.payloadHash, normalized.payloadHash),
-          eq(catalogCrawlerJobSteps.status, catalogCrawlerStepStatusValues.imported),
+          sql`${catalogCrawlerJobSteps.status} in (${catalogCrawlerStepStatusValues.imported}, ${catalogCrawlerStepStatusValues.fetched})`,
         ),
       )
       .limit(1);
@@ -399,9 +426,112 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
     return { step: stepFromRow(requiredRow(rows, normalized.crawlerJobStepId)), alreadyImported };
   }
 
+  async commitStepImport(
+    actor: AuthorizationActor,
+    input: CatalogCrawlerCommitStepInput,
+  ): Promise<CatalogCrawlerCommitStepResult> {
+    await requirePermission(this.db, actor, permissionValues.catalogWrite);
+    const crawlerJobId = requiredString(input.crawlerJobId, "crawlerJobId");
+    const workerId = requiredString(input.workerId, "workerId");
+    const crawlerJobStepId = requiredString(input.crawlerJobStepId, "crawlerJobStepId");
+    const checkpoint = normalizeCrawlerCheckpointInput({
+      ...input.checkpoint,
+      lastCrawlerJobId: crawlerJobId,
+      workerId,
+    });
+    const rateLimit =
+      input.rateLimit === undefined
+        ? null
+        : normalizeCrawlerRateLimitInput({
+            ...input.rateLimit,
+            crawlerJobId,
+            workerId,
+          });
+
+    return this.db.transaction(async (tx) => {
+      const activeRows = await tx
+        .select({ crawlerJobId: catalogCrawlerJobs.crawlerJobId })
+        .from(catalogCrawlerJobs)
+        .where(activeCrawlerJobPredicate(crawlerJobId, workerId))
+        .limit(1);
+      requiredActiveCrawlerJob(activeRows, crawlerJobId);
+
+      const stepRows = await tx
+        .update(catalogCrawlerJobSteps)
+        .set({
+          status: catalogCrawlerStepStatusValues.imported,
+          importedAt: sql`coalesce(${catalogCrawlerJobSteps.importedAt}, now())`,
+          error: null,
+          updatedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(catalogCrawlerJobSteps.crawlerJobStepId, crawlerJobStepId),
+            eq(catalogCrawlerJobSteps.crawlerJobId, crawlerJobId),
+          ),
+        )
+        .returning();
+      const step = stepFromRow(requiredRow(stepRows, crawlerJobStepId));
+
+      let rateLimitRecord: CatalogCrawlerRateLimitRecord | null = null;
+      if (rateLimit !== null) {
+        const rateLimitRows = await tx
+          .insert(catalogCrawlerRateLimits)
+          .values(rateLimit)
+          .onConflictDoUpdate({
+            target: [
+              catalogCrawlerRateLimits.catalogSource,
+              catalogCrawlerRateLimits.adapterName,
+              catalogCrawlerRateLimits.partitionKey,
+            ],
+            set: {
+              nextAvailableAt: rateLimit.nextAvailableAt,
+              resetAt: rateLimit.resetAt,
+              remaining: rateLimit.remaining,
+              limit: rateLimit.limit,
+              retryAfterSeconds: rateLimit.retryAfterSeconds,
+              requestIdentity: rateLimit.requestIdentity,
+              metadata: rateLimit.metadata,
+              updatedAt: sql`now()`,
+            },
+          })
+          .returning();
+        rateLimitRecord = rateLimitFromRow(requiredRow(rateLimitRows, rateLimit.partitionKey));
+      }
+
+      const checkpointRows = await tx
+        .insert(catalogCrawlerCheckpoints)
+        .values(checkpoint)
+        .onConflictDoUpdate({
+          target: [
+            catalogCrawlerCheckpoints.catalogSource,
+            catalogCrawlerCheckpoints.adapterName,
+            catalogCrawlerCheckpoints.partitionKey,
+          ],
+          set: {
+            checkpointCursor: checkpoint.checkpointCursor,
+            sourceVersion: checkpoint.sourceVersion,
+            parserVersion: checkpoint.parserVersion,
+            lastCrawlerJobId: checkpoint.lastCrawlerJobId,
+            lastStepKey: checkpoint.lastStepKey,
+            metadata: checkpoint.metadata,
+            updatedAt: sql`now()`,
+          },
+        })
+        .returning();
+
+      return {
+        step,
+        checkpoint: checkpointFromRow(requiredRow(checkpointRows, checkpoint.partitionKey)),
+        rateLimit: rateLimitRecord,
+      };
+    });
+  }
+
   async markStepImported(
     actor: AuthorizationActor,
     crawlerJobStepId: string,
+    workerId?: string,
   ): Promise<CatalogCrawlerStepRecord> {
     await requirePermission(this.db, actor, permissionValues.catalogWrite);
     const rows = await this.db
@@ -412,7 +542,20 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
         error: null,
         updatedAt: sql`now()`,
       })
-      .where(eq(catalogCrawlerJobSteps.crawlerJobStepId, requiredString(crawlerJobStepId, "crawlerJobStepId")))
+      .where(
+        and(
+          eq(catalogCrawlerJobSteps.crawlerJobStepId, requiredString(crawlerJobStepId, "crawlerJobStepId")),
+          workerId === undefined
+            ? sql`true`
+            : sql`exists (
+                select 1 from ${catalogCrawlerJobs}
+                where ${catalogCrawlerJobs.crawlerJobId} = ${catalogCrawlerJobSteps.crawlerJobId}
+                  and ${catalogCrawlerJobs.lockedBy} = ${requiredString(workerId, "workerId")}
+                  and ${catalogCrawlerJobs.status} = ${catalogCrawlerJobStatusValues.running}
+                  and ${catalogCrawlerJobs.leaseExpiresAt} > now()
+              )`,
+        ),
+      )
       .returning();
     return stepFromRow(requiredRow(rows, crawlerJobStepId));
   }
@@ -421,6 +564,7 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
     actor: AuthorizationActor,
     crawlerJobStepId: string,
     error: unknown,
+    workerId?: string,
   ): Promise<CatalogCrawlerStepRecord> {
     await requirePermission(this.db, actor, permissionValues.catalogWrite);
     const rows = await this.db
@@ -430,7 +574,20 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
         error: errorMessage(error),
         updatedAt: sql`now()`,
       })
-      .where(eq(catalogCrawlerJobSteps.crawlerJobStepId, requiredString(crawlerJobStepId, "crawlerJobStepId")))
+      .where(
+        and(
+          eq(catalogCrawlerJobSteps.crawlerJobStepId, requiredString(crawlerJobStepId, "crawlerJobStepId")),
+          workerId === undefined
+            ? sql`true`
+            : sql`exists (
+                select 1 from ${catalogCrawlerJobs}
+                where ${catalogCrawlerJobs.crawlerJobId} = ${catalogCrawlerJobSteps.crawlerJobId}
+                  and ${catalogCrawlerJobs.lockedBy} = ${requiredString(workerId, "workerId")}
+                  and ${catalogCrawlerJobs.status} = ${catalogCrawlerJobStatusValues.running}
+                  and ${catalogCrawlerJobs.leaseExpiresAt} > now()
+              )`,
+        ),
+      )
       .returning();
     return stepFromRow(requiredRow(rows, crawlerJobStepId));
   }
@@ -441,6 +598,9 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
   ): Promise<CatalogCrawlerCheckpointRecord> {
     await requirePermission(this.db, actor, permissionValues.catalogWrite);
     const normalized = normalizeCrawlerCheckpointInput(input);
+    if (normalized.lastCrawlerJobId !== null && input.workerId !== undefined) {
+      await assertActiveCrawlerJob(this.db, normalized.lastCrawlerJobId, input.workerId);
+    }
     const rows = await this.db
       .insert(catalogCrawlerCheckpoints)
       .values(normalized)
@@ -470,6 +630,9 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
   ): Promise<CatalogCrawlerRateLimitRecord> {
     await requirePermission(this.db, actor, permissionValues.catalogWrite);
     const normalized = normalizeCrawlerRateLimitInput(input);
+    if (input.crawlerJobId !== undefined && input.workerId !== undefined) {
+      await assertActiveCrawlerJob(this.db, input.crawlerJobId, input.workerId);
+    }
     const rows = await this.db
       .insert(catalogCrawlerRateLimits)
       .values(normalized)
@@ -513,6 +676,8 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
         and(
           eq(catalogCrawlerJobs.crawlerJobId, requiredString(crawlerJobId, "crawlerJobId")),
           eq(catalogCrawlerJobs.lockedBy, requiredString(workerId, "workerId")),
+          eq(catalogCrawlerJobs.status, catalogCrawlerJobStatusValues.running),
+          sql`${catalogCrawlerJobs.leaseExpiresAt} > now()`,
         ),
       )
       .returning();
@@ -538,6 +703,8 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
         and(
           eq(catalogCrawlerJobs.crawlerJobId, requiredString(crawlerJobId, "crawlerJobId")),
           eq(catalogCrawlerJobs.lockedBy, requiredString(workerId, "workerId")),
+          eq(catalogCrawlerJobs.status, catalogCrawlerJobStatusValues.running),
+          sql`${catalogCrawlerJobs.leaseExpiresAt} > now()`,
         ),
       )
       .returning();
@@ -796,6 +963,34 @@ function requiredRow<T>(rows: T[], id: string): T {
     throw new Error(`expected row for ${id}`);
   }
   return row;
+}
+
+async function assertActiveCrawlerJob(
+  db: ItotoriDatabase,
+  crawlerJobId: string,
+  workerId: string,
+): Promise<void> {
+  const rows = await db
+    .select({ crawlerJobId: catalogCrawlerJobs.crawlerJobId })
+    .from(catalogCrawlerJobs)
+    .where(activeCrawlerJobPredicate(crawlerJobId, workerId))
+    .limit(1);
+  requiredActiveCrawlerJob(rows, crawlerJobId);
+}
+
+function activeCrawlerJobPredicate(crawlerJobId: string, workerId: string) {
+  return and(
+    eq(catalogCrawlerJobs.crawlerJobId, requiredString(crawlerJobId, "crawlerJobId")),
+    eq(catalogCrawlerJobs.lockedBy, requiredString(workerId, "workerId")),
+    eq(catalogCrawlerJobs.status, catalogCrawlerJobStatusValues.running),
+    sql`${catalogCrawlerJobs.leaseExpiresAt} > now()`,
+  );
+}
+
+function requiredActiveCrawlerJob<T>(rows: T[], crawlerJobId: string): void {
+  if (rows[0] === undefined) {
+    throw new Error(`crawler job ${crawlerJobId} does not have an active lease for this worker`);
+  }
 }
 
 function hashJson(input: unknown): string {

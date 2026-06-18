@@ -29,7 +29,7 @@ export type CatalogCrawlerAdapterContext = {
 
 export type CatalogCrawlerRateLimitMetadata = Omit<
   CatalogCrawlerRateLimitInput,
-  "catalogSource" | "adapterName" | "partitionKey"
+  "catalogSource" | "adapterName" | "partitionKey" | "crawlerJobId" | "workerId"
 >;
 
 export type CatalogCrawlerAdapterStep<TFact = unknown> = {
@@ -132,6 +132,7 @@ export class ItotoriCatalogCrawlerRunner {
         fetchedSteps += 1;
         const stepInput = {
           crawlerJobId: job.crawlerJobId,
+          workerId: options.workerId,
           stepKey: adapterStep.stepKey,
           catalogSource: adapter.catalogSource,
           adapterName: adapter.adapterName,
@@ -163,42 +164,51 @@ export class ItotoriCatalogCrawlerRunner {
               step: recorded.step,
               facts: adapterStep.facts,
             });
-            await options.repository.markStepImported(options.actor, recorded.step.crawlerJobStepId);
             importedSteps += 1;
           } catch (error) {
             await options.repository.markStepFailed(
               options.actor,
               recorded.step.crawlerJobStepId,
               error,
+              options.workerId,
             );
             throw error;
           }
         }
 
         lastCursor = adapterStep.checkpointCursor;
-        currentCheckpoint = await options.repository.saveCheckpoint(options.actor, {
-          catalogSource: adapter.catalogSource,
-          adapterName: adapter.adapterName,
-          partitionKey,
-          checkpointCursor: adapterStep.checkpointCursor,
-          sourceVersion: adapter.sourceVersion,
-          parserVersion: adapter.parserVersion,
-          lastCrawlerJobId: job.crawlerJobId,
-          lastStepKey: adapterStep.stepKey,
-          metadata: {
-            mode: options.mode ?? "live",
-            requestIdentity: adapterStep.requestIdentity,
-          },
-        });
-        if (adapterStep.rateLimit !== undefined) {
-          await options.repository.saveRateLimit(options.actor, {
-            ...adapterStep.rateLimit,
+        const committed = await options.repository.commitStepImport(options.actor, {
+          crawlerJobId: job.crawlerJobId,
+          workerId: options.workerId,
+          crawlerJobStepId: recorded.step.crawlerJobStepId,
+          checkpoint: {
             catalogSource: adapter.catalogSource,
             adapterName: adapter.adapterName,
             partitionKey,
-            requestIdentity: adapterStep.rateLimit.requestIdentity ?? adapterStep.requestIdentity,
-          });
-        }
+            checkpointCursor: adapterStep.checkpointCursor,
+            sourceVersion: adapter.sourceVersion,
+            parserVersion: adapter.parserVersion,
+            lastCrawlerJobId: job.crawlerJobId,
+            lastStepKey: adapterStep.stepKey,
+            metadata: {
+              mode: options.mode ?? "live",
+              requestIdentity: adapterStep.requestIdentity,
+            },
+          },
+          ...(adapterStep.rateLimit === undefined
+            ? {}
+            : {
+                rateLimit: {
+                  ...adapterStep.rateLimit,
+                  catalogSource: adapter.catalogSource,
+                  adapterName: adapter.adapterName,
+                  partitionKey,
+                  requestIdentity:
+                    adapterStep.rateLimit.requestIdentity ?? adapterStep.requestIdentity,
+                },
+              }),
+        });
+        currentCheckpoint = committed.checkpoint;
       }
 
       job = await options.repository.completeCrawlerJob(
@@ -209,7 +219,11 @@ export class ItotoriCatalogCrawlerRunner {
       );
       return { job, checkpoint: currentCheckpoint, fetchedSteps, importedSteps, skippedSteps };
     } catch (error) {
-      await options.repository.failCrawlerJob(options.actor, job.crawlerJobId, options.workerId, error);
+      try {
+        await options.repository.failCrawlerJob(options.actor, job.crawlerJobId, options.workerId, error);
+      } catch {
+        // Stale workers should not mask the write that proved they no longer own the job.
+      }
       throw error;
     }
   }
@@ -230,6 +244,7 @@ export type RecordedCatalogCrawlerFixture<TFact = unknown> = {
 export function createRecordedCatalogCrawlerAdapter<TFact>(
   fixture: RecordedCatalogCrawlerFixture<TFact>,
 ): CatalogCrawlerSourceAdapter<TFact> {
+  validateRecordedCatalogCrawlerFixture(fixture);
   const adapter: CatalogCrawlerSourceAdapter<TFact> = {
     catalogSource: fixture.catalogSource,
     adapterName: fixture.adapterName,
@@ -268,4 +283,84 @@ function checkpointAfterStepKey(cursor: CatalogCrawlerCursor): string | null {
   }
   const afterStepKey = (cursor as Record<string, unknown>).afterStepKey;
   return typeof afterStepKey === "string" ? afterStepKey : null;
+}
+
+function validateRecordedCatalogCrawlerFixture<TFact>(
+  fixture: RecordedCatalogCrawlerFixture<TFact>,
+): void {
+  if (fixture === null || typeof fixture !== "object") {
+    throw new Error("recorded crawler fixture must be a JSON object");
+  }
+  requiredFixtureString(fixture.fixtureName, "fixtureName");
+  if (!catalogCrawlerPublicSources.includes(fixture.catalogSource)) {
+    throw new Error(`recorded crawler fixture has unsupported catalogSource ${String(fixture.catalogSource)}`);
+  }
+  requiredFixtureString(fixture.adapterName, "adapterName");
+  requiredFixtureString(fixture.adapterVersion, "adapterVersion");
+  requiredFixtureString(fixture.sourceVersion, "sourceVersion");
+  requiredFixtureString(fixture.parserVersion, "parserVersion");
+  if (fixture.partitionKey !== undefined) {
+    requiredFixtureString(fixture.partitionKey, "partitionKey");
+  }
+  if (!Array.isArray(fixture.steps)) {
+    throw new Error("recorded crawler fixture steps must be an array");
+  }
+  for (const [index, step] of fixture.steps.entries()) {
+    validateRecordedCatalogCrawlerStep(step, `steps[${index}]`);
+  }
+}
+
+function validateRecordedCatalogCrawlerStep<TFact>(
+  step: CatalogCrawlerAdapterStep<TFact>,
+  label: string,
+): void {
+  if (step === null || typeof step !== "object") {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  requiredFixtureString(step.stepKey, `${label}.stepKey`);
+  requiredFixtureString(step.sourceId, `${label}.sourceId`);
+  requiredFixtureString(step.requestIdentity, `${label}.requestIdentity`);
+  const fetchedAt = step.fetchedAt instanceof Date ? step.fetchedAt : new Date(step.fetchedAt);
+  if (Number.isNaN(fetchedAt.getTime())) {
+    throw new Error(`${label}.fetchedAt must be a valid date`);
+  }
+  if (step.payload === null || typeof step.payload !== "object" || Array.isArray(step.payload)) {
+    throw new Error(`${label}.payload must be a JSON object`);
+  }
+  if (!Array.isArray(step.facts)) {
+    throw new Error(`${label}.facts must be an array`);
+  }
+  if (
+    step.httpStatus !== undefined &&
+    (!Number.isInteger(step.httpStatus) || step.httpStatus < 100 || step.httpStatus > 599)
+  ) {
+    throw new Error(`${label}.httpStatus must be a valid HTTP status code`);
+  }
+  if (step.payloadHash !== undefined && !step.payloadHash.startsWith("sha256:")) {
+    throw new Error(`${label}.payloadHash must start with sha256:`);
+  }
+  if (step.rateLimit !== undefined) {
+    validateRecordedRateLimit(step.rateLimit, `${label}.rateLimit`);
+  }
+}
+
+function validateRecordedRateLimit(rateLimit: CatalogCrawlerRateLimitMetadata, label: string): void {
+  if (rateLimit === null || typeof rateLimit !== "object") {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  optionalNonnegativeFixtureInteger(rateLimit.remaining, `${label}.remaining`);
+  optionalNonnegativeFixtureInteger(rateLimit.limit, `${label}.limit`);
+  optionalNonnegativeFixtureInteger(rateLimit.retryAfterSeconds, `${label}.retryAfterSeconds`);
+}
+
+function optionalNonnegativeFixtureInteger(input: number | undefined, label: string): void {
+  if (input !== undefined && (!Number.isInteger(input) || input < 0)) {
+    throw new Error(`${label} must be a nonnegative integer`);
+  }
+}
+
+function requiredFixtureString(input: string | undefined, label: string): void {
+  if (typeof input !== "string" || input.trim().length === 0) {
+    throw new Error(`recorded crawler fixture ${label} is required`);
+  }
 }

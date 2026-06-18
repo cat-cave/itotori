@@ -10,6 +10,8 @@ import {
 import {
   type CatalogCrawlerCheckpointInput,
   type CatalogCrawlerCheckpointRecord,
+  type CatalogCrawlerCommitStepInput,
+  type CatalogCrawlerCommitStepResult,
   type CatalogCrawlerCursor,
   type CatalogCrawlerJobInput,
   type CatalogCrawlerJobRecord,
@@ -82,6 +84,9 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     _actor: AuthorizationActor,
     input: CatalogCrawlerStepInput,
   ): Promise<CatalogCrawlerStepResult> {
+    if (input.workerId !== undefined) {
+      this.assertActiveJob(input.crawlerJobId, input.workerId);
+    }
     const stepKey = `${input.crawlerJobId}:${input.stepKey}`;
     const previous = this.steps.get(stepKey);
     const key = normalizeKey(input);
@@ -96,7 +101,8 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
         step.sourceVersion === input.sourceVersion &&
         step.parserVersion === input.parserVersion &&
         step.payloadHash === payloadHash &&
-        step.status === catalogCrawlerStepStatusValues.imported,
+        (step.status === catalogCrawlerStepStatusValues.imported ||
+          step.status === catalogCrawlerStepStatusValues.fetched),
     );
     const now = new Date();
     const step: CatalogCrawlerStepRecord = {
@@ -127,25 +133,64 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     return { step, alreadyImported };
   }
 
+  async commitStepImport(
+    _actor: AuthorizationActor,
+    input: CatalogCrawlerCommitStepInput,
+  ): Promise<CatalogCrawlerCommitStepResult> {
+    this.assertActiveJob(input.crawlerJobId, input.workerId);
+    const step = this.updateStep(
+      input.crawlerJobStepId,
+      catalogCrawlerStepStatusValues.imported,
+      null,
+      input.crawlerJobId,
+      input.workerId,
+    );
+    const rateLimit =
+      input.rateLimit === undefined
+        ? null
+        : await this.saveRateLimit(_actor, {
+            ...input.rateLimit,
+            crawlerJobId: input.crawlerJobId,
+            workerId: input.workerId,
+          });
+    const checkpoint = await this.saveCheckpoint(_actor, {
+      ...input.checkpoint,
+      lastCrawlerJobId: input.crawlerJobId,
+      workerId: input.workerId,
+    });
+    return { step, checkpoint, rateLimit };
+  }
+
   async markStepImported(
     _actor: AuthorizationActor,
     crawlerJobStepId: string,
+    workerId?: string,
   ): Promise<CatalogCrawlerStepRecord> {
-    return this.updateStep(crawlerJobStepId, catalogCrawlerStepStatusValues.imported);
+    return this.updateStep(crawlerJobStepId, catalogCrawlerStepStatusValues.imported, null, undefined, workerId);
   }
 
   async markStepFailed(
     _actor: AuthorizationActor,
     crawlerJobStepId: string,
     error: unknown,
+    workerId?: string,
   ): Promise<CatalogCrawlerStepRecord> {
-    return this.updateStep(crawlerJobStepId, catalogCrawlerStepStatusValues.failed, errorMessage(error));
+    return this.updateStep(
+      crawlerJobStepId,
+      catalogCrawlerStepStatusValues.failed,
+      errorMessage(error),
+      undefined,
+      workerId,
+    );
   }
 
   async saveCheckpoint(
     _actor: AuthorizationActor,
     input: CatalogCrawlerCheckpointInput,
   ): Promise<CatalogCrawlerCheckpointRecord> {
+    if (input.lastCrawlerJobId !== undefined && input.workerId !== undefined) {
+      this.assertActiveJob(input.lastCrawlerJobId, input.workerId);
+    }
     const key = normalizeKey(input);
     const checkpoint: CatalogCrawlerCheckpointRecord = {
       catalogSource: key.catalogSource,
@@ -167,6 +212,9 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     _actor: AuthorizationActor,
     input: CatalogCrawlerRateLimitInput,
   ): Promise<CatalogCrawlerRateLimitRecord> {
+    if (input.crawlerJobId !== undefined && input.workerId !== undefined) {
+      this.assertActiveJob(input.crawlerJobId, input.workerId);
+    }
     const key = normalizeKey(input);
     const rateLimit: CatalogCrawlerRateLimitRecord = {
       catalogSource: key.catalogSource,
@@ -218,12 +266,20 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     crawlerJobStepId: string,
     status: CatalogCrawlerStepStatus,
     error: string | null = null,
+    expectedCrawlerJobId?: string,
+    workerId?: string,
   ): CatalogCrawlerStepRecord {
     const entry = [...this.steps.entries()].find(([, step]) => step.crawlerJobStepId === crawlerJobStepId);
     if (entry === undefined) {
       throw new Error(`missing crawler step ${crawlerJobStepId}`);
     }
     const [key, step] = entry;
+    if (expectedCrawlerJobId !== undefined && step.crawlerJobId !== expectedCrawlerJobId) {
+      throw new Error(`crawler step ${crawlerJobStepId} does not belong to job ${expectedCrawlerJobId}`);
+    }
+    if (workerId !== undefined) {
+      this.assertActiveJob(step.crawlerJobId, workerId);
+    }
     const updated: CatalogCrawlerStepRecord = {
       ...step,
       status,
@@ -249,6 +305,9 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     if (job.lockedBy !== workerId) {
       throw new Error(`crawler job ${crawlerJobId} is locked by ${job.lockedBy}`);
     }
+    if (job.status !== catalogCrawlerJobStatusValues.running || job.leaseExpiresAt <= new Date()) {
+      throw new Error(`crawler job ${crawlerJobId} does not have an active lease for this worker`);
+    }
     const updated: CatalogCrawlerJobRecord = {
       ...job,
       status,
@@ -259,6 +318,20 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     };
     this.jobs.set(crawlerJobId, updated);
     return updated;
+  }
+
+  private assertActiveJob(crawlerJobId: string, workerId: string): void {
+    const job = this.jobs.get(crawlerJobId);
+    if (job === undefined) {
+      throw new Error(`missing crawler job ${crawlerJobId}`);
+    }
+    if (
+      job.lockedBy !== workerId ||
+      job.status !== catalogCrawlerJobStatusValues.running ||
+      job.leaseExpiresAt <= new Date()
+    ) {
+      throw new Error(`crawler job ${crawlerJobId} does not have an active lease for this worker`);
+    }
   }
 
   private nextId(prefix: string): string {

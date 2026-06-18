@@ -180,6 +180,8 @@ export { ItotoriCatalogCrawlerRepository } from "./repositories/catalog-crawler-
 export type {
   CatalogCrawlerCheckpointInput,
   CatalogCrawlerCheckpointRecord,
+  CatalogCrawlerCommitStepInput,
+  CatalogCrawlerCommitStepResult,
   CatalogCrawlerCursor,
   CatalogCrawlerDateInput,
   CatalogCrawlerJobInput,
