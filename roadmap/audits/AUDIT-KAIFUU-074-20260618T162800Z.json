@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-074-20260618T162800Z",
+  "generatedAt": "2026-06-18T16:28:00Z",
+  "spec": {
+    "id": "KAIFUU-074",
+    "title": "Delta staging atomic no-clobber promotion",
+    "branch": "spec/kaifuu-074",
+    "worktree": "/tmp/itotori-spec-kaifuu-074",
+    "commit": "8d3ccad610b422038f10f3ca8e4005958a5c4cf2"
+  },
+  "auditor": {
+    "name": "kaifuu-074-final-reaudit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final re-audit found no P0/P1/P2/P3 findings. The prior Clippy blocker was repaired, no-clobber promotion is shared by delta and CLI paths, staging cleanup preserves source and existing output on failure, and targeted Rust tests and Clippy passed.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}

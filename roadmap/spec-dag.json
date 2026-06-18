@@ -16956,6 +16956,46 @@
         "False confidence from app-only tests",
         "Failure-injection coverage"
       ]
+    },
+    {
+      "id": "SHARED-030",
+      "status": "planned",
+      "title": "SQL-comment-aware permission constraint verifier",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-014"],
+      "summary": "Harden the permission migration drift verifier so SQL line comments and block comments cannot satisfy the named grants-table permission constraint scan.",
+      "deliverables": [
+        "SQL comment stripping or parser-backed constraint extraction for permission drift verification",
+        "Regression fixtures for block-commented and line-commented grants constraints",
+        "Updated verifier diagnostics that identify the live migration and constraint source"
+      ],
+      "acceptanceCriteria": [
+        "A block-commented exact grants permission constraint in a registered migration does not satisfy the verifier.",
+        "A line-commented exact grants permission constraint in a registered migration does not satisfy the verifier.",
+        "The existing registered-migration and named grants-table constraint regressions keep passing."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node --test packages/itotori-db/scripts/verify-permission-constraints.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "False-positive drift verification from SQL comments",
+        "Over-broad SQL text scanning",
+        "Constraint diagnostics that hide the source migration"
+      ]
     }
   ]
 }

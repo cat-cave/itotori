@@ -1,0 +1,107 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-SHARED-014-20260618T162830Z",
+  "generatedAt": "2026-06-18T16:28:30Z",
+  "spec": {
+    "id": "SHARED-014",
+    "title": "Permission constant and migration drift guard",
+    "branch": "spec/shared-014",
+    "worktree": "/tmp/itotori-spec-shared-014",
+    "commit": "5ce4c00f942135e162f761b8a2422d44ce48a3db"
+  },
+  "auditor": {
+    "name": "shared-014-final-reaudit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers. The verifier now ignores commented-out migration registrations and requires the named grants-table permission constraint. A residual P2 false-positive risk remains because SQL migration text is scanned without stripping SQL comments.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["SHARED-014-F001"]
+  },
+  "findings": [
+    {
+      "id": "SHARED-014-F001",
+      "severity": "P2",
+      "title": "Permission constraint verifier scans SQL comments",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/scripts/verify-permission-constraints.mjs",
+          "line": 423,
+          "symbol": "permissionConstraintFromSql"
+        }
+      ],
+      "description": "The repaired verifier structurally parses live migration registrations and requires the intended grants-table constraint, but the SQL constraint scan still operates on raw SQL text. A block-commented exact ALTER TABLE statement could be counted as the latest permission constraint.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit confirmed commented-out migration registrations no longer count, but noted that SQL block comments are not stripped before scanning permission constraints."
+        },
+        {
+          "kind": "test",
+          "detail": "node packages/itotori-db/scripts/verify-permission-constraints.mjs, node --test packages/itotori-db/scripts/verify-permission-constraints.test.mjs, pnpm --filter @itotori/db test, and node scripts/spec-dag.mjs validate passed after the P1 repairs."
+        }
+      ],
+      "impact": "The required SHARED-014 drift guard is now effective for registered migrations and the intended constraint, but a future migration containing a commented exact grants constraint could create a false-positive verifier pass.",
+      "actionableAcceptanceCriteria": [
+        "The permission constraint verifier ignores SQL line and block comments before extracting permission constraints.",
+        "A registered migration with a block-commented exact grants permission constraint does not satisfy the verifier.",
+        "Regression tests cover block comments, line comments, and the existing unrelated permission-shaped check case."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "SHARED",
+          "title": "SQL-comment-aware permission constraint verifier",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["shared", "itotori"],
+          "parallelGroup": "contracts",
+          "dependsOn": ["SHARED-014"],
+          "summary": "Harden the permission migration drift verifier so SQL line comments and block comments cannot satisfy the named grants-table permission constraint scan.",
+          "deliverables": [
+            "SQL comment stripping or parser-backed constraint extraction for permission drift verification",
+            "Regression fixtures for block-commented and line-commented grants constraints",
+            "Updated verifier diagnostics that identify the live migration and constraint source"
+          ],
+          "acceptanceCriteria": [
+            "A block-commented exact grants permission constraint in a registered migration does not satisfy the verifier.",
+            "A line-commented exact grants permission constraint in a registered migration does not satisfy the verifier.",
+            "The existing registered-migration and named grants-table constraint regressions keep passing."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "node --test packages/itotori-db/scripts/verify-permission-constraints.test.mjs"
+            },
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            },
+            {
+              "type": "command",
+              "value": "node scripts/spec-dag.mjs validate"
+            }
+          ],
+          "auditFocus": [
+            "False-positive drift verification from SQL comments",
+            "Over-broad SQL text scanning",
+            "Constraint diagnostics that hide the source migration"
+          ]
+        }
+      }
+    }
+  ]
+}

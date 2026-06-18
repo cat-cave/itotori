@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-113-20260618T162820Z",
+  "generatedAt": "2026-06-18T16:28:20Z",
+  "spec": {
+    "id": "ITOTORI-113",
+    "title": "Atomic benchmark ledger ingestion",
+    "branch": "spec/itotori-113",
+    "worktree": "/tmp/itotori-spec-itotori-113",
+    "commit": "797cd52c13503929107fd1c0a9522917e491e533"
+  },
+  "auditor": {
+    "name": "itotori-113-final-audit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final audit found no P0/P1/P2/P3 findings. Benchmark artifact insertion and provider ledger ingestion occur in one DB transaction, optional provider-run timing is accepted through schema, DB, and repository layers, rollback coverage exists for conflicting ledger rows, and dashboard and cost reads source provider state from the ledger.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
