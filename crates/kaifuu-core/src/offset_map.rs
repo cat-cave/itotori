@@ -1748,6 +1748,9 @@ pub struct StringRelocationDiagnostic {
     pub remediation: String,
 }
 
+type EncodedStringSlotResult<T> = Result<T, Box<EncodedStringSlotDiagnostic>>;
+type StringRelocationResult<T> = Result<T, Box<StringRelocationDiagnostic>>;
+
 pub fn plan_string_table_rebuild(
     request: &StringTableRebuildRequest,
 ) -> StringRelocationPlanReport {
@@ -1806,7 +1809,7 @@ pub fn plan_string_table_rebuild(
                 encoded_bytes,
                 new_range: ByteSpan::new(0, 0).unwrap(),
             }),
-            Err(diagnostic) => diagnostics.push(diagnostic),
+            Err(diagnostic) => diagnostics.push(*diagnostic),
         }
     }
 
@@ -1920,7 +1923,7 @@ pub fn plan_string_table_rebuild(
                 continue;
             }
             Err(diagnostic) => {
-                relocation_diagnostics.push(diagnostic);
+                relocation_diagnostics.push(*diagnostic);
                 continue;
             }
         }
@@ -1939,7 +1942,7 @@ pub fn plan_string_table_rebuild(
         let reference_bytes = match encode_reference_value(reference, rebuilt_slot) {
             Ok(bytes) => bytes,
             Err(diagnostic) => {
-                relocation_diagnostics.push(diagnostic);
+                relocation_diagnostics.push(*diagnostic);
                 continue;
             }
         };
@@ -2204,15 +2207,15 @@ fn encode_relocated_slot(
     slot: &StringRelocationSlot,
     replacement: &StringRelocationTarget,
     source_bytes: &[u8],
-) -> Result<Vec<u8>, EncodedStringSlotDiagnostic> {
+) -> EncodedStringSlotResult<Vec<u8>> {
     let encoded = encode_string(&replacement.target_text, slot.encoding).map_err(|message| {
-        relocated_slot_diagnostic(
+        Box::new(relocated_slot_diagnostic(
             slot,
             STRING_SLOT_INVALID_ENCODING,
             message,
             "replace_unencodable_character",
             "replace characters unsupported by the slot encoding before patching",
-        )
+        ))
     })?;
 
     for protected_span in &slot.protected_spans {
@@ -2226,7 +2229,7 @@ fn encode_relocated_slot(
                 .iter()
                 .any(|mapping| mapping.matches_target_text(&replacement.target_text))
         {
-            return Err(relocated_slot_diagnostic(
+            return Err(Box::new(relocated_slot_diagnostic(
                 slot,
                 STRING_SLOT_PROTECTED_SPAN_MUTATION,
                 format!(
@@ -2235,7 +2238,7 @@ fn encode_relocated_slot(
                 ),
                 "restore_protected_span",
                 "preserve protected tokens and align protectedSpanMappings before relocation",
-            ));
+            )));
         }
     }
 
@@ -2243,43 +2246,43 @@ fn encode_relocated_slot(
         EncodedStringSlotLayout::FixedWidth => Ok(encoded),
         EncodedStringSlotLayout::NullTerminated { terminator_hex } => {
             let terminator = parse_hex_bytes(terminator_hex).map_err(|message| {
-                relocated_slot_diagnostic(
+                Box::new(relocated_slot_diagnostic(
                     slot,
                     STRING_SLOT_TERMINATOR_LOSS,
                     message,
                     "preserve_terminator",
                     "declare a valid hexadecimal terminator for this slot layout",
-                )
+                ))
             })?;
             if terminator.is_empty() {
-                return Err(relocated_slot_diagnostic(
+                return Err(Box::new(relocated_slot_diagnostic(
                     slot,
                     STRING_SLOT_TERMINATOR_LOSS,
                     "null-terminated slot declared an empty terminator",
                     "preserve_terminator",
                     "declare the terminator bytes required by this slot layout",
-                ));
+                )));
             }
             let start = slot.old_byte_range.start() as usize;
             let end = slot.old_byte_range.end() as usize;
             if end <= source_bytes.len() && !contains_bytes(&source_bytes[start..end], &terminator)
             {
-                return Err(relocated_slot_diagnostic(
+                return Err(Box::new(relocated_slot_diagnostic(
                     slot,
                     STRING_SLOT_TERMINATOR_LOSS,
                     "current slot bytes do not contain the declared terminator",
                     "preserve_terminator",
                     "re-extract the source bytes or repair the slot terminator before relocation",
-                ));
+                )));
             }
             if contains_bytes(&encoded, &terminator) {
-                return Err(relocated_slot_diagnostic(
+                return Err(Box::new(relocated_slot_diagnostic(
                     slot,
                     STRING_SLOT_TERMINATOR_LOSS,
                     "encoded target contains the terminator byte sequence before the slot terminator",
                     "preserve_terminator",
                     "remove embedded terminator bytes from the replacement text",
-                ));
+                )));
             }
             let mut bytes = encoded;
             bytes.extend(terminator);
@@ -2327,13 +2330,13 @@ fn translate_old_range(range: ByteSpan, mappings: &[RangeMapping]) -> Option<Byt
 fn encode_reference_value(
     reference: &StringRelocationReference,
     rebuilt_slot: &RebuiltSlot<'_>,
-) -> Result<Vec<u8>, StringRelocationDiagnostic> {
+) -> StringRelocationResult<Vec<u8>> {
     match &reference.format {
         StringReferenceFormat::PointerLeU32 { base_address } => {
             let pointer = base_address
                 .checked_add(rebuilt_slot.new_range.start())
                 .ok_or_else(|| {
-                    relocation_diagnostic(
+                    Box::new(relocation_diagnostic(
                         STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
                         Some(&reference.reference_id),
                         Some(&reference.slot_id),
@@ -2341,10 +2344,10 @@ fn encode_reference_value(
                         "pointer relocation overflowed u64 address space",
                         "repair_pointer_base",
                         "choose a pointer base and range representable by the fixture format",
-                    )
+                    ))
                 })?;
             let pointer = u32::try_from(pointer).map_err(|_| {
-                relocation_diagnostic(
+                Box::new(relocation_diagnostic(
                     STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
                     Some(&reference.reference_id),
                     Some(&reference.slot_id),
@@ -2352,13 +2355,13 @@ fn encode_reference_value(
                     "pointer relocation does not fit in u32 little-endian format",
                     "add_pointer_format_support",
                     "use a wider supported pointer format before patching this reference",
-                )
+                ))
             })?;
             Ok(pointer.to_le_bytes().to_vec())
         }
         StringReferenceFormat::IndexLeU16 => {
             let index = u16::try_from(rebuilt_slot.new_range.start()).map_err(|_| {
-                relocation_diagnostic(
+                Box::new(relocation_diagnostic(
                     STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
                     Some(&reference.reference_id),
                     Some(&reference.slot_id),
@@ -2366,11 +2369,11 @@ fn encode_reference_value(
                     "index relocation does not fit in u16 little-endian format",
                     "add_pointer_format_support",
                     "use a wider supported index format before patching this reference",
-                )
+                ))
             })?;
             Ok(index.to_le_bytes().to_vec())
         }
-        StringReferenceFormat::Unsupported { .. } => Err(relocation_diagnostic(
+        StringReferenceFormat::Unsupported { .. } => Err(Box::new(relocation_diagnostic(
             STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
             Some(&reference.reference_id),
             Some(&reference.slot_id),
@@ -2378,16 +2381,16 @@ fn encode_reference_value(
             "reference uses an unsupported pointer format",
             "add_pointer_format_support",
             "add an explicit supported relocation encoder before patching this reference",
-        )),
+        ))),
     }
 }
 
 fn decode_reference_old_target(
     reference: &StringRelocationReference,
     source_bytes: &[u8],
-) -> Result<u64, StringRelocationDiagnostic> {
+) -> StringRelocationResult<u64> {
     let start = usize::try_from(reference.byte_range.start()).map_err(|_| {
-        relocation_diagnostic(
+        Box::new(relocation_diagnostic(
             STRING_RELOCATION_UNRESOLVED_REFERENCE,
             Some(&reference.reference_id),
             Some(&reference.slot_id),
@@ -2395,10 +2398,10 @@ fn decode_reference_old_target(
             "reference byte range start is not addressable on this platform",
             "repair_reference_range",
             "declare reference ranges within the fixture source bytes",
-        )
+        ))
     })?;
     let end = usize::try_from(reference.byte_range.end()).map_err(|_| {
-        relocation_diagnostic(
+        Box::new(relocation_diagnostic(
             STRING_RELOCATION_UNRESOLVED_REFERENCE,
             Some(&reference.reference_id),
             Some(&reference.slot_id),
@@ -2406,10 +2409,10 @@ fn decode_reference_old_target(
             "reference byte range end is not addressable on this platform",
             "repair_reference_range",
             "declare reference ranges within the fixture source bytes",
-        )
+        ))
     })?;
     let bytes = source_bytes.get(start..end).ok_or_else(|| {
-        relocation_diagnostic(
+        Box::new(relocation_diagnostic(
             STRING_RELOCATION_UNRESOLVED_REFERENCE,
             Some(&reference.reference_id),
             Some(&reference.slot_id),
@@ -2417,13 +2420,13 @@ fn decode_reference_old_target(
             "reference byte range exceeds source bytes",
             "repair_reference_range",
             "declare reference ranges within the fixture source bytes",
-        )
+        ))
     })?;
 
     match &reference.format {
         StringReferenceFormat::PointerLeU32 { base_address } => {
             let bytes: [u8; 4] = bytes.try_into().map_err(|_| {
-                relocation_diagnostic(
+                Box::new(relocation_diagnostic(
                     STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
                     Some(&reference.reference_id),
                     Some(&reference.slot_id),
@@ -2431,11 +2434,11 @@ fn decode_reference_old_target(
                     "reference byte range width does not match u32 little-endian pointer format",
                     "repair_reference_width",
                     "declare a byte range matching the supported reference format width",
-                )
+                ))
             })?;
             let pointer = u32::from_le_bytes(bytes) as u64;
             pointer.checked_sub(*base_address).ok_or_else(|| {
-                relocation_diagnostic(
+                Box::new(relocation_diagnostic(
                     STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH,
                     Some(&reference.reference_id),
                     Some(&reference.slot_id),
@@ -2445,12 +2448,12 @@ fn decode_reference_old_target(
                     ),
                     "repair_reference_provenance",
                     "re-extract the pointer table or bind this reference to the slot currently targeted by the source bytes",
-                )
+                ))
             })
         }
         StringReferenceFormat::IndexLeU16 => {
             let bytes: [u8; 2] = bytes.try_into().map_err(|_| {
-                relocation_diagnostic(
+                Box::new(relocation_diagnostic(
                     STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
                     Some(&reference.reference_id),
                     Some(&reference.slot_id),
@@ -2458,11 +2461,11 @@ fn decode_reference_old_target(
                     "reference byte range width does not match u16 little-endian index format",
                     "repair_reference_width",
                     "declare a byte range matching the supported reference format width",
-                )
+                ))
             })?;
             Ok(u16::from_le_bytes(bytes) as u64)
         }
-        StringReferenceFormat::Unsupported { .. } => Err(relocation_diagnostic(
+        StringReferenceFormat::Unsupported { .. } => Err(Box::new(relocation_diagnostic(
             STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
             Some(&reference.reference_id),
             Some(&reference.slot_id),
@@ -2470,7 +2473,7 @@ fn decode_reference_old_target(
             "reference uses an unsupported pointer format",
             "add_pointer_format_support",
             "add an explicit supported relocation encoder before patching this reference",
-        )),
+        ))),
     }
 }
 
