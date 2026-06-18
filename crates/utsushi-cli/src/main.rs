@@ -6,6 +6,7 @@ use utsushi_core::{
 };
 
 const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 fn main() {
     if let Err(error) = run() {
@@ -68,6 +69,12 @@ fn selected_adapter_name(
     match descriptors.as_slice() {
         [descriptor] => Ok(descriptor.name.clone()),
         [] => Err("no runtime adapters registered".into()),
+        _ if descriptors
+            .iter()
+            .any(|descriptor| descriptor.name == DEFAULT_ADAPTER_NAME) =>
+        {
+            Ok(DEFAULT_ADAPTER_NAME.to_string())
+        }
         _ => Err("multiple runtime adapters registered; pass --adapter <name>".into()),
     }
 }
@@ -85,11 +92,13 @@ fn capabilities_output(registry: &RuntimeAdapterRegistry<'_>) -> Value {
 }
 
 fn descriptor_output(descriptor: RuntimeAdapterDescriptor) -> Value {
+    let runtime_capabilities = descriptor.capability_contract.to_json();
     json!({
         "adapterName": descriptor.name,
         "adapterVersion": descriptor.version,
         "fidelityTier": descriptor.fidelity_tier.as_str(),
         "evidenceTierCeiling": descriptor.evidence_tier_ceiling.as_str(),
+        "runtimeCapabilities": runtime_capabilities,
         "capabilities": descriptor
             .capabilities
             .into_iter()

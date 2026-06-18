@@ -176,3 +176,17 @@ Its approximation tier is `deterministic_fixture`, and its reports state that
 captures are deterministic artifact references without pixel comparison. The base
 fixture contract explicitly does not implement jump, snapshot, live screenshot,
 or recording APIs.
+
+The `utsushi-browser` adapter is the first host-backed launch/capture slice. It
+uses the core bounded process harness to launch a Chromium-compatible browser
+against `index.html` or `www/index.html`, captures a headless screenshot when the
+host provides browser support, and ingests screenshot bytes through the managed
+runtime artifact store. Browser evidence is capped at E2 layout-probe evidence:
+it proves bounded launch and screenshot production, not RPG Maker scene hooks,
+jump control, or reference-runtime fidelity.
+
+The `utsushi-nwjs` adapter is currently a capability diagnostic fallback. It is
+registered so capability output explicitly states that NW.js launch/capture is
+unsupported in this slice. A future NW.js implementation must define bounded
+process launch, capture timing, screenshot extraction, and process-tree cleanup
+before it can advertise trace, capture, or smoke-validation capabilities.

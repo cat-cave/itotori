@@ -1,0 +1,55 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "utsushi-browser-smoke",
+    "title": "Utsushi Browser Smoke Fixture",
+    "kind": "synthetic",
+    "summary": "Synthetic public HTML fixture for Utsushi browser launch and screenshot smoke validation.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["en-US"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Synthetic HTML and source metadata authored for repository tests; no third-party raw assets."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored public browser smoke fixture for bounded launch and capture validation.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/public/utsushi-browser-smoke/source.json",
+      "role": "source-game",
+      "mediaType": "application/json",
+      "sha256": "85f024c602ab4d53cc178bb699603ff97b643e5c0b81f59c4ffe49549ea73367",
+      "bytes": 374,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-browser-smoke/index.html",
+      "role": "asset",
+      "mediaType": "text/html",
+      "sha256": "038157ef4116aa1df9fa8d2af48ee8f3b9c44ead42e54884667828b4292cfcec",
+      "bytes": 826,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 2,
+    "textUnits": 1,
+    "sourceTextUtf16CodeUnits": 9,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["en-US"],
+    "engineKinds": ["browser-smoke-html"],
+    "notes": "Public fixture for browser launch adapter smoke tests. It contains no RPG Maker or third-party engine assets."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:utsushi-browser-smoke"
+  }
+}

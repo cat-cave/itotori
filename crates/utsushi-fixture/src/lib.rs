@@ -9,8 +9,14 @@ use utsushi_core::{
     RuntimePlaybackFeature, RuntimeRequest, UtsushiResult, runtime_artifact_uri,
 };
 
+mod launch_adapters;
+
+pub use launch_adapters::{BrowserLaunchAdapter, NwjsLaunchAdapter};
+
 pub struct FixtureRuntimeAdapter;
 static FIXTURE_RUNTIME_ADAPTER: FixtureRuntimeAdapter = FixtureRuntimeAdapter;
+static BROWSER_LAUNCH_ADAPTER: BrowserLaunchAdapter = BrowserLaunchAdapter::new();
+static NWJS_LAUNCH_ADAPTER: NwjsLaunchAdapter = NwjsLaunchAdapter::new();
 
 impl FixtureRuntimeAdapter {
     pub const NAME: &'static str = "utsushi-fixture";
@@ -31,6 +37,12 @@ pub fn registry() -> RuntimeAdapterRegistry<'static> {
     registry
         .register(&FIXTURE_RUNTIME_ADAPTER)
         .expect("fixture runtime adapter descriptor is valid");
+    registry
+        .register(&BROWSER_LAUNCH_ADAPTER)
+        .expect("browser launch adapter descriptor is valid");
+    registry
+        .register(&NWJS_LAUNCH_ADAPTER)
+        .expect("NW.js capability diagnostic descriptor is valid");
     registry
 }
 
@@ -115,13 +127,13 @@ pub fn smoke_fixture(input_root: &Path) -> UtsushiResult<Value> {
     adapter.smoke_validate(&RuntimeRequest::new(input_root))
 }
 
-fn read_source(input_root: &Path) -> UtsushiResult<Value> {
+pub(crate) fn read_source(input_root: &Path) -> UtsushiResult<Value> {
     Ok(serde_json::from_str(&fs::read_to_string(
         input_root.join("source.json"),
     )?)?)
 }
 
-fn first_unit(source: &Value) -> UtsushiResult<&Value> {
+pub(crate) fn first_unit(source: &Value) -> UtsushiResult<&Value> {
     source["units"]
         .as_array()
         .and_then(|units| units.first())
@@ -355,20 +367,20 @@ fn materialize_fixture_capture(request: &RuntimeRequest<'_>, capture: &Value) ->
     Ok(())
 }
 
-fn bridge_unit_ref(unit: &Value, index: usize) -> UtsushiResult<Value> {
+pub(crate) fn bridge_unit_ref(unit: &Value, index: usize) -> UtsushiResult<Value> {
     Ok(json!({
         "bridgeUnitId": legacy_fixture_id("bridge-unit", index),
         "sourceUnitKey": require_str(unit, "sourceUnitKey")?
     }))
 }
 
-fn require_str<'a>(value: &'a Value, key: &str) -> UtsushiResult<&'a str> {
+pub(crate) fn require_str<'a>(value: &'a Value, key: &str) -> UtsushiResult<&'a str> {
     value[key]
         .as_str()
         .ok_or_else(|| format!("fixture source unit missing {key}").into())
 }
 
-fn legacy_fixture_id(kind: &str, index: usize) -> String {
+pub(crate) fn legacy_fixture_id(kind: &str, index: usize) -> String {
     let mut compact = kind.replace('-', "");
     compact.truncate(8);
     while compact.len() < 8 {
@@ -377,7 +389,7 @@ fn legacy_fixture_id(kind: &str, index: usize) -> String {
     format!("019ed000-0000-7000-8000-{}{:04}", compact, index)
 }
 
-fn deterministic_uuid(kind: &str, index: usize) -> String {
+pub(crate) fn deterministic_uuid(kind: &str, index: usize) -> String {
     let kind_code = match kind {
         "runtime-report" => 0x1000,
         "runtime-trace" => 0x2000,
@@ -519,12 +531,27 @@ mod tests {
         let registry = registry();
         let descriptors = registry.descriptors();
 
-        assert_eq!(descriptors.len(), 1);
-        assert_eq!(descriptors[0].name, FixtureRuntimeAdapter::NAME);
-        assert!(descriptors[0].supports(RuntimeCapability::Trace));
-        assert!(descriptors[0].supports(RuntimeCapability::FrameCapture));
-        assert!(descriptors[0].supports(RuntimeCapability::SmokeValidation));
-        assert_eq!(descriptors[0].fidelity_tier, FidelityTier::LayoutProbe);
+        assert_eq!(descriptors.len(), 3);
+        let fixture = descriptors
+            .iter()
+            .find(|descriptor| descriptor.name == FixtureRuntimeAdapter::NAME)
+            .unwrap();
+        assert!(fixture.supports(RuntimeCapability::Trace));
+        assert!(fixture.supports(RuntimeCapability::FrameCapture));
+        assert!(fixture.supports(RuntimeCapability::SmokeValidation));
+        assert_eq!(fixture.fidelity_tier, FidelityTier::LayoutProbe);
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.name == BrowserLaunchAdapter::NAME
+                    && descriptor.supports(RuntimeCapability::FrameCapture))
+        );
+        assert!(
+            descriptors
+                .iter()
+                .any(|descriptor| descriptor.name == NwjsLaunchAdapter::NAME
+                    && descriptor.capabilities.is_empty())
+        );
     }
 
     #[test]

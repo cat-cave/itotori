@@ -585,12 +585,16 @@ impl RuntimePlaybackFeature {
         matches!(
             (self, capability),
             (
-                Self::StaticTrace | Self::TextTrace,
+                Self::StaticTrace | Self::Launch | Self::TextTrace,
                 RuntimeCapability::Trace
             ) | (Self::BranchDiscovery, RuntimeCapability::BranchDiscovery)
-                | (Self::FrameCapture, RuntimeCapability::FrameCapture)
+                | (
+                    Self::FrameCapture | Self::Screenshot,
+                    RuntimeCapability::FrameCapture
+                )
                 | (Self::TextTrace, RuntimeCapability::SmokeValidation)
                 | (Self::FrameCapture, RuntimeCapability::SmokeValidation)
+                | (Self::Screenshot, RuntimeCapability::SmokeValidation)
                 | (Self::Recording, RuntimeCapability::ReplayReview)
                 | (
                     Self::ReferenceComparison,

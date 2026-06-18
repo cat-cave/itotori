@@ -1,0 +1,15 @@
+{
+  "gameId": "utsushi-browser-smoke",
+  "title": "Utsushi Browser Smoke Fixture",
+  "sourceLocale": "ja-JP",
+  "units": [
+    {
+      "sourceUnitKey": "browser.smoke.001",
+      "speaker": "Narrator",
+      "textSurface": "dialogue",
+      "sourceText": "ブラウザ起動確認。",
+      "targetText": "Browser launch confirmed.",
+      "protectedSpans": []
+    }
+  ]
+}
