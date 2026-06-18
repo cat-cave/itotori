@@ -5,8 +5,10 @@ import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import {
   catalogCrawlerIdempotentFactImportContractId,
+  catalogCrawlerFactImportStrategyValues,
   createRecordedCatalogCrawlerAdapter,
   ItotoriCatalogCrawlerRunner,
+  type CatalogCrawlerIngestContext,
   type RecordedCatalogCrawlerFixture,
 } from "../src/services/catalog-crawler-runner.js";
 import {
@@ -178,7 +180,9 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         create table catalog_fact_imports (
           source_id text primary key,
           fixture_id text not null,
+          stable_import_key text not null,
           first_import_transaction_id text not null,
+          fact_identity text not null,
           deterministic_fact_count integer not null,
           normalized_title text not null
         )
@@ -228,26 +232,31 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         actor,
         workerId: "worker-resumed",
         mode: "recorded_fixture",
-        ingestStep: async ({ facts }) => {
-          for (const fact of facts) {
+        ingestStep: async (ingestContext) => {
+          for (const [index, fact] of ingestContext.facts.entries()) {
             importedFacts.push(fact.sourceId);
             await context.pool.query(
               `insert into catalog_fact_imports (
                 source_id,
                 fixture_id,
+                stable_import_key,
                 first_import_transaction_id,
+                fact_identity,
                 deterministic_fact_count,
                 normalized_title
-              ) values ($1, $2, $3, $4, $5)`,
+              ) values ($1, $2, $3, $4, $5, $6, $7)`,
               [
                 fact.sourceId,
                 fixture.fixtureId,
-                "fetch-only-replay-import",
-                facts.length,
+                ingestContext.stableImportKey,
+                ingestContext.importTransactionId,
+                ingestContext.expectedFactIdentities[index],
+                ingestContext.facts.length,
                 fact.normalizedTitle,
               ],
             );
           }
+          return importProof(ingestContext);
         },
       });
 
@@ -267,9 +276,11 @@ describe("ItotoriCatalogCrawlerRepository", () => {
           catalogSource: "vndb",
           sourceId: "v1",
           fixtureId: "catalog-crawler-vndb-replay-v0.1",
-          importTransactionId: expect.any(String),
+          stableImportKey: expect.stringMatching(/^catalog-import:/u),
+          importTransactionId: expect.stringMatching(/^catalog-import:/u),
           stepKey: "step-001",
           factCount: 1,
+          factIdentities: ["catalogSource=vndb|sourceId=v1"],
           alreadyImported: false,
         },
         {
@@ -277,28 +288,39 @@ describe("ItotoriCatalogCrawlerRepository", () => {
           catalogSource: "vndb",
           sourceId: "v2",
           fixtureId: "catalog-crawler-vndb-replay-v0.1",
-          importTransactionId: expect.any(String),
+          stableImportKey: expect.stringMatching(/^catalog-import:/u),
+          importTransactionId: expect.stringMatching(/^catalog-import:/u),
           stepKey: "step-002",
           factCount: 1,
+          factIdentities: ["catalogSource=vndb|sourceId=v2"],
           alreadyImported: false,
         },
       ]);
       const factRows = await context.pool.query<{
         source_id: string;
         fixture_id: string;
+        stable_import_key: string;
+        first_import_transaction_id: string;
+        fact_identity: string;
         deterministic_fact_count: number;
       }>(
-        "select source_id, fixture_id, deterministic_fact_count from catalog_fact_imports order by source_id",
+        "select source_id, fixture_id, stable_import_key, first_import_transaction_id, fact_identity, deterministic_fact_count from catalog_fact_imports order by source_id",
       );
       expect(factRows.rows).toEqual([
         {
           source_id: "v1",
           fixture_id: "catalog-crawler-vndb-replay-v0.1",
+          stable_import_key: resumed.replayValidation[0]?.stableImportKey,
+          first_import_transaction_id: resumed.replayValidation[0]?.stableImportKey,
+          fact_identity: "catalogSource=vndb|sourceId=v1",
           deterministic_fact_count: 1,
         },
         {
           source_id: "v2",
           fixture_id: "catalog-crawler-vndb-replay-v0.1",
+          stable_import_key: resumed.replayValidation[1]?.stableImportKey,
+          first_import_transaction_id: resumed.replayValidation[1]?.stableImportKey,
+          fact_identity: "catalogSource=vndb|sourceId=v2",
           deterministic_fact_count: 1,
         },
       ]);
@@ -314,93 +336,97 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         create table catalog_fact_imports (
           source_id text primary key,
           fixture_id text not null,
+          stable_import_key text not null,
           first_import_transaction_id text not null,
+          fact_identity text not null,
           deterministic_fact_count integer not null,
           normalized_title text not null
         )
       `);
       const repository = new ItotoriCatalogCrawlerRepository(context.db);
-      const partitionKey = fixture.partitionKey ?? "default";
-      const firstStep = fixture.steps[0];
-      if (firstStep === undefined) {
-        throw new Error("fixture must contain at least one step");
-      }
-
-      const interrupted = await repository.startCrawlerJob(actor, "worker-interrupted", {
-        catalogSource: fixture.catalogSource,
-        adapterName: fixture.adapterName,
-        adapterVersion: fixture.adapterVersion,
-        sourceVersion: fixture.sourceVersion,
-        parserVersion: fixture.parserVersion,
-        partitionKey,
-      });
-      await repository.recordFetchedStep(actor, {
-        crawlerJobId: interrupted.crawlerJobId,
-        workerId: "worker-interrupted",
-        stepKey: firstStep.stepKey,
-        catalogSource: fixture.catalogSource,
-        adapterName: fixture.adapterName,
-        adapterVersion: fixture.adapterVersion,
-        partitionKey,
-        sourceId: firstStep.sourceId,
-        requestIdentity: firstStep.requestIdentity,
-        sourceVersion: fixture.sourceVersion,
-        parserVersion: fixture.parserVersion,
-        checkpointCursor: firstStep.checkpointCursor,
-        fetchedAt: firstStep.fetchedAt,
-        payload: firstStep.payload,
-      });
-      await context.pool.query(
-        `insert into catalog_fact_imports (
-          source_id,
-          fixture_id,
-          first_import_transaction_id,
-          deterministic_fact_count,
-          normalized_title
-        ) values ($1, $2, $3, $4, $5)`,
-        [
-          firstStep.sourceId,
-          fixture.fixtureId,
-          "interrupted-before-step-commit",
-          firstStep.facts.length,
-          firstStep.facts[0]?.normalizedTitle ?? "unknown",
-        ],
-      );
-      await repository.failCrawlerJob(
-        actor,
-        interrupted.crawlerJobId,
-        "worker-interrupted",
-        new Error("crash after ingest before imported marker"),
-      );
-
       const runner = new ItotoriCatalogCrawlerRunner();
+      await expect(
+        runner.run(createRecordedCatalogCrawlerAdapter(fixture), {
+          repository,
+          actor,
+          workerId: "worker-interrupted",
+          mode: "recorded_fixture",
+          ingestStep: async (ingestContext) => {
+            const fact = ingestContext.facts[0];
+            if (fact === undefined) {
+              throw new Error("fixture step must contain at least one fact");
+            }
+            await context.pool.query(
+              `insert into catalog_fact_imports (
+                source_id,
+                fixture_id,
+                stable_import_key,
+                first_import_transaction_id,
+                fact_identity,
+                deterministic_fact_count,
+                normalized_title
+              ) values ($1, $2, $3, $4, $5, $6, $7)`,
+              [
+                fact.sourceId,
+                fixture.fixtureId,
+                ingestContext.stableImportKey,
+                ingestContext.importTransactionId,
+                ingestContext.expectedFactIdentities[0],
+                ingestContext.facts.length,
+                fact.normalizedTitle,
+              ],
+            );
+            throw new Error("crash after ingest before imported marker");
+          },
+        }),
+      ).rejects.toThrow(/crash after ingest before imported marker/u);
+
+      const interruptedFactRows = await context.pool.query<{
+        stable_import_key: string;
+        first_import_transaction_id: string;
+      }>(
+        "select stable_import_key, first_import_transaction_id from catalog_fact_imports where source_id = 'v1'",
+      );
+      expect(interruptedFactRows.rows).toEqual([
+        {
+          stable_import_key: expect.stringMatching(/^catalog-import:/u),
+          first_import_transaction_id: expect.stringMatching(/^catalog-import:/u),
+        },
+      ]);
+
       const resumed = await runner.run(createRecordedCatalogCrawlerAdapter(fixture), {
         repository,
         actor,
         workerId: "worker-resumed",
         mode: "recorded_fixture",
-        ingestStep: async ({ facts, importTransactionId }) => {
-          for (const fact of facts) {
+        ingestStep: async (ingestContext) => {
+          for (const [index, fact] of ingestContext.facts.entries()) {
             await context.pool.query(
               `insert into catalog_fact_imports (
                 source_id,
                 fixture_id,
+                stable_import_key,
                 first_import_transaction_id,
+                fact_identity,
                 deterministic_fact_count,
                 normalized_title
-              ) values ($1, $2, $3, $4, $5)
+              ) values ($1, $2, $3, $4, $5, $6, $7)
               on conflict (source_id) do update set
                 deterministic_fact_count = excluded.deterministic_fact_count,
+                fact_identity = excluded.fact_identity,
                 normalized_title = excluded.normalized_title`,
               [
                 fact.sourceId,
                 fixture.fixtureId,
-                importTransactionId,
-                facts.length,
+                ingestContext.stableImportKey,
+                ingestContext.importTransactionId,
+                ingestContext.expectedFactIdentities[index],
+                ingestContext.facts.length,
                 fact.normalizedTitle,
               ],
             );
           }
+          return importProof(ingestContext);
         },
       });
 
@@ -419,9 +445,11 @@ describe("ItotoriCatalogCrawlerRepository", () => {
           catalogSource: "vndb",
           sourceId: "v1",
           fixtureId: "catalog-crawler-vndb-replay-v0.1",
-          importTransactionId: expect.any(String),
+          stableImportKey: expect.stringMatching(/^catalog-import:/u),
+          importTransactionId: expect.stringMatching(/^catalog-import:/u),
           stepKey: "step-001",
           factCount: 1,
+          factIdentities: ["catalogSource=vndb|sourceId=v1"],
           alreadyImported: false,
         },
         {
@@ -429,31 +457,39 @@ describe("ItotoriCatalogCrawlerRepository", () => {
           catalogSource: "vndb",
           sourceId: "v2",
           fixtureId: "catalog-crawler-vndb-replay-v0.1",
-          importTransactionId: expect.any(String),
+          stableImportKey: expect.stringMatching(/^catalog-import:/u),
+          importTransactionId: expect.stringMatching(/^catalog-import:/u),
           stepKey: "step-002",
           factCount: 1,
+          factIdentities: ["catalogSource=vndb|sourceId=v2"],
           alreadyImported: false,
         },
       ]);
       const factRows = await context.pool.query<{
         source_id: string;
         fixture_id: string;
+        stable_import_key: string;
         first_import_transaction_id: string;
+        fact_identity: string;
         deterministic_fact_count: number;
       }>(
-        "select source_id, fixture_id, first_import_transaction_id, deterministic_fact_count from catalog_fact_imports order by source_id",
+        "select source_id, fixture_id, stable_import_key, first_import_transaction_id, fact_identity, deterministic_fact_count from catalog_fact_imports order by source_id",
       );
       expect(factRows.rows).toEqual([
         {
           source_id: "v1",
           fixture_id: "catalog-crawler-vndb-replay-v0.1",
-          first_import_transaction_id: "interrupted-before-step-commit",
+          stable_import_key: interruptedFactRows.rows[0]?.stable_import_key,
+          first_import_transaction_id: interruptedFactRows.rows[0]?.first_import_transaction_id,
+          fact_identity: "catalogSource=vndb|sourceId=v1",
           deterministic_fact_count: 1,
         },
         {
           source_id: "v2",
           fixture_id: "catalog-crawler-vndb-replay-v0.1",
-          first_import_transaction_id: expect.any(String),
+          stable_import_key: resumed.replayValidation[1]?.stableImportKey,
+          first_import_transaction_id: resumed.replayValidation[1]?.stableImportKey,
+          fact_identity: "catalogSource=vndb|sourceId=v2",
           deterministic_fact_count: 1,
         },
       ]);
@@ -461,7 +497,54 @@ describe("ItotoriCatalogCrawlerRepository", () => {
       await context.close();
     }
   });
+
+  it("fails a contract-enforced step before commit when the importer proof is missing", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repository = new ItotoriCatalogCrawlerRepository(context.db);
+      const runner = new ItotoriCatalogCrawlerRunner();
+
+      await expect(
+        runner.run(createRecordedCatalogCrawlerAdapter(fixture), {
+          repository,
+          actor,
+          workerId: "worker-missing-importer",
+          mode: "recorded_fixture",
+        }),
+      ).rejects.toThrow(/ingestStep must write facts or a durable import marker/u);
+
+      await expect(
+        repository.getCheckpoint(actor, {
+          catalogSource: "vndb",
+          adapterName: "vndb-recorded-public-fixture",
+          partitionKey: "public-fixture",
+        }),
+      ).resolves.toBeNull();
+
+      const stepRows = await context.db
+        .select({ status: catalogCrawlerJobSteps.status })
+        .from(catalogCrawlerJobSteps);
+      expect(stepRows).toEqual([{ status: catalogCrawlerStepStatusValues.failed }]);
+    } finally {
+      await context.close();
+    }
+  });
 });
+
+function importProof(context: CatalogCrawlerIngestContext<FixtureFact>) {
+  return {
+    stableImportKey: context.stableImportKey,
+    strategy:
+      context.adapter.factImportContract?.strategy ?? catalogCrawlerFactImportStrategyValues.upsert,
+    factCount: context.facts.length,
+    factIdentities: context.expectedFactIdentities,
+    durableMarkerId:
+      context.adapter.factImportContract?.strategy ===
+      catalogCrawlerFactImportStrategyValues.durableImportMarker
+        ? context.stableImportKey
+        : undefined,
+  };
+}
 
 function crawlerJobInput() {
   return {

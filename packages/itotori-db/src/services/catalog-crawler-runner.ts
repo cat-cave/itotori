@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { AuthorizationActor } from "../authorization.js";
 import type { CatalogSource } from "../schema.js";
 import {
@@ -41,9 +42,19 @@ export type CatalogCrawlerFactImportContract = {
   replayValidation: readonly (
     | "sourceId"
     | "fixtureId"
+    | "stableImportKey"
     | "importTransactionId"
     | "factCount"
+    | "factIdentities"
   )[];
+};
+
+export type CatalogCrawlerFactImportProof = {
+  stableImportKey: string;
+  strategy: CatalogCrawlerFactImportStrategy;
+  factCount: number;
+  factIdentities: readonly string[];
+  durableMarkerId?: string;
 };
 
 export type CatalogCrawlerAdapterContext = {
@@ -91,13 +102,15 @@ export type CatalogCrawlerIngestContext<TFact = unknown> = {
   adapter: CatalogCrawlerSourceAdapter<TFact>;
   job: CatalogCrawlerJobRecord;
   step: CatalogCrawlerStepRecord;
+  stableImportKey: string;
   importTransactionId: string;
+  expectedFactIdentities: readonly string[];
   facts: readonly TFact[];
 };
 
 export type CatalogCrawlerIngestStep<TFact = unknown> = (
   context: CatalogCrawlerIngestContext<TFact>,
-) => Promise<void> | void;
+) => Promise<CatalogCrawlerFactImportProof | void> | CatalogCrawlerFactImportProof | void;
 
 export type CatalogCrawlerRunnerOptions<TFact = unknown> = {
   repository: ItotoriCatalogCrawlerRepositoryPort;
@@ -123,9 +136,11 @@ export type CatalogCrawlerReplayValidationRecord = {
   catalogSource: CatalogCrawlerPublicSource;
   sourceId: string;
   fixtureId: string;
+  stableImportKey: string;
   importTransactionId: string;
   stepKey: string;
   factCount: number;
+  factIdentities: readonly string[];
   alreadyImported: boolean;
 };
 
@@ -197,18 +212,33 @@ export class ItotoriCatalogCrawlerRunner {
             : { payloadHash: adapterStep.payloadHash }),
           ...(adapterStep.metadata === undefined ? {} : { metadata: adapterStep.metadata }),
         });
+        const stableImportKey = createStableImportKey(adapter, partitionKey, adapterStep);
+        const expectedFactIdentities =
+          adapter.factImportContract === undefined
+            ? []
+            : createExpectedFactIdentities(adapter, adapterStep);
 
         if (recorded.alreadyImported) {
           skippedSteps += 1;
         } else {
           try {
-            await options.ingestStep?.({
+            if (adapter.factImportContract !== undefined && options.ingestStep === undefined) {
+              throw new Error(
+                `${adapter.adapterName} declares CATALOG-065; ingestStep must write facts or a durable import marker before commitStepImport`,
+              );
+            }
+            const importProof = await options.ingestStep?.({
               adapter,
               job,
               step: recorded.step,
-              importTransactionId: recorded.step.crawlerJobStepId,
+              stableImportKey,
+              importTransactionId: stableImportKey,
+              expectedFactIdentities,
               facts: adapterStep.facts,
             });
+            if (adapter.factImportContract !== undefined) {
+              validateFactImportProof(adapter, adapterStep, stableImportKey, importProof);
+            }
             importedSteps += 1;
           } catch (error) {
             await options.repository.markStepFailed(
@@ -220,7 +250,13 @@ export class ItotoriCatalogCrawlerRunner {
             throw error;
           }
         }
-        const validationRecord = createReplayValidationRecord(adapter, recorded, adapterStep);
+        const validationRecord = createReplayValidationRecord(
+          adapter,
+          recorded,
+          adapterStep,
+          stableImportKey,
+          expectedFactIdentities,
+        );
         if (validationRecord !== null) {
           replayValidation.push(validationRecord);
         }
@@ -389,6 +425,8 @@ function createReplayValidationRecord<TFact>(
   adapter: CatalogCrawlerSourceAdapter<TFact>,
   recorded: { step: CatalogCrawlerStepRecord; alreadyImported: boolean },
   adapterStep: CatalogCrawlerAdapterStep<TFact>,
+  stableImportKey: string,
+  factIdentities: readonly string[],
 ): CatalogCrawlerReplayValidationRecord | null {
   if (adapter.fixtureId === undefined || adapter.factImportContract === undefined) {
     return null;
@@ -398,11 +436,168 @@ function createReplayValidationRecord<TFact>(
     catalogSource: adapter.catalogSource,
     sourceId: adapterStep.sourceId,
     fixtureId: adapter.fixtureId,
-    importTransactionId: recorded.step.crawlerJobStepId,
+    stableImportKey,
+    importTransactionId: stableImportKey,
     stepKey: adapterStep.stepKey,
     factCount: adapterStep.facts.length,
+    factIdentities,
     alreadyImported: recorded.alreadyImported,
   };
+}
+
+function createStableImportKey<TFact>(
+  adapter: CatalogCrawlerSourceAdapter<TFact>,
+  partitionKey: string,
+  step: CatalogCrawlerAdapterStep<TFact>,
+): string {
+  const payloadHash = step.payloadHash ?? `sha256:${sha256(stableJsonStringify(step.payload))}`;
+  return `catalog-import:${sha256(
+    stableJsonStringify({
+      catalogSource: adapter.catalogSource,
+      adapterName: adapter.adapterName,
+      partitionKey,
+      sourceVersion: adapter.sourceVersion,
+      parserVersion: adapter.parserVersion,
+      stepKey: step.stepKey,
+      sourceId: step.sourceId,
+      requestIdentity: step.requestIdentity,
+      payloadHash,
+    }),
+  )}`;
+}
+
+function createExpectedFactIdentities<TFact>(
+  adapter: CatalogCrawlerSourceAdapter<TFact>,
+  step: CatalogCrawlerAdapterStep<TFact>,
+): readonly string[] {
+  const contract = adapter.factImportContract;
+  if (contract === undefined) {
+    return [];
+  }
+  return step.facts.map((fact, index) =>
+    contract.factIdentity
+      .map((field) => `${field}=${String(identityFieldValue(adapter, step, fact, index, field))}`)
+      .join("|"),
+  );
+}
+
+function validateFactImportProof<TFact>(
+  adapter: CatalogCrawlerSourceAdapter<TFact>,
+  step: CatalogCrawlerAdapterStep<TFact>,
+  stableImportKey: string,
+  proof: CatalogCrawlerFactImportProof | void,
+): asserts proof is CatalogCrawlerFactImportProof {
+  const contract = adapter.factImportContract;
+  if (contract === undefined) {
+    return;
+  }
+  if (proof === undefined) {
+    throw new Error(
+      `${adapter.adapterName} CATALOG-065 ingestStep must return a fact import proof before commitStepImport`,
+    );
+  }
+  if (proof.stableImportKey !== stableImportKey) {
+    throw new Error(`${adapter.adapterName} fact import proof stableImportKey mismatch`);
+  }
+  if (proof.strategy !== contract.strategy) {
+    throw new Error(`${adapter.adapterName} fact import proof strategy mismatch`);
+  }
+  if (proof.factCount !== step.facts.length) {
+    throw new Error(`${adapter.adapterName} fact import proof factCount mismatch`);
+  }
+  const expectedFactIdentities = createExpectedFactIdentities(adapter, step);
+  if (!Array.isArray(proof.factIdentities)) {
+    throw new Error(`${adapter.adapterName} fact import proof factIdentities must be an array`);
+  }
+  if (!sameStringList(proof.factIdentities, expectedFactIdentities)) {
+    throw new Error(`${adapter.adapterName} fact import proof factIdentities mismatch`);
+  }
+  if (
+    contract.strategy === catalogCrawlerFactImportStrategyValues.durableImportMarker &&
+    proof.durableMarkerId !== stableImportKey
+  ) {
+    throw new Error(
+      `${adapter.adapterName} durable import marker proof must persist stableImportKey as durableMarkerId`,
+    );
+  }
+}
+
+function identityFieldValue<TFact>(
+  adapter: CatalogCrawlerSourceAdapter<TFact>,
+  step: CatalogCrawlerAdapterStep<TFact>,
+  fact: TFact,
+  factIndex: number,
+  field: string,
+): unknown {
+  if (field === "catalogSource") {
+    return adapter.catalogSource;
+  }
+  if (field === "adapterName") {
+    return adapter.adapterName;
+  }
+  if (field === "sourceVersion") {
+    return adapter.sourceVersion;
+  }
+  if (field === "parserVersion") {
+    return adapter.parserVersion;
+  }
+  if (field === "stepKey") {
+    return step.stepKey;
+  }
+  if (field === "sourceId") {
+    return objectPath(fact, field) ?? step.sourceId;
+  }
+  if (field === "factIndex") {
+    return factIndex;
+  }
+  const value = objectPath(fact, field) ?? objectPath(step, field);
+  if (value === undefined || value === null || (typeof value === "string" && value.length === 0)) {
+    throw new Error(`fact identity field ${field} is missing`);
+  }
+  return value;
+}
+
+function objectPath(input: unknown, path: string): unknown {
+  if (input === null || typeof input !== "object") {
+    return undefined;
+  }
+  let value: unknown = input;
+  for (const part of path.split(".")) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return undefined;
+    }
+    value = (value as Record<string, unknown>)[part];
+  }
+  return value;
+}
+
+function sameStringList(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  return left.every((value, index) => value === right[index]);
+}
+
+function sha256(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
+}
+
+function stableJsonStringify(input: unknown): string {
+  if (input === undefined) {
+    return "undefined";
+  }
+  if (input === null || typeof input !== "object") {
+    return JSON.stringify(input) ?? "undefined";
+  }
+  if (Array.isArray(input)) {
+    return `[${input.map((value) => stableJsonStringify(value)).join(",")}]`;
+  }
+  const entries = Object.entries(input as Record<string, unknown>).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  return `{${entries
+    .map(([key, value]) => `${JSON.stringify(key)}:${stableJsonStringify(value)}`)
+    .join(",")}}`;
 }
 
 function validateAdapterReadinessContract<TFact>(
@@ -440,8 +635,10 @@ function validateAdapterReadinessContract<TFact>(
   const requiredReplayFields = [
     "sourceId",
     "fixtureId",
+    "stableImportKey",
     "importTransactionId",
     "factCount",
+    "factIdentities",
   ] as const;
   if (!Array.isArray(contract.replayValidation)) {
     throw new Error(`${adapter.adapterName} fact import contract must define replayValidation`);

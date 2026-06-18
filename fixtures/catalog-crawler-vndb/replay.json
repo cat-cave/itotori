@@ -11,7 +11,14 @@
     "contractId": "CATALOG-065",
     "strategy": "upsert",
     "factIdentity": ["catalogSource", "sourceId"],
-    "replayValidation": ["sourceId", "fixtureId", "importTransactionId", "factCount"]
+    "replayValidation": [
+      "sourceId",
+      "fixtureId",
+      "stableImportKey",
+      "importTransactionId",
+      "factCount",
+      "factIdentities"
+    ]
   },
   "partitionKey": "public-fixture",
   "steps": [

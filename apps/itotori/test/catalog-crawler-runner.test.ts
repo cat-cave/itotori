@@ -3,10 +3,13 @@ import {
   catalogCrawlerJobStatusValues,
   catalogCrawlerStepStatusValues,
   catalogCrawlerIdempotentFactImportContractId,
+  catalogCrawlerFactImportStrategyValues,
   createRecordedCatalogCrawlerAdapter,
   InMemoryCatalogCrawlerRepository,
   ItotoriCatalogCrawlerRunner,
   type AuthorizationActor,
+  type CatalogCrawlerIngestContext,
+  type CatalogCrawlerSourceAdapter,
   type RecordedCatalogCrawlerFixture,
 } from "@itotori/db";
 import { describe, expect, it } from "vitest";
@@ -38,11 +41,13 @@ describe("Itotori catalog crawler runner", () => {
         actor,
         workerId: "worker-1",
         mode: "recorded_fixture",
-        ingestStep: ({ facts }) => {
+        ingestStep: (context) => {
+          const { facts } = context;
           if (facts[0]?.sourceId === "v2") {
             throw new Error("simulated importer crash");
           }
           importedFacts.push(...facts);
+          return importProof(context);
         },
       }),
     ).rejects.toThrow(/simulated importer crash/u);
@@ -61,8 +66,10 @@ describe("Itotori catalog crawler runner", () => {
       actor,
       workerId: "worker-2",
       mode: "recorded_fixture",
-      ingestStep: ({ facts }) => {
+      ingestStep: (context) => {
+        const { facts } = context;
         importedFacts.push(...facts);
+        return importProof(context);
       },
     });
 
@@ -76,13 +83,18 @@ describe("Itotori catalog crawler runner", () => {
           catalogSource: "vndb",
           sourceId: "v2",
           fixtureId: "catalog-crawler-vndb-replay-v0.1",
+          stableImportKey: expect.stringMatching(/^catalog-import:/u),
+          importTransactionId: expect.stringMatching(/^catalog-import:/u),
           stepKey: "step-002",
           factCount: 1,
+          factIdentities: ["catalogSource=vndb|sourceId=v2"],
           alreadyImported: false,
         },
       ],
     });
-    expect(resumed.replayValidation[0]?.importTransactionId).toMatch(/^crawler-step:/u);
+    expect(resumed.replayValidation[0]?.importTransactionId).toBe(
+      resumed.replayValidation[0]?.stableImportKey,
+    );
     expect(importedFacts.map((fact) => fact.sourceId)).toEqual(["v1", "v2"]);
     expect(resumed.checkpoint).toMatchObject({
       lastStepKey: "step-002",
@@ -94,8 +106,10 @@ describe("Itotori catalog crawler runner", () => {
       actor,
       workerId: "worker-3",
       mode: "recorded_fixture",
-      ingestStep: ({ facts }) => {
+      ingestStep: (context) => {
+        const { facts } = context;
         importedFacts.push(...facts);
+        return importProof(context);
       },
     });
 
@@ -181,8 +195,10 @@ describe("Itotori catalog crawler runner", () => {
       actor,
       workerId: "worker-resumed",
       mode: "recorded_fixture",
-      ingestStep: ({ facts }) => {
+      ingestStep: (context) => {
+        const { facts } = context;
         importedFacts.push(...facts);
+        return importProof(context);
       },
     });
 
@@ -196,8 +212,11 @@ describe("Itotori catalog crawler runner", () => {
           catalogSource: "vndb",
           sourceId: "v1",
           fixtureId: "catalog-crawler-vndb-replay-v0.1",
+          stableImportKey: expect.stringMatching(/^catalog-import:/u),
+          importTransactionId: expect.stringMatching(/^catalog-import:/u),
           stepKey: "step-001",
           factCount: 1,
+          factIdentities: ["catalogSource=vndb|sourceId=v1"],
           alreadyImported: true,
         },
         {
@@ -205,16 +224,18 @@ describe("Itotori catalog crawler runner", () => {
           catalogSource: "vndb",
           sourceId: "v2",
           fixtureId: "catalog-crawler-vndb-replay-v0.1",
+          stableImportKey: expect.stringMatching(/^catalog-import:/u),
+          importTransactionId: expect.stringMatching(/^catalog-import:/u),
           stepKey: "step-002",
           factCount: 1,
+          factIdentities: ["catalogSource=vndb|sourceId=v2"],
           alreadyImported: false,
         },
       ],
     });
-    expect(resumed.replayValidation.map((record) => record.importTransactionId)).toEqual([
-      expect.stringMatching(/^crawler-step:/u),
-      expect.stringMatching(/^crawler-step:/u),
-    ]);
+    expect(resumed.replayValidation.map((record) => record.importTransactionId)).toEqual(
+      resumed.replayValidation.map((record) => record.stableImportKey),
+    );
     expect(importedFacts.map((fact) => fact.sourceId)).toEqual(["v2"]);
     expect(
       repository.checkpoints.get("vndb:vndb-recorded-public-fixture:public-fixture"),
@@ -282,6 +303,80 @@ describe("Itotori catalog crawler runner", () => {
     ).rejects.toThrow(/CATALOG-065 idempotent fact import contract/u);
   });
 
+  it("fails contract-enforced steps before commit when no importer proof is returned", async () => {
+    const repository = new InMemoryCatalogCrawlerRepository();
+    const runner = new ItotoriCatalogCrawlerRunner();
+    const adapter = createRecordedCatalogCrawlerAdapter(fixture);
+
+    await expect(
+      runner.run(adapter, {
+        repository,
+        actor,
+        workerId: "worker-missing-proof",
+        mode: "recorded_fixture",
+        ingestStep: () => undefined,
+      }),
+    ).rejects.toThrow(/fact import proof/u);
+
+    const step = [...repository.steps.values()].find((row) => row.stepKey === "step-001");
+    expect(step).toMatchObject({
+      status: catalogCrawlerStepStatusValues.failed,
+    });
+    expect(
+      repository.checkpoints.get("vndb:vndb-recorded-public-fixture:public-fixture"),
+    ).toBeUndefined();
+  });
+
+  it("uses a stable import key for durable marker importers across crash replay jobs", async () => {
+    const repository = new InMemoryCatalogCrawlerRepository();
+    const runner = new ItotoriCatalogCrawlerRunner();
+    const adapter: CatalogCrawlerSourceAdapter<FixtureFact> = {
+      ...createRecordedCatalogCrawlerAdapter(fixture),
+      adapterName: "vndb-durable-marker-fixture",
+      factImportContract: {
+        contractId: catalogCrawlerIdempotentFactImportContractId,
+        strategy: catalogCrawlerFactImportStrategyValues.durableImportMarker,
+        factIdentity: ["catalogSource", "sourceId"],
+        replayValidation: [
+          "sourceId",
+          "fixtureId",
+          "stableImportKey",
+          "importTransactionId",
+          "factCount",
+          "factIdentities",
+        ],
+      },
+    };
+    const observedKeys: string[] = [];
+
+    await expect(
+      runner.run(adapter, {
+        repository,
+        actor,
+        workerId: "worker-durable-crash",
+        mode: "recorded_fixture",
+        ingestStep: (context) => {
+          observedKeys.push(context.stableImportKey);
+          throw new Error("crash after durable marker");
+        },
+      }),
+    ).rejects.toThrow(/crash after durable marker/u);
+
+    await runner.run(adapter, {
+      repository,
+      actor,
+      workerId: "worker-durable-replay",
+      mode: "recorded_fixture",
+      ingestStep: (context) => {
+        observedKeys.push(context.stableImportKey);
+        return importProof(context);
+      },
+    });
+
+    expect(observedKeys[0]).toBe(observedKeys[1]);
+    expect(observedKeys[0]).toMatch(/^catalog-import:/u);
+  });
+
   it("refuses recorded fixtures in live mode so public CI never needs network credentials", async () => {
     const repository = new InMemoryCatalogCrawlerRepository();
     const runner = new ItotoriCatalogCrawlerRunner();
@@ -295,3 +390,18 @@ describe("Itotori catalog crawler runner", () => {
     ).rejects.toThrow(/recorded_fixture mode/u);
   });
 });
+
+function importProof(context: CatalogCrawlerIngestContext<FixtureFact>) {
+  return {
+    stableImportKey: context.stableImportKey,
+    strategy:
+      context.adapter.factImportContract?.strategy ?? catalogCrawlerFactImportStrategyValues.upsert,
+    factCount: context.facts.length,
+    factIdentities: context.expectedFactIdentities,
+    durableMarkerId:
+      context.adapter.factImportContract?.strategy ===
+      catalogCrawlerFactImportStrategyValues.durableImportMarker
+        ? context.stableImportKey
+        : undefined,
+  };
+}

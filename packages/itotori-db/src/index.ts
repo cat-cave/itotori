@@ -218,6 +218,7 @@ export type {
   CatalogCrawlerAdapterContext,
   CatalogCrawlerAdapterStep,
   CatalogCrawlerFactImportContract,
+  CatalogCrawlerFactImportProof,
   CatalogCrawlerFactImportStrategy,
   CatalogCrawlerIngestContext,
   CatalogCrawlerIngestStep,
