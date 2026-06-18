@@ -874,23 +874,23 @@ pub fn validate_runtime_evidence_report_v02(value: &Value) -> BridgeContractResu
             )?;
         }
     }
-    if !trace_events.is_empty() {
-        if let Some(runtime_capabilities) = report.get("runtimeCapabilities") {
-            validate_runtime_capability_supports_feature(
-                runtime_capabilities,
-                "text_trace",
-                "RuntimeEvidenceReportV02.runtimeCapabilities",
-            )?;
-        }
+    if !trace_events.is_empty()
+        && let Some(runtime_capabilities) = report.get("runtimeCapabilities")
+    {
+        validate_runtime_capability_supports_feature(
+            runtime_capabilities,
+            "text_trace",
+            "RuntimeEvidenceReportV02.runtimeCapabilities",
+        )?;
     }
-    if !branch_events.is_empty() {
-        if let Some(runtime_capabilities) = report.get("runtimeCapabilities") {
-            validate_runtime_capability_supports_feature(
-                runtime_capabilities,
-                "branch_discovery",
-                "RuntimeEvidenceReportV02.runtimeCapabilities",
-            )?;
-        }
+    if !branch_events.is_empty()
+        && let Some(runtime_capabilities) = report.get("runtimeCapabilities")
+    {
+        validate_runtime_capability_supports_feature(
+            runtime_capabilities,
+            "branch_discovery",
+            "RuntimeEvidenceReportV02.runtimeCapabilities",
+        )?;
     }
     if fidelity_tier != "reference_fidelity" && approximations.is_empty() {
         return error(
@@ -904,14 +904,14 @@ pub fn validate_runtime_evidence_report_v02(value: &Value) -> BridgeContractResu
             "RuntimeEvidenceReportV02.referenceComparisons must include passed reference-runtime or conformance comparison evidence for E4/reference_fidelity claims",
         );
     }
-    if !reference_comparisons.is_empty() {
-        if let Some(runtime_capabilities) = report.get("runtimeCapabilities") {
-            validate_runtime_capability_supports_feature(
-                runtime_capabilities,
-                "reference_comparison",
-                "RuntimeEvidenceReportV02.runtimeCapabilities",
-            )?;
-        }
+    if !reference_comparisons.is_empty()
+        && let Some(runtime_capabilities) = report.get("runtimeCapabilities")
+    {
+        validate_runtime_capability_supports_feature(
+            runtime_capabilities,
+            "reference_comparison",
+            "RuntimeEvidenceReportV02.runtimeCapabilities",
+        )?;
     }
     if string_field(report, "status")? == "failed" && findings.is_empty() {
         return error(

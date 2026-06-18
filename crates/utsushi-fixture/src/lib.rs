@@ -65,12 +65,14 @@ impl RuntimeAdapter for FixtureRuntimeAdapter {
         Ok(runtime_report(
             &self.descriptor(),
             &source,
-            vec![trace_event(unit, 1)?],
-            vec![],
-            RuntimeOperationLabel::Trace,
-            FidelityTier::TraceOnly,
-            EvidenceTier::E1,
-            "Runtime trace reached fixture text; no frame was captured.",
+            RuntimeReportInput {
+                trace_events: vec![trace_event(unit, 1)?],
+                captures: vec![],
+                operation: RuntimeOperationLabel::Trace,
+                fidelity_tier: FidelityTier::TraceOnly,
+                evidence_tier: EvidenceTier::E1,
+                limitation: "Runtime trace reached fixture text; no frame was captured.",
+            },
         ))
     }
 
@@ -80,12 +82,14 @@ impl RuntimeAdapter for FixtureRuntimeAdapter {
         Ok(runtime_report(
             &self.descriptor(),
             &source,
-            vec![trace_event(unit, 1)?],
-            vec![capture_event(unit, 1)?],
-            RuntimeOperationLabel::Capture,
-            FidelityTier::LayoutProbe,
-            EvidenceTier::E2,
-            "Fixture capture produced a screenshot reference; no pixel comparison was performed.",
+            RuntimeReportInput {
+                trace_events: vec![trace_event(unit, 1)?],
+                captures: vec![capture_event(unit, 1)?],
+                operation: RuntimeOperationLabel::Capture,
+                fidelity_tier: FidelityTier::LayoutProbe,
+                evidence_tier: EvidenceTier::E2,
+                limitation: "Fixture capture produced a screenshot reference; no pixel comparison was performed.",
+            },
         ))
     }
 
@@ -223,16 +227,28 @@ fn fixture_capability_contract() -> RuntimeCapabilityContract {
     )
 }
 
-fn runtime_report(
-    descriptor: &RuntimeAdapterDescriptor,
-    source: &Value,
+struct RuntimeReportInput {
     trace_events: Vec<Value>,
     captures: Vec<Value>,
     operation: RuntimeOperationLabel,
     fidelity_tier: FidelityTier,
     evidence_tier: EvidenceTier,
-    limitation: &str,
+    limitation: &'static str,
+}
+
+fn runtime_report(
+    descriptor: &RuntimeAdapterDescriptor,
+    source: &Value,
+    input: RuntimeReportInput,
 ) -> Value {
+    let RuntimeReportInput {
+        trace_events,
+        captures,
+        operation,
+        fidelity_tier,
+        evidence_tier,
+        limitation,
+    } = input;
     let affected_bridge_unit_refs = trace_events
         .iter()
         .filter_map(|event| event.get("bridgeUnitRef").cloned())
