@@ -2,6 +2,8 @@ import { and, eq } from "drizzle-orm";
 import type { ItotoriDatabase } from "./connection.js";
 import { userPermissionGrants, users } from "./schema.js";
 
+// Source of truth for permission values. SQL migration constraints must be
+// updated to match these constants; see docs/permissions.md.
 export const permissionValues = {
   projectImport: "project.import",
   draftWrite: "draft.write",

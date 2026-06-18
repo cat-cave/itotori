@@ -2,11 +2,27 @@
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const packageRoot = path.join(repoRoot, "packages/itotori-db");
 const skipReportPath = path.join(repoRoot, ".tmp/itotori-db/no-database-skipped.json");
 const dbTestCommand = "pnpm --filter @itotori/db test";
+
+const permissionVerifier = spawnSync(
+  process.execPath,
+  [path.join(packageRoot, "scripts/verify-permission-constraints.mjs")],
+  {
+    stdio: "inherit",
+  },
+);
+
+if (permissionVerifier.signal) {
+  process.kill(process.pid, permissionVerifier.signal);
+}
+if (permissionVerifier.status !== 0) {
+  process.exit(permissionVerifier.status ?? 1);
+}
 
 if (!process.env.DATABASE_URL) {
   await mkdir(path.dirname(skipReportPath), { recursive: true });
