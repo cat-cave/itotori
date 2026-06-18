@@ -112,9 +112,13 @@ apply preflight derives a deterministic target manifest from the verified source
 tree plus the package's changed-entry payloads and compares it with the package
 target manifest before creating the output parent or staging directory.
 Incomplete packages, including target-manifest changes omitted from
-`changedEntries`, ignored artifact paths including descendants below
-`patch-result.json` with either `/` or `\` separators, and file/dir prefix
-conflicts that cannot be materialized on disk, must fail at this preflight step.
+`changedEntries`, ignored artifact paths, and file/dir prefix conflicts that
+cannot be materialized on disk, must fail at this preflight step. A root
+`patch-result.json` is valid target content for delta apply; the CLI writes its
+own apply report outside the patched output tree, defaults that report to the
+`<output>.kaifuu/patch-result.json` sidecar, and rejects report destinations
+inside the source or output tree, including symlink and canonical path aliases
+where the filesystem can prove them.
 
 ## Current Guardrails
 
@@ -127,7 +131,9 @@ The fixture implementation enforces a small subset of this policy:
 - Fixture `.kaifuu` delta application rejects path traversal, validates source
   compatibility, verifies changed-entry completeness before allocating staging,
   rejects ignored artifact paths and unmaterializable manifest path sets, and
-  applies supported multi-entry packages through a staged target tree.
+  applies supported multi-entry packages through a staged target tree. The CLI
+  apply report is written through a sidecar path guarded against source/output
+  aliases and symlinked report parents.
 - Profile validation rejects unsafe asset paths in profile asset records.
 
 Future engine adapters must extend these guardrails with encoding-specific

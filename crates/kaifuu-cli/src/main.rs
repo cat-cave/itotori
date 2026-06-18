@@ -1,4 +1,5 @@
 use std::fs;
+use std::io;
 use std::path::{Component, Path, PathBuf};
 
 use kaifuu_core::{
@@ -124,9 +125,9 @@ fn run_with_args_and_registry(
                 .map(PathBuf::from)
                 .map(Ok)
                 .unwrap_or_else(|| default_apply_report_output(&output))?;
-            validate_apply_report_output(&game_dir, &output, &report_output)?;
+            let report_output = validate_apply_report_output(&game_dir, &output, &report_output)?;
             let result = apply_delta(&game_dir, &patch, &output)?;
-            write_json(&report_output, &redact_report_value(&result))?;
+            write_apply_report_json(&report_output, &redact_report_value(&result))?;
         }
         Some("verify") => {
             let game_dir = PathBuf::from(positional(&args, 1)?);
@@ -370,23 +371,152 @@ fn validate_apply_report_output(
     game_dir: &Path,
     output: &Path,
     report_output: &Path,
-) -> KaifuuResult<()> {
+) -> KaifuuResult<PathBuf> {
     let source_root = lexical_absolute_path(game_dir)?;
     let output_root = lexical_absolute_path(output)?;
     let report_path = lexical_absolute_path(report_output)?;
-    if report_path == source_root || report_path.starts_with(&source_root) {
+    let source_root_canonical = canonical_existing_prefix(game_dir)?;
+    let output_root_canonical = canonical_existing_prefix(output)?;
+    let report_path_canonical = canonical_existing_prefix(report_output)?;
+
+    if path_is_inside_root(&report_path, &source_root)
+        || path_is_inside_root(&report_path_canonical, &source_root_canonical)
+    {
         return Err(format!(
             "apply report output must not be inside source game directory: {}",
             redact_for_log_or_report(&report_output.display().to_string())
         )
         .into());
     }
-    if report_path == output_root || report_path.starts_with(&output_root) {
+    if path_is_inside_root(&report_path, &output_root)
+        || path_is_inside_root(&report_path_canonical, &output_root_canonical)
+    {
         return Err(format!(
             "apply report output must not be inside patched output directory: {}",
             redact_for_log_or_report(&report_output.display().to_string())
         )
         .into());
+    }
+    reject_existing_symlink_components(&report_path)?;
+    Ok(report_path)
+}
+
+fn path_is_inside_root(path: &Path, root: &Path) -> bool {
+    path == root || path.starts_with(root)
+}
+
+fn canonical_existing_prefix(path: &Path) -> KaifuuResult<PathBuf> {
+    let absolute = lexical_absolute_path(path)?;
+    let components = absolute
+        .components()
+        .map(|component| component.as_os_str().to_os_string())
+        .collect::<Vec<_>>();
+
+    let mut current = PathBuf::new();
+    let mut canonical_prefix = PathBuf::new();
+    let mut consumed = 0_usize;
+    for (index, component) in components.iter().enumerate() {
+        current.push(component);
+        match fs::symlink_metadata(&current) {
+            Ok(_) => {
+                canonical_prefix = match fs::canonicalize(&current) {
+                    Ok(canonical) => canonical,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+                    Err(error) => return Err(error.into()),
+                };
+                consumed = index + 1;
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    let mut canonical = canonical_prefix;
+    for component in &components[consumed..] {
+        canonical.push(component);
+    }
+    Ok(canonical)
+}
+
+fn reject_existing_symlink_components(path: &Path) -> KaifuuResult<()> {
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => current.push(prefix.as_os_str()),
+            Component::RootDir => current.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir | Component::Normal(_) => {
+                current.push(component.as_os_str());
+                let metadata = match fs::symlink_metadata(&current) {
+                    Ok(metadata) => metadata,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+                    Err(error) => return Err(error.into()),
+                };
+                if metadata.file_type().is_symlink() {
+                    return Err(format!(
+                        "apply report output path must not contain symlinks: {}",
+                        redact_for_log_or_report(&current.display().to_string())
+                    )
+                    .into());
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn write_apply_report_json(report_output: &Path, value: &serde_json::Value) -> KaifuuResult<()> {
+    let parent = report_output.parent().unwrap_or_else(|| Path::new("."));
+    create_report_parent_without_symlinks(parent)?;
+    reject_existing_symlink_components(report_output)?;
+    write_json(report_output, value)
+}
+
+fn create_report_parent_without_symlinks(parent: &Path) -> KaifuuResult<()> {
+    if parent.as_os_str().is_empty() {
+        return Ok(());
+    }
+
+    let mut current = PathBuf::new();
+    for component in parent.components() {
+        match component {
+            Component::Prefix(prefix) => current.push(prefix.as_os_str()),
+            Component::RootDir => current.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir | Component::Normal(_) => {
+                current.push(component.as_os_str());
+                match fs::symlink_metadata(&current) {
+                    Ok(metadata) => {
+                        if metadata.file_type().is_symlink() {
+                            return Err(format!(
+                                "apply report output parent must not contain symlinks: {}",
+                                redact_for_log_or_report(&current.display().to_string())
+                            )
+                            .into());
+                        }
+                        if !metadata.is_dir() {
+                            return Err(format!(
+                                "apply report output parent must be a directory: {}",
+                                redact_for_log_or_report(&current.display().to_string())
+                            )
+                            .into());
+                        }
+                    }
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                        fs::create_dir(&current)?;
+                        let metadata = fs::symlink_metadata(&current)?;
+                        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                            return Err(format!(
+                                "apply report output parent must be a directory and not a symlink: {}",
+                                redact_for_log_or_report(&current.display().to_string())
+                            )
+                            .into());
+                        }
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        }
     }
     Ok(())
 }
@@ -580,6 +710,27 @@ mod tests {
         registry: &AdapterRegistry,
     ) -> Result<(), Box<dyn std::error::Error>> {
         run_with_args_and_registry(args.iter().map(|arg| arg.to_string()).collect(), registry)
+    }
+
+    fn write_apply_delta(root: &Path) -> (PathBuf, PathBuf) {
+        let game_dir = temp_game(root);
+        let patched_dir = root.join("patched");
+        fs::create_dir_all(&patched_dir).unwrap();
+        write_fixture_file(
+            &patched_dir,
+            "source.json",
+            br#"{"units":[{"targetText":"Hello, {player}."}]}"#,
+        );
+
+        let delta_path = root.join("hello.kaifuu");
+        run_cli(&[
+            "diff",
+            game_dir.to_str().unwrap(),
+            patched_dir.to_str().unwrap(),
+            "--output",
+            delta_path.to_str().unwrap(),
+        ]);
+        (game_dir, delta_path)
     }
 
     fn test_capabilities() -> AdapterCapabilities {
@@ -1975,22 +2126,7 @@ mod tests {
     #[test]
     fn apply_command_rejects_report_output_inside_patched_output() {
         let root = temp_dir("apply-report-output-guard");
-        let game_dir = temp_game(&root);
-        let patched_dir = root.join("patched");
-        fs::create_dir_all(&patched_dir).unwrap();
-        write_fixture_file(
-            &patched_dir,
-            "source.json",
-            br#"{"units":[{"targetText":"Hello, {player}."}]}"#,
-        );
-        let delta_path = root.join("hello.kaifuu");
-        run_cli(&[
-            "diff",
-            game_dir.to_str().unwrap(),
-            patched_dir.to_str().unwrap(),
-            "--output",
-            delta_path.to_str().unwrap(),
-        ]);
+        let (game_dir, delta_path) = write_apply_delta(&root);
         let output_dir = root.join("applied");
 
         let result = run_with_args(
@@ -2015,6 +2151,226 @@ mod tests {
             "{error}"
         );
         assert!(!output_dir.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_command_rejects_report_output_inside_source() {
+        let root = temp_dir("apply-report-source-guard");
+        let (game_dir, delta_path) = write_apply_delta(&root);
+        let output_dir = root.join("applied");
+
+        let result = run_with_args(
+            [
+                "apply",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                delta_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+                "--report-output",
+                game_dir.join("report.json").to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("apply report output must not be inside source game directory"),
+            "{error}"
+        );
+        assert!(!output_dir.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apply_command_rejects_default_report_sidecar_symlink_to_output() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("apply-report-default-sidecar-symlink");
+        let (game_dir, delta_path) = write_apply_delta(&root);
+        let output_dir = root.join("applied");
+        unix_fs::symlink(&output_dir, root.join("applied.kaifuu")).unwrap();
+
+        let result = run_with_args(
+            [
+                "apply",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                delta_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("apply report output path must not contain symlinks"),
+            "{error}"
+        );
+        assert!(!output_dir.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apply_command_rejects_report_output_symlink_to_source() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("apply-report-output-symlink-source");
+        let (game_dir, delta_path) = write_apply_delta(&root);
+        let output_dir = root.join("applied");
+        let report_link = root.join("report-link");
+        unix_fs::symlink(&game_dir, &report_link).unwrap();
+
+        let result = run_with_args(
+            [
+                "apply",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                delta_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+                "--report-output",
+                report_link.join("report.json").to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("apply report output must not be inside source game directory"),
+            "{error}"
+        );
+        assert!(!output_dir.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apply_command_rejects_report_output_symlink_to_output() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("apply-report-output-symlink-output");
+        let (game_dir, delta_path) = write_apply_delta(&root);
+        let output_dir = root.join("applied");
+        let report_link = root.join("output-report-link");
+        unix_fs::symlink(&output_dir, &report_link).unwrap();
+
+        let result = run_with_args(
+            [
+                "apply",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                delta_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+                "--report-output",
+                report_link.join("patch-result.json").to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("apply report output path must not contain symlinks"),
+            "{error}"
+        );
+        assert!(!output_dir.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apply_command_rejects_canonical_source_report_output_bypass() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("apply-report-source-canonical");
+        let (game_dir, delta_path) = write_apply_delta(&root);
+        let game_link = root.join("game-link");
+        unix_fs::symlink(&game_dir, &game_link).unwrap();
+        let output_dir = root.join("applied");
+
+        let result = run_with_args(
+            [
+                "apply",
+                game_link.to_str().unwrap(),
+                "--patch",
+                delta_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+                "--report-output",
+                game_dir.join("report.json").to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("apply report output must not be inside source game directory"),
+            "{error}"
+        );
+        assert!(!output_dir.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn apply_command_rejects_canonical_output_report_output_bypass() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("apply-report-output-canonical");
+        let (game_dir, delta_path) = write_apply_delta(&root);
+        let real_parent = root.join("real-parent");
+        fs::create_dir_all(&real_parent).unwrap();
+        let linked_parent = root.join("linked-parent");
+        unix_fs::symlink(&real_parent, &linked_parent).unwrap();
+        let output_dir = linked_parent.join("applied");
+
+        let result = run_with_args(
+            [
+                "apply",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                delta_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+                "--report-output",
+                real_parent
+                    .join("applied")
+                    .join("patch-result.json")
+                    .to_str()
+                    .unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("apply report output must not be inside patched output directory"),
+            "{error}"
+        );
+        assert!(!real_parent.join("applied").exists());
 
         let _ = fs::remove_dir_all(root);
     }
