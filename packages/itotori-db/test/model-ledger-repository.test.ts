@@ -268,7 +268,42 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
-  it("rejects unknown token sources with concrete token totals", async () => {
+  it("records unknown token sources with component counters but no total", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await ledger.recordProviderRun(
+        localActor,
+        runInput("run-unknown-token-components", "unknown", undefined, {
+          tokenUsage: {
+            tokenCountSource: "unknown",
+            promptTokens: 10,
+            completionTokens: 5,
+            reasoningTokens: 3,
+            cachedInputTokens: 2,
+          },
+        }),
+      );
+
+      const report = await ledger.getProjectCostReport("project-test");
+      expect(report.recentRuns[0]).toMatchObject({
+        providerRunId: "run-unknown-token-components",
+        tokenCountSource: "unknown",
+        promptTokens: 10,
+        completionTokens: 5,
+        reasoningTokens: 3,
+        cachedInputTokens: 2,
+        totalTokens: null,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects unknown token sources with totalTokens", async () => {
     const context = await isolatedMigratedContext();
     try {
       const projectRepository = new ItotoriProjectRepository(context.db);
@@ -288,6 +323,34 @@ describe("ItotoriModelLedgerRepository", () => {
           }),
         ),
       ).rejects.toThrow(/unknown tokenCountSource/u);
+
+      const report = await ledger.getProjectCostReport("project-test");
+      expect(report.runCount).toBe(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects typo token count sources", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await expect(
+        ledger.recordProviderRun(
+          localActor,
+          runInput("run-token-source-typo", "zero", 0, {
+            tokenUsage: {
+              tokenCountSource: "provider-reported",
+              promptTokens: 10,
+              completionTokens: 5,
+              totalTokens: 15,
+            } as ProviderRunLedgerInput["tokenUsage"],
+          }),
+        ),
+      ).rejects.toThrow(/tokenUsage\.tokenCountSource/u);
 
       const report = await ledger.getProjectCostReport("project-test");
       expect(report.runCount).toBe(0);

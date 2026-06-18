@@ -12,6 +12,7 @@ import {
   assertPatchExportV02,
   assertRuntimeReport,
   assertTriageBundleV02,
+  BENCHMARK_TOKEN_COUNT_SOURCES,
   BRIDGE_SCHEMA_VERSION_V02,
   TRIAGE_EVENT_KINDS,
   type BenchmarkReportV02,
@@ -416,7 +417,11 @@ export function assertProjectCostReport(
         `${label}.recentRuns[${index}].amountMicrosUsd`,
       );
     }
-    assertString(run.tokenCountSource, `${label}.recentRuns[${index}].tokenCountSource`);
+    assertEnum(
+      run.tokenCountSource,
+      BENCHMARK_TOKEN_COUNT_SOURCES,
+      `${label}.recentRuns[${index}].tokenCountSource`,
+    );
     const tokenTotalLabel = `${label}.recentRuns[${index}].totalTokens`;
     for (const tokenField of [
       "promptTokens",
@@ -431,16 +436,9 @@ export function assertProjectCostReport(
     if (run.totalTokens !== null) {
       assertNonNegativeInteger(run.totalTokens, tokenTotalLabel);
     }
-    if (
-      run.tokenCountSource === "unknown" &&
-      (run.promptTokens !== null ||
-        run.completionTokens !== null ||
-        run.reasoningTokens !== null ||
-        run.cachedInputTokens !== null ||
-        run.totalTokens !== null)
-    ) {
+    if (run.tokenCountSource === "unknown" && run.totalTokens !== null) {
       throw new Error(
-        `${label}.recentRuns[${index}] unknown token source must not include token totals`,
+        `${label}.recentRuns[${index}] unknown token source must not include totalTokens`,
       );
     }
     const tokenSubtotal =

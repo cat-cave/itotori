@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import {
+  BENCHMARK_TOKEN_COUNT_SOURCES,
+  type BenchmarkTokenCountSourceV02,
+} from "@itotori/localization-bridge-schema";
 import { sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
@@ -52,7 +56,7 @@ export type ProviderRunLedgerInput = {
   fallbackUsed: boolean;
   fallbackPlan: string[];
   tokenUsage: {
-    tokenCountSource: string;
+    tokenCountSource: BenchmarkTokenCountSourceV02;
     promptTokens?: number;
     completionTokens?: number;
     reasoningTokens?: number;
@@ -133,6 +137,7 @@ export interface ItotoriModelLedgerRepositoryPort {
 }
 
 const costKinds = Object.values(providerCostKindValues) as ProviderCostKind[];
+const tokenCountSources = [...BENCHMARK_TOKEN_COUNT_SOURCES];
 
 export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
@@ -604,7 +609,7 @@ function assertFallbackPlan(input: ProviderRunLedgerInput): void {
 }
 
 function assertTokenUsage(tokenUsage: ProviderRunLedgerInput["tokenUsage"]): void {
-  assertNonEmpty(tokenUsage.tokenCountSource, "tokenUsage.tokenCountSource");
+  assertEnumValue(tokenUsage.tokenCountSource, tokenCountSources, "tokenUsage.tokenCountSource");
   const tokenFields = [
     ["promptTokens", tokenUsage.promptTokens],
     ["completionTokens", tokenUsage.completionTokens],
@@ -617,11 +622,8 @@ function assertTokenUsage(tokenUsage: ProviderRunLedgerInput["tokenUsage"]): voi
       assertNonNegativeInteger(value, `tokenUsage.${field}`);
     }
   }
-  if (
-    tokenUsage.tokenCountSource === "unknown" &&
-    tokenFields.some(([, value]) => value !== undefined)
-  ) {
-    throw new Error("unknown tokenCountSource entries must not include token totals");
+  if (tokenUsage.tokenCountSource === "unknown" && tokenUsage.totalTokens !== undefined) {
+    throw new Error("unknown tokenCountSource entries must not include totalTokens");
   }
   const subtotal =
     (tokenUsage.promptTokens ?? 0) +
@@ -645,6 +647,16 @@ function asCostKind(value: unknown): ProviderCostKind {
     return value as ProviderCostKind;
   }
   throw new Error(`unknown cost kind in ledger: ${String(value)}`);
+}
+
+function assertEnumValue<T extends string>(
+  value: unknown,
+  allowed: readonly T[],
+  label: string,
+): asserts value is T {
+  if (typeof value !== "string" || !allowed.includes(value as T)) {
+    throw new Error(`${label} must be one of ${allowed.join(", ")}`);
+  }
 }
 
 function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {

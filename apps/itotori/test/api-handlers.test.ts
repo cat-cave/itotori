@@ -4,6 +4,7 @@ import {
   localUserId,
   permissionValues,
   type Permission,
+  type ProjectCostReport,
 } from "@itotori/db";
 import { describe, expect, it, vi } from "vitest";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
@@ -58,6 +59,32 @@ describe("Itotori API handlers", () => {
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
   });
 
+  it("serves project cost reports with unknown token source component counters", async () => {
+    const services = serviceFixture();
+    const report: ProjectCostReport = {
+      ...costReportFixture,
+      recentRuns: [
+        {
+          ...costReportFixture.recentRuns[0]!,
+          tokenCountSource: "unknown",
+          promptTokens: 12,
+          completionTokens: 8,
+          reasoningTokens: 3,
+          cachedInputTokens: 2,
+          totalTokens: null,
+        },
+      ],
+    };
+    services.projectWorkflow.getCostReport.mockResolvedValueOnce(report);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/cost" },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: report });
+  });
+
   it.each([
     {
       name: "reasoning-token drift",
@@ -85,6 +112,19 @@ describe("Itotori API handlers", () => {
         ],
       },
       error: /unknown token source/u,
+    },
+    {
+      name: "typo token source",
+      report: {
+        ...costReportFixture,
+        recentRuns: [
+          {
+            ...costReportFixture.recentRuns[0]!,
+            tokenCountSource: "provider-reported",
+          },
+        ],
+      } as unknown as ProjectCostReport,
+      error: /tokenCountSource/u,
     },
   ])("rejects impossible project cost reports with $name", async ({ report, error }) => {
     const services = serviceFixture();
