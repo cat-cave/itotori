@@ -417,6 +417,7 @@ export function assertProjectCostReport(
       );
     }
     assertString(run.tokenCountSource, `${label}.recentRuns[${index}].tokenCountSource`);
+    const tokenTotalLabel = `${label}.recentRuns[${index}].totalTokens`;
     for (const tokenField of [
       "promptTokens",
       "completionTokens",
@@ -428,7 +429,28 @@ export function assertProjectCostReport(
       }
     }
     if (run.totalTokens !== null) {
-      assertNonNegativeInteger(run.totalTokens, `${label}.recentRuns[${index}].totalTokens`);
+      assertNonNegativeInteger(run.totalTokens, tokenTotalLabel);
+    }
+    if (
+      run.tokenCountSource === "unknown" &&
+      (run.promptTokens !== null ||
+        run.completionTokens !== null ||
+        run.reasoningTokens !== null ||
+        run.cachedInputTokens !== null ||
+        run.totalTokens !== null)
+    ) {
+      throw new Error(
+        `${label}.recentRuns[${index}] unknown token source must not include token totals`,
+      );
+    }
+    const tokenSubtotal =
+      (run.promptTokens === null ? 0 : Number(run.promptTokens)) +
+      (run.completionTokens === null ? 0 : Number(run.completionTokens)) +
+      (run.reasoningTokens === null ? 0 : Number(run.reasoningTokens));
+    if (run.totalTokens !== null && run.totalTokens < tokenSubtotal) {
+      throw new Error(
+        `${tokenTotalLabel} must cover promptTokens, completionTokens, and reasoningTokens`,
+      );
     }
     asRecord(run.dataHandling, `${label}.recentRuns[${index}].dataHandling`);
     if (run.accountPrivacy !== null) {

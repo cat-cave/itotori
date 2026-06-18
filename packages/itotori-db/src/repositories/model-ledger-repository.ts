@@ -617,9 +617,20 @@ function assertTokenUsage(tokenUsage: ProviderRunLedgerInput["tokenUsage"]): voi
       assertNonNegativeInteger(value, `tokenUsage.${field}`);
     }
   }
-  const subtotal = (tokenUsage.promptTokens ?? 0) + (tokenUsage.completionTokens ?? 0);
+  if (
+    tokenUsage.tokenCountSource === "unknown" &&
+    tokenFields.some(([, value]) => value !== undefined)
+  ) {
+    throw new Error("unknown tokenCountSource entries must not include token totals");
+  }
+  const subtotal =
+    (tokenUsage.promptTokens ?? 0) +
+    (tokenUsage.completionTokens ?? 0) +
+    (tokenUsage.reasoningTokens ?? 0);
   if (tokenUsage.totalTokens !== undefined && tokenUsage.totalTokens < subtotal) {
-    throw new Error("tokenUsage.totalTokens must cover promptTokens and completionTokens");
+    throw new Error(
+      "tokenUsage.totalTokens must cover promptTokens, completionTokens, and reasoningTokens",
+    );
   }
 }
 

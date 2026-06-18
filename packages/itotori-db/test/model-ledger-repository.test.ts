@@ -239,6 +239,63 @@ describe("ItotoriModelLedgerRepository", () => {
     }
   });
 
+  it("rejects provider runs when reasoning tokens make total tokens drift", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await expect(
+        ledger.recordProviderRun(
+          localActor,
+          runInput("run-reasoning-token-drift", "zero", 0, {
+            tokenUsage: {
+              tokenCountSource: "provider_reported",
+              promptTokens: 10,
+              completionTokens: 5,
+              reasoningTokens: 3,
+              totalTokens: 15,
+            },
+          }),
+        ),
+      ).rejects.toThrow(/reasoningTokens/u);
+
+      const report = await ledger.getProjectCostReport("project-test");
+      expect(report.runCount).toBe(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects unknown token sources with concrete token totals", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await expect(
+        ledger.recordProviderRun(
+          localActor,
+          runInput("run-unknown-token-totals", "zero", 0, {
+            tokenUsage: {
+              tokenCountSource: "unknown",
+              promptTokens: 10,
+              completionTokens: 5,
+              totalTokens: 15,
+            },
+          }),
+        ),
+      ).rejects.toThrow(/unknown tokenCountSource/u);
+
+      const report = await ledger.getProjectCostReport("project-test");
+      expect(report.runCount).toBe(0);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("keeps provider run and cost rows append-only for duplicate run ids", async () => {
     const context = await isolatedMigratedContext();
     try {

@@ -60,6 +60,48 @@ describe("Itotori API handlers", () => {
 
   it.each([
     {
+      name: "reasoning-token drift",
+      report: {
+        ...costReportFixture,
+        recentRuns: [
+          {
+            ...costReportFixture.recentRuns[0]!,
+            reasoningTokens: 3,
+            totalTokens: 20,
+          },
+        ],
+      },
+      error: /reasoningTokens/u,
+    },
+    {
+      name: "unknown source token totals",
+      report: {
+        ...costReportFixture,
+        recentRuns: [
+          {
+            ...costReportFixture.recentRuns[0]!,
+            tokenCountSource: "unknown",
+          },
+        ],
+      },
+      error: /unknown token source/u,
+    },
+  ])("rejects impossible project cost reports with $name", async ({ report, error }) => {
+    const services = serviceFixture();
+    services.projectWorkflow.getCostReport.mockResolvedValueOnce(report);
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/cost" },
+      services,
+    );
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toMatchObject({ code: "internal_error" });
+    expect(response.body.error).toMatch(error);
+  });
+
+  it.each([
+    {
       name: "bridge import",
       request: post("/api/imports/bridge", { bridge: bridgeFixture }),
       permission: permissionValues.projectImport,
