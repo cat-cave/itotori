@@ -43,7 +43,7 @@ if (!process.env.DATABASE_URL) {
 
 await rm(skipReportPath, { force: true });
 
-const child = spawn("vitest", ["run"], {
+const child = spawn("vitest", ["run", "--dir", "test"], {
   stdio: "inherit",
   shell: process.platform === "win32",
 });
