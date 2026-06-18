@@ -12,6 +12,7 @@ use serde_json::Value;
 
 pub type KaifuuResult<T> = Result<T, Box<dyn std::error::Error>>;
 pub const PROFILE_SCHEMA_VERSION: &str = "0.1.0";
+pub const HELPER_RESULT_SCHEMA_VERSION: &str = "0.1.0";
 pub const ASSET_INVENTORY_SCHEMA_VERSION: &str = "0.1.0";
 pub const ARCHIVE_DETECTION_SCHEMA_VERSION: &str = "0.1.0";
 pub const REDACTED_DETECTION_GAME_DIR: &str = "[redacted-local-game-dir]";
@@ -23,6 +24,8 @@ pub const SEMANTIC_MISSING_KEY_MATERIAL: &str = "kaifuu.missing_key_material";
 pub const SEMANTIC_HELPER_UNAVAILABLE: &str = "kaifuu.helper_unavailable";
 pub const SEMANTIC_KEY_VALIDATION_FAILED: &str = "kaifuu.key_validation_failed";
 pub const SEMANTIC_SECRET_REDACTED: &str = "kaifuu.secret_redacted";
+pub const SEMANTIC_HELPER_REQUIRED: &str = "kaifuu.helper_required";
+pub const SEMANTIC_HELPER_REDACTION_FAILURE: &str = "kaifuu.helper_redaction_failure";
 pub const SEMANTIC_MALFORMED_SECRET_REF: &str = "kaifuu.malformed_secret_ref";
 pub const SEMANTIC_SECRET_REF_OUT_OF_POLICY: &str = "kaifuu.secret_ref_out_of_policy";
 pub const SEMANTIC_EXTERNAL_SECRET_UNAVAILABLE: &str = "kaifuu.external_secret_unavailable";
@@ -3491,6 +3494,874 @@ pub enum HelperKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct HelperResult {
+    pub schema_version: String,
+    pub fixture_id: String,
+    pub helper_result_id: String,
+    pub profile_id: String,
+    pub helper: HelperProvenance,
+    pub diagnostic: HelperDiagnostic,
+    pub redaction: HelperRedaction,
+    #[serde(default)]
+    pub secret_refs: Vec<HelperResultSecretRef>,
+    #[serde(default)]
+    pub proof_hashes: Vec<KeyValidationProof>,
+}
+
+impl HelperResult {
+    pub fn normalize(&mut self) {
+        self.secret_refs.sort_by_key(|secret| {
+            (
+                secret.requirement_id.clone(),
+                secret.secret_ref.as_str().to_string(),
+            )
+        });
+        self.proof_hashes.sort_by_key(|proof| {
+            (
+                serde_json::to_string(&proof.method).unwrap_or_default(),
+                proof.proof_hash.as_str().to_string(),
+            )
+        });
+    }
+
+    pub fn validate(&self) -> HelperResultValidationResult {
+        match serde_json::to_value(self) {
+            Ok(value) => validate_helper_result_value(&value),
+            Err(_) => HelperResultValidationResult {
+                schema_version: HELPER_RESULT_SCHEMA_VERSION.to_string(),
+                fixture_id: Some(redact_for_log_or_report(&self.fixture_id)),
+                status: OperationStatus::Failed,
+                failures: vec![HelperResultValidationFailure {
+                    fixture_id: Some(redact_for_log_or_report(&self.fixture_id)),
+                    code: "helper_result_serialization_failed".to_string(),
+                    field: "$".to_string(),
+                    message: "helper result could not be serialized for validation".to_string(),
+                }],
+            },
+        }
+    }
+
+    pub fn redacted_for_report(&self) -> Self {
+        let mut result = self.clone();
+        result.fixture_id = redact_for_log_or_report(&result.fixture_id);
+        result.helper_result_id = redact_for_log_or_report(&result.helper_result_id);
+        result.profile_id = redact_for_log_or_report(&result.profile_id);
+        result.helper = result.helper.redacted_for_report();
+        result.diagnostic = result.diagnostic.redacted_for_report();
+        result.redaction = result.redaction.redacted_for_report();
+        result.secret_refs = result
+            .secret_refs
+            .iter()
+            .map(HelperResultSecretRef::redacted_for_report)
+            .collect();
+        result
+    }
+
+    pub fn stable_json(&self) -> KaifuuResult<String> {
+        let mut result = self.redacted_for_report();
+        result.normalize();
+        stable_json(&result)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperProvenance {
+    pub helper_id: String,
+    pub helper_version: String,
+    pub helper_kind: HelperKind,
+}
+
+impl HelperProvenance {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            helper_id: redact_for_log_or_report(&self.helper_id),
+            helper_version: redact_for_log_or_report(&self.helper_version),
+            helper_kind: self.helper_kind,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperDiagnostic {
+    pub code: HelperDiagnosticCode,
+    pub message: String,
+}
+
+impl HelperDiagnostic {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            code: self.code,
+            message: redact_for_log_or_report(&self.message),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HelperDiagnosticCode {
+    Success,
+    MissingKey,
+    HelperRequired,
+    HelperUnavailable,
+    ValidationFailed,
+    UnsupportedProtectedExecutable,
+    RedactionFailure,
+}
+
+impl HelperDiagnosticCode {
+    pub fn semantic_code(self) -> &'static str {
+        match self {
+            Self::Success => "kaifuu.helper_result.success",
+            Self::MissingKey => SEMANTIC_MISSING_KEY_MATERIAL,
+            Self::HelperRequired => SEMANTIC_HELPER_REQUIRED,
+            Self::HelperUnavailable => SEMANTIC_HELPER_UNAVAILABLE,
+            Self::ValidationFailed => SEMANTIC_KEY_VALIDATION_FAILED,
+            Self::UnsupportedProtectedExecutable => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
+            Self::RedactionFailure => SEMANTIC_HELPER_REDACTION_FAILURE,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperRedaction {
+    pub status: HelperRedactionStatus,
+    pub redacted_log_hash: ProofHash,
+}
+
+impl HelperRedaction {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            status: self.status,
+            redacted_log_hash: self.redacted_log_hash.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HelperRedactionStatus {
+    NotRequired,
+    Redacted,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperResultSecretRef {
+    pub requirement_id: String,
+    pub secret_ref: SecretRef,
+    pub material_kind: KeyMaterialKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation: Option<KeyValidationProof>,
+}
+
+impl HelperResultSecretRef {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            requirement_id: redact_for_log_or_report(&self.requirement_id),
+            secret_ref: self.secret_ref.clone(),
+            material_kind: self.material_kind,
+            bytes: self.bytes,
+            validation: self.validation.clone(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperResultValidationResult {
+    pub schema_version: String,
+    pub fixture_id: Option<String>,
+    pub status: OperationStatus,
+    pub failures: Vec<HelperResultValidationFailure>,
+}
+
+impl HelperResultValidationResult {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            schema_version: self.schema_version.clone(),
+            fixture_id: self.fixture_id.as_deref().map(redact_for_log_or_report),
+            status: self.status.clone(),
+            failures: self
+                .failures
+                .iter()
+                .map(HelperResultValidationFailure::redacted_for_report)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperResultValidationFailure {
+    pub fixture_id: Option<String>,
+    pub code: String,
+    pub field: String,
+    pub message: String,
+}
+
+impl HelperResultValidationFailure {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            fixture_id: self.fixture_id.as_deref().map(redact_for_log_or_report),
+            code: redact_for_log_or_report(&self.code),
+            field: redact_for_log_or_report(&self.field),
+            message: redact_for_log_or_report(&self.message),
+        }
+    }
+}
+
+pub fn validate_helper_result_value(value: &Value) -> HelperResultValidationResult {
+    let fixture_id = value
+        .get("fixtureId")
+        .and_then(Value::as_str)
+        .map(redact_for_log_or_report);
+    let mut failures = Vec::new();
+    if !value.is_object() {
+        helper_result_failure(
+            &mut failures,
+            fixture_id.as_deref(),
+            "invalid_helper_result_shape",
+            "$",
+            "helper result must be a JSON object",
+        );
+        return helper_result_validation_result(fixture_id, failures);
+    }
+
+    add_helper_result_redaction_failures(&mut failures, fixture_id.as_deref(), value);
+    validate_helper_result_schema_version(&mut failures, fixture_id.as_deref(), value);
+    let fixture_id_value =
+        required_helper_result_string(&mut failures, fixture_id.as_deref(), value, "fixtureId");
+    if let Some(fixture_id_value) = fixture_id_value.as_deref() {
+        validate_public_fixture_label(
+            &mut failures,
+            fixture_id.as_deref(),
+            "fixtureId",
+            fixture_id_value,
+        );
+    }
+    for field in ["helperResultId", "profileId"] {
+        if let Some(text) =
+            required_helper_result_string(&mut failures, fixture_id.as_deref(), value, field)
+        {
+            validate_helper_result_identifier(&mut failures, fixture_id.as_deref(), field, &text);
+            validate_helper_result_safe_text(&mut failures, fixture_id.as_deref(), field, &text);
+        }
+    }
+    validate_helper_result_provenance(&mut failures, fixture_id.as_deref(), value.get("helper"));
+    let diagnostic = validate_helper_result_diagnostic(
+        &mut failures,
+        fixture_id.as_deref(),
+        value.get("diagnostic"),
+    );
+    let redaction = validate_helper_result_redaction(
+        &mut failures,
+        fixture_id.as_deref(),
+        value.get("redaction"),
+    );
+    validate_helper_result_secret_refs(
+        &mut failures,
+        fixture_id.as_deref(),
+        value.get("secretRefs"),
+    );
+    validate_helper_result_proof_hashes(
+        &mut failures,
+        fixture_id.as_deref(),
+        value.get("proofHashes"),
+    );
+
+    if diagnostic == Some(HelperDiagnosticCode::Success)
+        && redaction == Some(HelperRedactionStatus::Failed)
+    {
+        helper_result_failure(
+            &mut failures,
+            fixture_id.as_deref(),
+            "inconsistent_redaction_status",
+            "redaction.status",
+            "successful helper results must not carry failed redaction status",
+        );
+    }
+    if diagnostic == Some(HelperDiagnosticCode::RedactionFailure)
+        && redaction != Some(HelperRedactionStatus::Failed)
+    {
+        helper_result_failure(
+            &mut failures,
+            fixture_id.as_deref(),
+            "inconsistent_redaction_status",
+            "redaction.status",
+            "redaction_failure diagnostics must carry failed redaction status",
+        );
+    }
+
+    helper_result_validation_result(fixture_id, failures)
+}
+
+fn helper_result_validation_result(
+    fixture_id: Option<String>,
+    failures: Vec<HelperResultValidationFailure>,
+) -> HelperResultValidationResult {
+    HelperResultValidationResult {
+        schema_version: HELPER_RESULT_SCHEMA_VERSION.to_string(),
+        fixture_id,
+        status: if failures.is_empty() {
+            OperationStatus::Passed
+        } else {
+            OperationStatus::Failed
+        },
+        failures,
+    }
+}
+
+fn add_helper_result_redaction_failures(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    value: &Value,
+) {
+    for finding in validate_secret_redaction_boundary(value) {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            &finding.code,
+            &finding.field,
+            &finding.reason,
+        );
+    }
+}
+
+fn validate_helper_result_schema_version(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    value: &Value,
+) {
+    match value.get("schemaVersion").and_then(Value::as_str) {
+        Some(HELPER_RESULT_SCHEMA_VERSION) => {}
+        Some(version) if version.trim().is_empty() => helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "schemaVersion",
+            "schemaVersion must not be empty",
+        ),
+        Some(version) => helper_result_failure(
+            failures,
+            fixture_id,
+            "unsupported_schema_version",
+            "schemaVersion",
+            &format!("schemaVersion must be {HELPER_RESULT_SCHEMA_VERSION}, got {version}"),
+        ),
+        None => helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "schemaVersion",
+            "schemaVersion must not be empty",
+        ),
+    }
+}
+
+fn validate_helper_result_provenance(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    helper: Option<&Value>,
+) {
+    let Some(helper) = helper else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "helper",
+            "helper must be a JSON object",
+        );
+        return;
+    };
+    if !helper.is_object() {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            "helper",
+            "helper must be a JSON object",
+        );
+        return;
+    }
+    for field in ["helper.helperId", "helper.helperVersion"] {
+        if let Some(text) = required_helper_result_string(failures, fixture_id, helper, field) {
+            validate_helper_result_identifier(failures, fixture_id, field, &text);
+            validate_helper_result_safe_text(failures, fixture_id, field, &text);
+        }
+    }
+    validate_helper_result_enum_string(
+        failures,
+        fixture_id,
+        helper,
+        "helper.helperKind",
+        &[
+            "staticParser",
+            "knownKeyDatabaseImport",
+            "wineLocalWindowsHelper",
+            "remoteWindowsHelper",
+            "manualKeyEntry",
+        ],
+    );
+}
+
+fn validate_helper_result_diagnostic(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    diagnostic: Option<&Value>,
+) -> Option<HelperDiagnosticCode> {
+    let Some(diagnostic) = diagnostic else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "diagnostic",
+            "diagnostic must be a JSON object",
+        );
+        return None;
+    };
+    if !diagnostic.is_object() {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            "diagnostic",
+            "diagnostic must be a JSON object",
+        );
+        return None;
+    }
+    let code = validate_helper_result_enum_string(
+        failures,
+        fixture_id,
+        diagnostic,
+        "diagnostic.code",
+        &[
+            "success",
+            "missing_key",
+            "helper_required",
+            "helper_unavailable",
+            "validation_failed",
+            "unsupported_protected_executable",
+            "redaction_failure",
+        ],
+    )
+    .and_then(|code| serde_json::from_value::<HelperDiagnosticCode>(Value::String(code)).ok());
+    if let Some(message) =
+        required_helper_result_string(failures, fixture_id, diagnostic, "diagnostic.message")
+    {
+        validate_helper_result_safe_text(failures, fixture_id, "diagnostic.message", &message);
+    }
+    code
+}
+
+fn validate_helper_result_redaction(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    redaction: Option<&Value>,
+) -> Option<HelperRedactionStatus> {
+    let Some(redaction) = redaction else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "redaction",
+            "redaction must be a JSON object",
+        );
+        return None;
+    };
+    if !redaction.is_object() {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            "redaction",
+            "redaction must be a JSON object",
+        );
+        return None;
+    }
+    let status = validate_helper_result_enum_string(
+        failures,
+        fixture_id,
+        redaction,
+        "redaction.status",
+        &["not_required", "redacted", "failed"],
+    )
+    .and_then(|status| serde_json::from_value::<HelperRedactionStatus>(Value::String(status)).ok());
+    required_helper_result_string(failures, fixture_id, redaction, "redaction.redactedLogHash")
+        .and_then(|hash| {
+            validate_helper_result_proof_hash_string(
+                failures,
+                fixture_id,
+                "redaction.redactedLogHash",
+                hash,
+            )
+        });
+    status
+}
+
+fn validate_helper_result_secret_refs(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    secret_refs: Option<&Value>,
+) {
+    let Some(secret_refs) = secret_refs else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "secretRefs",
+            "secretRefs must be an array",
+        );
+        return;
+    };
+    let Some(secret_refs) = secret_refs.as_array() else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            "secretRefs",
+            "secretRefs must be an array",
+        );
+        return;
+    };
+    let mut seen = BTreeSet::new();
+    for (index, secret_ref) in secret_refs.iter().enumerate() {
+        let field = format!("secretRefs.{index}");
+        if !secret_ref.is_object() {
+            helper_result_failure(
+                failures,
+                fixture_id,
+                "invalid_field_type",
+                &field,
+                "secretRefs entries must be JSON objects",
+            );
+            continue;
+        }
+        if let Some(requirement_id) = required_helper_result_string(
+            failures,
+            fixture_id,
+            secret_ref,
+            &format!("{field}.requirementId"),
+        ) {
+            validate_helper_result_identifier(
+                failures,
+                fixture_id,
+                &format!("{field}.requirementId"),
+                &requirement_id,
+            );
+            if !seen.insert(requirement_id.clone()) {
+                helper_result_failure(
+                    failures,
+                    fixture_id,
+                    "duplicate_secret_ref",
+                    "secretRefs",
+                    &format!("secretRefs contains duplicate requirementId {requirement_id}"),
+                );
+            }
+        }
+        if let Some(secret_ref_text) = required_helper_result_string(
+            failures,
+            fixture_id,
+            secret_ref,
+            &format!("{field}.secretRef"),
+        ) && let Err(message) = SecretRef::new(secret_ref_text)
+        {
+            helper_result_failure(
+                failures,
+                fixture_id,
+                "invalid_secret_ref",
+                &format!("{field}.secretRef"),
+                &message,
+            );
+        }
+        validate_helper_result_enum_string(
+            failures,
+            fixture_id,
+            secret_ref,
+            &format!("{field}.materialKind"),
+            &[
+                "fixedBytes",
+                "hexBytes",
+                "utf8String",
+                "archivePassword",
+                "rpgMakerAssetKey",
+            ],
+        );
+        validate_helper_result_optional_positive_u32(
+            failures,
+            fixture_id,
+            secret_ref.get("bytes"),
+            &format!("{field}.bytes"),
+        );
+        if let Some(validation) = secret_ref.get("validation") {
+            validate_helper_result_key_validation_proof(
+                failures,
+                fixture_id,
+                validation,
+                &format!("{field}.validation"),
+            );
+        }
+    }
+}
+
+fn validate_helper_result_proof_hashes(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    proof_hashes: Option<&Value>,
+) {
+    let Some(proof_hashes) = proof_hashes else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "proofHashes",
+            "proofHashes must be an array",
+        );
+        return;
+    };
+    let Some(proof_hashes) = proof_hashes.as_array() else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            "proofHashes",
+            "proofHashes must be an array",
+        );
+        return;
+    };
+    for (index, proof) in proof_hashes.iter().enumerate() {
+        validate_helper_result_key_validation_proof(
+            failures,
+            fixture_id,
+            proof,
+            &format!("proofHashes.{index}"),
+        );
+    }
+}
+
+fn validate_helper_result_key_validation_proof(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    validation: &Value,
+    field: &str,
+) {
+    if !validation.is_object() {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            field,
+            "validation proof must be a JSON object",
+        );
+        return;
+    }
+    validate_helper_result_enum_string(
+        failures,
+        fixture_id,
+        validation,
+        &format!("{field}.method"),
+        &[
+            "decryptHeaderProof",
+            "archiveIndexProof",
+            "knownPlaintextProof",
+            "fixtureRoundTripProof",
+        ],
+    );
+    required_helper_result_string(
+        failures,
+        fixture_id,
+        validation,
+        &format!("{field}.proofHash"),
+    )
+    .and_then(|hash| {
+        validate_helper_result_proof_hash_string(
+            failures,
+            fixture_id,
+            &format!("{field}.proofHash"),
+            hash,
+        )
+    });
+}
+
+fn required_helper_result_string(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    value: &Value,
+    field: &str,
+) -> Option<String> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    match value.get(key).and_then(Value::as_str) {
+        Some(text) if !text.trim().is_empty() => Some(text.to_string()),
+        Some(_) | None => {
+            helper_result_failure(
+                failures,
+                fixture_id,
+                "missing_required_field",
+                field,
+                &format!("{field} must not be empty"),
+            );
+            None
+        }
+    }
+}
+
+fn validate_helper_result_enum_string(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    value: &Value,
+    field: &str,
+    allowed: &[&str],
+) -> Option<String> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    let Some(text) = value.get(key).and_then(Value::as_str) else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_enum_value",
+            field,
+            &format!("{field} must be one of {}", allowed.join(", ")),
+        );
+        return None;
+    };
+    if !allowed.contains(&text) {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_enum_value",
+            field,
+            &format!("{field} must be one of {}", allowed.join(", ")),
+        );
+        return None;
+    }
+    Some(text.to_string())
+}
+
+fn validate_helper_result_optional_positive_u32(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    value: Option<&Value>,
+    field: &str,
+) -> Option<u32> {
+    let value = value?;
+    let Some(value) = value.as_u64() else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            field,
+            &format!("{field} must be a positive integer"),
+        );
+        return None;
+    };
+    if value == 0 || value > u32::MAX as u64 {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_value",
+            field,
+            &format!("{field} must be a positive 32-bit integer"),
+        );
+        return None;
+    }
+    Some(value as u32)
+}
+
+fn validate_helper_result_proof_hash_string(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    field: &str,
+    hash: String,
+) -> Option<ProofHash> {
+    match ProofHash::new(hash) {
+        Ok(hash) => Some(hash),
+        Err(message) => {
+            helper_result_failure(failures, fixture_id, "invalid_proof_hash", field, &message);
+            None
+        }
+    }
+}
+
+fn validate_helper_result_identifier(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    field: &str,
+    value: &str,
+) {
+    if value.chars().any(char::is_whitespace) || value.contains('\0') {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_identifier",
+            field,
+            &format!("{field} must not contain whitespace or null bytes"),
+        );
+    }
+}
+
+fn validate_public_fixture_label(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    field: &str,
+    value: &str,
+) {
+    let valid = value.chars().all(|character| {
+        character.is_ascii_lowercase()
+            || character.is_ascii_digit()
+            || matches!(character, '-' | '_' | '.')
+    }) && value
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_ascii_lowercase() || character.is_ascii_digit());
+    if !valid {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_fixture_id",
+            field,
+            "fixtureId must be a public fixture id",
+        );
+    }
+}
+
+fn validate_helper_result_safe_text(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    field: &str,
+    value: &str,
+) {
+    if redact_for_log_or_report(value) != value {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            SEMANTIC_SECRET_REDACTED,
+            field,
+            "helper result text must be redacted before persistence",
+        );
+    }
+}
+
+fn helper_result_failure(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    code: &str,
+    field: &str,
+    message: &str,
+) {
+    failures.push(HelperResultValidationFailure {
+        fixture_id: fixture_id.map(redact_for_log_or_report),
+        code: code.to_string(),
+        field: field.to_string(),
+        message: redact_for_log_or_report(message),
+    });
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AdapterKeyRequirementDeclaration {
     pub requirement_id: String,
     pub engine_family: String,
@@ -4743,13 +5614,20 @@ fn is_valid_secret_ref(value: &str) -> bool {
             .split('/')
             .any(|component| component.is_empty() || component == "..")
         || is_local_absolute_path(name)
-        || looks_like_raw_key_material_without_secret_ref(name)
+        || secret_ref_name_contains_raw_key_material(name)
     {
         return false;
     }
     name.chars().all(|character| {
         character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | '/')
     })
+}
+
+fn secret_ref_name_contains_raw_key_material(name: &str) -> bool {
+    looks_like_raw_key_material_without_secret_ref(name)
+        || name
+            .split('/')
+            .any(looks_like_raw_key_material_without_secret_ref)
 }
 
 fn looks_like_raw_key_material_without_secret_ref(text: &str) -> bool {
@@ -10926,6 +11804,185 @@ mod tests {
         let serialized = serde_json::to_string(&diagnostic).unwrap();
         assert!(!serialized.contains("/tmp"));
         assert!(!serialized.contains("private"));
+    }
+
+    fn public_helper_result_fixture_value(name: &str) -> Value {
+        bridge_fixture_value(&format!(
+            "fixtures/public/kaifuu-helper-results/{name}.json"
+        ))
+    }
+
+    fn invalid_public_helper_result_fixture_value(name: &str) -> Value {
+        bridge_fixture_value(&format!(
+            "fixtures/public/kaifuu-helper-results/invalid/{name}.json"
+        ))
+    }
+
+    #[test]
+    fn public_helper_result_fixtures_validate_and_cover_diagnostic_matrix() {
+        let fixture_codes = [
+            ("success", HelperDiagnosticCode::Success),
+            ("missing-key", HelperDiagnosticCode::MissingKey),
+            ("helper-required", HelperDiagnosticCode::HelperRequired),
+            (
+                "helper-unavailable",
+                HelperDiagnosticCode::HelperUnavailable,
+            ),
+            ("validation-failed", HelperDiagnosticCode::ValidationFailed),
+            (
+                "unsupported-protected-executable",
+                HelperDiagnosticCode::UnsupportedProtectedExecutable,
+            ),
+            ("redaction-failure", HelperDiagnosticCode::RedactionFailure),
+        ];
+        let mut covered = BTreeSet::new();
+
+        for (fixture, expected_code) in fixture_codes {
+            let value = public_helper_result_fixture_value(fixture);
+            let validation = validate_helper_result_value(&value);
+
+            assert_eq!(
+                validation.status,
+                OperationStatus::Passed,
+                "{fixture} should validate: {:#?}",
+                validation.failures
+            );
+            let helper_result: HelperResult = serde_json::from_value(value).unwrap();
+            assert_eq!(helper_result.diagnostic.code, expected_code);
+            covered.insert(helper_result.diagnostic.code);
+            let serialized = helper_result.stable_json().unwrap();
+            let serialized_value: Value = serde_json::from_str(&serialized).unwrap();
+            assert!(serialized_value["secretRefs"].is_array());
+            assert!(serialized_value["proofHashes"].is_array());
+            assert_eq!(
+                validate_helper_result_value(&serialized_value).status,
+                OperationStatus::Passed
+            );
+            assert!(!serialized.contains("rawKey"));
+            assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
+        }
+
+        assert_eq!(
+            covered,
+            [
+                HelperDiagnosticCode::Success,
+                HelperDiagnosticCode::MissingKey,
+                HelperDiagnosticCode::HelperRequired,
+                HelperDiagnosticCode::HelperUnavailable,
+                HelperDiagnosticCode::ValidationFailed,
+                HelperDiagnosticCode::UnsupportedProtectedExecutable,
+                HelperDiagnosticCode::RedactionFailure,
+            ]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn helper_result_stable_json_keeps_empty_arrays_in_public_contract() {
+        let value = public_helper_result_fixture_value("unsupported-protected-executable");
+        let helper_result: HelperResult = serde_json::from_value(value).unwrap();
+        assert!(helper_result.secret_refs.is_empty());
+        assert!(helper_result.proof_hashes.is_empty());
+
+        let serialized = helper_result.stable_json().unwrap();
+        let serialized_value: Value = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(serialized_value["secretRefs"], serde_json::json!([]));
+        assert_eq!(serialized_value["proofHashes"], serde_json::json!([]));
+        assert_eq!(
+            validate_helper_result_value(&serialized_value).status,
+            OperationStatus::Passed
+        );
+    }
+
+    #[test]
+    fn helper_result_value_validation_requires_contract_arrays() {
+        for missing_field in ["secretRefs", "proofHashes"] {
+            let mut value = public_helper_result_fixture_value("unsupported-protected-executable");
+            value.as_object_mut().unwrap().remove(missing_field);
+
+            let validation = validate_helper_result_value(&value);
+
+            assert_eq!(validation.status, OperationStatus::Failed);
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.fixture_id.as_deref()
+                        == Some("kaifuu-helper-unsupported-protected-executable")
+                        && failure.code == "missing_required_field"
+                        && failure.field == missing_field
+                }),
+                "missing required-array failure for {missing_field}: {:#?}",
+                validation.failures
+            );
+        }
+    }
+
+    #[test]
+    fn helper_result_invalid_secret_ref_fixtures_name_field_and_redact_values() {
+        for fixture in [
+            "absolute-path-secret-ref",
+            "traversal-secret-ref",
+            "raw-base64-secret-ref",
+            "raw-base64url-path-component-secret-ref",
+            "raw-hex-secret-ref",
+        ] {
+            let value = invalid_public_helper_result_fixture_value(fixture);
+            let fixture_id = value["fixtureId"].as_str().unwrap().to_string();
+
+            let validation = validate_helper_result_value(&value).redacted_for_report();
+
+            assert_eq!(validation.status, OperationStatus::Failed);
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.fixture_id.as_deref() == Some(fixture_id.as_str())
+                        && failure.code == "invalid_secret_ref"
+                        && failure.field == "secretRefs.0.secretRef"
+                }),
+                "missing invalid secretRef failure for {fixture}: {:#?}",
+                validation.failures
+            );
+            let serialized = serde_json::to_string(&validation).unwrap();
+            assert!(!serialized.contains("/home/dev"));
+            assert!(!serialized.contains("private/key.bin"));
+            assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
+            assert!(!serialized.contains("mP9xZpQ2rS7vLj4N8aW_KtYd0hF3uC6b"));
+            assert!(serialized.contains(&fixture_id));
+            assert!(serialized.contains("secretRefs.0.secretRef"));
+        }
+    }
+
+    #[test]
+    fn helper_result_validation_names_field_and_fixture_id_without_raw_material() {
+        let mut value = public_helper_result_fixture_value("success");
+        value["diagnostic"]["message"] =
+            serde_json::json!("helper output referenced path=/home/dev/private/key.bin");
+        value["secretRefs"][0]["secretRef"] =
+            serde_json::json!("local-secret:/home/dev/private/key.bin");
+        value["proofHashes"][0]["proofHash"] = serde_json::json!("sha256:NOT-LOWER-HEX");
+
+        let validation = validate_helper_result_value(&value).redacted_for_report();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for field in [
+            "diagnostic.message",
+            "secretRefs.0.secretRef",
+            "proofHashes.0.proofHash",
+        ] {
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.fixture_id.as_deref() == Some("kaifuu-helper-success")
+                        && failure.field == field
+                }),
+                "missing helper result validation failure for {field}: {:#?}",
+                validation.failures
+            );
+        }
+        let serialized = serde_json::to_string(&validation).unwrap();
+        assert!(!serialized.contains("/home/dev"));
+        assert!(!serialized.contains("key.bin"));
+        assert!(serialized.contains("kaifuu-helper-success"));
+        assert!(serialized.contains("secretRefs.0.secretRef"));
     }
 
     #[test]

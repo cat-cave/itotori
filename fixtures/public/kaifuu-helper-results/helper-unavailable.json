@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-helper-unavailable",
+  "helperResultId": "helper-result-helper-unavailable",
+  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "helper": {
+    "helperId": "kaifuu.fixture.wine-local-windows",
+    "helperVersion": "0.1.0",
+    "helperKind": "wineLocalWindowsHelper"
+  },
+  "diagnostic": {
+    "code": "helper_unavailable",
+    "message": "synthetic Wine helper is unavailable on this runner"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/secondary-key",
+      "materialKind": "fixedBytes",
+      "bytes": 16
+    }
+  ],
+  "proofHashes": []
+}

@@ -120,6 +120,7 @@
               "finding",
               "runtime-evidence",
               "benchmark-input",
+              "helper-result",
               "metadata",
               "asset"
             ]

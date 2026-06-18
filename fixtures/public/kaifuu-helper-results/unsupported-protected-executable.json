@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-unsupported-protected-executable",
+  "helperResultId": "helper-result-unsupported-protected-executable",
+  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "helper": {
+    "helperId": "kaifuu.fixture.remote-windows",
+    "helperVersion": "0.1.0",
+    "helperKind": "remoteWindowsHelper"
+  },
+  "diagnostic": {
+    "code": "unsupported_protected_executable",
+    "message": "synthetic protected executable boundary is not supported by this helper"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+  },
+  "secretRefs": [],
+  "proofHashes": []
+}

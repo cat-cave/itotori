@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-missing-key",
+  "helperResultId": "helper-result-missing-key",
+  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "helper": {
+    "helperId": "kaifuu.fixture.known-key-import",
+    "helperVersion": "0.1.0",
+    "helperKind": "knownKeyDatabaseImport"
+  },
+  "diagnostic": {
+    "code": "missing_key",
+    "message": "synthetic known-key import did not find local material"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/missing-secondary-key",
+      "materialKind": "fixedBytes",
+      "bytes": 16
+    }
+  ],
+  "proofHashes": []
+}

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-success",
+  "helperResultId": "helper-result-success",
+  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "helper": {
+    "helperId": "kaifuu.fixture.static-parser",
+    "helperVersion": "0.1.0",
+    "helperKind": "staticParser"
+  },
+  "diagnostic": {
+    "code": "success",
+    "message": "synthetic fixture helper produced secret references and validation proofs"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/secondary-key",
+      "materialKind": "fixedBytes",
+      "bytes": 16,
+      "validation": {
+        "method": "decryptHeaderProof",
+        "proofHash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    }
+  ],
+  "proofHashes": [
+    {
+      "method": "decryptHeaderProof",
+      "proofHash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    }
+  ]
+}
