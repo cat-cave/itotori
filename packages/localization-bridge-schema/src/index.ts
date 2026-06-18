@@ -2496,6 +2496,7 @@ export function assertAlphaVerticalProofManifestV02(
     throw new Error("AlphaVerticalProofManifestV02.bridgeUnitRefs must contain at least one ref");
   }
   const bridgeUnitRefKeys = new Set<string>();
+  const validatedBridgeUnitRefs: AlphaVerticalProofBridgeUnitRefV02[] = [];
   for (const [index, ref] of bridgeUnitRefs.entries()) {
     const label = `AlphaVerticalProofManifestV02.bridgeUnitRefs[${index}]`;
     assertAlphaVerticalProofBridgeUnitRefV02(ref, label);
@@ -2504,6 +2505,7 @@ export function assertAlphaVerticalProofManifestV02(
       throw new Error(`${label} must be unique by bridgeUnitId and sourceUnitKey`);
     }
     bridgeUnitRefKeys.add(refKey);
+    validatedBridgeUnitRefs.push(ref);
   }
 
   assertUniqueNonEmptyStringArrayV02(
@@ -2547,12 +2549,40 @@ export function assertAlphaVerticalProofManifestV02(
     "AlphaVerticalProofManifestV02.contentHashes",
   );
   assertAlphaVerticalProofRequiredHashScopesV02(contentHashes);
+  if (manifest.fixture.publicManifestUri !== artifactRefs.publicFixtureManifest.uri) {
+    throw new Error(
+      "AlphaVerticalProofManifestV02.fixture.publicManifestUri must match AlphaVerticalProofManifestV02.artifactRefs.publicFixtureManifest.uri",
+    );
+  }
+  if (manifest.fixture.publicManifestHash !== artifactRefs.publicFixtureManifest.hash) {
+    throw new Error(
+      "AlphaVerticalProofManifestV02.fixture.publicManifestHash must match AlphaVerticalProofManifestV02.artifactRefs.publicFixtureManifest.hash",
+    );
+  }
   assertAlphaVerticalProofHashCoveredV02(
     contentHashes,
     "source_bundle",
+    `${manifest.fixture.fixtureId}:source-bundle`,
     manifest.sourceBundleHash,
     "AlphaVerticalProofManifestV02.sourceBundleHash",
   );
+  for (const [index, ref] of validatedBridgeUnitRefs.entries()) {
+    assertAlphaVerticalProofHashCoveredV02(
+      contentHashes,
+      "bridge_unit",
+      ref.bridgeUnitId,
+      ref.sourceHash,
+      `AlphaVerticalProofManifestV02.bridgeUnitRefs[${index}].sourceHash`,
+    );
+  }
+  for (const [index, providerProofId] of providerProofIds.entries()) {
+    assertAlphaVerticalProofHashScopeContentIdV02(
+      contentHashes,
+      "provider_proof",
+      providerProofId,
+      `AlphaVerticalProofManifestV02.providerProofIds[${index}]`,
+    );
+  }
   for (const artifactRef of Object.values(artifactRefs)) {
     if (artifactRef === undefined) {
       continue;
@@ -2560,6 +2590,7 @@ export function assertAlphaVerticalProofManifestV02(
     assertAlphaVerticalProofHashCoveredV02(
       contentHashes,
       alphaVerticalProofHashScopeForArtifactKindV02(artifactRef.artifactKind),
+      artifactRef.uri,
       artifactRef.hash,
       `AlphaVerticalProofManifestV02.artifactRefs.${artifactRef.artifactKind}.hash`,
     );
@@ -5510,11 +5541,13 @@ function assertAlphaVerticalProofRequiredHashScopesV02(
     "public_fixture_manifest",
     "source_bundle",
     "bridge_bundle",
+    "bridge_unit",
     "patch_export",
     "patch_result",
     "delta_package",
     "runtime_report",
     "benchmark_report",
+    "provider_proof",
   ] as const) {
     if (!scopes.has(scope)) {
       throw new Error(`AlphaVerticalProofManifestV02.contentHashes must include ${scope}`);
@@ -5525,10 +5558,26 @@ function assertAlphaVerticalProofRequiredHashScopesV02(
 function assertAlphaVerticalProofHashCoveredV02(
   hashes: readonly AlphaVerticalProofContentHashV02[],
   scope: AlphaVerticalProofHashScopeV02,
+  contentId: string,
   hash: string,
   label: string,
 ): void {
-  if (!hashes.some((entry) => entry.scope === scope && entry.hash === hash)) {
+  if (
+    !hashes.some(
+      (entry) => entry.scope === scope && entry.contentId === contentId && entry.hash === hash,
+    )
+  ) {
+    throw new Error(`${label} must be represented in AlphaVerticalProofManifestV02.contentHashes`);
+  }
+}
+
+function assertAlphaVerticalProofHashScopeContentIdV02(
+  hashes: readonly AlphaVerticalProofContentHashV02[],
+  scope: AlphaVerticalProofHashScopeV02,
+  contentId: string,
+  label: string,
+): void {
+  if (!hashes.some((entry) => entry.scope === scope && entry.contentId === contentId)) {
     throw new Error(`${label} must be represented in AlphaVerticalProofManifestV02.contentHashes`);
   }
 }

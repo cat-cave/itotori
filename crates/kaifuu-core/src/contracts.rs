@@ -235,7 +235,12 @@ pub fn validate_alpha_vertical_proof_manifest_v02(value: &Value) -> BridgeContra
         "publicManifestUri",
         "AlphaVerticalProofManifestV02.fixture.publicManifestUri",
     )?;
-    assert_required_hash(
+    let fixture_public_manifest_uri = assert_required_string(
+        fixture,
+        "publicManifestUri",
+        "AlphaVerticalProofManifestV02.fixture.publicManifestUri",
+    )?;
+    let fixture_public_manifest_hash = assert_required_hash(
         fixture,
         "publicManifestHash",
         "AlphaVerticalProofManifestV02.fixture.publicManifestHash",
@@ -317,6 +322,7 @@ pub fn validate_alpha_vertical_proof_manifest_v02(value: &Value) -> BridgeContra
         return error("AlphaVerticalProofManifestV02.bridgeUnitRefs must contain at least one ref");
     }
     let mut bridge_unit_keys = HashSet::new();
+    let mut bridge_unit_hashes = Vec::new();
     for (index, bridge_unit_ref) in bridge_unit_refs.iter().enumerate() {
         let label = format!("AlphaVerticalProofManifestV02.bridgeUnitRefs[{index}]");
         let bridge_unit_ref = as_record(bridge_unit_ref, &label)?;
@@ -335,7 +341,7 @@ pub fn validate_alpha_vertical_proof_manifest_v02(value: &Value) -> BridgeContra
             "sourceUnitKey",
             &format!("{label}.sourceUnitKey"),
         )?;
-        assert_required_hash(
+        let source_hash = assert_required_hash(
             bridge_unit_ref,
             "sourceHash",
             &format!("{label}.sourceHash"),
@@ -346,6 +352,7 @@ pub fn validate_alpha_vertical_proof_manifest_v02(value: &Value) -> BridgeContra
                 "{label} must be unique by bridgeUnitId and sourceUnitKey"
             ));
         }
+        bridge_unit_hashes.push((label, bridge_unit_id.to_string(), source_hash.to_string()));
     }
 
     let runtime_target_ids = required_array(
@@ -492,11 +499,13 @@ pub fn validate_alpha_vertical_proof_manifest_v02(value: &Value) -> BridgeContra
         "public_fixture_manifest",
         "source_bundle",
         "bridge_bundle",
+        "bridge_unit",
         "patch_export",
         "patch_result",
         "delta_package",
         "runtime_report",
         "benchmark_report",
+        "provider_proof",
     ] {
         if !content_hashes
             .iter()
@@ -507,16 +516,54 @@ pub fn validate_alpha_vertical_proof_manifest_v02(value: &Value) -> BridgeContra
             ));
         }
     }
+    let public_fixture_manifest = required_record(
+        artifact_refs,
+        "publicFixtureManifest",
+        "AlphaVerticalProofManifestV02.artifactRefs.publicFixtureManifest",
+    )?;
+    if public_fixture_manifest.get("uri").and_then(Value::as_str)
+        != Some(fixture_public_manifest_uri)
+    {
+        return error(
+            "AlphaVerticalProofManifestV02.fixture.publicManifestUri must match AlphaVerticalProofManifestV02.artifactRefs.publicFixtureManifest.uri",
+        );
+    }
+    if public_fixture_manifest.get("hash").and_then(Value::as_str)
+        != Some(fixture_public_manifest_hash)
+    {
+        return error(
+            "AlphaVerticalProofManifestV02.fixture.publicManifestHash must match AlphaVerticalProofManifestV02.artifactRefs.publicFixtureManifest.hash",
+        );
+    }
     assert_alpha_hash_covered(
         &content_hashes,
         "source_bundle",
+        &format!("{fixture_id}:source-bundle"),
         source_bundle_hash,
         "AlphaVerticalProofManifestV02.sourceBundleHash",
     )?;
-    for (kind, hash) in artifact_hashes {
+    for (label, bridge_unit_id, source_hash) in bridge_unit_hashes {
+        assert_alpha_hash_covered(
+            &content_hashes,
+            "bridge_unit",
+            &bridge_unit_id,
+            &source_hash,
+            &format!("{label}.sourceHash"),
+        )?;
+    }
+    for (index, provider_proof_id) in provider_proof_ids.iter().enumerate() {
+        assert_alpha_hash_scope_content_id(
+            &content_hashes,
+            "provider_proof",
+            provider_proof_id,
+            &format!("AlphaVerticalProofManifestV02.providerProofIds[{index}]"),
+        )?;
+    }
+    for (kind, uri, hash) in artifact_hashes {
         assert_alpha_hash_covered(
             &content_hashes,
             alpha_hash_scope_for_artifact_kind(&kind),
+            &uri,
             &hash,
             &format!("AlphaVerticalProofManifestV02.artifactRefs.{kind}.hash"),
         )?;
@@ -5252,7 +5299,7 @@ fn validate_alpha_proof_artifact_ref(
     value: &Value,
     label: &str,
     expected_kind: &str,
-) -> BridgeContractResult<(String, String)> {
+) -> BridgeContractResult<(String, String, String)> {
     let artifact_ref = as_record(value, label)?;
     assert_record_keys(
         artifact_ref,
@@ -5277,6 +5324,7 @@ fn validate_alpha_proof_artifact_ref(
         return error(format!("{label}.artifactKind must be {expected_kind}"));
     }
     assert_required_public_uri(artifact_ref, "uri", &format!("{label}.uri"))?;
+    let uri = assert_required_string(artifact_ref, "uri", &format!("{label}.uri"))?;
     let hash = assert_required_hash(artifact_ref, "hash", &format!("{label}.hash"))?;
     if let Some(media_type) = artifact_ref.get("mediaType") {
         string_value(media_type, &format!("{label}.mediaType"))?;
@@ -5284,7 +5332,7 @@ fn validate_alpha_proof_artifact_ref(
     if let Some(byte_size) = artifact_ref.get("byteSize") {
         positive_integer_value(byte_size, &format!("{label}.byteSize"))?;
     }
-    Ok((kind.to_string(), hash.to_string()))
+    Ok((kind.to_string(), uri.to_string(), hash.to_string()))
 }
 
 fn validate_alpha_proof_content_hashes(
@@ -5324,13 +5372,34 @@ fn validate_alpha_proof_content_hashes(
 fn assert_alpha_hash_covered(
     hashes: &[(String, String, String)],
     scope: &str,
+    content_id: &str,
     hash: &str,
     label: &str,
 ) -> BridgeContractResult<()> {
     if hashes
         .iter()
-        .any(|(candidate_scope, _content_id, candidate_hash)| {
-            candidate_scope == scope && candidate_hash == hash
+        .any(|(candidate_scope, candidate_content_id, candidate_hash)| {
+            candidate_scope == scope && candidate_content_id == content_id && candidate_hash == hash
+        })
+    {
+        Ok(())
+    } else {
+        error(format!(
+            "{label} must be represented in AlphaVerticalProofManifestV02.contentHashes"
+        ))
+    }
+}
+
+fn assert_alpha_hash_scope_content_id(
+    hashes: &[(String, String, String)],
+    scope: &str,
+    content_id: &str,
+    label: &str,
+) -> BridgeContractResult<()> {
+    if hashes
+        .iter()
+        .any(|(candidate_scope, candidate_content_id, _candidate_hash)| {
+            candidate_scope == scope && candidate_content_id == content_id
         })
     {
         Ok(())

@@ -74,6 +74,15 @@ function contractCompatibilityReportV02Example(): Record<string, unknown> {
   ) as Record<string, unknown>;
 }
 
+function alphaVerticalProofManifestV02Example(): Record<string, unknown> {
+  return JSON.parse(
+    readFileSync(
+      new URL("./examples/alpha-vertical-proof-manifest-v0.2.json", import.meta.url),
+      "utf8",
+    ),
+  ) as Record<string, unknown>;
+}
+
 function patchExportFixtureV02Example(): Record<string, unknown> {
   return JSON.parse(
     readFileSync(new URL("./examples/patch-export-v0.2.json", import.meta.url), "utf8"),
@@ -589,6 +598,84 @@ describe("localization bridge schema guards", () => {
         "utsushi-fixture:web-review:fr-FR",
       ]),
     );
+  });
+
+  it.each([
+    {
+      name: "missing provider proof hash",
+      mutate: (proofManifest: Record<string, unknown>) => {
+        proofManifest.contentHashes = (
+          proofManifest.contentHashes as Array<Record<string, unknown>>
+        ).filter((entry) => entry.scope !== "provider_proof");
+      },
+      semanticError: /contentHashes must include provider_proof/,
+    },
+    {
+      name: "missing bridge unit hashes",
+      mutate: (proofManifest: Record<string, unknown>) => {
+        proofManifest.contentHashes = (
+          proofManifest.contentHashes as Array<Record<string, unknown>>
+        ).filter((entry) => entry.scope !== "bridge_unit");
+      },
+      semanticError: /contentHashes must include bridge_unit/,
+    },
+    {
+      name: "mismatched provider proof content id",
+      mutate: (proofManifest: Record<string, unknown>) => {
+        const providerHash = (proofManifest.contentHashes as Array<Record<string, unknown>>).find(
+          (entry) => entry.scope === "provider_proof",
+        );
+        expect(providerHash).toBeDefined();
+        providerHash!.contentId = "019ed025-0000-7000-8000-000000000202";
+      },
+      semanticError: /providerProofIds\[0\].*contentHashes/,
+    },
+    {
+      name: "mismatched patch export content id",
+      mutate: (proofManifest: Record<string, unknown>) => {
+        const patchExportHash = (
+          proofManifest.contentHashes as Array<Record<string, unknown>>
+        ).find((entry) => entry.scope === "patch_export");
+        expect(patchExportHash).toBeDefined();
+        patchExportHash!.contentId = "fixtures/hello-game/expected/patch-export-other.json";
+      },
+      semanticError: /artifactRefs\.patch_export\.hash.*contentHashes/,
+    },
+  ])("rejects alpha proof manifests with $name", ({ mutate, semanticError }) => {
+    const proofManifest = alphaVerticalProofManifestV02Example();
+    mutate(proofManifest);
+
+    expect(() => assertAlphaVerticalProofManifestV02(proofManifest)).toThrow(semanticError);
+  });
+
+  it("binds alpha proof fixture publicManifestHash to artifact refs and content hashes", () => {
+    const proofManifest = alphaVerticalProofManifestV02Example();
+    const fixture = asTestRecord(proofManifest.fixture, "alpha proof fixture");
+    fixture.publicManifestHash =
+      "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    expect(() => assertAlphaVerticalProofManifestV02(proofManifest)).toThrow(
+      /fixture\.publicManifestHash.*publicFixtureManifest\.hash/,
+    );
+
+    const alignedProofManifest = alphaVerticalProofManifestV02Example();
+    const alignedFixture = asTestRecord(alignedProofManifest.fixture, "aligned alpha fixture");
+    const artifactRefs = asTestRecord(alignedProofManifest.artifactRefs, "aligned artifact refs");
+    const publicFixtureManifestRef = asTestRecord(
+      artifactRefs.publicFixtureManifest,
+      "aligned public fixture manifest ref",
+    );
+    const publicFixtureHash = (
+      alignedProofManifest.contentHashes as Array<Record<string, unknown>>
+    ).find((entry) => entry.scope === "public_fixture_manifest");
+    expect(publicFixtureHash).toBeDefined();
+
+    alignedFixture.publicManifestHash =
+      "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    publicFixtureManifestRef.hash = alignedFixture.publicManifestHash;
+    publicFixtureHash!.hash = alignedFixture.publicManifestHash;
+
+    expect(() => assertAlphaVerticalProofManifestV02(alignedProofManifest)).not.toThrow();
   });
 
   it("accepts the public seeded localization defect benchmark report", () => {

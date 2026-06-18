@@ -7847,6 +7847,10 @@ mod tests {
         ))
     }
 
+    fn alpha_proof_fixture_value() -> Value {
+        contract_example_fixture_value("./alpha-vertical-proof-manifest-v0.2.json")
+    }
+
     fn semantic_error_matches(error: &str, expected_pattern: &str) -> bool {
         let simplified = expected_pattern
             .replace("\\.", ".")
@@ -7863,6 +7867,16 @@ mod tests {
     fn expect_bridge_v02_error(fixture: Value, expected_error: &str) {
         let error = BridgeBundleV02::validate_json(&fixture)
             .expect_err("invalid bridge fixture should fail Rust validation")
+            .to_string();
+        assert!(
+            error.contains(expected_error),
+            "expected error containing {expected_error:?}, got: {error}"
+        );
+    }
+
+    fn expect_alpha_proof_error(fixture: Value, expected_error: &str) {
+        let error = contracts::validate_alpha_vertical_proof_manifest_v02(&fixture)
+            .expect_err("invalid alpha proof manifest should fail Rust validation")
             .to_string();
         assert!(
             error.contains(expected_error),
@@ -9570,6 +9584,73 @@ mod tests {
                 panic!("{kind} fixture {path} failed Rust validation: {error}")
             });
         }
+    }
+
+    #[test]
+    fn shared_contract_fixture_suite_rejects_alpha_proof_hash_link_mutations() {
+        let mut fixture = alpha_proof_fixture_value();
+        fixture["contentHashes"]
+            .as_array_mut()
+            .expect("contentHashes should be an array")
+            .retain(|entry| entry["scope"].as_str() != Some("provider_proof"));
+        expect_alpha_proof_error(fixture, "contentHashes must include provider_proof");
+
+        let mut fixture = alpha_proof_fixture_value();
+        fixture["contentHashes"]
+            .as_array_mut()
+            .expect("contentHashes should be an array")
+            .retain(|entry| entry["scope"].as_str() != Some("bridge_unit"));
+        expect_alpha_proof_error(fixture, "contentHashes must include bridge_unit");
+
+        let mut fixture = alpha_proof_fixture_value();
+        let provider_hash = fixture["contentHashes"]
+            .as_array_mut()
+            .expect("contentHashes should be an array")
+            .iter_mut()
+            .find(|entry| entry["scope"].as_str() == Some("provider_proof"))
+            .expect("provider proof hash should exist");
+        provider_hash["contentId"] = serde_json::json!("019ed025-0000-7000-8000-000000000202");
+        expect_alpha_proof_error(fixture, "providerProofIds[0]");
+
+        let mut fixture = alpha_proof_fixture_value();
+        let patch_export_hash = fixture["contentHashes"]
+            .as_array_mut()
+            .expect("contentHashes should be an array")
+            .iter_mut()
+            .find(|entry| entry["scope"].as_str() == Some("patch_export"))
+            .expect("patch export hash should exist");
+        patch_export_hash["contentId"] =
+            serde_json::json!("fixtures/hello-game/expected/patch-export-other.json");
+        expect_alpha_proof_error(fixture, "artifactRefs.patch_export.hash");
+    }
+
+    #[test]
+    fn shared_contract_fixture_suite_binds_alpha_public_manifest_hash_links() {
+        let mut fixture = alpha_proof_fixture_value();
+        fixture["fixture"]["publicManifestHash"] = serde_json::json!(
+            "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        );
+        expect_alpha_proof_error(
+            fixture,
+            "fixture.publicManifestHash must match AlphaVerticalProofManifestV02.artifactRefs.publicFixtureManifest.hash",
+        );
+
+        let mut fixture = alpha_proof_fixture_value();
+        let replacement_hash =
+            "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        fixture["fixture"]["publicManifestHash"] = serde_json::json!(replacement_hash);
+        fixture["artifactRefs"]["publicFixtureManifest"]["hash"] =
+            serde_json::json!(replacement_hash);
+        let public_fixture_hash = fixture["contentHashes"]
+            .as_array_mut()
+            .expect("contentHashes should be an array")
+            .iter_mut()
+            .find(|entry| entry["scope"].as_str() == Some("public_fixture_manifest"))
+            .expect("public fixture manifest hash should exist");
+        public_fixture_hash["hash"] = serde_json::json!(replacement_hash);
+
+        contracts::validate_alpha_vertical_proof_manifest_v02(&fixture)
+            .expect("aligned public manifest hash links should validate");
     }
 
     #[test]
