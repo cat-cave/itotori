@@ -41,6 +41,14 @@ pub const STRING_SLOT_OVERFLOW: &str = "kaifuu.string_slot.overflow";
 pub const STRING_SLOT_INVALID_ENCODING: &str = "kaifuu.string_slot.invalid_encoding";
 pub const STRING_SLOT_TERMINATOR_LOSS: &str = "kaifuu.string_slot.terminator_loss";
 pub const STRING_SLOT_PROTECTED_SPAN_MUTATION: &str = "kaifuu.string_slot.protected_span_mutation";
+pub const STRING_RELOCATION_UNRESOLVED_REFERENCE: &str =
+    "kaifuu.string_relocation.unresolved_reference";
+pub const STRING_RELOCATION_OVERLAPPING_WRITES: &str =
+    "kaifuu.string_relocation.overlapping_writes";
+pub const STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT: &str =
+    "kaifuu.string_relocation.unsupported_pointer_format";
+pub const STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH: &str =
+    "kaifuu.string_relocation.pointer_provenance_mismatch";
 
 pub mod contracts;
 mod offset_map;
@@ -49,8 +57,11 @@ pub use offset_map::{
     ByteSpan, EncodedStringSlot, EncodedStringSlotDiagnostic, EncodedStringSlotLayout,
     EncodedStringSlotPreflightReport, EncodedStringSlotProtectedSpan, OffsetMap,
     OffsetMapDiagnostic, OffsetMapError, OffsetMapSegment, OffsetMapValidationResult,
-    SourceEncoding, SourceFileId, SourceRange, SourceRevisionId, parse_hex_bytes,
-    validate_offset_map_value,
+    RelocatedString, RelocatedStringReference, SourceEncoding, SourceFileId, SourceRange,
+    SourceRevisionId, StringReferenceFormat, StringReferenceRelocationKind,
+    StringRelocationDiagnostic, StringRelocationPlanReport, StringRelocationReference,
+    StringRelocationSlot, StringRelocationTarget, StringTableRebuildRequest, parse_hex_bytes,
+    plan_string_table_rebuild, validate_offset_map_value,
 };
 
 pub trait EngineAdapter {
@@ -7760,6 +7771,10 @@ impl AdapterFailure {
                 | STRING_SLOT_INVALID_ENCODING
                 | STRING_SLOT_TERMINATOR_LOSS
                 | STRING_SLOT_PROTECTED_SPAN_MUTATION
+                | STRING_RELOCATION_UNRESOLVED_REFERENCE
+                | STRING_RELOCATION_OVERLAPPING_WRITES
+                | STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT
+                | STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH
         )
     }
 
@@ -7905,6 +7920,34 @@ impl AdapterFailure {
                 diagnostic.slot_id,
                 diagnostic.byte_range.start(),
                 diagnostic.byte_range.end(),
+                diagnostic.message
+            ),
+            remediation: Some(format!(
+                "{}: {}",
+                diagnostic.remediation_code, diagnostic.remediation
+            )),
+        }
+        .redacted_for_report()
+    }
+
+    pub fn string_relocation_preflight(
+        adapter: impl Into<String>,
+        engine: impl Into<String>,
+        detected_variant: impl Into<String>,
+        asset_ref: impl Into<String>,
+        diagnostic: StringRelocationDiagnostic,
+    ) -> Self {
+        Self {
+            error_code: diagnostic.code,
+            adapter: adapter.into(),
+            engine: Some(engine.into()),
+            detected_variant: Some(detected_variant.into()),
+            asset_ref: Some(asset_ref.into()),
+            required_capability: Some(Capability::PatchBack),
+            support_boundary: format!(
+                "string relocation reference {} for slot {} failed preflight: {}",
+                diagnostic.reference_id.as_deref().unwrap_or("unresolved"),
+                diagnostic.slot_id.as_deref().unwrap_or("unresolved"),
                 diagnostic.message
             ),
             remediation: Some(format!(

@@ -1,0 +1,52 @@
+{
+  "fixtureId": "pointer-table-wrong-target",
+  "sourceBytesHex": "1400000014000000140000000000000048690000596f00000000",
+  "slots": [
+    {
+      "slotId": "line.001",
+      "encoding": "utf_8",
+      "oldByteRange": { "start": 16, "end": 20 },
+      "layout": { "kind": "null_terminated", "terminatorHex": "00" },
+      "protectedSpans": []
+    },
+    {
+      "slotId": "line.shared",
+      "encoding": "utf_8",
+      "oldByteRange": { "start": 20, "end": 26 },
+      "layout": { "kind": "null_terminated", "terminatorHex": "00" },
+      "protectedSpans": []
+    }
+  ],
+  "replacements": [
+    {
+      "slotId": "line.001",
+      "targetText": "Hello",
+      "protectedSpanMappings": []
+    },
+    {
+      "slotId": "line.shared",
+      "targetText": "Ok",
+      "protectedSpanMappings": []
+    }
+  ],
+  "references": [
+    {
+      "referenceId": "ptr.line.001",
+      "slotId": "line.001",
+      "byteRange": { "start": 0, "end": 4 },
+      "format": { "kind": "pointer_le_u32", "baseAddress": 0 }
+    },
+    {
+      "referenceId": "ptr.shared.choice",
+      "slotId": "line.shared",
+      "byteRange": { "start": 4, "end": 8 },
+      "format": { "kind": "pointer_le_u32", "baseAddress": 0 }
+    },
+    {
+      "referenceId": "ptr.shared.log",
+      "slotId": "line.shared",
+      "byteRange": { "start": 8, "end": 12 },
+      "format": { "kind": "pointer_le_u32", "baseAddress": 0 }
+    }
+  ]
+}

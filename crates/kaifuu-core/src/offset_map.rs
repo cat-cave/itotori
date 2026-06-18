@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use serde::ser::SerializeStruct;
@@ -5,8 +6,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    OperationStatus, ProtectedSpanMapping, STRING_SLOT_INVALID_ENCODING, STRING_SLOT_OVERFLOW,
-    STRING_SLOT_PROTECTED_SPAN_MUTATION, STRING_SLOT_TERMINATOR_LOSS,
+    OperationStatus, ProtectedSpanMapping, STRING_RELOCATION_OVERLAPPING_WRITES,
+    STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH, STRING_RELOCATION_UNRESOLVED_REFERENCE,
+    STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT, STRING_SLOT_INVALID_ENCODING,
+    STRING_SLOT_OVERFLOW, STRING_SLOT_PROTECTED_SPAN_MUTATION, STRING_SLOT_TERMINATOR_LOSS,
+    content_hash,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1567,6 +1571,1014 @@ fn hex_nibble(byte: u8) -> Option<u8> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StringTableRebuildRequest {
+    pub fixture_id: String,
+    pub source_bytes_hex: String,
+    pub slots: Vec<StringRelocationSlot>,
+    pub replacements: Vec<StringRelocationTarget>,
+    pub references: Vec<StringRelocationReference>,
+    #[serde(default)]
+    pub string_slot_diagnostics: Vec<EncodedStringSlotDiagnostic>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StringRelocationSlot {
+    pub slot_id: String,
+    pub encoding: SourceEncoding,
+    pub old_byte_range: ByteSpan,
+    pub layout: EncodedStringSlotLayout,
+    #[serde(default)]
+    pub protected_spans: Vec<EncodedStringSlotProtectedSpan>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StringRelocationTarget {
+    pub slot_id: String,
+    pub target_text: String,
+    #[serde(default)]
+    pub protected_span_mappings: Vec<ProtectedSpanMapping>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StringRelocationReference {
+    pub reference_id: String,
+    pub slot_id: String,
+    pub byte_range: ByteSpan,
+    pub format: StringReferenceFormat,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum StringReferenceFormat {
+    #[serde(rename_all = "camelCase")]
+    PointerLeU32 {
+        base_address: u64,
+    },
+    IndexLeU16,
+    #[serde(rename_all = "camelCase")]
+    Unsupported {
+        format_id: String,
+    },
+}
+
+impl StringReferenceFormat {
+    fn relocation_kind(&self) -> StringReferenceRelocationKind {
+        match self {
+            Self::PointerLeU32 { .. } => StringReferenceRelocationKind::PointerTable,
+            Self::IndexLeU16 => StringReferenceRelocationKind::IndexTable,
+            Self::Unsupported { .. } => StringReferenceRelocationKind::Unsupported,
+        }
+    }
+
+    fn width(&self) -> u64 {
+        match self {
+            Self::PointerLeU32 { .. } => 4,
+            Self::IndexLeU16 => 2,
+            Self::Unsupported { .. } => 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StringReferenceRelocationKind {
+    PointerTable,
+    IndexTable,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StringRelocationPlanReport {
+    pub schema_version: String,
+    pub status: OperationStatus,
+    pub fixture_id: String,
+    pub relocated_strings: Vec<RelocatedString>,
+    pub relocated_references: Vec<RelocatedStringReference>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub string_slot_diagnostics: Vec<EncodedStringSlotDiagnostic>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub relocation_diagnostics: Vec<StringRelocationDiagnostic>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_bytes_hex: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_hash: Option<String>,
+}
+
+impl StringRelocationPlanReport {
+    fn failed(
+        fixture_id: String,
+        string_slot_diagnostics: Vec<EncodedStringSlotDiagnostic>,
+        relocation_diagnostics: Vec<StringRelocationDiagnostic>,
+    ) -> Self {
+        Self {
+            schema_version: "0.1.0".to_string(),
+            status: OperationStatus::Failed,
+            fixture_id,
+            relocated_strings: vec![],
+            relocated_references: vec![],
+            string_slot_diagnostics,
+            relocation_diagnostics,
+            output_bytes_hex: None,
+            output_hash: None,
+        }
+    }
+
+    fn passed(
+        fixture_id: String,
+        relocated_strings: Vec<RelocatedString>,
+        relocated_references: Vec<RelocatedStringReference>,
+        output_bytes: Vec<u8>,
+    ) -> Self {
+        let output_bytes_hex = bytes_to_hex(&output_bytes);
+        Self {
+            schema_version: "0.1.0".to_string(),
+            status: OperationStatus::Passed,
+            fixture_id,
+            relocated_strings,
+            relocated_references,
+            string_slot_diagnostics: vec![],
+            relocation_diagnostics: vec![],
+            output_hash: Some(content_hash(&output_bytes_hex)),
+            output_bytes_hex: Some(output_bytes_hex),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelocatedString {
+    pub slot_id: String,
+    pub old_byte_range: ByteSpan,
+    pub new_byte_range: ByteSpan,
+    pub encoded_hash: String,
+    pub output_hash_inputs: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelocatedStringReference {
+    pub reference_id: String,
+    pub slot_id: String,
+    pub old_byte_range: ByteSpan,
+    pub new_byte_range: ByteSpan,
+    pub relocation_kind: StringReferenceRelocationKind,
+    pub target_old_byte_range: ByteSpan,
+    pub target_new_byte_range: ByteSpan,
+    pub output_hash_inputs: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StringRelocationDiagnostic {
+    pub code: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub slot_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub byte_range: Option<ByteSpan>,
+    pub message: String,
+    pub remediation_code: String,
+    pub remediation: String,
+}
+
+pub fn plan_string_table_rebuild(
+    request: &StringTableRebuildRequest,
+) -> StringRelocationPlanReport {
+    let mut diagnostics = request.string_slot_diagnostics.clone();
+    let mut relocation_diagnostics = validate_relocation_request(request);
+    if !diagnostics.is_empty() || !relocation_diagnostics.is_empty() {
+        return StringRelocationPlanReport::failed(
+            request.fixture_id.clone(),
+            diagnostics,
+            relocation_diagnostics,
+        );
+    }
+
+    let source_bytes = match parse_hex_bytes(&request.source_bytes_hex) {
+        Ok(bytes) => bytes,
+        Err(message) => {
+            relocation_diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                None,
+                None,
+                None,
+                format!("source bytes are not valid hex: {message}"),
+                "repair_fixture_source_bytes",
+                "provide deterministic hexadecimal fixture bytes before rebuilding",
+            ));
+            return StringRelocationPlanReport::failed(
+                request.fixture_id.clone(),
+                diagnostics,
+                relocation_diagnostics,
+            );
+        }
+    };
+
+    let replacements = request
+        .replacements
+        .iter()
+        .map(|replacement| (replacement.slot_id.as_str(), replacement))
+        .collect::<BTreeMap<_, _>>();
+    let mut rebuilt_slots = Vec::new();
+    for slot in &request.slots {
+        let Some(replacement) = replacements.get(slot.slot_id.as_str()) else {
+            relocation_diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                None,
+                Some(&slot.slot_id),
+                Some(slot.old_byte_range),
+                "slot has no replacement target",
+                "provide_slot_replacement",
+                "include a deterministic targetText for every rebuilt slot",
+            ));
+            continue;
+        };
+        match encode_relocated_slot(slot, replacement, &source_bytes) {
+            Ok(encoded_bytes) => rebuilt_slots.push(RebuiltSlot {
+                slot,
+                encoded_bytes,
+                new_range: ByteSpan::new(0, 0).unwrap(),
+            }),
+            Err(diagnostic) => diagnostics.push(diagnostic),
+        }
+    }
+
+    if !diagnostics.is_empty() || !relocation_diagnostics.is_empty() {
+        return StringRelocationPlanReport::failed(
+            request.fixture_id.clone(),
+            diagnostics,
+            relocation_diagnostics,
+        );
+    }
+
+    rebuilt_slots.sort_by_key(|slot| {
+        (
+            slot.slot.old_byte_range.start(),
+            slot.slot.old_byte_range.end(),
+        )
+    });
+    let mut output = Vec::new();
+    let mut cursor = 0_u64;
+    let mut mappings = Vec::new();
+    for rebuilt_slot in &mut rebuilt_slots {
+        if cursor < rebuilt_slot.slot.old_byte_range.start() {
+            let gap_start = cursor as usize;
+            let gap_end = rebuilt_slot.slot.old_byte_range.start() as usize;
+            let new_start = output.len() as u64;
+            output.extend_from_slice(&source_bytes[gap_start..gap_end]);
+            let new_end = output.len() as u64;
+            mappings.push(RangeMapping {
+                old_range: ByteSpan::new(cursor, rebuilt_slot.slot.old_byte_range.start()).unwrap(),
+                new_range: ByteSpan::new(new_start, new_end).unwrap(),
+            });
+        }
+
+        let new_start = output.len() as u64;
+        output.extend_from_slice(&rebuilt_slot.encoded_bytes);
+        let new_end = output.len() as u64;
+        rebuilt_slot.new_range = ByteSpan::new(new_start, new_end).unwrap();
+        mappings.push(RangeMapping {
+            old_range: rebuilt_slot.slot.old_byte_range,
+            new_range: rebuilt_slot.new_range,
+        });
+        cursor = rebuilt_slot.slot.old_byte_range.end();
+    }
+
+    if cursor < source_bytes.len() as u64 {
+        let new_start = output.len() as u64;
+        output.extend_from_slice(&source_bytes[cursor as usize..]);
+        let new_end = output.len() as u64;
+        mappings.push(RangeMapping {
+            old_range: ByteSpan::new(cursor, source_bytes.len() as u64).unwrap(),
+            new_range: ByteSpan::new(new_start, new_end).unwrap(),
+        });
+    }
+
+    let relocated_strings = rebuilt_slots
+        .iter()
+        .map(|rebuilt_slot| {
+            let encoded_hash = content_hash(&bytes_to_hex(&rebuilt_slot.encoded_bytes));
+            RelocatedString {
+                slot_id: rebuilt_slot.slot.slot_id.clone(),
+                old_byte_range: rebuilt_slot.slot.old_byte_range,
+                new_byte_range: rebuilt_slot.new_range,
+                encoded_hash: encoded_hash.clone(),
+                output_hash_inputs: vec![
+                    format!("fixture={}", request.fixture_id),
+                    format!("slot={}", rebuilt_slot.slot.slot_id),
+                    format!(
+                        "old={}..{}",
+                        rebuilt_slot.slot.old_byte_range.start(),
+                        rebuilt_slot.slot.old_byte_range.end()
+                    ),
+                    format!(
+                        "new={}..{}",
+                        rebuilt_slot.new_range.start(),
+                        rebuilt_slot.new_range.end()
+                    ),
+                    format!("encodedHash={encoded_hash}"),
+                ],
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let slots_by_id = rebuilt_slots
+        .iter()
+        .map(|rebuilt_slot| (rebuilt_slot.slot.slot_id.as_str(), rebuilt_slot))
+        .collect::<BTreeMap<_, _>>();
+    let mut relocated_references = Vec::new();
+    let mut reference_writes = Vec::new();
+    for reference in &request.references {
+        let Some(rebuilt_slot) = slots_by_id.get(reference.slot_id.as_str()) else {
+            relocation_diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                Some(&reference.reference_id),
+                Some(&reference.slot_id),
+                Some(reference.byte_range),
+                "reference points at a slot that was not rebuilt",
+                "repair_reference_slot_id",
+                "bind every relocation reference to a rebuilt slot id",
+            ));
+            continue;
+        };
+        match decode_reference_old_target(reference, &source_bytes) {
+            Ok(decoded_old_target)
+                if decoded_old_target == rebuilt_slot.slot.old_byte_range.start() => {}
+            Ok(decoded_old_target) => {
+                relocation_diagnostics.push(reference_provenance_mismatch_diagnostic(
+                    reference,
+                    decoded_old_target,
+                    rebuilt_slot.slot.old_byte_range.start(),
+                ));
+                continue;
+            }
+            Err(diagnostic) => {
+                relocation_diagnostics.push(diagnostic);
+                continue;
+            }
+        }
+        let Some(new_reference_range) = translate_old_range(reference.byte_range, &mappings) else {
+            relocation_diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                Some(&reference.reference_id),
+                Some(&reference.slot_id),
+                Some(reference.byte_range),
+                "reference byte range is not represented in the rebuilt output",
+                "repair_reference_range",
+                "declare reference bytes outside relocated string payload ranges",
+            ));
+            continue;
+        };
+        let reference_bytes = match encode_reference_value(reference, rebuilt_slot) {
+            Ok(bytes) => bytes,
+            Err(diagnostic) => {
+                relocation_diagnostics.push(diagnostic);
+                continue;
+            }
+        };
+        reference_writes.push(ReferenceWrite {
+            reference,
+            new_range: new_reference_range,
+            bytes: reference_bytes,
+            target_new_range: rebuilt_slot.new_range,
+            target_old_range: rebuilt_slot.slot.old_byte_range,
+        });
+    }
+
+    validate_reference_write_overlaps(
+        &mut relocation_diagnostics,
+        &reference_writes,
+        &relocated_strings,
+    );
+    if !relocation_diagnostics.is_empty() {
+        return StringRelocationPlanReport::failed(
+            request.fixture_id.clone(),
+            diagnostics,
+            relocation_diagnostics,
+        );
+    }
+
+    for write in &reference_writes {
+        let start = write.new_range.start() as usize;
+        let end = write.new_range.end() as usize;
+        output[start..end].copy_from_slice(&write.bytes);
+        let output_hash_inputs = vec![
+            format!("fixture={}", request.fixture_id),
+            format!("reference={}", write.reference.reference_id),
+            format!("slot={}", write.reference.slot_id),
+            format!("kind={:?}", write.reference.format.relocation_kind()),
+            format!(
+                "oldReference={}..{}",
+                write.reference.byte_range.start(),
+                write.reference.byte_range.end()
+            ),
+            format!(
+                "newReference={}..{}",
+                write.new_range.start(),
+                write.new_range.end()
+            ),
+            format!(
+                "targetNew={}..{}",
+                write.target_new_range.start(),
+                write.target_new_range.end()
+            ),
+            format!("writeHash={}", content_hash(&bytes_to_hex(&write.bytes))),
+        ];
+        relocated_references.push(RelocatedStringReference {
+            reference_id: write.reference.reference_id.clone(),
+            slot_id: write.reference.slot_id.clone(),
+            old_byte_range: write.reference.byte_range,
+            new_byte_range: write.new_range,
+            relocation_kind: write.reference.format.relocation_kind(),
+            target_old_byte_range: write.target_old_range,
+            target_new_byte_range: write.target_new_range,
+            output_hash_inputs,
+        });
+    }
+
+    relocated_references.sort_by_key(|reference| {
+        (
+            reference.reference_id.clone(),
+            reference.slot_id.clone(),
+            reference.new_byte_range.start(),
+        )
+    });
+
+    StringRelocationPlanReport::passed(
+        request.fixture_id.clone(),
+        relocated_strings,
+        relocated_references,
+        output,
+    )
+}
+
+struct RebuiltSlot<'a> {
+    slot: &'a StringRelocationSlot,
+    encoded_bytes: Vec<u8>,
+    new_range: ByteSpan,
+}
+
+struct RangeMapping {
+    old_range: ByteSpan,
+    new_range: ByteSpan,
+}
+
+struct ReferenceWrite<'a> {
+    reference: &'a StringRelocationReference,
+    new_range: ByteSpan,
+    bytes: Vec<u8>,
+    target_old_range: ByteSpan,
+    target_new_range: ByteSpan,
+}
+
+fn validate_relocation_request(
+    request: &StringTableRebuildRequest,
+) -> Vec<StringRelocationDiagnostic> {
+    let mut diagnostics = Vec::new();
+    let source_len = match parse_hex_bytes(&request.source_bytes_hex) {
+        Ok(bytes) => bytes.len() as u64,
+        Err(_) => 0,
+    };
+
+    let mut slot_ids = BTreeSet::new();
+    let mut slot_ranges = Vec::new();
+    for slot in &request.slots {
+        if !slot_ids.insert(slot.slot_id.as_str()) {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                None,
+                Some(&slot.slot_id),
+                Some(slot.old_byte_range),
+                "slot id is declared more than once",
+                "deduplicate_slot_ids",
+                "declare each rebuilt slot exactly once",
+            ));
+        }
+        if source_len != 0 && slot.old_byte_range.end() > source_len {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                None,
+                Some(&slot.slot_id),
+                Some(slot.old_byte_range),
+                "slot byte range exceeds source bytes",
+                "repair_slot_range",
+                "declare slot ranges within the fixture source bytes",
+            ));
+        }
+        slot_ranges.push((slot.slot_id.as_str(), slot.old_byte_range));
+    }
+
+    slot_ranges.sort_by_key(|(_, range)| (range.start(), range.end()));
+    for window in slot_ranges.windows(2) {
+        if window[0].1.overlaps(window[1].1) {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_OVERLAPPING_WRITES,
+                None,
+                Some(window[1].0),
+                Some(window[1].1),
+                "rebuilt string slot overlaps another slot",
+                "repair_slot_ranges",
+                "declare non-overlapping string payload ranges before rebuilding",
+            ));
+        }
+    }
+
+    let mut replacement_ids = BTreeSet::new();
+    for replacement in &request.replacements {
+        if !replacement_ids.insert(replacement.slot_id.as_str()) {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                None,
+                Some(&replacement.slot_id),
+                None,
+                "replacement target is declared more than once",
+                "deduplicate_replacements",
+                "provide one replacement target per rebuilt slot",
+            ));
+        }
+        if !slot_ids.contains(replacement.slot_id.as_str()) {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                None,
+                Some(&replacement.slot_id),
+                None,
+                "replacement target references an unknown slot",
+                "repair_replacement_slot_id",
+                "bind replacement targets to declared rebuilt slots",
+            ));
+        }
+    }
+
+    let mut reference_ids = BTreeSet::new();
+    let mut reference_ranges = Vec::new();
+    for reference in &request.references {
+        if !reference_ids.insert(reference.reference_id.as_str()) {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                Some(&reference.reference_id),
+                Some(&reference.slot_id),
+                Some(reference.byte_range),
+                "reference id is declared more than once",
+                "deduplicate_reference_ids",
+                "declare each relocation reference exactly once",
+            ));
+        }
+        if !slot_ids.contains(reference.slot_id.as_str()) {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                Some(&reference.reference_id),
+                Some(&reference.slot_id),
+                Some(reference.byte_range),
+                "reference points at an unknown slot id",
+                "repair_reference_slot_id",
+                "bind every relocation reference to a declared slot",
+            ));
+        }
+        if matches!(reference.format, StringReferenceFormat::Unsupported { .. }) {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+                Some(&reference.reference_id),
+                Some(&reference.slot_id),
+                Some(reference.byte_range),
+                "reference uses an unsupported pointer format",
+                "add_pointer_format_support",
+                "add an explicit supported relocation encoder before patching this reference",
+            ));
+        }
+        if reference.format.width() != 0 && reference.byte_range.len() != reference.format.width() {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+                Some(&reference.reference_id),
+                Some(&reference.slot_id),
+                Some(reference.byte_range),
+                "reference byte range width does not match its pointer format",
+                "repair_reference_width",
+                "declare a byte range matching the supported reference format width",
+            ));
+        }
+        if source_len != 0 && reference.byte_range.end() > source_len {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_UNRESOLVED_REFERENCE,
+                Some(&reference.reference_id),
+                Some(&reference.slot_id),
+                Some(reference.byte_range),
+                "reference byte range exceeds source bytes",
+                "repair_reference_range",
+                "declare reference ranges within the fixture source bytes",
+            ));
+        }
+        reference_ranges.push((
+            reference.reference_id.as_str(),
+            reference.slot_id.as_str(),
+            reference.byte_range,
+        ));
+    }
+
+    for (reference_id, slot_id, reference_range) in &reference_ranges {
+        for (_, slot_range) in &slot_ranges {
+            if reference_range.overlaps(*slot_range) {
+                diagnostics.push(relocation_diagnostic(
+                    STRING_RELOCATION_OVERLAPPING_WRITES,
+                    Some(reference_id),
+                    Some(slot_id),
+                    Some(*reference_range),
+                    "reference write overlaps a relocated string payload",
+                    "separate_reference_table",
+                    "keep relocation references outside rebuilt string payload byte ranges",
+                ));
+            }
+        }
+    }
+
+    diagnostics
+}
+
+fn encode_relocated_slot(
+    slot: &StringRelocationSlot,
+    replacement: &StringRelocationTarget,
+    source_bytes: &[u8],
+) -> Result<Vec<u8>, EncodedStringSlotDiagnostic> {
+    let encoded = encode_string(&replacement.target_text, slot.encoding).map_err(|message| {
+        relocated_slot_diagnostic(
+            slot,
+            STRING_SLOT_INVALID_ENCODING,
+            message,
+            "replace_unencodable_character",
+            "replace characters unsupported by the slot encoding before patching",
+        )
+    })?;
+
+    for protected_span in &slot.protected_spans {
+        let mapped = replacement
+            .protected_span_mappings
+            .iter()
+            .filter(|mapping| mapping.raw == protected_span.raw)
+            .collect::<Vec<_>>();
+        if mapped.is_empty()
+            || !mapped
+                .iter()
+                .any(|mapping| mapping.matches_target_text(&replacement.target_text))
+        {
+            return Err(relocated_slot_diagnostic(
+                slot,
+                STRING_SLOT_PROTECTED_SPAN_MUTATION,
+                format!(
+                    "protected span {:?} is missing or misaligned in targetText",
+                    protected_span.raw
+                ),
+                "restore_protected_span",
+                "preserve protected tokens and align protectedSpanMappings before relocation",
+            ));
+        }
+    }
+
+    match &slot.layout {
+        EncodedStringSlotLayout::FixedWidth => Ok(encoded),
+        EncodedStringSlotLayout::NullTerminated { terminator_hex } => {
+            let terminator = parse_hex_bytes(terminator_hex).map_err(|message| {
+                relocated_slot_diagnostic(
+                    slot,
+                    STRING_SLOT_TERMINATOR_LOSS,
+                    message,
+                    "preserve_terminator",
+                    "declare a valid hexadecimal terminator for this slot layout",
+                )
+            })?;
+            if terminator.is_empty() {
+                return Err(relocated_slot_diagnostic(
+                    slot,
+                    STRING_SLOT_TERMINATOR_LOSS,
+                    "null-terminated slot declared an empty terminator",
+                    "preserve_terminator",
+                    "declare the terminator bytes required by this slot layout",
+                ));
+            }
+            let start = slot.old_byte_range.start() as usize;
+            let end = slot.old_byte_range.end() as usize;
+            if end <= source_bytes.len() && !contains_bytes(&source_bytes[start..end], &terminator)
+            {
+                return Err(relocated_slot_diagnostic(
+                    slot,
+                    STRING_SLOT_TERMINATOR_LOSS,
+                    "current slot bytes do not contain the declared terminator",
+                    "preserve_terminator",
+                    "re-extract the source bytes or repair the slot terminator before relocation",
+                ));
+            }
+            if contains_bytes(&encoded, &terminator) {
+                return Err(relocated_slot_diagnostic(
+                    slot,
+                    STRING_SLOT_TERMINATOR_LOSS,
+                    "encoded target contains the terminator byte sequence before the slot terminator",
+                    "preserve_terminator",
+                    "remove embedded terminator bytes from the replacement text",
+                ));
+            }
+            let mut bytes = encoded;
+            bytes.extend(terminator);
+            Ok(bytes)
+        }
+    }
+}
+
+fn relocated_slot_diagnostic(
+    slot: &StringRelocationSlot,
+    code: impl Into<String>,
+    message: impl Into<String>,
+    remediation_code: impl Into<String>,
+    remediation: impl Into<String>,
+) -> EncodedStringSlotDiagnostic {
+    EncodedStringSlotDiagnostic {
+        code: code.into(),
+        slot_id: slot.slot_id.clone(),
+        byte_range: slot.old_byte_range,
+        message: message.into(),
+        remediation_code: remediation_code.into(),
+        remediation: remediation.into(),
+    }
+}
+
+fn translate_old_range(range: ByteSpan, mappings: &[RangeMapping]) -> Option<ByteSpan> {
+    mappings.iter().find_map(|mapping| {
+        if mapping.old_range.contains_span(range)
+            && mapping.old_range.len() == mapping.new_range.len()
+        {
+            let offset = range.start() - mapping.old_range.start();
+            ByteSpan::new(
+                mapping.new_range.start() + offset,
+                mapping.new_range.start() + offset + range.len(),
+            )
+            .ok()
+        } else if mapping.old_range == range {
+            Some(mapping.new_range)
+        } else {
+            None
+        }
+    })
+}
+
+fn encode_reference_value(
+    reference: &StringRelocationReference,
+    rebuilt_slot: &RebuiltSlot<'_>,
+) -> Result<Vec<u8>, StringRelocationDiagnostic> {
+    match &reference.format {
+        StringReferenceFormat::PointerLeU32 { base_address } => {
+            let pointer = base_address
+                .checked_add(rebuilt_slot.new_range.start())
+                .ok_or_else(|| {
+                    relocation_diagnostic(
+                        STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+                        Some(&reference.reference_id),
+                        Some(&reference.slot_id),
+                        Some(reference.byte_range),
+                        "pointer relocation overflowed u64 address space",
+                        "repair_pointer_base",
+                        "choose a pointer base and range representable by the fixture format",
+                    )
+                })?;
+            let pointer = u32::try_from(pointer).map_err(|_| {
+                relocation_diagnostic(
+                    STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+                    Some(&reference.reference_id),
+                    Some(&reference.slot_id),
+                    Some(reference.byte_range),
+                    "pointer relocation does not fit in u32 little-endian format",
+                    "add_pointer_format_support",
+                    "use a wider supported pointer format before patching this reference",
+                )
+            })?;
+            Ok(pointer.to_le_bytes().to_vec())
+        }
+        StringReferenceFormat::IndexLeU16 => {
+            let index = u16::try_from(rebuilt_slot.new_range.start()).map_err(|_| {
+                relocation_diagnostic(
+                    STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+                    Some(&reference.reference_id),
+                    Some(&reference.slot_id),
+                    Some(reference.byte_range),
+                    "index relocation does not fit in u16 little-endian format",
+                    "add_pointer_format_support",
+                    "use a wider supported index format before patching this reference",
+                )
+            })?;
+            Ok(index.to_le_bytes().to_vec())
+        }
+        StringReferenceFormat::Unsupported { .. } => Err(relocation_diagnostic(
+            STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+            Some(&reference.reference_id),
+            Some(&reference.slot_id),
+            Some(reference.byte_range),
+            "reference uses an unsupported pointer format",
+            "add_pointer_format_support",
+            "add an explicit supported relocation encoder before patching this reference",
+        )),
+    }
+}
+
+fn decode_reference_old_target(
+    reference: &StringRelocationReference,
+    source_bytes: &[u8],
+) -> Result<u64, StringRelocationDiagnostic> {
+    let start = usize::try_from(reference.byte_range.start()).map_err(|_| {
+        relocation_diagnostic(
+            STRING_RELOCATION_UNRESOLVED_REFERENCE,
+            Some(&reference.reference_id),
+            Some(&reference.slot_id),
+            Some(reference.byte_range),
+            "reference byte range start is not addressable on this platform",
+            "repair_reference_range",
+            "declare reference ranges within the fixture source bytes",
+        )
+    })?;
+    let end = usize::try_from(reference.byte_range.end()).map_err(|_| {
+        relocation_diagnostic(
+            STRING_RELOCATION_UNRESOLVED_REFERENCE,
+            Some(&reference.reference_id),
+            Some(&reference.slot_id),
+            Some(reference.byte_range),
+            "reference byte range end is not addressable on this platform",
+            "repair_reference_range",
+            "declare reference ranges within the fixture source bytes",
+        )
+    })?;
+    let bytes = source_bytes.get(start..end).ok_or_else(|| {
+        relocation_diagnostic(
+            STRING_RELOCATION_UNRESOLVED_REFERENCE,
+            Some(&reference.reference_id),
+            Some(&reference.slot_id),
+            Some(reference.byte_range),
+            "reference byte range exceeds source bytes",
+            "repair_reference_range",
+            "declare reference ranges within the fixture source bytes",
+        )
+    })?;
+
+    match &reference.format {
+        StringReferenceFormat::PointerLeU32 { base_address } => {
+            let bytes: [u8; 4] = bytes.try_into().map_err(|_| {
+                relocation_diagnostic(
+                    STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+                    Some(&reference.reference_id),
+                    Some(&reference.slot_id),
+                    Some(reference.byte_range),
+                    "reference byte range width does not match u32 little-endian pointer format",
+                    "repair_reference_width",
+                    "declare a byte range matching the supported reference format width",
+                )
+            })?;
+            let pointer = u32::from_le_bytes(bytes) as u64;
+            pointer.checked_sub(*base_address).ok_or_else(|| {
+                relocation_diagnostic(
+                    STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH,
+                    Some(&reference.reference_id),
+                    Some(&reference.slot_id),
+                    Some(reference.byte_range),
+                    format!(
+                        "source pointer decodes to absolute address {pointer}, before base address {base_address}"
+                    ),
+                    "repair_reference_provenance",
+                    "re-extract the pointer table or bind this reference to the slot currently targeted by the source bytes",
+                )
+            })
+        }
+        StringReferenceFormat::IndexLeU16 => {
+            let bytes: [u8; 2] = bytes.try_into().map_err(|_| {
+                relocation_diagnostic(
+                    STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+                    Some(&reference.reference_id),
+                    Some(&reference.slot_id),
+                    Some(reference.byte_range),
+                    "reference byte range width does not match u16 little-endian index format",
+                    "repair_reference_width",
+                    "declare a byte range matching the supported reference format width",
+                )
+            })?;
+            Ok(u16::from_le_bytes(bytes) as u64)
+        }
+        StringReferenceFormat::Unsupported { .. } => Err(relocation_diagnostic(
+            STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+            Some(&reference.reference_id),
+            Some(&reference.slot_id),
+            Some(reference.byte_range),
+            "reference uses an unsupported pointer format",
+            "add_pointer_format_support",
+            "add an explicit supported relocation encoder before patching this reference",
+        )),
+    }
+}
+
+fn reference_provenance_mismatch_diagnostic(
+    reference: &StringRelocationReference,
+    decoded_old_target: u64,
+    expected_old_target: u64,
+) -> StringRelocationDiagnostic {
+    let table_semantic = match reference.format {
+        StringReferenceFormat::PointerLeU32 { base_address } => format!(
+            "pointer_le_u32 entries encode baseAddress + slot oldByteRange.start; baseAddress={base_address}"
+        ),
+        StringReferenceFormat::IndexLeU16 => {
+            "index_le_u16 table entries encode slot oldByteRange.start as a source byte offset"
+                .to_string()
+        }
+        StringReferenceFormat::Unsupported { .. } => {
+            "unsupported relocation formats have no validated source table semantic".to_string()
+        }
+    };
+    relocation_diagnostic(
+        STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH,
+        Some(&reference.reference_id),
+        Some(&reference.slot_id),
+        Some(reference.byte_range),
+        format!(
+            "source reference decodes to old target {decoded_old_target}, but slot {} starts at {expected_old_target}; {table_semantic}",
+            reference.slot_id
+        ),
+        "repair_reference_provenance",
+        "re-extract the pointer or index table, or bind this reference to the slot currently targeted by the source bytes",
+    )
+}
+
+fn validate_reference_write_overlaps(
+    diagnostics: &mut Vec<StringRelocationDiagnostic>,
+    writes: &[ReferenceWrite<'_>],
+    relocated_strings: &[RelocatedString],
+) {
+    let mut ranges = writes
+        .iter()
+        .map(|write| {
+            (
+                write.reference.reference_id.as_str(),
+                write.reference.slot_id.as_str(),
+                write.new_range,
+            )
+        })
+        .collect::<Vec<_>>();
+    ranges.sort_by_key(|(_, _, range)| (range.start(), range.end()));
+    for window in ranges.windows(2) {
+        if window[0].2.overlaps(window[1].2) {
+            diagnostics.push(relocation_diagnostic(
+                STRING_RELOCATION_OVERLAPPING_WRITES,
+                Some(window[1].0),
+                Some(window[1].1),
+                Some(window[1].2),
+                "relocation reference writes overlap each other",
+                "repair_reference_ranges",
+                "declare non-overlapping pointer or index table reference ranges",
+            ));
+        }
+    }
+
+    for (reference_id, slot_id, reference_range) in ranges {
+        for relocated_string in relocated_strings {
+            if reference_range.overlaps(relocated_string.new_byte_range) {
+                diagnostics.push(relocation_diagnostic(
+                    STRING_RELOCATION_OVERLAPPING_WRITES,
+                    Some(reference_id),
+                    Some(slot_id),
+                    Some(reference_range),
+                    "reference write overlaps rebuilt string bytes",
+                    "separate_reference_table",
+                    "keep relocation references outside rebuilt string payload byte ranges",
+                ));
+            }
+        }
+    }
+}
+
+fn relocation_diagnostic(
+    code: impl Into<String>,
+    reference_id: Option<&str>,
+    slot_id: Option<&str>,
+    byte_range: Option<ByteSpan>,
+    message: impl Into<String>,
+    remediation_code: impl Into<String>,
+    remediation: impl Into<String>,
+) -> StringRelocationDiagnostic {
+    StringRelocationDiagnostic {
+        code: code.into(),
+        reference_id: reference_id.map(str::to_string),
+        slot_id: slot_id.map(str::to_string),
+        byte_range,
+        message: message.into(),
+        remediation_code: remediation_code.into(),
+        remediation: remediation.into(),
+    }
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    bytes
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1600,6 +2612,38 @@ mod tests {
             _ => unreachable!(),
         })
         .unwrap()
+    }
+
+    fn string_relocation_fixture(name: &str) -> Value {
+        serde_json::from_str(match name {
+            "pointer_table" => include_str!("../fixtures/string-relocation/pointer-table.json"),
+            "index_table" => include_str!("../fixtures/string-relocation/index-table.json"),
+            "pointer_table_wrong_target" => {
+                include_str!("../fixtures/string-relocation/pointer-table-wrong-target.json")
+            }
+            "index_table_wrong_target" => {
+                include_str!("../fixtures/string-relocation/index-table-wrong-target.json")
+            }
+            _ => unreachable!(),
+        })
+        .unwrap()
+    }
+
+    fn typed_string_relocation_fixture(name: &str) -> (StringTableRebuildRequest, String) {
+        let mut value = string_relocation_fixture(name);
+        let expected = value
+            .as_object_mut()
+            .unwrap()
+            .remove("expectedOutputBytesHex")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .to_string();
+        (serde_json::from_value(value).unwrap(), expected)
+    }
+
+    fn invalid_string_relocation_fixture(name: &str) -> StringTableRebuildRequest {
+        serde_json::from_value(string_relocation_fixture(name)).unwrap()
     }
 
     fn run_string_slot_fixture(name: &str) -> EncodedStringSlotPreflightReport {
@@ -1873,6 +2917,226 @@ mod tests {
         assert_eq!(
             report.diagnostics[0].remediation_code,
             "restore_protected_span"
+        );
+    }
+
+    #[test]
+    fn string_relocation_pointer_table_rebuilds_expanded_shortened_and_shared_slots() {
+        let (request, expected_output) = typed_string_relocation_fixture("pointer_table");
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Passed, "{report:?}");
+        assert_eq!(
+            report.output_bytes_hex.as_deref(),
+            Some(expected_output.as_str())
+        );
+        assert_eq!(report.relocated_strings.len(), 2);
+        assert_eq!(
+            report.relocated_strings[0].old_byte_range,
+            ByteSpan::new(16, 20).unwrap()
+        );
+        assert_eq!(
+            report.relocated_strings[0].new_byte_range,
+            ByteSpan::new(16, 22).unwrap()
+        );
+        assert_eq!(
+            report.relocated_strings[1].old_byte_range,
+            ByteSpan::new(20, 26).unwrap()
+        );
+        assert_eq!(
+            report.relocated_strings[1].new_byte_range,
+            ByteSpan::new(22, 25).unwrap()
+        );
+
+        let shared_targets = report
+            .relocated_references
+            .iter()
+            .filter(|reference| reference.slot_id == "line.shared")
+            .map(|reference| reference.target_new_byte_range)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            shared_targets,
+            vec![
+                ByteSpan::new(22, 25).unwrap(),
+                ByteSpan::new(22, 25).unwrap()
+            ]
+        );
+        assert!(report.relocated_references.iter().all(|reference| {
+            reference.relocation_kind == StringReferenceRelocationKind::PointerTable
+                && reference
+                    .output_hash_inputs
+                    .iter()
+                    .any(|input| input.starts_with("targetNew="))
+        }));
+        assert!(report.relocated_strings.iter().all(|relocated| {
+            relocated
+                .output_hash_inputs
+                .iter()
+                .any(|input| input.starts_with("encodedHash="))
+        }));
+    }
+
+    #[test]
+    fn string_relocation_index_table_rebuilds_same_size_fixture_deterministically() {
+        let (request, expected_output) = typed_string_relocation_fixture("index_table");
+
+        let first = plan_string_table_rebuild(&request);
+        let second = plan_string_table_rebuild(&request);
+
+        assert_eq!(first.status, OperationStatus::Passed, "{first:?}");
+        assert_eq!(first, second);
+        assert_eq!(
+            first.output_bytes_hex.as_deref(),
+            Some(expected_output.as_str())
+        );
+        assert_eq!(first.relocated_strings.len(), 2);
+        assert!(first.relocated_references.iter().all(
+            |reference| reference.relocation_kind == StringReferenceRelocationKind::IndexTable
+        ));
+    }
+
+    #[test]
+    fn string_relocation_unsupported_pointer_format_fails_before_output_materialization() {
+        let (mut request, _) = typed_string_relocation_fixture("pointer_table");
+        request.references[0].format = StringReferenceFormat::Unsupported {
+            format_id: "relative24".to_string(),
+        };
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.output_bytes_hex.is_none());
+        assert_eq!(
+            report.relocation_diagnostics[0].code,
+            STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT
+        );
+    }
+
+    #[test]
+    fn string_relocation_unresolved_reference_fails_before_output_materialization() {
+        let (mut request, _) = typed_string_relocation_fixture("pointer_table");
+        request.references[0].slot_id = "missing.slot".to_string();
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.output_bytes_hex.is_none());
+        assert!(
+            report
+                .relocation_diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == STRING_RELOCATION_UNRESOLVED_REFERENCE)
+        );
+    }
+
+    #[test]
+    fn string_relocation_overlapping_writes_fail_before_output_materialization() {
+        let (mut request, _) = typed_string_relocation_fixture("pointer_table");
+        request.references[0].byte_range = ByteSpan::new(16, 20).unwrap();
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.output_bytes_hex.is_none());
+        assert!(
+            report
+                .relocation_diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == STRING_RELOCATION_OVERLAPPING_WRITES)
+        );
+    }
+
+    #[test]
+    fn string_relocation_pointer_table_wrong_source_target_fails_before_output_materialization() {
+        let request = invalid_string_relocation_fixture("pointer_table_wrong_target");
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.output_bytes_hex.is_none());
+        assert!(report.output_hash.is_none());
+        assert!(
+            report.relocation_diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH
+                    && diagnostic.reference_id.as_deref() == Some("ptr.line.001")
+                    && diagnostic.slot_id.as_deref() == Some("line.001")
+                    && diagnostic
+                        .message
+                        .contains("source reference decodes to old target 20")
+            }),
+            "{report:?}"
+        );
+        assert!(report.relocated_references.is_empty());
+    }
+
+    #[test]
+    fn string_relocation_index_table_wrong_source_target_fails_before_output_materialization() {
+        let request = invalid_string_relocation_fixture("index_table_wrong_target");
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.output_bytes_hex.is_none());
+        assert!(report.output_hash.is_none());
+        assert!(
+            report.relocation_diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH
+                    && diagnostic.reference_id.as_deref() == Some("idx.menu.001")
+                    && diagnostic.slot_id.as_deref() == Some("menu.001")
+                    && diagnostic
+                        .message
+                        .contains("index_le_u16 table entries encode")
+            }),
+            "{report:?}"
+        );
+        assert!(report.relocated_references.is_empty());
+    }
+
+    #[test]
+    fn string_relocation_report_composes_with_encoded_string_slot_preflight_diagnostics() {
+        let (mut request, _) = typed_string_relocation_fixture("pointer_table");
+        request
+            .string_slot_diagnostics
+            .push(EncodedStringSlotDiagnostic {
+                code: STRING_SLOT_OVERFLOW.to_string(),
+                slot_id: "line.001".to_string(),
+                byte_range: ByteSpan::new(16, 20).unwrap(),
+                message: "encoded target exceeded in-place slot budget".to_string(),
+                remediation_code: "shorten_translation".to_string(),
+                remediation: "shorten the translation or relocate the string".to_string(),
+            });
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(report.string_slot_diagnostics.len(), 1);
+        assert!(report.output_bytes_hex.is_none());
+    }
+
+    #[test]
+    fn string_relocation_diagnostic_maps_to_preflight_blocking_adapter_failure() {
+        let (mut request, _) = typed_string_relocation_fixture("pointer_table");
+        request.references[0].format = StringReferenceFormat::Unsupported {
+            format_id: "relative24".to_string(),
+        };
+        let report = plan_string_table_rebuild(&request);
+        let failure = crate::AdapterFailure::string_relocation_preflight(
+            "kaifuu.fixture",
+            "fixture",
+            "string-relocation",
+            "asset-redacted",
+            report.relocation_diagnostics[0].clone(),
+        );
+
+        assert_eq!(
+            failure.error_code,
+            STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT
+        );
+        assert!(failure.is_preflight_blocking());
+        assert_eq!(
+            failure.required_capability,
+            Some(crate::Capability::PatchBack)
         );
     }
 }

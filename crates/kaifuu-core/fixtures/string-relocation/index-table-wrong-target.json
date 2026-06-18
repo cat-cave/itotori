@@ -1,0 +1,46 @@
+{
+  "fixtureId": "index-table-wrong-target",
+  "sourceBytesHex": "0c000c00000000004441544154455354",
+  "slots": [
+    {
+      "slotId": "menu.001",
+      "encoding": "utf_8",
+      "oldByteRange": { "start": 8, "end": 12 },
+      "layout": { "kind": "fixed_width" },
+      "protectedSpans": []
+    },
+    {
+      "slotId": "menu.002",
+      "encoding": "utf_8",
+      "oldByteRange": { "start": 12, "end": 16 },
+      "layout": { "kind": "fixed_width" },
+      "protectedSpans": []
+    }
+  ],
+  "replacements": [
+    {
+      "slotId": "menu.001",
+      "targetText": "PLAY",
+      "protectedSpanMappings": []
+    },
+    {
+      "slotId": "menu.002",
+      "targetText": "QUIT",
+      "protectedSpanMappings": []
+    }
+  ],
+  "references": [
+    {
+      "referenceId": "idx.menu.001",
+      "slotId": "menu.001",
+      "byteRange": { "start": 0, "end": 2 },
+      "format": { "kind": "index_le_u16" }
+    },
+    {
+      "referenceId": "idx.menu.002",
+      "slotId": "menu.002",
+      "byteRange": { "start": 2, "end": 4 },
+      "format": { "kind": "index_le_u16" }
+    }
+  ]
+}
