@@ -1,0 +1,423 @@
+{
+  "schemaVersion": "0.1.0",
+  "gameDir": "[redacted-local-game-dir]",
+  "status": "unknown",
+  "detections": [
+    {
+      "adapterId": "kaifuu.fixture",
+      "detected": false,
+      "evidence": [
+        {
+          "path": "source.json",
+          "kind": "required_manifest",
+          "status": "missing",
+          "detail": "source.json is required for the fixture engine"
+        }
+      ],
+      "requirements": [
+        {
+          "category": "file",
+          "key": "source.json",
+          "status": "missing",
+          "description": "fixture games require a plaintext source.json manifest",
+          "placeholder": null,
+          "secret": false
+        },
+        {
+          "category": "platform",
+          "key": "host_os",
+          "status": "satisfied",
+          "description": "[REDACTED:kaifuu.secret_redacted]",
+          "placeholder": null,
+          "secret": false
+        },
+        {
+          "category": "secret_key",
+          "key": "decryption_key",
+          "status": "not_required",
+          "description": "[REDACTED:kaifuu.secret_redacted]",
+          "placeholder": null,
+          "secret": true
+        }
+      ],
+      "capabilities": [
+        {
+          "capability": "asset_inventory",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "asset_listing",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "asset_text_patching",
+          "status": "unsupported",
+          "limitation": "image, audio, video, and external asset text are outside the fixture format"
+        },
+        {
+          "capability": "delta_patching",
+          "status": "unsupported",
+          "limitation": ".kaifuu delta packages are handled by kaifuu-delta, not this engine adapter"
+        },
+        {
+          "capability": "detection",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "encrypted_input",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "extraction",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "key_profile",
+          "status": "unsupported",
+          "limitation": "fixture projects do not use user-provided keys"
+        },
+        {
+          "capability": "line_parity_patching",
+          "status": "limited",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "non_text_surface_extraction",
+          "status": "limited",
+          "limitation": "reports explicit fixture asset metadata only; does not perform OCR, audio analysis, font inspection, or video frame analysis"
+        },
+        {
+          "capability": "patching",
+          "status": "limited",
+          "limitation": "writes source.json only; does not rebuild engine archives or binary assets"
+        },
+        {
+          "capability": "profile_generation",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "runtime_vm",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "verification",
+          "status": "supported",
+          "limitation": null
+        }
+      ]
+    }
+  ],
+  "archiveDetection": {
+    "schemaVersion": "0.1.0",
+    "status": "matched",
+    "evidencePolicy": "aggregate-only; no raw keys, helper dumps, decrypted text, local paths, or private source filenames are serialized",
+    "rows": [
+      {
+        "rowId": "kirikiri-xp3",
+        "engineFamily": "kiri_kiri_xp3",
+        "detected": false,
+        "detectedVariant": "xp3-archive",
+        "signals": [],
+        "evidence": [
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.xp3",
+            "status": "missing",
+            "count": 0,
+            "detail": "XP3 archive extension count"
+          },
+          {
+            "evidenceType": "file_magic",
+            "pattern": "XP3 header",
+            "status": "missing",
+            "count": 0,
+            "detail": "XP3 archive header count"
+          },
+          {
+            "evidenceType": "file_magic",
+            "pattern": "synthetic XP3 encryption marker",
+            "status": "missing",
+            "count": 0,
+            "detail": "Synthetic encrypted XP3 fixture marker count"
+          }
+        ],
+        "requirements": [],
+        "diagnostics": [],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
+          }
+        ],
+        "supportBoundary": "Kaifuu detects XP3 archives and encrypted XP3 markers but does not claim XP3 extraction, decryption, or archive rebuild support in this matrix."
+      },
+      {
+        "rowId": "siglus-scene-pck",
+        "engineFamily": "siglus",
+        "detected": false,
+        "detectedVariant": "gameexe-dat-without-scene-pck",
+        "signals": [],
+        "evidence": [
+          {
+            "evidenceType": "file_name",
+            "pattern": "Gameexe.dat",
+            "status": "missing",
+            "count": 0,
+            "detail": "Siglus executable metadata marker count"
+          },
+          {
+            "evidenceType": "file_name",
+            "pattern": "Scene.pck",
+            "status": "missing",
+            "count": 0,
+            "detail": "Siglus scenario package marker count"
+          }
+        ],
+        "requirements": [],
+        "diagnostics": [],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
+          }
+        ],
+        "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated."
+      },
+      {
+        "rowId": "rpg-maker-mv-mz-encrypted-assets",
+        "engineFamily": "rpg_maker_mv_mz",
+        "detected": true,
+        "detectedVariant": "mv-mz-encrypted-asset-signals",
+        "signals": ["encrypted", "missing_key"],
+        "evidence": [
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_",
+            "status": "matched",
+            "count": 6,
+            "detail": "RPG Maker MV/MZ encrypted asset extension count"
+          },
+          {
+            "evidenceType": "metadata_field",
+            "pattern": "data/System.json encryption fields",
+            "status": "matched",
+            "count": 1,
+            "detail": "System.json encryption flags or key-field presence count; key values are never serialized"
+          }
+        ],
+        "requirements": [
+          {
+            "category": "secret_key",
+            "key": "rpg-maker-mv-mz-asset-key",
+            "status": "missing",
+            "description": "encrypted RPG Maker MV/MZ assets require a local asset key reference",
+            "placeholder": "KAIFUU_RPG_MAKER_ASSET_KEY",
+            "secret": true
+          }
+        ],
+        "diagnostics": [
+          {
+            "code": "kaifuu.missing_key_material",
+            "signal": "missing_key",
+            "requiredCapability": "key_profile",
+            "supportBoundary": "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims.",
+            "remediation": "resolve local key material through a secret ref; do not persist raw keys"
+          },
+          {
+            "code": "kaifuu.unsupported_variant.encrypted",
+            "signal": "encrypted",
+            "requiredCapability": "encrypted_input",
+            "supportBoundary": "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims.",
+            "remediation": "provide a supported key profile only after an adapter explicitly supports this encrypted variant"
+          }
+        ],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
+          },
+          {
+            "capability": "encrypted_input",
+            "status": "unsupported",
+            "limitation": "encrypted input was detected, but decryption support is not claimed by the matrix"
+          },
+          {
+            "capability": "extraction",
+            "status": "unsupported",
+            "limitation": "archive/encryption matrix detection is not an extraction support claim"
+          },
+          {
+            "capability": "key_profile",
+            "status": "requires_user_input",
+            "limitation": "recognized protected inputs require local secret refs or helper evidence before future pure adapter work can proceed"
+          },
+          {
+            "capability": "patching",
+            "status": "unsupported",
+            "limitation": "archive/encryption matrix detection does not rebuild, decrypt, or patch containers"
+          }
+        ],
+        "supportBoundary": "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims."
+      },
+      {
+        "rowId": "wolf-rpg-editor-archives",
+        "engineFamily": "wolf_rpg_editor",
+        "detected": false,
+        "detectedVariant": "wolf-archive",
+        "signals": [],
+        "evidence": [
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.wolf",
+            "status": "missing",
+            "count": 0,
+            "detail": "Wolf RPG Editor archive extension count"
+          },
+          {
+            "evidenceType": "file_magic",
+            "pattern": "WOLF header",
+            "status": "missing",
+            "count": 0,
+            "detail": "Wolf archive/header marker count"
+          },
+          {
+            "evidenceType": "file_magic",
+            "pattern": "Wolf protection marker",
+            "status": "missing",
+            "count": 0,
+            "detail": "Synthetic Wolf protection-key marker count"
+          }
+        ],
+        "requirements": [],
+        "diagnostics": [],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
+          }
+        ],
+        "supportBoundary": "Kaifuu detects Wolf RPG Editor archive and protection signals; archive decryption, binary database parsing, and rebuilds remain unsupported here."
+      },
+      {
+        "rowId": "bgi-ethornell-containers",
+        "engineFamily": "bgi_ethornell",
+        "detected": false,
+        "detectedVariant": "buriko-arc20-container",
+        "signals": [],
+        "evidence": [
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.arc",
+            "status": "missing",
+            "count": 0,
+            "detail": "Generic .arc extension count; BGI classification requires BURIKO header evidence"
+          },
+          {
+            "evidenceType": "file_magic",
+            "pattern": "BGI encrypted container marker",
+            "status": "missing",
+            "count": 0,
+            "detail": "Synthetic BGI/Ethornell encrypted-container marker count"
+          },
+          {
+            "evidenceType": "file_magic",
+            "pattern": "BURIKO ARC20 header",
+            "status": "missing",
+            "count": 0,
+            "detail": "BGI/Ethornell archive header count"
+          }
+        ],
+        "requirements": [],
+        "diagnostics": [],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
+          }
+        ],
+        "supportBoundary": "Kaifuu detects BGI/Ethornell container headers; script decoding, encrypted container handling, and repacking are not claimed by this matrix."
+      },
+      {
+        "rowId": "renpy-packed-inputs",
+        "engineFamily": "renpy",
+        "detected": false,
+        "detectedVariant": "rpyc-compiled-script",
+        "signals": [],
+        "evidence": [
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.rpa",
+            "status": "missing",
+            "count": 0,
+            "detail": "Ren'Py archive extension count"
+          },
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.rpyc",
+            "status": "missing",
+            "count": 0,
+            "detail": "Ren'Py compiled script extension count"
+          }
+        ],
+        "requirements": [],
+        "diagnostics": [],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
+          }
+        ],
+        "supportBoundary": "Kaifuu detects Ren'Py packed or compiled inputs; plaintext .rpy handling, archive unpacking, and decompilation are separate support claims."
+      },
+      {
+        "rowId": "unknown-archive-variant",
+        "engineFamily": "unknown",
+        "detected": false,
+        "detectedVariant": "unprofiled-archive-like-input",
+        "signals": [],
+        "evidence": [
+          {
+            "evidenceType": "aggregate_count",
+            "pattern": "*.pak|*.bundle|*.bin|unprofiled *.dat|*.pck|*.arc",
+            "status": "missing",
+            "count": 0,
+            "detail": "Archive-like files not covered by a profiled detector row"
+          },
+          {
+            "evidenceType": "file_magic",
+            "pattern": "orphaned encrypted/protected subtype marker",
+            "status": "missing",
+            "count": 0,
+            "detail": "Subtype marker evidence without a matching profiled archive/container primary signal"
+          }
+        ],
+        "requirements": [],
+        "diagnostics": [],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
+          }
+        ],
+        "supportBoundary": "Kaifuu records unknown archive-like inputs as aggregate evidence only; no engine, extraction, or patching support is inferred."
+      }
+    ]
+  },
+  "warnings": [
+    "no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"
+  ]
+}

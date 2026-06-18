@@ -252,6 +252,12 @@ KiriKiri/XP3, Siglus, RPG Maker MV/MZ encrypted assets, Wolf RPG Editor
 archives, BGI/Ethornell containers, Ren'Py packed inputs, and unknown
 archive-like variants.
 
+The top-level detection report `status` describes registered adapter detection
+only. Archive-only unsupported inputs keep top-level `status: "unknown"` and
+put their independent archive match under `archiveDetection.status`. This split
+keeps encrypted or packed triage evidence from overstating extraction adapter
+support.
+
 Matrix evidence is aggregate-only: extension counts, known neutral marker names,
 header classes, and metadata-field presence. It must not serialize raw keys,
 helper dumps, decrypted text, local paths, or concrete source filenames. RPG
@@ -266,6 +272,9 @@ Rows emit stable diagnostics for encrypted, packed, protected, missing-key,
 helper-required, and unknown-variant cases. A matching row also reports
 unsupported extraction and patching capabilities unless a future adapter
 separately proves and documents support for that exact variant.
+Subtype-only markers without primary archive/container evidence are normalized
+out of the family row and reported as aggregate unknown-variant marker evidence
+instead of emitting family-specific key requirements.
 
 ## Logging And Redaction
 

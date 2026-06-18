@@ -402,7 +402,7 @@ impl DetectionReport {
         let archive_detection = ArchiveDetectionReport::scan(game_dir);
         let adapter_matched = detections.iter().any(|detection| detection.detected);
         let archive_matched = archive_detection.status == ArchiveDetectionStatus::Matched;
-        let status = if adapter_matched || archive_matched {
+        let status = if adapter_matched {
             DetectionReportStatus::Matched
         } else {
             DetectionReportStatus::Unknown
@@ -602,6 +602,7 @@ struct ArchiveDetectionScan {
     extensions: BTreeMap<String, u64>,
     file_names: BTreeMap<String, u64>,
     headers: Vec<Vec<u8>>,
+    orphaned_subtype_marker_count: u64,
     rpg_maker_system_json_encryption_fields: u64,
 }
 
@@ -630,13 +631,19 @@ impl ArchiveDetectionScan {
     }
 
     fn record_file(&mut self, root: &Path, path: &Path) {
-        if let Some(extension) = lower_path_component(path.extension()) {
-            *self.extensions.entry(extension).or_default() += 1;
+        let extension = lower_path_component(path.extension());
+        let file_name = lower_path_component(path.file_name());
+        if let Some(extension) = extension.as_deref() {
+            *self.extensions.entry(extension.to_string()).or_default() += 1;
         }
-        if let Some(file_name) = lower_path_component(path.file_name()) {
-            *self.file_names.entry(file_name).or_default() += 1;
+        if let Some(file_name) = file_name.as_deref() {
+            *self.file_names.entry(file_name.to_string()).or_default() += 1;
         }
-        self.headers.push(read_header(path, 64));
+        let header = read_header(path, 64);
+        if has_orphaned_archive_subtype_marker(extension.as_deref(), &header) {
+            self.orphaned_subtype_marker_count += 1;
+        }
+        self.headers.push(header);
         if is_rpg_maker_system_json(root, path) && system_json_has_encryption_fields(path) {
             self.rpg_maker_system_json_encryption_fields += 1;
         }
@@ -695,6 +702,24 @@ fn header_contains_ascii(header: &[u8], needle: &str) -> bool {
     String::from_utf8_lossy(header)
         .to_ascii_lowercase()
         .contains(&needle.to_ascii_lowercase())
+}
+
+fn has_orphaned_archive_subtype_marker(extension: Option<&str>, header: &[u8]) -> bool {
+    let xp3_marker = header_contains_ascii(header, "kaifuu-xp3-encrypted")
+        || header_contains_ascii(header, "xp3-encrypted")
+        || header_contains_ascii(header, "xp3-crypt");
+    let xp3_primary = extension == Some("xp3") || header.starts_with(b"XP3");
+
+    let bgi_marker = header_contains_ascii(header, "bgi-encrypted")
+        || header_contains_ascii(header, "ethornell-encrypted");
+    let bgi_primary = header_contains_ascii(header, "BURIKO ARC20");
+
+    let wolf_marker = header_contains_ascii(header, "wolf-protected")
+        || header_contains_ascii(header, "protection-key");
+    let wolf_primary =
+        extension == Some("wolf") || header_contains_ascii(header, "WOLF RPG Editor");
+
+    (xp3_marker && !xp3_primary) || (bgi_marker && !bgi_primary) || (wolf_marker && !wolf_primary)
 }
 
 fn is_rpg_maker_system_json(root: &Path, path: &Path) -> bool {
@@ -866,8 +891,7 @@ fn detect_siglus(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
 }
 
 fn detect_rpg_maker_mv_mz(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
-    let encrypted_asset_count =
-        scan.extension_counts(&["rpgmvp", "rpgmvm", "rpgmvo", "png_", "m4a_", "ogg_"]);
+    let encrypted_asset_count = scan.extension_counts(RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES);
     let system_json_count = scan.rpg_maker_system_json_encryption_fields;
     let detected = encrypted_asset_count > 0 || system_json_count > 0;
     archive_row(ArchiveRowInput {
@@ -886,7 +910,7 @@ fn detect_rpg_maker_mv_mz(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::FileExtension,
-                "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_",
+                RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN,
                 encrypted_asset_count,
                 "RPG Maker MV/MZ encrypted asset extension count",
             ),
@@ -909,6 +933,11 @@ fn detect_rpg_maker_mv_mz(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         support_boundary: "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims.",
     })
 }
+
+const RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES: &[&str] =
+    &["rpgmvp", "rpgmvm", "rpgmvo", "png_", "m4a_", "ogg_"];
+const RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN: &str =
+    "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_";
 
 fn detect_wolf_rpg_editor(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     let wolf_archive_count = scan.extension_count("wolf");
@@ -1088,7 +1117,8 @@ fn detect_unknown_archive_variant(scan: &ArchiveDetectionScan) -> ArchiveDetecti
         .saturating_add(
             scan.extension_count("arc")
                 .saturating_sub(scan.header_count("BURIKO ARC20")),
-        );
+        )
+        .saturating_add(scan.orphaned_subtype_marker_count);
     let detected = unknown_count > 0;
     archive_row(ArchiveRowInput {
         row_id: "unknown-archive-variant",
@@ -1100,12 +1130,20 @@ fn detect_unknown_archive_variant(scan: &ArchiveDetectionScan) -> ArchiveDetecti
         } else {
             Vec::new()
         },
-        evidence: vec![evidence(
-            ArchiveEvidenceType::AggregateCount,
-            "*.pak|*.bundle|*.bin|unprofiled *.dat|*.pck|*.arc",
-            unknown_count,
-            "Archive-like files not covered by a profiled detector row",
-        )],
+        evidence: vec![
+            evidence(
+                ArchiveEvidenceType::AggregateCount,
+                "*.pak|*.bundle|*.bin|unprofiled *.dat|*.pck|*.arc",
+                unknown_count.saturating_sub(scan.orphaned_subtype_marker_count),
+                "Archive-like files not covered by a profiled detector row",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "orphaned encrypted/protected subtype marker",
+                scan.orphaned_subtype_marker_count,
+                "Subtype marker evidence without a matching profiled archive/container primary signal",
+            ),
+        ],
         requirements: vec![],
         support_boundary: "Kaifuu records unknown archive-like inputs as aggregate evidence only; no engine, extraction, or patching support is inferred.",
     })
@@ -1123,20 +1161,26 @@ struct ArchiveRowInput {
 }
 
 fn archive_row(input: ArchiveRowInput) -> ArchiveDetectionRow {
-    let diagnostics = if input.detected {
-        diagnostics_for_signals(&input.signals, input.support_boundary)
+    let signals = if input.detected {
+        input.signals
     } else {
         vec![]
     };
-    let capabilities = capabilities_for_archive_row(input.detected, &input.signals);
+    let requirements = if input.detected {
+        input.requirements
+    } else {
+        vec![]
+    };
+    let diagnostics = diagnostics_for_signals(&signals, input.support_boundary);
+    let capabilities = capabilities_for_archive_row(input.detected, &signals);
     ArchiveDetectionRow {
         row_id: input.row_id.to_string(),
         engine_family: input.engine_family,
         detected: input.detected,
         detected_variant: input.detected_variant.to_string(),
-        signals: input.signals,
+        signals,
         evidence: input.evidence,
-        requirements: input.requirements,
+        requirements,
         diagnostics,
         capabilities,
         support_boundary: input.support_boundary.to_string(),
@@ -8124,7 +8168,7 @@ mod tests {
 
         let rpg_maker = detected_archive_row(&report, "rpg-maker-mv-mz-encrypted-assets");
         assert!(rpg_maker.evidence.iter().any(|evidence| {
-            evidence.pattern == "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_"
+            evidence.pattern == RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN
                 && evidence.status == EvidenceStatus::Matched
                 && evidence.count == 4
         }));
@@ -8176,6 +8220,115 @@ mod tests {
     }
 
     #[test]
+    fn rpg_maker_encrypted_suffix_detection_matrix_covers_mv_mz_suffixes() {
+        let root = temp_dir("rpg-maker-suffix-matrix");
+        for suffix in RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES {
+            write_fixture_file(
+                &root,
+                &format!("encrypted-assets/sample.{suffix}"),
+                b"synthetic encrypted RPG Maker asset suffix fixture",
+            );
+        }
+
+        let report = ArchiveDetectionReport::scan(&root);
+
+        assert_eq!(report.status, ArchiveDetectionStatus::Matched);
+        let rpg_maker = detected_archive_row(&report, "rpg-maker-mv-mz-encrypted-assets");
+        assert_eq!(
+            rpg_maker.signals,
+            vec![
+                ArchiveDetectionSignal::Encrypted,
+                ArchiveDetectionSignal::MissingKey,
+            ]
+        );
+        assert!(rpg_maker.evidence.iter().any(|evidence| {
+            evidence.pattern == RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES.len() as u64
+        }));
+        assert!(rpg_maker.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::UnsupportedVariantEncrypted
+                && diagnostic.required_capability == Some(Capability::EncryptedInput)
+        }));
+        assert!(rpg_maker.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::MissingKeyMaterial
+                && diagnostic.required_capability == Some(Capability::KeyProfile)
+        }));
+        assert!(rpg_maker.capabilities.iter().any(|capability| {
+            capability.capability == Capability::EncryptedInput
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+        assert!(rpg_maker.capabilities.iter().any(|capability| {
+            capability.capability == Capability::KeyProfile
+                && capability.status == CapabilityStatus::RequiresUserInput
+        }));
+        assert_eq!(rpg_maker.requirements.len(), 1);
+        assert_eq!(rpg_maker.requirements[0].key, "rpg-maker-mv-mz-asset-key");
+
+        let serialized = serde_json::to_string(&report).unwrap();
+        assert!(!serialized.contains("sample.rpgmvp"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_detection_normalizes_marker_only_subtypes_to_unknown_variant_diagnostics() {
+        let root = temp_dir("archive-marker-only");
+        write_fixture_file(&root, "notes/xp3-marker.txt", b"synthetic xp3-crypt marker");
+        write_fixture_file(&root, "notes/bgi-marker.txt", b"BGI-ENCRYPTED");
+        write_fixture_file(&root, "notes/wolf-marker.txt", b"protection-key");
+
+        let report = ArchiveDetectionReport::scan(&root);
+
+        assert_eq!(report.status, ArchiveDetectionStatus::Matched);
+        for row_id in [
+            "kirikiri-xp3",
+            "bgi-ethornell-containers",
+            "wolf-rpg-editor-archives",
+        ] {
+            let row = report
+                .rows
+                .iter()
+                .find(|row| row.row_id == row_id)
+                .unwrap_or_else(|| panic!("missing archive row {row_id}"));
+            assert!(!row.detected, "{row_id} should not be family-detected");
+            assert!(
+                row.signals.is_empty(),
+                "{row_id} leaked marker-only signals"
+            );
+            assert!(
+                row.requirements.is_empty(),
+                "{row_id} leaked marker-only key requirements"
+            );
+            assert!(
+                row.diagnostics.is_empty(),
+                "{row_id} leaked marker-only diagnostics"
+            );
+            assert!(!row.capabilities.iter().any(|capability| {
+                capability.capability == Capability::EncryptedInput
+                    || capability.capability == Capability::KeyProfile
+            }));
+        }
+
+        let unknown = detected_archive_row(&report, "unknown-archive-variant");
+        assert_eq!(
+            unknown.signals,
+            vec![ArchiveDetectionSignal::UnknownVariant]
+        );
+        assert!(unknown.evidence.iter().any(|evidence| {
+            evidence.pattern == "orphaned encrypted/protected subtype marker"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 3
+        }));
+        assert!(unknown.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::UnknownEngineVariant
+                && diagnostic.required_capability == Some(Capability::Detection)
+        }));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn detection_report_status_matches_archive_only_inputs_without_adapter_claims() {
         let root = temp_dir("archive-only-detection-report");
         write_fixture_file(&root, "game/scripts.rpa", b"RenPy archive synthetic");
@@ -8193,7 +8346,7 @@ mod tests {
             }],
         );
 
-        assert_eq!(report.status, DetectionReportStatus::Matched);
+        assert_eq!(report.status, DetectionReportStatus::Unknown);
         assert_eq!(
             report.archive_detection.status,
             ArchiveDetectionStatus::Matched
@@ -8243,7 +8396,7 @@ mod tests {
             "rpg-maker-mv-mz-encrypted-assets",
         );
         assert!(rpg_maker.evidence.iter().any(|evidence| {
-            evidence.pattern == "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_"
+            evidence.pattern == RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN
                 && evidence.status == EvidenceStatus::Matched
                 && evidence.count == 1
         }));

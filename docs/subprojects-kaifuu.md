@@ -63,15 +63,19 @@ cargo run -p kaifuu-cli -- verify .tmp/hello-world/patched-game --output .tmp/he
 `detect` emits a deterministic detection report for every registered adapter and
 an `archiveDetection` matrix from `kaifuu-core`. Adapter evidence reports
 matched or missing manifest files and returns `unknown` instead of failing when
-no adapter matches. The archive matrix covers KiriKiri/XP3, Siglus, RPG Maker
-MV/MZ encrypted assets, Wolf RPG Editor archives, BGI/Ethornell containers,
-Ren'Py packed inputs, and unknown archive-like variants. Matrix rows use
-aggregate evidence fields and semantic diagnostics; they do not claim
-extraction, decryption, decompilation, patching, or archive rebuild support.
-Detection output does not include LLM-style confidence, local absolute
-`gameDir` paths, or private game titles. RPG Maker encrypted asset detection
-counts both MV-style `.rpgmvp`/`.rpgmvm`/`.rpgmvo` files and MZ-style
-`.png_`/`.m4a_`/`.ogg_` files.
+no adapter matches. Top-level `status` is adapter status only; archive-only
+unsupported inputs keep `status: "unknown"` while `archiveDetection.status`
+reports the archive/encryption match. The archive matrix covers KiriKiri/XP3,
+Siglus, RPG Maker MV/MZ encrypted assets, Wolf RPG Editor archives,
+BGI/Ethornell containers, Ren'Py packed inputs, and unknown archive-like
+variants. Matrix rows use aggregate evidence fields and semantic diagnostics;
+they do not claim extraction, decryption, decompilation, patching, or archive
+rebuild support. Detection output does not include LLM-style confidence, local
+absolute `gameDir` paths, or private game titles. RPG Maker encrypted asset
+detection counts both MV-style `.rpgmvp`/`.rpgmvm`/`.rpgmvo` files and MZ-style
+`.png_`/`.m4a_`/`.ogg_` files. Marker-only subtype evidence without a primary
+archive/container match is reported as unknown-variant aggregate evidence
+instead of family-specific key requirements.
 
 `profile init` writes stable JSON profiles. The legacy `profile <game-dir>` form
 is compatibility-only and delegates to the same validation, redaction, and atomic

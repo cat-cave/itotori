@@ -1,0 +1,103 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "kaifuu-rpg-maker-encrypted-suffixes",
+    "title": "Kaifuu RPG Maker Encrypted Suffix Detection Fixture",
+    "kind": "synthetic",
+    "summary": "Synthetic public fixture covering every RPG Maker MV/MZ encrypted asset suffix and the expected Kaifuu detection report semantics.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": [],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Hand-authored synthetic filenames and placeholder file bodies for detector regression tests; no third-party raw game assets."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic RPG Maker MV/MZ encrypted suffix matrix for Kaifuu detection tests.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/audio/bgm/theme.m4a_",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "a293768e70f7286899af0a5220e3c47689dbf4127be5241a578aa139e9e8ccb8",
+      "bytes": 52,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/audio/bgm/theme.rpgmvm",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "253c5d0f4756669a717e4d05d232f6b41880688ff06f8d0d74f255c6b2de135f",
+      "bytes": 52,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/audio/se/cursor.ogg_",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "306aa296637cd0691ec54d1641063a7b383b19d1982130caecf99d72b10d43ae",
+      "bytes": 52,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/audio/se/cursor.rpgmvo",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "3eb908b06338e108f487f5da5eae8000f94dbe499f924d83bedef9f262c8fdd4",
+      "bytes": 52,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/data/System.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "b71b525d7a02f0086616522686bee210cdcfa07f16ce11151d5d92f0c6efe5bb",
+      "bytes": 62,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "a7ab04c204bb82c2e3b066af58f92ffd53647830c9b9e0f60c4830d1bc5f7217",
+      "bytes": 14517,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/img/pictures/title.png_",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "f72175666b5a5f67839cbd75959ac7cc8bdc037e7dbced1c719941ec2d017c0e",
+      "bytes": 54,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/img/pictures/title.rpgmvp",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "a99c5843b2ec3c58d6ed104bcd2d6b7baef2e89bcff0661ace8a9bc28abbbc3d",
+      "bytes": 54,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 8,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": [],
+    "engineKinds": ["rpg-maker-mv-mz-synthetic-encrypted-suffixes"],
+    "notes": "Covers MV encrypted suffixes .rpgmvp, .rpgmvm, and .rpgmvo plus MZ encrypted suffixes .png_, .m4a_, and .ogg_. The expected detection report asserts adapter status remains unknown while archiveDetection reports matched unsupported encrypted input diagnostics."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:kaifuu-rpg-maker-encrypted-suffixes"
+  }
+}

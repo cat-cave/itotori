@@ -9,6 +9,11 @@ The top-level detection report preserves the `gameDir` field for schema
 stability, but its value is redacted so absolute local paths and private game
 titles are not serialized.
 
+Top-level `status` is the registered adapter detection status. It remains
+`unknown` for archive-only inputs when no extraction adapter matches. Archive
+evidence reports its own independent status under `archiveDetection.status`, so
+unsupported packed or encrypted files cannot be mistaken for adapter support.
+
 The JSON report field is `archiveDetection`:
 
 ```json
@@ -44,11 +49,16 @@ Each row contains:
 | ---------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `kirikiri-xp3`                     | KiriKiri/XP3    | `*.xp3`, XP3 magic, synthetic encrypted XP3 mark                                                  | `packed`; encrypted fixture marks add `encrypted`, `missing_key`, `helper_required`                                                                                       |
 | `siglus-scene-pck`                 | SiglusEngine    | `Scene.pck`, `Gameexe.dat` aggregate presence                                                     | `packed`, `encrypted`, `missing_key`, `helper_required`                                                                                                                   |
-| `rpg-maker-mv-mz-encrypted-assets` | RPG Maker MV/MZ | `*.rpgmvp`, `*.rpgmvm`, `*.rpgmvo`, `*.png_`, `*.m4a_`, `*.ogg_`, `System.json` encryption fields | `encrypted`; concrete media-key requirements can add `missing_key`; redacted candidate and bad-key cases are reported through requirements and diagnostics                |
+| `rpg-maker-mv-mz-encrypted-assets` | RPG Maker MV/MZ | `*.rpgmvp`, `*.rpgmvm`, `*.rpgmvo`, `*.png_`, `*.m4a_`, `*.ogg_`, `System.json` encryption fields | `encrypted`, `missing_key`; redacted candidate and bad-key cases are reported through requirements and diagnostics                                                        |
 | `wolf-rpg-editor-archives`         | Wolf RPG Editor | `*.wolf`, WOLF header, synthetic protection mark                                                  | `packed`, `encrypted`, `missing_key`, `helper_required`; protection marks add `protected`                                                                                 |
 | `bgi-ethornell-containers`         | BGI/Ethornell   | `BURIKO ARC20` header                                                                             | `packed`, `unknown_variant`; encrypted/compressed marks add `encrypted` plus crypto-capability or layered-transform diagnostics until a concrete key requirement is known |
 | `renpy-packed-inputs`              | Ren'Py          | `*.rpa`, `*.rpyc` aggregate counts                                                                | `packed`                                                                                                                                                                  |
 | `unknown-archive-variant`          | Unknown         | Unprofiled archive-like extension counts                                                          | `unknown_variant`                                                                                                                                                         |
+
+Subtype-only markers without the row's primary archive/container evidence are
+normalized out of that family row and reported through the unknown-variant row
+as aggregate marker evidence. This prevents marker-only strings from creating
+family-specific key requirements or capability claims.
 
 The matrix intentionally uses synthetic marker strings only for public tests
 where real encryption/protection markers are not redistributable. Private-local

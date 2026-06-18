@@ -491,6 +491,12 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/hello-game")
     }
 
+    fn public_fixture_path(relative_path: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(relative_path)
+    }
+
     fn write_fixture_file(root: &Path, relative_path: &str, bytes: &[u8]) {
         let path = root.join(relative_path);
         if let Some(parent) = path.parent() {
@@ -2428,7 +2434,7 @@ mod tests {
 
         let detection_report: DetectionReport = read_json(&detect_path).unwrap();
         assert_eq!(detection_report.game_dir, REDACTED_DETECTION_GAME_DIR);
-        assert_eq!(detection_report.status, DetectionReportStatus::Matched);
+        assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
         assert_eq!(
             detection_report.archive_detection.status,
             ArchiveDetectionStatus::Matched
@@ -2476,6 +2482,58 @@ mod tests {
         assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
         assert!(!serialized.contains("private-title"));
         assert!(!serialized.contains("confidence"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn detect_cli_matches_public_rpg_maker_encrypted_suffix_fixture_report() {
+        let root = temp_dir("public-rpg-maker-suffix-detect");
+        let game_dir = public_fixture_path("fixtures/public/kaifuu-rpg-maker-encrypted-suffixes");
+        let expected_path = game_dir.join("expected/detection-report-v0.1.json");
+        let detect_path = root.join("detect.json");
+
+        run_cli(&[
+            "detect",
+            game_dir.to_str().unwrap(),
+            "--output",
+            detect_path.to_str().unwrap(),
+        ]);
+
+        let actual: serde_json::Value = read_json(&detect_path).unwrap();
+        let expected: serde_json::Value = read_json(&expected_path).unwrap();
+        assert_eq!(actual, expected);
+
+        let detection_report: DetectionReport = serde_json::from_value(actual).unwrap();
+        assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
+        assert_eq!(
+            detection_report.archive_detection.status,
+            ArchiveDetectionStatus::Matched
+        );
+        assert!(!detection_report.detections[0].detected);
+        let rpg_maker = detection_report
+            .archive_detection
+            .rows
+            .iter()
+            .find(|row| row.row_id == "rpg-maker-mv-mz-encrypted-assets")
+            .unwrap();
+        assert!(rpg_maker.detected);
+        assert!(rpg_maker.evidence.iter().any(|evidence| {
+            evidence.pattern == "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 6
+        }));
+        assert!(
+            rpg_maker
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == SemanticErrorCode::MissingKeyMaterial })
+        );
+
+        let serialized = fs::read_to_string(&detect_path).unwrap();
+        for forbidden in ["title.rpgmvp", "theme.rpgmvm", "cursor.rpgmvo"] {
+            assert!(!serialized.contains(forbidden), "report leaked {forbidden}");
+        }
 
         let _ = fs::remove_dir_all(root);
     }
