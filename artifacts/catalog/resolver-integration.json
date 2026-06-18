@@ -63,9 +63,7 @@
       "exactLinkId": "exact-link:dlsite:RJ349517",
       "status": "linked",
       "workId": "work-dlsite-rj349517",
-      "matchIds": [
-        "dlsite:RJ349517:store_product:work-dlsite-rj349517"
-      ],
+      "matchIds": ["dlsite:RJ349517:store_product:work-dlsite-rj349517"],
       "matches": [
         {
           "inputIndex": 0,
@@ -133,10 +131,7 @@
           "severity": "error",
           "message": "Exact external IDs point at multiple catalog works; no link was selected.",
           "metadata": {
-            "matchedWorkIds": [
-              "work-conflict-a",
-              "work-conflict-b"
-            ]
+            "matchedWorkIds": ["work-conflict-a", "work-conflict-b"]
           }
         }
       ]
@@ -145,9 +140,7 @@
   "fuzzyCandidates": {
     "status": "generated",
     "generatorVersion": "deterministic-title-year.v0.1",
-    "candidateIds": [
-      "candidate:egs-moonlight-001:work-moonlight-hd"
-    ],
+    "candidateIds": ["candidate:egs-moonlight-001:work-moonlight-hd"],
     "candidates": [
       {
         "candidateId": "candidate:egs-moonlight-001:work-moonlight-hd",
@@ -208,10 +201,7 @@
         "catalogRecordId": "work-conflict-a",
         "conflictId": "manual-duplicate-external-id",
         "candidateIds": [],
-        "candidateCatalogIds": [
-          "work-conflict-a",
-          "work-conflict-b"
-        ],
+        "candidateCatalogIds": ["work-conflict-a", "work-conflict-b"],
         "exactLinkRefs": [
           {
             "externalIdId": "external-id:dlsite:RJCAT010",
@@ -251,12 +241,8 @@
         "reviewId": "catalog-candidate:candidate:egs-moonlight-001:work-moonlight-hd",
         "catalogRecordId": "work-moonlight-hd",
         "conflictId": null,
-        "candidateIds": [
-          "candidate:egs-moonlight-001:work-moonlight-hd"
-        ],
-        "candidateCatalogIds": [
-          "work-moonlight-hd"
-        ],
+        "candidateIds": ["candidate:egs-moonlight-001:work-moonlight-hd"],
+        "candidateCatalogIds": ["work-moonlight-hd"],
         "exactLinkRefs": [],
         "fuzzyScores": [
           {
@@ -339,12 +325,8 @@
       "exact-link:dlsite:rj-no-match",
       "exact-link:manual-conflict"
     ],
-    "exactLinkedWorkIds": [
-      "work-dlsite-rj349517"
-    ],
-    "fuzzyCandidateIds": [
-      "candidate:egs-moonlight-001:work-moonlight-hd"
-    ],
+    "exactLinkedWorkIds": ["work-dlsite-rj349517"],
+    "fuzzyCandidateIds": ["candidate:egs-moonlight-001:work-moonlight-hd"],
     "conflictIds": [
       "catalog-conflict:manual-duplicate-external-id",
       "catalog-candidate:candidate:egs-moonlight-001:work-moonlight-hd"
@@ -435,9 +417,7 @@
           "exactLinkId": "exact-link:dlsite:RJ349517",
           "status": "linked",
           "workId": "work-dlsite-rj349517",
-          "matchIds": [
-            "dlsite:RJ349517:store_product:work-dlsite-rj349517"
-          ],
+          "matchIds": ["dlsite:RJ349517:store_product:work-dlsite-rj349517"],
           "matches": [
             {
               "inputIndex": 0,
@@ -505,10 +485,7 @@
               "severity": "error",
               "message": "Exact external IDs point at multiple catalog works; no link was selected.",
               "metadata": {
-                "matchedWorkIds": [
-                  "work-conflict-a",
-                  "work-conflict-b"
-                ]
+                "matchedWorkIds": ["work-conflict-a", "work-conflict-b"]
               }
             }
           ]
@@ -556,10 +533,7 @@
           "catalogRecordId": "work-conflict-a",
           "conflictId": "manual-duplicate-external-id",
           "candidateIds": [],
-          "candidateCatalogIds": [
-            "work-conflict-a",
-            "work-conflict-b"
-          ],
+          "candidateCatalogIds": ["work-conflict-a", "work-conflict-b"],
           "exactLinkRefs": [
             {
               "externalIdId": "external-id:dlsite:RJCAT010",
@@ -599,12 +573,8 @@
           "reviewId": "catalog-candidate:candidate:egs-moonlight-001:work-moonlight-hd",
           "catalogRecordId": "work-moonlight-hd",
           "conflictId": null,
-          "candidateIds": [
-            "candidate:egs-moonlight-001:work-moonlight-hd"
-          ],
-          "candidateCatalogIds": [
-            "work-moonlight-hd"
-          ],
+          "candidateIds": ["candidate:egs-moonlight-001:work-moonlight-hd"],
+          "candidateCatalogIds": ["work-moonlight-hd"],
           "exactLinkRefs": [],
           "fuzzyScores": [
             {

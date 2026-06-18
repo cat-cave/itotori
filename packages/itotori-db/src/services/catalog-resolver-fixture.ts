@@ -636,7 +636,10 @@ function normalizeExactLinkResult(
       }
     }
   }
-  if (value.status === catalogExactExternalIdLinkStatusValues.linked && !stringValue(value.workId)) {
+  if (
+    value.status === catalogExactExternalIdLinkStatusValues.linked &&
+    !stringValue(value.workId)
+  ) {
     invalidPaths.push(`$.exactLinks[${index}].result.workId`);
   }
   if (invalidPaths.length > 0) {
@@ -656,7 +659,9 @@ function normalizeExactLinkResult(
   return value as CatalogExactExternalIdLinkResult;
 }
 
-function isArtifactExactLinkRecord(value: unknown): value is CatalogResolverFixtureExactLinkArtifactRecord {
+function isArtifactExactLinkRecord(
+  value: unknown,
+): value is CatalogResolverFixtureExactLinkArtifactRecord {
   return (
     isRecord(value) &&
     stringValue(value.exactLinkId) !== null &&
@@ -723,7 +728,9 @@ function isExactLinkMatch(value: unknown): boolean {
   );
 }
 
-function isFuzzyCandidateRecord(value: unknown): value is CatalogResolverFixtureFuzzyCandidateArtifactRecord {
+function isFuzzyCandidateRecord(
+  value: unknown,
+): value is CatalogResolverFixtureFuzzyCandidateArtifactRecord {
   return (
     isRecord(value) &&
     stringValue(value.candidateId) !== null &&
@@ -743,7 +750,9 @@ function isFuzzyCandidateRecord(value: unknown): value is CatalogResolverFixture
   );
 }
 
-function isConflictReviewRow(value: unknown): value is CatalogConflictReviewReadModel["rows"][number] {
+function isConflictReviewRow(
+  value: unknown,
+): value is CatalogConflictReviewReadModel["rows"][number] {
   return (
     isRecord(value) &&
     stringValue(value.reviewId) !== null &&

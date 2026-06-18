@@ -1,0 +1,110 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-052-20260618T180905Z",
+  "generatedAt": "2026-06-18T18:09:05Z",
+  "spec": {
+    "id": "KAIFUU-052",
+    "title": "Layered text access pipeline contract",
+    "branch": "spec/kaifuu-052",
+    "worktree": "/tmp/itotori-spec-kaifuu-052",
+    "commit": "fa6fb27"
+  },
+  "auditor": {
+    "name": "kaifuu-052-final-reaudit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers. Missing patch access contracts now fail closed for non-plaintext layered transforms, patch operation statuses block preflight before output preparation, and plaintext identity remains valid. A non-blocking capability report interpretation follow-up remains.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-052-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-052-F001",
+      "severity": "P2",
+      "title": "Broad capability reports can overstate layered access support",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "fixtures/hello-game/asset-inventory.expected.json",
+          "line": 288
+        },
+        {
+          "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json",
+          "line": 59
+        }
+      ],
+      "description": "Detection and asset-inventory reports expose broad container_access, crypto_access, codec_access, and patch_back classes as supported without carrying the layered access contract or explicit null-key-only limitations on those report surfaces.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit confirmed the P1 patch-preflight gaps are closed, but consumers can still over-read broad report surfaces unless they inspect a separate layered access contract."
+        },
+        {
+          "kind": "command",
+          "detail": "cargo fmt --check, cargo test -p kaifuu-core -p kaifuu-cli -p kaifuu-engine-fixture, and cargo clippy --workspace --all-targets --all-features -- -D warnings passed after repair."
+        }
+      ],
+      "impact": "Patch writes are protected, but report consumers may misinterpret fixture identity/null-key capability as broader crypto/container/codec support until the report surfaces are constrained or annotated.",
+      "actionableAcceptanceCriteria": [
+        "Detection and asset-inventory reports make identity/null-key-only behavior explicit when no broader transform support is claimed.",
+        "Consumers can distinguish broad capability class availability from per-surface layered access support using schema-backed fields.",
+        "Existing fixture adapter reports remain valid but no longer imply unsupported general crypto/container/codec capability."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Layered capability report limitations",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu", "shared"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-052"],
+          "summary": "Constrain or annotate Kaifuu detection and asset-inventory capability reports so broad container, crypto, codec, and patch support cannot be over-read without the layered access contract.",
+          "deliverables": [
+            "Capability report fields or limitations that distinguish null-key identity support from general crypto/container support",
+            "Updated detection and asset-inventory public fixtures with layered capability limitations",
+            "Consumer-facing regression tests proving broad access classes are not exposed without matching contract evidence"
+          ],
+          "acceptanceCriteria": [
+            "Detection and asset-inventory reports make identity/null-key-only behavior explicit when no broader transform support is claimed.",
+            "Consumers can distinguish broad capability class availability from per-surface layered access support using schema-backed fields.",
+            "Existing fixture adapter reports remain valid but no longer imply unsupported general crypto/container/codec capability."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-engine-fixture"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli"
+            }
+          ],
+          "auditFocus": [
+            "Consumer over-reading broad capability reports",
+            "Null-key identity support represented as general crypto support",
+            "Public fixture report drift from layered access contracts"
+          ]
+        }
+      }
+    }
+  ]
+}

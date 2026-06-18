@@ -267,7 +267,9 @@ describe("Itotori CLI handlers", () => {
 
   it("writes the combined catalog resolver fixture artifact without database services", async () => {
     const services = servicesFixture();
-    const reads = new Map<string, unknown>([["fixtures/catalog-resolver/fixture.json", resolverFixture]]);
+    const reads = new Map<string, unknown>([
+      ["fixtures/catalog-resolver/fixture.json", resolverFixture],
+    ]);
     const writes = new Map<string, unknown>();
 
     await runItotoriCliCommand(["catalog-resolve-fixture"], {

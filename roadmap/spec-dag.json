@@ -2006,7 +2006,7 @@
     {
       "id": "CATALOG-001",
       "title": "Cross-source resolver fixture command",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -2043,10 +2043,7 @@
         "Integration shell hiding new implementation work",
         "Dependency bypass of normalized slices",
         "Support or readiness overclaim"
-      ],
-      "owner": "orchestrator-20260618-wave5",
-      "branch": "spec/catalog-001",
-      "worktree": "/tmp/itotori-spec-catalog-001"
+      ]
     },
     {
       "id": "CATALOG-002",
@@ -4253,7 +4250,7 @@
     {
       "id": "KAIFUU-052",
       "title": "Layered text access pipeline contract",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared"],
@@ -4300,10 +4297,7 @@
         "Plaintext and encrypted engines diverging into separate architectures",
         "Per-surface transform loss",
         "False patch capability claims"
-      ],
-      "owner": "orchestrator-20260618-wave5",
-      "branch": "spec/kaifuu-052",
-      "worktree": "/tmp/itotori-spec-kaifuu-052"
+      ]
     },
     {
       "id": "KAIFUU-053",
@@ -7455,7 +7449,7 @@
     {
       "id": "ITOTORI-044",
       "title": "Queue read authorization before API exposure",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -7492,10 +7486,7 @@
         "Queue read endpoints bypassing permissions",
         "Sensitive job payload exposure",
         "Repository and API authorization drift"
-      ],
-      "owner": "orchestrator-20260618-wave5",
-      "branch": "spec/itotori-044",
-      "worktree": "/tmp/itotori-spec-itotori-044"
+      ]
     },
     {
       "id": "ITOTORI-045",
@@ -17031,6 +17022,82 @@
         "API contract drift from repository enums",
         "Overly broad string validators",
         "Mocked conflict rows bypassing schema checks"
+      ]
+    },
+    {
+      "id": "CATALOG-068",
+      "status": "planned",
+      "title": "Catalog resolver CLI fixture canonicalization",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-001"],
+      "summary": "Replace the catalog resolver CLI inline fixture expectation with the canonical recorded resolver fixture so CLI tests cannot drift from the public artifact shape.",
+      "deliverables": [
+        "CLI resolver test that reads or derives expectations from fixtures/catalog-resolver/fixture.json",
+        "Assertion coverage for the canonical three exact links and two conflict rows",
+        "Regression check that catalog resolver CLI output remains aligned with artifacts/catalog/resolver-integration.json"
+      ],
+      "acceptanceCriteria": [
+        "The catalog resolver CLI test no longer carries a stale inline resolver fixture shape.",
+        "CLI test expectations cover the same exact-link ids, conflict ids, fuzzy candidate ids, and diagnostics as the canonical resolver artifact.",
+        "Changing the canonical resolver fixture without regenerating or updating CLI expectations fails a targeted test."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- cli"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run catalog:resolve-fixture"
+        }
+      ],
+      "auditFocus": [
+        "Inline fixture drift from canonical resolver fixtures",
+        "CLI test overfitting to stale catalog ids",
+        "Generated artifact and CLI output mismatch"
+      ]
+    },
+    {
+      "id": "KAIFUU-142",
+      "status": "planned",
+      "title": "Layered capability report limitations",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-052"],
+      "summary": "Constrain or annotate Kaifuu detection and asset-inventory capability reports so broad container, crypto, codec, and patch support cannot be over-read without the layered access contract.",
+      "deliverables": [
+        "Capability report fields or limitations that distinguish null-key identity support from general crypto/container support",
+        "Updated detection and asset-inventory public fixtures with layered capability limitations",
+        "Consumer-facing regression tests proving broad access classes are not exposed without matching contract evidence"
+      ],
+      "acceptanceCriteria": [
+        "Detection and asset-inventory reports make identity/null-key-only behavior explicit when no broader transform support is claimed.",
+        "Consumers can distinguish broad capability class availability from per-surface layered access support using schema-backed fields.",
+        "Existing fixture adapter reports remain valid but no longer imply unsupported general crypto/container/codec capability."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-engine-fixture"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Consumer over-reading broad capability reports",
+        "Null-key identity support represented as general crypto support",
+        "Public fixture report drift from layered access contracts"
       ]
     }
   ]

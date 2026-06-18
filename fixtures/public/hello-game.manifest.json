@@ -112,8 +112,8 @@
       "path": "fixtures/hello-game/asset-inventory.expected.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "03abb9cd04a84a3699c80e6853b96c57182ae5a7e9a31938b3b94266a65bf433",
-      "bytes": 10715,
+      "sha256": "d2eb600b6b95cc4e5faf4df9b8d65142f774e94cac0f4a24c1d8f0b6febe6bf9",
+      "bytes": 11213,
       "redistributable": true
     }
   ],

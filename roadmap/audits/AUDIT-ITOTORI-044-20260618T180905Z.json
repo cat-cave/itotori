@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-044-20260618T180905Z",
+  "generatedAt": "2026-06-18T18:09:05Z",
+  "spec": {
+    "id": "ITOTORI-044",
+    "title": "Queue read authorization before API exposure",
+    "branch": "spec/itotori-044",
+    "worktree": "/tmp/itotori-spec-itotori-044",
+    "commit": "f21e5a8"
+  },
+  "auditor": {
+    "name": "itotori-044-final-audit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final audit found no P0/P1/P2/P3 findings. Queue read APIs now require the shared queue.read authorization gate for getOutboxEvent and getJob, unauthorized users are denied, and the local all-permissions alpha path remains intact. DB-backed ci-itotori passed after rebase.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}

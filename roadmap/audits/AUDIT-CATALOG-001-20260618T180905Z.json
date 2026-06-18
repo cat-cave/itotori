@@ -1,0 +1,102 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-001-20260618T180905Z",
+  "generatedAt": "2026-06-18T18:09:05Z",
+  "spec": {
+    "id": "CATALOG-001",
+    "title": "Cross-source resolver fixture command",
+    "branch": "spec/catalog-001",
+    "worktree": "/tmp/itotori-spec-catalog-001",
+    "commit": "11d5676"
+  },
+  "auditor": {
+    "name": "catalog-001-final-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers. The nested resolver fake-success path is closed with structural validation and regression coverage, and the canonical resolver fixture still emits reviewable exact-link, fuzzy-candidate, conflict, provenance, and no-match diagnostics. A non-blocking CLI test fixture drift remains.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["CATALOG-001-F001"]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-001-F001",
+      "severity": "P3",
+      "title": "Catalog resolver CLI test uses stale inline fixture expectations",
+      "category": "test",
+      "locations": [
+        {
+          "path": "apps/itotori/test/cli.test.ts",
+          "line": 281
+        }
+      ],
+      "description": "The CLI resolver test still uses inline expectations with two exact links, work-dlsite, and one conflict while the canonical public resolver fixture and artifact now expose three exact links, work-dlsite-rj349517, and two conflict rows.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit confirmed the canonical DB package fixture covers the current artifact shape, but the CLI test can drift because it does not derive expectations from fixtures/catalog-resolver/fixture.json."
+        },
+        {
+          "kind": "command",
+          "detail": "pnpm exec vp run catalog:resolve-fixture and DB-backed ci-itotori passed after the nested validation repair."
+        }
+      ],
+      "impact": "The implementation is mergeable because canonical fixture and artifact tests cover the resolver behavior, but future CLI changes could pass against stale inline data.",
+      "actionableAcceptanceCriteria": [
+        "The catalog resolver CLI test no longer carries a stale inline resolver fixture shape.",
+        "CLI test expectations cover the same exact-link ids, conflict ids, fuzzy candidate ids, and diagnostics as the canonical resolver artifact.",
+        "Changing the canonical resolver fixture without regenerating or updating CLI expectations fails a targeted test."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Catalog resolver CLI fixture canonicalization",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-001"],
+          "summary": "Replace the catalog resolver CLI inline fixture expectation with the canonical recorded resolver fixture so CLI tests cannot drift from the public artifact shape.",
+          "deliverables": [
+            "CLI resolver test that reads or derives expectations from fixtures/catalog-resolver/fixture.json",
+            "Assertion coverage for the canonical three exact links and two conflict rows",
+            "Regression check that catalog resolver CLI output remains aligned with artifacts/catalog/resolver-integration.json"
+          ],
+          "acceptanceCriteria": [
+            "The catalog resolver CLI test no longer carries a stale inline resolver fixture shape.",
+            "CLI test expectations cover the same exact-link ids, conflict ids, fuzzy candidate ids, and diagnostics as the canonical resolver artifact.",
+            "Changing the canonical resolver fixture without regenerating or updating CLI expectations fails a targeted test."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test -- cli"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec vp run catalog:resolve-fixture"
+            }
+          ],
+          "auditFocus": [
+            "Inline fixture drift from canonical resolver fixtures",
+            "CLI test overfitting to stale catalog ids",
+            "Generated artifact and CLI output mismatch"
+          ]
+        }
+      }
+    }
+  ]
+}
