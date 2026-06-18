@@ -38,6 +38,11 @@ The `fixtures/hello-game/source.json` fixture is synthetic and is described by
 `fixtures/public/hello-game.manifest.json`. Its expected bridge snapshots,
 patch export, patch result, delta metadata, runtime report, benchmark report,
 standalone finding, and surface coverage matrix live beside the source fixture.
+The `fixtures/public/hello-game-alpha-vertical-proof.manifest.json` catalog
+entry lists `fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json`.
+That proof manifest records fixture identity, source revision, bridge units,
+runtime targets, artifact refs, provider proof ids, benchmark output refs, and
+content hashes without raw provider text or private-local paths.
 The `fixtures/seeded-localization-defects/` fixture is synthetic and is
 described by `fixtures/public/seeded-localization-defects.manifest.json`. Its
 source fixture, seeded-defect oracle, false-positive calibration cases, and

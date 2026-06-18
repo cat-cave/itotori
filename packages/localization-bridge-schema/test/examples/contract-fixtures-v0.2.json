@@ -4,6 +4,11 @@
   "generatedAt": "2026-06-17T00:00:00.000Z",
   "validFixtures": [
     {
+      "kind": "alpha-vertical-proof-manifest-v0.2",
+      "path": "./alpha-vertical-proof-manifest-v0.2.json",
+      "description": "Alpha vertical proof manifest tying public fixture identity, bridge units, runtime targets, artifacts, provider proof ids, benchmark outputs, and content hashes."
+    },
+    {
       "kind": "asset-policy-v0.2",
       "path": "./asset-policy-v0.2.json",
       "description": "Branch-scoped non-dialogue asset policy decisions."
@@ -70,6 +75,12 @@
     }
   ],
   "invalidFixtures": [
+    {
+      "kind": "alpha-vertical-proof-manifest-v0.2",
+      "path": "./invalid/alpha-vertical-proof-manifest-v0.2-private-uri.json",
+      "expectedSemanticError": "fixtures/private-local",
+      "description": "Alpha proof manifests must not reference raw private-local corpus paths."
+    },
     {
       "kind": "asset-policy-v0.2",
       "path": "./invalid/asset-policy-v0.2-dangling-patch-ref.json",

@@ -1,0 +1,47 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "hello-game-alpha-vertical-proof",
+    "title": "Hello Game Alpha Vertical Proof",
+    "kind": "synthetic",
+    "summary": "Public alpha vertical proof manifest tying hello-game bridge, patch, runtime, benchmark, provider proof, and content hashes.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["fr-FR"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Synthetic proof metadata authored for repository tests; no raw provider prompts, completions, secrets, or private corpus data."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic alpha proof manifest for shared contract and fixture validation.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json",
+      "role": "alpha-proof-manifest",
+      "mediaType": "application/json",
+      "sha256": "87d68a8a44248a255afb2d006e3537e0183ecac4b3de387491c39242ed1ce107",
+      "bytes": 6699,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 1,
+    "textUnits": 1,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["fr-FR"],
+    "engineKinds": ["synthetic-json"],
+    "notes": "The proof manifest references only public fixture artifacts and records ids, artifact refs, and sha256 content hashes across Itotori, Kaifuu, and Utsushi evidence surfaces."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:hello-game-alpha-vertical-proof"
+  }
+}

@@ -7,6 +7,7 @@ use crate::{
 };
 
 const CONTRACT_FIXTURE_KINDS_V02: &[&str] = &[
+    "alpha-vertical-proof-manifest-v0.2",
     "asset-policy-v0.2",
     "benchmark-report-v0.2",
     "bridge-v0.2",
@@ -28,6 +29,31 @@ const ITOTORI_PERMISSION_VALUES_V02: &[&str] = &[
     "runtime.ingest",
     "feedback.import",
     "system.reset",
+];
+
+const ALPHA_VERTICAL_PROOF_ARTIFACT_KINDS_V02: &[&str] = &[
+    "public_fixture_manifest",
+    "bridge_bundle",
+    "patch_export",
+    "patch_result",
+    "delta_package",
+    "runtime_report",
+    "finding_report",
+    "benchmark_report",
+];
+
+const ALPHA_VERTICAL_PROOF_HASH_SCOPES_V02: &[&str] = &[
+    "public_fixture_manifest",
+    "source_bundle",
+    "bridge_bundle",
+    "bridge_unit",
+    "patch_export",
+    "patch_result",
+    "delta_package",
+    "runtime_report",
+    "finding_report",
+    "benchmark_report",
+    "provider_proof",
 ];
 
 const PATCH_WRITE_MODES: &[&str] = &[
@@ -130,6 +156,7 @@ struct AssetSummary {
 pub fn validate_shared_contract_fixture_v02(kind: &str, value: &Value) -> BridgeContractResult<()> {
     assert_one_of(kind, CONTRACT_FIXTURE_KINDS_V02, "ContractFixtureV02.kind")?;
     match kind {
+        "alpha-vertical-proof-manifest-v0.2" => validate_alpha_vertical_proof_manifest_v02(value),
         "asset-policy-v0.2" => validate_asset_policy_bundle_v02(value),
         "benchmark-report-v0.2" => validate_benchmark_report_v02(value),
         "bridge-v0.2" => BridgeBundleV02::validate_json(value).map(|_| ()),
@@ -144,6 +171,365 @@ pub fn validate_shared_contract_fixture_v02(kind: &str, value: &Value) -> Bridge
         "triage-v0.2" => validate_triage_bundle_v02(value),
         _ => unreachable!(),
     }
+}
+
+pub fn validate_alpha_vertical_proof_manifest_v02(value: &Value) -> BridgeContractResult<()> {
+    assert_no_confidence_fields(value, "AlphaVerticalProofManifestV02")?;
+    assert_no_raw_private_or_secret_fields(value, "AlphaVerticalProofManifestV02")?;
+    let manifest = as_record(value, "AlphaVerticalProofManifestV02")?;
+    assert_record_keys(
+        manifest,
+        &[
+            "schemaVersion",
+            "proofManifestId",
+            "createdAt",
+            "fixture",
+            "engineProfile",
+            "sourceRevision",
+            "sourceBridgeId",
+            "sourceBundleHash",
+            "bridgeUnitRefs",
+            "runtimeTargetIds",
+            "artifactRefs",
+            "providerProofIds",
+            "benchmarkOutputRefs",
+            "contentHashes",
+            "compatibilityNotes",
+        ],
+        "AlphaVerticalProofManifestV02",
+    )?;
+    assert_schema_version(manifest, "AlphaVerticalProofManifestV02")?;
+    assert_required_uuid7(
+        manifest,
+        "proofManifestId",
+        "AlphaVerticalProofManifestV02.proofManifestId",
+    )?;
+    assert_required_rfc3339(
+        manifest,
+        "createdAt",
+        "AlphaVerticalProofManifestV02.createdAt",
+    )?;
+
+    let fixture = required_record(manifest, "fixture", "AlphaVerticalProofManifestV02.fixture")?;
+    assert_record_keys(
+        fixture,
+        &[
+            "fixtureId",
+            "publicManifestUri",
+            "publicManifestHash",
+            "publicRedistribution",
+        ],
+        "AlphaVerticalProofManifestV02.fixture",
+    )?;
+    let fixture_id = assert_required_string(
+        fixture,
+        "fixtureId",
+        "AlphaVerticalProofManifestV02.fixture.fixtureId",
+    )?;
+    assert_public_fixture_id(
+        fixture_id,
+        "AlphaVerticalProofManifestV02.fixture.fixtureId",
+    )?;
+    assert_required_public_uri(
+        fixture,
+        "publicManifestUri",
+        "AlphaVerticalProofManifestV02.fixture.publicManifestUri",
+    )?;
+    assert_required_hash(
+        fixture,
+        "publicManifestHash",
+        "AlphaVerticalProofManifestV02.fixture.publicManifestHash",
+    )?;
+    assert_literal(
+        fixture,
+        "publicRedistribution",
+        "allowed",
+        "AlphaVerticalProofManifestV02.fixture.publicRedistribution",
+    )?;
+
+    let engine_profile = required_record(
+        manifest,
+        "engineProfile",
+        "AlphaVerticalProofManifestV02.engineProfile",
+    )?;
+    assert_record_keys(
+        engine_profile,
+        &[
+            "engineProfileId",
+            "engineKind",
+            "kaifuuProfileId",
+            "itotoriWorkflowId",
+            "utsushiRuntimeProfileId",
+        ],
+        "AlphaVerticalProofManifestV02.engineProfile",
+    )?;
+    for key in [
+        "engineProfileId",
+        "engineKind",
+        "kaifuuProfileId",
+        "itotoriWorkflowId",
+        "utsushiRuntimeProfileId",
+    ] {
+        assert_required_string(
+            engine_profile,
+            key,
+            &format!("AlphaVerticalProofManifestV02.engineProfile.{key}"),
+        )?;
+    }
+
+    validate_source_revision(
+        required(
+            manifest,
+            "sourceRevision",
+            "AlphaVerticalProofManifestV02.sourceRevision",
+        )?,
+        "AlphaVerticalProofManifestV02.sourceRevision",
+    )?;
+    let source_revision = required_record(
+        manifest,
+        "sourceRevision",
+        "AlphaVerticalProofManifestV02.sourceRevision",
+    )?;
+    let source_bundle_hash = assert_required_hash(
+        manifest,
+        "sourceBundleHash",
+        "AlphaVerticalProofManifestV02.sourceBundleHash",
+    )?;
+    if source_revision.get("revisionKind").and_then(Value::as_str) == Some("content_hash")
+        && source_revision.get("value").and_then(Value::as_str) != Some(source_bundle_hash)
+    {
+        return error(
+            "AlphaVerticalProofManifestV02.sourceRevision.value must equal the matching content hash",
+        );
+    }
+    assert_required_uuid7(
+        manifest,
+        "sourceBridgeId",
+        "AlphaVerticalProofManifestV02.sourceBridgeId",
+    )?;
+
+    let bridge_unit_refs = required_array(
+        manifest,
+        "bridgeUnitRefs",
+        "AlphaVerticalProofManifestV02.bridgeUnitRefs",
+    )?;
+    if bridge_unit_refs.is_empty() {
+        return error("AlphaVerticalProofManifestV02.bridgeUnitRefs must contain at least one ref");
+    }
+    let mut bridge_unit_keys = HashSet::new();
+    for (index, bridge_unit_ref) in bridge_unit_refs.iter().enumerate() {
+        let label = format!("AlphaVerticalProofManifestV02.bridgeUnitRefs[{index}]");
+        let bridge_unit_ref = as_record(bridge_unit_ref, &label)?;
+        assert_record_keys(
+            bridge_unit_ref,
+            &["bridgeUnitId", "sourceUnitKey", "sourceHash"],
+            &label,
+        )?;
+        let bridge_unit_id = assert_required_uuid7(
+            bridge_unit_ref,
+            "bridgeUnitId",
+            &format!("{label}.bridgeUnitId"),
+        )?;
+        let source_unit_key = assert_required_string(
+            bridge_unit_ref,
+            "sourceUnitKey",
+            &format!("{label}.sourceUnitKey"),
+        )?;
+        assert_required_hash(
+            bridge_unit_ref,
+            "sourceHash",
+            &format!("{label}.sourceHash"),
+        )?;
+        let key = format!("{bridge_unit_id}\0{source_unit_key}");
+        if !bridge_unit_keys.insert(key) {
+            return error(format!(
+                "{label} must be unique by bridgeUnitId and sourceUnitKey"
+            ));
+        }
+    }
+
+    let runtime_target_ids = required_array(
+        manifest,
+        "runtimeTargetIds",
+        "AlphaVerticalProofManifestV02.runtimeTargetIds",
+    )?;
+    if runtime_target_ids.is_empty() {
+        return error(
+            "AlphaVerticalProofManifestV02.runtimeTargetIds must contain at least one value",
+        );
+    }
+    let mut runtime_targets = HashSet::new();
+    for (index, runtime_target_id) in runtime_target_ids.iter().enumerate() {
+        let runtime_target_id = string_value(
+            runtime_target_id,
+            &format!("AlphaVerticalProofManifestV02.runtimeTargetIds[{index}]"),
+        )?;
+        if !runtime_targets.insert(runtime_target_id.to_string()) {
+            return error(format!(
+                "AlphaVerticalProofManifestV02.runtimeTargetIds[{index}] must not duplicate {runtime_target_id}"
+            ));
+        }
+    }
+
+    let artifact_refs = required_record(
+        manifest,
+        "artifactRefs",
+        "AlphaVerticalProofManifestV02.artifactRefs",
+    )?;
+    assert_record_keys(
+        artifact_refs,
+        &[
+            "publicFixtureManifest",
+            "bridgeBundle",
+            "patchExport",
+            "patchResult",
+            "deltaPackage",
+            "runtimeReport",
+            "findingReport",
+            "benchmarkReport",
+        ],
+        "AlphaVerticalProofManifestV02.artifactRefs",
+    )?;
+    let mut artifact_hashes = Vec::new();
+    for (field, kind) in [
+        ("publicFixtureManifest", "public_fixture_manifest"),
+        ("bridgeBundle", "bridge_bundle"),
+        ("patchExport", "patch_export"),
+        ("patchResult", "patch_result"),
+        ("deltaPackage", "delta_package"),
+        ("runtimeReport", "runtime_report"),
+        ("benchmarkReport", "benchmark_report"),
+    ] {
+        artifact_hashes.push(validate_alpha_proof_artifact_ref(
+            required(
+                artifact_refs,
+                field,
+                &format!("AlphaVerticalProofManifestV02.artifactRefs.{field}"),
+            )?,
+            &format!("AlphaVerticalProofManifestV02.artifactRefs.{field}"),
+            kind,
+        )?);
+    }
+    if let Some(finding_report) = artifact_refs.get("findingReport") {
+        artifact_hashes.push(validate_alpha_proof_artifact_ref(
+            finding_report,
+            "AlphaVerticalProofManifestV02.artifactRefs.findingReport",
+            "finding_report",
+        )?);
+    }
+
+    let provider_proof_ids = assert_uuid7_array(
+        required(
+            manifest,
+            "providerProofIds",
+            "AlphaVerticalProofManifestV02.providerProofIds",
+        )?,
+        "AlphaVerticalProofManifestV02.providerProofIds",
+    )?;
+    if provider_proof_ids.is_empty() {
+        return error(
+            "AlphaVerticalProofManifestV02.providerProofIds must contain at least one id",
+        );
+    }
+    let mut provider_proof_id_set = HashSet::new();
+    for (index, provider_proof_id) in provider_proof_ids.iter().enumerate() {
+        if !provider_proof_id_set.insert(provider_proof_id.to_string()) {
+            return error(format!(
+                "AlphaVerticalProofManifestV02.providerProofIds[{index}] must not duplicate {provider_proof_id}"
+            ));
+        }
+    }
+
+    let benchmark_output_refs = required_array(
+        manifest,
+        "benchmarkOutputRefs",
+        "AlphaVerticalProofManifestV02.benchmarkOutputRefs",
+    )?;
+    if benchmark_output_refs.is_empty() {
+        return error(
+            "AlphaVerticalProofManifestV02.benchmarkOutputRefs must contain at least one ref",
+        );
+    }
+    let mut benchmark_run_ids = HashSet::new();
+    for (index, benchmark_output_ref) in benchmark_output_refs.iter().enumerate() {
+        let label = format!("AlphaVerticalProofManifestV02.benchmarkOutputRefs[{index}]");
+        let benchmark_output_ref = as_record(benchmark_output_ref, &label)?;
+        assert_record_keys(
+            benchmark_output_ref,
+            &["benchmarkRunId", "artifactRef"],
+            &label,
+        )?;
+        let benchmark_run_id = assert_required_uuid7(
+            benchmark_output_ref,
+            "benchmarkRunId",
+            &format!("{label}.benchmarkRunId"),
+        )?;
+        if !benchmark_run_ids.insert(benchmark_run_id.to_string()) {
+            return error(format!(
+                "{label}.benchmarkRunId must be unique within benchmarkOutputRefs"
+            ));
+        }
+        validate_alpha_proof_artifact_ref(
+            required(
+                benchmark_output_ref,
+                "artifactRef",
+                &format!("{label}.artifactRef"),
+            )?,
+            &format!("{label}.artifactRef"),
+            "benchmark_report",
+        )?;
+    }
+
+    let content_hashes = validate_alpha_proof_content_hashes(
+        required(
+            manifest,
+            "contentHashes",
+            "AlphaVerticalProofManifestV02.contentHashes",
+        )?,
+        "AlphaVerticalProofManifestV02.contentHashes",
+    )?;
+    for required_scope in [
+        "public_fixture_manifest",
+        "source_bundle",
+        "bridge_bundle",
+        "patch_export",
+        "patch_result",
+        "delta_package",
+        "runtime_report",
+        "benchmark_report",
+    ] {
+        if !content_hashes
+            .iter()
+            .any(|(scope, _content_id, _hash)| scope == required_scope)
+        {
+            return error(format!(
+                "AlphaVerticalProofManifestV02.contentHashes must include {required_scope}"
+            ));
+        }
+    }
+    assert_alpha_hash_covered(
+        &content_hashes,
+        "source_bundle",
+        source_bundle_hash,
+        "AlphaVerticalProofManifestV02.sourceBundleHash",
+    )?;
+    for (kind, hash) in artifact_hashes {
+        assert_alpha_hash_covered(
+            &content_hashes,
+            alpha_hash_scope_for_artifact_kind(&kind),
+            &hash,
+            &format!("AlphaVerticalProofManifestV02.artifactRefs.{kind}.hash"),
+        )?;
+    }
+    assert_string_array(
+        required(
+            manifest,
+            "compatibilityNotes",
+            "AlphaVerticalProofManifestV02.compatibilityNotes",
+        )?,
+        "AlphaVerticalProofManifestV02.compatibilityNotes",
+    )?;
+    Ok(())
 }
 
 pub fn validate_contract_fixture_manifest_v02(value: &Value) -> BridgeContractResult<()> {
@@ -4503,6 +4889,19 @@ fn required<'a>(
         .ok_or_else(|| BridgeContractValidationError::new(format!("{label} is required")))
 }
 
+fn assert_record_keys(
+    record: &Map<String, Value>,
+    allowed_keys: &[&str],
+    label: &str,
+) -> BridgeContractResult<()> {
+    for key in record.keys() {
+        if !allowed_keys.contains(&key.as_str()) {
+            return error(format!("{label}.{key} is not allowed"));
+        }
+    }
+    Ok(())
+}
+
 fn required_record<'a>(
     record: &'a Map<String, Value>,
     key: &str,
@@ -4564,6 +4963,23 @@ fn assert_required_string<'a>(
     label: &str,
 ) -> BridgeContractResult<&'a str> {
     string_value(required(record, key, label)?, label)
+}
+
+fn assert_public_fixture_id(value: &str, label: &str) -> BridgeContractResult<()> {
+    let mut chars = value.chars();
+    let Some(first) = chars.next() else {
+        return error(format!("{label} must be a public fixture id"));
+    };
+    if !first.is_ascii_lowercase() && !first.is_ascii_digit() {
+        return error(format!("{label} must be a public fixture id"));
+    }
+    if chars
+        .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || matches!(ch, '.' | '_' | '-'))
+    {
+        Ok(())
+    } else {
+        error(format!("{label} must be a public fixture id"))
+    }
 }
 
 fn assert_required_uuid7<'a>(
@@ -4832,6 +5248,113 @@ fn assert_exact_string_set(
     Ok(())
 }
 
+fn validate_alpha_proof_artifact_ref(
+    value: &Value,
+    label: &str,
+    expected_kind: &str,
+) -> BridgeContractResult<(String, String)> {
+    let artifact_ref = as_record(value, label)?;
+    assert_record_keys(
+        artifact_ref,
+        &[
+            "artifactId",
+            "artifactKind",
+            "uri",
+            "hash",
+            "mediaType",
+            "byteSize",
+        ],
+        label,
+    )?;
+    assert_required_uuid7(artifact_ref, "artifactId", &format!("{label}.artifactId"))?;
+    let kind = assert_required_one_of(
+        artifact_ref,
+        "artifactKind",
+        ALPHA_VERTICAL_PROOF_ARTIFACT_KINDS_V02,
+        &format!("{label}.artifactKind"),
+    )?;
+    if kind != expected_kind {
+        return error(format!("{label}.artifactKind must be {expected_kind}"));
+    }
+    assert_required_public_uri(artifact_ref, "uri", &format!("{label}.uri"))?;
+    let hash = assert_required_hash(artifact_ref, "hash", &format!("{label}.hash"))?;
+    if let Some(media_type) = artifact_ref.get("mediaType") {
+        string_value(media_type, &format!("{label}.mediaType"))?;
+    }
+    if let Some(byte_size) = artifact_ref.get("byteSize") {
+        positive_integer_value(byte_size, &format!("{label}.byteSize"))?;
+    }
+    Ok((kind.to_string(), hash.to_string()))
+}
+
+fn validate_alpha_proof_content_hashes(
+    value: &Value,
+    label: &str,
+) -> BridgeContractResult<Vec<(String, String, String)>> {
+    let hashes = array_value(value, label)?;
+    if hashes.is_empty() {
+        return error(format!("{label} must contain at least one content hash"));
+    }
+    let mut entries = Vec::new();
+    let mut keys = HashSet::new();
+    for (index, hash) in hashes.iter().enumerate() {
+        let hash_label = format!("{label}[{index}]");
+        let entry = as_record(hash, &hash_label)?;
+        assert_record_keys(entry, &["scope", "contentId", "hash"], &hash_label)?;
+        let scope = assert_required_one_of(
+            entry,
+            "scope",
+            ALPHA_VERTICAL_PROOF_HASH_SCOPES_V02,
+            &format!("{hash_label}.scope"),
+        )?;
+        let content_id =
+            assert_required_string(entry, "contentId", &format!("{hash_label}.contentId"))?;
+        let hash = assert_required_hash(entry, "hash", &format!("{hash_label}.hash"))?;
+        let key = format!("{scope}\0{content_id}");
+        if !keys.insert(key) {
+            return error(format!(
+                "{hash_label} must be unique by scope and contentId"
+            ));
+        }
+        entries.push((scope.to_string(), content_id.to_string(), hash.to_string()));
+    }
+    Ok(entries)
+}
+
+fn assert_alpha_hash_covered(
+    hashes: &[(String, String, String)],
+    scope: &str,
+    hash: &str,
+    label: &str,
+) -> BridgeContractResult<()> {
+    if hashes
+        .iter()
+        .any(|(candidate_scope, _content_id, candidate_hash)| {
+            candidate_scope == scope && candidate_hash == hash
+        })
+    {
+        Ok(())
+    } else {
+        error(format!(
+            "{label} must be represented in AlphaVerticalProofManifestV02.contentHashes"
+        ))
+    }
+}
+
+fn alpha_hash_scope_for_artifact_kind(kind: &str) -> &str {
+    match kind {
+        "public_fixture_manifest" => "public_fixture_manifest",
+        "bridge_bundle" => "bridge_bundle",
+        "patch_export" => "patch_export",
+        "patch_result" => "patch_result",
+        "delta_package" => "delta_package",
+        "runtime_report" => "runtime_report",
+        "finding_report" => "finding_report",
+        "benchmark_report" => "benchmark_report",
+        _ => unreachable!(),
+    }
+}
+
 fn assert_fixture_path_value(value: &Value, label: &str) -> BridgeContractResult<()> {
     let value = string_value(value, label)?;
     assert_fixture_path(value, label)
@@ -4899,6 +5422,20 @@ fn assert_portable_uri(value: &Value, label: &str) -> BridgeContractResult<()> {
     Ok(())
 }
 
+fn assert_required_public_uri(
+    record: &Map<String, Value>,
+    key: &str,
+    label: &str,
+) -> BridgeContractResult<()> {
+    let value = required(record, key, label)?;
+    assert_portable_uri(value, label)?;
+    let value = string_value(value, label)?;
+    if value.contains("fixtures/private-local/") {
+        return error(format!("{label} must not reference fixtures/private-local"));
+    }
+    Ok(())
+}
+
 fn assert_portable_path(value: &str, label: &str) -> BridgeContractResult<()> {
     if value.starts_with('/') {
         return error(format!(
@@ -4941,6 +5478,58 @@ fn assert_no_confidence_fields(value: &Value, label: &str) -> BridgeContractResu
                     ));
                 }
                 assert_no_confidence_fields(child, &format!("{label}.{key}"))?;
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn assert_no_raw_private_or_secret_fields(value: &Value, label: &str) -> BridgeContractResult<()> {
+    match value {
+        Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                assert_no_raw_private_or_secret_fields(item, &format!("{label}[{index}]"))?;
+            }
+        }
+        Value::Object(object) => {
+            for (key, child) in object {
+                if [
+                    "authorization",
+                    "apiKey",
+                    "api_key",
+                    "bearer",
+                    "completionText",
+                    "completion_text",
+                    "password",
+                    "privateKey",
+                    "private_key",
+                    "promptText",
+                    "prompt_text",
+                    "rawContent",
+                    "raw_content",
+                    "rawPrivateData",
+                    "raw_private_data",
+                    "rawText",
+                    "raw_text",
+                    "requestBody",
+                    "request_body",
+                    "responseBody",
+                    "response_body",
+                    "secret",
+                ]
+                .contains(&key.as_str())
+                {
+                    return error(format!(
+                        "{label}.{key} is not allowed; record ids, hashes, or artifact refs"
+                    ));
+                }
+                assert_no_raw_private_or_secret_fields(child, &format!("{label}.{key}"))?;
+            }
+        }
+        Value::String(value) => {
+            if value.contains("fixtures/private-local/") {
+                return error(format!("{label} must not reference fixtures/private-local"));
             }
         }
         _ => {}

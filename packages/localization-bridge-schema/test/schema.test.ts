@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  assertAlphaVerticalProofManifestV02,
   assertAssetPolicyBundleV02,
   assertBridgeBundle,
   assertBridgeBundleV02,
@@ -552,6 +553,41 @@ describe("localization bridge schema guards", () => {
         subjectKind: "bridge_unit",
         subjectId: bridgeUnits[2]?.bridgeUnitId,
       }),
+    );
+  });
+
+  it("accepts the public alpha vertical proof manifest fixture", () => {
+    const manifest = publicFixture("fixtures/public/hello-game-alpha-vertical-proof.manifest.json");
+    const proofPath = "fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json";
+    const proofManifest = publicFixture(proofPath);
+    const manifestFiles = manifest.files as Array<{
+      path: string;
+      role: string;
+      sha256: string;
+      redistributable: boolean;
+    }>;
+
+    expect(manifestFiles).toContainEqual(
+      expect.objectContaining({
+        path: proofPath,
+        role: "alpha-proof-manifest",
+        sha256: publicFixtureSha256(proofPath),
+        redistributable: true,
+      }),
+    );
+    expect(() => assertAlphaVerticalProofManifestV02(proofManifest)).not.toThrow();
+    expect(proofManifest.fixture).toEqual(
+      expect.objectContaining({
+        fixtureId: "hello-game",
+        publicManifestUri: "fixtures/public/hello-game.manifest.json",
+        publicRedistribution: "allowed",
+      }),
+    );
+    expect(proofManifest.runtimeTargetIds).toEqual(
+      expect.arrayContaining([
+        "kaifuu-fixture:patch-apply:fr-FR",
+        "utsushi-fixture:web-review:fr-FR",
+      ]),
     );
   });
 

@@ -32,6 +32,12 @@ The bridge package is intentionally independent from any one subproject. Kaifuu 
   `BenchmarkReportV02`, provider/cost/token ledger records, localization
   benchmark finding records, deterministic QA records, QA-agent evaluation
   records, human evaluation records, and `assertBenchmarkReportV02`.
+- `0.2.0` defines the alpha vertical proof manifest exported as
+  `AlphaVerticalProofManifestV02` and `assertAlphaVerticalProofManifestV02`.
+  It ties a public fixture id, engine profile, source revision, bridge unit
+  refs, runtime target ids, patch/export/result artifact refs, provider proof
+  ids, benchmark output refs, and content hashes without embedding raw provider
+  text, secrets, or private-local corpus paths.
 
 `PolicyRecordV02.scope` is a known surface category, not freeform text. Use a
 value from the exported `POLICY_SCOPES` list, which currently mirrors
@@ -45,6 +51,9 @@ bundle.
 bridge bundle.
 `test/examples/benchmark-report-v0.2.json` is a benchmark report fixture, not a
 bridge bundle; it includes a raw MTL baseline as a normal compared system.
+`test/examples/alpha-vertical-proof-manifest-v0.2.json` is an alpha proof
+manifest fixture that links the public hello-game fixture evidence across
+Itotori, Kaifuu, and Utsushi artifact surfaces.
 `test/examples/contract-fixtures-v0.2.json` is the manifest consumed by both
 TypeScript and Rust validation. It lists all committed valid fixtures and all
 committed invalid fixtures with the semantic error each invalid case must

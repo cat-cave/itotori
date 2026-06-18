@@ -116,6 +116,7 @@
               "delta-package",
               "runtime-report",
               "benchmark-report",
+              "alpha-proof-manifest",
               "finding",
               "runtime-evidence",
               "benchmark-input",

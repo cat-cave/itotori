@@ -1,0 +1,194 @@
+{
+  "schemaVersion": "0.2.0",
+  "proofManifestId": "019ed025-0000-7000-8000-000000000001",
+  "createdAt": "2026-06-18T12:00:00.000Z",
+  "fixture": {
+    "fixtureId": "hello-game",
+    "publicManifestUri": "fixtures/public/hello-game.manifest.json",
+    "publicManifestHash": "sha256:3e4eb26164f3892d138c883a1da2fcfb37d1882b274755d30d36288d8324db9a",
+    "publicRedistribution": "allowed"
+  },
+  "engineProfile": {
+    "engineProfileId": "kaifuu-fixture-public-golden",
+    "engineKind": "synthetic-json",
+    "kaifuuProfileId": "kaifuu-fixture-public-golden",
+    "itotoriWorkflowId": "itotori-alpha-vertical-proof",
+    "utsushiRuntimeProfileId": "utsushi-fixture"
+  },
+  "sourceRevision": {
+    "revisionId": "019ed012-0000-7000-8000-000000000101",
+    "revisionKind": "content_hash",
+    "value": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498"
+  },
+  "sourceBridgeId": "019ed012-0000-7000-8000-000000000001",
+  "sourceBundleHash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498",
+  "bridgeUnitRefs": [
+    {
+      "bridgeUnitId": "019ed012-0000-7000-8000-000000000400",
+      "sourceUnitKey": "hello.scene.001.line.001",
+      "sourceHash": "sha256:5a90ff534bd5d6135dbc9f3a9df1277b0bffb97bf60ea50bf96e48252534105d"
+    },
+    {
+      "bridgeUnitId": "019ed012-0000-7000-8000-000000000402",
+      "sourceUnitKey": "hello.scene.001.line.002",
+      "sourceHash": "sha256:8c6b06d69cbf11e5de129f7035e13ec875f79eec5b81f5b43c503051554b60e9"
+    },
+    {
+      "bridgeUnitId": "019ed012-0000-7000-8000-000000000409",
+      "sourceUnitKey": "image.sign-caution.region-0",
+      "sourceHash": "sha256:bcc762097712c1451c17c964f6458b9725f7a40c0fe1e1edbe44a74eea7d3dd6"
+    }
+  ],
+  "runtimeTargetIds": ["kaifuu-fixture:patch-apply:fr-FR", "utsushi-fixture:web-review:fr-FR"],
+  "artifactRefs": {
+    "publicFixtureManifest": {
+      "artifactId": "019ed025-0000-7000-8000-000000000101",
+      "artifactKind": "public_fixture_manifest",
+      "uri": "fixtures/public/hello-game.manifest.json",
+      "hash": "sha256:3e4eb26164f3892d138c883a1da2fcfb37d1882b274755d30d36288d8324db9a",
+      "mediaType": "application/json",
+      "byteSize": 5060
+    },
+    "bridgeBundle": {
+      "artifactId": "019ed012-0000-7000-8000-000000000001",
+      "artifactKind": "bridge_bundle",
+      "uri": "fixtures/hello-game/expected/bridge-v0.2.json",
+      "hash": "sha256:6102810a6a9c0c5239ed5666aea9379694a14067ee07af39064fd404967af6cc",
+      "mediaType": "application/json",
+      "byteSize": 31595
+    },
+    "patchExport": {
+      "artifactId": "019ed012-0000-7000-8000-000000000901",
+      "artifactKind": "patch_export",
+      "uri": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
+      "hash": "sha256:1fb49bd51cf9343b89404baf89d628362bda10058b2ff3921f150ab5eb8938d5",
+      "mediaType": "application/json",
+      "byteSize": 8706
+    },
+    "patchResult": {
+      "artifactId": "019ed012-0000-7000-8000-000000000902",
+      "artifactKind": "patch_result",
+      "uri": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
+      "hash": "sha256:4c05bfedab6cff96ad314d794f393a39453da16aecf4c68bae9bc9b8699ccea7",
+      "mediaType": "application/json",
+      "byteSize": 5562
+    },
+    "deltaPackage": {
+      "artifactId": "019ed012-0000-7000-8000-000000000903",
+      "artifactKind": "delta_package",
+      "uri": "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
+      "hash": "sha256:a9cb30ef265ac6dbc0ff8690f80ddad25876e05a3396e83ecf37dc2370cdd4f2",
+      "mediaType": "application/json",
+      "byteSize": 1990
+    },
+    "runtimeReport": {
+      "artifactId": "019ed012-0000-7000-8000-000000000904",
+      "artifactKind": "runtime_report",
+      "uri": "fixtures/hello-game/expected/runtime-report-v0.2.fr-FR.json",
+      "hash": "sha256:c71310b80e2e96bb6420c608da080e248a6433cfd1a2f6e65abe508ff485ec0b",
+      "mediaType": "application/json",
+      "byteSize": 6879
+    },
+    "findingReport": {
+      "artifactId": "019ed012-0000-7000-8000-000000000905",
+      "artifactKind": "finding_report",
+      "uri": "fixtures/hello-game/expected/finding-v0.2.fr-FR.json",
+      "hash": "sha256:757fb7dd628e0bc23790c751842c30cae411d4342667e23e93aff7826cd43c5c",
+      "mediaType": "application/json",
+      "byteSize": 2194
+    },
+    "benchmarkReport": {
+      "artifactId": "019ed012-0000-7000-8000-000000000906",
+      "artifactKind": "benchmark_report",
+      "uri": "fixtures/hello-game/expected/benchmark-report-v0.2.fr-FR.json",
+      "hash": "sha256:e08217064d9fc1eb95fd6d848c29628cff24c0520d4a4f03eace72cf2d4075b3",
+      "mediaType": "application/json",
+      "byteSize": 6731
+    }
+  },
+  "providerProofIds": ["019ed025-0000-7000-8000-000000000201"],
+  "benchmarkOutputRefs": [
+    {
+      "benchmarkRunId": "019ed012-0000-7000-8000-000000000906",
+      "artifactRef": {
+        "artifactId": "019ed012-0000-7000-8000-000000000906",
+        "artifactKind": "benchmark_report",
+        "uri": "fixtures/hello-game/expected/benchmark-report-v0.2.fr-FR.json",
+        "hash": "sha256:e08217064d9fc1eb95fd6d848c29628cff24c0520d4a4f03eace72cf2d4075b3",
+        "mediaType": "application/json",
+        "byteSize": 6731
+      }
+    }
+  ],
+  "contentHashes": [
+    {
+      "scope": "public_fixture_manifest",
+      "contentId": "fixtures/public/hello-game.manifest.json",
+      "hash": "sha256:3e4eb26164f3892d138c883a1da2fcfb37d1882b274755d30d36288d8324db9a"
+    },
+    {
+      "scope": "source_bundle",
+      "contentId": "hello-game:source-bundle",
+      "hash": "sha256:0c659aa5e7a4939bbad9198b81f96408623d7b5d321a6725509d105386001498"
+    },
+    {
+      "scope": "bridge_bundle",
+      "contentId": "fixtures/hello-game/expected/bridge-v0.2.json",
+      "hash": "sha256:6102810a6a9c0c5239ed5666aea9379694a14067ee07af39064fd404967af6cc"
+    },
+    {
+      "scope": "bridge_unit",
+      "contentId": "019ed012-0000-7000-8000-000000000400",
+      "hash": "sha256:5a90ff534bd5d6135dbc9f3a9df1277b0bffb97bf60ea50bf96e48252534105d"
+    },
+    {
+      "scope": "bridge_unit",
+      "contentId": "019ed012-0000-7000-8000-000000000402",
+      "hash": "sha256:8c6b06d69cbf11e5de129f7035e13ec875f79eec5b81f5b43c503051554b60e9"
+    },
+    {
+      "scope": "bridge_unit",
+      "contentId": "019ed012-0000-7000-8000-000000000409",
+      "hash": "sha256:bcc762097712c1451c17c964f6458b9725f7a40c0fe1e1edbe44a74eea7d3dd6"
+    },
+    {
+      "scope": "patch_export",
+      "contentId": "fixtures/hello-game/expected/patch-export-v0.2.fr-FR.json",
+      "hash": "sha256:1fb49bd51cf9343b89404baf89d628362bda10058b2ff3921f150ab5eb8938d5"
+    },
+    {
+      "scope": "patch_result",
+      "contentId": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
+      "hash": "sha256:4c05bfedab6cff96ad314d794f393a39453da16aecf4c68bae9bc9b8699ccea7"
+    },
+    {
+      "scope": "delta_package",
+      "contentId": "fixtures/hello-game/expected/delta-package-v0.2.fr-FR.json",
+      "hash": "sha256:a9cb30ef265ac6dbc0ff8690f80ddad25876e05a3396e83ecf37dc2370cdd4f2"
+    },
+    {
+      "scope": "runtime_report",
+      "contentId": "fixtures/hello-game/expected/runtime-report-v0.2.fr-FR.json",
+      "hash": "sha256:c71310b80e2e96bb6420c608da080e248a6433cfd1a2f6e65abe508ff485ec0b"
+    },
+    {
+      "scope": "finding_report",
+      "contentId": "fixtures/hello-game/expected/finding-v0.2.fr-FR.json",
+      "hash": "sha256:757fb7dd628e0bc23790c751842c30cae411d4342667e23e93aff7826cd43c5c"
+    },
+    {
+      "scope": "benchmark_report",
+      "contentId": "fixtures/hello-game/expected/benchmark-report-v0.2.fr-FR.json",
+      "hash": "sha256:e08217064d9fc1eb95fd6d848c29628cff24c0520d4a4f03eace72cf2d4075b3"
+    },
+    {
+      "scope": "provider_proof",
+      "contentId": "019ed025-0000-7000-8000-000000000201",
+      "hash": "sha256:8f4508f23d8c4b9bf5d0c1b9695a9b311c0a2dcb461569e01720813ec75d2c8d"
+    }
+  ],
+  "compatibilityNotes": [
+    "Alpha proof manifest records ids, artifact refs, and hashes only; it does not embed provider prompts, completions, secrets, or private-local corpus paths.",
+    "The public fixture manifest hash identifies the hello-game fixture catalog input for this proof, not this proof manifest's catalog entry."
+  ]
+}

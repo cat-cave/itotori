@@ -9,6 +9,14 @@
   "overallStatus": "compatible",
   "coverage": [
     {
+      "kind": "alpha-vertical-proof-manifest-v0.2",
+      "typescriptValidator": "assertAlphaVerticalProofManifestV02",
+      "rustValidator": "validate_alpha_vertical_proof_manifest_v02",
+      "validFixtures": ["./alpha-vertical-proof-manifest-v0.2.json"],
+      "invalidFixtures": ["./invalid/alpha-vertical-proof-manifest-v0.2-private-uri.json"],
+      "status": "compatible"
+    },
+    {
       "kind": "asset-policy-v0.2",
       "typescriptValidator": "assertAssetPolicyBundleV02",
       "rustValidator": "validate_asset_policy_bundle_v02",
@@ -143,6 +151,16 @@
       "rule": "runtime bridgeUnitRef values use bridge unit ids and source unit keys from the bridge fixture."
     },
     {
+      "from": "./alpha-vertical-proof-manifest-v0.2.json",
+      "to": "./bridge-v0.2.json",
+      "rule": "alpha proof bridgeUnitRefs name bridge unit ids, source unit keys, and unit hashes from the public bridge fixture."
+    },
+    {
+      "from": "./alpha-vertical-proof-manifest-v0.2.json",
+      "to": "./benchmark-report-v0.2.json",
+      "rule": "alpha proof benchmarkOutputRefs name the benchmark run id and benchmark report artifact hash."
+    },
+    {
       "from": "./permission-local-user-v0.2.json",
       "to": "docs/permissions.md",
       "rule": "local-user has the full MVP permission grant set, including feedback.import."
@@ -151,6 +169,6 @@
   "notes": [
     "TypeScript schema source remains the hand-edited authority; Rust validators are downstream parity checks.",
     "Invalid fixtures are committed and must fail with semantic error text in both languages.",
-    "The permission-local-user fixture is validated with the same manifest as bridge, patch, delta, runtime, benchmark, asset-policy, and finding contracts."
+    "The permission-local-user fixture is validated with the same manifest as bridge, patch, delta, runtime, benchmark, asset-policy, finding, and alpha proof contracts."
   ]
 }

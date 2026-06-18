@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "0.2.0",
+  "proofManifestId": "019ed025-0000-7000-8000-00000000f001",
+  "createdAt": "2026-06-18T12:00:00.000Z",
+  "fixture": {
+    "fixtureId": "hello-game",
+    "publicManifestUri": "fixtures/private-local/hello-game.manifest.json",
+    "publicManifestHash": "sha256:3e4eb26164f3892d138c883a1da2fcfb37d1882b274755d30d36288d8324db9a",
+    "publicRedistribution": "allowed"
+  }
+}

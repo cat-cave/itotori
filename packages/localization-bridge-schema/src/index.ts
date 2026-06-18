@@ -562,6 +562,7 @@ export const ITOTORI_PERMISSION_VALUES_V02 = [
 export type ItotoriPermissionV02 = (typeof ITOTORI_PERMISSION_VALUES_V02)[number];
 
 export const CONTRACT_FIXTURE_KINDS_V02 = [
+  "alpha-vertical-proof-manifest-v0.2",
   "asset-policy-v0.2",
   "benchmark-report-v0.2",
   "bridge-v0.2",
@@ -579,6 +580,34 @@ export type ContractFixtureKindV02 = (typeof CONTRACT_FIXTURE_KINDS_V02)[number]
 
 export const CONTRACT_COMPATIBILITY_STATUSES_V02 = ["compatible", "incompatible"] as const;
 export type ContractCompatibilityStatusV02 = (typeof CONTRACT_COMPATIBILITY_STATUSES_V02)[number];
+
+export const ALPHA_VERTICAL_PROOF_ARTIFACT_KINDS_V02 = [
+  "public_fixture_manifest",
+  "bridge_bundle",
+  "patch_export",
+  "patch_result",
+  "delta_package",
+  "runtime_report",
+  "finding_report",
+  "benchmark_report",
+] as const;
+export type AlphaVerticalProofArtifactKindV02 =
+  (typeof ALPHA_VERTICAL_PROOF_ARTIFACT_KINDS_V02)[number];
+
+export const ALPHA_VERTICAL_PROOF_HASH_SCOPES_V02 = [
+  "public_fixture_manifest",
+  "source_bundle",
+  "bridge_bundle",
+  "bridge_unit",
+  "patch_export",
+  "patch_result",
+  "delta_package",
+  "runtime_report",
+  "finding_report",
+  "benchmark_report",
+  "provider_proof",
+] as const;
+export type AlphaVerticalProofHashScopeV02 = (typeof ALPHA_VERTICAL_PROOF_HASH_SCOPES_V02)[number];
 
 export const RUNTIME_EXPECTATION_KINDS = [
   "trace_text",
@@ -1614,6 +1643,78 @@ export type PermissionLocalUserFixtureV02 = {
   compatibilityNotes: string[];
 };
 
+export type AlphaVerticalProofFixtureRefV02 = {
+  fixtureId: string;
+  publicManifestUri: string;
+  publicManifestHash: string;
+  publicRedistribution: "allowed";
+};
+
+export type AlphaVerticalProofEngineProfileV02 = {
+  engineProfileId: string;
+  engineKind: string;
+  kaifuuProfileId: string;
+  itotoriWorkflowId: string;
+  utsushiRuntimeProfileId: string;
+};
+
+export type AlphaVerticalProofBridgeUnitRefV02 = {
+  bridgeUnitId: Uuid7;
+  sourceUnitKey: string;
+  sourceHash: string;
+};
+
+export type AlphaVerticalProofArtifactRefV02 = {
+  artifactId: Uuid7;
+  artifactKind: AlphaVerticalProofArtifactKindV02;
+  uri: string;
+  hash: string;
+  mediaType?: string;
+  byteSize?: number;
+};
+
+export type AlphaVerticalProofArtifactRefsV02 = {
+  publicFixtureManifest: AlphaVerticalProofArtifactRefV02 & {
+    artifactKind: "public_fixture_manifest";
+  };
+  bridgeBundle: AlphaVerticalProofArtifactRefV02 & { artifactKind: "bridge_bundle" };
+  patchExport: AlphaVerticalProofArtifactRefV02 & { artifactKind: "patch_export" };
+  patchResult: AlphaVerticalProofArtifactRefV02 & { artifactKind: "patch_result" };
+  deltaPackage: AlphaVerticalProofArtifactRefV02 & { artifactKind: "delta_package" };
+  runtimeReport: AlphaVerticalProofArtifactRefV02 & { artifactKind: "runtime_report" };
+  findingReport?: AlphaVerticalProofArtifactRefV02 & { artifactKind: "finding_report" };
+  benchmarkReport: AlphaVerticalProofArtifactRefV02 & { artifactKind: "benchmark_report" };
+};
+
+export type AlphaVerticalProofBenchmarkOutputRefV02 = {
+  benchmarkRunId: Uuid7;
+  artifactRef: AlphaVerticalProofArtifactRefV02 & { artifactKind: "benchmark_report" };
+};
+
+export type AlphaVerticalProofContentHashV02 = {
+  scope: AlphaVerticalProofHashScopeV02;
+  contentId: string;
+  hash: string;
+};
+
+export type AlphaVerticalProofManifestV02 = {
+  schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
+  proofManifestId: Uuid7;
+  createdAt: string;
+  fixture: AlphaVerticalProofFixtureRefV02;
+  engineProfile: AlphaVerticalProofEngineProfileV02;
+  sourceRevision: SourceRevisionV02;
+  sourceBridgeId: Uuid7;
+  sourceBundleHash: string;
+  bridgeUnitRefs: AlphaVerticalProofBridgeUnitRefV02[];
+  runtimeTargetIds: string[];
+  artifactRefs: AlphaVerticalProofArtifactRefsV02;
+  providerProofIds: Uuid7[];
+  benchmarkOutputRefs: AlphaVerticalProofBenchmarkOutputRefV02[];
+  contentHashes: AlphaVerticalProofContentHashV02[];
+  compatibilityNotes: string[];
+};
+
 export type ContractFixtureManifestEntryV02 = {
   kind: ContractFixtureKindV02;
   path: string;
@@ -2339,6 +2440,136 @@ export function assertPermissionLocalUserFixtureV02(
   assertStringArray(fixture.compatibilityNotes, "PermissionLocalUserFixtureV02.compatibilityNotes");
 }
 
+export function assertAlphaVerticalProofManifestV02(
+  value: unknown,
+): asserts value is AlphaVerticalProofManifestV02 {
+  assertNoConfidenceFields(value, "AlphaVerticalProofManifestV02");
+  assertNoRawPrivateOrSecretFieldsV02(value, "AlphaVerticalProofManifestV02");
+  const manifest = asRecord(value, "AlphaVerticalProofManifestV02");
+  assertAllowedKeysV02(
+    manifest,
+    [
+      "schemaVersion",
+      "proofManifestId",
+      "createdAt",
+      "fixture",
+      "engineProfile",
+      "sourceRevision",
+      "sourceBridgeId",
+      "sourceBundleHash",
+      "bridgeUnitRefs",
+      "runtimeTargetIds",
+      "artifactRefs",
+      "providerProofIds",
+      "benchmarkOutputRefs",
+      "contentHashes",
+      "compatibilityNotes",
+    ],
+    "AlphaVerticalProofManifestV02",
+  );
+  assertEqual(
+    manifest.schemaVersion,
+    BRIDGE_SCHEMA_VERSION_V02,
+    "AlphaVerticalProofManifestV02.schemaVersion",
+  );
+  assertUuid7(manifest.proofManifestId, "AlphaVerticalProofManifestV02.proofManifestId");
+  assertRfc3339Instant(manifest.createdAt, "AlphaVerticalProofManifestV02.createdAt");
+  assertAlphaVerticalProofFixtureRefV02(manifest.fixture, "AlphaVerticalProofManifestV02.fixture");
+  assertAlphaVerticalProofEngineProfileV02(
+    manifest.engineProfile,
+    "AlphaVerticalProofManifestV02.engineProfile",
+  );
+  assertSourceRevisionV02(manifest.sourceRevision, "AlphaVerticalProofManifestV02.sourceRevision");
+  assertUuid7(manifest.sourceBridgeId, "AlphaVerticalProofManifestV02.sourceBridgeId");
+  assertHashStringV02(manifest.sourceBundleHash, "AlphaVerticalProofManifestV02.sourceBundleHash");
+  assertRevisionHashMatchesV02(
+    manifest.sourceRevision,
+    manifest.sourceBundleHash,
+    "AlphaVerticalProofManifestV02.sourceRevision",
+  );
+
+  const bridgeUnitRefs = asArray(
+    manifest.bridgeUnitRefs,
+    "AlphaVerticalProofManifestV02.bridgeUnitRefs",
+  );
+  if (bridgeUnitRefs.length === 0) {
+    throw new Error("AlphaVerticalProofManifestV02.bridgeUnitRefs must contain at least one ref");
+  }
+  const bridgeUnitRefKeys = new Set<string>();
+  for (const [index, ref] of bridgeUnitRefs.entries()) {
+    const label = `AlphaVerticalProofManifestV02.bridgeUnitRefs[${index}]`;
+    assertAlphaVerticalProofBridgeUnitRefV02(ref, label);
+    const refKey = `${ref.bridgeUnitId}\0${ref.sourceUnitKey}`;
+    if (bridgeUnitRefKeys.has(refKey)) {
+      throw new Error(`${label} must be unique by bridgeUnitId and sourceUnitKey`);
+    }
+    bridgeUnitRefKeys.add(refKey);
+  }
+
+  assertUniqueNonEmptyStringArrayV02(
+    manifest.runtimeTargetIds,
+    "AlphaVerticalProofManifestV02.runtimeTargetIds",
+  );
+  assertAlphaVerticalProofArtifactRefsV02(
+    manifest.artifactRefs,
+    "AlphaVerticalProofManifestV02.artifactRefs",
+  );
+  const artifactRefs = manifest.artifactRefs;
+  const providerProofIds = assertUniqueUuid7ArrayV02(
+    manifest.providerProofIds,
+    "AlphaVerticalProofManifestV02.providerProofIds",
+  );
+  if (providerProofIds.length === 0) {
+    throw new Error("AlphaVerticalProofManifestV02.providerProofIds must contain at least one id");
+  }
+
+  const benchmarkOutputRefs = asArray(
+    manifest.benchmarkOutputRefs,
+    "AlphaVerticalProofManifestV02.benchmarkOutputRefs",
+  );
+  if (benchmarkOutputRefs.length === 0) {
+    throw new Error(
+      "AlphaVerticalProofManifestV02.benchmarkOutputRefs must contain at least one ref",
+    );
+  }
+  const benchmarkRunIds = new Set<Uuid7>();
+  for (const [index, ref] of benchmarkOutputRefs.entries()) {
+    const label = `AlphaVerticalProofManifestV02.benchmarkOutputRefs[${index}]`;
+    assertAlphaVerticalProofBenchmarkOutputRefV02(ref, label);
+    if (benchmarkRunIds.has(ref.benchmarkRunId)) {
+      throw new Error(`${label}.benchmarkRunId must be unique within benchmarkOutputRefs`);
+    }
+    benchmarkRunIds.add(ref.benchmarkRunId);
+  }
+
+  const contentHashes = assertAlphaVerticalProofContentHashesV02(
+    manifest.contentHashes,
+    "AlphaVerticalProofManifestV02.contentHashes",
+  );
+  assertAlphaVerticalProofRequiredHashScopesV02(contentHashes);
+  assertAlphaVerticalProofHashCoveredV02(
+    contentHashes,
+    "source_bundle",
+    manifest.sourceBundleHash,
+    "AlphaVerticalProofManifestV02.sourceBundleHash",
+  );
+  for (const artifactRef of Object.values(artifactRefs)) {
+    if (artifactRef === undefined) {
+      continue;
+    }
+    assertAlphaVerticalProofHashCoveredV02(
+      contentHashes,
+      alphaVerticalProofHashScopeForArtifactKindV02(artifactRef.artifactKind),
+      artifactRef.hash,
+      `AlphaVerticalProofManifestV02.artifactRefs.${artifactRef.artifactKind}.hash`,
+    );
+  }
+  assertStringArray(
+    manifest.compatibilityNotes,
+    "AlphaVerticalProofManifestV02.compatibilityNotes",
+  );
+}
+
 export function assertContractFixtureManifestV02(
   value: unknown,
 ): asserts value is ContractFixtureManifestV02 {
@@ -2450,6 +2681,9 @@ export function assertContractCompatibilityReportV02(
 export function assertContractFixtureV02(kind: string, value: unknown): void {
   assertEnum(kind, CONTRACT_FIXTURE_KINDS_V02, "ContractFixtureV02.kind");
   switch (kind) {
+    case "alpha-vertical-proof-manifest-v0.2":
+      assertAlphaVerticalProofManifestV02(value);
+      return;
     case "asset-policy-v0.2":
       assertAssetPolicyBundleV02(value);
       return;
@@ -3285,6 +3519,16 @@ function assertPortableArtifactUriV02(value: unknown, label: string): asserts va
   }
   if (/^[A-Za-z]:[\\/]/.test(value) || value.includes("\\")) {
     throw new Error(`${label} must use portable forward-slash artifact paths`);
+  }
+}
+
+function assertPortablePublicArtifactUriV02(
+  value: unknown,
+  label: string,
+): asserts value is string {
+  assertPortableArtifactUriV02(value, label);
+  if ((value as string).includes("fixtures/private-local/")) {
+    throw new Error(`${label} must not reference fixtures/private-local`);
   }
 }
 
@@ -5088,6 +5332,230 @@ function assertKnownUuid7RefsV02(
   }
 }
 
+function assertAlphaVerticalProofFixtureRefV02(
+  value: unknown,
+  label: string,
+): asserts value is AlphaVerticalProofFixtureRefV02 {
+  const fixture = asRecord(value, label);
+  assertAllowedKeysV02(
+    fixture,
+    ["fixtureId", "publicManifestUri", "publicManifestHash", "publicRedistribution"],
+    label,
+  );
+  assertPublicFixtureIdV02(fixture.fixtureId, `${label}.fixtureId`);
+  assertPortablePublicArtifactUriV02(fixture.publicManifestUri, `${label}.publicManifestUri`);
+  assertHashStringV02(fixture.publicManifestHash, `${label}.publicManifestHash`);
+  assertEqual(fixture.publicRedistribution, "allowed", `${label}.publicRedistribution`);
+}
+
+function assertAlphaVerticalProofEngineProfileV02(
+  value: unknown,
+  label: string,
+): asserts value is AlphaVerticalProofEngineProfileV02 {
+  const profile = asRecord(value, label);
+  assertAllowedKeysV02(
+    profile,
+    [
+      "engineProfileId",
+      "engineKind",
+      "kaifuuProfileId",
+      "itotoriWorkflowId",
+      "utsushiRuntimeProfileId",
+    ],
+    label,
+  );
+  assertString(profile.engineProfileId, `${label}.engineProfileId`);
+  assertString(profile.engineKind, `${label}.engineKind`);
+  assertString(profile.kaifuuProfileId, `${label}.kaifuuProfileId`);
+  assertString(profile.itotoriWorkflowId, `${label}.itotoriWorkflowId`);
+  assertString(profile.utsushiRuntimeProfileId, `${label}.utsushiRuntimeProfileId`);
+}
+
+function assertAlphaVerticalProofBridgeUnitRefV02(
+  value: unknown,
+  label: string,
+): asserts value is AlphaVerticalProofBridgeUnitRefV02 {
+  const ref = asRecord(value, label);
+  assertAllowedKeysV02(ref, ["bridgeUnitId", "sourceUnitKey", "sourceHash"], label);
+  assertUuid7(ref.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertString(ref.sourceUnitKey, `${label}.sourceUnitKey`);
+  assertHashStringV02(ref.sourceHash, `${label}.sourceHash`);
+}
+
+function assertAlphaVerticalProofArtifactRefsV02(
+  value: unknown,
+  label: string,
+): asserts value is AlphaVerticalProofArtifactRefsV02 {
+  const refs = asRecord(value, label);
+  assertAllowedKeysV02(
+    refs,
+    [
+      "publicFixtureManifest",
+      "bridgeBundle",
+      "patchExport",
+      "patchResult",
+      "deltaPackage",
+      "runtimeReport",
+      "findingReport",
+      "benchmarkReport",
+    ],
+    label,
+  );
+  assertAlphaVerticalProofArtifactRefV02(
+    refs.publicFixtureManifest,
+    `${label}.publicFixtureManifest`,
+    "public_fixture_manifest",
+  );
+  assertAlphaVerticalProofArtifactRefV02(
+    refs.bridgeBundle,
+    `${label}.bridgeBundle`,
+    "bridge_bundle",
+  );
+  assertAlphaVerticalProofArtifactRefV02(refs.patchExport, `${label}.patchExport`, "patch_export");
+  assertAlphaVerticalProofArtifactRefV02(refs.patchResult, `${label}.patchResult`, "patch_result");
+  assertAlphaVerticalProofArtifactRefV02(
+    refs.deltaPackage,
+    `${label}.deltaPackage`,
+    "delta_package",
+  );
+  assertAlphaVerticalProofArtifactRefV02(
+    refs.runtimeReport,
+    `${label}.runtimeReport`,
+    "runtime_report",
+  );
+  if (refs.findingReport !== undefined) {
+    assertAlphaVerticalProofArtifactRefV02(
+      refs.findingReport,
+      `${label}.findingReport`,
+      "finding_report",
+    );
+  }
+  assertAlphaVerticalProofArtifactRefV02(
+    refs.benchmarkReport,
+    `${label}.benchmarkReport`,
+    "benchmark_report",
+  );
+}
+
+function assertAlphaVerticalProofArtifactRefV02(
+  value: unknown,
+  label: string,
+  expectedKind: AlphaVerticalProofArtifactKindV02,
+): asserts value is AlphaVerticalProofArtifactRefV02 {
+  const ref = asRecord(value, label);
+  assertAllowedKeysV02(
+    ref,
+    ["artifactId", "artifactKind", "uri", "hash", "mediaType", "byteSize"],
+    label,
+  );
+  assertUuid7(ref.artifactId, `${label}.artifactId`);
+  assertEnum(ref.artifactKind, ALPHA_VERTICAL_PROOF_ARTIFACT_KINDS_V02, `${label}.artifactKind`);
+  if (ref.artifactKind !== expectedKind) {
+    throw new Error(`${label}.artifactKind must be ${expectedKind}`);
+  }
+  assertPortablePublicArtifactUriV02(ref.uri, `${label}.uri`);
+  assertHashStringV02(ref.hash, `${label}.hash`);
+  assertOptionalString(ref.mediaType, `${label}.mediaType`);
+  if (ref.byteSize !== undefined) {
+    assertPositiveInteger(ref.byteSize, `${label}.byteSize`);
+  }
+}
+
+function assertAlphaVerticalProofBenchmarkOutputRefV02(
+  value: unknown,
+  label: string,
+): asserts value is AlphaVerticalProofBenchmarkOutputRefV02 {
+  const ref = asRecord(value, label);
+  assertAllowedKeysV02(ref, ["benchmarkRunId", "artifactRef"], label);
+  assertUuid7(ref.benchmarkRunId, `${label}.benchmarkRunId`);
+  assertAlphaVerticalProofArtifactRefV02(
+    ref.artifactRef,
+    `${label}.artifactRef`,
+    "benchmark_report",
+  );
+}
+
+function assertAlphaVerticalProofContentHashesV02(
+  value: unknown,
+  label: string,
+): AlphaVerticalProofContentHashV02[] {
+  const hashes = asArray(value, label);
+  if (hashes.length === 0) {
+    throw new Error(`${label} must contain at least one content hash`);
+  }
+  const entries: AlphaVerticalProofContentHashV02[] = [];
+  const keys = new Set<string>();
+  for (const [index, hash] of hashes.entries()) {
+    const hashLabel = `${label}[${index}]`;
+    const entry = asRecord(hash, hashLabel);
+    assertAllowedKeysV02(entry, ["scope", "contentId", "hash"], hashLabel);
+    assertEnum(entry.scope, ALPHA_VERTICAL_PROOF_HASH_SCOPES_V02, `${hashLabel}.scope`);
+    assertString(entry.contentId, `${hashLabel}.contentId`);
+    assertHashStringV02(entry.hash, `${hashLabel}.hash`);
+    const key = `${entry.scope}\0${entry.contentId}`;
+    if (keys.has(key)) {
+      throw new Error(`${hashLabel} must be unique by scope and contentId`);
+    }
+    keys.add(key);
+    entries.push(entry as AlphaVerticalProofContentHashV02);
+  }
+  return entries;
+}
+
+function assertAlphaVerticalProofRequiredHashScopesV02(
+  hashes: readonly AlphaVerticalProofContentHashV02[],
+): void {
+  const scopes = new Set(hashes.map((hash) => hash.scope));
+  for (const scope of [
+    "public_fixture_manifest",
+    "source_bundle",
+    "bridge_bundle",
+    "patch_export",
+    "patch_result",
+    "delta_package",
+    "runtime_report",
+    "benchmark_report",
+  ] as const) {
+    if (!scopes.has(scope)) {
+      throw new Error(`AlphaVerticalProofManifestV02.contentHashes must include ${scope}`);
+    }
+  }
+}
+
+function assertAlphaVerticalProofHashCoveredV02(
+  hashes: readonly AlphaVerticalProofContentHashV02[],
+  scope: AlphaVerticalProofHashScopeV02,
+  hash: string,
+  label: string,
+): void {
+  if (!hashes.some((entry) => entry.scope === scope && entry.hash === hash)) {
+    throw new Error(`${label} must be represented in AlphaVerticalProofManifestV02.contentHashes`);
+  }
+}
+
+function alphaVerticalProofHashScopeForArtifactKindV02(
+  kind: AlphaVerticalProofArtifactKindV02,
+): AlphaVerticalProofHashScopeV02 {
+  switch (kind) {
+    case "public_fixture_manifest":
+      return "public_fixture_manifest";
+    case "bridge_bundle":
+      return "bridge_bundle";
+    case "patch_export":
+      return "patch_export";
+    case "patch_result":
+      return "patch_result";
+    case "delta_package":
+      return "delta_package";
+    case "runtime_report":
+      return "runtime_report";
+    case "finding_report":
+      return "finding_report";
+    case "benchmark_report":
+      return "benchmark_report";
+  }
+}
+
 function assertContractFixtureManifestEntryV02(
   value: unknown,
   label: string,
@@ -5200,6 +5668,19 @@ function assertExtractor(value: unknown, label: string): void {
   assertString(extractor.version, `${label}.version`);
 }
 
+function assertAllowedKeysV02(
+  record: Record<string, unknown>,
+  allowedKeys: readonly string[],
+  label: string,
+): void {
+  const allowed = new Set(allowedKeys);
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) {
+      throw new Error(`${label}.${key} is not allowed`);
+    }
+  }
+}
+
 function asRecord(value: unknown, label: string): Record<string, unknown> {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error(`${label} must be an object`);
@@ -5217,6 +5698,13 @@ function asArray(value: unknown, label: string): unknown[] {
 function assertString(value: unknown, label: string): asserts value is string {
   if (typeof value !== "string" || value.length === 0) {
     throw new Error(`${label} must be a non-empty string`);
+  }
+}
+
+function assertPublicFixtureIdV02(value: unknown, label: string): asserts value is string {
+  assertString(value, label);
+  if (!/^[a-z0-9][a-z0-9._-]*$/.test(value)) {
+    throw new Error(`${label} must be a public fixture id`);
   }
 }
 
@@ -5324,11 +5812,44 @@ function assertStringArray(value: unknown, label: string): asserts value is stri
   }
 }
 
+function assertUniqueNonEmptyStringArrayV02(value: unknown, label: string): string[] {
+  const array = asArray(value, label);
+  if (array.length === 0) {
+    throw new Error(`${label} must contain at least one value`);
+  }
+  const seen = new Set<string>();
+  const strings: string[] = [];
+  for (const [index, item] of array.entries()) {
+    assertString(item, `${label}[${index}]`);
+    if (seen.has(item)) {
+      throw new Error(`${label}[${index}] must not duplicate ${item}`);
+    }
+    seen.add(item);
+    strings.push(item);
+  }
+  return strings;
+}
+
 function assertUuid7Array(value: unknown, label: string): asserts value is Uuid7[] {
   const array = asArray(value, label);
   for (const [index, item] of array.entries()) {
     assertUuid7(item, `${label}[${index}]`);
   }
+}
+
+function assertUniqueUuid7ArrayV02(value: unknown, label: string): Uuid7[] {
+  const array = asArray(value, label);
+  const seen = new Set<Uuid7>();
+  const ids: Uuid7[] = [];
+  for (const [index, item] of array.entries()) {
+    assertUuid7(item, `${label}[${index}]`);
+    if (seen.has(item)) {
+      throw new Error(`${label}[${index}] must not duplicate ${item}`);
+    }
+    seen.add(item);
+    ids.push(item);
+  }
+  return ids;
 }
 
 function assertEqual(value: unknown, expected: string, label: string): void {
@@ -5464,6 +5985,51 @@ function assertNoConfidenceFields(value: unknown, label: string): void {
       throw new Error(`${label}.${key} is not allowed; record evidence instead of confidence`);
     }
     assertNoConfidenceFields(child, `${label}.${key}`);
+  }
+}
+
+function assertNoRawPrivateOrSecretFieldsV02(value: unknown, label: string): void {
+  if (typeof value !== "object" || value === null) {
+    if (typeof value === "string" && value.includes("fixtures/private-local/")) {
+      throw new Error(`${label} must not reference fixtures/private-local`);
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const [index, item] of value.entries()) {
+      assertNoRawPrivateOrSecretFieldsV02(item, `${label}[${index}]`);
+    }
+    return;
+  }
+  const forbiddenKeys = new Set([
+    "authorization",
+    "apiKey",
+    "api_key",
+    "bearer",
+    "completionText",
+    "completion_text",
+    "password",
+    "privateKey",
+    "private_key",
+    "promptText",
+    "prompt_text",
+    "rawContent",
+    "raw_content",
+    "rawPrivateData",
+    "raw_private_data",
+    "rawText",
+    "raw_text",
+    "requestBody",
+    "request_body",
+    "responseBody",
+    "response_body",
+    "secret",
+  ]);
+  for (const [key, child] of Object.entries(value)) {
+    if (forbiddenKeys.has(key)) {
+      throw new Error(`${label}.${key} is not allowed; record ids, hashes, or artifact refs`);
+    }
+    assertNoRawPrivateOrSecretFieldsV02(child, `${label}.${key}`);
   }
 }
 
