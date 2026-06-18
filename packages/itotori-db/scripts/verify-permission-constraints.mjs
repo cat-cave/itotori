@@ -1,12 +1,19 @@
 #!/usr/bin/env node
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const authorizationPath = path.join(packageRoot, "src/authorization.ts");
-const migrationsDir = path.join(packageRoot, "migrations");
+const authorizationPath =
+  process.env.ITOTORI_DB_PERMISSION_AUTHORIZATION_PATH ??
+  path.join(packageRoot, "src/authorization.ts");
+const migrationsDir =
+  process.env.ITOTORI_DB_PERMISSION_MIGRATIONS_DIR ?? path.join(packageRoot, "migrations");
+const migrationsSourcePath =
+  process.env.ITOTORI_DB_PERMISSION_MIGRATIONS_SOURCE_PATH ??
+  path.join(packageRoot, "src/migrations.ts");
 const permissionConstraintName = "itotori_user_permission_grants_permission_check";
+const permissionGrantsTableName = "itotori_user_permission_grants";
 
 try {
   verifyPermissionConstraintDrift();
@@ -23,7 +30,7 @@ function verifyPermissionConstraintDrift() {
 
   if (latestConstraint === undefined) {
     throw new Error(
-      `permission constraint drift: no ${permissionConstraintName} or permission check found in ${relativePath(migrationsDir)}`,
+      `permission constraint drift: no registered ${permissionConstraintName} found for ${permissionGrantsTableName} in ${relativePath(migrationsDir)}`,
     );
   }
 
@@ -112,9 +119,7 @@ function parseAllPermissions(source, permissionValues) {
 }
 
 function latestMigrationPermissionConstraint() {
-  const migrations = readdirSync(migrationsDir)
-    .filter((file) => /^[0-9]{4}_.+\.sql$/u.test(file))
-    .sort();
+  const migrations = registeredMigrationFiles();
   let latest;
 
   for (const file of migrations) {
@@ -127,10 +132,52 @@ function latestMigrationPermissionConstraint() {
   return latest;
 }
 
+function registeredMigrationFiles() {
+  const source = readFileSync(migrationsSourcePath, "utf8");
+  const migrationListPattern = /\bconst\s+migrations\s*=\s*\[([\s\S]*?)\]\s*as\s+const\s*;/u;
+  const match = migrationListPattern.exec(source);
+  const body = match?.[1];
+  if (body === undefined) {
+    throw new Error(
+      `permission constraint drift: missing migrations registry in ${relativePath(migrationsSourcePath)}`,
+    );
+  }
+
+  const files = [];
+  for (const fileMatch of body.matchAll(/\bfile:\s*"([^"]+\.sql)"/gu)) {
+    const file = fileMatch[1];
+    if (file !== undefined) {
+      files.push(file);
+    }
+  }
+
+  if (files.length === 0) {
+    throw new Error(
+      `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} contains no SQL files`,
+    );
+  }
+
+  const invalidFiles = files.filter((file) => !/^[0-9]{4}_.+\.sql$/u.test(file));
+  if (invalidFiles.length > 0) {
+    throw new Error(
+      `permission constraint drift: migrations registry contains invalid SQL filenames: ${invalidFiles.join(", ")}`,
+    );
+  }
+
+  const duplicateFiles = duplicates(files);
+  if (duplicateFiles.length > 0) {
+    throw new Error(
+      `permission constraint drift: migrations registry contains duplicate SQL files: ${duplicateFiles.join(", ")}`,
+    );
+  }
+
+  return files;
+}
+
 function extractPermissionConstraintLists(sql) {
   const constraints = [];
   const namedConstraintPattern =
-    /(?:constraint\s+itotori_user_permission_grants_permission_check\s+)?check\s*\(\s*permission\s+in\s*\(([\s\S]*?)\)\s*\)/giu;
+    /\balter\s+table\s+(?:if\s+exists\s+)?(?:only\s+)?itotori_user_permission_grants\s+add\s+constraint\s+itotori_user_permission_grants_permission_check\s+check\s*\(\s*permission\s+in\s*\(([\s\S]*?)\)\s*\)\s*;/giu;
   for (const match of sql.matchAll(namedConstraintPattern)) {
     const list = match[1];
     if (list === undefined) {

@@ -13,6 +13,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "verify:permissions": "node scripts/verify-permission-constraints.mjs",
+    "test:verify-permissions": "node --test scripts/verify-permission-constraints.test.mjs",
     "test": "node scripts/run-tests.mjs",
     "build": "tsc -p tsconfig.json"
   },

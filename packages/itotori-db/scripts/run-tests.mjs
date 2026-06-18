@@ -9,20 +9,17 @@ const packageRoot = path.join(repoRoot, "packages/itotori-db");
 const skipReportPath = path.join(repoRoot, ".tmp/itotori-db/no-database-skipped.json");
 const dbTestCommand = "pnpm --filter @itotori/db test";
 
-const permissionVerifier = spawnSync(
+runRequiredCommand(
   process.execPath,
-  [path.join(packageRoot, "scripts/verify-permission-constraints.mjs")],
-  {
-    stdio: "inherit",
-  },
+  ["--test", path.join(packageRoot, "scripts/verify-permission-constraints.test.mjs")],
+  "permission verifier regression tests",
 );
 
-if (permissionVerifier.signal) {
-  process.kill(process.pid, permissionVerifier.signal);
-}
-if (permissionVerifier.status !== 0) {
-  process.exit(permissionVerifier.status ?? 1);
-}
+runRequiredCommand(
+  process.execPath,
+  [path.join(packageRoot, "scripts/verify-permission-constraints.mjs")],
+  "permission verifier",
+);
 
 if (!process.env.DATABASE_URL) {
   await mkdir(path.dirname(skipReportPath), { recursive: true });
@@ -63,3 +60,20 @@ child.on("error", (error) => {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 });
+
+function runRequiredCommand(command, args, label) {
+  const result = spawnSync(command, args, {
+    stdio: "inherit",
+  });
+
+  if (result.error) {
+    console.error(`${label} failed to start: ${result.error.message}`);
+    process.exit(1);
+  }
+  if (result.signal) {
+    process.kill(process.pid, result.signal);
+  }
+  if (result.status !== 0) {
+    process.exit(result.status ?? 1);
+  }
+}
