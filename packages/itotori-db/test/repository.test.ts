@@ -1532,7 +1532,8 @@ describe("ItotoriProjectRepository", () => {
         ["019ed003-0000-7000-8000-000000000902"],
       );
       expect(validation.rows[0]).toEqual({
-        finding_id: "019ed003-0000-7000-8000-000000000951",
+        finding_id:
+          "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000951",
         finding_kind: "text_mismatch",
         severity: "P2",
         message: "Observed runtime text differed from the drafted locale branch text.",
@@ -1560,9 +1561,16 @@ describe("ItotoriProjectRepository", () => {
       const firstRuntimeReportId = "019ed003-0000-7000-8000-000000000b01";
       const secondRuntimeReportId = "019ed003-0000-7000-8000-000000000b02";
       const traceEventId = "019ed003-0000-7000-8000-000000000b11";
+      const branchEventId = "019ed003-0000-7000-8000-000000000b12";
+      const branchOptionId = "019ed003-0000-7000-8000-000000000b13";
       const captureId = "019ed003-0000-7000-8000-000000000b21";
       const captureArtifactId = "019ed003-0000-7000-8000-000000000b31";
+      const recordingId = "019ed003-0000-7000-8000-000000000b22";
+      const recordingArtifactId = "019ed003-0000-7000-8000-000000000b32";
+      const comparisonId = "019ed003-0000-7000-8000-000000000b23";
+      const comparisonArtifactId = "019ed003-0000-7000-8000-000000000b33";
       const approximationId = "019ed003-0000-7000-8000-000000000b41";
+      const validationFindingId = "019ed003-0000-7000-8000-000000000b51";
 
       const reportWithLocalIds = (
         runtimeReportId: string,
@@ -1571,6 +1579,7 @@ describe("ItotoriProjectRepository", () => {
         runtimeEvidenceReportFixture({
           runtimeReportId,
           createdAt,
+          status: "failed",
           traceEvents: [
             {
               traceEventId,
@@ -1582,6 +1591,29 @@ describe("ItotoriProjectRepository", () => {
               frame: 1,
               traceKey: "hello.line.001",
               observedText: "Hello, {player}.",
+            },
+          ],
+          branchEvents: [
+            {
+              branchEventId,
+              bridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              frame: 2,
+              branchPointKey: "hello.choice.collision",
+              promptText: "Choose a route",
+              options: [
+                {
+                  optionId: branchOptionId,
+                  label: "Shared local option",
+                  labelBridgeUnitRef: {
+                    bridgeUnitId: "bridge-unit-test",
+                    sourceUnitKey: "hello.scene.001.line.001",
+                  },
+                },
+              ],
+              selectedOptionId: branchOptionId,
             },
           ],
           captures: [
@@ -1604,6 +1636,27 @@ describe("ItotoriProjectRepository", () => {
               },
             },
           ],
+          recordings: [
+            {
+              recordingId,
+              bridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              evidenceTier: "E3",
+              startedAtFrame: 1,
+              frameCount: 12,
+              width: 320,
+              height: 180,
+              encoding: "vp9/webm",
+              artifactRef: {
+                artifactId: recordingArtifactId,
+                artifactKind: "recording",
+                uri: `artifacts/utsushi/runtime/${runtimeReportId}/recordings/${recordingArtifactId}.webm`,
+                mediaType: "video/webm",
+              },
+            },
+          ],
           approximations: [
             {
               approximationId,
@@ -1619,7 +1672,39 @@ describe("ItotoriProjectRepository", () => {
               evidenceTierCeiling: "E2",
             },
           ],
-          validationFindings: [],
+          referenceComparisons: [
+            {
+              comparisonId,
+              comparisonKind: "conformance_fixture",
+              status: "failed",
+              scope: "shared local comparison",
+              coveredBridgeUnitRefs: [
+                {
+                  bridgeUnitId: "bridge-unit-test",
+                  sourceUnitKey: "hello.scene.001.line.001",
+                },
+              ],
+              artifactRef: {
+                artifactId: comparisonArtifactId,
+                artifactKind: "reference_comparison",
+                uri: `artifacts/utsushi/runtime/${runtimeReportId}/conformance-reports/${comparisonArtifactId}.json`,
+                mediaType: "application/json",
+              },
+            },
+          ],
+          validationFindings: [
+            {
+              findingId: validationFindingId,
+              findingKind: "text_mismatch",
+              severity: "P2",
+              bridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              message: `Runtime text mismatch for ${runtimeReportId}.`,
+              evidenceTier: "E1",
+            },
+          ],
         });
 
       await repo.saveRuntimeReport(
@@ -1665,10 +1750,31 @@ describe("ItotoriProjectRepository", () => {
         },
         {
           runtime_run_id: firstRuntimeReportId,
+          runtime_evidence_id: `${firstRuntimeReportId}:${branchEventId}`,
+          evidence_kind: "branch_event",
+          artifact_id: `${firstRuntimeReportId}:${branchEventId}`,
+          adapter_local_evidence_id: branchEventId,
+        },
+        {
+          runtime_run_id: firstRuntimeReportId,
           runtime_evidence_id: `${firstRuntimeReportId}:${captureId}`,
           evidence_kind: "capture",
           artifact_id: `${firstRuntimeReportId}:${captureArtifactId}`,
           adapter_local_evidence_id: captureId,
+        },
+        {
+          runtime_run_id: firstRuntimeReportId,
+          runtime_evidence_id: `${firstRuntimeReportId}:${recordingId}`,
+          evidence_kind: "recording",
+          artifact_id: `${firstRuntimeReportId}:${recordingArtifactId}`,
+          adapter_local_evidence_id: recordingId,
+        },
+        {
+          runtime_run_id: firstRuntimeReportId,
+          runtime_evidence_id: `${firstRuntimeReportId}:${comparisonId}`,
+          evidence_kind: "reference_comparison",
+          artifact_id: `${firstRuntimeReportId}:${comparisonArtifactId}`,
+          adapter_local_evidence_id: comparisonId,
         },
         {
           runtime_run_id: firstRuntimeReportId,
@@ -1686,10 +1792,31 @@ describe("ItotoriProjectRepository", () => {
         },
         {
           runtime_run_id: secondRuntimeReportId,
+          runtime_evidence_id: `${secondRuntimeReportId}:${branchEventId}`,
+          evidence_kind: "branch_event",
+          artifact_id: `${secondRuntimeReportId}:${branchEventId}`,
+          adapter_local_evidence_id: branchEventId,
+        },
+        {
+          runtime_run_id: secondRuntimeReportId,
           runtime_evidence_id: `${secondRuntimeReportId}:${captureId}`,
           evidence_kind: "capture",
           artifact_id: `${secondRuntimeReportId}:${captureArtifactId}`,
           adapter_local_evidence_id: captureId,
+        },
+        {
+          runtime_run_id: secondRuntimeReportId,
+          runtime_evidence_id: `${secondRuntimeReportId}:${recordingId}`,
+          evidence_kind: "recording",
+          artifact_id: `${secondRuntimeReportId}:${recordingArtifactId}`,
+          adapter_local_evidence_id: recordingId,
+        },
+        {
+          runtime_run_id: secondRuntimeReportId,
+          runtime_evidence_id: `${secondRuntimeReportId}:${comparisonId}`,
+          evidence_kind: "reference_comparison",
+          artifact_id: `${secondRuntimeReportId}:${comparisonArtifactId}`,
+          adapter_local_evidence_id: comparisonId,
         },
         {
           runtime_run_id: secondRuntimeReportId,
@@ -1715,14 +1842,20 @@ describe("ItotoriProjectRepository", () => {
           metadata->>'adapterLocalArtifactId' as adapter_local_artifact_id,
           uri
         from itotori_artifacts
-        where artifact_id in ($1, $2, $3, $4)
+        where artifact_id in ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         order by artifact_id
       `,
         [
           `${firstRuntimeReportId}:${captureArtifactId}`,
           `${firstRuntimeReportId}:${traceEventId}`,
+          `${firstRuntimeReportId}:${branchEventId}`,
+          `${firstRuntimeReportId}:${recordingArtifactId}`,
+          `${firstRuntimeReportId}:${comparisonArtifactId}`,
           `${secondRuntimeReportId}:${captureArtifactId}`,
           `${secondRuntimeReportId}:${traceEventId}`,
+          `${secondRuntimeReportId}:${branchEventId}`,
+          `${secondRuntimeReportId}:${recordingArtifactId}`,
+          `${secondRuntimeReportId}:${comparisonArtifactId}`,
         ],
       );
       expect(artifactRows.rows).toEqual([
@@ -1734,11 +1867,32 @@ describe("ItotoriProjectRepository", () => {
           uri: null,
         },
         {
+          artifact_id: `${firstRuntimeReportId}:${branchEventId}`,
+          artifact_kind: "runtime_branch_event",
+          runtime_report_id: firstRuntimeReportId,
+          adapter_local_artifact_id: branchEventId,
+          uri: null,
+        },
+        {
           artifact_id: `${firstRuntimeReportId}:${captureArtifactId}`,
           artifact_kind: "screenshot",
           runtime_report_id: firstRuntimeReportId,
           adapter_local_artifact_id: captureArtifactId,
           uri: `artifacts/utsushi/runtime/${firstRuntimeReportId}/screenshots/${captureArtifactId}.png`,
+        },
+        {
+          artifact_id: `${firstRuntimeReportId}:${recordingArtifactId}`,
+          artifact_kind: "recording",
+          runtime_report_id: firstRuntimeReportId,
+          adapter_local_artifact_id: recordingArtifactId,
+          uri: `artifacts/utsushi/runtime/${firstRuntimeReportId}/recordings/${recordingArtifactId}.webm`,
+        },
+        {
+          artifact_id: `${firstRuntimeReportId}:${comparisonArtifactId}`,
+          artifact_kind: "reference_comparison",
+          runtime_report_id: firstRuntimeReportId,
+          adapter_local_artifact_id: comparisonArtifactId,
+          uri: `artifacts/utsushi/runtime/${firstRuntimeReportId}/conformance-reports/${comparisonArtifactId}.json`,
         },
         {
           artifact_id: `${secondRuntimeReportId}:${traceEventId}`,
@@ -1748,11 +1902,65 @@ describe("ItotoriProjectRepository", () => {
           uri: null,
         },
         {
+          artifact_id: `${secondRuntimeReportId}:${branchEventId}`,
+          artifact_kind: "runtime_branch_event",
+          runtime_report_id: secondRuntimeReportId,
+          adapter_local_artifact_id: branchEventId,
+          uri: null,
+        },
+        {
           artifact_id: `${secondRuntimeReportId}:${captureArtifactId}`,
           artifact_kind: "screenshot",
           runtime_report_id: secondRuntimeReportId,
           adapter_local_artifact_id: captureArtifactId,
           uri: `artifacts/utsushi/runtime/${secondRuntimeReportId}/screenshots/${captureArtifactId}.png`,
+        },
+        {
+          artifact_id: `${secondRuntimeReportId}:${recordingArtifactId}`,
+          artifact_kind: "recording",
+          runtime_report_id: secondRuntimeReportId,
+          adapter_local_artifact_id: recordingArtifactId,
+          uri: `artifacts/utsushi/runtime/${secondRuntimeReportId}/recordings/${recordingArtifactId}.webm`,
+        },
+        {
+          artifact_id: `${secondRuntimeReportId}:${comparisonArtifactId}`,
+          artifact_kind: "reference_comparison",
+          runtime_report_id: secondRuntimeReportId,
+          adapter_local_artifact_id: comparisonArtifactId,
+          uri: `artifacts/utsushi/runtime/${secondRuntimeReportId}/conformance-reports/${comparisonArtifactId}.json`,
+        },
+      ]);
+
+      const validationRows = await context.pool.query<{
+        runtime_run_id: string;
+        finding_id: string;
+        adapter_local_finding_id: string | null;
+        message: string;
+      }>(
+        `
+        select
+          runtime_run_id,
+          finding_id,
+          metadata->>'adapterLocalFindingId' as adapter_local_finding_id,
+          message
+        from itotori_runtime_validation_findings
+        where runtime_run_id in ($1, $2)
+        order by runtime_run_id
+        `,
+        [firstRuntimeReportId, secondRuntimeReportId],
+      );
+      expect(validationRows.rows).toEqual([
+        {
+          runtime_run_id: firstRuntimeReportId,
+          finding_id: `${firstRuntimeReportId}:${validationFindingId}`,
+          adapter_local_finding_id: validationFindingId,
+          message: `Runtime text mismatch for ${firstRuntimeReportId}.`,
+        },
+        {
+          runtime_run_id: secondRuntimeReportId,
+          finding_id: `${secondRuntimeReportId}:${validationFindingId}`,
+          adapter_local_finding_id: validationFindingId,
+          message: `Runtime text mismatch for ${secondRuntimeReportId}.`,
         },
       ]);
     } finally {
@@ -1963,8 +2171,8 @@ describe("ItotoriProjectRepository", () => {
         select 'finding' as row_kind, finding_id as row_id
         from itotori_findings
         where finding_id in (
-          '019ed003-0000-7000-8000-000000000a61',
-          '019ed003-0000-7000-8000-000000000a63'
+          '019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a61',
+          '019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a63'
         )
         union all
         select 'artifact' as row_kind, artifact_id as row_id
@@ -2475,7 +2683,7 @@ describe("ItotoriProjectRepository", () => {
           },
           {
             decisionKind: "runtime_validation",
-            findingId: "finding-runtime-validation",
+            findingId: "019ed003-0000-7000-8000-000000000999:finding-runtime-validation",
             localeBranchId: "locale-en-us",
             targetLocale: "en-US",
             runtimeRunId: "019ed003-0000-7000-8000-000000000999",

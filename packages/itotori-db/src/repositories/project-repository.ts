@@ -999,6 +999,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
                 schemaVersion: runtimeReport.schemaVersion,
                 runtimeReportId,
                 validationFindingId: validation.findingId,
+                adapterLocalFindingId: validation.adapterLocalFindingId,
                 artifactRef: validation.artifactRef,
               },
             })
@@ -1016,6 +1017,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
                   schemaVersion: runtimeReport.schemaVersion,
                   runtimeReportId,
                   validationFindingId: validation.findingId,
+                  adapterLocalFindingId: validation.adapterLocalFindingId,
                   artifactRef: validation.artifactRef,
                 },
               },
@@ -2478,6 +2480,7 @@ type RuntimeEvidenceItemInput = {
 
 type RuntimeValidationFindingRecord = {
   findingId: string;
+  adapterLocalFindingId: string;
   findingKind: string;
   severity: string;
   message: string;
@@ -3082,6 +3085,7 @@ function runtimeValidationFindingRecord(
   report: RuntimeEvidenceReportV02,
   finding: RuntimeValidationFindingV02,
 ): RuntimeValidationFindingRecord {
+  const findingId = runtimeChildIdFor(report.runtimeReportId, finding.findingId);
   const artifactRef =
     finding.artifactRef === undefined
       ? undefined
@@ -3121,7 +3125,8 @@ function runtimeValidationFindingRecord(
   ];
 
   return {
-    findingId: finding.findingId,
+    findingId,
+    adapterLocalFindingId: finding.findingId,
     findingKind: finding.findingKind,
     severity: finding.severity,
     message: finding.message,
@@ -3136,6 +3141,7 @@ function runtimeValidationFindingRecord(
     metadata: {
       schemaVersion: report.schemaVersion,
       runtimeReportId: report.runtimeReportId,
+      adapterLocalFindingId: finding.findingId,
       finding: runtimeValidationFindingForDb(finding),
       bridgeUnitRef: finding.bridgeUnitRef ?? null,
       artifactRef: artifactRef ?? null,
