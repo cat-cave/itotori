@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "itotori.style-guide-conversation.v0",
+  "transcriptId": "style-guide-conversation-malformed",
+  "projectId": "019ed063-0000-7000-8000-000000000001",
+  "localeBranchId": "019ed063-0000-7000-8000-000000000010",
+  "targetLocale": "en-US",
+  "basePolicyVersionId": "019ed063-0000-7000-8000-000000000020",
+  "projectedStyleGuideVersionId": "019ed063-0000-7000-8000-000000000032",
+  "recordingMode": "public_fixture",
+  "turns": [
+    {
+      "turnId": "turn-malformed-assistant",
+      "role": "provider_assistant",
+      "localeBranchId": "019ed063-0000-7000-8000-000000000010",
+      "policyVersionId": "019ed063-0000-7000-8000-000000000020",
+      "redaction": {
+        "status": "not_required",
+        "privateExampleRefs": ["private-example-unredacted-001"]
+      },
+      "proposalIds": ["019ed063-0000-7000-8000-000000000221"],
+      "citations": [
+        {
+          "citationId": "citation-malformed",
+          "sourceKind": "bridge_unit",
+          "sourceRef": "bridge-unit:019ed063-0000-7000-8000-000000000101",
+          "excerptHash": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
+        }
+      ],
+      "publicSummary": "This fixture intentionally contains malformed fields for diagnostics."
+    }
+  ],
+  "proposals": [
+    {
+      "proposalId": "019ed063-0000-7000-8000-000000000221",
+      "turnId": "turn-malformed-assistant",
+      "localeBranchId": "019ed063-0000-7000-8000-000000000010",
+      "policyVersionId": "019ed063-0000-7000-8000-000000000020",
+      "rationale": "",
+      "citationIds": ["citation-malformed"],
+      "examples": [
+        {
+          "exampleId": "example-private-unredacted",
+          "privacy": "private",
+          "redactionStatus": "not_required",
+          "excerptHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "publicText": "private fixture text that should have been redacted"
+        }
+      ],
+      "edits": [
+        {
+          "operation": "add_rule",
+          "section": "providerPrompt",
+          "rule": {
+            "ruleId": "provider-only-prompt-rule",
+            "guidance": "This unsupported section must be rejected."
+          }
+        }
+      ],
+      "decision": {
+        "status": "accepted",
+        "decidedByTurnId": "turn-malformed-assistant",
+        "rationale": "This fixture is malformed."
+      }
+    }
+  ]
+}

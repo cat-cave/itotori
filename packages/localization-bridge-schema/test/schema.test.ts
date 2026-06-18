@@ -19,8 +19,11 @@ import {
   assertRuntimeEvidenceReportV02,
   assertRuntimeReport,
   assertRuntimeVerificationReport,
+  assertStyleGuideConversationTranscript,
   assertTriageBundleV02,
   evaluatePatchExportCompatibilityV02,
+  projectStyleGuideConversationToPolicyDraft,
+  validateStyleGuideConversationTranscript,
 } from "../src/index.js";
 
 const HASH_PATCH_EXPORT_V02_EXAMPLE =
@@ -111,6 +114,10 @@ function permissionLocalUserFixtureV02Example(): Record<string, unknown> {
   return JSON.parse(
     readFileSync(new URL("./examples/permission-local-user-v0.2.json", import.meta.url), "utf8"),
   ) as Record<string, unknown>;
+}
+
+function styleGuideConversationFixture(name: string): Record<string, unknown> {
+  return publicFixture(`fixtures/itotori-style-guide/conversations/${name}.json`);
 }
 
 function traceOnlyReferenceFidelityReport(): Record<string, unknown> {
@@ -493,6 +500,190 @@ describe("localization bridge schema guards", () => {
     const report = contractCompatibilityReportV02Example();
 
     expect(() => assertContractCompatibilityReportV02(report)).not.toThrow();
+  });
+
+  it("projects accepted style-guide conversation fixtures into deterministic policy drafts", () => {
+    const transcript = styleGuideConversationFixture("accepted");
+
+    expect(() => assertStyleGuideConversationTranscript(transcript)).not.toThrow();
+
+    const draft = projectStyleGuideConversationToPolicyDraft(transcript);
+    expect(draft).toEqual({
+      localeBranchId: "019ed063-0000-7000-8000-000000000010",
+      styleGuideVersionId: "019ed063-0000-7000-8000-000000000030",
+      expectedPreviousVersionId: "019ed063-0000-7000-8000-000000000020",
+      sourceTranscriptId: "style-guide-conversation-accepted",
+      acceptedProposalIds: [
+        "019ed063-0000-7000-8000-000000000201",
+        "019ed063-0000-7000-8000-000000000202",
+        "019ed063-0000-7000-8000-000000000203",
+        "019ed063-0000-7000-8000-000000000204",
+        "019ed063-0000-7000-8000-000000000205",
+      ],
+      policy: {
+        schemaVersion: "style-guide-policy.v0",
+        sections: {
+          tone: [
+            {
+              ruleId: "tone-player-address-warm-direct",
+              guidance:
+                "Use warm, direct player address in tutorial-adjacent dialogue; avoid slang or sarcasm.",
+            },
+          ],
+          terminology: [
+            {
+              ruleId: "term-player-placeholder-preserve",
+              guidance: "Preserve {player} exactly, including braces, in every target string.",
+            },
+          ],
+          honorifics: [
+            {
+              ruleId: "honorifics-character-names-preserve",
+              guidance:
+                "Preserve named-character honorifics unless an explicit speaker note says to localize or omit them.",
+            },
+          ],
+          formatting: [
+            {
+              ruleId: "formatting-message-window-concise",
+              guidance:
+                "Keep message-window lines concise and avoid adding extra clauses that expand the line count.",
+            },
+          ],
+          protectedSpans: [
+            {
+              ruleId: "protected-placeholder-exact",
+              guidance:
+                "Protected placeholder spans must remain byte-for-byte identical unless a span mapping policy says otherwise.",
+            },
+          ],
+        },
+      },
+    });
+  });
+
+  it("keeps rejected style-guide proposals out of projected policy drafts", () => {
+    const transcript = styleGuideConversationFixture("rejected");
+
+    expect(() => assertStyleGuideConversationTranscript(transcript)).not.toThrow();
+
+    expect(projectStyleGuideConversationToPolicyDraft(transcript)).toMatchObject({
+      sourceTranscriptId: "style-guide-conversation-rejected",
+      acceptedProposalIds: [],
+      policy: {
+        schemaVersion: "style-guide-policy.v0",
+        sections: {
+          tone: [],
+          terminology: [],
+          honorifics: [],
+          formatting: [],
+          protectedSpans: [],
+        },
+      },
+    });
+  });
+
+  it("rejects detached accepted style-guide proposals before projection", () => {
+    const transcript = styleGuideConversationFixture("accepted");
+    const turns = transcript.turns as Array<Record<string, unknown>>;
+    const proposalTurn = asTestRecord(
+      turns.find((turn) => turn.turnId === "turn-assistant-proposals"),
+      "style-guide proposal turn",
+    );
+    proposalTurn.proposalIds = [];
+
+    const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-assistant-proposals",
+        field: "$.turns[2].proposalIds",
+        rule: "style_guide_conversation.proposal.turn_proposal_id_membership",
+        proposalId: "019ed063-0000-7000-8000-000000000201",
+      }),
+    );
+    expect(() => projectStyleGuideConversationToPolicyDraft(transcript)).toThrow(
+      /turn_proposal_id_membership/,
+    );
+  });
+
+  it("reports malformed style-guide transcript diagnostics with turn, field, and rule", () => {
+    const transcript = styleGuideConversationFixture("malformed");
+
+    const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-malformed-assistant",
+        field: "$.turns[0].role",
+        rule: "style_guide_conversation.turn.role",
+      }),
+    );
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-malformed-assistant",
+        field: "$.proposals[0].rationale",
+        rule: "style_guide_conversation.proposal.rationale_required",
+        proposalId: "019ed063-0000-7000-8000-000000000221",
+      }),
+    );
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-malformed-assistant",
+        field: "$.proposals[0].edits[0].section",
+        rule: "style_guide_conversation.proposal.unsupported_policy_section",
+      }),
+    );
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-malformed-assistant",
+        field: "$.proposals[0].examples[0].redactionStatus",
+        rule: "style_guide_conversation.proposal.private_example_redacted",
+      }),
+    );
+    expect(() => assertStyleGuideConversationTranscript(transcript)).toThrow(
+      /turn turn-malformed-assistant field .* failed style_guide_conversation\./,
+    );
+  });
+
+  it("rejects conflicting accepted style-guide proposals before projection", () => {
+    const transcript = styleGuideConversationFixture("conflicting");
+
+    const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-conflict-proposals",
+        field: "$.proposals[].edits",
+        rule: "style_guide_conversation.projection.conflicting_accepted_edit",
+        proposalId: "019ed063-0000-7000-8000-000000000232",
+      }),
+    );
+    expect(() => projectStyleGuideConversationToPolicyDraft(transcript)).toThrow(
+      /conflicting_accepted_edit/,
+    );
+  });
+
+  it("rejects style-guide proposals with conflicting edits in a single proposal", () => {
+    const transcript = styleGuideConversationFixture("accepted");
+    const proposals = transcript.proposals as Array<Record<string, unknown>>;
+    const proposal = asTestRecord(proposals[0], "first style-guide proposal");
+    const edits = proposal.edits as Array<Record<string, unknown>>;
+    const conflictingEdit = cloneRecord(edits[0]);
+    const rule = asTestRecord(conflictingEdit.rule, "style-guide proposal rule");
+    rule.guidance = "Use detached, formal player address.";
+    edits.push(conflictingEdit);
+
+    const diagnostics = validateStyleGuideConversationTranscript(transcript);
+
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        turnId: "turn-assistant-proposals",
+        field: "$.proposals[0].edits[1]",
+        rule: "style_guide_conversation.proposal.conflicting_edits",
+        proposalId: "019ed063-0000-7000-8000-000000000201",
+      }),
+    );
   });
 
   it.each([

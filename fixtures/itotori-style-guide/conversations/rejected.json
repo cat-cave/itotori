@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "itotori.style-guide-conversation.v0",
+  "transcriptId": "style-guide-conversation-rejected",
+  "projectId": "019ed063-0000-7000-8000-000000000001",
+  "localeBranchId": "019ed063-0000-7000-8000-000000000010",
+  "targetLocale": "en-US",
+  "basePolicyVersionId": "019ed063-0000-7000-8000-000000000020",
+  "projectedStyleGuideVersionId": "019ed063-0000-7000-8000-000000000031",
+  "recordingMode": "public_fixture",
+  "turns": [
+    {
+      "turnId": "turn-human-rejects-casual",
+      "role": "human",
+      "localeBranchId": "019ed063-0000-7000-8000-000000000010",
+      "policyVersionId": "019ed063-0000-7000-8000-000000000020",
+      "redaction": {
+        "status": "not_required",
+        "privateExampleRefs": []
+      },
+      "proposalIds": [],
+      "citations": [
+        {
+          "citationId": "citation-reject-tone",
+          "sourceKind": "human_note",
+          "sourceRef": "note:reject-casual-tone",
+          "excerptHash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+        }
+      ],
+      "publicSummary": "The reviewer rejected a casual-tone direction for this locale branch."
+    },
+    {
+      "turnId": "turn-assistant-rejected-proposal",
+      "role": "assistant",
+      "localeBranchId": "019ed063-0000-7000-8000-000000000010",
+      "policyVersionId": "019ed063-0000-7000-8000-000000000020",
+      "redaction": {
+        "status": "not_required",
+        "privateExampleRefs": []
+      },
+      "proposalIds": ["019ed063-0000-7000-8000-000000000211"],
+      "citations": [],
+      "publicSummary": "A casual-tone proposal was recorded as rejected, not projected."
+    }
+  ],
+  "proposals": [
+    {
+      "proposalId": "019ed063-0000-7000-8000-000000000211",
+      "turnId": "turn-assistant-rejected-proposal",
+      "localeBranchId": "019ed063-0000-7000-8000-000000000010",
+      "policyVersionId": "019ed063-0000-7000-8000-000000000020",
+      "rationale": "The public note asked whether battle barks should use a casual player voice.",
+      "citationIds": ["citation-reject-tone"],
+      "examples": [],
+      "edits": [
+        {
+          "operation": "add_rule",
+          "section": "tone",
+          "toneRegister": "casual",
+          "rule": {
+            "ruleId": "tone-battle-barks-casual",
+            "guidance": "Use casual slang in battle barks."
+          }
+        }
+      ],
+      "decision": {
+        "status": "rejected",
+        "decidedByTurnId": "turn-human-rejects-casual",
+        "rationale": "Casual slang conflicts with the locale branch voice."
+      }
+    }
+  ]
+}
