@@ -88,6 +88,38 @@ describe("ItotoriProjectWorkflowService", () => {
     expect(project.drafts).toEqual({});
   });
 
+  it("drafts explicit non-Japanese-to-non-English locale pairs", async () => {
+    const repository = repositoryFixture();
+    const ledger = ledgerFixture();
+    const provider = new FakeModelProvider({
+      generate: (request) => {
+        const message = request.messages.findLast((candidate) => candidate.role === "user");
+        const body = JSON.parse(String(message?.content)) as {
+          sourceLocale: string;
+          targetLocale: string;
+          sourceText: string;
+        };
+        expect(body.sourceLocale).toBe("de-DE");
+        expect(body.targetLocale).toBe("it-IT");
+        return `[${body.targetLocale}] ${body.sourceText}`;
+      },
+    });
+    const service = new ItotoriProjectWorkflowService(repository, actor, provider, ledger);
+    const project = nonJapaneseSourceProjectFixture({ drafts: {} });
+
+    const drafted = await service.draftProject(project, "it-IT");
+
+    expect(drafted.targetLocale).toBe("it-IT");
+    expect(drafted.drafts["bridge-unit-test"]).toBe("[it-IT] Guten Tag, {player}.");
+    expect(repository.saveDrafts).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        targetLocale: "it-IT",
+        bridge: expect.objectContaining({ sourceLocale: "de-DE" }),
+      }),
+    );
+  });
+
   it("uses distinct provider run ids when drafts are rerun", async () => {
     const repository = repositoryFixture();
     const ledger = ledgerFixture();
@@ -457,6 +489,7 @@ function repositoryFixture(): ItotoriProjectRepositoryPort {
     recordFinding: vi.fn(async () => {}),
     linkArtifact: vi.fn(async () => {}),
     recordBenchmarkArtifactWithProviderLedger: vi.fn(async () => {}),
+    listLocaleBranchIdentities: vi.fn(async () => []),
     getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
     getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
     getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
@@ -656,6 +689,27 @@ function bridgeFixture(): BridgeBundle {
       },
     ],
   };
+}
+
+function nonJapaneseSourceProjectFixture(overrides: Partial<ProjectState> = {}): ProjectState {
+  return projectFixture({
+    targetLocale: "it-IT",
+    bridge: {
+      ...bridgeFixture(),
+      sourceLocale: "de-DE",
+      units: [
+        {
+          ...bridgeFixture().units[0]!,
+          sourceLocale: "de-DE",
+          sourceText: "Guten Tag, {player}.",
+          protectedSpans: [
+            { kind: "placeholder", raw: "{player}", start: 11, end: 19, preserveMode: "exact" },
+          ],
+        },
+      ],
+    },
+    ...overrides,
+  });
 }
 
 function bridgeV02Fixture(): BridgeBundleV02 {

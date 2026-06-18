@@ -160,6 +160,17 @@ export type LocaleBranchStatus = {
   artifactCount: number;
 };
 
+export type LocaleBranchIdentity = {
+  localeBranchId: string;
+  projectId: string;
+  sourceBundleId: string;
+  sourceBundleRevisionId: string;
+  sourceLocale: string;
+  targetLocale: string;
+  branchName: string;
+  status: string;
+};
+
 export type ProjectDashboardStatus = {
   projectId: string;
   projectKey: string;
@@ -313,6 +324,7 @@ export interface ItotoriProjectRepositoryPort {
     actor: AuthorizationActor,
     input: BenchmarkArtifactLedgerInput,
   ): Promise<void>;
+  listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
   getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
@@ -1234,6 +1246,37 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         await insertProviderRunLedgerRows(tx, providerRun);
       }
     });
+  }
+
+  async listLocaleBranchIdentities(projectId: string): Promise<LocaleBranchIdentity[]> {
+    const result = await this.db.execute(sql`
+      select
+        b.locale_branch_id,
+        b.project_id,
+        b.source_bundle_id,
+        sb.source_bundle_revision_id,
+        sb.source_locale,
+        b.target_locale,
+        b.branch_name,
+        b.status
+      from ${localeBranches} b
+      join ${sourceBundles} sb on sb.source_bundle_id = b.source_bundle_id
+      where b.project_id = ${projectId}
+      order by b.created_at asc, b.locale_branch_id asc
+    `);
+
+    return result.rows.map(
+      (row): LocaleBranchIdentity => ({
+        localeBranchId: String(row.locale_branch_id),
+        projectId: String(row.project_id),
+        sourceBundleId: String(row.source_bundle_id),
+        sourceBundleRevisionId: String(row.source_bundle_revision_id),
+        sourceLocale: String(row.source_locale),
+        targetLocale: String(row.target_locale),
+        branchName: String(row.branch_name),
+        status: String(row.status),
+      }),
+    );
   }
 
   async getDashboardStatus(): Promise<ProjectDashboardStatus> {

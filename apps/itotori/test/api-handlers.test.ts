@@ -29,6 +29,7 @@ import {
   dashboardStatusFixture,
   decisionEventFixture,
   findingRecordFixture,
+  nonJapaneseTargetProjectFixture,
   projectFixture,
   runtimeIngestResultFixture,
   runtimeReportFixture,
@@ -321,6 +322,24 @@ describe("Itotori API handlers", () => {
       expect(services.projectWorkflow[service]).toHaveBeenCalledTimes(1);
     },
   );
+
+  it("passes explicit non-Japanese-to-non-English draft locale pairs through the API", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      post("/api/projects/project-de-it/branches", {
+        project: nonJapaneseTargetProjectFixture,
+        targetLocale: "it-IT",
+      }),
+      services,
+    );
+
+    expect(response.statusCode).toBe(200);
+    expect(services.projectWorkflow.draftProject).toHaveBeenCalledWith(
+      nonJapaneseTargetProjectFixture,
+      "it-IT",
+    );
+  });
 
   it("rejects malformed request bodies before checking permissions", async () => {
     const services = serviceFixture();

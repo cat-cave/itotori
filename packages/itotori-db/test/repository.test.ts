@@ -2539,6 +2539,68 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("keeps stable locale branch identities for multiple targets on one source revision", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+
+      await repo.importSourceBundle(localActor, projectFixture());
+      await repo.importSourceBundle(
+        localActor,
+        projectFixture({
+          localeBranchId: "locale-fr-fr",
+          targetLocale: "fr-FR",
+          drafts: { "bridge-unit-test": "Bonjour, {player}." },
+        }),
+      );
+      await repo.importSourceBundle(
+        localActor,
+        projectFixture({
+          localeBranchId: "locale-ko-kr",
+          targetLocale: "ko-KR",
+          drafts: { "bridge-unit-test": "Annyeonghaseyo, {player}." },
+        }),
+      );
+
+      const firstIdentities = await repo.listLocaleBranchIdentities("project-test");
+      expect(firstIdentities.map((branch) => branch.localeBranchId)).toEqual([
+        "locale-en-us",
+        "locale-fr-fr",
+        "locale-ko-kr",
+      ]);
+      expect(firstIdentities.map((branch) => branch.targetLocale)).toEqual([
+        "en-US",
+        "fr-FR",
+        "ko-KR",
+      ]);
+      expect(new Set(firstIdentities.map((branch) => branch.sourceBundleRevisionId))).toEqual(
+        new Set(["bridge-test:bundle-revision"]),
+      );
+
+      await repo.importSourceBundle(
+        localActor,
+        projectFixture({
+          localeBranchId: "locale-fr-fr",
+          targetLocale: "fr-FR",
+          drafts: { "bridge-unit-test": "Salut, {player}." },
+        }),
+      );
+      await context.pool.query("delete from itotori_locale_branch_units");
+
+      const secondIdentities = await repo.listLocaleBranchIdentities("project-test");
+      expect(secondIdentities).toEqual(
+        firstIdentities.map((branch) =>
+          branch.localeBranchId === "locale-fr-fr"
+            ? { ...branch, branchName: "fr-FR", targetLocale: "fr-FR", status: "active" }
+            : branch,
+        ),
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
   it("records append-only events, findings, and artifact links", async () => {
     const context = await migratedContext();
     try {
@@ -3103,6 +3165,248 @@ describe("ItotoriProjectRepository", () => {
           "itotori_artifacts_project_branch_kind_idx",
         ]),
       );
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("keeps locale branch table, index, and foreign-key migration contracts stable", async () => {
+    const context = await migratedContext();
+    try {
+      const columns = await context.db.execute(sql`
+        select table_name, column_name, data_type, is_nullable
+        from information_schema.columns
+        where table_schema = current_schema()
+          and table_name in ('itotori_locale_branches', 'itotori_locale_branch_units')
+        order by table_name, ordinal_position
+      `);
+      expect(
+        columns.rows.map((row) => ({
+          tableName: String(row.table_name),
+          columnName: String(row.column_name),
+          dataType: String(row.data_type),
+          nullable: String(row.is_nullable) === "YES",
+        })),
+      ).toEqual([
+        {
+          tableName: "itotori_locale_branch_units",
+          columnName: "locale_branch_id",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_locale_branch_units",
+          columnName: "bridge_unit_id",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_locale_branch_units",
+          columnName: "target_text",
+          dataType: "text",
+          nullable: true,
+        },
+        {
+          tableName: "itotori_locale_branch_units",
+          columnName: "updated_at",
+          dataType: "timestamp with time zone",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_locale_branches",
+          columnName: "locale_branch_id",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_locale_branches",
+          columnName: "project_id",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_locale_branches",
+          columnName: "source_bundle_id",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_locale_branches",
+          columnName: "target_locale",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_locale_branches",
+          columnName: "branch_name",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_locale_branches",
+          columnName: "status",
+          dataType: "text",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_locale_branches",
+          columnName: "created_by_user_id",
+          dataType: "text",
+          nullable: true,
+        },
+        {
+          tableName: "itotori_locale_branches",
+          columnName: "created_at",
+          dataType: "timestamp with time zone",
+          nullable: false,
+        },
+        {
+          tableName: "itotori_locale_branches",
+          columnName: "updated_at",
+          dataType: "timestamp with time zone",
+          nullable: false,
+        },
+      ]);
+
+      const keyConstraints = await context.db.execute(sql`
+        select
+          c.relname as table_name,
+          con.conname as constraint_name,
+          con.contype as constraint_type,
+          pg_get_constraintdef(con.oid) as constraint_definition
+        from pg_constraint con
+        join pg_class c on c.oid = con.conrelid
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = current_schema()
+          and c.relname in ('itotori_locale_branches', 'itotori_locale_branch_units')
+          and con.contype in ('p', 'u')
+        order by c.relname, con.conname
+      `);
+      expect(
+        keyConstraints.rows.map((row) => ({
+          tableName: String(row.table_name),
+          constraintName: String(row.constraint_name),
+          constraintType: String(row.constraint_type),
+          constraintDefinition: String(row.constraint_definition),
+        })),
+      ).toEqual([
+        {
+          tableName: "itotori_locale_branch_units",
+          constraintName: "itotori_locale_branch_units_pkey",
+          constraintType: "p",
+          constraintDefinition: "PRIMARY KEY (locale_branch_id, bridge_unit_id)",
+        },
+        {
+          tableName: "itotori_locale_branches",
+          constraintName: "itotori_locale_branches_pkey",
+          constraintType: "p",
+          constraintDefinition: "PRIMARY KEY (locale_branch_id)",
+        },
+      ]);
+
+      const indexes = await context.db.execute(sql`
+        select
+          index_class.relname as index_name,
+          table_class.relname as table_name,
+          index_record.indisunique,
+          array_to_string(array_agg(attribute.attname order by key.ordinality), ',') as column_names
+        from pg_index index_record
+        join pg_class table_class on table_class.oid = index_record.indrelid
+        join pg_namespace namespace on namespace.oid = table_class.relnamespace
+        join pg_class index_class on index_class.oid = index_record.indexrelid
+        join lateral unnest(index_record.indkey) with ordinality as key(attnum, ordinality)
+          on true
+        join pg_attribute attribute
+          on attribute.attrelid = table_class.oid
+          and attribute.attnum = key.attnum
+        where namespace.nspname = current_schema()
+          and index_class.relname in (
+            'itotori_locale_branches_project_locale_idx',
+            'itotori_locale_branches_bundle_idx',
+            'itotori_locale_branch_units_bridge_unit_idx'
+          )
+        group by index_class.relname, table_class.relname, index_record.indisunique
+        order by index_class.relname
+      `);
+      expect(
+        indexes.rows.map((row) => ({
+          indexName: String(row.index_name),
+          tableName: String(row.table_name),
+          unique: row.indisunique === true,
+          columnNames: String(row.column_names),
+        })),
+      ).toEqual([
+        {
+          indexName: "itotori_locale_branch_units_bridge_unit_idx",
+          tableName: "itotori_locale_branch_units",
+          unique: false,
+          columnNames: "bridge_unit_id",
+        },
+        {
+          indexName: "itotori_locale_branches_bundle_idx",
+          tableName: "itotori_locale_branches",
+          unique: false,
+          columnNames: "source_bundle_id",
+        },
+        {
+          indexName: "itotori_locale_branches_project_locale_idx",
+          tableName: "itotori_locale_branches",
+          unique: false,
+          columnNames: "project_id,target_locale",
+        },
+      ]);
+
+      const foreignKeys = await context.db.execute(sql`
+        select
+          c.relname as table_name,
+          con.conname as constraint_name,
+          pg_get_constraintdef(con.oid) as constraint_definition
+        from pg_constraint con
+        join pg_class c on c.oid = con.conrelid
+        join pg_namespace n on n.oid = c.relnamespace
+        where n.nspname = current_schema()
+          and c.relname in ('itotori_locale_branches', 'itotori_locale_branch_units')
+          and con.contype = 'f'
+        order by c.relname, con.conname
+      `);
+      expect(
+        foreignKeys.rows.map((row) => ({
+          tableName: String(row.table_name),
+          constraintName: String(row.constraint_name),
+          constraintDefinition: String(row.constraint_definition),
+        })),
+      ).toEqual([
+        {
+          tableName: "itotori_locale_branch_units",
+          constraintName: "itotori_locale_branch_units_bridge_unit_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (bridge_unit_id) REFERENCES itotori_source_units(bridge_unit_id) ON DELETE CASCADE",
+        },
+        {
+          tableName: "itotori_locale_branch_units",
+          constraintName: "itotori_locale_branch_units_locale_branch_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (locale_branch_id) REFERENCES itotori_locale_branches(locale_branch_id) ON DELETE CASCADE",
+        },
+        {
+          tableName: "itotori_locale_branches",
+          constraintName: "itotori_locale_branches_created_by_user_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (created_by_user_id) REFERENCES itotori_users(user_id) ON DELETE SET NULL",
+        },
+        {
+          tableName: "itotori_locale_branches",
+          constraintName: "itotori_locale_branches_project_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (project_id) REFERENCES itotori_projects(project_id) ON DELETE CASCADE",
+        },
+        {
+          tableName: "itotori_locale_branches",
+          constraintName: "itotori_locale_branches_source_bundle_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (source_bundle_id) REFERENCES itotori_source_bundles(source_bundle_id) ON DELETE RESTRICT",
+        },
+      ]);
     } finally {
       await context.close();
     }

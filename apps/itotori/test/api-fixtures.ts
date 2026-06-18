@@ -428,6 +428,38 @@ export const projectFixture: ProjectState = {
   bridge: bridgeFixture,
 };
 
+export const nonJapaneseTargetProjectFixture: ProjectState = {
+  projectId: "project-de-it",
+  localeBranchId: "locale-it-it",
+  targetLocale: "it-IT",
+  drafts: { "bridge-unit-de": "Buongiorno, {player}." },
+  bridge: {
+    ...bridgeFixture,
+    bridgeId: "bridge-de",
+    sourceBundleHash: "hash-de",
+    sourceLocale: "de-DE",
+    units: [
+      {
+        ...bridgeFixture.units[0]!,
+        bridgeUnitId: "bridge-unit-de",
+        sourceUnitKey: "tag.scene.001.line.001",
+        occurrenceId: "occurrence-de-1",
+        sourceHash: "source-hash-de-1",
+        sourceLocale: "de-DE",
+        sourceText: "Guten Tag, {player}.",
+        protectedSpans: [
+          { kind: "placeholder", raw: "{player}", start: 11, end: 19, preserveMode: "exact" },
+        ],
+        patchRef: {
+          assetId: "source-de.json",
+          writeMode: "replace",
+          sourceUnitKey: "tag.scene.001.line.001",
+        },
+      },
+    ],
+  },
+};
+
 export const runtimeReportFixture: RuntimeVerificationReport = {
   schemaVersion: "0.1.0",
   runtimeReportId: "runtime-1",
