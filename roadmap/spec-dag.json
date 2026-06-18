@@ -16182,7 +16182,14 @@
       "target": "alpha",
       "projects": ["utsushi", "kaifuu", "shared", "itotori"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": ["UTSUSHI-102", "KAIFUU-010", "SHARED-025", "KAIFUU-112", "UTSUSHI-065", "UTSUSHI-109"],
+      "dependsOn": [
+        "UTSUSHI-102",
+        "KAIFUU-010",
+        "SHARED-025",
+        "KAIFUU-112",
+        "UTSUSHI-065",
+        "UTSUSHI-109"
+      ],
       "summary": "Prove that Utsushi can observe patched MV/MZ output, not merely fixture runtime output, by consuming a Kaifuu PatchResult and alpha proof manifest and linking observed text or choices back to bridge unit refs.",
       "deliverables": [
         "Patched MV/MZ fixture runtime proof command",
@@ -16849,7 +16856,14 @@
       "target": "alpha",
       "projects": ["utsushi", "itotori", "kaifuu", "shared"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["CATALOG-004", "CATALOG-007", "CATALOG-006", "KAIFUU-112", "SHARED-025", "UTSUSHI-102"],
+      "dependsOn": [
+        "CATALOG-004",
+        "CATALOG-007",
+        "CATALOG-006",
+        "KAIFUU-112",
+        "SHARED-025",
+        "UTSUSHI-102"
+      ],
       "summary": "Bind Utsushi alpha runtime validation targets to catalog, local-corpus, bridge-unit, and proof-manifest metadata so runtime proof runs against meaningful candidate profiles rather than arbitrary fixtures.",
       "deliverables": [
         "Runtime target profile schema linking catalog work identity, edition, bridge unit fixture revision, proof manifest, and readiness evidence",
@@ -16891,7 +16905,15 @@
       "target": "alpha",
       "projects": ["utsushi", "itotori", "kaifuu", "shared"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-010", "UTSUSHI-065", "UTSUSHI-102", "UTSUSHI-109", "UTSUSHI-119", "UTSUSHI-133", "SHARED-025"],
+      "dependsOn": [
+        "UTSUSHI-010",
+        "UTSUSHI-065",
+        "UTSUSHI-102",
+        "UTSUSHI-109",
+        "UTSUSHI-119",
+        "UTSUSHI-133",
+        "SHARED-025"
+      ],
       "summary": "Package the alpha MV/MZ patched-output proof into an embedded playback demo bundle with validated captures, review manifest, and proof links.",
       "deliverables": [
         "Embedded playback demo bundle manifest for public MV/MZ patched fixture output",
@@ -17495,7 +17517,15 @@
       "target": "alpha",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": ["KAIFUU-055", "KAIFUU-011", "KAIFUU-050", "KAIFUU-051", "KAIFUU-067", "KAIFUU-105", "KAIFUU-106"],
+      "dependsOn": [
+        "KAIFUU-055",
+        "KAIFUU-011",
+        "KAIFUU-050",
+        "KAIFUU-051",
+        "KAIFUU-067",
+        "KAIFUU-105",
+        "KAIFUU-106"
+      ],
       "summary": "Prove a bounded RGSS3/VX Ace path through profiled RGSSAD or Ruby Marshal extraction, trivial patch, rebuild, and validation using public synthetic fixtures and optional private-local redacted evidence.",
       "deliverables": [
         "Synthetic RGSS3 layered fixture exercising archive, Ruby Marshal codec, extract, trivial patch, and verify",
@@ -17537,7 +17567,15 @@
       "target": "alpha",
       "projects": ["kaifuu", "suite"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": ["KAIFUU-072", "KAIFUU-102", "KAIFUU-036", "KAIFUU-067", "KAIFUU-105", "KAIFUU-106", "KAIFUU-107"],
+      "dependsOn": [
+        "KAIFUU-072",
+        "KAIFUU-102",
+        "KAIFUU-036",
+        "KAIFUU-067",
+        "KAIFUU-105",
+        "KAIFUU-106",
+        "KAIFUU-107"
+      ],
       "summary": "Gate alpha XP3 readiness on a private-local redacted validation workflow that proves at least one owned encrypted XP3 profile can be classified, key-resolved, extracted, trivially patched, and verified when local inputs are configured.",
       "deliverables": [
         "Private-local XP3 validation command with skipped, passed, failed, and out-of-profile result states",
@@ -17579,7 +17617,14 @@
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": ["KAIFUU-040", "KAIFUU-011", "KAIFUU-050", "KAIFUU-051", "KAIFUU-066", "KAIFUU-073"],
+      "dependsOn": [
+        "KAIFUU-040",
+        "KAIFUU-011",
+        "KAIFUU-050",
+        "KAIFUU-051",
+        "KAIFUU-066",
+        "KAIFUU-073"
+      ],
       "summary": "Turn Wolf encrypted archive readiness into a first extract-patch-verify smoke that can gate later broad Wolf adapter claims.",
       "deliverables": [
         "Wolf encrypted archive smoke command or fixture runner",
