@@ -1,11 +1,14 @@
 import {
   ItotoriFeedbackRepository,
+  ItotoriCatalogExactExternalIdLinkerService,
+  ItotoriCatalogRepository,
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
   migrate,
+  type ItotoriCatalogExactExternalIdLinkerPort,
 } from "@itotori/db";
 import {
   ItotoriAuthorizationService,
@@ -22,6 +25,7 @@ export type ItotoriApplicationServices = {
   authorization: ItotoriAuthorizationPort;
   projectWorkflow: ItotoriProjectWorkflowPort;
   manualFeedback: ManualFeedbackImportPort;
+  catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -49,6 +53,7 @@ export async function withDatabaseItotoriServices<T>(
     const projectRepository = new ItotoriProjectRepository(context.db);
     const feedbackRepository = new ItotoriFeedbackRepository(context.db);
     const modelLedgerRepository = new ItotoriModelLedgerRepository(context.db);
+    const catalogRepository = new ItotoriCatalogRepository(context.db);
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -58,6 +63,10 @@ export async function withDatabaseItotoriServices<T>(
         modelLedgerRepository,
       ),
       manualFeedback: new ManualFeedbackImportService(feedbackRepository, localUserActor),
+      catalogExactExternalIdLinker: new ItotoriCatalogExactExternalIdLinkerService(
+        catalogRepository,
+        localUserActor,
+      ),
     });
   } finally {
     await context.close();

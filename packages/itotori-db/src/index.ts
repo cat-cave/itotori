@@ -174,3 +174,20 @@ export type {
   OutboxPublishResult,
   QueueServiceRunOptions,
 } from "./services/event-queue-service.js";
+export {
+  catalogExactExternalIdLinkDiagnosticCodeValues,
+  catalogExactExternalIdLinkSchemaVersion,
+  catalogExactExternalIdLinkStatusValues,
+  ItotoriCatalogExactExternalIdLinkerService,
+} from "./services/catalog-exact-external-id-linker.js";
+export type {
+  CatalogExactExternalIdLinkDiagnostic,
+  CatalogExactExternalIdLinkDiagnosticCode,
+  CatalogExactExternalIdLinkExternalId,
+  CatalogExactExternalIdLinkMatch,
+  CatalogExactExternalIdLinkRequest,
+  CatalogExactExternalIdLinkResult,
+  CatalogExactExternalIdLinkStatus,
+  CatalogExactExternalIdLinkSubject,
+  ItotoriCatalogExactExternalIdLinkerPort,
+} from "./services/catalog-exact-external-id-linker.js";

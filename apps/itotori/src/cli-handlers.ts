@@ -1,4 +1,8 @@
 import { assertRuntimeReport } from "@itotori/localization-bridge-schema";
+import type {
+  CatalogExactExternalIdLinkRequest,
+  ItotoriCatalogExactExternalIdLinkerPort,
+} from "@itotori/db";
 import { assertBridgeInput } from "./api-schema.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
@@ -11,6 +15,7 @@ export type JsonFileStore = {
 export type ItotoriCliServices = {
   projectWorkflow: ItotoriProjectWorkflowPort;
   manualFeedback: ManualFeedbackImportPort;
+  catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
 };
 
 export type ItotoriCliDependencies = {
@@ -48,6 +53,9 @@ export async function runItotoriCliCommand(
       break;
     case "import-feedback":
       await runImportFeedback(args, dependencies);
+      break;
+    case "catalog-link-exact":
+      await runCatalogLinkExact(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -123,6 +131,19 @@ async function runImportFeedback(
   const feedback = dependencies.io.readJson(feedbackPath);
   const result = await dependencies.withServices((services) =>
     services.manualFeedback.importManualFeedback(feedback),
+  );
+  dependencies.io.writeJson(outputPath, result);
+}
+
+async function runCatalogLinkExact(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const requestPath = requiredFlag(args, "--request");
+  const outputPath = requiredFlag(args, "--output");
+  const request = dependencies.io.readJson(requestPath) as CatalogExactExternalIdLinkRequest;
+  const result = await dependencies.withServices((services) =>
+    services.catalogExactExternalIdLinker.linkExactExternalIds(request),
   );
   dependencies.io.writeJson(outputPath, result);
 }

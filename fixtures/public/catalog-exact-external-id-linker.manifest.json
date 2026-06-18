@@ -1,0 +1,45 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "catalog-exact-external-id-linker",
+    "title": "Catalog Exact External-ID Linker Fixtures",
+    "kind": "synthetic",
+    "summary": "Synthetic public request fixtures for deterministic exact catalog external-id linking positive and negative paths.",
+    "sourceLocale": "ja-JP",
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Hand-authored synthetic catalog IDs and request metadata for repository tests; no third-party raw assets."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic request bundle for CATALOG-008 exact external-id linker verification.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/catalog-exact-external-id-linker/requests.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "474865aa30c9110fdb9df01a6fefc4561101a43de9530644b307dcee64183129",
+      "bytes": 1796,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 1,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "engineKinds": ["catalog-synthetic"],
+    "notes": "Covers exact match, strict case-sensitive no match, conflicting exact matches, and unsupported local_detection observations without private local assets."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:catalog-exact-external-id-linker"
+  }
+}

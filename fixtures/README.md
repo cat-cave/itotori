@@ -5,6 +5,8 @@ private corpora.
 
 - `hello-game/` is the existing synthetic public fixture used by the hello-world
   workflow.
+- `catalog-exact-external-id-linker/` contains synthetic public request
+  fixtures for deterministic catalog external-id linking.
 - `seeded-localization-defects/` is the synthetic public localization QA corpus
   used for seeded defect recall, expected findings, false-positive calibration,
   and taxonomy coverage review.

@@ -1,0 +1,67 @@
+{
+  "schemaVersion": "catalog.exact_external_id_link.fixture.v0.1",
+  "summary": "Synthetic public fixture requests for deterministic catalog exact external-id linking.",
+  "requests": {
+    "exactMatch": {
+      "schemaVersion": "catalog.exact_external_id_link.v0.1",
+      "subject": {
+        "kind": "fixture",
+        "id": "catalog-008-exact-match"
+      },
+      "externalIds": [
+        {
+          "catalogSource": "dlsite",
+          "sourceId": "RJ349517",
+          "externalIdKind": "store_product"
+        }
+      ]
+    },
+    "caseSensitiveNoMatch": {
+      "schemaVersion": "catalog.exact_external_id_link.v0.1",
+      "subject": {
+        "kind": "fixture",
+        "id": "catalog-008-case-sensitive-no-match"
+      },
+      "externalIds": [
+        {
+          "catalogSource": "dlsite",
+          "sourceId": "rj349517",
+          "externalIdKind": "store_product"
+        }
+      ]
+    },
+    "conflictingMatches": {
+      "schemaVersion": "catalog.exact_external_id_link.v0.1",
+      "subject": {
+        "kind": "fixture",
+        "id": "catalog-008-conflicting-matches"
+      },
+      "externalIds": [
+        {
+          "catalogSource": "dlsite",
+          "sourceId": "RJ349517",
+          "externalIdKind": "store_product"
+        },
+        {
+          "catalogSource": "steam",
+          "sourceId": "333600",
+          "externalIdKind": "store_product"
+        }
+      ]
+    },
+    "unsupportedLocalDetection": {
+      "schemaVersion": "catalog.exact_external_id_link.v0.1",
+      "subject": {
+        "kind": "fixture",
+        "id": "catalog-008-unsupported-local-detection"
+      },
+      "externalIds": [
+        {
+          "catalogSource": "dlsite",
+          "sourceId": "RJ349517",
+          "externalIdKind": "local_detection"
+        }
+      ]
+    }
+  }
+}

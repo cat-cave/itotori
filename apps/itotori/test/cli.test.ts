@@ -1,6 +1,10 @@
 import { readFileSync } from "node:fs";
 import {
   type AuthorizationActor,
+  type CatalogExactExternalIdLinkRequest,
+  type CatalogExactExternalIdLinkResult,
+  catalogExactExternalIdLinkStatusValues,
+  catalogExactExternalIdLinkSchemaVersion,
   feedbackTypeValues,
   type ManualFeedbackImportInput,
   type ManualFeedbackImportResult,
@@ -133,6 +137,34 @@ describe("Itotori CLI handlers", () => {
     expect(services.manualFeedback.importManualFeedback).toHaveBeenCalledWith(feedback);
     expect(writes.get("feedback-result.json")).toEqual(manualFeedbackResultFixture);
   });
+
+  it("writes exact catalog external-id link results from fixture requests", async () => {
+    const services = servicesFixture();
+    const reads = new Map<string, unknown>([
+      ["catalog-link-request.json", exactLinkRequestFixture],
+    ]);
+    const writes = new Map<string, unknown>();
+
+    await runItotoriCliCommand(
+      [
+        "catalog-link-exact",
+        "--request",
+        "catalog-link-request.json",
+        "--output",
+        "catalog-link-result.json",
+      ],
+      {
+        io: jsonStoreFixture(reads, writes),
+        migrateDatabase: vi.fn(async () => {}),
+        withServices: async (callback) => await callback(services),
+      },
+    );
+
+    expect(services.catalogExactExternalIdLinker.linkExactExternalIds).toHaveBeenCalledWith(
+      exactLinkRequestFixture,
+    );
+    expect(writes.get("catalog-link-result.json")).toEqual(exactLinkResultFixture);
+  });
 });
 
 function jsonStoreFixture(reads: Map<string, unknown>, writes: Map<string, unknown>) {
@@ -204,6 +236,9 @@ function servicesFixture(): ItotoriCliServices {
     },
     manualFeedback: {
       importManualFeedback: vi.fn(async () => manualFeedbackResultFixture),
+    },
+    catalogExactExternalIdLinker: {
+      linkExactExternalIds: vi.fn(async () => exactLinkResultFixture),
     },
   };
 }
@@ -314,4 +349,40 @@ const manualFeedbackResultFixture: ManualFeedbackImportResult = {
   contextStatus: "contextualized",
   reportCount: 1,
   duplicate: false,
+};
+
+const exactLinkRequestFixture: CatalogExactExternalIdLinkRequest = {
+  schemaVersion: catalogExactExternalIdLinkSchemaVersion,
+  subject: {
+    kind: "fixture",
+    id: "catalog-008-exact-match",
+  },
+  externalIds: [
+    {
+      catalogSource: "dlsite",
+      sourceId: "RJ349517",
+      externalIdKind: "store_product",
+    },
+  ],
+};
+
+const exactLinkResultFixture: CatalogExactExternalIdLinkResult = {
+  schemaVersion: catalogExactExternalIdLinkSchemaVersion,
+  status: catalogExactExternalIdLinkStatusValues.linked,
+  subject: {
+    kind: "fixture",
+    id: "catalog-008-exact-match",
+  },
+  workId: "work-dlsite",
+  matches: [
+    {
+      inputIndex: 0,
+      catalogSource: "dlsite",
+      sourceId: "RJ349517",
+      externalIdKind: "store_product",
+      workId: "work-dlsite",
+      canonicalTitle: "DLsite-only fixture",
+    },
+  ],
+  diagnostics: [],
 };
