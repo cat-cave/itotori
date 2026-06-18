@@ -536,7 +536,7 @@ fn lexical_absolute_path(path: &Path) -> KaifuuResult<PathBuf> {
             Component::ParentDir => {
                 let at_root = normalized
                     .components()
-                    .last()
+                    .next_back()
                     .is_some_and(|part| matches!(part, Component::Prefix(_) | Component::RootDir));
                 if !at_root {
                     normalized.pop();
