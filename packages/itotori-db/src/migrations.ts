@@ -116,6 +116,10 @@ const migrations = [
     id: "0014_catalog_completeness_evidence",
     file: "0014_catalog_completeness_evidence.sql",
   },
+  {
+    id: "0015_style_guide_versions",
+    file: "0015_style_guide_versions.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

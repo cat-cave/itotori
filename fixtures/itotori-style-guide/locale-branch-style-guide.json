@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "itotori.style-guide-fixture.v1",
+  "projectId": "project-test",
+  "localeBranchId": "locale-en-us",
+  "cases": {
+    "create": {
+      "styleGuideVersionId": "style-guide-version-en-us-001",
+      "expectedPreviousVersionId": null,
+      "policy": {
+        "schemaVersion": "style-guide-policy.v0",
+        "sections": {
+          "tone": [
+            {
+              "ruleId": "tone-player-address-formal",
+              "guidance": "Use clear but warm tutorial address; avoid slang in system-adjacent dialogue."
+            }
+          ],
+          "terminology": [
+            {
+              "ruleId": "term-player-placeholder",
+              "guidance": "Preserve {player} exactly and do not localize placeholder braces."
+            }
+          ],
+          "honorifics": [
+            {
+              "ruleId": "honorifics-character-names",
+              "guidance": "Preserve named-character honorifics unless a speaker note explicitly removes them."
+            }
+          ],
+          "formatting": [
+            {
+              "ruleId": "formatting-message-window",
+              "guidance": "Keep translated lines concise enough for the default message window."
+            }
+          ],
+          "protectedSpans": [
+            {
+              "ruleId": "protected-placeholder-exact",
+              "guidance": "Protected spans must remain byte-for-byte identical."
+            }
+          ]
+        }
+      }
+    },
+    "update": {
+      "styleGuideVersionId": "style-guide-version-en-us-002",
+      "expectedPreviousVersionId": "style-guide-version-en-us-001",
+      "policy": {
+        "schemaVersion": "style-guide-policy.v0",
+        "sections": {
+          "tone": [
+            {
+              "ruleId": "tone-player-address-formal",
+              "guidance": "Use clear but warm tutorial address; avoid slang in system-adjacent dialogue."
+            },
+            {
+              "ruleId": "tone-protagonist-direct",
+              "guidance": "Keep protagonist narration direct, plain, and emotionally readable."
+            }
+          ],
+          "terminology": [
+            {
+              "ruleId": "term-player-placeholder",
+              "guidance": "Preserve {player} exactly and do not localize placeholder braces."
+            }
+          ],
+          "honorifics": [
+            {
+              "ruleId": "honorifics-character-names",
+              "guidance": "Preserve named-character honorifics unless a speaker note explicitly removes them."
+            }
+          ],
+          "formatting": [
+            {
+              "ruleId": "formatting-message-window",
+              "guidance": "Keep translated lines concise enough for the default message window."
+            }
+          ],
+          "protectedSpans": [
+            {
+              "ruleId": "protected-placeholder-exact",
+              "guidance": "Protected spans must remain byte-for-byte identical."
+            }
+          ]
+        }
+      }
+    },
+    "approve": {
+      "styleGuideVersionId": "style-guide-version-en-us-002",
+      "expectedLatestVersionId": "style-guide-version-en-us-002"
+    },
+    "staleApproval": {
+      "styleGuideVersionId": "style-guide-version-en-us-001",
+      "expectedLatestVersionId": "style-guide-version-en-us-001"
+    },
+    "missingLocaleBranch": {
+      "localeBranchId": "locale-missing",
+      "styleGuideVersionId": "style-guide-version-missing-001"
+    },
+    "malformedPolicy": {
+      "styleGuideVersionId": "style-guide-version-malformed-001",
+      "policy": {
+        "schemaVersion": "style-guide-policy.v0",
+        "sections": {
+          "tone": {
+            "ruleId": "tone-not-array",
+            "guidance": "This section is intentionally malformed."
+          },
+          "terminology": [],
+          "honorifics": [],
+          "formatting": [],
+          "protectedSpans": []
+        }
+      }
+    }
+  }
+}

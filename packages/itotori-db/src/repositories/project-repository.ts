@@ -62,6 +62,8 @@ import {
   sourceBundles,
   sourceRevisions,
   sourceUnits,
+  styleGuides,
+  styleGuideVersions,
   workspaces,
 } from "../schema.js";
 import type { RuntimeBridgeUnitRefRole, RuntimeEvidenceKind } from "../schema.js";
@@ -354,6 +356,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         ${artifacts},
         ${findings},
         ${events},
+        ${styleGuideVersions},
+        ${styleGuides},
         ${localeBranchUnits},
         ${localeBranches},
         ${sourceUnits},

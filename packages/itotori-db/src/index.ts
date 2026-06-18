@@ -22,6 +22,7 @@ export {
   runtimeBridgeUnitRefRoleValues,
   runtimeEvidenceKindValues,
   runtimeRunStatusValues,
+  styleGuideVersionStatusValues,
   catalogCandidateMatchStatusValues,
   catalogConfidenceValues,
   catalogConflictKindValues,
@@ -69,6 +70,7 @@ export type {
   RuntimeBridgeUnitRefRole,
   RuntimeEvidenceKind,
   RuntimeRunStatus,
+  StyleGuideVersionStatus,
   CatalogCandidateMatchStatus,
 } from "./schema.js";
 export {
@@ -150,6 +152,34 @@ export type {
   QueueFailureInput,
   QueueJsonRecord,
 } from "./repositories/event-queue-repository.js";
+export {
+  contentHashForPolicy,
+  ItotoriStyleGuideRepository,
+} from "./repositories/style-guide-repository.js";
+export type {
+  ApproveStyleGuideVersionInput,
+  ApproveStyleGuideVersionResult,
+  CreateStyleGuideVersionInput,
+  CreateStyleGuideVersionResult,
+  ItotoriStyleGuideRepositoryPort,
+  LocaleBranchStyleGuideContext,
+  SourceRevisionReference,
+  StyleGuideRecord,
+  StyleGuideVersionRecord,
+} from "./repositories/style-guide-repository.js";
+export {
+  ItotoriStyleGuideService,
+  styleGuidePolicySchemaVersion,
+  styleGuideVersionChangedPayloadSchemaVersion,
+  validatePolicy,
+} from "./services/style-guide-service.js";
+export type {
+  ApproveStyleGuideVersionCommand,
+  StyleGuideCommandResult,
+  StyleGuideDiagnostic,
+  StyleGuideVersionChangedPayload,
+  SubmitStyleGuideVersionInput,
+} from "./services/style-guide-service.js";
 export {
   catalogCompletenessPoolValues,
   ItotoriCatalogRepository,

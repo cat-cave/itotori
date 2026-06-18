@@ -12,6 +12,7 @@ import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-rep
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
+import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -284,6 +285,18 @@ const repositoryPermissionGateMatrix = [
     "catalogWrite",
     "catalog-crawler-repository.test.ts crawler job failure coverage",
     (repo) => repo.failCrawlerJob(deniedActor, "job", "worker", new Error("failed")),
+  ),
+  styleGuideGate(
+    "createVersion",
+    "draftWrite",
+    "style-guide-repository.test.ts version persistence coverage",
+    (repo) => repo.createVersion(deniedActor, undefined as never),
+  ),
+  styleGuideGate(
+    "approveVersion",
+    "draftWrite",
+    "style-guide-repository.test.ts approval coverage",
+    (repo) => repo.approveVersion(deniedActor, undefined as never),
   ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
@@ -576,6 +589,18 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.write",
           "successFixture": "catalog-crawler-repository.test.ts crawler job failure coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriStyleGuideRepository.createVersion",
+          "requiredPermission": "draft.write",
+          "successFixture": "style-guide-repository.test.ts version persistence coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriStyleGuideRepository.approveVersion",
+          "requiredPermission": "draft.write",
+          "successFixture": "style-guide-repository.test.ts approval coverage",
+        },
       ]
     `);
   });
@@ -703,6 +728,22 @@ function catalogCrawlerGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriCatalogCrawlerRepository(db)),
+  });
+}
+
+function styleGuideGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriStyleGuideRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriStyleGuideRepository",
+    sourceFile: "style-guide-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriStyleGuideRepository(db)),
   });
 }
 
