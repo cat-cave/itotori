@@ -1,0 +1,38 @@
+{
+  "sourceFileId": "data/messages.tbl",
+  "sourceRevisionId": "rev-table-001",
+  "encoding": "binary_table",
+  "sourceLength": 16,
+  "decodedTextLength": 10,
+  "patchedLength": 21,
+  "segments": [
+    {
+      "sourceBytes": {
+        "start": 0,
+        "end": 8
+      },
+      "decodedText": {
+        "start": 0,
+        "end": 5
+      },
+      "patchedBytes": {
+        "start": 0,
+        "end": 10
+      }
+    },
+    {
+      "sourceBytes": {
+        "start": 8,
+        "end": 16
+      },
+      "decodedText": {
+        "start": 5,
+        "end": 10
+      },
+      "patchedBytes": {
+        "start": 10,
+        "end": 21
+      }
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "sourceFileId": "script.ks",
+  "sourceRevisionId": "rev-2026-06-18",
+  "encoding": "shift_jis",
+  "sourceLength": 200,
+  "decodedTextLength": 12,
+  "patchedLength": 112,
+  "segments": [
+    {
+      "sourceBytes": {
+        "start": 100,
+        "end": 104
+      },
+      "decodedText": {
+        "start": 0,
+        "end": 6
+      },
+      "patchedBytes": {
+        "start": 100,
+        "end": 106
+      }
+    },
+    {
+      "sourceBytes": {
+        "start": 104,
+        "end": 108
+      },
+      "decodedText": {
+        "start": 6,
+        "end": 12
+      },
+      "patchedBytes": {
+        "start": 106,
+        "end": 112
+      }
+    }
+  ]
+}

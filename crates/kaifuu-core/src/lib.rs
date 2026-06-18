@@ -39,6 +39,13 @@ pub const SEMANTIC_UNSUPPORTED_VARIANT_PACKED: &str = "kaifuu.unsupported_varian
 pub const SEMANTIC_UNKNOWN_ENGINE_VARIANT: &str = "kaifuu.unknown_engine_variant";
 
 pub mod contracts;
+mod offset_map;
+
+pub use offset_map::{
+    ByteSpan, OffsetMap, OffsetMapDiagnostic, OffsetMapError, OffsetMapSegment,
+    OffsetMapValidationResult, SourceEncoding, SourceFileId, SourceRange, SourceRevisionId,
+    validate_offset_map_value,
+};
 
 pub trait EngineAdapter {
     fn id(&self) -> &'static str;
