@@ -7549,7 +7549,7 @@
     {
       "id": "ITOTORI-049",
       "title": "Provider invocation capability guards",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -7584,10 +7584,7 @@
         "Provider-specific capability drift",
         "Fallback metadata loss",
         "Unsupported structured output accepted"
-      ],
-      "owner": "orchestrator-wave11",
-      "branch": "spec/itotori-049",
-      "worktree": "/tmp/itotori-spec-itotori-049"
+      ]
     },
     {
       "id": "ITOTORI-050",

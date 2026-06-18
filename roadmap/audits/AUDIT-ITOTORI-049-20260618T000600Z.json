@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-049-20260618T000600Z",
+  "generatedAt": "2026-06-18T00:06:00Z",
+  "spec": {
+    "id": "ITOTORI-049",
+    "title": "Provider invocation capability guards",
+    "branch": "spec/itotori-049",
+    "worktree": "/tmp/itotori-spec-itotori-049",
+    "commit": "773c0cb6e07942d84861e9891414a564b6e8517a"
+  },
+  "auditor": {
+    "name": "anscombe-the-4th",
+    "kind": "architecture"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final re-audit found no P0/P1/P2/P3 findings after provider capability guard repair. The branch is clean, non-empty, and validates OpenRouter, local OpenAI-compatible, fake generation, drafting, and agent runtime guard paths.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
