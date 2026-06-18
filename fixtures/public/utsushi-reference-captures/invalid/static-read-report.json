@@ -1,0 +1,104 @@
+{
+  "schemaVersion": "0.2.0",
+  "runtimeReportId": "019ed003-0000-7000-8000-000010000001",
+  "sourceLocale": "ja-JP",
+  "adapterName": "utsushi-fixture",
+  "adapterVersion": "0.0.0",
+  "fidelityTier": "layout_probe",
+  "evidenceTier": "E2",
+  "controlledPlaybackSession": {
+    "sessionId": "019ed003-0000-7000-8000-000060000001",
+    "adapterName": "utsushi-fixture",
+    "adapterVersion": "0.0.0",
+    "capabilityClass": "static_trace",
+    "requestedOperation": "trace",
+    "status": "passed",
+    "fidelityTier": "layout_probe",
+    "evidenceTier": "E2",
+    "featuresUsed": ["static_trace"],
+    "limitations": []
+  },
+  "status": "passed",
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "traceEvents": [],
+  "observationHookEvents": [
+    {
+      "schemaVersion": "0.1.0-alpha",
+      "eventId": "019ed003-0000-7000-8000-000070000001",
+      "observedAt": "2026-06-17T00:00:00.000Z",
+      "eventKind": "text",
+      "runtimeTargetId": "fixture:reference-capture-public",
+      "adapterId": {
+        "name": "utsushi-fixture",
+        "version": "0.0.0"
+      },
+      "evidenceTier": "E1",
+      "environment": {
+        "runtime": "fixture"
+      },
+      "sourceRevision": {
+        "sourceId": "reference-capture-public",
+        "revisionId": "fixture-source-v0.1"
+      },
+      "bridgeRefs": [
+        {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+          "sourceUnitKey": "reference.capture.001"
+        }
+      ],
+      "redaction": {
+        "status": "not_required"
+      },
+      "payload": {
+        "payloadKind": "text",
+        "text": "Reference capture ready."
+      }
+    },
+    {
+      "schemaVersion": "0.1.0-alpha",
+      "eventId": "019ed003-0000-7000-8000-000071000001",
+      "observedAt": "2026-06-17T00:00:00.000Z",
+      "eventKind": "frame",
+      "runtimeTargetId": "fixture:reference-capture-public",
+      "adapterId": {
+        "name": "utsushi-fixture",
+        "version": "0.0.0"
+      },
+      "evidenceTier": "E2",
+      "environment": {
+        "runtime": "fixture"
+      },
+      "sourceRevision": {
+        "sourceId": "reference-capture-public",
+        "revisionId": "fixture-source-v0.1"
+      },
+      "bridgeRefs": [
+        {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+          "sourceUnitKey": "reference.capture.001"
+        }
+      ],
+      "redaction": {
+        "status": "not_required"
+      },
+      "payload": {
+        "payloadKind": "frame",
+        "frame": 1,
+        "width": 320,
+        "height": 180,
+        "artifactRef": {
+          "artifactId": "019ed003-0000-7000-8000-000040000001",
+          "artifactKind": "screenshot",
+          "uri": "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png",
+          "mediaType": "image/png"
+        }
+      }
+    }
+  ],
+  "branchEvents": [],
+  "captures": [],
+  "recordings": [],
+  "approximations": [],
+  "validationFindings": [],
+  "limitations": []
+}

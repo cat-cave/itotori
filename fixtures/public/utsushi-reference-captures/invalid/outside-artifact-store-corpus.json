@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "0.1.0",
+  "artifactStoreRoot": "../artifact-store",
+  "fixtures": [
+    {
+      "fixtureId": "utsushi-reference-capture-outside-artifact-store",
+      "runtimeReportPath": "outside-artifact-store-report.json",
+      "sourceRevision": {
+        "sourceId": "reference-capture-public",
+        "revisionId": "fixture-source-v0.1"
+      },
+      "runtimeTargetId": "fixture:reference-capture-public",
+      "observationEventIds": [
+        "019ed003-0000-7000-8000-000070000001",
+        "019ed003-0000-7000-8000-000071000001"
+      ],
+      "artifactHashes": [
+        {
+          "artifactId": "019ed003-0000-7000-8000-000040000001",
+          "uri": "/tmp/reference-capture.png",
+          "sha256": "fea02f42d0815df80a48355bfbee008c261e5a516f2f23f333efb757f618f232",
+          "bytes": 53,
+          "mediaType": "image/png"
+        }
+      ],
+      "evidenceTier": "E2",
+      "redactionStatus": "not_required"
+    }
+  ]
+}

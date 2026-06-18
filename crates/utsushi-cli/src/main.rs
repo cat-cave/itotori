@@ -5,7 +5,7 @@ use utsushi_core::{
     RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeOperation, RuntimeRequest, write_json,
 };
 
-const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
+const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
 fn main() {
@@ -29,6 +29,12 @@ fn run_cli_with_registry(
         Some("capabilities") => {
             let output = flag(args, "--output")?;
             write_json(&PathBuf::from(output), &capabilities_output(registry))?;
+        }
+        Some("validate-reference-captures") => {
+            let corpus_path = PathBuf::from(args.get(1).ok_or("missing corpus_manifest")?);
+            let output = flag(args, "--output")?;
+            let report = utsushi_fixture::validate_reference_capture_corpus(&corpus_path)?;
+            write_json(&PathBuf::from(output), &report.to_json_value()?)?;
         }
         Some(command) => {
             let operation = operation_from_command(command).ok_or(USAGE)?;
@@ -494,6 +500,32 @@ mod tests {
             artifact_root.as_path().display().to_string()
         );
         assert_eq!(&*calls.borrow(), &["capture"]);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn validate_reference_captures_command_writes_validation_report() {
+        let root = temp_dir("reference-capture-validation");
+        let output = root.join("validation-report.json");
+        let corpus_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/public/utsushi-reference-captures/reference-capture-corpus.json");
+        let registry = utsushi_fixture::registry();
+
+        run_cli_with_registry(
+            &args(&[
+                Path::new("validate-reference-captures"),
+                corpus_path.as_path(),
+                Path::new("--output"),
+                output.as_path(),
+            ]),
+            &registry,
+        )
+        .unwrap();
+
+        let report: Value = serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
+        assert_eq!(report["schemaVersion"], "0.1.0");
+        assert_eq!(report["fixturesValidated"], 1);
+        assert_eq!(report["artifactsValidated"], 1);
         let _ = fs::remove_dir_all(root);
     }
 }

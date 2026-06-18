@@ -14,8 +14,10 @@ use utsushi_core::{
 };
 
 mod launch_adapters;
+mod reference_corpus;
 
 pub use launch_adapters::{BrowserLaunchAdapter, NwjsLaunchAdapter};
+pub use reference_corpus::{ReferenceCaptureValidationReport, validate_reference_capture_corpus};
 
 pub struct FixtureRuntimeAdapter;
 static FIXTURE_RUNTIME_ADAPTER: FixtureRuntimeAdapter = FixtureRuntimeAdapter;

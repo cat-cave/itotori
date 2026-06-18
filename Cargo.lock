@@ -149,6 +149,7 @@ dependencies = [
 name = "utsushi-fixture"
 version = "0.0.0"
 dependencies = [
+ "serde",
  "serde_json",
  "utsushi-core",
 ]

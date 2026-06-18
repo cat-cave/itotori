@@ -1,0 +1,119 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "utsushi-reference-captures",
+    "title": "Utsushi Reference Capture Corpus",
+    "kind": "synthetic",
+    "summary": "Synthetic public reference capture corpus for validating Utsushi observation envelopes, managed screenshot artifacts, hashes, and redaction metadata.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["en-US"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Synthetic runtime evidence and artifact placeholders authored for repository tests; no third-party raw assets."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored public positive and negative reference capture validation fixtures.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/public/utsushi-reference-captures/reference-capture-corpus.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "1bdf81df48965b304d2f24a5c3ce7ccec30b5d98201cf4614504c8b56ef7999a",
+      "bytes": 1002,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/runtime-report.json",
+      "role": "runtime-evidence",
+      "mediaType": "application/json",
+      "sha256": "a9067e9ac33ad958e9ca1ce5273fe9a5fbdcb51e97c5af1e3b52595a72d85b2c",
+      "bytes": 3676,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/artifact-store/.utsushi-runtime-artifacts",
+      "role": "metadata",
+      "mediaType": "text/plain",
+      "sha256": "0e68ee248d6691c8bc360fab929358080df168d6f648afc505fff79cda851b73",
+      "bytes": 27,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/artifact-store/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png",
+      "role": "asset",
+      "mediaType": "image/png",
+      "sha256": "fea02f42d0815df80a48355bfbee008c261e5a516f2f23f333efb757f618f232",
+      "bytes": 53,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/missing-hash-corpus.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "91aa3bfa0fc850382d759de29db5d7d9ed16ae62bf8cf81cd0713512eae9dc16",
+      "bytes": 641,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/outside-artifact-store-corpus.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "76621de438aca619181d2a0569be84d13d80d4757829f02496a8d4be3437c240",
+      "bytes": 947,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/static-read-corpus.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "60b9d76c3d746c0b767350a6f95e70052234216f572425c5b5f53a3e8d6484cf",
+      "bytes": 1014,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/static-read-report.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "2ea4fed9c2a2571ed60266ef099fd044564a1f215af8b373c8401ef835f554bd",
+      "bytes": 2980,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/unredacted-local-path-corpus.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "941faa846a8dd64dfd50153b1d9ce2b884d03550ee6a56d2f97d338181d60d39",
+      "bytes": 1034,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/unredacted-local-path-report.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "2dd4b5310263f9dfafbfa05be8836685e34dc4d5503ebbf529386ab17590b034",
+      "bytes": 3682,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 10,
+    "textUnits": 1,
+    "sourceTextUtf16CodeUnits": 24,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["en-US"],
+    "engineKinds": ["utsushi-fixture"],
+    "notes": "Positive corpus plus negative validator cases for missing hashes, unmanaged screenshot references, static-only evidence claims, and unredacted local paths."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:utsushi-reference-captures"
+  }
+}
