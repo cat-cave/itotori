@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-019-20260618T171750Z",
+  "generatedAt": "2026-06-18T17:17:50Z",
+  "spec": {
+    "id": "UTSUSHI-019",
+    "title": "Runtime evidence nested id namespacing",
+    "branch": "spec/utsushi-019",
+    "worktree": "/tmp/itotori-spec-utsushi-019",
+    "commit": "8ed5c55bd5521f4e259150b79ee168ea460b0f5d"
+  },
+  "auditor": {
+    "name": "utsushi-019-final-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final re-audit found no P0/P1/P2/P3 findings. Runtime validation findings now use report-qualified repository IDs while preserving adapter-local IDs in metadata, and DB-backed tests confirm repeated adapter-local IDs remain independent for evidence, artifacts, branch events, recordings, reference comparisons, and validation findings.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}

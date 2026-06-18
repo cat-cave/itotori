@@ -1,0 +1,106 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-010-20260618T171800Z",
+  "generatedAt": "2026-06-18T17:18:00Z",
+  "spec": {
+    "id": "CATALOG-010",
+    "title": "Catalog conflict review read model",
+    "branch": "spec/catalog-010",
+    "worktree": "/tmp/itotori-spec-catalog-010",
+    "commit": "19dbb1ca6f15896352922e16691f71fe804d9982"
+  },
+  "auditor": {
+    "name": "catalog-010-final-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers. Candidate catalog ids now include work evidence subject ids, catalogRecordId filtering finds those candidates, and exact-link provenance is preserved. A non-blocking API schema weakness remains for enum-backed catalog conflict fields.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["CATALOG-010-F001"]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-010-F001",
+      "severity": "P2",
+      "title": "Catalog conflict API schema accepts arbitrary enum strings",
+      "category": "test",
+      "locations": [
+        {
+          "path": "apps/itotori/src/api-schema.ts",
+          "line": 282
+        },
+        {
+          "path": "apps/itotori/src/api-schema.ts",
+          "line": 818
+        }
+      ],
+      "description": "The catalog conflict review API response schema validates required fields, but enum-backed fields such as status, conflictKind, catalogSource, externalIdKind, and sourceRecordKind are still accepted as arbitrary non-empty strings.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit confirmed repository output is enum-backed, but the API response validator would not catch a bad service, mock, or regression that returned an arbitrary string for these fields."
+        },
+        {
+          "kind": "test",
+          "detail": "DB-backed catalog-conflict-review and authorization-matrix tests passed after the P1 repairs, and pnpm exec vp run ts:typecheck passed."
+        }
+      ],
+      "impact": "The read model currently emits constrained values, so CATALOG-010 can complete, but the API contract guard is weaker than the repository model and could allow future drift through tests or mocks.",
+      "actionableAcceptanceCriteria": [
+        "The catalog conflict API response schema validates status, conflictKind, catalogSource, externalIdKind, and sourceRecordKind against their canonical enum values.",
+        "A response fixture with arbitrary strings for those fields fails schema validation.",
+        "Existing valid conflict review API fixtures continue to pass."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Catalog conflict API enum schema guard",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-010"],
+          "summary": "Tighten the catalog conflict review API response schema so enum-backed fields reject arbitrary strings instead of only checking non-empty string shape.",
+          "deliverables": [
+            "Enum-backed API response validators for catalog conflict review rows",
+            "Negative response fixture for arbitrary enum strings",
+            "Updated valid conflict review API fixtures"
+          ],
+          "acceptanceCriteria": [
+            "Catalog conflict API schema rejects invalid status, conflictKind, catalogSource, externalIdKind, and sourceRecordKind values.",
+            "A service or mock returning arbitrary strings for those fields fails a targeted API schema test.",
+            "Repository-backed valid conflict review responses keep passing API handler and server tests."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec vp run ts:typecheck"
+            }
+          ],
+          "auditFocus": [
+            "API contract drift from repository enums",
+            "Overly broad string validators",
+            "Mocked conflict rows bypassing schema checks"
+          ]
+        }
+      }
+    }
+  ]
+}

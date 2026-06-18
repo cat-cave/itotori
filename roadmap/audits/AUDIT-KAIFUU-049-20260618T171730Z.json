@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-049-20260618T171730Z",
+  "generatedAt": "2026-06-18T17:17:30Z",
+  "spec": {
+    "id": "KAIFUU-049",
+    "title": "Delta package path normalization hardening",
+    "branch": "spec/kaifuu-049",
+    "worktree": "/tmp/itotori-spec-kaifuu-049",
+    "commit": "aa3151e7a286aab9ec7a066594a2eb55cff8cd6a"
+  },
+  "auditor": {
+    "name": "kaifuu-049-final-audit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final audit found no P0/P1/P2/P3 findings. Backslashes are rejected through shared relative-path validation, delta changed entries and source/target manifest records use that validation before materialization, create-side directory scanning rejects backslash components, and docs state the slash-only policy.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}

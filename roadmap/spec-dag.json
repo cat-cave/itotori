@@ -16996,6 +16996,42 @@
         "Over-broad SQL text scanning",
         "Constraint diagnostics that hide the source migration"
       ]
+    },
+    {
+      "id": "CATALOG-067",
+      "status": "planned",
+      "title": "Catalog conflict API enum schema guard",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-010"],
+      "summary": "Tighten the catalog conflict review API response schema so enum-backed fields reject arbitrary strings instead of only checking non-empty string shape.",
+      "deliverables": [
+        "Enum-backed API response validators for catalog conflict review rows",
+        "Negative response fixture for arbitrary enum strings",
+        "Updated valid conflict review API fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Catalog conflict API schema rejects invalid status, conflictKind, catalogSource, externalIdKind, and sourceRecordKind values.",
+        "A service or mock returning arbitrary strings for those fields fails a targeted API schema test.",
+        "Repository-backed valid conflict review responses keep passing API handler and server tests."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": [
+        "API contract drift from repository enums",
+        "Overly broad string validators",
+        "Mocked conflict rows bypassing schema checks"
+      ]
     }
   ]
 }
