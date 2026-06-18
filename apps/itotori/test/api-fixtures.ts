@@ -164,7 +164,7 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
   sourceBundleId: "bridge-1",
   sourceBundleHash: "hash-1",
   sourceBundleRevisionId: "revision-1",
-  branchCount: 1,
+  branchCount: 2,
   unitCount: 1,
   findingCount: 3,
   artifactCount: 3,
@@ -204,6 +204,15 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
       translatedUnitCount: 1,
       openFindingCount: 1,
       artifactCount: 3,
+    },
+    {
+      localeBranchId: "locale-fr-fr",
+      targetLocale: "fr-FR",
+      status: "active",
+      unitCount: 1,
+      translatedUnitCount: 1,
+      openFindingCount: 0,
+      artifactCount: 1,
     },
   ],
 };
@@ -488,6 +497,38 @@ export const projectFixture: ProjectState = {
   targetLocale: "en-US",
   drafts: { "bridge-unit-1": "Hello, {player}." },
   bridge: bridgeFixture,
+};
+
+export const nonJapaneseTargetProjectFixture: ProjectState = {
+  projectId: "project-de-en",
+  localeBranchId: "locale-de-en-us",
+  targetLocale: "en-US",
+  drafts: { "bridge-unit-de": "Good day, {player}." },
+  bridge: {
+    ...bridgeFixture,
+    bridgeId: "bridge-de",
+    sourceBundleHash: "hash-de",
+    sourceLocale: "de-DE",
+    units: [
+      {
+        ...bridgeFixture.units[0]!,
+        bridgeUnitId: "bridge-unit-de",
+        sourceUnitKey: "tag.scene.001.line.001",
+        occurrenceId: "occurrence-de-1",
+        sourceHash: "source-hash-de-1",
+        sourceLocale: "de-DE",
+        sourceText: "Guten Tag, {player}.",
+        protectedSpans: [
+          { kind: "placeholder", raw: "{player}", start: 11, end: 19, preserveMode: "exact" },
+        ],
+        patchRef: {
+          assetId: "source-de.json",
+          writeMode: "replace",
+          sourceUnitKey: "tag.scene.001.line.001",
+        },
+      },
+    ],
+  },
 };
 
 export const runtimeReportFixture: RuntimeVerificationReport = {

@@ -91,6 +91,7 @@ export type {
   FindingInput,
   ItotoriProjectRecord,
   ItotoriProjectRepositoryPort,
+  LocaleBranchIdentity,
   LocaleBranchStatus,
   ProjectDashboardStatus,
   RuntimeDashboardStatus,

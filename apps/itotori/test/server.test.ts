@@ -39,7 +39,10 @@ describe("Itotori server API contracts", () => {
     expect(response).toMatchObject({
       projectId: "project-1",
       status: "runtime_ingested",
-      localeBranches: [{ targetLocale: "en-US" }],
+      localeBranches: [
+        { localeBranchId: "locale-1", targetLocale: "en-US" },
+        { localeBranchId: "locale-fr-fr", targetLocale: "fr-FR" },
+      ],
     });
     expect(getDashboardStatus).toHaveBeenCalledTimes(1);
     expect(getRuntimeStatus).not.toHaveBeenCalled();
