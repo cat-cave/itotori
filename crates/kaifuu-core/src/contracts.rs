@@ -6025,10 +6025,8 @@ fn assert_no_raw_private_or_secret_fields(value: &Value, label: &str) -> BridgeC
                 assert_no_raw_private_or_secret_fields(child, &format!("{label}.{key}"))?;
             }
         }
-        Value::String(value) => {
-            if value.contains("fixtures/private-local/") {
-                return error(format!("{label} must not reference fixtures/private-local"));
-            }
+        Value::String(value) if value.contains("fixtures/private-local/") => {
+            return error(format!("{label} must not reference fixtures/private-local"));
         }
         _ => {}
     }
