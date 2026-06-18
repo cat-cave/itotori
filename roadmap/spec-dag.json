@@ -2145,7 +2145,10 @@
         "CATALOG-011",
         "KAIFUU-053",
         "UNIV-013",
-        "CATALOG-006"
+        "CATALOG-006",
+        "CATALOG-012",
+        "CATALOG-013",
+        "CATALOG-069"
       ],
       "summary": "Expose readiness-aware benchmark seed queries from catalog, local corpus, alpha recorded importer evidence, engine readiness, and existing translation status so alpha benchmark and quality runs can select credible corpora.",
       "deliverables": [
@@ -2155,11 +2158,11 @@
         "Benchmark seed API/read model fixture"
       ],
       "acceptanceCriteria": [
-        "Benchmark seeds distinguish local ownership, translation completeness, CATALOG-011 recorded importer provenance, engine readiness, and benchmark usefulness",
+        "Benchmark seeds distinguish local ownership, translation completeness, CATALOG-011 recorded importer provenance, DLsite demand evidence, engine readiness, and benchmark usefulness",
         "Seed records distinguish identify, inventory, extract, patch, helper, and runtime capability levels instead of flattening engine readiness into one boolean",
-        "MTL-only, fan-partial, no-English, conflict, and readiness-filtered pools can be selected from public fixtures, CATALOG-011 recorded importer fixtures, and private-local aggregate sidecars",
+        "MTL-only, fan-partial, no-English, conflict, demand-ranked, and readiness-filtered pools can be selected from public fixtures, recorded importer fixtures, and private-local aggregate sidecars",
         "Benchmark seed output can be generated without leaking private paths, filenames, story text, or raw corpus records",
-        "The cost and quality benchmark flow can select corpora by capability level and readiness instead of arbitrary fixture availability"
+        "The cost and quality benchmark flow can select corpora by capability level, readiness, demand bucket, and translation completeness instead of arbitrary fixture availability"
       ],
       "verification": [
         {
@@ -2186,12 +2189,12 @@
       "id": "CATALOG-061",
       "title": "Opportunity ranking service",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["itotori", "shared", "utsushi"],
       "parallelGroup": "catalog",
-      "dependsOn": ["CATALOG-004"],
-      "summary": "Add opportunity ranking for localization project selection from completeness, local corpus, market prevalence, engine readiness, existing translation status, and benchmark usefulness without blocking alpha benchmark seed selection.",
+      "dependsOn": ["CATALOG-004", "CATALOG-012", "CATALOG-013", "CATALOG-069", "CATALOG-070"],
+      "summary": "Add opportunity ranking for localization project selection from completeness, local corpus, DLsite demand, platform-language conflicts, market prevalence, engine readiness, existing translation status, and benchmark usefulness.",
       "deliverables": [
         "Opportunity scoring service",
         "Ranked opportunity API/read model",
@@ -2199,8 +2202,10 @@
         "Explainability and provenance tests"
       ],
       "acceptanceCriteria": [
-        "RPG Maker MV/MZ, RGSS3/VX Ace, KiriKiri XP3, TyranoScript, Unity, Siglus, Wolf, MTL-only, fan-partial, and conflict pools can be ranked with explainable evidence",
-        "Opportunity output distinguishes prevalence, local ownership, translation completeness, adapter readiness, benchmark usefulness, and unknown evidence",
+        "RPG Maker MV/MZ, RGSS3/VX Ace, KiriKiri XP3, TyranoScript, Unity, Siglus, Wolf, MTL-only, fan-partial, no-English, official-English-conflict, and demand-ranked pools can be ranked with explainable evidence",
+        "Opportunity output distinguishes prevalence, demand, local ownership, translation completeness, adapter readiness, runtime evidence readiness, benchmark usefulness, and unknown evidence",
+        "DLsite sales, rating, wishlist, rank, and work_type facts influence ranking through explicit weights or rule explanations rather than hidden heuristics",
+        "Platform-language conflicts can demote false untranslated candidates before benchmark or alpha project selection",
         "Ranking can be generated from public fixtures and private-local aggregate sidecars without leaking private data"
       ],
       "verification": [
@@ -2814,8 +2819,19 @@
       "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
-      "dependsOn": ["KAIFUU-006", "KAIFUU-011", "KAIFUU-000", "KAIFUU-020"],
-      "summary": "Implement a Wolf RPG Editor adapter once the binary patching utilities are ready.",
+      "dependsOn": [
+        "KAIFUU-006",
+        "KAIFUU-011",
+        "KAIFUU-000",
+        "KAIFUU-020",
+        "KAIFUU-040",
+        "KAIFUU-073",
+        "KAIFUU-052",
+        "KAIFUU-053",
+        "KAIFUU-050",
+        "KAIFUU-066"
+      ],
+      "summary": "Implement a Wolf RPG Editor adapter on top of the layered access pipeline, binary patching utilities, profile/helper boundary, and encrypted archive smoke evidence.",
       "deliverables": [
         "Wolf adapter",
         "Database/script fixtures",
@@ -2823,9 +2839,10 @@
         "Capability docs"
       ],
       "acceptanceCriteria": [
-        "Core text tables extract and patch",
-        "Binary layout changes are verified",
-        "Unsupported encrypted variants are profiled"
+        "Core text tables extract and patch through layered container, crypto, codec, and patch-back profile fields",
+        "Binary layout changes are verified against public fixtures with deterministic patch reports",
+        "Profiled encrypted variants cite KAIFUU-073 smoke evidence before broad support claims",
+        "Unsupported encrypted variants produce semantic capability diagnostics with claimed-support tuple context"
       ],
       "verification": [
         {
@@ -3084,7 +3101,8 @@
         "Deterministic redacted no-corpus artifact for absent private inputs"
       ],
       "acceptanceCriteria": [
-        "Local manifests may record redacted key-profile ids, helper classes, proof hashes, detector results, aggregate counts, and command lines",
+        "Local manifests may record redacted key-profile ids, helper classes, proof hashes, detector results, aggregate counts, per-engine readiness bins, and command lines",
+        "Per-engine aggregate bins cover MV/MZ encrypted media, XP3, Siglus, Wolf, and RGSS3/VX Ace when matching private corpus inputs exist",
         "No raw keys, retail assets, extracted strings, screenshots, helper dumps, local paths, or sensitive filenames are written to committed paths",
         "Absence of fixtures/private-local never fails public CI or public fixture validation",
         "Private-local readiness reports can be cited publicly by aggregate/hash metadata",
@@ -3207,8 +3225,8 @@
       "id": "KAIFUU-065",
       "title": "Remote helper execution boundary",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-064"],
@@ -3580,8 +3598,8 @@
       "id": "KAIFUU-073",
       "title": "Wolf archive decrypt-patch smoke",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -8319,22 +8337,22 @@
       "id": "UTSUSHI-010",
       "title": "MV/MZ review package manifest export command",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-005", "UTSUSHI-006", "UTSUSHI-050"],
-      "summary": "Export an MV/MZ review package manifest from runtime traces and patch artifacts without implementing annotation import in the same node.",
+      "summary": "Export an MV/MZ review package manifest from runtime traces, screenshot evidence, and patch artifacts so alpha review packages have practical evidence surfaces before annotation import exists.",
       "deliverables": [
         "Review package manifest command",
         "Manifest fixture",
         "Unsupported host diagnostics"
       ],
       "acceptanceCriteria": [
-        "A package manifest names patch artifacts, runtime trace evidence, limitations, and supported review actions",
-        "Manifest export does not require screenshot capture, browser playback, annotation handling, or feedback import to pass",
-        "Unsupported host capabilities are semantic diagnostics",
-        "Cargo tests validate manifest serialization, artifact paths, and unsupported-host diagnostics"
+        "A package manifest names patch artifacts, runtime trace evidence, screenshot artifact refs when available, limitations, and supported review actions",
+        "Manifest export does not require annotation handling or feedback import to pass",
+        "Unsupported host capabilities are semantic diagnostics and cannot claim screenshot-backed evidence",
+        "Cargo tests validate manifest serialization, artifact paths, evidence tiers, and unsupported-host diagnostics"
       ],
       "verification": [
         {
@@ -8360,7 +8378,7 @@
       "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "qa",
-      "dependsOn": ["UTSUSHI-003", "ITOTORI-022", "UTSUSHI-005"],
+      "dependsOn": ["UTSUSHI-003", "ITOTORI-022", "UTSUSHI-005", "UTSUSHI-102", "UTSUSHI-065"],
       "summary": "Let QA agents inspect runtime evidence through tools for layout, missing text, wrong branch, screenshot OCR hints, and mismatch findings.",
       "deliverables": [
         "Runtime evidence tools",
@@ -8370,10 +8388,11 @@
       ],
       "acceptanceCriteria": [
         "Agents request evidence through tools",
-        "Findings cite screenshots/traces",
+        "Findings cite trace-only evidence, screenshot-backed evidence, or both through managed artifact refs",
         "Deterministic runtime checks run before LLM review",
         "Runtime evidence can trigger findings for visible overflow, missing text, broken markup artifacts, wrong scene or branch, and screenshot/evidence mismatch",
-        "Every runtime-evidence QA finding records evidence tier"
+        "Trace-only findings and screenshot-backed findings use distinct evidence tiers so agents cannot overstate visual proof",
+        "Every runtime-evidence QA finding records evidence tier, source revision, runtime target id, and artifact hashes when present"
       ],
       "verification": [
         {
@@ -9325,7 +9344,13 @@
         "ALPHA-000",
         "ALPHA-001",
         "UTSUSHI-102",
-        "SHARED-025"
+        "SHARED-025",
+        "KAIFUU-039",
+        "KAIFUU-068",
+        "KAIFUU-070",
+        "KAIFUU-072",
+        "KAIFUU-073",
+        "KAIFUU-105"
       ],
       "summary": "Implement a generated engine capability matrix that derives breadth/readiness evidence from adapter registries, readiness profiles, and fixture runs instead of hand-written claims.",
       "deliverables": [
@@ -9338,12 +9363,13 @@
         "Known-limitation renderer"
       ],
       "acceptanceCriteria": [
-        "The matrix is generated from adapter registry, fixture output, readiness profile, and validation artifact inputs",
+        "The matrix is generated from adapter registry, fixture output, readiness profile, claimed-support tuples, and validation artifact inputs",
         "Positive extraction/patch adapters and readiness-only packed/encrypted profiles are mechanically distinguished",
         "RenPy is not presented as an alpha Japanese opportunity driver",
         "KiriKiri breadth is represented by XP3/readiness evidence rather than plaintext-only support",
         "BGI is represented as detector/profile readiness evidence without parser or patch support claims",
-        "Capability levels distinguish identify, inventory, extract, and patch for each engine family",
+        "Capability levels distinguish identify, inventory, extract, patch, helper, and runtime support for each engine family",
+        "MV/MZ encrypted media, Siglus known-key Scene/Gameexe, KiriKiri XP3 crypt smoke, and Wolf encrypted archive smoke appear as separate capability rows",
         "Stale or manually edited capability entries fail validation"
       ],
       "verification": [
@@ -9403,7 +9429,12 @@
         "ALPHA-007",
         "UNIV-016",
         "ALPHA-008",
-        "UNIV-021"
+        "UNIV-021",
+        "ALPHA-009",
+        "CATALOG-061",
+        "KAIFUU-143",
+        "KAIFUU-145",
+        "KAIFUU-065"
       ],
       "summary": "Prepare the suite to start a first real localization project with executable install, docs, security, limitation, example, and readiness checks.",
       "deliverables": [
@@ -9416,7 +9447,7 @@
       "acceptanceCriteria": [
         "A new user can run public fixture demos from a fresh clone",
         "Known legal/safety boundaries are practical and not overstated",
-        "CI, hello-world workflows, benchmark smoke, and recorded or opted-in real-provider proof are required and green",
+        "CI, alpha proof workflow, benchmark smoke, and recorded or opted-in real-provider proof are required and green",
         "Docs frame the product as catalog, inventory, readiness, extraction, localization, patching, and validation rather than only translation",
         "The milestone is framed as readiness to start a real localization project, not as a terminal product release",
         "Readiness docs are checked against generated capability and benchmark artifacts rather than hand-maintained claims",
@@ -9464,7 +9495,12 @@
         "KAIFUU-048",
         "KAIFUU-049",
         "KAIFUU-074",
-        "SHARED-025"
+        "SHARED-025",
+        "KAIFUU-102",
+        "KAIFUU-105",
+        "KAIFUU-106",
+        "KAIFUU-107",
+        "KAIFUU-144"
       ],
       "summary": "Prove Kaifuu can run a real encrypted-profile loop through detect, key/profile resolution, extract, trivial patch, verify, and delta apply before the first real localization project begins.",
       "deliverables": [
@@ -9476,6 +9512,8 @@
       "acceptanceCriteria": [
         "The vertical runs detect, key/profile resolution, extract, trivial patch, verify, and delta apply for the declared XP3 encrypted-profile fixture",
         "Public CI uses only synthetic redistributable encrypted fixtures and fixture-only keys",
+        "When private-local XP3 validation is configured, the vertical consumes KAIFUU-102 redacted summaries and KAIFUU-105 claimed-support tuples",
+        "If no private-local inputs are configured, the alpha proof records not_private_validated with the skip artifact id instead of silently implying retail readiness",
         "Optional private-local owned-game validation can attach redacted aggregate results without raw keys, assets, helper dumps, decrypted text, paths, or story filenames",
         "Failures inside the declared encrypted support profile are treated as bugs or compatibility regressions, while out-of-profile inputs produce semantic diagnostics"
       ],
@@ -10420,8 +10458,8 @@
       "target": "continuous",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-006", "UTSUSHI-027", "UTSUSHI-029"],
-      "summary": "Implement the first RPG Maker MV/MZ runtime observation slice through browser or NW.js-style instrumentation, separate from any Rust reimplementation.",
+      "dependsOn": ["UTSUSHI-006", "UTSUSHI-027", "UTSUSHI-029", "UTSUSHI-102"],
+      "summary": "Refine the post-alpha RPG Maker MV/MZ runtime observation slice beyond the UTSUSHI-102 alpha proof through broader browser or NW.js-style instrumentation, separate from any Rust reimplementation.",
       "deliverables": [
         "MV/MZ browser or NW hook",
         "Public fixture run",
@@ -10429,7 +10467,7 @@
         "Unsupported plugin diagnostics"
       ],
       "acceptanceCriteria": [
-        "A public MV/MZ fixture observes real JavaScript runtime text and choice events",
+        "A public MV/MZ fixture observes real JavaScript runtime text and choice events beyond the UTSUSHI-102 alpha proof surface",
         "Screenshot evidence is attached only when capture succeeds through the artifact store",
         "Plugin-dependent or unsupported hooks are explicit capability diagnostics"
       ],
@@ -12230,7 +12268,11 @@
         "UNIV-016",
         "SHARED-025",
         "ALPHA-008",
-        "UTSUSHI-119"
+        "UTSUSHI-119",
+        "UTSUSHI-065",
+        "UTSUSHI-109",
+        "UTSUSHI-133",
+        "UTSUSHI-134"
       ],
       "summary": "Run the public fixture vertical command across Itotori, Kaifuu, and Utsushi using named patch, runtime, provider, benchmark, and alpha proof manifest artifacts.",
       "deliverables": [
@@ -12242,7 +12284,8 @@
         "The public fixture command composes Itotori fixture iteration, Kaifuu patch result, Utsushi runtime observation, provider proof, benchmark report, and SHARED-025 manifest artifacts.",
         "Every emitted artifact is schema-valid, hash-addressed, and linked to the same fixture id and source revision.",
         "The SHARED-025 manifest includes a non-empty provider proof id from the sanitized ALPHA-008 proof bundle.",
-        "Unsupported runtime, patch failure, provider fallback, and rerun repair paths return semantic diagnostics instead of prose-only reports.",
+        "Unsupported runtime, patch failure, provider fallback, benchmark failure, and rerun repair paths return semantic diagnostics instead of prose-only reports.",
+        "The vertical can run as a durable CI proof command that is not branded or structured as a literal hello-world smoke.",
         "Public validation uses fixtures or recorded provider data and never requires private local assets."
       ],
       "verification": [
@@ -12325,6 +12368,49 @@
         "Prompt or key leakage",
         "Cost metadata missing",
         "Recorded proof diverging from live route"
+      ]
+    },
+    {
+      "id": "ALPHA-009",
+      "title": "Retire literal Hello World CI into alpha proof workflow",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["suite", "itotori", "kaifuu", "utsushi", "shared"],
+      "parallelGroup": "alpha-integration",
+      "dependsOn": ["ALPHA-007", "SHARED-025", "ITOTORI-095", "KAIFUU-010", "UTSUSHI-119"],
+      "summary": "Replace the permanent literal Hello World workflow with a durable alpha proof workflow that preserves end-to-end integration evidence while removing toy branding and stale scaffold assumptions.",
+      "deliverables": [
+        "CI workflow and just recipe for the public fixture alpha proof vertical",
+        "Deprecation or alias policy for the old hello recipe and GitHub Hello World workflow name",
+        "Documentation update explaining that integration proof is preserved through alpha proof artifacts rather than literal hello-world tests"
+      ],
+      "acceptanceCriteria": [
+        "The primary CI integration workflow is named and documented as a suite alpha proof or public fixture vertical, not Hello World",
+        "The replacement workflow runs the same or stronger e2e contract as ALPHA-007, including Itotori, Kaifuu, Utsushi, SHARED-025 artifacts, and semantic diagnostics",
+        "The old hello recipe is either removed after compatibility consumers are updated or retained only as a documented alias to the alpha proof command",
+        "README, docs/hello-world.md or its successor, docs/ci-cache-and-affected.md, and roadmap baseline language no longer imply literal hello-world tests are the long-term proof",
+        "GitHub Actions remain green after the workflow rename or replacement"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just alpha-proof"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "command",
+          "value": "gh run list --repo cat-cave/itotori --branch main --limit 6"
+        }
+      ],
+      "auditFocus": [
+        "Integration proof weakened during hello-world retirement",
+        "CI workflow renamed without artifact contract coverage",
+        "Stale documentation still directing agents to literal hello-world scaffolding",
+        "Compatibility alias hiding divergent behavior from the alpha proof command"
       ]
     },
     {
@@ -12487,12 +12573,12 @@
       "id": "CATALOG-012",
       "title": "DLsite and Steam recorded storefront adapters",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "catalog",
-      "dependsOn": ["CATALOG-011"],
-      "summary": "Extend the recorded importer framework with DLsite and Steam storefront adapters for catalog facts, locale indicators, and provenance-safe replay after the alpha importer path exists.",
+      "dependsOn": ["CATALOG-011", "CATALOG-065"],
+      "summary": "Extend the recorded importer framework with DLsite and Steam storefront adapters for catalog identity, locale indicators, demand facts, and provenance-safe replay before alpha project selection claims are made.",
       "deliverables": [
         "DLsite recorded adapter",
         "Steam recorded adapter",
@@ -12500,10 +12586,11 @@
         "Rate-limit and provenance tests"
       ],
       "acceptanceCriteria": [
-        "DLsite recorded fixtures extract product identity, release metadata, language indicators, and request provenance",
-        "Steam recorded fixtures extract app identity, locale-related metadata, and request provenance",
-        "Adapters emit recorded facts through the CATALOG-002 schema but are not required by CATALOG-004 or ALPHA-005 alpha readiness",
-        "Adapters report parse drift and unsupported response shapes as semantic diagnostics",
+        "DLsite recorded fixtures extract product identity, release metadata, language indicators, work_type, translation tree, and request provenance",
+        "DLsite demand fields include sales dl_count, rating summary, rating histogram, wishlist count when present, rank facts when present, and source-specific missing-field diagnostics",
+        "Steam recorded fixtures extract app identity, locale-related metadata, package or delisting status, and request provenance",
+        "Adapters emit recorded facts through the CATALOG-002 schema and satisfy the CATALOG-065 idempotent import contract",
+        "Adapters report parse drift and unsupported response shapes as semantic diagnostics with fixture ids and source revision",
         "Public validation uses recorded responses and does not require live storefront access"
       ],
       "verification": [
@@ -12518,7 +12605,7 @@
       ],
       "auditFocus": [
         "Storefront response drift",
-        "Continuous storefront scope accidentally becoming alpha-blocking",
+        "Storefront demand scope bypassed by alpha selection",
         "Rate-limit metadata loss",
         "Live-network CI coupling"
       ]
@@ -12527,12 +12614,12 @@
       "id": "CATALOG-013",
       "title": "IGDB and Wikidata platform language adapters",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "catalog",
-      "dependsOn": ["CATALOG-011"],
-      "summary": "Extend recorded catalog evidence with IGDB and Wikidata platform, release, and language facts without blocking the alpha importer or benchmark seed path.",
+      "dependsOn": ["CATALOG-011", "CATALOG-065"],
+      "summary": "Extend recorded catalog evidence with IGDB and Wikidata platform, release, entity-link, and language facts so official-English conflicts do not poison alpha opportunity selection.",
       "deliverables": [
         "IGDB recorded adapter",
         "Wikidata recorded adapter",
@@ -12540,10 +12627,11 @@
         "Source-confidence mapping tests"
       ],
       "acceptanceCriteria": [
-        "IGDB recorded fixtures import platform, release, and language-related facts with source confidence",
-        "Wikidata recorded fixtures import entity links, platform facts, and language statements with qualifier provenance",
-        "Adapters emit recorded facts through the CATALOG-002 schema but are not required by CATALOG-004 or ALPHA-005 alpha readiness",
-        "Conflicting platform or language facts are emitted for catalog review rather than auto-merged",
+        "IGDB recorded fixtures import platform, release, and language-related facts with source provenance",
+        "Wikidata recorded fixtures import entity links, platform facts, language statements, and external ids with qualifier provenance",
+        "Official-English conflicts against VNDB, EGS, DLsite, or local candidate rows are emitted as reviewable catalog conflict facts rather than auto-merged",
+        "Platform-language facts can downgrade false untranslated candidates in benchmark seed and opportunity ranking outputs",
+        "Adapters emit recorded facts through the CATALOG-002 schema and satisfy the CATALOG-065 idempotent import contract",
         "Public validation uses recorded data and never requires live API credentials"
       ],
       "verification": [
@@ -14301,12 +14389,12 @@
       "id": "UTSUSHI-065",
       "title": "MV/MZ screenshot capture evidence smoke",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-006", "UTSUSHI-029", "UTSUSHI-004"],
-      "summary": "Attach screenshot capture evidence to MV/MZ runtime traces after artifact conformance exists.",
+      "dependsOn": ["UTSUSHI-006", "UTSUSHI-004", "SHARED-025"],
+      "summary": "Attach narrow screenshot capture evidence to MV/MZ runtime traces after runtime artifact storage exists, without depending on the later broad runtime conformance manifest.",
       "deliverables": [
         "MV/MZ screenshot evidence fixture linking map/event command ids to trace ids and artifactRefs",
         "Capture metadata schema for viewport, device scale, frame id, bridgeUnitRef, adapter id, and approximation tier",
@@ -14317,7 +14405,7 @@
         "A public MV/MZ fixture run emits runtime trace events and screenshot artifactRefs linked by bridgeUnitRef and frame id",
         "Capture metadata records viewport, device scale, adapter id, fixture profile id, and evidence tier without embedding image bytes",
         "Unsupported host or capture capability returns semantic diagnostics and does not claim E2 evidence",
-        "Private screenshots and absolute local paths are rejected by artifact conformance checks"
+        "Private screenshots and absolute local paths are rejected by artifact storage checks"
       ],
       "verification": [
         {
@@ -15551,8 +15639,8 @@
       "id": "UTSUSHI-109",
       "status": "planned",
       "title": "Reference capture corpus validator",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-056", "SHARED-012", "SHARED-025"],
@@ -16003,6 +16091,90 @@
       ]
     },
     {
+      "id": "ITOTORI-119",
+      "title": "Catalog-aware project context panel",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-040", "CATALOG-002", "CATALOG-004", "CATALOG-006", "CATALOG-061"],
+      "summary": "Add a project context panel that exposes catalog identity, edition, language completeness, demand, readiness, and local-corpus evidence to non-source-language users and reviewers.",
+      "deliverables": [
+        "Dashboard panel for work identity, aliases, source ids, edition, translation completeness, demand bucket, local corpus status, and readiness",
+        "Typed API and repository queries for project catalog context",
+        "MSW and database-backed tests for public fixture and private-local-redacted context rows"
+      ],
+      "acceptanceCriteria": [
+        "Reviewers can see source IDs, aliases, edition, language completeness, demand bucket, local corpus status, and readiness without knowing the source language",
+        "Panel data is sourced from typed catalog facts and project repositories instead of local JSON reads",
+        "Private-local fields are redacted or summarized before reaching the dashboard",
+        "MSW fixtures and DB-backed tests cover missing catalog evidence, conflicting evidence, and private-local aggregate evidence"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- catalog-context-panel"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Dashboard reading files instead of repository-backed data",
+        "Private corpus details leaking to client APIs",
+        "Context panel hiding conflict or unknown states",
+        "Non-source-language reviewer context gaps"
+      ]
+    },
+    {
+      "id": "ITOTORI-120",
+      "title": "Metadata-aware feedback triage",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "feedback",
+      "dependsOn": ["ITOTORI-022", "ITOTORI-024", "CATALOG-002", "CATALOG-006", "CATALOG-061"],
+      "summary": "Route human and community feedback using catalog metadata, edition identity, language completeness, demand, readiness, and style-dispute signals so the triage queue does not blindly accept every report.",
+      "deliverables": [
+        "Feedback triage metadata enrichment service",
+        "Queue views and APIs showing catalog context, edition context, and style-dispute routing hints",
+        "Tests for typo, glossary, edition mismatch, official-translation conflict, and style-dispute feedback cases"
+      ],
+      "acceptanceCriteria": [
+        "Feedback items can be enriched with work identity, edition, language completeness, demand bucket, readiness level, and existing translation status",
+        "Style-dispute feedback can be routed to human review while glossary and typo feedback remain batchable unless evidence requires escalation",
+        "Edition or platform mismatches produce semantic triage diagnostics instead of translation repair tasks",
+        "Community feedback ingestion preserves provenance and does not overwrite authoritative catalog facts"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- metadata-aware-feedback-triage"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- feedback-triage"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Human feedback accepted without catalog or edition context",
+        "Style disputes auto-applied as objective QA findings",
+        "Community reports overwriting source-of-truth metadata",
+        "Glossary or typo queues over-escalating low-risk batchable fixes"
+      ]
+    },
+    {
       "id": "UTSUSHI-119",
       "title": "MV/MZ patched-output runtime proof",
       "status": "planned",
@@ -16010,7 +16182,7 @@
       "target": "alpha",
       "projects": ["utsushi", "kaifuu", "shared", "itotori"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": ["UTSUSHI-102", "KAIFUU-010", "SHARED-025", "KAIFUU-112"],
+      "dependsOn": ["UTSUSHI-102", "KAIFUU-010", "SHARED-025", "KAIFUU-112", "UTSUSHI-065", "UTSUSHI-109"],
       "summary": "Prove that Utsushi can observe patched MV/MZ output, not merely fixture runtime output, by consuming a Kaifuu PatchResult and alpha proof manifest and linking observed text or choices back to bridge unit refs.",
       "deliverables": [
         "Patched MV/MZ fixture runtime proof command",
@@ -16020,8 +16192,9 @@
       ],
       "acceptanceCriteria": [
         "The proof launches the patched fixture output and observes post-patch text or choice events linked to bridge unit refs.",
-        "Evidence fails when runtime observations come from static reads, pre-patch content, stale patch hashes, or mismatched source revisions.",
-        "The proof records PatchResult id, alpha proof manifest id, source revision, runtime report id, and artifact hashes.",
+        "Evidence fails when runtime observations come from static reads, pre-patch content, stale patch hashes, mismatched source revisions, or unvalidated screenshot artifacts.",
+        "The proof records PatchResult id, alpha proof manifest id, source revision, runtime report id, observation envelope id, and artifact hashes.",
+        "At least one public fixture proof emits a visible post-patch validation artifact through the managed artifact store or explicitly records unsupported capture as non-E2 evidence.",
         "Public CI can run the proof using redistributable fixture artifacts only."
       ],
       "verification": [
@@ -16287,7 +16460,7 @@
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-121", "UTSUSHI-023", "UTSUSHI-025"],
-      "summary": "Implement a Rust MV/MZ event replay skeleton for core dialogue and choice commands before expanding into switches, variables, transfers, and plugin commands.",
+      "summary": "Implement a diagnostic Rust MV/MZ event replay skeleton for core dialogue and choice commands before expanding into switches, variables, transfers, and plugin commands; this is not the alpha validation authority.",
       "deliverables": [
         "Replay for event commands 101 and 102",
         "Switch, variable, and transfer state placeholders with unsupported diagnostics",
@@ -16669,6 +16842,91 @@
       ]
     },
     {
+      "id": "UTSUSHI-133",
+      "title": "Catalog-backed runtime validation target profile",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["utsushi", "itotori", "kaifuu", "shared"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["CATALOG-004", "CATALOG-007", "CATALOG-006", "KAIFUU-112", "SHARED-025", "UTSUSHI-102"],
+      "summary": "Bind Utsushi alpha runtime validation targets to catalog, local-corpus, bridge-unit, and proof-manifest metadata so runtime proof runs against meaningful candidate profiles rather than arbitrary fixtures.",
+      "deliverables": [
+        "Runtime target profile schema linking catalog work identity, edition, bridge unit fixture revision, proof manifest, and readiness evidence",
+        "Fixture profile generator for MV/MZ alpha validation targets",
+        "Validation tests for missing catalog, mismatched edition, stale bridge revision, and unsupported runtime target cases"
+      ],
+      "acceptanceCriteria": [
+        "Runtime target profiles include work id, edition id when known, source revision, bridge-unit fixture revision, runtime target id, readiness level, and proof manifest id",
+        "Profiles can be generated from public fixtures and private-local aggregate sidecars without private path or raw text leakage",
+        "Mismatched catalog identity, edition identity, bridge revision, or readiness level fails with semantic diagnostics",
+        "UTSUSHI-102 runtime proof can cite a target profile instead of ad hoc fixture metadata"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core catalog_backed_runtime_target_profile"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- runtime-target-profile"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Runtime validation divorced from catalog or edition identity",
+        "Private local corpus leakage in target profiles",
+        "Stale bridge revision accepted as valid runtime proof",
+        "Arbitrary fixtures treated as alpha target evidence"
+      ]
+    },
+    {
+      "id": "UTSUSHI-134",
+      "title": "Alpha MV/MZ embedded playback demo bundle",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["utsushi", "itotori", "kaifuu", "shared"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-010", "UTSUSHI-065", "UTSUSHI-102", "UTSUSHI-109", "UTSUSHI-119", "UTSUSHI-133", "SHARED-025"],
+      "summary": "Package the alpha MV/MZ patched-output proof into an embedded playback demo bundle with validated captures, review manifest, and proof links.",
+      "deliverables": [
+        "Embedded playback demo bundle manifest for public MV/MZ patched fixture output",
+        "Validated capture references and observation envelope links for demo playback",
+        "Dashboard or review-app route that can open the demo bundle without private assets"
+      ],
+      "acceptanceCriteria": [
+        "The demo bundle opens a public patched MV/MZ fixture playback surface and links observed text or choices to bridge unit refs",
+        "Bundle evidence references UTSUSHI-109-validated captures or explicitly labels unsupported capture as non-E2",
+        "Review package manifest data from UTSUSHI-010 is visible to the dashboard or review route",
+        "The bundle references SHARED-025 proof manifest artifacts and fails on stale patch hashes or source revisions",
+        "Public validation uses redistributable fixtures and managed artifact refs only"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core alpha_mvmz_embedded_playback_demo_bundle"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/runtime-web-review test -- playback-demo-bundle"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Demo bundle relying on static fixture reads",
+        "Screenshot references not validated by capture corpus rules",
+        "Review package context missing from playback route",
+        "Private assets or absolute paths included in demo artifacts"
+      ]
+    },
+    {
       "id": "KAIFUU-141",
       "status": "planned",
       "title": "Apply report fd-relative no-follow writer",
@@ -16880,21 +17138,22 @@
       "id": "CATALOG-065",
       "status": "planned",
       "title": "Source adapter idempotent fact import contract",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "catalog",
       "dependsOn": ["CATALOG-005"],
-      "summary": "Define and test the source-adapter contract for idempotent catalog fact writes around crawler commitStepImport so future source-specific importers cannot duplicate facts after crashes.",
+      "summary": "Define and test the source-adapter contract for idempotent catalog fact writes around crawler commitStepImport so alpha source-specific importers cannot duplicate facts after crashes.",
       "deliverables": [
         "Source adapter idempotency contract",
         "Crash-after-fact-write-before-commit fixture harness",
         "Adapter spec dependency notes for VNDB, EGS, DLsite, Steam, IGDB, and Wikidata"
       ],
       "acceptanceCriteria": [
-        "Adapter imports must use upserts or durable import markers before they can be marked production-ready.",
+        "Adapter imports must use upserts or durable import markers before they can be marked alpha-ready or production-ready.",
         "A crash after fact writes but before crawler step commit can be replayed without duplicating facts.",
-        "Future source adapter DAG nodes cite this contract in acceptance criteria."
+        "DLsite, Steam, IGDB, and Wikidata recorded importers cite this contract in their acceptance criteria.",
+        "Replay validation records source id, fixture id, import transaction id, and deterministic fact counts."
       ],
       "verification": [
         {
@@ -17061,6 +17320,134 @@
       ]
     },
     {
+      "id": "CATALOG-069",
+      "title": "DLsite demand fact recorded adapter",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-002", "CATALOG-005", "CATALOG-065"],
+      "summary": "Import recorded DLsite demand evidence so alpha project selection can rank by actual sales, ratings, wishlist, rank, and work type rather than VN catalog presence alone.",
+      "deliverables": [
+        "Recorded DLsite demand fixture set with sales, rating, histogram, wishlist, rank, work_type, and translation-tree examples",
+        "Typed catalog fact mapper for DLsite demand fields with provenance and parse-drift diagnostics",
+        "Idempotent replay tests proving repeated imports do not duplicate demand facts"
+      ],
+      "acceptanceCriteria": [
+        "DLsite dl_count, rating summary, rating histogram, wishlist count when present, rank facts when present, work_type, and translation tree facts are imported as typed records",
+        "Missing demand fields are represented as source-specific diagnostics rather than zero-valued facts",
+        "Recorded fixtures cover normal public products, Japan-locked recovered products, missing demand fields, and parse-drift responses",
+        "Importer writes are idempotent under the CATALOG-065 contract",
+        "Public tests use recorded fixtures and never require live DLsite access"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- dlsite-demand"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- dlsite-demand"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Demand fields accidentally treated as authoritative when absent",
+        "DLsite fixture drift hidden by permissive parsing",
+        "Duplicate facts after crawler replay",
+        "Market ranking biased back toward VNDB-only evidence"
+      ]
+    },
+    {
+      "id": "CATALOG-070",
+      "title": "Platform language conflict augmenter",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-002", "CATALOG-013"],
+      "summary": "Convert IGDB and Wikidata platform-language evidence into reviewable conflict facts that prevent false untranslated candidates from entering alpha opportunity and benchmark queues.",
+      "deliverables": [
+        "Conflict augmentation service for official-English and platform-language mismatches",
+        "Recorded IGDB and Wikidata fixtures covering true conflicts, false positives, and unknowns",
+        "Benchmark seed and opportunity ranking integration tests for conflict demotion"
+      ],
+      "acceptanceCriteria": [
+        "Official-English evidence from IGDB or Wikidata can create a catalog conflict fact against VNDB, EGS, DLsite, or local candidate gaps",
+        "Conflict facts preserve source id, external id, language evidence, platform scope, and provenance",
+        "Opportunity ranking and benchmark seed outputs can demote false untranslated candidates without deleting the original facts",
+        "Unknown or missing platform-language evidence remains unknown and does not become a negative fact",
+        "Public tests use recorded fixtures and do not require live API credentials"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- platform-language-conflicts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- platform-language-conflicts"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "False conflict facts created from platform-scoped language data",
+        "Loss of original catalog evidence during demotion",
+        "Benchmark seed contamination by official-English titles",
+        "Live API assumptions in public tests"
+      ]
+    },
+    {
+      "id": "CATALOG-071",
+      "title": "Research crawler Rust core-system refactor",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared", "kaifuu"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-012", "CATALOG-013", "CATALOG-061", "CATALOG-065"],
+      "summary": "Refactor the temporary VNDB, EGS, DLsite, Steam, IGDB, and Wikidata market-research crawler scripts into the durable Rust/core catalog and readiness systems, then remove the temporary research-only scripts.",
+      "deliverables": [
+        "Durable core crawler modules or commands for the market-research sources that remain product-relevant",
+        "Migration map from temporary research script outputs to typed catalog facts and readiness facts",
+        "Deletion plan and validation for superseded research-only scripts once equivalent product paths exist"
+      ],
+      "acceptanceCriteria": [
+        "Temporary research script outputs used by the product have equivalent typed core-system import paths",
+        "Research-only scripts are either deleted or explicitly archived after the product path reproduces their required aggregate outputs",
+        "Crawler commands emit provenance, fetched_at, source ids, checkpoint ids, and parse-drift diagnostics",
+        "No raw private corpus paths, retail text, or live credentials are written to committed fixtures"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p itotori-catalog"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- research-crawler-refactor"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Research prototype assumptions leaking into product code",
+        "Temporary scripts retained after durable equivalents exist",
+        "Lossy conversion from market research records to typed facts",
+        "Private or credential-bearing artifacts committed as fixtures"
+      ]
+    },
+    {
       "id": "KAIFUU-142",
       "status": "planned",
       "title": "Layered capability report limitations",
@@ -17098,6 +17485,132 @@
         "Consumer over-reading broad capability reports",
         "Null-key identity support represented as general crypto support",
         "Public fixture report drift from layered access contracts"
+      ]
+    },
+    {
+      "id": "KAIFUU-143",
+      "title": "RPG Maker RGSS3 profiled extract-patch smoke",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-055", "KAIFUU-011", "KAIFUU-050", "KAIFUU-051", "KAIFUU-067", "KAIFUU-105", "KAIFUU-106"],
+      "summary": "Prove a bounded RGSS3/VX Ace path through profiled RGSSAD or Ruby Marshal extraction, trivial patch, rebuild, and validation using public synthetic fixtures and optional private-local redacted evidence.",
+      "deliverables": [
+        "Synthetic RGSS3 layered fixture exercising archive, Ruby Marshal codec, extract, trivial patch, and verify",
+        "Claimed-support tuple for the supported RGSS3 smoke profile",
+        "Optional private-local redacted summary path for owned RGSS3 candidates"
+      ],
+      "acceptanceCriteria": [
+        "The synthetic RGSS3 fixture extracts text-bearing data, applies a trivial change, rebuilds, and verifies through layered transform metadata",
+        "Unsupported RGSS3 profiles fail before unsafe writes with claimed-support diagnostics",
+        "Optional private-local RGSS3 evidence emits only profile ids, proof hashes, aggregate counts, and diagnostics",
+        "The support tuple cannot claim broad RGSS3 production support beyond the smoke profile"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core rgss3_profiled_extract_patch_smoke"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-engine-fixture rgss3_profiled_fixture"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "RGSS3 smoke over-claiming production support",
+        "Ruby Marshal or RGSSAD fixture not exercising patch-back",
+        "Unsafe writes before capability validation",
+        "Private-local RGSS3 data leakage"
+      ]
+    },
+    {
+      "id": "KAIFUU-144",
+      "title": "First private-local XP3 encrypted profile validation gate",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "suite"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-072", "KAIFUU-102", "KAIFUU-036", "KAIFUU-067", "KAIFUU-105", "KAIFUU-106", "KAIFUU-107"],
+      "summary": "Gate alpha XP3 readiness on a private-local redacted validation workflow that proves at least one owned encrypted XP3 profile can be classified, key-resolved, extracted, trivially patched, and verified when local inputs are configured.",
+      "deliverables": [
+        "Private-local XP3 validation command with skipped, passed, failed, and out-of-profile result states",
+        "Redacted XP3 aggregate report linked to claimed-support tuples and proof hashes",
+        "Regression runner integration for claimed XP3 support profiles"
+      ],
+      "acceptanceCriteria": [
+        "When configured private-local XP3 inputs exist, the gate records detect, key/profile resolution, extract, trivial patch, verify, and delta-apply aggregate outcomes",
+        "When private inputs are absent, the gate emits a deterministic skipped artifact and alpha proofs mark retail validation as not_private_validated",
+        "No raw keys, helper dumps, retail filenames, decrypted text, local paths, screenshots, or assets are written to committed paths",
+        "Failures inside declared XP3 support tuples are compatibility bugs or regressions, while out-of-profile inputs produce semantic diagnostics"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core xp3_private_profile_validation_gate"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli xp3_private_profile_validation_gate"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Private-local skipped state interpreted as proof of retail support",
+        "Raw key or path leakage in redacted XP3 reports",
+        "Claimed-support tuples not enforced by regression runner",
+        "Out-of-profile failures reported as generic extraction errors"
+      ]
+    },
+    {
+      "id": "KAIFUU-145",
+      "title": "Wolf first encrypted archive smoke",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-040", "KAIFUU-011", "KAIFUU-050", "KAIFUU-051", "KAIFUU-066", "KAIFUU-073"],
+      "summary": "Turn Wolf encrypted archive readiness into a first extract-patch-verify smoke that can gate later broad Wolf adapter claims.",
+      "deliverables": [
+        "Wolf encrypted archive smoke command or fixture runner",
+        "Synthetic Wolf-like encrypted fixture with text-bearing data and trivial patch-back validation",
+        "Capability diagnostics for automatic key detection, manual key refs, helper-required, and unknown-version cases"
+      ],
+      "acceptanceCriteria": [
+        "The bounded Wolf fixture decrypts, extracts text-bearing data, applies a trivial patch, rebuilds, and verifies under a declared profile",
+        "Automatic key detection, manual key refs, helper-required, and unknown-version cases are semantically distinct",
+        "Binary patching constraints are explicit for the supported data-file variants",
+        "Later broad Wolf adapter claims must cite this smoke or stronger claimed-support evidence"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core wolf_first_encrypted_archive_smoke"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-engine-fixture wolf_encrypted_archive_smoke"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Wolf smoke bypassing layered crypto/container metadata",
+        "Manual key refs or helper requirements logged unsafely",
+        "Binary patch constraints hidden until broad adapter work",
+        "Broad Wolf claims made without smoke evidence"
       ]
     }
   ]
