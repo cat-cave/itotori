@@ -57,6 +57,10 @@ export type CatalogCrawlerFactImportProof = {
   durableMarkerId?: string;
 };
 
+export type CatalogCrawlerFactImportEvidence = CatalogCrawlerFactImportProof & {
+  persisted: true;
+};
+
 export type CatalogCrawlerAdapterContext = {
   checkpointCursor: CatalogCrawlerCursor;
   mode: "live" | "recorded_fixture";
@@ -112,12 +116,23 @@ export type CatalogCrawlerIngestStep<TFact = unknown> = (
   context: CatalogCrawlerIngestContext<TFact>,
 ) => Promise<CatalogCrawlerFactImportProof | void> | CatalogCrawlerFactImportProof | void;
 
+export type CatalogCrawlerVerifyFactImportStep<TFact = unknown> = (
+  context: CatalogCrawlerIngestContext<TFact> & {
+    proof: CatalogCrawlerFactImportProof;
+  },
+) =>
+  | Promise<CatalogCrawlerFactImportEvidence | null | undefined>
+  | CatalogCrawlerFactImportEvidence
+  | null
+  | undefined;
+
 export type CatalogCrawlerRunnerOptions<TFact = unknown> = {
   repository: ItotoriCatalogCrawlerRepositoryPort;
   actor: AuthorizationActor;
   workerId: string;
   mode?: "live" | "recorded_fixture";
   ingestStep?: CatalogCrawlerIngestStep<TFact>;
+  verifyFactImport?: CatalogCrawlerVerifyFactImportStep<TFact>;
   leaseSeconds?: number;
   metadata?: CatalogCrawlerJsonRecord;
 };
@@ -227,7 +242,7 @@ export class ItotoriCatalogCrawlerRunner {
                 `${adapter.adapterName} declares CATALOG-065; ingestStep must write facts or a durable import marker before commitStepImport`,
               );
             }
-            const importProof = await options.ingestStep?.({
+            const ingestContext: CatalogCrawlerIngestContext<TFact> = {
               adapter,
               job,
               step: recorded.step,
@@ -235,9 +250,25 @@ export class ItotoriCatalogCrawlerRunner {
               importTransactionId: stableImportKey,
               expectedFactIdentities,
               facts: adapterStep.facts,
-            });
+            };
+            const importProof = await options.ingestStep?.(ingestContext);
             if (adapter.factImportContract !== undefined) {
               validateFactImportProof(adapter, adapterStep, stableImportKey, importProof);
+              if (options.verifyFactImport === undefined) {
+                throw new Error(
+                  `${adapter.adapterName} declares CATALOG-065; verifyFactImport must confirm persisted facts or durable marker before commitStepImport`,
+                );
+              }
+              const persistedEvidence = await options.verifyFactImport({
+                ...ingestContext,
+                proof: importProof,
+              });
+              validatePersistedFactImportEvidence(
+                adapter,
+                adapterStep,
+                stableImportKey,
+                persistedEvidence,
+              );
             }
             importedSteps += 1;
           } catch (error) {
@@ -518,6 +549,50 @@ function validateFactImportProof<TFact>(
   ) {
     throw new Error(
       `${adapter.adapterName} durable import marker proof must persist stableImportKey as durableMarkerId`,
+    );
+  }
+}
+
+function validatePersistedFactImportEvidence<TFact>(
+  adapter: CatalogCrawlerSourceAdapter<TFact>,
+  step: CatalogCrawlerAdapterStep<TFact>,
+  stableImportKey: string,
+  evidence: CatalogCrawlerFactImportEvidence | null | undefined,
+): asserts evidence is CatalogCrawlerFactImportEvidence {
+  const contract = adapter.factImportContract;
+  if (contract === undefined) {
+    return;
+  }
+  if (evidence === null || evidence === undefined) {
+    throw new Error(
+      `${adapter.adapterName} CATALOG-065 verifier did not find persisted import evidence`,
+    );
+  }
+  if (evidence.persisted !== true) {
+    throw new Error(`${adapter.adapterName} fact import evidence must be persisted`);
+  }
+  if (evidence.stableImportKey !== stableImportKey) {
+    throw new Error(`${adapter.adapterName} persisted import evidence stableImportKey mismatch`);
+  }
+  if (evidence.strategy !== contract.strategy) {
+    throw new Error(`${adapter.adapterName} persisted import evidence strategy mismatch`);
+  }
+  if (evidence.factCount !== step.facts.length) {
+    throw new Error(`${adapter.adapterName} persisted import evidence factCount mismatch`);
+  }
+  const expectedFactIdentities = createExpectedFactIdentities(adapter, step);
+  if (!Array.isArray(evidence.factIdentities)) {
+    throw new Error(`${adapter.adapterName} persisted import evidence factIdentities must be an array`);
+  }
+  if (!sameStringList(evidence.factIdentities, expectedFactIdentities)) {
+    throw new Error(`${adapter.adapterName} persisted import evidence factIdentities mismatch`);
+  }
+  if (
+    contract.strategy === catalogCrawlerFactImportStrategyValues.durableImportMarker &&
+    evidence.durableMarkerId !== stableImportKey
+  ) {
+    throw new Error(
+      `${adapter.adapterName} persisted durable marker evidence must use stableImportKey as durableMarkerId`,
     );
   }
 }

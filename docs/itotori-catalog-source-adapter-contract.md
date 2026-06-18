@@ -17,11 +17,18 @@ upserts or durable markers. This keeps DLsite, Steam, IGDB, Wikidata, VNDB, and 
 the generic crawler while still making crash replay safe.
 
 For any adapter declaring `factImportContract.contractId = "CATALOG-065"`, each non-skipped step
-must have an `ingestStep` importer. The importer receives `stableImportKey`, `importTransactionId`,
-`expectedFactIdentities`, and the parsed facts. It must write facts through an upsert path or persist
-a durable marker keyed by `stableImportKey`, then return a fact-import proof with the same
-`stableImportKey`, strategy, deterministic fact count, and fact identities. If the proof is missing
-or mismatched, the runner marks the step failed and does not call `commitStepImport`.
+must have an `ingestStep` importer and a `verifyFactImport` verifier. The importer receives
+`stableImportKey`, `importTransactionId`, `expectedFactIdentities`, and the parsed facts. It must
+write facts through an upsert path or persist a durable marker keyed by `stableImportKey`, then
+return a fact-import proof with the same `stableImportKey`, strategy, deterministic fact count, and
+fact identities.
+
+The proof is not trusted by itself. Before `commitStepImport`, `verifyFactImport` must read durable
+storage and return persisted evidence matching the stable key, strategy, count, and fact identities.
+For `upsert`, that evidence is the persisted fact rows for the step. For `durable_import_marker`,
+that evidence is a persisted marker row keyed by `stableImportKey` plus the deterministic fact
+identities it covers. If the importer, proof, verifier, fact rows, or marker evidence are missing or
+mismatched, the runner marks the step failed and does not call `commitStepImport`.
 
 `stableImportKey` is deterministic across crash replay jobs. It is derived from catalog source,
 adapter name, partition, source version, parser version, step key, source id, request identity, and

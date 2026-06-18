@@ -8,7 +8,10 @@ import {
   catalogCrawlerFactImportStrategyValues,
   createRecordedCatalogCrawlerAdapter,
   ItotoriCatalogCrawlerRunner,
+  type CatalogCrawlerFactImportEvidence,
   type CatalogCrawlerIngestContext,
+  type CatalogCrawlerSourceAdapter,
+  type CatalogCrawlerVerifyFactImportStep,
   type RecordedCatalogCrawlerFixture,
 } from "../src/services/catalog-crawler-runner.js";
 import {
@@ -258,6 +261,7 @@ describe("ItotoriCatalogCrawlerRepository", () => {
           }
           return importProof(ingestContext);
         },
+        verifyFactImport: verifyPersistedFactImports(context),
       });
 
       expect(resumed).toMatchObject({
@@ -428,6 +432,7 @@ describe("ItotoriCatalogCrawlerRepository", () => {
           }
           return importProof(ingestContext);
         },
+        verifyFactImport: verifyPersistedFactImports(context),
       });
 
       expect(resumed).toMatchObject({
@@ -529,7 +534,267 @@ describe("ItotoriCatalogCrawlerRepository", () => {
       await context.close();
     }
   });
+
+  it("fails a contract-enforced step before commit when proof has no persisted fact rows", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await createCatalogFactImportsTable(context);
+      const repository = new ItotoriCatalogCrawlerRepository(context.db);
+      const runner = new ItotoriCatalogCrawlerRunner();
+
+      await expect(
+        runner.run(createRecordedCatalogCrawlerAdapter(fixture), {
+          repository,
+          actor,
+          workerId: "worker-self-attested-proof",
+          mode: "recorded_fixture",
+          ingestStep: (ingestContext) => importProof(ingestContext),
+          verifyFactImport: verifyPersistedFactImports(context),
+        }),
+      ).rejects.toThrow(/persisted import evidence/u);
+
+      await expect(
+        repository.getCheckpoint(actor, {
+          catalogSource: "vndb",
+          adapterName: "vndb-recorded-public-fixture",
+          partitionKey: "public-fixture",
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("fails durable marker importers before commit when the marker is absent or wrong", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await createCatalogDurableMarkersTable(context);
+      const repository = new ItotoriCatalogCrawlerRepository(context.db);
+      const runner = new ItotoriCatalogCrawlerRunner();
+      const adapter = durableMarkerAdapter();
+
+      await expect(
+        runner.run(adapter, {
+          repository,
+          actor,
+          workerId: "worker-durable-absent",
+          mode: "recorded_fixture",
+          ingestStep: (ingestContext) => importProof(ingestContext),
+          verifyFactImport: verifyPersistedDurableMarkers(context),
+        }),
+      ).rejects.toThrow(/persisted import evidence/u);
+
+      await expect(
+        repository.getCheckpoint(actor, {
+          catalogSource: "vndb",
+          adapterName: "vndb-durable-marker-fixture",
+          partitionKey: "public-fixture",
+        }),
+      ).resolves.toBeNull();
+
+      await expect(
+        runner.run(adapter, {
+          repository,
+          actor,
+          workerId: "worker-durable-wrong",
+          mode: "recorded_fixture",
+          ingestStep: async (ingestContext) => {
+            await persistDurableMarker(context, ingestContext, `${ingestContext.stableImportKey}:wrong`);
+            return importProof(ingestContext);
+          },
+          verifyFactImport: verifyPersistedDurableMarkers(context),
+        }),
+      ).rejects.toThrow(/durable marker evidence/u);
+
+      await expect(
+        repository.getCheckpoint(actor, {
+          catalogSource: "vndb",
+          adapterName: "vndb-durable-marker-fixture",
+          partitionKey: "public-fixture",
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("commits durable marker importers only after the stable marker is persisted", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await createCatalogDurableMarkersTable(context);
+      const repository = new ItotoriCatalogCrawlerRepository(context.db);
+      const runner = new ItotoriCatalogCrawlerRunner();
+      const adapter = durableMarkerAdapter();
+
+      const result = await runner.run(adapter, {
+        repository,
+        actor,
+        workerId: "worker-durable-persisted",
+        mode: "recorded_fixture",
+        ingestStep: async (ingestContext) => {
+          await persistDurableMarker(context, ingestContext, ingestContext.stableImportKey);
+          return importProof(ingestContext);
+        },
+        verifyFactImport: verifyPersistedDurableMarkers(context),
+      });
+
+      expect(result).toMatchObject({
+        fetchedSteps: 2,
+        importedSteps: 2,
+        skippedSteps: 0,
+      });
+      expect(result.replayValidation.map((record) => record.stableImportKey)).toEqual([
+        expect.stringMatching(/^catalog-import:/u),
+        expect.stringMatching(/^catalog-import:/u),
+      ]);
+      await expect(
+        repository.getCheckpoint(actor, {
+          catalogSource: "vndb",
+          adapterName: "vndb-durable-marker-fixture",
+          partitionKey: "public-fixture",
+        }),
+      ).resolves.toMatchObject({ lastStepKey: "step-002" });
+    } finally {
+      await context.close();
+    }
+  });
 });
+
+async function createCatalogFactImportsTable(context: Awaited<ReturnType<typeof isolatedMigratedContext>>) {
+  await context.pool.query(`
+    create table catalog_fact_imports (
+      source_id text primary key,
+      fixture_id text not null,
+      stable_import_key text not null,
+      first_import_transaction_id text not null,
+      fact_identity text not null,
+      deterministic_fact_count integer not null,
+      normalized_title text not null
+    )
+  `);
+}
+
+async function createCatalogDurableMarkersTable(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+) {
+  await context.pool.query(`
+    create table catalog_durable_import_markers (
+      stable_import_key text primary key,
+      durable_marker_id text not null,
+      deterministic_fact_count integer not null
+    )
+  `);
+  await context.pool.query(`
+    create table catalog_durable_import_marker_facts (
+      stable_import_key text not null,
+      fact_identity text not null,
+      primary key (stable_import_key, fact_identity)
+    )
+  `);
+}
+
+function durableMarkerAdapter(): CatalogCrawlerSourceAdapter<FixtureFact> {
+  return {
+    ...createRecordedCatalogCrawlerAdapter(fixture),
+    adapterName: "vndb-durable-marker-fixture",
+    factImportContract: {
+      contractId: catalogCrawlerIdempotentFactImportContractId,
+      strategy: catalogCrawlerFactImportStrategyValues.durableImportMarker,
+      factIdentity: ["catalogSource", "sourceId"],
+      replayValidation: [
+        "sourceId",
+        "fixtureId",
+        "stableImportKey",
+        "importTransactionId",
+        "factCount",
+        "factIdentities",
+      ],
+    },
+  };
+}
+
+function verifyPersistedFactImports(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+): CatalogCrawlerVerifyFactImportStep<FixtureFact> {
+  return async ({ proof }) => {
+    const rows = await context.pool.query<{
+      fact_identity: string;
+      deterministic_fact_count: number;
+    }>(
+      "select fact_identity, deterministic_fact_count from catalog_fact_imports where stable_import_key = $1 order by fact_identity",
+      [proof.stableImportKey],
+    );
+    if (rows.rowCount === 0) {
+      return null;
+    }
+    return persistedEvidence(proof, rows.rows.map((row) => row.fact_identity));
+  };
+}
+
+function verifyPersistedDurableMarkers(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+): CatalogCrawlerVerifyFactImportStep<FixtureFact> {
+  return async ({ proof }) => {
+    const marker = await context.pool.query<{
+      durable_marker_id: string;
+      deterministic_fact_count: number;
+    }>(
+      "select durable_marker_id, deterministic_fact_count from catalog_durable_import_markers where stable_import_key = $1",
+      [proof.stableImportKey],
+    );
+    if (marker.rowCount === 0) {
+      return null;
+    }
+    const facts = await context.pool.query<{ fact_identity: string }>(
+      "select fact_identity from catalog_durable_import_marker_facts where stable_import_key = $1 order by fact_identity",
+      [proof.stableImportKey],
+    );
+    return persistedEvidence(
+      proof,
+      facts.rows.map((row) => row.fact_identity),
+      marker.rows[0]?.durable_marker_id,
+    );
+  };
+}
+
+function persistedEvidence(
+  proof: ReturnType<typeof importProof>,
+  factIdentities: readonly string[],
+  durableMarkerId?: string,
+): CatalogCrawlerFactImportEvidence {
+  return {
+    stableImportKey: proof.stableImportKey,
+    strategy: proof.strategy,
+    factCount: factIdentities.length,
+    factIdentities,
+    durableMarkerId,
+    persisted: true,
+  };
+}
+
+async function persistDurableMarker(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+  ingestContext: CatalogCrawlerIngestContext<FixtureFact>,
+  durableMarkerId: string,
+) {
+  await context.pool.query(
+    `insert into catalog_durable_import_markers (
+      stable_import_key,
+      durable_marker_id,
+      deterministic_fact_count
+    ) values ($1, $2, $3)`,
+    [ingestContext.stableImportKey, durableMarkerId, ingestContext.facts.length],
+  );
+  for (const factIdentity of ingestContext.expectedFactIdentities) {
+    await context.pool.query(
+      `insert into catalog_durable_import_marker_facts (
+        stable_import_key,
+        fact_identity
+      ) values ($1, $2)`,
+      [ingestContext.stableImportKey, factIdentity],
+    );
+  }
+}
 
 function importProof(context: CatalogCrawlerIngestContext<FixtureFact>) {
   return {

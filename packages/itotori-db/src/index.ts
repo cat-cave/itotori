@@ -218,6 +218,7 @@ export type {
   CatalogCrawlerAdapterContext,
   CatalogCrawlerAdapterStep,
   CatalogCrawlerFactImportContract,
+  CatalogCrawlerFactImportEvidence,
   CatalogCrawlerFactImportProof,
   CatalogCrawlerFactImportStrategy,
   CatalogCrawlerIngestContext,
@@ -228,6 +229,7 @@ export type {
   CatalogCrawlerRunnerOptions,
   CatalogCrawlerRunResult,
   CatalogCrawlerSourceAdapter,
+  CatalogCrawlerVerifyFactImportStep,
   RecordedCatalogCrawlerFixture,
 } from "./services/catalog-crawler-runner.js";
 export {
