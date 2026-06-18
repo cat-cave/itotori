@@ -7,12 +7,16 @@ import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository
 import {
   createRecordedCatalogCrawlerAdapter,
   ItotoriCatalogCrawlerRunner,
+  type CatalogCrawlerSourceAdapter,
   type RecordedCatalogCrawlerFixture,
 } from "../src/services/catalog-crawler-runner.js";
 import {
+  createDlsiteRecordedStorefrontAdapter,
   createCatalogRecordedImporterIngestStep,
   createCatalogRecordedImporterVerifier,
   type CatalogRecordedImporterFact,
+  createSteamRecordedStorefrontAdapter,
+  type CatalogRecordedStorefrontFixture,
 } from "../src/services/catalog-recorded-importers.js";
 import {
   catalogExternalIdKindValues,
@@ -27,6 +31,8 @@ const actor: AuthorizationActor = { userId: localUserId };
 
 const vndbFixture = readFixture("vndb-dump-replay.json");
 const egsFixture = readFixture("egs-recorded-replay.json");
+const dlsiteFixture = readStorefrontFixture("dlsite-storefront-replay.json");
+const steamFixture = readStorefrontFixture("steam-storefront-replay.json");
 
 describe("catalog recorded source importers", () => {
   it("imports VNDB dump facts with releases, language facts, source ids, and source-version provenance", async () => {
@@ -232,6 +238,233 @@ describe("catalog recorded source importers", () => {
     }
   });
 
+  it("imports DLsite recorded storefront responses with demand facts, translation metadata, and provenance diagnostics", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const services = servicesFor(context.db);
+      const result = await runStorefrontFixture(
+        services,
+        createDlsiteRecordedStorefrontAdapter(dlsiteFixture),
+        "worker-dlsite",
+      );
+
+      expect(result).toMatchObject({
+        fetchedSteps: 2,
+        importedSteps: 2,
+        skippedSteps: 0,
+        replayValidation: [
+          {
+            sourceId: "RJ01111111",
+            fixtureId: "catalog-recorded-importer-dlsite-storefront-v0.1",
+            factCount: 1,
+            factIdentities: ["catalogSource=dlsite|sourceId=RJ01111111"],
+            alreadyImported: false,
+          },
+          {
+            sourceId: "RJ02222222",
+            fixtureId: "catalog-recorded-importer-dlsite-storefront-v0.1",
+            factCount: 1,
+            factIdentities: ["catalogSource=dlsite|sourceId=RJ02222222"],
+            alreadyImported: false,
+          },
+        ],
+      });
+
+      const starlight = await services.catalogRepository.getWorkByExternalId(
+        actor,
+        "dlsite",
+        "RJ01111111",
+        catalogExternalIdKindValues.storeProduct,
+      );
+      expect(starlight).toMatchObject({
+        canonicalTitle: "Promise Under Starlight",
+        originalLanguage: "ja-JP",
+        firstReleaseYear: 2021,
+        workKind: "ADV",
+      });
+      expect(starlight?.metadata).toMatchObject({
+        storefront: "dlsite",
+        workno: "RJ01111111",
+        workType: "ADV",
+        demand: {
+          dlCount: 18420,
+          ratingSummary: { average: 4.72, count: 512 },
+          ratingHistogram: { "5": 401 },
+          wishlistCount: 9321,
+          rankFacts: [{ scope: "daily", category: "ADV", rank: 8 }],
+        },
+        translationTree: {
+          original: { workno: "RJ00001001", locale: "ja-JP" },
+          translations: [{ workno: "RJ01111111", locale: "en-US" }],
+        },
+      });
+      expect(starlight?.languageStatuses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            language: "ja-JP",
+            status: catalogLanguageStatusValues.officialFull,
+            platform: "dlsite",
+          }),
+          expect.objectContaining({
+            language: "en-US",
+            status: catalogLanguageStatusValues.officialFull,
+            platform: "dlsite",
+          }),
+        ]),
+      );
+
+      const glass = await services.catalogRepository.getWorkByExternalId(
+        actor,
+        "dlsite",
+        "RJ02222222",
+        catalogExternalIdKindValues.storeProduct,
+      );
+      expect(glass?.metadata).toMatchObject({
+        storefront: "dlsite",
+        demand: {
+          dlCount: 640,
+          ratingSummary: { average: 4.1, count: 27 },
+          ratingHistogram: { "5": 13 },
+        },
+        diagnostics: [
+          expect.objectContaining({
+            code: "missing_demand_field",
+            fixtureId: "catalog-recorded-importer-dlsite-storefront-v0.1",
+            sourceRevision: "dlsite-storefront-synthetic-2026-06-18",
+            sourceField: "demand.wishlist_count",
+          }),
+          expect.objectContaining({
+            code: "missing_demand_field",
+            sourceField: "demand.rank_facts",
+          }),
+        ],
+      });
+
+      const sourceExternalId = starlight?.externalIds.find(
+        (externalId) => externalId.externalIdKind === catalogExternalIdKindValues.sourceRecord,
+      );
+      const provenance = await sourceProvenanceById(
+        context.db,
+        required(sourceExternalId?.sourceProvenanceId, "source provenance id"),
+      );
+      expect(provenance).toMatchObject({
+        catalogSource: "dlsite",
+        sourceId: "RJ01111111",
+        requestId: "GET /maniax/work/=/product_id/RJ01111111.html?locale=en_US",
+        sourceVersion: "dlsite-storefront-synthetic-2026-06-18",
+        metadata: expect.objectContaining({
+          fixtureId: "catalog-recorded-importer-dlsite-storefront-v0.1",
+          sourceRevision: "dlsite-storefront-synthetic-2026-06-18",
+          diagnostics: [],
+        }),
+      });
+      expect(
+        await services.crawlerRepository.getCheckpoint(actor, {
+          catalogSource: "dlsite",
+          adapterName: "dlsite-recorded-storefront-importer",
+          partitionKey: "public-dlsite-storefront",
+        }),
+      ).toMatchObject({ lastStepKey: "dlsite-rj02222222" });
+      await expect(
+        rateLimitByAdapter(context.pool, "dlsite-recorded-storefront-importer"),
+      ).resolves.toMatchObject({
+        catalog_source: "dlsite",
+        remaining: 18,
+        limit: 20,
+        request_identity: "GET /maniax/work/=/product_id/RJ01111111.html?locale=en_US",
+        metadata: { policy: "recorded-fixture", source: "dlsite" },
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("imports Steam recorded storefront responses with locale metadata, package status, delisting status, and rate limits", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const services = servicesFor(context.db);
+      const result = await runStorefrontFixture(
+        services,
+        createSteamRecordedStorefrontAdapter(steamFixture),
+        "worker-steam",
+      );
+
+      expect(result).toMatchObject({
+        fetchedSteps: 2,
+        importedSteps: 2,
+        skippedSteps: 0,
+      });
+
+      const starlight = await services.catalogRepository.getWorkByExternalId(
+        actor,
+        "steam",
+        "2100010",
+        catalogExternalIdKindValues.storeProduct,
+      );
+      expect(starlight).toMatchObject({
+        canonicalTitle: "Promise Under Starlight",
+        firstReleaseYear: 2021,
+      });
+      expect(starlight?.metadata).toMatchObject({
+        storefront: "steam",
+        appId: "2100010",
+        packageStatus: "packages_recorded",
+        packages: [710001, 710002],
+        delistingStatus: "listed",
+        localeMetadata: {
+          parsedLocales: ["en-US", "ja-JP", "zh-Hans"],
+        },
+      });
+      expect(starlight?.languageStatuses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ language: "en-US", platform: "steam" }),
+          expect.objectContaining({ language: "ja-JP", platform: "steam" }),
+          expect.objectContaining({ language: "zh-Hans", platform: "steam" }),
+        ]),
+      );
+
+      const delisted = await services.catalogRepository.getWorkByExternalId(
+        actor,
+        "steam",
+        "2100099",
+        catalogExternalIdKindValues.storeProduct,
+      );
+      expect(delisted).toMatchObject({
+        canonicalTitle: "Moonlit Glass Journey",
+        metadata: {
+          storefront: "steam",
+          appId: "2100099",
+          packageStatus: "delisted",
+          delistingStatus: "delisted",
+        },
+      });
+
+      await expect(
+        rateLimitByAdapter(context.pool, "steam-recorded-storefront-importer"),
+      ).resolves.toMatchObject({
+        catalog_source: "steam",
+        remaining: 199,
+        limit: 200,
+        request_identity: "GET /api/appdetails?appids=2100010&cc=us&l=english",
+        metadata: { policy: "recorded-fixture", source: "steam" },
+      });
+      const sourceExternalId = starlight?.externalIds.find(
+        (externalId) => externalId.externalIdKind === catalogExternalIdKindValues.sourceRecord,
+      );
+      const provenance = await sourceProvenanceById(
+        context.db,
+        required(sourceExternalId?.sourceProvenanceId, "source provenance id"),
+      );
+      expect(provenance).toMatchObject({
+        catalogSource: "steam",
+        sourceId: "2100010",
+        requestId: "GET /api/appdetails?appids=2100010&cc=us&l=english",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("reruns updated VNDB and EGS fixtures idempotently without duplicate facts", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -298,6 +531,59 @@ describe("catalog recorded source importers", () => {
       await context.close();
     }
   });
+
+  it("reruns DLsite and Steam storefront adapters idempotently without duplicate facts", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const services = servicesFor(context.db);
+      await runStorefrontFixture(
+        services,
+        createDlsiteRecordedStorefrontAdapter(dlsiteFixture),
+        "worker-dlsite-initial",
+      );
+      await runStorefrontFixture(
+        services,
+        createSteamRecordedStorefrontAdapter(steamFixture),
+        "worker-steam-initial",
+      );
+      const initialCounts = await catalogCounts(context.pool);
+
+      await expect(
+        runStorefrontFixture(
+          services,
+          createDlsiteRecordedStorefrontAdapter(dlsiteFixture),
+          "worker-dlsite-noop",
+        ),
+      ).resolves.toMatchObject({ fetchedSteps: 0, importedSteps: 0, skippedSteps: 0 });
+      await expect(
+        runStorefrontFixture(
+          services,
+          createSteamRecordedStorefrontAdapter(steamFixture),
+          "worker-steam-noop",
+        ),
+      ).resolves.toMatchObject({ fetchedSteps: 0, importedSteps: 0, skippedSteps: 0 });
+      await expect(catalogCounts(context.pool)).resolves.toEqual(initialCounts);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("reports parser drift and unsupported Steam response shapes as semantic diagnostics", () => {
+    const badDlsite = structuredClone(dlsiteFixture);
+    const dlsiteResponse = required(badDlsite.responses[0], "DLsite response");
+    dlsiteResponse.payload = { ...dlsiteResponse.payload };
+    delete dlsiteResponse.payload.title;
+    expect(() => createDlsiteRecordedStorefrontAdapter(badDlsite)).toThrow(
+      /CATALOG-012 semantic diagnostic parse_drift fixtureId=catalog-recorded-importer-dlsite-storefront-v0\.1 sourceRevision=dlsite-storefront-synthetic-2026-06-18/u,
+    );
+
+    const badSteam = structuredClone(steamFixture);
+    const steamResponse = required(badSteam.responses[1], "Steam response");
+    steamResponse.payload = { success: false, steam_appid: "2100099" };
+    expect(() => createSteamRecordedStorefrontAdapter(badSteam)).toThrow(
+      /CATALOG-012 semantic diagnostic unsupported_response_shape fixtureId=catalog-recorded-importer-steam-storefront-v0\.1 sourceRevision=steam-storefront-synthetic-2026-06-18/u,
+    );
+  });
 });
 
 type Services = ReturnType<typeof servicesFor>;
@@ -320,6 +606,27 @@ async function runFixture(
   workerId: string,
 ) {
   return services.runner.run(createRecordedCatalogCrawlerAdapter(fixture), {
+    repository: services.crawlerRepository,
+    actor,
+    workerId,
+    mode: "recorded_fixture",
+    ingestStep: createCatalogRecordedImporterIngestStep({
+      catalogRepository: services.catalogRepository,
+      actor,
+    }),
+    verifyFactImport: createCatalogRecordedImporterVerifier({
+      catalogRepository: services.catalogRepository,
+      actor,
+    }),
+  });
+}
+
+async function runStorefrontFixture(
+  services: Services,
+  adapter: CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact>,
+  workerId: string,
+) {
+  return services.runner.run(adapter, {
     repository: services.crawlerRepository,
     actor,
     workerId,
@@ -367,6 +674,28 @@ async function catalogCounts(pool: {
   return result.rows[0];
 }
 
+async function rateLimitByAdapter(
+  pool: { query<T extends object = object>(sql: string, values?: unknown[]): Promise<{ rows: T[] }> },
+  adapterName: string,
+) {
+  const result = await pool.query<{
+    catalog_source: string;
+    remaining: number | null;
+    limit: number | null;
+    request_identity: string | null;
+    metadata: Record<string, unknown>;
+  }>(
+    `
+      select catalog_source, remaining, "limit", request_identity, metadata
+      from itotori_catalog_crawler_rate_limits
+      where adapter_name = $1
+      limit 1
+    `,
+    [adapterName],
+  );
+  return required(result.rows[0], `rate limit for ${adapterName}`);
+}
+
 function readFixture(name: string): RecordedCatalogCrawlerFixture<CatalogRecordedImporterFact> {
   return JSON.parse(
     readFileSync(
@@ -374,6 +703,15 @@ function readFixture(name: string): RecordedCatalogCrawlerFixture<CatalogRecorde
       "utf8",
     ),
   ) as RecordedCatalogCrawlerFixture<CatalogRecordedImporterFact>;
+}
+
+function readStorefrontFixture(name: string): CatalogRecordedStorefrontFixture {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../../fixtures/catalog-recorded-importers/${name}`, import.meta.url),
+      "utf8",
+    ),
+  ) as CatalogRecordedStorefrontFixture;
 }
 
 function withUpdatedFact(

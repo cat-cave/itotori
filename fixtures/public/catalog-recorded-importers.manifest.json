@@ -5,17 +5,17 @@
     "id": "catalog-recorded-importers",
     "title": "Catalog Recorded Importer Fixtures",
     "kind": "synthetic",
-    "summary": "Synthetic VNDB dump and Epic Games Store recorded-response fixtures for deterministic external-source importer verification without live network access.",
+    "summary": "Synthetic VNDB dump, EGS recorded-response, DLsite storefront, and Steam storefront fixtures for deterministic external-source importer verification without live network access.",
     "sourceLocale": "ja-JP",
     "targetLocales": ["en-US"],
     "publicRedistribution": "allowed",
     "license": {
       "spdx": "CC0-1.0",
-      "evidence": "Hand-authored synthetic VNDB-shaped dump rows and EGS-shaped recorded responses; no third-party raw assets, private catalog payloads, or credentials."
+      "evidence": "Hand-authored synthetic VNDB-shaped dump rows, EGS-shaped recorded responses, DLsite-shaped storefront metadata, and Steam-shaped appdetails responses; no third-party raw assets, private catalog payloads, or credentials."
     },
     "provenance": {
       "author": "Itotori contributors",
-      "creationMethod": "Hand-authored synthetic public metadata fixtures for CATALOG-011 recorded importer provenance and idempotency tests.",
+      "creationMethod": "Hand-authored synthetic public metadata fixtures for CATALOG-011 and CATALOG-012 recorded importer provenance and idempotency tests.",
       "rawAssetPolicy": "contains-no-copyrighted-game-assets"
     }
   },
@@ -35,17 +35,33 @@
       "sha256": "ddb8bb1eea4f77b26040b7c48b212759eeb72dff090468c2cdbd9ab67165718e",
       "bytes": 7357,
       "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-recorded-importers/dlsite-storefront-replay.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "e1c8779eba3ce491b057b66562a0a2ab3de4dab1e0464873c277271da3402c55",
+      "bytes": 4147,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-recorded-importers/steam-storefront-replay.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "4f475e1b9748f4b0f6d649084233cb05b7290ed55546d3cc2b6eef524482092a",
+      "bytes": 2426,
+      "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 2,
+    "files": 4,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
     "sourceLocales": ["ja-JP"],
     "targetLocales": ["en-US"],
     "engineKinds": ["catalog-recorded-importer-synthetic"],
-    "notes": "Covers VNDB external ids, titles, releases, language facts, source-version provenance, EGS product ids, store metadata, locale facts, fetched-at/request identity provenance, importer seed targets, and CATALOG-065 idempotent reruns."
+    "notes": "Covers VNDB external ids, titles, releases, language facts, source-version provenance, EGS product ids, DLsite product identity, work_type, release metadata, language indicators, translation trees, demand facts, Steam app identity, supported-language metadata, package/delisting status, fetched-at/request identity provenance, importer seed targets, rate-limit metadata, semantic diagnostics, and CATALOG-065 idempotent reruns."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

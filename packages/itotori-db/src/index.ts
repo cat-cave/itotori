@@ -279,9 +279,12 @@ export type {
   RecordedCatalogCrawlerFixture,
 } from "./services/catalog-crawler-runner.js";
 export {
+  catalogRecordedStorefrontDiagnosticCodeValues,
   catalogRecordedImporterVersion,
+  createDlsiteRecordedStorefrontAdapter,
   createCatalogRecordedImporterIngestStep,
   createCatalogRecordedImporterVerifier,
+  createSteamRecordedStorefrontAdapter,
 } from "./services/catalog-recorded-importers.js";
 export type {
   CatalogRecordedExternalIdFact,
@@ -290,6 +293,11 @@ export type {
   CatalogRecordedLanguageStatusFact,
   CatalogRecordedReleaseFact,
   CatalogRecordedSeedTargetFact,
+  CatalogRecordedStorefrontDiagnostic,
+  CatalogRecordedStorefrontDiagnosticCode,
+  CatalogRecordedStorefrontFixture,
+  CatalogRecordedStorefrontResponse,
+  CatalogRecordedStorefrontSource,
 } from "./services/catalog-recorded-importers.js";
 export {
   ItotoriJobWorkerService,
