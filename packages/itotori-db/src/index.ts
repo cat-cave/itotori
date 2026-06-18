@@ -269,3 +269,23 @@ export type {
   CatalogExactExternalIdLinkSubject,
   ItotoriCatalogExactExternalIdLinkerPort,
 } from "./services/catalog-exact-external-id-linker.js";
+export {
+  assertCatalogResolverFixtureArtifact,
+  catalogResolverFixtureDiagnosticCodeValues,
+  catalogResolverFixtureReviewReadModel,
+  catalogResolverFixtureSchemaVersion,
+  catalogResolverFixtureStatusValues,
+  createCatalogResolverFixtureArtifact,
+} from "./services/catalog-resolver-fixture.js";
+export type {
+  CatalogResolverFixtureArtifact,
+  CatalogResolverFixtureDiagnostic,
+  CatalogResolverFixtureDiagnosticCode,
+  CatalogResolverFixtureExactLinkArtifactRecord,
+  CatalogResolverFixtureExactLinkRecord,
+  CatalogResolverFixtureFuzzyCandidateArtifactRecord,
+  CatalogResolverFixtureInput,
+  CatalogResolverFixtureReviewReadModel,
+  CatalogResolverFixtureSourceRegistryEntry,
+  CatalogResolverFixtureStatus,
+} from "./services/catalog-resolver-fixture.js";

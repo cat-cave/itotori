@@ -33,6 +33,11 @@ export default defineConfig({
         dependsOn: ["ts:build"],
         cache: false,
       },
+      "catalog:resolve-fixture": {
+        command: "node apps/itotori/dist/cli.js catalog-resolve-fixture",
+        dependsOn: ["ts:build"],
+        cache: false,
+      },
       "rust:check": {
         command: "cargo check --workspace",
       },

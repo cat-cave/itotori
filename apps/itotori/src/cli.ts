@@ -1,4 +1,5 @@
-import { readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runItotoriCliCommand, type JsonFileStore } from "./cli-handlers.js";
 import {
@@ -21,6 +22,7 @@ function readJson(path: string): unknown {
 }
 
 function writeJson(path: string, value: unknown): void {
+  mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
 }
 

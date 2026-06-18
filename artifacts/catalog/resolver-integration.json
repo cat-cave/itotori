@@ -1,0 +1,644 @@
+{
+  "schemaVersion": "catalog.resolver_fixture.v0.1",
+  "artifactId": "catalog-resolver-integration-001",
+  "generatedAt": "2026-06-18T18:00:00.000Z",
+  "status": "reviewable_with_diagnostics",
+  "sourceRegistry": [
+    {
+      "sourceRegistryId": "source-registry:dlsite:RJ349517",
+      "catalogSource": "dlsite",
+      "sourceId": "RJ349517",
+      "sourceRecordKind": "recorded_fixture",
+      "payloadHash": "sha256:9b7f7ce870df4b789e62bc42b2f604aa72fb76cdb55195d76bc789d3e9d10f21",
+      "provenanceHash": "sha256:8ca1e815bb35c1b72281b9857262fbd97423a7e7634f4f7c8718b7f239c57ab1",
+      "payloadSchemaVersion": "catalog-source-fixture.v0.1",
+      "payloadShape": "catalog_source_record"
+    },
+    {
+      "sourceRegistryId": "source-registry:egs:egs-moonlight-001",
+      "catalogSource": "egs",
+      "sourceId": "egs-moonlight-001",
+      "sourceRecordKind": "recorded_fixture",
+      "payloadHash": "sha256:5eeb4ad3b9309f1b933b672a6848756b77bb23c4ed6d1c4616c5063fe5d14732",
+      "provenanceHash": "sha256:bb21ec7a93ae9a148ca0652b2940f3e2c35e127a30a6488f2672bdf7f8f47054",
+      "payloadSchemaVersion": "catalog-source-fixture.v0.1",
+      "payloadShape": "catalog_source_record"
+    },
+    {
+      "sourceRegistryId": "source-registry:vndb:v-cat-010",
+      "catalogSource": "vndb",
+      "sourceId": "v-cat-010",
+      "sourceRecordKind": "recorded_fixture",
+      "payloadHash": "sha256:3f55e2cc7c2b7ff490137f1f31de552f0a5b65daf928b050a16de936b95449e6",
+      "provenanceHash": "sha256:c7a3d80d9f5c1d6f48bf04fd94a032b8a8c8235422db03f3ad47be482c68f7f9",
+      "payloadSchemaVersion": "catalog-source-fixture.v0.1",
+      "payloadShape": "catalog_source_record"
+    }
+  ],
+  "provenanceHashes": [
+    {
+      "sourceRegistryId": "source-registry:dlsite:RJ349517",
+      "catalogSource": "dlsite",
+      "sourceId": "RJ349517",
+      "payloadHash": "sha256:9b7f7ce870df4b789e62bc42b2f604aa72fb76cdb55195d76bc789d3e9d10f21",
+      "provenanceHash": "sha256:8ca1e815bb35c1b72281b9857262fbd97423a7e7634f4f7c8718b7f239c57ab1"
+    },
+    {
+      "sourceRegistryId": "source-registry:egs:egs-moonlight-001",
+      "catalogSource": "egs",
+      "sourceId": "egs-moonlight-001",
+      "payloadHash": "sha256:5eeb4ad3b9309f1b933b672a6848756b77bb23c4ed6d1c4616c5063fe5d14732",
+      "provenanceHash": "sha256:bb21ec7a93ae9a148ca0652b2940f3e2c35e127a30a6488f2672bdf7f8f47054"
+    },
+    {
+      "sourceRegistryId": "source-registry:vndb:v-cat-010",
+      "catalogSource": "vndb",
+      "sourceId": "v-cat-010",
+      "payloadHash": "sha256:3f55e2cc7c2b7ff490137f1f31de552f0a5b65daf928b050a16de936b95449e6",
+      "provenanceHash": "sha256:c7a3d80d9f5c1d6f48bf04fd94a032b8a8c8235422db03f3ad47be482c68f7f9"
+    }
+  ],
+  "exactLinks": [
+    {
+      "exactLinkId": "exact-link:dlsite:RJ349517",
+      "status": "linked",
+      "workId": "work-dlsite-rj349517",
+      "matchIds": [
+        "dlsite:RJ349517:store_product:work-dlsite-rj349517"
+      ],
+      "matches": [
+        {
+          "inputIndex": 0,
+          "catalogSource": "dlsite",
+          "sourceId": "RJ349517",
+          "externalIdKind": "store_product",
+          "workId": "work-dlsite-rj349517",
+          "canonicalTitle": "Moonlight Refrain"
+        }
+      ],
+      "diagnostics": []
+    },
+    {
+      "exactLinkId": "exact-link:dlsite:rj-no-match",
+      "status": "no_match",
+      "workId": null,
+      "matchIds": [],
+      "matches": [],
+      "diagnostics": [
+        {
+          "code": "catalog.exact_external_id.no_match",
+          "severity": "info",
+          "message": "No catalog work has an exact external-id match.",
+          "metadata": {
+            "externalIds": [
+              {
+                "catalogSource": "dlsite",
+                "sourceId": "RJ000000",
+                "externalIdKind": "store_product"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "exactLinkId": "exact-link:manual-conflict",
+      "status": "conflict",
+      "workId": null,
+      "matchIds": [
+        "dlsite:RJCAT010:store_product:work-conflict-a",
+        "steam:333600:store_product:work-conflict-b"
+      ],
+      "matches": [
+        {
+          "inputIndex": 0,
+          "catalogSource": "dlsite",
+          "sourceId": "RJCAT010",
+          "externalIdKind": "store_product",
+          "workId": "work-conflict-a",
+          "canonicalTitle": "Conflict Fixture A"
+        },
+        {
+          "inputIndex": 1,
+          "catalogSource": "steam",
+          "sourceId": "333600",
+          "externalIdKind": "store_product",
+          "workId": "work-conflict-b",
+          "canonicalTitle": "Conflict Fixture B"
+        }
+      ],
+      "diagnostics": [
+        {
+          "code": "catalog.exact_external_id.ambiguous_conflict",
+          "severity": "error",
+          "message": "Exact external IDs point at multiple catalog works; no link was selected.",
+          "metadata": {
+            "matchedWorkIds": [
+              "work-conflict-a",
+              "work-conflict-b"
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "fuzzyCandidates": {
+    "status": "generated",
+    "generatorVersion": "deterministic-title-year.v0.1",
+    "candidateIds": [
+      "candidate:egs-moonlight-001:work-moonlight-hd"
+    ],
+    "candidates": [
+      {
+        "candidateId": "candidate:egs-moonlight-001:work-moonlight-hd",
+        "sourceCatalogSource": "egs",
+        "sourceId": "egs-moonlight-001",
+        "sourceTitle": "Moonlight Refrain",
+        "sourceProvenanceId": "source-registry:egs:egs-moonlight-001",
+        "targetWorkId": "work-moonlight-hd",
+        "score": 860,
+        "matchedFields": {
+          "title": {
+            "source": "Moonlight Refrain",
+            "target": "Moonlight Refrain HD",
+            "score": 760,
+            "algorithm": "normalized_token_dice"
+          },
+          "releaseYear": {
+            "source": 2021,
+            "target": 2021,
+            "score": 100,
+            "algorithm": "exact_year_bonus"
+          }
+        },
+        "status": "review_pending",
+        "diagnosticCode": "catalog.fuzzy_candidate.generated",
+        "generatorVersion": "deterministic-title-year.v0.1",
+        "metadata": {
+          "autoMerge": false,
+          "sourceReleaseYear": 2021,
+          "targetCanonicalTitle": "Moonlight Refrain HD",
+          "targetFirstReleaseYear": 2021
+        },
+        "createdAt": "2026-06-18T18:00:00.000Z",
+        "updatedAt": "2026-06-18T18:00:00.000Z"
+      }
+    ],
+    "diagnostics": [
+      {
+        "code": "catalog.fuzzy_candidate.generated",
+        "severity": "info",
+        "message": "Fuzzy catalog candidate recorded for review; no canonical catalog record was mutated.",
+        "sourceId": "egs-moonlight-001",
+        "candidateId": "candidate:egs-moonlight-001:work-moonlight-hd",
+        "field": "title",
+        "score": 860,
+        "reasonCode": "review_required_no_auto_merge"
+      }
+    ]
+  },
+  "conflicts": {
+    "conflictIds": [
+      "catalog-conflict:manual-duplicate-external-id",
+      "catalog-candidate:candidate:egs-moonlight-001:work-moonlight-hd"
+    ],
+    "rows": [
+      {
+        "reviewId": "catalog-conflict:manual-duplicate-external-id",
+        "catalogRecordId": "work-conflict-a",
+        "conflictId": "manual-duplicate-external-id",
+        "candidateIds": [],
+        "candidateCatalogIds": [
+          "work-conflict-a",
+          "work-conflict-b"
+        ],
+        "exactLinkRefs": [
+          {
+            "externalIdId": "external-id:dlsite:RJCAT010",
+            "externalIdKind": "store_product",
+            "workId": "work-conflict-a",
+            "catalogSource": "dlsite",
+            "sourceId": "RJCAT010",
+            "sourceProvenanceId": "source-registry:dlsite:RJ349517"
+          }
+        ],
+        "fuzzyScores": [],
+        "sourceIds": [
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJCAT010"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceProvenanceId": "source-registry:dlsite:RJ349517",
+            "catalogSource": "dlsite",
+            "sourceId": "RJ349517",
+            "sourceRecordKind": "recorded_fixture",
+            "payloadHash": "sha256:9b7f7ce870df4b789e62bc42b2f604aa72fb76cdb55195d76bc789d3e9d10f21",
+            "fetchedAt": "2026-06-18T18:00:00.000Z"
+          }
+        ],
+        "severity": "error",
+        "status": "open",
+        "reasonCode": "duplicate_external_id",
+        "reasonDetail": "Manual review required because fixture exact links claim competing catalog works.",
+        "conflictKind": "external_id",
+        "detectedAt": "2026-06-18T18:00:00.000Z",
+        "resolution": null
+      },
+      {
+        "reviewId": "catalog-candidate:candidate:egs-moonlight-001:work-moonlight-hd",
+        "catalogRecordId": "work-moonlight-hd",
+        "conflictId": null,
+        "candidateIds": [
+          "candidate:egs-moonlight-001:work-moonlight-hd"
+        ],
+        "candidateCatalogIds": [
+          "work-moonlight-hd"
+        ],
+        "exactLinkRefs": [],
+        "fuzzyScores": [
+          {
+            "candidateId": "candidate:egs-moonlight-001:work-moonlight-hd",
+            "score": 860,
+            "diagnosticCode": "catalog.fuzzy_candidate.generated",
+            "generatorVersion": "deterministic-title-year.v0.1"
+          }
+        ],
+        "sourceIds": [
+          {
+            "catalogSource": "egs",
+            "sourceId": "egs-moonlight-001"
+          }
+        ],
+        "provenance": [
+          {
+            "sourceProvenanceId": "source-registry:egs:egs-moonlight-001",
+            "catalogSource": "egs",
+            "sourceId": "egs-moonlight-001",
+            "sourceRecordKind": "recorded_fixture",
+            "payloadHash": "sha256:5eeb4ad3b9309f1b933b672a6848756b77bb23c4ed6d1c4616c5063fe5d14732",
+            "fetchedAt": "2026-06-18T18:00:00.000Z"
+          }
+        ],
+        "severity": "warning",
+        "status": "review_pending",
+        "reasonCode": "fuzzy_candidate_review",
+        "reasonDetail": "Fuzzy candidate is reviewable and was not merged automatically.",
+        "conflictKind": null,
+        "detectedAt": "2026-06-18T18:00:00.000Z",
+        "resolution": null
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "catalog.resolver_fixture.unsupported_source_payload",
+      "severity": "error",
+      "message": "sourceRegistry[3] uses unsupported payloadShape legacy_unstructured_dump.",
+      "path": "$.sourceRegistry[3].payloadShape",
+      "sourceRegistryId": "source-registry:unsupported:legacy-payload",
+      "sourceId": "legacy-payload"
+    },
+    {
+      "code": "catalog.resolver_fixture.no_match",
+      "severity": "info",
+      "message": "Exact external-id fixture path produced no catalog match.",
+      "path": "$.exactLinks[exact-link:dlsite:rj-no-match]",
+      "exactLinkId": "exact-link:dlsite:rj-no-match",
+      "metadata": {
+        "subject": {
+          "kind": "fixture",
+          "id": "catalog-resolver-no-match"
+        },
+        "exactDiagnostics": [
+          {
+            "code": "catalog.exact_external_id.no_match",
+            "severity": "info",
+            "message": "No catalog work has an exact external-id match.",
+            "metadata": {
+              "externalIds": [
+                {
+                  "catalogSource": "dlsite",
+                  "sourceId": "RJ000000",
+                  "externalIdKind": "store_product"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "review": {
+    "artifactId": "catalog-resolver-integration-001",
+    "status": "reviewable_with_diagnostics",
+    "exactLinkIds": [
+      "exact-link:dlsite:RJ349517",
+      "exact-link:dlsite:rj-no-match",
+      "exact-link:manual-conflict"
+    ],
+    "exactLinkedWorkIds": [
+      "work-dlsite-rj349517"
+    ],
+    "fuzzyCandidateIds": [
+      "candidate:egs-moonlight-001:work-moonlight-hd"
+    ],
+    "conflictIds": [
+      "catalog-conflict:manual-duplicate-external-id",
+      "catalog-candidate:candidate:egs-moonlight-001:work-moonlight-hd"
+    ],
+    "sourceRegistryIds": [
+      "source-registry:dlsite:RJ349517",
+      "source-registry:egs:egs-moonlight-001",
+      "source-registry:vndb:v-cat-010"
+    ],
+    "provenanceHashes": [
+      "sha256:8ca1e815bb35c1b72281b9857262fbd97423a7e7634f4f7c8718b7f239c57ab1",
+      "sha256:bb21ec7a93ae9a148ca0652b2940f3e2c35e127a30a6488f2672bdf7f8f47054",
+      "sha256:c7a3d80d9f5c1d6f48bf04fd94a032b8a8c8235422db03f3ad47be482c68f7f9"
+    ],
+    "noMatchDiagnostics": [
+      {
+        "code": "catalog.resolver_fixture.no_match",
+        "severity": "info",
+        "message": "Exact external-id fixture path produced no catalog match.",
+        "path": "$.exactLinks[exact-link:dlsite:rj-no-match]",
+        "exactLinkId": "exact-link:dlsite:rj-no-match",
+        "metadata": {
+          "subject": {
+            "kind": "fixture",
+            "id": "catalog-resolver-no-match"
+          },
+          "exactDiagnostics": [
+            {
+              "code": "catalog.exact_external_id.no_match",
+              "severity": "info",
+              "message": "No catalog work has an exact external-id match.",
+              "metadata": {
+                "externalIds": [
+                  {
+                    "catalogSource": "dlsite",
+                    "sourceId": "RJ000000",
+                    "externalIdKind": "store_product"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "semanticDiagnostics": [
+      {
+        "code": "catalog.resolver_fixture.unsupported_source_payload",
+        "severity": "error",
+        "message": "sourceRegistry[3] uses unsupported payloadShape legacy_unstructured_dump.",
+        "path": "$.sourceRegistry[3].payloadShape",
+        "sourceRegistryId": "source-registry:unsupported:legacy-payload",
+        "sourceId": "legacy-payload"
+      },
+      {
+        "code": "catalog.resolver_fixture.no_match",
+        "severity": "info",
+        "message": "Exact external-id fixture path produced no catalog match.",
+        "path": "$.exactLinks[exact-link:dlsite:rj-no-match]",
+        "exactLinkId": "exact-link:dlsite:rj-no-match",
+        "metadata": {
+          "subject": {
+            "kind": "fixture",
+            "id": "catalog-resolver-no-match"
+          },
+          "exactDiagnostics": [
+            {
+              "code": "catalog.exact_external_id.no_match",
+              "severity": "info",
+              "message": "No catalog work has an exact external-id match.",
+              "metadata": {
+                "externalIds": [
+                  {
+                    "catalogSource": "dlsite",
+                    "sourceId": "RJ000000",
+                    "externalIdKind": "store_product"
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "reviewable": {
+      "exactLinks": [
+        {
+          "exactLinkId": "exact-link:dlsite:RJ349517",
+          "status": "linked",
+          "workId": "work-dlsite-rj349517",
+          "matchIds": [
+            "dlsite:RJ349517:store_product:work-dlsite-rj349517"
+          ],
+          "matches": [
+            {
+              "inputIndex": 0,
+              "catalogSource": "dlsite",
+              "sourceId": "RJ349517",
+              "externalIdKind": "store_product",
+              "workId": "work-dlsite-rj349517",
+              "canonicalTitle": "Moonlight Refrain"
+            }
+          ],
+          "diagnostics": []
+        },
+        {
+          "exactLinkId": "exact-link:dlsite:rj-no-match",
+          "status": "no_match",
+          "workId": null,
+          "matchIds": [],
+          "matches": [],
+          "diagnostics": [
+            {
+              "code": "catalog.exact_external_id.no_match",
+              "severity": "info",
+              "message": "No catalog work has an exact external-id match.",
+              "metadata": {
+                "externalIds": [
+                  {
+                    "catalogSource": "dlsite",
+                    "sourceId": "RJ000000",
+                    "externalIdKind": "store_product"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "exactLinkId": "exact-link:manual-conflict",
+          "status": "conflict",
+          "workId": null,
+          "matchIds": [
+            "dlsite:RJCAT010:store_product:work-conflict-a",
+            "steam:333600:store_product:work-conflict-b"
+          ],
+          "matches": [
+            {
+              "inputIndex": 0,
+              "catalogSource": "dlsite",
+              "sourceId": "RJCAT010",
+              "externalIdKind": "store_product",
+              "workId": "work-conflict-a",
+              "canonicalTitle": "Conflict Fixture A"
+            },
+            {
+              "inputIndex": 1,
+              "catalogSource": "steam",
+              "sourceId": "333600",
+              "externalIdKind": "store_product",
+              "workId": "work-conflict-b",
+              "canonicalTitle": "Conflict Fixture B"
+            }
+          ],
+          "diagnostics": [
+            {
+              "code": "catalog.exact_external_id.ambiguous_conflict",
+              "severity": "error",
+              "message": "Exact external IDs point at multiple catalog works; no link was selected.",
+              "metadata": {
+                "matchedWorkIds": [
+                  "work-conflict-a",
+                  "work-conflict-b"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "fuzzyCandidates": [
+        {
+          "candidateId": "candidate:egs-moonlight-001:work-moonlight-hd",
+          "sourceCatalogSource": "egs",
+          "sourceId": "egs-moonlight-001",
+          "sourceTitle": "Moonlight Refrain",
+          "sourceProvenanceId": "source-registry:egs:egs-moonlight-001",
+          "targetWorkId": "work-moonlight-hd",
+          "score": 860,
+          "matchedFields": {
+            "title": {
+              "source": "Moonlight Refrain",
+              "target": "Moonlight Refrain HD",
+              "score": 760,
+              "algorithm": "normalized_token_dice"
+            },
+            "releaseYear": {
+              "source": 2021,
+              "target": 2021,
+              "score": 100,
+              "algorithm": "exact_year_bonus"
+            }
+          },
+          "status": "review_pending",
+          "diagnosticCode": "catalog.fuzzy_candidate.generated",
+          "generatorVersion": "deterministic-title-year.v0.1",
+          "metadata": {
+            "autoMerge": false,
+            "sourceReleaseYear": 2021,
+            "targetCanonicalTitle": "Moonlight Refrain HD",
+            "targetFirstReleaseYear": 2021
+          },
+          "createdAt": "2026-06-18T18:00:00.000Z",
+          "updatedAt": "2026-06-18T18:00:00.000Z"
+        }
+      ],
+      "conflicts": [
+        {
+          "reviewId": "catalog-conflict:manual-duplicate-external-id",
+          "catalogRecordId": "work-conflict-a",
+          "conflictId": "manual-duplicate-external-id",
+          "candidateIds": [],
+          "candidateCatalogIds": [
+            "work-conflict-a",
+            "work-conflict-b"
+          ],
+          "exactLinkRefs": [
+            {
+              "externalIdId": "external-id:dlsite:RJCAT010",
+              "externalIdKind": "store_product",
+              "workId": "work-conflict-a",
+              "catalogSource": "dlsite",
+              "sourceId": "RJCAT010",
+              "sourceProvenanceId": "source-registry:dlsite:RJ349517"
+            }
+          ],
+          "fuzzyScores": [],
+          "sourceIds": [
+            {
+              "catalogSource": "dlsite",
+              "sourceId": "RJCAT010"
+            }
+          ],
+          "provenance": [
+            {
+              "sourceProvenanceId": "source-registry:dlsite:RJ349517",
+              "catalogSource": "dlsite",
+              "sourceId": "RJ349517",
+              "sourceRecordKind": "recorded_fixture",
+              "payloadHash": "sha256:9b7f7ce870df4b789e62bc42b2f604aa72fb76cdb55195d76bc789d3e9d10f21",
+              "fetchedAt": "2026-06-18T18:00:00.000Z"
+            }
+          ],
+          "severity": "error",
+          "status": "open",
+          "reasonCode": "duplicate_external_id",
+          "reasonDetail": "Manual review required because fixture exact links claim competing catalog works.",
+          "conflictKind": "external_id",
+          "detectedAt": "2026-06-18T18:00:00.000Z",
+          "resolution": null
+        },
+        {
+          "reviewId": "catalog-candidate:candidate:egs-moonlight-001:work-moonlight-hd",
+          "catalogRecordId": "work-moonlight-hd",
+          "conflictId": null,
+          "candidateIds": [
+            "candidate:egs-moonlight-001:work-moonlight-hd"
+          ],
+          "candidateCatalogIds": [
+            "work-moonlight-hd"
+          ],
+          "exactLinkRefs": [],
+          "fuzzyScores": [
+            {
+              "candidateId": "candidate:egs-moonlight-001:work-moonlight-hd",
+              "score": 860,
+              "diagnosticCode": "catalog.fuzzy_candidate.generated",
+              "generatorVersion": "deterministic-title-year.v0.1"
+            }
+          ],
+          "sourceIds": [
+            {
+              "catalogSource": "egs",
+              "sourceId": "egs-moonlight-001"
+            }
+          ],
+          "provenance": [
+            {
+              "sourceProvenanceId": "source-registry:egs:egs-moonlight-001",
+              "catalogSource": "egs",
+              "sourceId": "egs-moonlight-001",
+              "sourceRecordKind": "recorded_fixture",
+              "payloadHash": "sha256:5eeb4ad3b9309f1b933b672a6848756b77bb23c4ed6d1c4616c5063fe5d14732",
+              "fetchedAt": "2026-06-18T18:00:00.000Z"
+            }
+          ],
+          "severity": "warning",
+          "status": "review_pending",
+          "reasonCode": "fuzzy_candidate_review",
+          "reasonDetail": "Fuzzy candidate is reviewable and was not merged automatically.",
+          "conflictKind": null,
+          "detectedAt": "2026-06-18T18:00:00.000Z",
+          "resolution": null
+        }
+      ]
+    }
+  }
+}

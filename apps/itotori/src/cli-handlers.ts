@@ -1,7 +1,9 @@
 import { assertRuntimeReport } from "@itotori/localization-bridge-schema";
+import { createCatalogResolverFixtureArtifact } from "@itotori/db";
 import type {
   CatalogExactExternalIdLinkRequest,
   CatalogFuzzyCandidateRequest,
+  CatalogResolverFixtureInput,
   ItotoriCatalogExactExternalIdLinkerPort,
   ItotoriCatalogFuzzyCandidateGeneratorPort,
 } from "@itotori/db";
@@ -62,6 +64,9 @@ export async function runItotoriCliCommand(
       break;
     case "catalog-fuzzy-candidates":
       await runCatalogFuzzyCandidates(args, dependencies);
+      break;
+    case "catalog-resolve-fixture":
+      await runCatalogResolveFixture(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -167,6 +172,18 @@ async function runCatalogFuzzyCandidates(
   dependencies.io.writeJson(outputPath, result);
 }
 
+async function runCatalogResolveFixture(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const fixturePath = optionalFlag(args, "--fixture") ?? "fixtures/catalog-resolver/fixture.json";
+  const outputPath =
+    optionalFlag(args, "--output") ?? "artifacts/catalog/resolver-integration.json";
+  const fixture = dependencies.io.readJson(fixturePath) as CatalogResolverFixtureInput;
+  const artifact = createCatalogResolverFixtureArtifact(fixture);
+  dependencies.io.writeJson(outputPath, artifact);
+}
+
 function requiredFlag(args: string[], name: string): string {
   const index = args.indexOf(name);
   const value = args[index + 1];
@@ -174,6 +191,12 @@ function requiredFlag(args: string[], name: string): string {
     throw new Error(`missing required flag ${name}`);
   }
   return value;
+}
+
+function optionalFlag(args: string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  const value = args[index + 1];
+  return index >= 0 && value ? value : undefined;
 }
 
 function readProject(io: JsonFileStore, path: string): ProjectState {
