@@ -148,24 +148,40 @@ test("rejects integration nodes satisfied only by broad project membership", () 
 });
 
 test("rejects generic readiness evidence as an integration surface", () => {
-  const errors = errorsFor(
-    nodeFixture({
-      projects: ["itotori", "kaifuu", "suite"],
-      parallelGroup: "alpha-integration",
-      title: "Suite integration readiness",
-      summary: "Coordinate alpha readiness evidence across the dependent projects.",
+  const cases = [
+    {
+      name: "readiness evidence",
       deliverables: ["Readiness evidence"],
       acceptanceCriteria: [
         "Readiness evidence is available after dependency coordination completes",
       ],
-      verification: [{ type: "command", value: "node scripts/spec-dag-validator.test.mjs" }],
-    }),
-  );
+    },
+    {
+      name: "readiness record",
+      deliverables: ["Readiness record"],
+      acceptanceCriteria: ["The readiness record exists after dependency coordination completes"],
+    },
+  ];
 
-  assertError(
-    errors,
-    "VALID-001 integration/readiness node must name exact composed surfaces, artifacts, commands, or adapters: alpha-integration",
-  );
+  for (const { name, deliverables, acceptanceCriteria } of cases) {
+    const errors = errorsFor(
+      nodeFixture({
+        projects: ["itotori", "kaifuu", "suite"],
+        parallelGroup: "alpha-integration",
+        title: "Suite integration readiness",
+        summary: "Coordinate alpha readiness evidence across the dependent projects.",
+        deliverables,
+        acceptanceCriteria,
+        verification: [{ type: "command", value: "node scripts/spec-dag-validator.test.mjs" }],
+      }),
+    );
+
+    assertError(
+      errors,
+      "VALID-001 integration/readiness node must name exact composed surfaces, artifacts, commands, or adapters: alpha-integration",
+      name,
+    );
+  }
 });
 
 test("accepts exact integration and readiness surface tokens", () => {
@@ -232,6 +248,22 @@ test("rejects placeholder implementability surface wording", () => {
       expected:
         "VALID-001 acceptanceCriteria[0] is placeholder acceptance: Names an owned command, service, schema, or artifact surface",
     },
+    {
+      name: "slash-delimited deliverable",
+      overrides: {
+        deliverables: ["Owned command/service/schema/artifact surface"],
+      },
+      expected:
+        "VALID-001 deliverables[0] is a placeholder deliverable: Owned command/service/schema/artifact surface",
+    },
+    {
+      name: "comma-free acceptance criterion",
+      overrides: {
+        acceptanceCriteria: ["Names an owned command service schema or artifact surface"],
+      },
+      expected:
+        "VALID-001 acceptanceCriteria[0] is placeholder acceptance: Names an owned command service schema or artifact surface",
+    },
   ];
 
   for (const { name, overrides, expected } of cases) {
@@ -270,6 +302,14 @@ test("rejects active report-only decision-only and feasibility nodes", () => {
         title: "Feasibility study",
       },
       expected: "VALID-001 title describes meta or decision-only work: Feasibility study",
+    },
+    {
+      name: "acceptance criteria feasibility",
+      overrides: {
+        acceptanceCriteria: ["The node produces a feasibility report for later implementation."],
+      },
+      expected:
+        "VALID-001 acceptanceCriteria[0] describes meta or decision-only work: The node produces a feasibility report for later implementation.",
     },
   ];
 
@@ -331,6 +371,15 @@ test("rejects alpha P0/P1 nodes without concrete command verification", () => {
         ],
       },
       expected: "VALID-001 alpha P0 node must include concrete command verification",
+    },
+    {
+      name: "prose command",
+      overrides: {
+        priority: "P1",
+        target: "alpha",
+        verification: [{ type: "command", value: "Readiness review" }],
+      },
+      expected: "VALID-001 alpha P1 node must include concrete command verification",
     },
   ];
 
@@ -395,6 +444,24 @@ test("rejects qualitative and compact time estimate wording inside allowed text 
   assertError(
     errors,
     "VALID-001 auditFocus[0] contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: Sized as S for planning.",
+  );
+});
+
+test("rejects sprint scheduling language inside allowed text fields", () => {
+  const errors = errorsFor(
+    nodeFixture({
+      summary: "Validate roadmap semantic guardrails in sprint 12.",
+      acceptanceCriteria: ["The validator is scheduled for next sprint."],
+    }),
+  );
+
+  assertError(
+    errors,
+    "VALID-001 summary contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: Validate roadmap semantic guardrails in sprint 12.",
+  );
+  assertError(
+    errors,
+    "VALID-001 acceptanceCriteria[0] contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: The validator is scheduled for next sprint.",
   );
 });
 

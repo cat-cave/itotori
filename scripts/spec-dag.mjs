@@ -92,7 +92,6 @@ const placeholderAcceptancePatterns = [
   /^has schema validation$/iu,
   /^acceptance is based on executable fixtures, validators, services, or commands$/iu,
   /^the integration composes (?:the )?prerequisite implementation slices without expanding their scope$/iu,
-  /\bowned command,\s+service,\s+schema,\s+or artifact surface\b/iu,
 ];
 const manualOnlyVerificationPattern =
   /\b(?:test|tests|smoke|fixture|fixtures|golden|round[- ]trip|validation|validate|check)\b/iu;
@@ -105,6 +104,8 @@ const implementableDecisionPattern =
   /\b(?:api|command|contract|dashboard|events?|generator|import|model|persistence|queue|read model|renderer|schema|service|ui|validator|workflow|wiring)\b/iu;
 const placeholderCommandVerificationPattern =
   /^(?:tbd|todo|manual review|command|verification command|exact command|owned command(?:,\s+service,\s+schema,\s+or artifact surface)?)$/iu;
+const commandLikeVerificationPattern =
+  /^(?:(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*|env\s+(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*)(?:cargo|node|pnpm|just|npm|npx|uv|python|python3|bash|sh|test|make|go|deno|bun|ruby|rspec|pytest|ruff|vitest|jest|tsx|ts-node|docker|docker\s+compose|git|gh)\b(?:\s+[^\n]+)?$/iu;
 const timeEstimateFieldPattern =
   /(?:estimate|estimated|duration|hours?|days?|effort|points?|tshirt|t[- ]shirt)/iu;
 const timeEstimateQuantityPattern =
@@ -115,6 +116,7 @@ const timeEstimateTextPattern = new RegExp(
   String.raw`\b(?:${timeEstimateQuantityPattern.source})(?:\s+|-)(?:person[-\s]?)?(?:minutes?|hours?|days?|weeks?|months?|story\s+points?|points?|pts?)\b|\bt[- ]?shirt\s+size(?:\s*(?:[:=]|\bis\b|\bas\b)\s*${effortSizePattern})?\b|\b(?:estimated?\s+)?(?:effort|duration)\s*(?:[:=]|\bis\b|\bof\b|\bat\b|\babout\b|\baround\b|\broughly\b)?\s*(?:(?:${timeEstimateQuantityPattern.source})(?:\s+|-)(?:minutes?|hours?|days?|weeks?|months?|story\s+points?|points?|pts?)|${compactTimeEstimateQuantityPattern}|${effortSizePattern})\b|\b(?:sized|sizing)\s*(?:[:=]|\bas\b|\bat\b|\bfor\b)\s*${effortSizePattern}\b`,
   "iu",
 );
+const schedulingTextPattern = /\b(?:in\s+sprint\s+\d+|scheduled\s+for\s+(?:next\s+)?sprint)\b/iu;
 const exactIntegrationSurfaceQualifierPattern = String.raw`(?:asset|benchmark|bgi|binary|branch|catalog|capability|capture|community|corpus|cost|cross[- ]source|dashboard|decision|delta|draft|edition|encrypted|encrypted[- ]profile|engine|event|experiment|feedback|full[- ]surface|helper|install[- ]state|key|kirikiri|ledger|locale|local|local[- ]corpus|manual|matrix|model|mv\/mz|openrouter|patch|permission|private[- ]local|provider|public[- ]fixture|qa|quality|readiness|real[- ]engine|review|reviewer|runtime|siglus|source|style|trace|translation|triage|vm|wolf|xp3)`;
 const exactIntegrationSurfaceNounPattern = String.raw`(?:adapter|api|artifact|artifacts|bridge|command|contract|dashboard|delta|diagnostic|diagnostics|evidence|export|fixture|fixtures|generator|harness|import|ledger|manifest|matrix|model|parser|patcher|profile|queue|record|records|renderer|report|resolver|route|run|schema|service|smoke|storage|store|surface|tool|tools|ui|ux|validator|workflow)`;
 const genericIntegrationSurfaceCandidateTerms = new Set([
@@ -182,7 +184,7 @@ const explicitIntegrationSurfacePatterns = [
   /(?:^|\s)@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\b/iu,
   /\b[a-z0-9][a-z0-9._-]*(?:\.json|\.mjs|\.ts|\.tsx|\.rs|\.md)\b/iu,
   /^command:\s*(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(?:env\s+(?:-[a-z]\s+[A-Z_][A-Z0-9_]*\s+)?)*(?:cargo|node|pnpm|just|npm|npx|uv|python|bash|test|make)\s+[^\n]+$/imu,
-  /\b(?:map\/common[- ]event|database\/system\/terms|json text|plugin[- ]profile|source bundle|locale branch|runtime evidence|dashboard evidence|dashboard status|patch package|patch output|patch payload|delta apply|bridge import|feedback ux|style guide|triage wiring|repair rerun|before\/after dashboard|provider route|provider proof|provider ledger|cost report|quality report|benchmark report|experiment matrix|cost ledger|model ledger|reviewer queue|triage queue|decision queue|catalog resolver|cross[- ]source resolver|local corpus|corpus sidecar|readiness record|adapter registry|engine capability|managed artifact|artifact store|capture hook|launch harness|vm adapter|text trace|trace smoke)\b/iu,
+  /\b(?:map\/common[- ]event|database\/system\/terms|json text|plugin[- ]profile|source bundle|locale branch|runtime evidence|dashboard evidence|dashboard status|patch package|patch output|patch payload|delta apply|bridge import|feedback ux|style guide|triage wiring|repair rerun|before\/after dashboard|provider route|provider proof|provider ledger|cost report|quality report|benchmark report|experiment matrix|cost ledger|model ledger|reviewer queue|triage queue|decision queue|catalog resolver|cross[- ]source resolver|local corpus|corpus sidecar|adapter registry|engine capability|managed artifact|artifact store|capture hook|launch harness|vm adapter|text trace|trace smoke)\b/iu,
 ];
 
 if (isMainModule()) {
@@ -926,13 +928,16 @@ function validateImplementableNodeKind(node, errors) {
     ...(Array.isArray(node.deliverables)
       ? node.deliverables.map((value, index) => [`deliverables[${index}]`, value])
       : []),
+    ...(Array.isArray(node.acceptanceCriteria)
+      ? node.acceptanceCriteria.map((value, index) => [`acceptanceCriteria[${index}]`, value])
+      : []),
   ];
 
   for (const [field, value] of fields) {
     if (typeof value !== "string") {
       continue;
     }
-    if (metaNodePattern.test(value)) {
+    if (isMetaNodeText(field, value)) {
       errors.push(`${node.id} ${field} describes meta or decision-only work: ${value}`);
     }
   }
@@ -1023,7 +1028,7 @@ function validateNoTimeEstimateText(node, errors) {
     if (typeof value !== "string") {
       continue;
     }
-    if (timeEstimateTextPattern.test(value)) {
+    if (timeEstimateTextPattern.test(value) || schedulingTextPattern.test(value)) {
       errors.push(
         `${node.id} ${field} contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: ${value}`,
       );
@@ -1052,7 +1057,12 @@ function hasExactIntegrationSurface(text) {
 }
 
 function isConcreteCommandVerification(value) {
-  return value.trim().length > 0 && !placeholderCommandVerificationPattern.test(value.trim());
+  const normalized = value.trim();
+  return (
+    normalized.length > 0 &&
+    !placeholderCommandVerificationPattern.test(normalized) &&
+    commandLikeVerificationPattern.test(normalized)
+  );
 }
 
 function exactSurfaceVerificationValues(node) {
@@ -1102,7 +1112,7 @@ function isDocsOnlyNode(node) {
 
 function isGenericDeliverable(node, deliverable) {
   const normalized = normalizeSemanticText(deliverable);
-  if (genericDeliverableValues.has(normalized)) {
+  if (genericDeliverableValues.has(normalized) || isOwnedSurfacePlaceholder(deliverable)) {
     return true;
   }
 
@@ -1116,7 +1126,25 @@ function isGenericDeliverable(node, deliverable) {
 }
 
 function isPlaceholderAcceptanceCriterion(criterion) {
-  return placeholderAcceptancePatterns.some((pattern) => pattern.test(criterion.trim()));
+  return (
+    placeholderAcceptancePatterns.some((pattern) => pattern.test(criterion.trim())) ||
+    isOwnedSurfacePlaceholder(criterion)
+  );
+}
+
+function isMetaNodeText(field, value) {
+  if (!metaNodePattern.test(value)) {
+    return false;
+  }
+  if (
+    field.startsWith("acceptanceCriteria[") &&
+    /\b(?:validation fails|validator fails|rejects?|not accepted|not allowed|must not|does not|without)\b/iu.test(
+      value,
+    )
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function isIntegrationOrReadinessNode(node) {
@@ -1141,6 +1169,18 @@ function normalizeSemanticText(value) {
     .replace(/[^a-z0-9/]+/gu, " ")
     .trim()
     .replace(/\s+/gu, " ");
+}
+
+function isOwnedSurfacePlaceholder(value) {
+  const normalized = value
+    .toLowerCase()
+    .replace(/['’]/gu, "")
+    .replace(/[^a-z0-9]+/gu, " ")
+    .trim()
+    .replace(/\s+/gu, " ");
+  return /^(?:names an? )?owned command service schema (?:or )?artifact surface$/iu.test(
+    normalized,
+  );
 }
 
 function validateStringArray(node, field, errors, options) {
