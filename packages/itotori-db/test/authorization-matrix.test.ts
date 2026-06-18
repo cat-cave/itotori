@@ -226,6 +226,12 @@ const repositoryPermissionGateMatrix = [
     "catalog-repository.test.ts completeness benchmark pool coverage",
     (repo) => repo.catalogCompletenessBenchmarkPools(deniedActor),
   ),
+  catalogGate(
+    "catalogAlphaBenchmarkOpportunityRanking",
+    "catalogRead",
+    "catalog-recorded-importers.test.ts alpha benchmark opportunity ranking coverage",
+    (repo) => repo.catalogAlphaBenchmarkOpportunityRanking(deniedActor),
+  ),
   catalogCrawlerGate(
     "getCheckpoint",
     "catalogRead",
@@ -528,6 +534,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriCatalogRepository.catalogCompletenessBenchmarkPools",
           "requiredPermission": "catalog.read",
           "successFixture": "catalog-repository.test.ts completeness benchmark pool coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogRepository.catalogAlphaBenchmarkOpportunityRanking",
+          "requiredPermission": "catalog.read",
+          "successFixture": "catalog-recorded-importers.test.ts alpha benchmark opportunity ranking coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

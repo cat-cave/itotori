@@ -566,6 +566,44 @@ export type CatalogCompletenessBenchmarkPools = {
   publicReport: CatalogCompletenessPublicReport;
 };
 
+export type CatalogAlphaBenchmarkOpportunityDecision = "seed" | "demoted";
+
+export type CatalogAlphaBenchmarkOpportunityDemotion = {
+  reasonCode: string;
+  reasonDetail: string;
+  conflictId: string | null;
+  severity: CatalogConflictReviewSeverity;
+  sourceIds: CatalogConflictReviewSourceId[];
+  provenance: CatalogConflictReviewProvenance[];
+};
+
+export type CatalogAlphaBenchmarkOpportunity = {
+  rank: number;
+  seedRank: number | null;
+  workId: string;
+  canonicalTitle: string;
+  originalLanguage: string | null;
+  candidatePool: CatalogCompletenessPool;
+  decision: CatalogAlphaBenchmarkOpportunityDecision;
+  score: number;
+  explanation: string;
+  sourceIds: CatalogConflictReviewSourceId[];
+  statuses: CatalogCompletenessStatusFact[];
+  demotions: CatalogAlphaBenchmarkOpportunityDemotion[];
+};
+
+export type CatalogAlphaBenchmarkOpportunityRanking = {
+  schemaVersion: "catalog.alpha_benchmark_opportunity_ranking.v0.1";
+  targetLanguage: string;
+  generatedAt: Date;
+  rows: CatalogAlphaBenchmarkOpportunity[];
+};
+
+export type CatalogAlphaBenchmarkOpportunityRankingFilter = {
+  targetLanguage?: string;
+  includeDemoted?: boolean;
+};
+
 export interface ItotoriCatalogRepositoryPort {
   recordSourceProvenance(
     actor: AuthorizationActor,
@@ -610,6 +648,10 @@ export interface ItotoriCatalogRepositoryPort {
     actor: AuthorizationActor,
     filter?: CatalogCompletenessPoolFilter,
   ): Promise<CatalogCompletenessBenchmarkPools>;
+  catalogAlphaBenchmarkOpportunityRanking(
+    actor: AuthorizationActor,
+    filter?: CatalogAlphaBenchmarkOpportunityRankingFilter,
+  ): Promise<CatalogAlphaBenchmarkOpportunityRanking>;
 }
 
 const catalogSources = Object.values(catalogSourceValues) as CatalogSource[];
@@ -1136,6 +1178,17 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
     await requirePermission(this.db, actor, permissionValues.catalogRead);
     return readCatalogCompletenessBenchmarkPools(this.db, assertCompletenessPoolFilter(filter));
   }
+
+  async catalogAlphaBenchmarkOpportunityRanking(
+    actor: AuthorizationActor,
+    filter: CatalogAlphaBenchmarkOpportunityRankingFilter = {},
+  ): Promise<CatalogAlphaBenchmarkOpportunityRanking> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    return readCatalogAlphaBenchmarkOpportunityRanking(
+      this.db,
+      assertAlphaBenchmarkOpportunityRankingFilter(filter),
+    );
+  }
 }
 
 async function readCatalogConflictReview(db: ItotoriDatabase): Promise<CatalogConflictReviewRow[]> {
@@ -1362,6 +1415,91 @@ async function readCatalogCompletenessBenchmarkPools(
   };
 }
 
+async function readCatalogAlphaBenchmarkOpportunityRanking(
+  db: ItotoriDatabase,
+  filter: NormalizedAlphaBenchmarkOpportunityRankingFilter,
+): Promise<CatalogAlphaBenchmarkOpportunityRanking> {
+  const [pools, conflictRows] = await Promise.all([
+    readCatalogCompletenessBenchmarkPools(db, { targetLanguage: filter.targetLanguage }),
+    readCatalogConflictReview(db),
+  ]);
+  const candidatesByWorkId = new Map<string, DraftCatalogAlphaBenchmarkOpportunity>();
+  for (const pool of [
+    catalogCompletenessPoolValues.noEnglish,
+    catalogCompletenessPoolValues.mtlOnly,
+    catalogCompletenessPoolValues.fanPartial,
+    catalogCompletenessPoolValues.unknown,
+  ]) {
+    for (const work of pools.pools[pool]) {
+      const existing = candidatesByWorkId.get(work.workId);
+      if (existing === undefined || alphaBenchmarkPoolBaseScore(pool) > existing.baseScore) {
+        candidatesByWorkId.set(work.workId, {
+          work,
+          candidatePool: pool,
+          baseScore: alphaBenchmarkPoolBaseScore(pool),
+          demotions: [],
+        });
+      }
+    }
+  }
+
+  const openLanguageConflicts = conflictRows.filter(
+    (row) =>
+      row.conflictKind === catalogConflictKindValues.languageStatus &&
+      row.status === catalogConflictStatusValues.open,
+  );
+  for (const conflict of openLanguageConflicts) {
+    const demotion = alphaBenchmarkDemotionFromConflict(conflict);
+    const directCandidate = candidatesByWorkId.get(conflict.catalogRecordId);
+    if (directCandidate === undefined) {
+      const conflictWork = pools.pools[catalogCompletenessPoolValues.conflict].find(
+        (work) => work.workId === conflict.catalogRecordId,
+      );
+      if (conflictWork !== undefined) {
+        candidatesByWorkId.set(conflictWork.workId, {
+          work: conflictWork,
+          candidatePool: catalogCompletenessPoolValues.conflict,
+          baseScore: alphaBenchmarkPoolBaseScore(catalogCompletenessPoolValues.conflict),
+          demotions: [demotion],
+        });
+      }
+    } else {
+      directCandidate.demotions.push(demotion);
+    }
+
+    for (const candidate of candidatesByWorkId.values()) {
+      if (candidate.work.workId === conflict.catalogRecordId) {
+        continue;
+      }
+      if (hasSharedSourceId(candidate.work.sourceIds, conflict.sourceIds)) {
+        candidate.demotions.push(demotion);
+      }
+    }
+  }
+
+  const ranked = Array.from(candidatesByWorkId.values())
+    .filter((candidate) => filter.includeDemoted || candidate.demotions.length === 0)
+    .map(alphaBenchmarkOpportunityFromDraft)
+    .sort(compareAlphaBenchmarkOpportunities)
+    .map((row, index) => ({ ...row, rank: index + 1 }));
+
+  let seedRank = 0;
+  const rows = ranked.map((row) => {
+    if (row.decision === "demoted") {
+      return row;
+    }
+    seedRank += 1;
+    return { ...row, seedRank };
+  });
+
+  return {
+    schemaVersion: "catalog.alpha_benchmark_opportunity_ranking.v0.1",
+    targetLanguage: filter.targetLanguage,
+    generatedAt: new Date(),
+    rows,
+  };
+}
+
 function assertCompletenessPoolFilter(
   filter: CatalogCompletenessPoolFilter,
 ): NormalizedCompletenessPoolFilter {
@@ -1378,6 +1516,18 @@ function assertCompletenessPoolFilter(
     normalized.pool = filter.pool;
   }
   return normalized;
+}
+
+function assertAlphaBenchmarkOpportunityRankingFilter(
+  filter: CatalogAlphaBenchmarkOpportunityRankingFilter,
+): NormalizedAlphaBenchmarkOpportunityRankingFilter {
+  return {
+    targetLanguage:
+      filter.targetLanguage === undefined
+        ? "en-US"
+        : requiredString(filter.targetLanguage, "targetLanguage"),
+    includeDemoted: filter.includeDemoted ?? true,
+  };
 }
 
 function emptyCompletenessPools(): Record<CatalogCompletenessPool, CatalogCompletenessPoolWork[]> {
@@ -1481,6 +1631,121 @@ function sourceIdsForCompletenessWork(
       sourceId: externalId.sourceId,
     })),
   ]);
+}
+
+type DraftCatalogAlphaBenchmarkOpportunity = {
+  work: CatalogCompletenessPoolWork;
+  candidatePool: CatalogCompletenessPool;
+  baseScore: number;
+  demotions: CatalogAlphaBenchmarkOpportunityDemotion[];
+};
+
+function alphaBenchmarkPoolBaseScore(pool: CatalogCompletenessPool): number {
+  switch (pool) {
+    case catalogCompletenessPoolValues.noEnglish:
+      return 80;
+    case catalogCompletenessPoolValues.mtlOnly:
+      return 60;
+    case catalogCompletenessPoolValues.fanPartial:
+      return 50;
+    case catalogCompletenessPoolValues.unknown:
+      return 20;
+    case catalogCompletenessPoolValues.conflict:
+      return 10;
+  }
+}
+
+function alphaBenchmarkDemotionFromConflict(
+  row: CatalogConflictReviewRow,
+): CatalogAlphaBenchmarkOpportunityDemotion {
+  return {
+    reasonCode: row.reasonCode,
+    reasonDetail: row.reasonDetail,
+    conflictId: row.conflictId,
+    severity: row.severity,
+    sourceIds: row.sourceIds,
+    provenance: row.provenance,
+  };
+}
+
+function alphaBenchmarkOpportunityFromDraft(
+  draft: DraftCatalogAlphaBenchmarkOpportunity,
+): CatalogAlphaBenchmarkOpportunity {
+  const demotions = uniqueAlphaBenchmarkDemotions(draft.demotions);
+  const decision: CatalogAlphaBenchmarkOpportunityDecision =
+    demotions.length === 0 ? "seed" : "demoted";
+  const score = draft.baseScore - demotions.length * 1000;
+  return {
+    rank: 0,
+    seedRank: decision === "seed" ? 0 : null,
+    workId: draft.work.workId,
+    canonicalTitle: draft.work.canonicalTitle,
+    originalLanguage: draft.work.originalLanguage,
+    candidatePool: draft.candidatePool,
+    decision,
+    score,
+    explanation:
+      decision === "seed"
+        ? alphaBenchmarkSeedExplanation(draft.candidatePool)
+        : `Demoted from alpha benchmark seed output because ${demotions
+            .map((demotion) => demotion.reasonCode)
+            .join(", ")}.`,
+    sourceIds: draft.work.sourceIds,
+    statuses: draft.work.statuses,
+    demotions,
+  };
+}
+
+function alphaBenchmarkSeedExplanation(pool: CatalogCompletenessPool): string {
+  switch (pool) {
+    case catalogCompletenessPoolValues.noEnglish:
+      return "Eligible alpha benchmark seed: current catalog evidence says no English localization exists.";
+    case catalogCompletenessPoolValues.mtlOnly:
+      return "Eligible alpha benchmark seed: current catalog evidence says only machine translation exists.";
+    case catalogCompletenessPoolValues.fanPartial:
+      return "Eligible alpha benchmark seed: current catalog evidence says only partial fan localization exists.";
+    case catalogCompletenessPoolValues.unknown:
+      return "Eligible alpha benchmark seed: current catalog evidence is unknown and needs review.";
+    case catalogCompletenessPoolValues.conflict:
+      return "Eligible alpha benchmark seed: conflict review is required before use.";
+  }
+}
+
+function uniqueAlphaBenchmarkDemotions(
+  demotions: CatalogAlphaBenchmarkOpportunityDemotion[],
+): CatalogAlphaBenchmarkOpportunityDemotion[] {
+  const byKey = new Map<string, CatalogAlphaBenchmarkOpportunityDemotion>();
+  for (const demotion of demotions) {
+    byKey.set(`${demotion.conflictId ?? ""}:${demotion.reasonCode}`, demotion);
+  }
+  return Array.from(byKey.values()).sort((left, right) =>
+    `${left.reasonCode}:${left.conflictId ?? ""}`.localeCompare(
+      `${right.reasonCode}:${right.conflictId ?? ""}`,
+    ),
+  );
+}
+
+function hasSharedSourceId(
+  left: CatalogConflictReviewSourceId[],
+  right: CatalogConflictReviewSourceId[],
+): boolean {
+  const rightKeys = new Set(right.map((sourceId) => sourceIdKey(sourceId)));
+  return left.some((sourceId) => rightKeys.has(sourceIdKey(sourceId)));
+}
+
+function sourceIdKey(sourceId: CatalogConflictReviewSourceId): string {
+  return `${sourceId.catalogSource}:${sourceId.sourceId}`;
+}
+
+function compareAlphaBenchmarkOpportunities(
+  left: CatalogAlphaBenchmarkOpportunity,
+  right: CatalogAlphaBenchmarkOpportunity,
+): number {
+  return (
+    right.score - left.score ||
+    left.canonicalTitle.localeCompare(right.canonicalTitle) ||
+    left.workId.localeCompare(right.workId)
+  );
 }
 
 function publicCompletenessReport(
@@ -1598,6 +1863,7 @@ function catalogConflictReviewRowFromConflict(
     fuzzyScores: [],
     sourceIds: uniqueSourceIds([
       ...exactLinkRefs,
+      ...metadataSourceIds(metadata),
       ...provenance.map(({ catalogSource, sourceId }) => ({ catalogSource, sourceId })),
     ]),
     provenance: uniqueProvenance(provenance),
@@ -1903,6 +2169,31 @@ function stringArrayMetadata(metadata: CatalogJsonRecord, key: string): string[]
     return [];
   }
   return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+}
+
+function metadataSourceIds(metadata: CatalogJsonRecord): CatalogConflictReviewSourceId[] {
+  const sources = metadata.sources;
+  if (!Array.isArray(sources)) {
+    return [];
+  }
+  return sources
+    .map((source): CatalogConflictReviewSourceId | null => {
+      if (source === null || typeof source !== "object" || Array.isArray(source)) {
+        return null;
+      }
+      const sourceRecord = source as Record<string, unknown>;
+      const catalogSource = sourceRecord.catalogSource;
+      const sourceId = sourceRecord.sourceId;
+      if (
+        typeof catalogSource !== "string" ||
+        typeof sourceId !== "string" ||
+        !catalogSources.includes(catalogSource as CatalogSource)
+      ) {
+        return null;
+      }
+      return { catalogSource: catalogSource as CatalogSource, sourceId };
+    })
+    .filter((sourceId): sourceId is CatalogConflictReviewSourceId => sourceId !== null);
 }
 
 function compareCatalogConflictReviewRows(
@@ -2504,6 +2795,11 @@ type NormalizedCandidateMatchInput = {
 type NormalizedCompletenessPoolFilter = {
   targetLanguage: string;
   pool?: CatalogCompletenessPool;
+};
+
+type NormalizedAlphaBenchmarkOpportunityRankingFilter = {
+  targetLanguage: string;
+  includeDemoted: boolean;
 };
 
 function assertLocalScanInput(input: CatalogLocalScanInput): NormalizedLocalScanInput {
