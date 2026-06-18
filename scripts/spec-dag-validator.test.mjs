@@ -126,6 +126,27 @@ test("rejects integration nodes that do not identify exact composed surfaces", (
   );
 });
 
+test("rejects integration nodes satisfied only by broad project membership", () => {
+  const errors = errorsFor(
+    nodeFixture({
+      projects: ["itotori", "kaifuu", "suite"],
+      parallelGroup: "alpha-integration",
+      title: "Suite integration readiness",
+      summary: "Coordinate project membership across the alpha branch.",
+      deliverables: ["Cross-project readiness gate", "Dependency coordination checklist"],
+      acceptanceCriteria: [
+        "The work states project membership and dependency order without naming composed surfaces",
+      ],
+      verification: [{ type: "command", value: "node scripts/spec-dag-validator.test.mjs" }],
+    }),
+  );
+
+  assertError(
+    errors,
+    "VALID-001 parallelGroup integration node must name exact composed surfaces, artifacts, commands, or adapters: alpha-integration",
+  );
+});
+
 test("rejects roadmap time estimate fields", () => {
   const errors = errorsFor(nodeFixture({ estimatedDays: "2" }));
 
@@ -133,6 +154,32 @@ test("rejects roadmap time estimate fields", () => {
   assertError(
     errors,
     "VALID-001 estimatedDays is a time estimate field; roadmap nodes must use dependencies and verification instead of time estimates",
+  );
+});
+
+test("rejects time estimate wording inside allowed text fields", () => {
+  const errors = errorsFor(
+    nodeFixture({
+      summary: "Validate roadmap semantic guardrails in two days.",
+      acceptanceCriteria: ["The validator does not hide planning effort as 3 points"],
+      verification: [
+        { type: "command", value: "node scripts/spec-dag-validator.test.mjs" },
+        { type: "manual", value: "Complete smoke review in 4 hours" },
+      ],
+    }),
+  );
+
+  assertError(
+    errors,
+    "VALID-001 summary contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: Validate roadmap semantic guardrails in two days.",
+  );
+  assertError(
+    errors,
+    "VALID-001 acceptanceCriteria[0] contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: The validator does not hide planning effort as 3 points",
+  );
+  assertError(
+    errors,
+    "VALID-001 verification[1].value contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: Complete smoke review in 4 hours",
   );
 });
 

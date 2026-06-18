@@ -101,10 +101,27 @@ const metaNodePattern =
   /\b(?:meta[- ]?pack|follow[- ]up pack|normalize[- ]later|granularity follow[- ]up normalizer|report[- ]only|decision node|decision record|feasibility report|feasibility node)\b/iu;
 const implementableDecisionPattern =
   /\b(?:api|command|contract|dashboard|events?|generator|import|model|persistence|queue|read model|renderer|schema|service|ui|validator|workflow|wiring)\b/iu;
-const exactIntegrationSurfacePattern =
-  /\b(?:adapter|bgi|binary patcher|bridge|catalog|dashboard|delta|draft|engine|encrypted|itotori|kaifuu|key discovery|kirikiri|ledger|mv\/mz|openrouter|patch|provider|queue|renpy|reviewer queue|runtime|siglus|style guide|suite|translation|utsushi|wolf|xp3)\b/iu;
 const timeEstimateFieldPattern =
   /(?:estimate|estimated|duration|hours?|days?|effort|points?|tshirt|t[- ]shirt)/iu;
+const timeEstimateQuantityPattern =
+  /(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|a|an|half|couple(?:\s+of)?|few|several)/iu;
+const timeEstimateTextPattern = new RegExp(
+  String.raw`\b(?:${timeEstimateQuantityPattern.source})(?:\s+|-)(?:person[-\s]?)?(?:minutes?|hours?|days?|weeks?|months?|story\s+points?|points?|pts?)\b|\bt[- ]?shirt\s+size\b|\b(?:effort|duration)\s*(?:[:=]|\bis\b|\bof\b|\bat\b|\babout\b|\baround\b|\broughly\b)?\s*(?:${timeEstimateQuantityPattern.source})(?:\s+|-)(?:minutes?|hours?|days?|weeks?|months?|story\s+points?|points?|pts?)\b`,
+  "iu",
+);
+const exactIntegrationSurfaceQualifierPattern = String.raw`(?:asset|benchmark|bgi|binary|branch|catalog|capability|capture|community|corpus|cost|cross[- ]source|dashboard|decision|delta|draft|edition|encrypted|encrypted[- ]profile|engine|event|experiment|feedback|full[- ]surface|helper|install[- ]state|key|kirikiri|ledger|locale|local|local[- ]corpus|manual|matrix|model|mv\/mz|openrouter|patch|permission|private[- ]local|provider|public[- ]fixture|qa|quality|readiness|real[- ]engine|review|reviewer|runtime|siglus|source|style|trace|translation|triage|vm|wolf|xp3)`;
+const exactIntegrationSurfaceNounPattern = String.raw`(?:adapter|api|artifact|artifacts|bridge|command|contract|dashboard|delta|diagnostic|diagnostics|evidence|export|fixture|fixtures|generator|harness|import|ledger|manifest|matrix|model|parser|patcher|profile|queue|record|records|renderer|report|resolver|route|run|schema|service|smoke|storage|store|surface|tool|tools|ui|ux|validator|workflow)`;
+const exactIntegrationSurfacePatterns = [
+  new RegExp(
+    String.raw`\b${exactIntegrationSurfaceQualifierPattern}(?:[-\s/]+[a-z0-9.]+){0,4}[-\s/]+${exactIntegrationSurfaceNounPattern}\b`,
+    "iu",
+  ),
+  new RegExp(
+    String.raw`\b${exactIntegrationSurfaceNounPattern}(?:[-\s/]+[a-z0-9.]+){0,4}[-\s/]+${exactIntegrationSurfaceQualifierPattern}\b`,
+    "iu",
+  ),
+  /\b(?:map\/common[- ]event|database\/system\/terms|json text|plugin[- ]profile|source bundle|locale branch|runtime evidence|dashboard evidence|dashboard status|patch package|patch output|patch payload|delta apply|bridge import|feedback ux|style guide|triage wiring|repair rerun|before\/after dashboard|provider route|provider proof|provider ledger|cost report|quality report|benchmark report|experiment matrix|cost ledger|model ledger|reviewer queue|triage queue|decision queue|catalog resolver|cross[- ]source resolver|local corpus|corpus sidecar|readiness record|adapter registry|engine capability|managed artifact|artifact store|capture hook|launch harness|vm adapter|text trace|trace smoke)\b/iu,
+];
 
 if (isMainModule()) {
   runCli(process.argv.slice(2));
@@ -738,6 +755,7 @@ function validateNode(node, index, errors) {
   validateStringArray(node, "acceptanceCriteria", errors, { min: 1 });
   validateVerification(node, errors);
   validateStringArray(node, "auditFocus", errors, { min: 1 });
+  validateNoTimeEstimateText(node, errors);
   validateNodeSemantics(node, errors);
 }
 
@@ -873,7 +891,6 @@ function validateIntegrationNodeSurfaces(node, errors) {
   const text = [
     node.title,
     node.summary,
-    ...(Array.isArray(node.projects) ? node.projects : []),
     ...(Array.isArray(node.deliverables) ? node.deliverables : []),
     ...(Array.isArray(node.acceptanceCriteria) ? node.acceptanceCriteria : []),
     ...(Array.isArray(node.verification)
@@ -883,11 +900,49 @@ function validateIntegrationNodeSurfaces(node, errors) {
     .filter((value) => typeof value === "string")
     .join("\n");
 
-  if (!exactIntegrationSurfacePattern.test(text)) {
+  if (!hasExactIntegrationSurface(text)) {
     errors.push(
       `${node.id} parallelGroup integration node must name exact composed surfaces, artifacts, commands, or adapters: ${node.parallelGroup}`,
     );
   }
+}
+
+function validateNoTimeEstimateText(node, errors) {
+  const fields = [
+    ["title", node.title],
+    ["summary", node.summary],
+    ["statusReason", node.statusReason],
+    ...(Array.isArray(node.deliverables)
+      ? node.deliverables.map((value, index) => [`deliverables[${index}]`, value])
+      : []),
+    ...(Array.isArray(node.acceptanceCriteria)
+      ? node.acceptanceCriteria.map((value, index) => [`acceptanceCriteria[${index}]`, value])
+      : []),
+    ...(Array.isArray(node.verification)
+      ? node.verification.map((entry, index) => [
+          `verification[${index}].value`,
+          isRecord(entry) ? entry.value : undefined,
+        ])
+      : []),
+    ...(Array.isArray(node.auditFocus)
+      ? node.auditFocus.map((value, index) => [`auditFocus[${index}]`, value])
+      : []),
+  ];
+
+  for (const [field, value] of fields) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    if (timeEstimateTextPattern.test(value)) {
+      errors.push(
+        `${node.id} ${field} contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: ${value}`,
+      );
+    }
+  }
+}
+
+function hasExactIntegrationSurface(text) {
+  return exactIntegrationSurfacePatterns.some((pattern) => pattern.test(text));
 }
 
 function isDocsOnlyNode(node) {
