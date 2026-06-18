@@ -12378,7 +12378,15 @@
       "target": "alpha",
       "projects": ["suite", "universal", "itotori", "kaifuu", "utsushi", "shared"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": ["ALPHA-007", "SHARED-025", "ITOTORI-095", "KAIFUU-010", "UTSUSHI-119", "UNIV-013", "UNIV-016"],
+      "dependsOn": [
+        "ALPHA-007",
+        "SHARED-025",
+        "ITOTORI-095",
+        "KAIFUU-010",
+        "UTSUSHI-119",
+        "UNIV-013",
+        "UNIV-016"
+      ],
       "summary": "Replace the permanent literal Hello World workflow with a durable alpha proof workflow that preserves end-to-end integration evidence while removing toy branding, stale scaffold assumptions, and placeholder success-string assertions.",
       "deliverables": [
         ".github/workflows/alpha-proof.yml and root `just alpha-proof` recipe for the public fixture alpha proof vertical",
