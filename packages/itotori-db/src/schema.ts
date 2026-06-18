@@ -158,6 +158,16 @@ export const catalogSourceRecordKindValues = {
 export type CatalogSourceRecordKind =
   (typeof catalogSourceRecordKindValues)[keyof typeof catalogSourceRecordKindValues];
 
+export const catalogRawContentRedactionClassValues = {
+  publicRaw: "public_raw",
+  publicMetadata: "public_metadata",
+  privateCorpus: "private_corpus",
+  redacted: "redacted",
+} as const;
+
+export type CatalogRawContentRedactionClass =
+  (typeof catalogRawContentRedactionClassValues)[keyof typeof catalogRawContentRedactionClassValues];
+
 export const catalogExternalIdKindValues = {
   sourceRecord: "source_record",
   releaseRecord: "release_record",
@@ -348,6 +358,9 @@ export const catalogSourceProvenance = pgTable(
     httpStatus: integer("http_status"),
     ok: boolean("ok").notNull(),
     payloadHash: text("payload_hash"),
+    rawContentRedactionClass: text("raw_content_redaction_class")
+      .notNull()
+      .default(catalogRawContentRedactionClassValues.publicMetadata),
     payload: jsonb("payload")
       .$type<Record<string, unknown>>()
       .notNull()
@@ -487,6 +500,11 @@ export const catalogLanguageStatuses = pgTable(
     confidence: text("confidence").notNull(),
     isCurrent: boolean("is_current").notNull().default(true),
     observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+    parserVersion: text("parser_version").notNull().default("unknown"),
+    rawContentRedactionClass: text("raw_content_redaction_class")
+      .notNull()
+      .default(catalogRawContentRedactionClassValues.publicMetadata),
     metadata: jsonb("metadata")
       .$type<Record<string, unknown>>()
       .notNull()

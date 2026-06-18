@@ -1,9 +1,13 @@
 import {
   AuthorizationError,
   catalogCandidateMatchStatusValues,
+  catalogCompletenessPoolValues,
   catalogConflictStatusValues,
   catalogSourceValues,
   permissionValues,
+  type CatalogCompletenessBenchmarkPools,
+  type CatalogCompletenessPool,
+  type CatalogCompletenessPoolFilter,
   type CatalogConflictReviewFilter,
   type CatalogConflictReviewReadModel,
   type CatalogConflictReviewSeverity,
@@ -73,6 +77,9 @@ export type ItotoriApiServices = {
     catalogConflictReview(
       filter?: CatalogConflictReviewFilter,
     ): Promise<CatalogConflictReviewReadModel>;
+    catalogCompletenessBenchmarkPools(
+      filter?: CatalogCompletenessPoolFilter,
+    ): Promise<CatalogCompletenessBenchmarkPools>;
   };
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
@@ -144,12 +151,22 @@ async function routeItotoriApiRequest(
     );
   }
 
+  if (request.method === "GET" && request.pathname === "/api/catalog/completeness") {
+    return ok(
+      "catalog.completeness",
+      await services.catalogRepository.catalogCompletenessBenchmarkPools(
+        parseCatalogCompletenessPoolFilter(request.search),
+      ),
+    );
+  }
+
   if (
     request.pathname === "/api/projects/status" ||
     request.pathname === "/api/projects/decisions" ||
     request.pathname === "/api/projects/cost" ||
     request.pathname === "/api/hello/status" ||
-    request.pathname === "/api/catalog/conflicts"
+    request.pathname === "/api/catalog/conflicts" ||
+    request.pathname === "/api/catalog/completeness"
   ) {
     return methodNotAllowed(["GET"]);
   }
@@ -219,6 +236,27 @@ async function requireApiPermission(
   gate: ApiMutationPermissionGate,
 ): Promise<void> {
   await services.authorization.requirePermission(gate.permission);
+}
+
+function parseCatalogCompletenessPoolFilter(search = ""): CatalogCompletenessPoolFilter {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const filter: CatalogCompletenessPoolFilter = {};
+  const targetLanguage = params.get("targetLanguage");
+  if (targetLanguage !== null) {
+    if (targetLanguage.trim().length === 0) {
+      throw new ApiValidationError("targetLanguage must be non-empty");
+    }
+    filter.targetLanguage = targetLanguage;
+  }
+  const pool = params.get("pool");
+  if (pool !== null) {
+    filter.pool = enumParam(
+      pool,
+      Object.values(catalogCompletenessPoolValues) as CatalogCompletenessPool[],
+      "pool",
+    );
+  }
+  return filter;
 }
 
 function parseCatalogConflictReviewFilter(search = ""): CatalogConflictReviewFilter {
@@ -293,6 +331,10 @@ function apiMutationGate(
 
 function ok(routeId: "projects.list", body: ApiProjectsResponse): ApiJsonResponse;
 function ok(routeId: "catalog.conflicts", body: CatalogConflictReviewReadModel): ApiJsonResponse;
+function ok(
+  routeId: "catalog.completeness",
+  body: CatalogCompletenessBenchmarkPools,
+): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
 function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;

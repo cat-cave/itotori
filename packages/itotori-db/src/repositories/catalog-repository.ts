@@ -21,6 +21,7 @@ import {
   catalogLocalScanExternalIds,
   catalogLocalScans,
   catalogPathRedactionClassValues,
+  catalogRawContentRedactionClassValues,
   catalogReleaseKindValues,
   catalogReleases,
   catalogSeedOriginValues,
@@ -40,6 +41,7 @@ import {
   type CatalogLanguageStatus,
   type CatalogLanguageStatusScope,
   type CatalogPathRedactionClass,
+  type CatalogRawContentRedactionClass,
   type CatalogReleaseKind,
   type CatalogSeedOrigin,
   type CatalogSeedStatus,
@@ -60,6 +62,7 @@ export type CatalogSourceProvenanceInput = {
   httpStatus?: number;
   ok?: boolean;
   payloadHash?: string;
+  rawContentRedactionClass?: CatalogRawContentRedactionClass;
   payload?: CatalogJsonRecord;
   fetchedAt: CatalogDateInput;
   metadata?: CatalogJsonRecord;
@@ -75,6 +78,7 @@ export type CatalogSourceProvenanceRecord = {
   httpStatus: number | null;
   ok: boolean;
   payloadHash: string | null;
+  rawContentRedactionClass: CatalogRawContentRedactionClass;
   payload: CatalogJsonRecord;
   fetchedAt: Date;
   metadata: CatalogJsonRecord;
@@ -155,6 +159,9 @@ export type CatalogLanguageStatusInput = {
   confidence?: CatalogConfidence;
   isCurrent?: boolean;
   observedAt?: CatalogDateInput;
+  importedAt?: CatalogDateInput;
+  parserVersion?: string;
+  rawContentRedactionClass?: CatalogRawContentRedactionClass;
   metadata?: CatalogJsonRecord;
 };
 
@@ -170,6 +177,9 @@ export type CatalogLanguageStatusRecord = {
   confidence: CatalogConfidence;
   isCurrent: boolean;
   observedAt: Date;
+  importedAt: Date;
+  parserVersion: string;
+  rawContentRedactionClass: CatalogRawContentRedactionClass;
   metadata: CatalogJsonRecord;
   createdAt: Date;
   updatedAt: Date;
@@ -470,6 +480,92 @@ export type CatalogConflictReviewFilter = {
   catalogRecordId?: string;
 };
 
+export const catalogCompletenessPoolValues = {
+  mtlOnly: "mtl_only",
+  fanPartial: "fan_partial",
+  noEnglish: "no_english",
+  unknown: "unknown",
+  conflict: "conflict",
+} as const;
+
+export type CatalogCompletenessPool =
+  (typeof catalogCompletenessPoolValues)[keyof typeof catalogCompletenessPoolValues];
+
+export type CatalogCompletenessPoolFilter = {
+  targetLanguage?: string;
+  pool?: CatalogCompletenessPool;
+};
+
+export type CatalogCompletenessSourceSummary = {
+  sourceProvenanceId: string;
+  catalogSource: CatalogSource;
+  sourceRecordKind: CatalogSourceRecordKind;
+  sourceId: string;
+  sourceVersion: string | null;
+  fetchedAt: Date;
+  rawContentRedactionClass: CatalogRawContentRedactionClass;
+};
+
+export type CatalogCompletenessStatusFact = {
+  languageStatusId: string;
+  language: string;
+  status: CatalogLanguageStatus;
+  statusScope: CatalogLanguageStatusScope;
+  platform: string | null;
+  releaseId: string | null;
+  sourceProvenanceId: string | null;
+  source: CatalogCompletenessSourceSummary | null;
+  confidence: CatalogConfidence;
+  observedAt: Date;
+  importedAt: Date;
+  parserVersion: string;
+  rawContentRedactionClass: CatalogRawContentRedactionClass;
+};
+
+export type CatalogCompletenessConflictSummary = {
+  conflictId: string;
+  status: CatalogConflictStatus;
+  reasonCode: string;
+  sourceIds: CatalogConflictReviewSourceId[];
+};
+
+export type CatalogCompletenessPoolWork = {
+  workId: string;
+  canonicalTitle: string;
+  originalLanguage: string | null;
+  sourceIds: CatalogConflictReviewSourceId[];
+  statuses: CatalogCompletenessStatusFact[];
+  conflicts: CatalogCompletenessConflictSummary[];
+};
+
+export type CatalogCompletenessPublicPoolReport = {
+  pool: CatalogCompletenessPool;
+  workCount: number;
+  sourceIds: CatalogConflictReviewSourceId[];
+};
+
+export type CatalogCompletenessPublicStatusReport = {
+  status: CatalogLanguageStatus;
+  factCount: number;
+  sourceIds: CatalogConflictReviewSourceId[];
+};
+
+export type CatalogCompletenessPublicReport = {
+  schemaVersion: "catalog.completeness_public_report.v0.1";
+  targetLanguage: string;
+  generatedAt: Date;
+  totalWorkCount: number;
+  conflictCount: number;
+  pools: CatalogCompletenessPublicPoolReport[];
+  statuses: CatalogCompletenessPublicStatusReport[];
+};
+
+export type CatalogCompletenessBenchmarkPools = {
+  targetLanguage: string;
+  pools: Record<CatalogCompletenessPool, CatalogCompletenessPoolWork[]>;
+  publicReport: CatalogCompletenessPublicReport;
+};
+
 export interface ItotoriCatalogRepositoryPort {
   recordSourceProvenance(
     actor: AuthorizationActor,
@@ -510,6 +606,10 @@ export interface ItotoriCatalogRepositoryPort {
     actor: AuthorizationActor,
     filter?: CatalogConflictReviewFilter,
   ): Promise<CatalogConflictReviewReadModel>;
+  catalogCompletenessBenchmarkPools(
+    actor: AuthorizationActor,
+    filter?: CatalogCompletenessPoolFilter,
+  ): Promise<CatalogCompletenessBenchmarkPools>;
 }
 
 const catalogSources = Object.values(catalogSourceValues) as CatalogSource[];
@@ -538,11 +638,17 @@ const catalogConflictSubjectKinds = Object.values(
 const catalogPathRedactionClasses = Object.values(
   catalogPathRedactionClassValues,
 ) as CatalogPathRedactionClass[];
+const catalogRawContentRedactionClasses = Object.values(
+  catalogRawContentRedactionClassValues,
+) as CatalogRawContentRedactionClass[];
 const catalogSeedOrigins = Object.values(catalogSeedOriginValues) as CatalogSeedOrigin[];
 const catalogSeedStatuses = Object.values(catalogSeedStatusValues) as CatalogSeedStatus[];
 const catalogCandidateMatchStatuses = Object.values(
   catalogCandidateMatchStatusValues,
 ) as CatalogCandidateMatchStatus[];
+const catalogCompletenessPools = Object.values(
+  catalogCompletenessPoolValues,
+) as CatalogCompletenessPool[];
 
 export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
@@ -677,6 +783,9 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
             confidence: languageStatus.confidence,
             isCurrent: languageStatus.isCurrent,
             observedAt: languageStatus.observedAt,
+            importedAt: languageStatus.importedAt,
+            parserVersion: languageStatus.parserVersion,
+            rawContentRedactionClass: languageStatus.rawContentRedactionClass,
             metadata: languageStatus.metadata,
           })
           .onConflictDoUpdate({
@@ -691,6 +800,9 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
               confidence: languageStatus.confidence,
               isCurrent: languageStatus.isCurrent,
               observedAt: languageStatus.observedAt,
+              importedAt: languageStatus.importedAt,
+              parserVersion: languageStatus.parserVersion,
+              rawContentRedactionClass: languageStatus.rawContentRedactionClass,
               metadata: languageStatus.metadata,
               updatedAt: sql`now()`,
             },
@@ -1016,6 +1128,14 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
       rows: rows.filter((row) => catalogConflictReviewRowMatches(row, normalized)),
     };
   }
+
+  async catalogCompletenessBenchmarkPools(
+    actor: AuthorizationActor,
+    filter: CatalogCompletenessPoolFilter = {},
+  ): Promise<CatalogCompletenessBenchmarkPools> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    return readCatalogCompletenessBenchmarkPools(this.db, assertCompletenessPoolFilter(filter));
+  }
 }
 
 async function readCatalogConflictReview(db: ItotoriDatabase): Promise<CatalogConflictReviewRow[]> {
@@ -1123,6 +1243,308 @@ async function readCatalogConflictReview(db: ItotoriDatabase): Promise<CatalogCo
   );
 
   return [...conflictReviewRows, ...candidateReviewRows].sort(compareCatalogConflictReviewRows);
+}
+
+async function readCatalogCompletenessBenchmarkPools(
+  db: ItotoriDatabase,
+  filter: NormalizedCompletenessPoolFilter,
+): Promise<CatalogCompletenessBenchmarkPools> {
+  const [workRows, statusRows, externalIdRows, conflictReviewRows] = await Promise.all([
+    db.select().from(catalogWorks),
+    db
+      .select()
+      .from(catalogLanguageStatuses)
+      .where(eq(catalogLanguageStatuses.language, filter.targetLanguage)),
+    db.select().from(catalogExternalIds),
+    readCatalogConflictReview(db),
+  ]);
+
+  const sourceProvenanceIds = new Set<string>();
+  for (const status of statusRows) {
+    if (status.sourceProvenanceId !== null) {
+      sourceProvenanceIds.add(status.sourceProvenanceId);
+    }
+  }
+  for (const externalId of externalIdRows) {
+    if (externalId.sourceProvenanceId !== null) {
+      sourceProvenanceIds.add(externalId.sourceProvenanceId);
+    }
+  }
+
+  const sourceRows =
+    sourceProvenanceIds.size === 0
+      ? []
+      : await db
+          .select()
+          .from(catalogSourceProvenance)
+          .where(inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(sourceProvenanceIds)));
+  const sourcesById = new Map(
+    sourceRows.map((row) => [row.sourceProvenanceId, sourceSummaryFromRow(row)]),
+  );
+
+  const statusesByWorkId = new Map<string, (typeof catalogLanguageStatuses.$inferSelect)[]>();
+  for (const status of statusRows) {
+    if (!status.isCurrent) {
+      continue;
+    }
+    const existing = statusesByWorkId.get(status.workId) ?? [];
+    existing.push(status);
+    statusesByWorkId.set(status.workId, existing);
+  }
+
+  const externalIdsByWorkId = new Map<string, (typeof catalogExternalIds.$inferSelect)[]>();
+  for (const externalId of externalIdRows) {
+    const existing = externalIdsByWorkId.get(externalId.workId) ?? [];
+    existing.push(externalId);
+    externalIdsByWorkId.set(externalId.workId, existing);
+  }
+
+  const languageConflictRows = conflictReviewRows.filter(
+    (row) =>
+      row.conflictKind === catalogConflictKindValues.languageStatus &&
+      row.status === catalogConflictStatusValues.open,
+  );
+  const conflictsByWorkId = new Map<string, CatalogConflictReviewRow[]>();
+  for (const conflict of languageConflictRows) {
+    const existing = conflictsByWorkId.get(conflict.catalogRecordId) ?? [];
+    existing.push(conflict);
+    conflictsByWorkId.set(conflict.catalogRecordId, existing);
+  }
+
+  const pools = emptyCompletenessPools();
+  for (const workRow of workRows) {
+    const currentStatusRows = statusesByWorkId.get(workRow.workId) ?? [];
+    const statusFacts = currentStatusRows
+      .map((status) => completenessStatusFactFromRow(status, sourcesById))
+      .sort(compareCompletenessStatusFacts);
+    const sourceIds = sourceIdsForCompletenessWork(
+      statusFacts,
+      externalIdsByWorkId.get(workRow.workId) ?? [],
+    );
+    const conflicts = (conflictsByWorkId.get(workRow.workId) ?? []).map((row) => ({
+      conflictId: row.conflictId ?? row.reviewId,
+      status: row.status as CatalogConflictStatus,
+      reasonCode: row.reasonCode,
+      sourceIds: row.sourceIds,
+    }));
+    const poolWork: CatalogCompletenessPoolWork = {
+      workId: workRow.workId,
+      canonicalTitle: workRow.canonicalTitle,
+      originalLanguage: workRow.originalLanguage,
+      sourceIds,
+      statuses: statusFacts,
+      conflicts,
+    };
+
+    for (const pool of poolsForCompletenessWork(poolWork)) {
+      pools[pool].push(poolWork);
+    }
+  }
+
+  for (const pool of catalogCompletenessPools) {
+    pools[pool].sort(compareCompletenessPoolWorks);
+  }
+
+  const selectedPools =
+    filter.pool === undefined
+      ? pools
+      : {
+          ...emptyCompletenessPools(),
+          [filter.pool]: pools[filter.pool],
+        };
+
+  return {
+    targetLanguage: filter.targetLanguage,
+    pools: selectedPools,
+    publicReport: publicCompletenessReport(filter.targetLanguage, selectedPools),
+  };
+}
+
+function assertCompletenessPoolFilter(
+  filter: CatalogCompletenessPoolFilter,
+): NormalizedCompletenessPoolFilter {
+  if (filter.pool !== undefined) {
+    assertEnumValue(filter.pool, catalogCompletenessPools, "pool");
+  }
+  const normalized: NormalizedCompletenessPoolFilter = {
+    targetLanguage:
+      filter.targetLanguage === undefined
+        ? "en-US"
+        : requiredString(filter.targetLanguage, "targetLanguage"),
+  };
+  if (filter.pool !== undefined) {
+    normalized.pool = filter.pool;
+  }
+  return normalized;
+}
+
+function emptyCompletenessPools(): Record<CatalogCompletenessPool, CatalogCompletenessPoolWork[]> {
+  return {
+    [catalogCompletenessPoolValues.mtlOnly]: [],
+    [catalogCompletenessPoolValues.fanPartial]: [],
+    [catalogCompletenessPoolValues.noEnglish]: [],
+    [catalogCompletenessPoolValues.unknown]: [],
+    [catalogCompletenessPoolValues.conflict]: [],
+  };
+}
+
+function poolsForCompletenessWork(
+  work: CatalogCompletenessPoolWork,
+): CatalogCompletenessPool[] {
+  const statuses = work.statuses.map((status) => status.status);
+  const pools: CatalogCompletenessPool[] = [];
+  if (work.conflicts.length > 0) {
+    pools.push(catalogCompletenessPoolValues.conflict);
+  }
+  if (statuses.includes(catalogLanguageStatusValues.fanPartial)) {
+    pools.push(catalogCompletenessPoolValues.fanPartial);
+  }
+  if (
+    statuses.includes(catalogLanguageStatusValues.mtl) &&
+    statuses.every(
+      (status) =>
+        status === catalogLanguageStatusValues.mtl ||
+        status === catalogLanguageStatusValues.unknown,
+    )
+  ) {
+    pools.push(catalogCompletenessPoolValues.mtlOnly);
+  }
+  if (
+    statuses.includes(catalogLanguageStatusValues.none) &&
+    statuses.every(
+      (status) =>
+        status === catalogLanguageStatusValues.none ||
+        status === catalogLanguageStatusValues.unknown,
+    )
+  ) {
+    pools.push(catalogCompletenessPoolValues.noEnglish);
+  }
+  if (
+    statuses.length === 0 ||
+    statuses.every((status) => status === catalogLanguageStatusValues.unknown)
+  ) {
+    pools.push(catalogCompletenessPoolValues.unknown);
+  }
+  return pools;
+}
+
+function completenessStatusFactFromRow(
+  row: typeof catalogLanguageStatuses.$inferSelect,
+  sourcesById: Map<string, CatalogCompletenessSourceSummary>,
+): CatalogCompletenessStatusFact {
+  return {
+    languageStatusId: row.languageStatusId,
+    language: row.language,
+    status: row.status as CatalogLanguageStatus,
+    statusScope: row.statusScope as CatalogLanguageStatusScope,
+    platform: row.platform,
+    releaseId: row.releaseId,
+    sourceProvenanceId: row.sourceProvenanceId,
+    source:
+      row.sourceProvenanceId === null ? null : sourcesById.get(row.sourceProvenanceId) ?? null,
+    confidence: row.confidence as CatalogConfidence,
+    observedAt: row.observedAt,
+    importedAt: row.importedAt,
+    parserVersion: row.parserVersion,
+    rawContentRedactionClass: row.rawContentRedactionClass as CatalogRawContentRedactionClass,
+  };
+}
+
+function sourceSummaryFromRow(
+  row: typeof catalogSourceProvenance.$inferSelect,
+): CatalogCompletenessSourceSummary {
+  return {
+    sourceProvenanceId: row.sourceProvenanceId,
+    catalogSource: row.catalogSource as CatalogSource,
+    sourceRecordKind: row.sourceRecordKind as CatalogSourceRecordKind,
+    sourceId: row.sourceId,
+    sourceVersion: row.sourceVersion,
+    fetchedAt: row.fetchedAt,
+    rawContentRedactionClass: row.rawContentRedactionClass as CatalogRawContentRedactionClass,
+  };
+}
+
+function sourceIdsForCompletenessWork(
+  facts: CatalogCompletenessStatusFact[],
+  externalIds: (typeof catalogExternalIds.$inferSelect)[],
+): CatalogConflictReviewSourceId[] {
+  return uniqueSourceIds([
+    ...facts
+      .map((fact) =>
+        fact.source === null
+          ? null
+          : { catalogSource: fact.source.catalogSource, sourceId: fact.source.sourceId },
+      )
+      .filter((sourceId): sourceId is CatalogConflictReviewSourceId => sourceId !== null),
+    ...externalIds.map((externalId) => ({
+      catalogSource: externalId.catalogSource as CatalogSource,
+      sourceId: externalId.sourceId,
+    })),
+  ]);
+}
+
+function publicCompletenessReport(
+  targetLanguage: string,
+  pools: Record<CatalogCompletenessPool, CatalogCompletenessPoolWork[]>,
+): CatalogCompletenessPublicReport {
+  const workIds = new Set<string>();
+  const statusReports = new Map<CatalogLanguageStatus, CatalogCompletenessPublicStatusReport>();
+  let conflictCount = 0;
+  for (const works of Object.values(pools)) {
+    for (const work of works) {
+      workIds.add(work.workId);
+      conflictCount += work.conflicts.length;
+      for (const status of work.statuses) {
+        const existing = statusReports.get(status.status) ?? {
+          status: status.status,
+          factCount: 0,
+          sourceIds: [],
+        };
+        existing.factCount += 1;
+        existing.sourceIds = uniqueSourceIds([
+          ...existing.sourceIds,
+          ...(status.source === null
+            ? []
+            : [{ catalogSource: status.source.catalogSource, sourceId: status.source.sourceId }]),
+        ]);
+        statusReports.set(status.status, existing);
+      }
+    }
+  }
+  return {
+    schemaVersion: "catalog.completeness_public_report.v0.1",
+    targetLanguage,
+    generatedAt: new Date(),
+    totalWorkCount: workIds.size,
+    conflictCount,
+    pools: catalogCompletenessPools.map((pool) => ({
+      pool,
+      workCount: pools[pool].length,
+      sourceIds: uniqueSourceIds(pools[pool].flatMap((work) => work.sourceIds)),
+    })),
+    statuses: Array.from(statusReports.values()).sort((left, right) =>
+      left.status.localeCompare(right.status),
+    ),
+  };
+}
+
+function compareCompletenessPoolWorks(
+  left: CatalogCompletenessPoolWork,
+  right: CatalogCompletenessPoolWork,
+): number {
+  return (
+    left.canonicalTitle.localeCompare(right.canonicalTitle) || left.workId.localeCompare(right.workId)
+  );
+}
+
+function compareCompletenessStatusFacts(
+  left: CatalogCompletenessStatusFact,
+  right: CatalogCompletenessStatusFact,
+): number {
+  return (
+    left.status.localeCompare(right.status) ||
+    left.languageStatusId.localeCompare(right.languageStatusId)
+  );
 }
 
 function catalogConflictReviewRowFromConflict(
@@ -1537,6 +1959,7 @@ async function recordSourceProvenanceUnchecked(
         httpStatus: input.httpStatus,
         ok: input.ok,
         payloadHash: input.payloadHash,
+        rawContentRedactionClass: input.rawContentRedactionClass,
         payload: input.payload,
         fetchedAt: input.fetchedAt,
         metadata: input.metadata,
@@ -1733,6 +2156,7 @@ type NormalizedSourceProvenanceInput = {
   httpStatus: number | null;
   ok: boolean;
   payloadHash: string | null;
+  rawContentRedactionClass: CatalogRawContentRedactionClass;
   payload: CatalogJsonRecord;
   fetchedAt: Date;
   metadata: CatalogJsonRecord;
@@ -1753,6 +2177,13 @@ function assertSourceProvenanceInput(
   if (input.payloadHash !== undefined) {
     assertSha256(input.payloadHash, "payloadHash");
   }
+  if (input.rawContentRedactionClass !== undefined) {
+    assertEnumValue(
+      input.rawContentRedactionClass,
+      catalogRawContentRedactionClasses,
+      "rawContentRedactionClass",
+    );
+  }
   return {
     sourceProvenanceId: input.sourceProvenanceId ?? createUuid7(),
     catalogSource: input.catalogSource,
@@ -1763,6 +2194,8 @@ function assertSourceProvenanceInput(
     httpStatus,
     ok: input.ok ?? true,
     payloadHash: input.payloadHash ?? null,
+    rawContentRedactionClass:
+      input.rawContentRedactionClass ?? catalogRawContentRedactionClassValues.publicMetadata,
     payload: jsonRecord(input.payload ?? {}, "payload"),
     fetchedAt: dateInput(input.fetchedAt, "fetchedAt"),
     metadata: jsonRecord(input.metadata ?? {}, "metadata"),
@@ -1827,6 +2260,9 @@ type NormalizedLanguageStatusInput = {
   confidence: CatalogConfidence;
   isCurrent: boolean;
   observedAt: Date;
+  importedAt: Date;
+  parserVersion: string;
+  rawContentRedactionClass: CatalogRawContentRedactionClass;
   metadata: CatalogJsonRecord;
 };
 
@@ -1932,6 +2368,13 @@ function assertLanguageStatusInput(
   if (input.confidence !== undefined) {
     assertEnumValue(input.confidence, catalogConfidences, "languageStatus.confidence");
   }
+  if (input.rawContentRedactionClass !== undefined) {
+    assertEnumValue(
+      input.rawContentRedactionClass,
+      catalogRawContentRedactionClasses,
+      "languageStatus.rawContentRedactionClass",
+    );
+  }
   return {
     languageStatusId: input.languageStatusId ?? createUuid7(),
     language: requiredString(input.language, "languageStatus.language"),
@@ -1944,6 +2387,14 @@ function assertLanguageStatusInput(
     isCurrent: input.isCurrent ?? true,
     observedAt:
       input.observedAt === undefined ? new Date() : dateInput(input.observedAt, "observedAt"),
+    importedAt:
+      input.importedAt === undefined ? new Date() : dateInput(input.importedAt, "importedAt"),
+    parserVersion:
+      input.parserVersion === undefined
+        ? "unknown"
+        : requiredString(input.parserVersion, "languageStatus.parserVersion"),
+    rawContentRedactionClass:
+      input.rawContentRedactionClass ?? catalogRawContentRedactionClassValues.publicMetadata,
     metadata: jsonRecord(input.metadata ?? {}, "languageStatus.metadata"),
   };
 }
@@ -2047,6 +2498,11 @@ type NormalizedCandidateMatchInput = {
   diagnosticCode: string;
   generatorVersion: string;
   metadata: CatalogJsonRecord;
+};
+
+type NormalizedCompletenessPoolFilter = {
+  targetLanguage: string;
+  pool?: CatalogCompletenessPool;
 };
 
 function assertLocalScanInput(input: CatalogLocalScanInput): NormalizedLocalScanInput {
@@ -2205,6 +2661,7 @@ function sourceProvenanceFromRow(
     httpStatus: row.httpStatus,
     ok: row.ok,
     payloadHash: row.payloadHash,
+    rawContentRedactionClass: row.rawContentRedactionClass as CatalogRawContentRedactionClass,
     payload: row.payload,
     fetchedAt: row.fetchedAt,
     metadata: row.metadata,
@@ -2278,6 +2735,9 @@ function languageStatusFromRow(
     confidence: row.confidence as CatalogConfidence,
     isCurrent: row.isCurrent,
     observedAt: row.observedAt,
+    importedAt: row.importedAt,
+    parserVersion: row.parserVersion,
+    rawContentRedactionClass: row.rawContentRedactionClass as CatalogRawContentRedactionClass,
     metadata: row.metadata,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

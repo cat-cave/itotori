@@ -1,0 +1,47 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "catalog-completeness",
+    "title": "Catalog Completeness Fixtures",
+    "kind": "synthetic",
+    "summary": "Synthetic public fixture queries for translation completeness benchmark and opportunity pool selection.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["en-US"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Hand-authored synthetic catalog source ids, pool expectations, and aggregate reporting notes; no third-party raw assets."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic query bundle for CATALOG-002 completeness verification.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/catalog-completeness/queries.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "33b51fa2bed7dbec58be124b613018e49dc739ec06c73059d59eafced2dfc7e5",
+      "bytes": 1775,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 1,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["en-US"],
+    "engineKinds": ["catalog-synthetic"],
+    "notes": "Covers mtl_only, fan_partial, no_english, unknown, and conflict completeness pools with public aggregate report expectations."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:catalog-completeness"
+  }
+}

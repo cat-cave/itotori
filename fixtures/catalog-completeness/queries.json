@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "catalog.completeness.fixture.v0.1",
+  "fixtureId": "catalog-completeness-catalog-002",
+  "generatedAt": "2026-06-17T12:05:00.000Z",
+  "reviewNotes": [
+    "Synthetic fixture only; no private corpus text is included.",
+    "Private local sidecar evidence is represented by source ids, parser version, confidence, timestamps, and redaction class only.",
+    "The public report fixture expectation is aggregate counts plus source ids, never raw payload content."
+  ],
+  "targetLanguage": "en-US",
+  "queries": [
+    {
+      "pool": "mtl_only",
+      "expectedWorkIds": ["019ed004-0000-7000-8000-000000000911"],
+      "reason": "Current English facts contain MTL and no fuller English status."
+    },
+    {
+      "pool": "fan_partial",
+      "expectedWorkIds": ["019ed004-0000-7000-8000-000000000912"],
+      "reason": "Current English facts include fan_partial."
+    },
+    {
+      "pool": "no_english",
+      "expectedWorkIds": ["019ed004-0000-7000-8000-000000000913"],
+      "reason": "Current English facts are none/unknown only."
+    },
+    {
+      "pool": "unknown",
+      "expectedWorkIds": ["019ed004-0000-7000-8000-000000000914"],
+      "reason": "Current English facts are unknown only."
+    },
+    {
+      "pool": "conflict",
+      "expectedWorkIds": ["019ed004-0000-7000-8000-000000000915"],
+      "reason": "Open language_status conflict preserves disagreeing VNDB, Steam, and local sidecar evidence."
+    }
+  ],
+  "publicReportExpectation": {
+    "pools": [
+      { "pool": "mtl_only", "workCount": 1 },
+      { "pool": "fan_partial", "workCount": 1 },
+      { "pool": "no_english", "workCount": 1 },
+      { "pool": "unknown", "workCount": 1 },
+      { "pool": "conflict", "workCount": 1 }
+    ],
+    "omitsPrivatePayloadContent": true
+  }
+}

@@ -1,4 +1,5 @@
 import type {
+  CatalogCompletenessBenchmarkPools,
   CatalogConflictReviewReadModel,
   DashboardDecisionReadModel,
   ProjectCostReport,
@@ -36,6 +37,7 @@ import type {
 } from "./services/project-workflow.js";
 
 export type ItotoriApiRouteId =
+  | "catalog.completeness"
   | "catalog.conflicts"
   | "projects.list"
   | "projects.status"
@@ -63,6 +65,8 @@ export type ApiProjectCostResponse = ProjectCostReport;
 export type ApiDashboardDecisionsResponse = DashboardDecisionReadModel;
 
 export type ApiCatalogConflictReviewResponse = CatalogConflictReviewReadModel;
+
+export type ApiCatalogCompletenessResponse = CatalogCompletenessBenchmarkPools;
 
 export type ApiProjectImportRequest = {
   bridge: BridgeBundle | BridgeBundleV02;
@@ -113,6 +117,7 @@ export type ApiRuntimeEvidenceRequest = {
 export type ApiRuntimeEvidenceResponse = RuntimeIngestResult;
 
 export type ItotoriApiResponseBody =
+  | ApiCatalogCompletenessResponse
   | ApiCatalogConflictReviewResponse
   | ApiProjectsResponse
   | ProjectDashboardStatus
@@ -218,6 +223,9 @@ export function assertItotoriApiResponse(
   value: unknown,
 ): asserts value is ItotoriApiResponseBody {
   switch (routeId) {
+    case "catalog.completeness":
+      assertCatalogCompletenessBenchmarkPools(value);
+      return;
     case "catalog.conflicts":
       assertCatalogConflictReviewReadModel(value);
       return;
@@ -254,6 +262,153 @@ export function assertItotoriApiResponse(
     case "runtimeEvidence.ingest":
       assertRuntimeEvidenceResponse(value);
       return;
+  }
+}
+
+export function assertCatalogCompletenessBenchmarkPools(
+  value: unknown,
+  label = "CatalogCompletenessBenchmarkPools",
+): asserts value is CatalogCompletenessBenchmarkPools {
+  const model = asRecord(value, label);
+  assertString(model.targetLanguage, `${label}.targetLanguage`);
+  const pools = asRecord(model.pools, `${label}.pools`);
+  for (const poolName of [
+    "mtl_only",
+    "fan_partial",
+    "no_english",
+    "unknown",
+    "conflict",
+  ] as const) {
+    const works = asArray(pools[poolName], `${label}.pools.${poolName}`);
+    for (const [index, workValue] of works.entries()) {
+      const work = asRecord(workValue, `${label}.pools.${poolName}[${index}]`);
+      assertString(work.workId, `${label}.pools.${poolName}[${index}].workId`);
+      assertString(work.canonicalTitle, `${label}.pools.${poolName}[${index}].canonicalTitle`);
+      assertNullableString(
+        work.originalLanguage,
+        `${label}.pools.${poolName}[${index}].originalLanguage`,
+      );
+      assertConflictReviewSourceIds(
+        work.sourceIds,
+        `${label}.pools.${poolName}[${index}].sourceIds`,
+      );
+      const statuses = asArray(work.statuses, `${label}.pools.${poolName}[${index}].statuses`);
+      for (const [statusIndex, statusValue] of statuses.entries()) {
+        const status = asRecord(
+          statusValue,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}]`,
+        );
+        assertString(
+          status.languageStatusId,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].languageStatusId`,
+        );
+        assertString(status.language, `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].language`);
+        assertString(status.status, `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].status`);
+        assertString(
+          status.confidence,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].confidence`,
+        );
+        assertDateLike(
+          status.observedAt,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].observedAt`,
+        );
+        assertDateLike(
+          status.importedAt,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].importedAt`,
+        );
+        assertString(
+          status.parserVersion,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].parserVersion`,
+        );
+        assertString(
+          status.rawContentRedactionClass,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].rawContentRedactionClass`,
+        );
+        if (status.source !== null) {
+          const source = asRecord(
+            status.source,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source`,
+          );
+          assertString(
+            source.sourceProvenanceId,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.sourceProvenanceId`,
+          );
+          assertString(
+            source.catalogSource,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.catalogSource`,
+          );
+          assertString(
+            source.sourceRecordKind,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.sourceRecordKind`,
+          );
+          assertString(
+            source.sourceId,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.sourceId`,
+          );
+          assertNullableString(
+            source.sourceVersion,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.sourceVersion`,
+          );
+          assertDateLike(
+            source.fetchedAt,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.fetchedAt`,
+          );
+          assertString(
+            source.rawContentRedactionClass,
+            `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].source.rawContentRedactionClass`,
+          );
+        }
+      }
+      const conflicts = asArray(work.conflicts, `${label}.pools.${poolName}[${index}].conflicts`);
+      for (const [conflictIndex, conflictValue] of conflicts.entries()) {
+        const conflict = asRecord(
+          conflictValue,
+          `${label}.pools.${poolName}[${index}].conflicts[${conflictIndex}]`,
+        );
+        assertString(
+          conflict.conflictId,
+          `${label}.pools.${poolName}[${index}].conflicts[${conflictIndex}].conflictId`,
+        );
+        assertString(
+          conflict.status,
+          `${label}.pools.${poolName}[${index}].conflicts[${conflictIndex}].status`,
+        );
+        assertString(
+          conflict.reasonCode,
+          `${label}.pools.${poolName}[${index}].conflicts[${conflictIndex}].reasonCode`,
+        );
+        assertConflictReviewSourceIds(
+          conflict.sourceIds,
+          `${label}.pools.${poolName}[${index}].conflicts[${conflictIndex}].sourceIds`,
+        );
+      }
+    }
+  }
+  const publicReport = asRecord(model.publicReport, `${label}.publicReport`);
+  assertString(publicReport.schemaVersion, `${label}.publicReport.schemaVersion`);
+  assertString(publicReport.targetLanguage, `${label}.publicReport.targetLanguage`);
+  assertDateLike(publicReport.generatedAt, `${label}.publicReport.generatedAt`);
+  assertNonNegativeInteger(publicReport.totalWorkCount, `${label}.publicReport.totalWorkCount`);
+  assertNonNegativeInteger(publicReport.conflictCount, `${label}.publicReport.conflictCount`);
+  const reportPools = asArray(publicReport.pools, `${label}.publicReport.pools`);
+  for (const [index, poolValue] of reportPools.entries()) {
+    const pool = asRecord(poolValue, `${label}.publicReport.pools[${index}]`);
+    assertString(pool.pool, `${label}.publicReport.pools[${index}].pool`);
+    assertNonNegativeInteger(pool.workCount, `${label}.publicReport.pools[${index}].workCount`);
+    assertConflictReviewSourceIds(pool.sourceIds, `${label}.publicReport.pools[${index}].sourceIds`);
+  }
+  const reportStatuses = asArray(publicReport.statuses, `${label}.publicReport.statuses`);
+  for (const [index, statusValue] of reportStatuses.entries()) {
+    const status = asRecord(statusValue, `${label}.publicReport.statuses[${index}]`);
+    assertString(status.status, `${label}.publicReport.statuses[${index}].status`);
+    assertNonNegativeInteger(
+      status.factCount,
+      `${label}.publicReport.statuses[${index}].factCount`,
+    );
+    assertConflictReviewSourceIds(
+      status.sourceIds,
+      `${label}.publicReport.statuses[${index}].sourceIds`,
+    );
   }
 }
 

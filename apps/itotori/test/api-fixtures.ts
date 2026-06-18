@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import type {
+  CatalogCompletenessBenchmarkPools,
   CatalogConflictReviewReadModel,
   DashboardDecisionReadModel,
   ProjectCostReport,
@@ -246,6 +247,67 @@ export const catalogConflictReviewFixture: CatalogConflictReviewReadModel = {
       resolution: null,
     },
   ],
+};
+
+export const catalogCompletenessFixture: CatalogCompletenessBenchmarkPools = {
+  targetLanguage: "en-US",
+  pools: {
+    mtl_only: [
+      {
+        workId: "work-mtl",
+        canonicalTitle: "MTL Fixture",
+        originalLanguage: "ja-JP",
+        sourceIds: [{ catalogSource: "egs", sourceId: "egs-mtl" }],
+        statuses: [
+          {
+            languageStatusId: "status-mtl",
+            language: "en-US",
+            status: "mtl",
+            statusScope: "work",
+            platform: null,
+            releaseId: null,
+            sourceProvenanceId: "prov-egs-mtl",
+            source: {
+              sourceProvenanceId: "prov-egs-mtl",
+              catalogSource: "egs",
+              sourceRecordKind: "recorded_fixture",
+              sourceId: "egs-mtl",
+              sourceVersion: "fixture-2026-06-17",
+              fetchedAt: new Date("2026-06-17T00:00:00.000Z"),
+              rawContentRedactionClass: "public_metadata",
+            },
+            confidence: "medium",
+            observedAt: new Date("2026-06-17T00:00:00.000Z"),
+            importedAt: new Date("2026-06-17T00:01:00.000Z"),
+            parserVersion: "catalog-completeness-fixture.v0.1",
+            rawContentRedactionClass: "public_metadata",
+          },
+        ],
+        conflicts: [],
+      },
+    ],
+    fan_partial: [],
+    no_english: [],
+    unknown: [],
+    conflict: [],
+  },
+  publicReport: {
+    schemaVersion: "catalog.completeness_public_report.v0.1",
+    targetLanguage: "en-US",
+    generatedAt: new Date("2026-06-17T00:02:00.000Z"),
+    totalWorkCount: 1,
+    conflictCount: 0,
+    pools: [
+      { pool: "mtl_only", workCount: 1, sourceIds: [{ catalogSource: "egs", sourceId: "egs-mtl" }] },
+      { pool: "fan_partial", workCount: 0, sourceIds: [] },
+      { pool: "no_english", workCount: 0, sourceIds: [] },
+      { pool: "unknown", workCount: 0, sourceIds: [] },
+      { pool: "conflict", workCount: 0, sourceIds: [] },
+    ],
+    statuses: [
+      { status: "mtl", factCount: 1, sourceIds: [{ catalogSource: "egs", sourceId: "egs-mtl" }] },
+    ],
+  },
 };
 
 export const dashboardDecisionsFixture: DashboardDecisionReadModel = {

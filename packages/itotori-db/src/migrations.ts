@@ -112,6 +112,10 @@ const migrations = [
     id: "0013_queue_read_permission",
     file: "0013_queue_read_permission.sql",
   },
+  {
+    id: "0014_catalog_completeness_evidence",
+    file: "0014_catalog_completeness_evidence.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
