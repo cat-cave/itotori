@@ -1,0 +1,105 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-012-20260618T002000Z",
+  "generatedAt": "2026-06-18T00:20:00Z",
+  "spec": {
+    "id": "UTSUSHI-012",
+    "title": "Controlled playback session and capability contract",
+    "branch": "spec/utsushi-012",
+    "worktree": "/tmp/itotori-spec-utsushi-012",
+    "commit": "96b74d84fb27877d4e46145e077fdc0099f2346b"
+  },
+  "auditor": {
+    "name": "einstein-the-4th",
+    "kind": "architecture"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final audit found the controlled playback validator repair correct after rebase. TS and Rust reject session/report status mismatches and requested-operation evidence contradictions, valid trace-only fixtures still pass, and UTSUSHI-012 remains scoped to capability/session contracts without implementing jump, snapshot, live screenshot, or recording behavior.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UTSUSHI-012-F001"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-012-F001",
+      "severity": "P3",
+      "title": "Fixture smoke operation metadata coverage is schema-heavy",
+      "category": "test",
+      "locations": [
+        {
+          "path": "crates/utsushi-fixture/src/lib.rs",
+          "symbol": "smoke_validate"
+        },
+        {
+          "path": "packages/localization-bridge-schema/test/examples/runtime-evidence-v0.2.json"
+        }
+      ],
+      "description": "The schema accepts the broad smoke_validation requested operation, but the fixture adapter delegates smoke_validate through capture and therefore mostly exercises smoke_validation via schema fixtures rather than runtime adapter output.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "smoke_validate delegates through capture and fixture tests expect requestedOperation: capture."
+        },
+        {
+          "kind": "fixture",
+          "detail": "The valid schema fixture covers requestedOperation: smoke_validation."
+        }
+      ],
+      "impact": "Future changes could regress adapter-emitted smoke operation metadata while schema fixtures continue passing.",
+      "actionableAcceptanceCriteria": [
+        "The fixture runtime adapter emits a smoke_validation controlled playback session through an adapter-owned path.",
+        "A Rust fixture test proves smoke_validation metadata is produced by the runtime adapter, not only by static schema fixtures.",
+        "The added coverage does not require jump, snapshot, live screenshot, or recording behavior."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Fixture smoke-validation adapter metadata coverage",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi", "shared"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-012"],
+          "summary": "Add adapter-emitted smoke_validation metadata coverage so controlled playback smoke sessions are not covered only by static bridge-schema fixtures.",
+          "deliverables": [
+            "Fixture adapter smoke_validation emission path",
+            "Rust runtime adapter regression test",
+            "Bridge-schema compatibility fixture update if needed"
+          ],
+          "acceptanceCriteria": [
+            "The fixture runtime adapter emits a smoke_validation controlled playback session through an adapter-owned path",
+            "A Rust fixture test proves smoke_validation metadata is produced by the runtime adapter, not only by static schema fixtures",
+            "The added coverage does not require jump, snapshot, live screenshot, or recording behavior"
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            },
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/localization-bridge-schema test"
+            }
+          ],
+          "auditFocus": [
+            "Schema-only smoke metadata coverage",
+            "Fixture adapter overclaiming unsupported runtime operations",
+            "Smoke validation path drifting from controlled playback contract"
+          ]
+        }
+      }
+    }
+  ]
+}
