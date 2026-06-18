@@ -5,10 +5,12 @@ import {
   type CatalogExactExternalIdLinkResult,
   type CatalogFuzzyCandidateRequest,
   type CatalogFuzzyCandidateResult,
+  catalogFuzzyCandidateDiagnosticCodeValues,
   catalogExactExternalIdLinkStatusValues,
   catalogExactExternalIdLinkSchemaVersion,
   catalogFuzzyCandidateSchemaVersion,
   catalogFuzzyCandidateStatusValues,
+  ItotoriCatalogFuzzyCandidateGeneratorService,
   type DashboardDecisionReadModel,
   feedbackTypeValues,
   type ManualFeedbackImportInput,
@@ -197,6 +199,68 @@ describe("Itotori CLI handlers", () => {
       fuzzyCandidateRequestFixture,
     );
     expect(writes.get("catalog-fuzzy-result.json")).toEqual(fuzzyCandidateResultFixture);
+  });
+
+  it("writes structured fuzzy invalid diagnostics for malformed JSON input", async () => {
+    const services = servicesFixture();
+    const repository = {
+      getWorkByExternalId: vi.fn(),
+      listCatalogCandidateTargetWorks: vi.fn(),
+      recordCatalogCandidateMatch: vi.fn(),
+      listCatalogCandidateMatches: vi.fn(),
+    };
+    services.catalogFuzzyCandidateGenerator = new ItotoriCatalogFuzzyCandidateGeneratorService(
+      repository,
+      { userId: "local-user" },
+    );
+    const reads = new Map<string, unknown>([
+      [
+        "catalog-fuzzy-request.json",
+        {
+          schemaVersion: catalogFuzzyCandidateSchemaVersion,
+          sourceFacts: [
+            {
+              catalogSource: "egs",
+              sourceId: "egs-malformed-001",
+              title: "Moonlight Refrain",
+              externalIds: [null],
+            },
+          ],
+        },
+      ],
+    ]);
+    const writes = new Map<string, unknown>();
+
+    await runItotoriCliCommand(
+      [
+        "catalog-fuzzy-candidates",
+        "--request",
+        "catalog-fuzzy-request.json",
+        "--output",
+        "catalog-fuzzy-result.json",
+      ],
+      {
+        io: jsonStoreFixture(reads, writes),
+        migrateDatabase: vi.fn(async () => {}),
+        withServices: async (callback) => await callback(services),
+      },
+    );
+
+    expect(writes.get("catalog-fuzzy-result.json")).toEqual(
+      expect.objectContaining({
+        status: catalogFuzzyCandidateStatusValues.invalid,
+        candidates: [],
+        diagnostics: [
+          expect.objectContaining({
+            code: catalogFuzzyCandidateDiagnosticCodeValues.invalidRequest,
+            field: "externalIds",
+            reasonCode: "invalid_external_id",
+          }),
+        ],
+      }),
+    );
+    expect(repository.listCatalogCandidateTargetWorks).not.toHaveBeenCalled();
+    expect(repository.recordCatalogCandidateMatch).not.toHaveBeenCalled();
   });
 });
 

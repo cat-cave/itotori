@@ -10,6 +10,7 @@ import type {
 } from "../src/repositories/catalog-repository.js";
 import {
   catalogFuzzyCandidateDiagnosticCodeValues,
+  catalogFuzzyCandidateGeneratorVersion,
   catalogFuzzyCandidateStatusValues,
   ItotoriCatalogFuzzyCandidateGeneratorService,
   type CatalogFuzzyCandidateRequest,
@@ -41,6 +42,58 @@ describe("ItotoriCatalogFuzzyCandidateGeneratorService", () => {
         sourceId: "RJ349517",
       }),
     ]);
+  });
+
+  it("skips fuzzy output when the source fact's own source_record ID exactly matches", async () => {
+    const repository = fakeRepository();
+    repository.exactMatches.set(
+      exactKey("dlsite", "RJ349517", catalogExternalIdKindValues.sourceRecord),
+      workSnapshot("work-dlsite", "DLsite-only fixture"),
+    );
+    const service = new ItotoriCatalogFuzzyCandidateGeneratorService(repository, localActor);
+
+    const result = await service.generateFuzzyCandidates(fixtureRequest("sourceRecordSkipsFuzzy"));
+
+    expect(result.status).toBe(catalogFuzzyCandidateStatusValues.exactMatchSkipped);
+    expect(result.candidates).toEqual([]);
+    expect(repository.calls).toContain(
+      exactKey("dlsite", "RJ349517", catalogExternalIdKindValues.sourceRecord),
+    );
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: catalogFuzzyCandidateDiagnosticCodeValues.exactExternalIdMatch,
+        reasonCode: "exact_external_id_match",
+        sourceId: "RJ349517",
+      }),
+    ]);
+  });
+
+  it("does not let detector-only local_detection IDs suppress fuzzy review", async () => {
+    const repository = fakeRepository();
+    repository.exactMatches.set(
+      exactKey("dlsite", "RJ349517", catalogExternalIdKindValues.localDetection),
+      workSnapshot("work-dlsite", "DLsite-only fixture"),
+    );
+    const service = new ItotoriCatalogFuzzyCandidateGeneratorService(repository, localActor);
+
+    const result = await service.generateFuzzyCandidates(
+      fixtureRequest("localDetectionDoesNotSkipFuzzy"),
+    );
+
+    expect(result.status).toBe(catalogFuzzyCandidateStatusValues.generated);
+    expect(result.candidates).toHaveLength(1);
+    expect(repository.calls).toContain(
+      exactKey("egs", "egs-moonlight-001", catalogExternalIdKindValues.sourceRecord),
+    );
+    expect(repository.calls).not.toContain(
+      exactKey("dlsite", "RJ349517", catalogExternalIdKindValues.localDetection),
+    );
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: catalogFuzzyCandidateDiagnosticCodeValues.candidateGenerated,
+        reasonCode: "review_required_no_auto_merge",
+      }),
+    );
   });
 
   it("records deterministic fuzzy candidates as review-pending rows without auto-merge metadata", async () => {
@@ -136,6 +189,65 @@ describe("ItotoriCatalogFuzzyCandidateGeneratorService", () => {
       }),
     );
   });
+
+  it.each([
+    ["object externalIds", { externalIds: {} }],
+    ["null external ID", { externalIds: [null] }],
+  ])("returns structured invalid diagnostics for malformed %s", async (_label, override) => {
+    const repository = fakeRepository();
+    const service = new ItotoriCatalogFuzzyCandidateGeneratorService(repository, localActor);
+
+    const result = await service.generateFuzzyCandidates({
+      schemaVersion: "catalog.fuzzy_candidates.v0.1",
+      sourceFacts: [
+        {
+          catalogSource: "egs",
+          sourceId: "egs-malformed-001",
+          title: "Moonlight Refrain",
+          ...override,
+        },
+      ],
+    } as unknown as CatalogFuzzyCandidateRequest);
+
+    expect(result.status).toBe(catalogFuzzyCandidateStatusValues.invalid);
+    expect(result.candidates).toEqual([]);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({
+        code: catalogFuzzyCandidateDiagnosticCodeValues.invalidRequest,
+        severity: "error",
+        field: "externalIds",
+      }),
+    ]);
+    expect(repository.recordedCandidates).toEqual([]);
+  });
+
+  it("emits a provenance mismatch diagnostic for existing review candidates", async () => {
+    const repository = fakeRepository();
+    repository.recordedCandidates.push(
+      candidateRecord({
+        candidateId: "candidate-existing",
+        sourceProvenanceId: "prov-old",
+      }),
+    );
+    const service = new ItotoriCatalogFuzzyCandidateGeneratorService(repository, localActor);
+
+    const result = await service.generateFuzzyCandidates(fixtureRequest("provenanceMismatch"));
+
+    expect(result.status).toBe(catalogFuzzyCandidateStatusValues.generated);
+    expect(result.diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: catalogFuzzyCandidateDiagnosticCodeValues.provenanceMismatch,
+        severity: "warning",
+        reasonCode: "source_provenance_mismatch",
+        candidateId: "candidate-existing",
+        metadata: {
+          existingSourceProvenanceId: "prov-old",
+          sourceProvenanceId: "prov-new",
+          targetWorkId: "work-moonlight-hd",
+        },
+      }),
+    );
+  });
 });
 
 class FakeCatalogCandidateRepository implements Pick<
@@ -146,6 +258,7 @@ class FakeCatalogCandidateRepository implements Pick<
   | "listCatalogCandidateMatches"
 > {
   readonly exactMatches = new Map<string, CatalogWorkSnapshot>();
+  readonly calls: string[] = [];
   readonly recordedCandidates: CatalogCandidateMatchRecord[] = [];
   readonly targets: CatalogCandidateTargetWorkRecord[] = [
     {
@@ -171,7 +284,9 @@ class FakeCatalogCandidateRepository implements Pick<
     sourceId: string,
     externalIdKind: CatalogExternalIdKind = catalogExternalIdKindValues.sourceRecord,
   ): Promise<CatalogWorkSnapshot | null> {
-    return this.exactMatches.get(exactKey(catalogSource, sourceId, externalIdKind)) ?? null;
+    const key = exactKey(catalogSource, sourceId, externalIdKind);
+    this.calls.push(key);
+    return this.exactMatches.get(key) ?? null;
   }
 
   async listCatalogCandidateTargetWorks(): Promise<CatalogCandidateTargetWorkRecord[]> {
@@ -190,6 +305,17 @@ class FakeCatalogCandidateRepository implements Pick<
         candidate.generatorVersion === input.generatorVersion,
     );
     if (existing !== undefined) {
+      Object.assign(existing, {
+        sourceTitle: input.sourceTitle,
+        sourceProvenanceId: input.sourceProvenanceId ?? null,
+        score: input.score,
+        matchedFields: input.matchedFields,
+        status: input.status ?? "review_pending",
+        diagnosticCode: input.diagnosticCode,
+        generatorVersion: input.generatorVersion,
+        metadata: input.metadata ?? {},
+        updatedAt: new Date("2026-06-18T00:00:00.000Z"),
+      });
       return existing;
     }
     const now = new Date("2026-06-18T00:00:00.000Z");
@@ -257,6 +383,29 @@ function workSnapshot(workId: string, canonicalTitle: string): CatalogWorkSnapsh
     conflicts: [],
     localScanEntries: [],
     seedTargets: [],
+  };
+}
+
+function candidateRecord(
+  overrides: Partial<CatalogCandidateMatchRecord> = {},
+): CatalogCandidateMatchRecord {
+  const now = new Date("2026-06-18T00:00:00.000Z");
+  return {
+    candidateId: "candidate-1",
+    sourceCatalogSource: "egs",
+    sourceId: "egs-moonlight-001",
+    sourceTitle: "Moonlight Refrain",
+    sourceProvenanceId: null,
+    targetWorkId: "work-moonlight-hd",
+    score: 860,
+    matchedFields: {},
+    status: "review_pending",
+    diagnosticCode: catalogFuzzyCandidateDiagnosticCodeValues.candidateGenerated,
+    generatorVersion: catalogFuzzyCandidateGeneratorVersion,
+    metadata: { autoMerge: false },
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
   };
 }
 

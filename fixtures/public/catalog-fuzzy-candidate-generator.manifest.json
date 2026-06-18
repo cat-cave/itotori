@@ -23,8 +23,8 @@
       "path": "fixtures/catalog-fuzzy-candidate-generator/requests.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "9834da439a49c58cc590fc4b9bdd12ab9223db54eb8f51b121d993b2d2ab0bab",
-      "bytes": 2400,
+      "sha256": "17d9388ceb4e75dfa4c0cde17d7b2df8db31a0636908f59ed5eae666b43b5ae0",
+      "bytes": 3525,
       "redistributable": true
     }
   ],
@@ -35,7 +35,7 @@
     "protectedSpans": 0,
     "sourceLocales": ["ja-JP"],
     "engineKinds": ["catalog-synthetic"],
-    "notes": "Covers exact external-id skip, high-confidence fuzzy candidate, low-confidence no-candidate, conflicting exact source ids, and duplicate source diagnostics."
+    "notes": "Covers exact external-id skip, source-record exact skip, detector-only local_detection non-blocking behavior, high-confidence fuzzy candidate, low-confidence no-candidate, conflicting exact source ids, provenance mismatch diagnostics, and duplicate source diagnostics."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

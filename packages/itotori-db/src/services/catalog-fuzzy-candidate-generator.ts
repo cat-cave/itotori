@@ -34,6 +34,7 @@ export const catalogFuzzyCandidateDiagnosticCodeValues = {
   candidateGenerated: "catalog.fuzzy_candidate.generated",
   duplicateSource: "catalog.fuzzy_candidate.duplicate_source",
   noCandidateTargets: "catalog.fuzzy_candidate.no_candidate_targets",
+  provenanceMismatch: "catalog.fuzzy_candidate.provenance_mismatch",
 } as const;
 
 export type CatalogFuzzyCandidateDiagnosticCode =
@@ -107,7 +108,14 @@ type NormalizedRequest = {
   sourceFacts: CatalogFuzzyCandidateSourceFact[];
   minScore: number;
   maxCandidatesPerSource: number;
+  generatorVersion: typeof catalogFuzzyCandidateGeneratorVersion;
   diagnostics: CatalogFuzzyCandidateDiagnostic[];
+};
+
+type AuthoritativeExactExternalId = {
+  catalogSource: CatalogSource;
+  sourceId: string;
+  externalIdKind: CatalogExternalIdKind;
 };
 
 const catalogSources = Object.values(catalogSourceValues) as CatalogSource[];
@@ -225,6 +233,11 @@ export class ItotoriCatalogFuzzyCandidateGeneratorService implements ItotoriCata
       }
 
       for (const candidate of scored) {
+        const provenanceMismatch = await this.provenanceMismatchDiagnostic(
+          sourceFact,
+          candidate.target.workId,
+          normalized.generatorVersion,
+        );
         const persisted = await this.repository.recordCatalogCandidateMatch(this.actor, {
           sourceCatalogSource: sourceFact.catalogSource,
           sourceId: sourceFact.sourceId,
@@ -237,7 +250,7 @@ export class ItotoriCatalogFuzzyCandidateGeneratorService implements ItotoriCata
           matchedFields: candidate.matchedFields,
           status: catalogCandidateMatchStatusValues.reviewPending,
           diagnosticCode: catalogFuzzyCandidateDiagnosticCodeValues.candidateGenerated,
-          generatorVersion: request.generatorVersion ?? catalogFuzzyCandidateGeneratorVersion,
+          generatorVersion: normalized.generatorVersion,
           metadata: {
             autoMerge: false,
             sourceReleaseYear: sourceFact.releaseYear ?? null,
@@ -246,6 +259,9 @@ export class ItotoriCatalogFuzzyCandidateGeneratorService implements ItotoriCata
           },
         });
         candidates.push(persisted);
+        if (provenanceMismatch !== null) {
+          diagnostics.push(provenanceMismatch);
+        }
         diagnostics.push(
           diagnostic(
             catalogFuzzyCandidateDiagnosticCodeValues.candidateGenerated,
@@ -290,7 +306,7 @@ export class ItotoriCatalogFuzzyCandidateGeneratorService implements ItotoriCata
   private async exactMatchedWorkIds(
     sourceFact: CatalogFuzzyCandidateSourceFact,
   ): Promise<string[]> {
-    const exactIds = sourceFact.externalIds ?? [];
+    const exactIds = authoritativeExactExternalIds(sourceFact);
     const workIds = new Set<string>();
     for (const externalId of exactIds) {
       const snapshot = await this.repository.getWorkByExternalId(
@@ -305,10 +321,68 @@ export class ItotoriCatalogFuzzyCandidateGeneratorService implements ItotoriCata
     }
     return Array.from(workIds).sort();
   }
+
+  private async provenanceMismatchDiagnostic(
+    sourceFact: CatalogFuzzyCandidateSourceFact,
+    targetWorkId: string,
+    generatorVersion: string,
+  ): Promise<CatalogFuzzyCandidateDiagnostic | null> {
+    if (sourceFact.sourceProvenanceId === undefined) {
+      return null;
+    }
+    const existing = (await this.repository.listCatalogCandidateMatches(this.actor)).find(
+      (candidate) =>
+        candidate.sourceCatalogSource === sourceFact.catalogSource &&
+        candidate.sourceId === sourceFact.sourceId &&
+        candidate.targetWorkId === targetWorkId &&
+        candidate.generatorVersion === generatorVersion,
+    );
+    if (
+      existing === undefined ||
+      existing.sourceProvenanceId === null ||
+      existing.sourceProvenanceId === sourceFact.sourceProvenanceId
+    ) {
+      return null;
+    }
+    return diagnostic(
+      catalogFuzzyCandidateDiagnosticCodeValues.provenanceMismatch,
+      "warning",
+      "Existing fuzzy candidate provenance differs from the current source fact; review is still required.",
+      "source_provenance_mismatch",
+      {
+        sourceId: sourceFact.sourceId,
+        candidateId: existing.candidateId,
+        field: "sourceProvenanceId",
+        metadata: {
+          existingSourceProvenanceId: existing.sourceProvenanceId,
+          sourceProvenanceId: sourceFact.sourceProvenanceId,
+          targetWorkId,
+        },
+      },
+    );
+  }
 }
 
-function normalizeRequest(request: CatalogFuzzyCandidateRequest): NormalizedRequest {
+function normalizeRequest(request: unknown): NormalizedRequest {
   const diagnostics: CatalogFuzzyCandidateDiagnostic[] = [];
+  if (!isRecord(request)) {
+    diagnostics.push(
+      diagnostic(
+        catalogFuzzyCandidateDiagnosticCodeValues.invalidRequest,
+        "error",
+        "Fuzzy candidate request must be a JSON object.",
+        "invalid_request_shape",
+      ),
+    );
+    return {
+      sourceFacts: [],
+      minScore: 650,
+      maxCandidatesPerSource: 3,
+      generatorVersion: catalogFuzzyCandidateGeneratorVersion,
+      diagnostics,
+    };
+  }
+
   if (
     request.schemaVersion !== undefined &&
     request.schemaVersion !== catalogFuzzyCandidateSchemaVersion
@@ -335,8 +409,16 @@ function normalizeRequest(request: CatalogFuzzyCandidateRequest): NormalizedRequ
       ),
     );
   }
-  const minScore = request.minScore ?? 650;
-  if (!Number.isInteger(minScore) || minScore < 0 || minScore > 1000) {
+  const generatorVersion = catalogFuzzyCandidateGeneratorVersion;
+  const rawMinScore = request.minScore;
+  const minScore = typeof rawMinScore === "number" ? rawMinScore : 650;
+  if (
+    rawMinScore !== undefined &&
+    (typeof rawMinScore !== "number" ||
+      !Number.isInteger(rawMinScore) ||
+      rawMinScore < 0 ||
+      rawMinScore > 1000)
+  ) {
     diagnostics.push(
       diagnostic(
         catalogFuzzyCandidateDiagnosticCodeValues.invalidRequest,
@@ -346,11 +428,15 @@ function normalizeRequest(request: CatalogFuzzyCandidateRequest): NormalizedRequ
       ),
     );
   }
-  const maxCandidatesPerSource = request.maxCandidatesPerSource ?? 3;
+  const rawMaxCandidatesPerSource = request.maxCandidatesPerSource;
+  const maxCandidatesPerSource =
+    typeof rawMaxCandidatesPerSource === "number" ? rawMaxCandidatesPerSource : 3;
   if (
-    !Number.isInteger(maxCandidatesPerSource) ||
-    maxCandidatesPerSource < 1 ||
-    maxCandidatesPerSource > 10
+    rawMaxCandidatesPerSource !== undefined &&
+    (typeof rawMaxCandidatesPerSource !== "number" ||
+      !Number.isInteger(rawMaxCandidatesPerSource) ||
+      rawMaxCandidatesPerSource < 1 ||
+      rawMaxCandidatesPerSource > 10)
   ) {
     diagnostics.push(
       diagnostic(
@@ -374,26 +460,44 @@ function normalizeRequest(request: CatalogFuzzyCandidateRequest): NormalizedRequ
 
   return {
     sourceFacts: Array.isArray(request.sourceFacts)
-      ? request.sourceFacts.filter((sourceFact, index) =>
-          isSourceFact(sourceFact, index, diagnostics),
-        )
+      ? request.sourceFacts
+          .map((sourceFact, index) => normalizeSourceFact(sourceFact, index, diagnostics))
+          .filter((sourceFact): sourceFact is CatalogFuzzyCandidateSourceFact => {
+            return sourceFact !== null;
+          })
       : [],
     minScore,
     maxCandidatesPerSource,
+    generatorVersion,
     diagnostics,
   };
 }
 
-function isSourceFact(
-  sourceFact: CatalogFuzzyCandidateSourceFact,
+function normalizeSourceFact(
+  sourceFact: unknown,
   index: number,
   diagnostics: CatalogFuzzyCandidateDiagnostic[],
-): boolean {
-  const sourceId = typeof sourceFact?.sourceId === "string" ? sourceFact.sourceId : undefined;
+): CatalogFuzzyCandidateSourceFact | null {
+  const sourceId =
+    isRecord(sourceFact) && typeof sourceFact.sourceId === "string"
+      ? sourceFact.sourceId
+      : undefined;
+  if (!isRecord(sourceFact)) {
+    diagnostics.push(
+      diagnostic(
+        catalogFuzzyCandidateDiagnosticCodeValues.invalidRequest,
+        "error",
+        `sourceFacts[${index}] must include catalogSource, sourceId, and title.`,
+        "invalid_source_fact",
+        sourceId === undefined ? { field: "sourceFacts" } : { sourceId, field: "sourceFacts" },
+      ),
+    );
+    return null;
+  }
+
+  const catalogSource = sourceFact.catalogSource;
   if (
-    typeof sourceFact !== "object" ||
-    sourceFact === null ||
-    !catalogSources.includes(sourceFact.catalogSource) ||
+    !isCatalogSource(catalogSource) ||
     typeof sourceFact.sourceId !== "string" ||
     sourceFact.sourceId.trim().length === 0 ||
     typeof sourceFact.title !== "string" ||
@@ -408,13 +512,15 @@ function isSourceFact(
         sourceId === undefined ? { field: "sourceFacts" } : { sourceId, field: "sourceFacts" },
       ),
     );
-    return false;
+    return null;
   }
+  const releaseYear = sourceFact.releaseYear;
   if (
-    sourceFact.releaseYear !== undefined &&
-    (!Number.isInteger(sourceFact.releaseYear) ||
-      sourceFact.releaseYear < 1970 ||
-      sourceFact.releaseYear > 2200)
+    releaseYear !== undefined &&
+    (typeof releaseYear !== "number" ||
+      !Number.isInteger(releaseYear) ||
+      releaseYear < 1970 ||
+      releaseYear > 2200)
   ) {
     diagnostics.push(
       diagnostic(
@@ -425,29 +531,145 @@ function isSourceFact(
         { sourceId: sourceFact.sourceId, field: "releaseYear" },
       ),
     );
-    return false;
+    return null;
   }
-  for (const [externalIndex, externalId] of (sourceFact.externalIds ?? []).entries()) {
-    if (
-      !catalogSources.includes(externalId.catalogSource) ||
-      typeof externalId.sourceId !== "string" ||
-      externalId.sourceId.trim().length === 0 ||
-      (externalId.externalIdKind !== undefined &&
-        !catalogExternalIdKinds.includes(externalId.externalIdKind))
-    ) {
+
+  let externalIds: CatalogFuzzyCandidateExternalId[] | undefined;
+  if (sourceFact.externalIds !== undefined) {
+    if (!Array.isArray(sourceFact.externalIds)) {
       diagnostics.push(
         diagnostic(
           catalogFuzzyCandidateDiagnosticCodeValues.invalidRequest,
           "error",
-          `sourceFacts[${index}].externalIds[${externalIndex}] is not a supported external ID.`,
-          "invalid_external_id",
+          `sourceFacts[${index}].externalIds must be an array when present.`,
+          "invalid_external_ids_shape",
           { sourceId: sourceFact.sourceId, field: "externalIds" },
         ),
       );
-      return false;
+      return null;
+    }
+    externalIds = [];
+    for (const [externalIndex, externalId] of sourceFact.externalIds.entries()) {
+      const normalized = normalizeExternalId(
+        externalId,
+        index,
+        externalIndex,
+        sourceFact.sourceId,
+        diagnostics,
+      );
+      if (normalized === null) {
+        return null;
+      }
+      externalIds.push(normalized);
     }
   }
-  return true;
+
+  return {
+    catalogSource,
+    sourceId: sourceFact.sourceId,
+    title: sourceFact.title,
+    ...(releaseYear === undefined ? {} : { releaseYear }),
+    ...(typeof sourceFact.sourceProvenanceId === "string" &&
+    sourceFact.sourceProvenanceId.trim().length > 0
+      ? { sourceProvenanceId: sourceFact.sourceProvenanceId }
+      : {}),
+    ...(externalIds === undefined ? {} : { externalIds }),
+  };
+}
+
+function normalizeExternalId(
+  externalId: unknown,
+  sourceFactIndex: number,
+  externalIndex: number,
+  sourceId: string,
+  diagnostics: CatalogFuzzyCandidateDiagnostic[],
+): CatalogFuzzyCandidateExternalId | null {
+  if (!isRecord(externalId)) {
+    diagnostics.push(
+      diagnostic(
+        catalogFuzzyCandidateDiagnosticCodeValues.invalidRequest,
+        "error",
+        `sourceFacts[${sourceFactIndex}].externalIds[${externalIndex}] is not a supported external ID.`,
+        "invalid_external_id",
+        { sourceId, field: "externalIds" },
+      ),
+    );
+    return null;
+  }
+  const catalogSource = externalId.catalogSource;
+  const externalIdKind = externalId.externalIdKind;
+  if (
+    !isCatalogSource(catalogSource) ||
+    typeof externalId.sourceId !== "string" ||
+    externalId.sourceId.trim().length === 0 ||
+    (externalIdKind !== undefined && !isCatalogExternalIdKind(externalIdKind))
+  ) {
+    diagnostics.push(
+      diagnostic(
+        catalogFuzzyCandidateDiagnosticCodeValues.invalidRequest,
+        "error",
+        `sourceFacts[${sourceFactIndex}].externalIds[${externalIndex}] is not a supported external ID.`,
+        "invalid_external_id",
+        { sourceId, field: "externalIds" },
+      ),
+    );
+    return null;
+  }
+  return {
+    catalogSource,
+    sourceId: externalId.sourceId,
+    ...(externalIdKind === undefined ? {} : { externalIdKind }),
+  };
+}
+
+function authoritativeExactExternalIds(
+  sourceFact: CatalogFuzzyCandidateSourceFact,
+): AuthoritativeExactExternalId[] {
+  const exactIds: AuthoritativeExactExternalId[] = [
+    {
+      catalogSource: sourceFact.catalogSource,
+      sourceId: sourceFact.sourceId,
+      externalIdKind: catalogExternalIdKindValues.sourceRecord,
+    },
+  ];
+  for (const externalId of sourceFact.externalIds ?? []) {
+    const externalIdKind = externalId.externalIdKind ?? catalogExternalIdKindValues.sourceRecord;
+    if (externalIdKind === catalogExternalIdKindValues.localDetection) {
+      continue;
+    }
+    exactIds.push({
+      catalogSource: externalId.catalogSource,
+      sourceId: externalId.sourceId,
+      externalIdKind,
+    });
+  }
+  return uniqueExactExternalIds(exactIds);
+}
+
+function uniqueExactExternalIds(
+  exactIds: AuthoritativeExactExternalId[],
+): AuthoritativeExactExternalId[] {
+  const seen = new Set<string>();
+  return exactIds.filter((externalId) => {
+    const key = `${externalId.catalogSource}:${externalId.sourceId}:${externalId.externalIdKind}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCatalogSource(value: unknown): value is CatalogSource {
+  return catalogSources.includes(value as CatalogSource);
+}
+
+function isCatalogExternalIdKind(value: unknown): value is CatalogExternalIdKind {
+  return catalogExternalIdKinds.includes(value as CatalogExternalIdKind);
 }
 
 function scoreTargets(

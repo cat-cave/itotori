@@ -20,6 +20,35 @@
         }
       ]
     },
+    "sourceRecordSkipsFuzzy": {
+      "schemaVersion": "catalog.fuzzy_candidates.v0.1",
+      "sourceFacts": [
+        {
+          "catalogSource": "dlsite",
+          "sourceId": "RJ349517",
+          "title": "DLsite-only fixture typo",
+          "releaseYear": 2022
+        }
+      ]
+    },
+    "localDetectionDoesNotSkipFuzzy": {
+      "schemaVersion": "catalog.fuzzy_candidates.v0.1",
+      "sourceFacts": [
+        {
+          "catalogSource": "egs",
+          "sourceId": "egs-moonlight-001",
+          "title": "Moonlight Refrain",
+          "releaseYear": 2021,
+          "externalIds": [
+            {
+              "catalogSource": "dlsite",
+              "sourceId": "RJ349517",
+              "externalIdKind": "local_detection"
+            }
+          ]
+        }
+      ]
+    },
     "highConfidenceFuzzy": {
       "schemaVersion": "catalog.fuzzy_candidates.v0.1",
       "sourceFacts": [
@@ -62,6 +91,18 @@
               "externalIdKind": "store_product"
             }
           ]
+        }
+      ]
+    },
+    "provenanceMismatch": {
+      "schemaVersion": "catalog.fuzzy_candidates.v0.1",
+      "sourceFacts": [
+        {
+          "catalogSource": "egs",
+          "sourceId": "egs-moonlight-001",
+          "title": "Moonlight Refrain",
+          "releaseYear": 2021,
+          "sourceProvenanceId": "prov-new"
         }
       ]
     },
