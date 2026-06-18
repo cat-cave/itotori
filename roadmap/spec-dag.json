@@ -662,27 +662,27 @@
       "projects": ["universal", "shared"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["UNIV-004", "UNIV-008"],
-      "summary": "Add mutation testing and property-style testing commands for the highest-risk TypeScript and Rust packages after the alpha readiness checks are stable.",
+      "summary": "Add explicit mutation and property-test commands for the highest-risk TypeScript and Rust packages.",
       "deliverables": [
-        "Stryker or equivalent TypeScript mutation-test command",
-        "Rust property-test examples",
-        "Coverage and mutation threshold configuration",
-        "CI opt-in recipe for slow quality gates"
+        "Vitest mutation-survivor guard in packages/localization-bridge-schema/test/schema.test.ts for schema, delta, protected-span, and permission invariants",
+        "proptest-based Rust property tests in crates/kaifuu-core for patch compatibility and protected-span preservation",
+        "Documented threshold constants in packages/localization-bridge-schema/test/mutation-thresholds.ts and crates/kaifuu-core/src/contracts.rs",
+        "Local quality recipes `pnpm exec vitest run packages/localization-bridge-schema/test/schema.test.ts` and `cargo test -p kaifuu-core property`"
       ],
       "acceptanceCriteria": [
         "Selected schema, delta, and protected-span logic has mutation or property coverage",
-        "Quality gates are meaningful and not prohibitively slow",
-        "Slow gates are scheduled intentionally and can be invoked locally",
+        "The Vitest mutation-survivor guard rejects at least one committed invalid fixture per selected invariant",
+        "Rust property tests run with fixed public seeds and bounded case counts documented in the test module",
         "Mutation/property failures produce actionable diagnostics"
       ],
       "verification": [
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:test"
+          "value": "pnpm exec vitest run packages/localization-bridge-schema/test/schema.test.ts"
         },
         {
           "type": "command",
-          "value": "cargo test --workspace"
+          "value": "cargo test -p kaifuu-core property"
         },
         {
           "type": "command",
@@ -735,25 +735,25 @@
       "id": "UNIV-013",
       "title": "Self-contained DB test and scale smoke recipe",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["universal", "itotori", "shared"],
       "parallelGroup": "tooling",
       "dependsOn": ["ITOTORI-002", "UNIV-010"],
-      "summary": "Add local and CI-friendly database test recipes, including a scale smoke gate, that provision a fresh database or skip with clear diagnostics when DATABASE_URL is unset.",
+      "summary": "Add alpha-required local and CI-friendly database test recipes using the existing Itotori DB package and scale harness, with deterministic skip artifacts when a database URL is unavailable.",
       "deliverables": [
-        "DB test recipe",
-        "Fresh database provisioning path",
-        "DATABASE_URL unset skip behavior",
-        "CI-safe scale smoke target wiring",
-        "Contributor test documentation"
+        "`just db-up`, `just db-wait`, `just db-migrate`, `just db-reset`, `just ci-itotori`, and `just itotori-scale-smoke` recipe contract",
+        "`DATABASE_URL` and `ITOTORI_SCALE_SCHEMA` environment-variable documentation for local and CI runs",
+        "Generated smoke summary at `.tmp/itotori-scale-harness/smoke/summary.json` from `scripts/itotori-scale-harness.mjs --profile smoke`",
+        "No-database skip report at `.tmp/itotori-db/no-database-skipped.json` with status, reason, command, checkedEnv, and timestamp fields",
+        "Contributor docs naming the disposable Postgres path and the exact commands that feed alpha readiness"
       ],
       "acceptanceCriteria": [
-        "The recipe can create or reset an isolated test database without relying on a developer's existing state",
-        "When DATABASE_URL is unset, the command exits with an explicit skip message instead of a misleading failure",
-        "Itotori repository and service tests can use the recipe consistently",
-        "The scale smoke harness runs under a CI-safe Itotori DB job or a separate required smoke target documented next to just ci",
-        "Docs name the expected local and CI environment variables without requiring secrets in committed files"
+        "`just db-up && just db-wait && just db-migrate && just db-reset` provisions or resets an isolated Postgres database using `DATABASE_URL` without depending on a developer's existing schema",
+        "When `DATABASE_URL` is unset for the DB-only verification path, the workflow exits successfully, prints `itotori db tests skipped: DATABASE_URL unset`, and writes `.tmp/itotori-db/no-database-skipped.json`",
+        "`pnpm --filter @itotori/db test` and `pnpm --filter @itotori/app test` run under `just ci-itotori` against the documented disposable database",
+        "`just itotori-scale-smoke` runs `node scripts/itotori-scale-harness.mjs --profile smoke` and produces `.tmp/itotori-scale-harness/smoke/summary.json` with profile, outputPath, budgetPassed, unitCount, batchCount, scheduledJobCount, and schemaKept",
+        "Docs name `DATABASE_URL`, `ITOTORI_SCALE_SCHEMA`, `COMPOSE_PROJECT_NAME`, and the no-secret public CI defaults"
       ],
       "verification": [
         {
@@ -761,16 +761,16 @@
           "value": "node scripts/spec-dag.mjs validate"
         },
         {
-          "type": "manual",
-          "value": "Run DB recipe with DATABASE_URL unset"
+          "type": "command",
+          "value": "just ci-itotori"
         },
         {
-          "type": "manual",
-          "value": "Run DB recipe against a disposable local database"
+          "type": "command",
+          "value": "just itotori-scale-smoke"
         },
         {
-          "type": "manual",
-          "value": "CI-safe scale smoke target dry-run"
+          "type": "command",
+          "value": "env -u DATABASE_URL pnpm --filter @itotori/db test"
         }
       ],
       "auditFocus": [
@@ -1419,8 +1419,8 @@
       "id": "SHARED-013",
       "title": "Permission-gate negative test matrix",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["shared", "itotori"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-008"],
@@ -1461,8 +1461,8 @@
       "id": "SHARED-014",
       "title": "Permission constant and migration drift guard",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["shared", "itotori"],
       "parallelGroup": "contracts",
       "dependsOn": ["SHARED-008"],
@@ -1586,8 +1586,8 @@
       "id": "SHARED-017",
       "title": "Benchmark QA evaluated-system validation",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["shared", "itotori"],
       "parallelGroup": "quality-foundation",
       "dependsOn": ["SHARED-006", "SHARED-009"],
@@ -1622,6 +1622,50 @@
         "Global QA coverage masking per-system gaps",
         "Mismatched evaluatedSystemId values",
         "Benchmark quality overclaiming"
+      ]
+    },
+    {
+      "id": "SHARED-025",
+      "title": "Alpha vertical proof manifest contract",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["shared", "itotori", "kaifuu", "utsushi", "suite"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["SHARED-010", "SHARED-012"],
+      "summary": "Define one alpha proof manifest that ties public fixture identity, engine profile, source revision, bridge units, runtime targets, patch/export/result artifacts, provider proof, benchmark outputs, and content hashes across the suite.",
+      "deliverables": [
+        "Alpha vertical proof manifest schema",
+        "fixtures/alpha/public-vertical-proof.manifest.json",
+        "Manifest validator command for fixture, engine, bridge, runtime, provider, benchmark, and artifact hashes",
+        "Cross-suite manifest hash regression tests"
+      ],
+      "acceptanceCriteria": [
+        "One manifest record ties fixture id, engine profile, source revision, bridge unit ids, runtime target ids, patch export ids, patch result ids, provider proof ids, benchmark ids, and content hashes.",
+        "Provider proof ids are non-empty and must reference a sanitized provider proof bundle emitted by ALPHA-008 or ITOTORI-116.",
+        "Manifest validation fails when any Kaifuu extraction or patch artifact, Itotori export or result artifact, Utsushi runtime evidence id, provider proof id, benchmark id, or hash is missing or mismatched.",
+        "Public fixtures contain only redistributable ids, hashes, and redacted artifact paths; raw prompts, responses, private asset paths, and source text are excluded.",
+        "Alpha vertical commands can emit and revalidate the manifest without live provider credentials or private corpus inputs."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Vertical proof artifacts that cannot be traced across projects",
+        "Hash or fixture identity drift between generated reports",
+        "Provider or runtime proof referenced only in prose",
+        "Private text or raw provider payload leakage"
       ]
     },
     {
@@ -2050,7 +2094,7 @@
       "target": "alpha",
       "projects": ["itotori", "kaifuu", "shared"],
       "parallelGroup": "catalog",
-      "dependsOn": ["CATALOG-000", "KAIFUU-034", "UNIV-005"],
+      "dependsOn": ["CATALOG-000", "KAIFUU-034", "UNIV-005", "UNIV-013"],
       "summary": "Turn the private local game library scan into a first-class local workflow that records owned corpus inventory, engine evidence, archive/install state, and redacted sidecars without committing private assets.",
       "deliverables": [
         "Local scan command or service",
@@ -2091,9 +2135,9 @@
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
-      "projects": ["itotori", "shared", "utsushi"],
+      "projects": ["itotori", "shared"],
       "parallelGroup": "catalog",
-      "dependsOn": ["CATALOG-002", "CATALOG-003", "CATALOG-011", "KAIFUU-053"],
+      "dependsOn": ["CATALOG-002", "CATALOG-003", "CATALOG-011", "KAIFUU-053", "UNIV-013"],
       "summary": "Expose readiness-aware benchmark seed queries from catalog, local corpus, alpha recorded importer evidence, engine readiness, and existing translation status so alpha benchmark and quality runs can select credible corpora.",
       "deliverables": [
         "Benchmark seed finder queries",
@@ -2174,7 +2218,7 @@
       "id": "CATALOG-005",
       "title": "Crawler job and checkpoint framework",
       "status": "planned",
-      "priority": "P2",
+      "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "catalog",
@@ -2684,17 +2728,20 @@
       "projects": ["kaifuu", "shared", "itotori"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-005", "SHARED-002", "KAIFUU-019", "SHARED-007"],
-      "summary": "Make Kaifuu patching emit structured success/failure reports suitable for Itotori ingestion, dashboarding, and triage.",
+      "summary": "Make Kaifuu patching emit the shared PatchResult v0.2 contract with typed failure categories, negative fixtures, and Itotori ingestion coverage.",
       "deliverables": [
-        "PatchResult v0.2",
-        "Failure taxonomy",
-        "Itotori ingest compatibility",
-        "Negative fixtures"
+        "`PatchResultV02` and `PatchFailureCategoryV02` exports in packages/localization-bridge-schema/src/index.ts",
+        "Rust contract validation for `patch-result-v0.2` in crates/kaifuu-core/src/contracts.rs",
+        "Failure categories `source_incompatible`, `patch_write_failed`, `protected_span_violation`, `asset_missing`, `adapter_unsupported`, and `output_hash_mismatch`",
+        "Negative fixtures `packages/localization-bridge-schema/test/examples/invalid/patch-result-v0.2-incompatible-status.json`, `patch-result-v0.2-missing-failure-category.json`, `patch-result-v0.2-output-hash-mismatch.json`, and `patch-result-v0.2-partial-write.json`",
+        "Generated report `fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json` with result id, patch export id, status, output hash, failures, failure categories, source compatibility, touched assets, partial write count, and diagnostics"
       ],
       "acceptanceCriteria": [
-        "Failures cite asset, unit, adapter, and cause",
-        "Partial patch attempts are visible",
-        "Successful reports include output hashes"
+        "`PatchResultV02` requires schemaVersion, patchResultId, patchExportId, status, failures, and typed failureCategories for non-passed reports",
+        "Failures cite asset id, bridge unit id, adapter id, command, category enum, diagnostic code, and cause",
+        "Partial patch attempts record attempted asset ids, written asset ids, skipped asset ids, and rollback or cleanup status",
+        "Successful reports include outputHash and touchedAssets, and incompatible-source reports include `PatchSourceCompatibilityReportV02` reason enums from `PATCH_INCOMPATIBILITY_REASONS_V02`",
+        "Itotori ingestion rejects missing failure categories, mismatched patch export ids, and output-hash drift with semantic diagnostics"
       ],
       "verification": [
         {
@@ -2706,16 +2753,8 @@
           "value": "pnpm --filter @itotori/localization-bridge-schema test"
         },
         {
-          "type": "manual",
-          "value": "Contract tests"
-        },
-        {
-          "type": "manual",
-          "value": "Kaifuu negative tests"
-        },
-        {
-          "type": "manual",
-          "value": "Itotori ingestion tests"
+          "type": "command",
+          "value": "just contract-validate"
         }
       ],
       "auditFocus": ["Untriageable errors", "Weak failure categories", "Silent partial success"]
@@ -2885,7 +2924,7 @@
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
-      "projects": ["kaifuu", "utsushi"],
+      "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-091", "KAIFUU-092", "KAIFUU-093", "KAIFUU-094"],
       "summary": "Integrate Siglus detector, key-boundary, parser-boundary, and redacted validation slices.",
@@ -3028,19 +3067,29 @@
         "Private-local encrypted manifest conventions",
         "Private-local triage command",
         "Aggregate readiness report schema",
-        "README-safe report example"
+        "README-safe report example",
+        "Deterministic redacted no-corpus artifact for absent private inputs"
       ],
       "acceptanceCriteria": [
         "Local manifests may record redacted key-profile ids, helper classes, proof hashes, detector results, aggregate counts, and command lines",
         "No raw keys, retail assets, extracted strings, screenshots, helper dumps, local paths, or sensitive filenames are written to committed paths",
         "Absence of fixtures/private-local never fails public CI or public fixture validation",
         "Private-local readiness reports can be cited publicly by aggregate/hash metadata",
-        "The workflow runs as an explicit local command that can scan one corpus or a corpus directory and emits only redacted aggregate readiness JSON"
+        "The workflow runs as an explicit local command that can scan one corpus or a corpus directory and emits only redacted aggregate readiness JSON",
+        "When private inputs are absent, the workflow writes `.tmp/kaifuu-private-local/no-corpus-skipped.json` with status `skipped`, reason `private_inputs_absent`, checked paths redacted to logical ids, command, and deterministic zero aggregate counts"
       ],
       "verification": [
         {
           "type": "command",
           "value": "node scripts/spec-dag.mjs validate"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run kaifuu:private-local-triage -- --no-corpus"
+        },
+        {
+          "type": "command",
+          "value": "test -s .tmp/kaifuu-private-local/no-corpus-skipped.json"
         },
         {
           "type": "manual",
@@ -3239,13 +3288,15 @@
         "Local key-hunting command",
         "Attempt planner by engine/capability",
         "Key validation result schema",
-        "Redacted local-only report renderer"
+        "Redacted local-only report renderer",
+        "No-corpus key-hunting skipped report"
       ],
       "acceptanceCriteria": [
         "The command scans one game or corpus directory and records attempted, skipped, succeeded, failed, and unsupported helper outcomes",
         "Validated keys are stored only as secret refs plus proof hashes and never written raw to reports, logs, or committed paths",
         "Public CI exercises the workflow through stub fixtures and never requires private corpora, Wine, Windows, or live network access",
-        "Private-local summaries can be cited by aggregate counts, profile ids, proof hashes, tool versions, and command lines"
+        "Private-local summaries can be cited by aggregate counts, profile ids, proof hashes, tool versions, and command lines",
+        "Absent private-local inputs emit `.tmp/kaifuu-private-local/key-hunt-no-corpus-skipped.json` with status `skipped`, reason `private_inputs_absent`, helper attempts as an empty array, and no raw local paths"
       ],
       "verification": [
         {
@@ -3259,6 +3310,14 @@
         {
           "type": "command",
           "value": "just check"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run kaifuu:key-hunt -- --no-corpus"
+        },
+        {
+          "type": "command",
+          "value": "test -s .tmp/kaifuu-private-local/key-hunt-no-corpus-skipped.json"
         },
         {
           "type": "manual",
@@ -3549,7 +3608,7 @@
       "id": "KAIFUU-074",
       "title": "Delta staging atomic no-clobber promotion",
       "status": "planned",
-      "priority": "P2",
+      "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
@@ -4016,12 +4075,14 @@
       "deliverables": [
         "Alpha encrypted-readiness evidence integration composed command path",
         "Alpha encrypted-readiness evidence integration fixture artifact bundle",
-        "Boundary regression assertions for Alpha encrypted-readiness evidence integration"
+        "Boundary regression assertions for Alpha encrypted-readiness evidence integration",
+        "Deterministic redacted skipped evidence artifact when private encrypted inputs are absent"
       ],
       "acceptanceCriteria": [
         "Alpha encrypted-readiness evidence integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
         "Alpha encrypted-readiness evidence integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
-        "Unsupported paths remain semantic diagnostics and do not become hidden success states"
+        "Unsupported paths remain semantic diagnostics and do not become hidden success states",
+        "If no private encrypted corpus is configured, alpha readiness consumes `.tmp/kaifuu-private-local/encrypted-readiness-no-corpus-skipped.json` with status `skipped`, reason `private_inputs_absent`, redacted corpus ids, zero aggregate counts, and no local paths"
       ],
       "verification": [
         {
@@ -4031,6 +4092,14 @@
         {
           "type": "command",
           "value": "just check"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run kaifuu:encrypted-readiness -- --no-corpus"
+        },
+        {
+          "type": "command",
+          "value": "test -s .tmp/kaifuu-private-local/encrypted-readiness-no-corpus-skipped.json"
         },
         {
           "type": "manual",
@@ -5015,15 +5084,16 @@
       "projects": ["kaifuu", "itotori"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-021", "SHARED-011"],
-      "summary": "Prototype OCR and text-region extraction for image/UI assets as structured evidence and drafting input without silently treating OCR as truth.",
+      "summary": "Prototype OCR and text-region extraction for image/UI assets through a public fixture command that emits structured evidence without treating OCR as truth.",
       "deliverables": [
-        "OCR prototype command or service",
-        "Text-region fixture output",
-        "Uncertainty finding fixtures",
-        "Asset provenance records"
+        "`cargo run -p kaifuu-cli -- asset-ocr fixtures/public/ocr-ui/title-card.png --output .tmp/kaifuu-ocr/title-card.text-regions.json` command contract",
+        "`TextRegionExtractionV01` output schema with assetId, sourceImagePath, imageHash, regions, text, confidence, bbox, languageHint, provenance, and findings fields",
+        "Public fixture images `fixtures/public/ocr-ui/title-card.png` and `fixtures/public/ocr-ui/menu-low-confidence.png`",
+        "Uncertainty finding fixture `fixtures/public/ocr-ui/expected/menu-low-confidence.text-regions.json`",
+        "Asset provenance records linked to SHARED-011 asset policy ids"
       ],
       "acceptanceCriteria": [
-        "Fixture images produce schema-valid text regions with provenance",
+        "The public fixture command produces schema-valid text regions with provenance and stable content hashes",
         "Uncertain OCR is represented as findings with source asset references",
         "OCR output does not overwrite source asset policy decisions",
         "The prototype can run on public fixtures without live credentials or private assets"
@@ -5031,11 +5101,11 @@
       "verification": [
         {
           "type": "command",
-          "value": "just check"
+          "value": "cargo run -p kaifuu-cli -- asset-ocr fixtures/public/ocr-ui/title-card.png --output .tmp/kaifuu-ocr/title-card.text-regions.json"
         },
         {
-          "type": "manual",
-          "value": "Asset OCR fixture review"
+          "type": "command",
+          "value": "just fixtures-validate"
         }
       ],
       "auditFocus": [
@@ -5498,7 +5568,7 @@
     {
       "id": "KAIFUU-046",
       "title": "Archive detection report semantics hardening",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -6797,24 +6867,25 @@
     },
     {
       "id": "ITOTORI-029",
-      "title": "Locale branch identity foundation",
+      "title": "Locale branch repository and migration drift regression",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "translation-loop",
-      "dependsOn": ["ITOTORI-002", "SHARED-001", "SHARED-008"],
-      "summary": "Make target locale branches first-class project state before drafting by defining branch identity, repository/service behavior, and multi-locale fixtures without bundling policy, draft, export, benchmark, or dashboard scope.",
+      "dependsOn": ["ITOTORI-002", "SHARED-001", "SHARED-008", "UNIV-013"],
+      "summary": "Protect existing target-locale branch schema with repository, API, and migration-drift regressions for multi-target locale branches before downstream draft and benchmark state depend on it.",
       "deliverables": [
-        "Locale branch tables and types",
-        "Locale branch repository and service methods",
-        "Multi-locale source-revision fixtures",
-        "JP-to-EN hardcoding regression tests"
+        "Locale branch repository regression tests for multiple target locales per source revision",
+        "Locale branch API/service fixture for non-JP-to-EN target pairs",
+        "Migration drift assertion for locale branch tables, indexes, and foreign keys",
+        "Branch identity query fixture independent of style, glossary, draft, export, and benchmark state"
       ],
       "acceptanceCriteria": [
-        "Multiple target locales can coexist for one source revision with stable locale branch ids",
-        "Repository and service APIs never infer JP-to-EN as the only localization direction",
-        "Locale branch identity can be queried independently of style guide, glossary, drafts, exports, or benchmark state"
+        "Multiple target locales can coexist for one source revision with stable locale branch ids through repository and API reads.",
+        "Repository and service APIs never infer JP-to-EN as the only localization direction.",
+        "Migration drift tests fail when locale branch tables, unique constraints, indexes, or foreign keys disappear or change incompatibly.",
+        "Locale branch identity can be queried independently of style guide, glossary, drafts, exports, or benchmark state."
       ],
       "verification": [
         {
@@ -6831,9 +6902,9 @@
         }
       ],
       "auditFocus": [
-        "Single-target assumptions",
-        "Locale branch identity leaks",
-        "Policy or draft scope creep"
+        "Single-target assumptions returning through repository APIs",
+        "Locale branch schema drift hidden by existing migrations",
+        "Policy or draft scope creep into branch identity tests"
       ]
     },
     {
@@ -7381,7 +7452,7 @@
       "id": "ITOTORI-044",
       "title": "Queue read authorization before API exposure",
       "status": "planned",
-      "priority": "P2",
+      "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "dashboard",
@@ -8035,39 +8106,37 @@
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "dashboard",
       "dependsOn": ["UTSUSHI-004", "ITOTORI-005"],
-      "summary": "Upgrade the runtime dashboard from hello-world status to reviewable traces, screenshots, branch points, validation findings, and comparison views.",
+      "summary": "Upgrade the runtime dashboard from hello-world status to a reviewable runtime evidence page backed by the shared v0.2 API schema.",
       "deliverables": [
-        "Runtime evidence views",
-        "Screenshot comparison view",
-        "Trace table",
-        "Finding links"
+        "Runtime evidence route `/runtime/evidence/:runtimeRunId` rendered by apps/runtime-web-review/src/dashboard.ts",
+        "Loader for `/api/runtime/v0.2/status` returning `RuntimeDashboardStatus` with runtimeRunId, runtimeReportId, runtimeStatus, fidelityTier, evidenceTier, textEventCount, frameCaptureCount, screenshotArtifactCount, recordingArtifactCount, validationFindingCount, traceEvents, findings, and artifacts",
+        "Trace table columns for event id, event kind, bridge unit id, source unit key, runtime target id, evidence tier, frame, text preview, and artifact links",
+        "Fixture states for passed E2 capture, failed text mismatch, unsupported runtime feature, missing capture, and stale artifact hash",
+        "Artifact link behavior that opens managed artifact-store URLs only, shows hashes and MIME types, and renders broken or redacted links as diagnostics"
       ],
       "acceptanceCriteria": [
-        "A reviewer can inspect where a line appeared",
-        "Screenshots and traces link to source units and drafts",
-        "Approximation/fidelity limits are visible",
+        "A reviewer can inspect where a line appeared through trace rows that link runtime event ids to bridge unit ids, source unit keys, and draft ids",
+        "Screenshots, recordings, and trace artifacts link to managed artifact records with content hashes and never embed private local paths",
+        "Approximation, fidelity, evidence tier, unsupported capability, and validation finding states are visible as structured fields in the table and detail pane",
+        "The dashboard fixtures cover passed E2 capture, failed text mismatch, unsupported runtime feature, missing capture, and stale artifact hash states",
         "MSW handlers are generated from or checked against real API response schemas"
       ],
       "verification": [
         {
           "type": "command",
-          "value": "pnpm --filter @itotori/app test"
+          "value": "pnpm --filter @itotori/runtime-web-review test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers"
         },
         {
           "type": "command",
           "value": "cargo test -p utsushi-core"
         },
         {
-          "type": "manual",
-          "value": "MSW dashboard tests"
-        },
-        {
-          "type": "manual",
-          "value": "Artifact route tests"
-        },
-        {
-          "type": "manual",
-          "value": "Manual review smoke"
+          "type": "command",
+          "value": "just ci-utsushi"
         }
       ],
       "auditFocus": [
@@ -8084,17 +8153,18 @@
       "target": "alpha",
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["UTSUSHI-050", "KAIFUU-007", "UTSUSHI-003"],
-      "summary": "Launch or instrument an MV/MZ fixture enough to observe runtime text and choice traces without owning screenshot, package, or feedback behavior.",
+      "dependsOn": ["UTSUSHI-050", "KAIFUU-007", "UTSUSHI-003", "UTSUSHI-056"],
+      "summary": "Launch and instrument an MV/MZ fixture enough to observe runtime text and choice traces through the shared observation envelope without owning screenshot, package, or feedback behavior.",
       "deliverables": [
-        "MV/MZ runtime trace probe",
-        "Text and choice fixture",
-        "Bridge-unit linkage report"
+        "MV/MZ runtime trace probe command",
+        "Text and choice observation fixture",
+        "Bridge-unit linkage report for source revision and runtime target ids"
       ],
       "acceptanceCriteria": [
-        "A public MV/MZ fixture emits observed text and choice runtime events",
-        "Trace evidence links back to bridge units and source revisions",
-        "Screenshot, review packaging, and feedback import remain separate slices"
+        "A public MV/MZ fixture emits observed text and choice runtime events through the UTSUSHI-056 envelope.",
+        "Trace evidence links back to bridge units, source revision, runtime target id, adapter id, and evidence tier.",
+        "Static fixture reads cannot satisfy the runtime trace probe.",
+        "Screenshot, review packaging, and feedback import remain separate slices."
       ],
       "verification": [
         {
@@ -8106,45 +8176,46 @@
           "value": "cargo test -p utsushi-cli"
         },
         {
-          "type": "manual",
-          "value": "Runtime adapter tests"
+          "type": "command",
+          "value": "pnpm exec vp run utsushi:mv-mz-trace-probe -- --fixture fixtures/public/utsushi-browser-smoke.manifest.json --output artifacts/utsushi/mv-mz-trace-probe.json"
         },
         {
-          "type": "manual",
-          "value": "Public fixture smoke"
+          "type": "command",
+          "value": "test -s artifacts/utsushi/mv-mz-trace-probe.json"
         },
         {
-          "type": "manual",
-          "value": "Itotori ingestion test"
+          "type": "command",
+          "value": "just schema"
         }
       ],
       "auditFocus": [
         "Runtime trace overclaim",
         "Bridge linkage gaps",
-        "Screenshot/package scope creep"
+        "Screenshot/package scope creep",
+        "Static reads mislabeled as launched runtime observation"
       ]
     },
     {
       "id": "UTSUSHI-007",
-      "title": "Ren'Py route and text probe",
+      "title": "Ren'Py runtime observation profile stub",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-001", "KAIFUU-008", "UTSUSHI-000", "UTSUSHI-002", "UTSUSHI-003"],
-      "summary": "Keep RenPy route and text probing as continuous expansion reference/runtime work now that RenPy is no longer an alpha Japanese opportunity driver.",
+      "summary": "Keep RenPy native or web runtime observation as continuous expansion by defining the minimal profile boundary for observed callbacks while leaving route replay and screen-language depth to dedicated nodes.",
       "deliverables": [
-        "Ren'Py runtime probe",
-        "Route fixtures",
-        "Evidence ingestion",
-        "Capability docs"
+        "Ren'Py observation profile fixture",
+        "Observed say/menu callback trace fixture",
+        "Runtime evidence tier and host capability diagnostics",
+        "Route replay and screen-language deferral markers"
       ],
       "acceptanceCriteria": [
-        "Menus and labels are traced",
-        "Evidence links to bridge units",
-        "Unsupported runtime capture is represented honestly",
-        "Evidence tier is visible wherever evidence is shown"
+        "The profile records observed say and menu callback evidence when host instrumentation exists.",
+        "Route planning, parser replay, rollback, and screen-language capture are marked as out of scope for this node and covered by UTSUSHI-040, UTSUSHI-041, and UTSUSHI-042.",
+        "Evidence links to bridge units when available and always includes evidence tier and runtime target metadata.",
+        "Unsupported native or web host capabilities return semantic diagnostics."
       ],
       "verification": [
         {
@@ -8156,41 +8227,54 @@
           "value": "pnpm exec vitest run apps/runtime-web-review/test/dashboard.test.ts"
         }
       ],
-      "auditFocus": ["RenPy over-weighting", "Route inference drift", "Runtime evidence overclaim"]
+      "auditFocus": [
+        "RenPy route replay mixed into runtime observation stub",
+        "Observed and inferred evidence conflated",
+        "Runtime evidence overclaim"
+      ]
     },
     {
       "id": "UTSUSHI-008",
-      "title": "KiriKiri/KAG trace probe",
+      "title": "KAG plaintext/extracted trace probe",
       "status": "planned",
       "priority": "P2",
       "target": "continuous",
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-001", "KAIFUU-009", "UTSUSHI-000", "UTSUSHI-002", "UTSUSHI-003"],
-      "summary": "Keep KAG trace probing as continuous expansion support for plaintext or already-extracted KiriKiri projects after XP3 readiness work lands.",
+      "summary": "Keep KAG trace probing as continuous expansion for plaintext or already-extracted KiriKiri/KAG scripts after XP3 readiness work lands, without claiming packed XP3 runtime support.",
       "deliverables": [
-        "KAG trace probe",
-        "Command fixtures",
-        "Evidence ingestion",
-        "Capability docs"
+        "`cargo run -p utsushi-cli -- trace-kag fixtures/public/kag-plaintext/main.ks --output .tmp/utsushi-kag/main.trace.json` command contract",
+        "`KagTraceArtifactV01` schema with traceId, fixtureId, sourceRevision, adapterId, runtimeTargetId, evidenceTier, commands, bridgeUnitRefs, diagnostics, and unsupportedCapabilities fields",
+        "Fixture files `fixtures/public/kag-plaintext/main.ks`, `fixtures/public/kag-plaintext/macros.ks`, and `fixtures/public/kag-plaintext/expected/main.trace.json`",
+        "Evidence tier fields for E0 static parse, E1 command replay, and unsupported packed-XP3 diagnostics",
+        "Diagnostics for unsupported packed XP3, encrypted script, full TJS execution, macro expansion gap, and missing bridge unit link"
       ],
       "acceptanceCriteria": [
-        "Trace order is useful for review",
-        "Speaker and branch metadata link back to bridge units",
-        "Unsupported rendering is clearly tiered",
-        "Evidence tier is visible wherever evidence is shown"
+        "Trace order records command index, label, macro id, jump target, branch id, speaker, and observed or replayed text for review",
+        "Speaker and branch metadata link back to bridge units through bridgeUnitRefs with source revision and source unit key",
+        "Unsupported rendering, packed XP3, encrypted script, full TJS, and macro expansion gaps produce typed diagnostics instead of passing trace rows",
+        "Evidence tier, capability class, runtime target id, and approximation tier are present on the trace artifact and dashboard ingestion rows"
       ],
       "verification": [
         {
           "type": "command",
-          "value": "cargo test -p utsushi-core"
+          "value": "cargo run -p utsushi-cli -- trace-kag fixtures/public/kag-plaintext/main.ks --output .tmp/utsushi-kag/main.trace.json"
         },
         {
           "type": "command",
-          "value": "pnpm exec vitest run apps/runtime-web-review/test/dashboard.test.ts"
+          "value": "cargo test -p utsushi-core kag"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/runtime-web-review test"
         }
       ],
-      "auditFocus": ["Plaintext KAG overclaim", "Command trace gaps", "Packed XP3 readiness bypass"]
+      "auditFocus": [
+        "Plaintext or extracted KAG support overstated as packed XP3 support",
+        "Command trace gaps",
+        "Packed XP3 readiness bypass"
+      ]
     },
     {
       "id": "UTSUSHI-009",
@@ -8258,7 +8342,7 @@
         },
         {
           "type": "command",
-          "value": "cargo test -p utsushi-rpgmaker-mv"
+          "value": "cargo test -p utsushi-cli"
         }
       ],
       "auditFocus": [
@@ -8443,7 +8527,7 @@
     {
       "id": "UTSUSHI-050",
       "title": "Browser and NW.js launch adapter",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -8687,23 +8771,23 @@
       "id": "UTSUSHI-056",
       "title": "Runtime observation hook protocol",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi", "shared"],
       "parallelGroup": "runtime-adapters",
-      "dependsOn": ["SHARED-005", "UTSUSHI-014", "UTSUSHI-021", "UTSUSHI-022"],
-      "summary": "Define and implement a shared observation event protocol so browser, native, and engine hooks emit comparable Utsushi evidence envelopes.",
+      "dependsOn": ["SHARED-005", "UTSUSHI-014"],
+      "summary": "Define and implement the alpha observation hook envelope so browser, NW-style, native, and engine hooks emit comparable Utsushi evidence events before MV/MZ proof runs.",
       "deliverables": [
-        "Observation event schema",
-        "Fixture browser hook",
-        "One engine hook migration",
-        "Redaction and evidence-tier tests"
+        "ObservationHookEvent schema for text, choice, branch, scene, frame, and error events",
+        "Bridge reference and source revision fields for observation envelopes",
+        "Evidence tier, environment, adapter id, runtime target id, and redaction metadata validators",
+        "Browser fixture hook emitting typed envelope examples"
       ],
       "acceptanceCriteria": [
-        "Typed observation events cover text, choice, branch, scene, frame, error, and bridge-unit linkage",
-        "A fixture browser hook and at least one engine hook use the same envelope",
-        "Events carry evidence tier, environment metadata, adapter id, and source bridge references where available",
-        "No raw local paths, secret refs, private corpus roots, or private asset names appear in public fixture output"
+        "Typed observation events cover text, choice, branch, scene, frame, and error payloads with event ids and timestamps.",
+        "Every event can carry bridge refs, source revision, runtime target id, adapter id, evidence tier, environment metadata, and redaction status.",
+        "Envelope validation rejects missing evidence tier, missing runtime target id, untyped error payloads, and unredacted local paths.",
+        "A fixture browser hook emits schema-valid events that UTSUSHI-006 and UTSUSHI-102 can consume."
       ],
       "verification": [
         {
@@ -8722,7 +8806,8 @@
       "auditFocus": [
         "Per-engine hook envelope drift",
         "Private evidence leakage",
-        "Evidence tier missing from observations"
+        "Evidence tier missing from observations",
+        "MV/MZ proof running before typed envelope exists"
       ]
     },
     {
@@ -9075,7 +9160,9 @@
         "CATALOG-003",
         "KAIFUU-052",
         "KAIFUU-053",
-        "CATALOG-007"
+        "CATALOG-007",
+        "UTSUSHI-102",
+        "SHARED-025"
       ],
       "summary": "Run the full Itotori/Kaifuu/Utsushi loop on a public or private-local RPG Maker MV/MZ full-surface fixture after inventory/readiness metadata is available, without relying on the synthetic fixture engine.",
       "deliverables": [
@@ -9174,7 +9261,16 @@
       "target": "alpha",
       "projects": ["suite", "itotori"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": ["ALPHA-001", "ITOTORI-026", "ITOTORI-027", "ALPHA-000", "ITOTORI-039"],
+      "dependsOn": [
+        "ALPHA-001",
+        "ITOTORI-026",
+        "ITOTORI-027",
+        "ALPHA-000",
+        "ITOTORI-039",
+        "SHARED-017",
+        "ITOTORI-113",
+        "SHARED-025"
+      ],
       "summary": "Run the alpha readiness benchmark comparing raw MTL, Itotori drafts, deterministic QA, LLM QA, cost, provider route evidence, and runtime evidence on public fixtures with optional private-local aggregate inputs.",
       "deliverables": [
         "Benchmark run artifacts",
@@ -9224,7 +9320,9 @@
         "KAIFUU-060",
         "CATALOG-004",
         "ALPHA-000",
-        "ALPHA-001"
+        "ALPHA-001",
+        "UTSUSHI-102",
+        "SHARED-025"
       ],
       "summary": "Implement a generated engine capability matrix that derives breadth/readiness evidence from adapter registries, readiness profiles, and fixture runs instead of hand-written claims.",
       "deliverables": [
@@ -9301,7 +9399,8 @@
         "UNIV-017",
         "ALPHA-007",
         "UNIV-016",
-        "ALPHA-008"
+        "ALPHA-008",
+        "UNIV-021"
       ],
       "summary": "Prepare the suite to start a first real localization project with executable install, docs, security, limitation, example, and readiness checks.",
       "deliverables": [
@@ -9317,7 +9416,8 @@
         "CI, hello-world workflows, benchmark smoke, and recorded or opted-in real-provider proof are required and green",
         "Docs frame the product as catalog, inventory, readiness, extraction, localization, patching, and validation rather than only translation",
         "The milestone is framed as readiness to start a real localization project, not as a terminal product release",
-        "Readiness docs are checked against generated capability and benchmark artifacts rather than hand-maintained claims"
+        "Readiness docs are checked against generated capability and benchmark artifacts rather than hand-maintained claims",
+        "The final alpha readiness checklist validates references to KAIFUU-042, ALPHA-006, ALPHA-007, ALPHA-008 or ITOTORI-116, UTSUSHI-102, SHARED-025, UNIV-013, SHARED-013, SHARED-014, and UNIV-021"
       ],
       "verification": [
         {
@@ -9407,7 +9507,7 @@
     {
       "id": "ITOTORI-055",
       "title": "Dashboard decision read model",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -10430,24 +10530,26 @@
     },
     {
       "id": "UTSUSHI-034",
-      "title": "Siglus siglus_rs VM adapter smoke",
+      "title": "Siglus Rust VM integration smoke",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-035", "UTSUSHI-023", "UTSUSHI-027"],
-      "summary": "Implement the first Siglus VM integration smoke using siglus_rs-inspired boundaries, key-reference redaction, and Utsushi runtime evidence contracts.",
+      "summary": "Implement the first Siglus Rust VM integration smoke using siglus_rs provenance notes, clean-room boundaries, key-reference redaction, and Utsushi runtime evidence contracts.",
       "deliverables": [
         "Siglus VM adapter crate skeleton",
+        "siglus_rs provenance and clean-room boundary notes",
         "Key-ref redaction fixture",
         "VM text trace smoke",
         "Implementation map for Siglus subsystems"
       ],
       "acceptanceCriteria": [
-        "The smoke consumes local-only key references without serializing raw key material",
-        "A synthetic or redistributable fixture emits text and VM-state evidence through Utsushi contracts",
-        "The implementation map names concrete Siglus subsystem follow-ups without claiming broad compatibility"
+        "The smoke consumes local-only key references without serializing raw key material.",
+        "A synthetic or redistributable fixture emits text and VM-state evidence through Utsushi contracts.",
+        "siglus_rs provenance, license review status, and clean-room implementation boundaries are recorded before adapter code copies concepts into Utsushi.",
+        "The implementation map names concrete Siglus subsystem follow-ups without claiming broad compatibility."
       ],
       "verification": [
         {
@@ -10466,7 +10568,7 @@
       "auditFocus": [
         "Raw key leakage",
         "Retail asset leakage",
-        "siglus_rs concepts copied without license/provenance review"
+        "siglus_rs provenance, license, or clean-room boundary gaps"
       ]
     },
     {
@@ -11072,6 +11174,45 @@
       ]
     },
     {
+      "id": "UNIV-021",
+      "title": "Spec-DAG implementability lint",
+      "status": "planned",
+      "priority": "P0",
+      "target": "alpha",
+      "projects": ["universal"],
+      "parallelGroup": "roadmap-infra",
+      "dependsOn": ["UNIV-016", "UNIV-017"],
+      "summary": "Add stricter semantic lint rules to the spec-DAG validator so alpha work is blocked when roadmap nodes are not implementable from named artifacts, commands, schemas, or services.",
+      "deliverables": [
+        "scripts/spec-dag.mjs implementability rule set",
+        "scripts/spec-dag-validator.test.mjs negative fixture cases for generic surface templates",
+        "Alpha-roadmap regression fixture covering command verification and integration artifact names"
+      ],
+      "acceptanceCriteria": [
+        "Validation fails when active nodes use generic deliverable or criterion templates that ask for unspecified owned surfaces instead of naming a concrete command, service, schema, file, or artifact.",
+        "Validation fails when active nodes are report-only or decision-only unless their status is cancelled.",
+        "Validation fails when integration or vertical nodes omit named artifacts, adapters, commands, schemas, or generated report paths.",
+        "Validation fails when P1 alpha nodes lack at least one command verification entry.",
+        "Validation fails when any roadmap field encodes scheduling duration, effort sizing, story points, or similar planning quantities."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag-validator.test.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Placeholder implementation text surviving roadmap review",
+        "Alpha blockers without runnable command verification",
+        "Integration specs without named artifacts or commands",
+        "Roadmap scheduling quantities hidden in text fields"
+      ]
+    },
+    {
       "id": "ITOTORI-062",
       "title": "Style guide persistence and version events",
       "status": "planned",
@@ -11079,32 +11220,38 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "policy",
-      "dependsOn": ["ITOTORI-004", "ITOTORI-029", "UNIV-016"],
+      "dependsOn": ["ITOTORI-004", "ITOTORI-029", "UNIV-016", "UNIV-013"],
       "summary": "Persist versioned target-locale style guide policy and emit change events before conversational UX exists.",
       "deliverables": [
-        "Style guide persistence and version events owned command, service, schema, or artifact surface",
-        "Fixture data for Style guide persistence and version events positive and negative paths",
-        "Regression assertions for Style guide persistence and version events behavior"
+        "style_guides and style_guide_versions repository methods keyed by localeBranchId",
+        "StyleGuideVersionChanged outbox event payload",
+        "Locale-branch style guide fixture with create, update, approve, and stale-version cases",
+        "Repository and service regression tests for version ordering and semantic validation"
       ],
       "acceptanceCriteria": [
-        "Style guide persistence and version events exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Repository writes persist style guide versions by project id, locale branch id, version id, author id, status, and content hash.",
+        "StyleGuideVersionChanged events include project id, locale branch id, previous version id, new version id, and source revision reference.",
+        "Stale approvals, missing locale branches, and malformed policy sections fail with semantic diagnostics.",
+        "Style guide reads never fall back to a global project policy when a locale branch policy is required."
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
         {
           "type": "command",
           "value": "pnpm exec vp run ts:test"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:typecheck"
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Style policy leaking across locale branches",
+        "Version events missing source revision context",
+        "Stale style guide approvals accepted"
       ]
     },
     {
@@ -11118,14 +11265,16 @@
       "dependsOn": ["ITOTORI-000", "ITOTORI-062", "UNIV-016"],
       "summary": "Define the structured style-guide conversation contract, validators, and fixture transcripts.",
       "deliverables": [
-        "Style-guide conversation contract and validators owned command, service, schema, or artifact surface",
-        "Fixture data for Style-guide conversation contract and validators positive and negative paths",
-        "Regression assertions for Style-guide conversation contract and validators behavior"
+        "StyleGuideConversationTurn schema and validator",
+        "StyleGuideProposal schema for tone, terminology, honorifics, formatting, and protected spans",
+        "Recorded public transcript fixtures for accepted, rejected, malformed, and conflicting proposals",
+        "Conversation-to-policy projection tests"
       ],
       "acceptanceCriteria": [
-        "Style-guide conversation contract and validators exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Conversation turns validate role, locale branch id, policy version id, proposal ids, citations, and redaction status.",
+        "Proposal validation rejects missing rationale, unsupported policy sections, conflicting edits, and unredacted private text.",
+        "Fixture transcripts project into deterministic style guide version drafts without requiring a live provider.",
+        "Malformed transcript diagnostics name the turn id, field, and validator rule."
       ],
       "verification": [
         {
@@ -11138,9 +11287,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Conversation text accepted without structured policy projection",
+        "Private examples leaking through transcript fixtures",
+        "Provider-specific transcripts encoded as the only valid path"
       ]
     },
     {
@@ -11190,32 +11339,38 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "dashboard",
-      "dependsOn": ["ITOTORI-005", "ITOTORI-063", "UNIV-016"],
+      "dependsOn": ["ITOTORI-005", "ITOTORI-063", "UNIV-016", "SHARED-013", "SHARED-014"],
       "summary": "Build the style-guide builder dashboard states around context, proposed policy, validation, and consequences.",
       "deliverables": [
-        "Style-guide builder dashboard UI owned command, service, schema, or artifact surface",
-        "Fixture data for Style-guide builder dashboard UI positive and negative paths",
-        "Regression assertions for Style-guide builder dashboard UI behavior"
+        "StyleGuideBuilder dashboard route and component states",
+        "loadStyleGuideContext action fixture for locale branch, current policy, proposal, validation, and consequences",
+        "Proposal validation and denial-state UI tests",
+        "Consequence preview snapshot for affected drafts, glossary entries, and exports"
       ],
       "acceptanceCriteria": [
-        "Style-guide builder dashboard UI exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "The dashboard loads style guide context by locale branch id and policy version id instead of project-global defaults.",
+        "Authorized users can review proposed policy, validation diagnostics, and consequence preview before approval.",
+        "Users without required permissions see denial states and cannot trigger proposal approval or mutation actions.",
+        "UI fixtures cover empty policy, validation error, conflicting proposal, approved version, and stale version states."
       ],
       "verification": [
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:test"
+          "value": "pnpm --filter @itotori/app test"
         },
         {
           "type": "command",
           "value": "pnpm exec vp run ts:typecheck"
+        },
+        {
+          "type": "command",
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Style builder mutating policy without permission checks",
+        "Locale branch context missing from dashboard state",
+        "Consequence preview hidden from reviewers"
       ]
     },
     {
@@ -11226,32 +11381,38 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "policy",
-      "dependsOn": ["ITOTORI-003", "ITOTORI-062", "UNIV-016"],
+      "dependsOn": ["ITOTORI-003", "ITOTORI-062", "UNIV-016", "SHARED-013", "SHARED-014"],
       "summary": "Wire style-guide approval into evented affected-work invalidation.",
       "deliverables": [
-        "Style-guide approval and invalidation events owned command, service, schema, or artifact surface",
-        "Fixture data for Style-guide approval and invalidation events positive and negative paths",
-        "Regression assertions for Style-guide approval and invalidation events behavior"
+        "approveStyleGuideVersion service command with permission and stale-version checks",
+        "AffectedWorkInvalidated event payload for drafts, QA findings, exports, and benchmarks",
+        "Outbox fixture covering approval, rejection, stale approval, and rollback cases",
+        "Invalidation fanout regression tests"
       ],
       "acceptanceCriteria": [
-        "Style-guide approval and invalidation events exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Approving a style guide version records approver id, locale branch id, prior version id, approved version id, and source revision boundary.",
+        "Approval emits affected-work invalidation events for drafts, QA findings, exports, and benchmark artifacts tied to the old policy version.",
+        "Stale version approvals, unauthorized approvals, and missing locale branch ids fail before events are written.",
+        "Outbox writes and policy state changes are atomic for approval and rollback paths."
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
         {
           "type": "command",
           "value": "pnpm exec vp run ts:test"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:typecheck"
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Style approval without affected-work invalidation",
+        "Outbox events emitted for failed approvals",
+        "Permission checks split between repository and API layers"
       ]
     },
     {
@@ -11265,29 +11426,35 @@
       "dependsOn": ["ITOTORI-008", "ITOTORI-062", "UNIV-016"],
       "summary": "Provide glossary context and review state for downstream decision queues.",
       "deliverables": [
-        "Glossary policy context and review service owned command, service, schema, or artifact surface",
-        "Fixture data for Glossary policy context and review service positive and negative paths",
-        "Regression assertions for Glossary policy context and review service behavior"
+        "GlossaryContext read service keyed by locale branch, term id, and source revision",
+        "GlossaryReviewItem schema for proposed, approved, rejected, and conflict states",
+        "Policy-aware glossary fixture with protected spans and term conflicts",
+        "Review-state repository tests for provenance and semantic diagnostics"
       ],
       "acceptanceCriteria": [
-        "Glossary policy context and review service exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Glossary context reads include locale branch id, source revision, style guide version id, term provenance, and protected-span references.",
+        "Review items distinguish proposed, approved, rejected, conflict, and stale-source states with stable ids.",
+        "Conflicting glossary proposals return semantic diagnostics without mutating approved term state.",
+        "Downstream reviewer queue fixtures can cite glossary review item ids and provenance fields."
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
         {
           "type": "command",
           "value": "pnpm exec vp run ts:test"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:typecheck"
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Glossary state detached from locale branch policy",
+        "Conflicts collapsed into silent overwrites",
+        "Review items without source provenance"
       ]
     },
     {
@@ -11298,32 +11465,38 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "translation-loop",
-      "dependsOn": ["ITOTORI-002", "ITOTORI-030", "UNIV-016"],
+      "dependsOn": ["ITOTORI-002", "ITOTORI-030", "UNIV-016", "UNIV-013"],
       "summary": "Implement exact indexed search documents and a typed search tool for agents and dashboard APIs.",
       "deliverables": [
-        "Exact search document table and tool v1 owned command, service, schema, or artifact surface",
-        "Fixture data for Exact search document table and tool v1 positive and negative paths",
-        "Regression assertions for Exact search document table and tool v1 behavior"
+        "search_documents migration with project, locale branch, source revision, unit, and artifact references",
+        "ExactSearchDocument repository methods for insert, refresh, and lookup",
+        "search.exact agent tool schema with typed filters and result provenance",
+        "Exact search fixtures for source text, draft text, glossary term, and runtime evidence rows"
       ],
       "acceptanceCriteria": [
-        "Exact search document table and tool v1 exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Search documents record stable ids, normalized exact terms, locale branch id, source revision, source artifact type, and source artifact id.",
+        "The search.exact tool returns typed results with provenance and never falls back to fuzzy matching.",
+        "Refresh jobs are idempotent for repeated bridge imports and locale branch updates.",
+        "Queries for missing project, missing locale branch, unsupported artifact type, or stale source revision return semantic diagnostics."
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
         {
           "type": "command",
           "value": "pnpm exec vp run ts:test"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:typecheck"
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Exact search silently becoming fuzzy search",
+        "Search rows without source artifact provenance",
+        "Index refresh duplicating documents"
       ]
     },
     {
@@ -11374,32 +11547,45 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "translation-loop",
-      "dependsOn": ["ITOTORI-018", "ITOTORI-058", "ITOTORI-034", "UNIV-016"],
+      "dependsOn": [
+        "ITOTORI-018",
+        "ITOTORI-058",
+        "ITOTORI-034",
+        "UNIV-016",
+        "UNIV-013",
+        "ITOTORI-029"
+      ],
       "summary": "Persist draft jobs, inputs, policy versions, context refs, locale branch, and retry state.",
       "deliverables": [
-        "Draft job schema and repository owned command, service, schema, or artifact surface",
-        "Fixture data for Draft job schema and repository positive and negative paths",
-        "Regression assertions for Draft job schema and repository behavior"
+        "draft_jobs and draft_job_attempts repository schema for locale branch, policy versions, context refs, and retry state",
+        "DraftJobInput schema with source unit ids, style guide version, glossary version, and protected-span refs",
+        "Repository fixtures for queued, running, succeeded, failed, retryable, and cancelled draft attempts",
+        "Migration drift tests for draft job foreign keys and retry-state constraints"
       ],
       "acceptanceCriteria": [
-        "Draft job schema and repository exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Draft jobs persist project id, locale branch id, source revision, source unit ids, policy version ids, context document ids, retry state, and status transitions.",
+        "Draft attempts record provider route refs when present without requiring live provider execution.",
+        "Invalid locale branch, stale source revision, missing policy version, and invalid retry transition cases fail with semantic diagnostics.",
+        "Draft job state can be queried independently of reviewer queue and export state."
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
         {
           "type": "command",
           "value": "pnpm exec vp run ts:test"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:typecheck"
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Draft jobs missing locale branch or policy version identity",
+        "Retry state encoded only in provider logs",
+        "Migration drift weakening draft job constraints"
       ]
     },
     {
@@ -11413,14 +11599,16 @@
       "dependsOn": ["ITOTORI-010", "ITOTORI-049", "ITOTORI-074", "UNIV-016"],
       "summary": "Invoke translation agents through guarded structured output and parse validated draft payloads.",
       "deliverables": [
-        "Structured translation invocation and parser owned command, service, schema, or artifact surface",
-        "Fixture data for Structured translation invocation and parser positive and negative paths",
-        "Regression assertions for Structured translation invocation and parser behavior"
+        "TranslationDraftOutput strict JSON schema",
+        "Structured translation invocation service with provider capability guard",
+        "Recorded public provider replay fixtures for valid, malformed, repairable, and fallback responses",
+        "Draft payload parser tests for protected spans, citations, and schema diagnostics"
       ],
       "acceptanceCriteria": [
-        "Structured translation invocation and parser exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Translation invocation checks provider structured-output capability before recorded or live execution.",
+        "Accepted draft payloads pass strict JSON schema validation and cite source unit ids, locale branch id, policy version ids, protected spans, and provenance refs.",
+        "Malformed or partial responses enter bounded repair handling without being persisted as accepted drafts.",
+        "Parser diagnostics name provider proof id, draft job attempt id, field path, and schema rule."
       ],
       "verification": [
         {
@@ -11430,12 +11618,16 @@
         {
           "type": "command",
           "value": "pnpm exec vp run ts:typecheck"
+        },
+        {
+          "type": "command",
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Provider output accepted without strict JSON validation",
+        "Protected-span references dropped from draft payloads",
+        "Repair loop persisting partial drafts"
       ]
     },
     {
@@ -11449,14 +11641,16 @@
       "dependsOn": ["ITOTORI-020", "ITOTORI-075", "UNIV-016"],
       "summary": "Validate protected spans and classify retryable draft failures before draft acceptance.",
       "deliverables": [
-        "Draft protected-span validation and retry policy owned command, service, schema, or artifact surface",
-        "Fixture data for Draft protected-span validation and retry policy positive and negative paths",
-        "Regression assertions for Draft protected-span validation and retry policy behavior"
+        "DraftProtectedSpanValidator service for source unit, markup, variable, and glossary spans",
+        "RetryPolicy classifier for repairable schema, protected-span, and provider failure classes",
+        "Fixture set for valid draft, span deletion, span movement, malformed markup, and non-retryable failures",
+        "Draft acceptance gate tests before repository write"
       ],
       "acceptanceCriteria": [
-        "Draft protected-span validation and retry policy exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Drafts that delete, alter, duplicate, or reorder protected spans fail before accepted draft persistence.",
+        "Retryable and non-retryable failures are classified with draft job attempt id, source unit id, field path, and remediation code.",
+        "Valid drafts preserve protected spans and glossary locks while allowing permitted translation text changes.",
+        "Repair attempts cannot exceed the retry policy attached to the draft job attempt."
       ],
       "verification": [
         {
@@ -11466,12 +11660,16 @@
         {
           "type": "command",
           "value": "pnpm exec vp run ts:typecheck"
+        },
+        {
+          "type": "command",
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Protected spans checked after draft acceptance",
+        "Retry classification missing field-level diagnostics",
+        "Repair policy allowing unbounded attempts"
       ]
     },
     {
@@ -11485,29 +11683,35 @@
       "dependsOn": ["ITOTORI-052", "ITOTORI-075", "UNIV-016"],
       "summary": "Record cost, provider, fallback, prompt, policy, and context provenance for each draft attempt.",
       "deliverables": [
-        "Draft cost and provenance recorder owned command, service, schema, or artifact surface",
-        "Fixture data for Draft cost and provenance recorder positive and negative paths",
-        "Regression assertions for Draft cost and provenance recorder behavior"
+        "DraftAttemptProviderLedger writer keyed by draft job attempt id and provider proof id",
+        "Fallback chain and retry metadata persistence fixture",
+        "Token, cost, latency, model, prompt preset, policy, and context provenance tests",
+        "Raw prompt and response redaction regression fixtures"
       ],
       "acceptanceCriteria": [
-        "Draft cost and provenance recorder exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Each draft attempt records provider, model, route, fallback chain, retry count, token estimate, cost estimate, latency, data policy flags, prompt preset id, and context refs.",
+        "Ledger writes are atomic with draft attempt terminal status updates.",
+        "Fallback or repair attempts retain parent attempt ids and terminal status metadata.",
+        "Committed draft provenance excludes raw prompts, raw responses, API keys, private corpus text, and private asset paths."
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
         {
           "type": "command",
           "value": "pnpm exec vp run ts:test"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:typecheck"
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Provider cost state split from draft attempts",
+        "Fallback chains lost during repair",
+        "Prompt or response leakage in provenance artifacts"
       ]
     },
     {
@@ -11521,14 +11725,16 @@
       "dependsOn": ["ITOTORI-010", "ITOTORI-049", "ITOTORI-020", "UNIV-016"],
       "summary": "Invoke LLM QA agents through guarded structured output and persist validated findings.",
       "deliverables": [
-        "Structured QA invocation and parser owned command, service, schema, or artifact surface",
-        "Fixture data for Structured QA invocation and parser positive and negative paths",
-        "Regression assertions for Structured QA invocation and parser behavior"
+        "StructuredQaFindingOutput strict JSON schema",
+        "QA invocation service with provider capability guard and recorded replay mode",
+        "QA finding persistence fixture for severity, category, source span, draft span, and evidence refs",
+        "Malformed QA response and fallback diagnostics tests"
       ],
       "acceptanceCriteria": [
-        "Structured QA invocation and parser exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "QA invocation checks structured-output capability before recorded or live execution.",
+        "Accepted QA findings pass strict JSON schema validation and cite draft id, source unit id, severity, category, span refs, evidence refs, and provider proof id.",
+        "Malformed QA responses are rejected or repaired within bounded retry policy before findings are persisted.",
+        "QA parser diagnostics name provider proof id, draft job attempt id, field path, and schema rule."
       ],
       "verification": [
         {
@@ -11538,12 +11744,16 @@
         {
           "type": "command",
           "value": "pnpm exec vp run ts:typecheck"
+        },
+        {
+          "type": "command",
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "QA findings accepted without schema validation",
+        "Findings detached from draft/source span evidence",
+        "Provider fallback hidden from QA provenance"
       ]
     },
     {
@@ -11561,33 +11771,43 @@
         "ITOTORI-067",
         "ITOTORI-033",
         "UTSUSHI-005",
-        "UNIV-016"
+        "UNIV-016",
+        "UNIV-013",
+        "SHARED-013",
+        "SHARED-014",
+        "ITOTORI-044"
       ],
       "summary": "Implement typed reviewer queue transitions for QA, style, glossary, feedback, and runtime evidence items.",
       "deliverables": [
-        "Reviewer queue action API and state machine owned command, service, schema, or artifact surface",
-        "Fixture data for Reviewer queue action API and state machine positive and negative paths",
-        "Regression assertions for Reviewer queue action API and state machine behavior"
+        "ReviewerQueueAction API service for approve, reject, requestRepair, updateGlossary, updateStyle, and importRuntimeFeedback actions",
+        "ReviewerQueueItem state machine schema with QA, style, glossary, feedback, and runtime evidence item kinds",
+        "Permission-gated action fixtures for allowed, denied, stale, and invalid-transition cases",
+        "Repository and API tests for state transition atomicity"
       ],
       "acceptanceCriteria": [
-        "Reviewer queue action API and state machine exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Every reviewer action checks the permission constants covered by SHARED-013 and SHARED-014 before mutating queue state.",
+        "State transitions record actor id, locale branch id, source revision, item kind, prior state, next state, and affected artifact ids.",
+        "Denied, stale, duplicate, and invalid-transition actions return semantic diagnostics without partial writes.",
+        "Runtime evidence actions preserve Utsushi evidence tier, observation event ids, and artifact hashes."
       ],
       "verification": [
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:test"
+          "value": "pnpm --filter @itotori/db test"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:typecheck"
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Reviewer queue mutation without permission checks",
+        "Invalid transitions leaving partial state",
+        "Runtime evidence feedback losing evidence tier"
       ]
     },
     {
@@ -11601,29 +11821,35 @@
       "dependsOn": ["ITOTORI-005", "ITOTORI-081", "UNIV-016"],
       "summary": "Build contextual detail views with source, draft, policy, findings, screenshots, comparisons, and rationale.",
       "deliverables": [
-        "Reviewer detail context and evidence UI owned command, service, schema, or artifact surface",
-        "Fixture data for Reviewer detail context and evidence UI positive and negative paths",
-        "Regression assertions for Reviewer detail context and evidence UI behavior"
+        "Reviewer detail route and data loader for source, draft, policy, glossary, QA findings, runtime evidence, and rationale",
+        "Evidence panel fixtures for text trace, screenshot artifact, benchmark finding, and provider proof refs",
+        "Denied and stale-detail UI tests",
+        "Comparison snapshot tests for source, draft, and approved patch output"
       ],
       "acceptanceCriteria": [
-        "Reviewer detail context and evidence UI exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Reviewer detail views load by reviewer queue item id and display source unit, draft, locale branch policy, findings, runtime evidence, and rationale refs from typed data.",
+        "Screenshot and runtime evidence panels show evidence tier, artifact hash, runtime target id, and observation event ids instead of raw local paths.",
+        "Users without read permission receive denial UI and no evidence payload.",
+        "Stale or missing evidence references produce visible diagnostics rather than empty panels."
       ],
       "verification": [
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:test"
+          "value": "pnpm --filter @itotori/app test"
         },
         {
           "type": "command",
           "value": "pnpm exec vp run ts:typecheck"
+        },
+        {
+          "type": "command",
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Reviewer UI fetching evidence outside permission gates",
+        "Runtime artifacts shown without hashes or evidence tier",
+        "Missing context hidden by empty dashboard sections"
       ]
     },
     {
@@ -11637,29 +11863,35 @@
       "dependsOn": ["ITOTORI-081", "ITOTORI-082", "UNIV-016"],
       "summary": "Add batch review actions with previewed rerun, policy, glossary, and export consequences.",
       "deliverables": [
-        "Batch action and consequence preview UX owned command, service, schema, or artifact surface",
-        "Fixture data for Batch action and consequence preview UX positive and negative paths",
-        "Regression assertions for Batch action and consequence preview UX behavior"
+        "Batch reviewer action command schema for selected queue item ids and action kind",
+        "Consequence preview service for rerun, policy, glossary, export, and benchmark impacts",
+        "Dashboard batch action fixtures for mixed allowed, denied, stale, and conflicting selections",
+        "Atomic batch mutation tests with per-item diagnostics"
       ],
       "acceptanceCriteria": [
-        "Batch action and consequence preview UX exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Batch preview lists every selected queue item, required permission, affected drafts, affected exports, rerun jobs, glossary terms, policy versions, and benchmark artifacts.",
+        "Batch execution fails closed for denied or stale items and returns per-item diagnostics without mutating unrelated selections.",
+        "Preview and execution share the same transition validator used by ITOTORI-081.",
+        "Dashboard fixtures cover empty selection, mixed item kinds, conflicting actions, and successful atomic batch execution."
       ],
       "verification": [
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:test"
+          "value": "pnpm --filter @itotori/app test"
         },
         {
           "type": "command",
           "value": "pnpm exec vp run ts:typecheck"
+        },
+        {
+          "type": "command",
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Batch actions bypassing single-action state machine",
+        "Consequence preview disagreeing with execution",
+        "Partial batch writes without item diagnostics"
       ]
     },
     {
@@ -11673,29 +11905,35 @@
       "dependsOn": ["ITOTORI-038", "ITOTORI-083", "UNIV-016"],
       "summary": "Wire reviewer actions to targeted repair and rerun jobs.",
       "deliverables": [
-        "Reviewer-triggered rerun wiring owned command, service, schema, or artifact surface",
-        "Fixture data for Reviewer-triggered rerun wiring positive and negative paths",
-        "Regression assertions for Reviewer-triggered rerun wiring behavior"
+        "ReviewerRepairRerun scheduler mapping queue actions to targeted draft, QA, export, and runtime validation jobs",
+        "Rerun job payload schema with affected artifact ids and policy/glossary versions",
+        "Fixtures for single-item repair, batch repair, policy invalidation, and runtime feedback rerun",
+        "Idempotent rerun enqueue tests"
       ],
       "acceptanceCriteria": [
-        "Reviewer-triggered rerun wiring exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Reviewer actions enqueue targeted rerun jobs with project id, locale branch id, source revision, affected unit ids, artifact ids, policy versions, and reason codes.",
+        "Repeated reviewer actions do not duplicate equivalent pending rerun jobs.",
+        "Rerun scheduling preserves dependencies between draft repair, QA replay, export regeneration, and runtime validation.",
+        "Invalid or unauthorized rerun requests fail before job enqueue."
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
         {
           "type": "command",
           "value": "pnpm exec vp run ts:test"
         },
         {
           "type": "command",
-          "value": "pnpm exec vp run ts:typecheck"
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Reviewer reruns scheduled as whole-project retries",
+        "Duplicate rerun jobs from repeated actions",
+        "Runtime feedback not represented in repair jobs"
       ]
     },
     {
@@ -11706,7 +11944,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "benchmarks",
-      "dependsOn": ["SHARED-006", "SHARED-009", "CATALOG-004"],
+      "dependsOn": ["SHARED-006", "SHARED-009", "CATALOG-004", "UNIV-013"],
       "summary": "Persist benchmark corpus selection, run parameters, target locale, capability filters, and provenance for repeatable benchmark runs.",
       "deliverables": [
         "Benchmark set manifest schema",
@@ -11782,7 +12020,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "benchmarks",
-      "dependsOn": ["ITOTORI-021", "ITOTORI-090"],
+      "dependsOn": ["ITOTORI-021", "ITOTORI-090", "SHARED-017"],
       "summary": "Evaluate QA agents against seeded findings, false positives, false negatives, and severity calibration using recorded model outputs and fixture truth data.",
       "deliverables": [
         "QA-agent evaluation result schema",
@@ -11820,7 +12058,7 @@
       "target": "alpha",
       "projects": ["itotori"],
       "parallelGroup": "benchmarks",
-      "dependsOn": ["ITOTORI-052", "ITOTORI-091"],
+      "dependsOn": ["ITOTORI-052", "ITOTORI-091", "SHARED-017", "ITOTORI-113"],
       "summary": "Render benchmark cost, quality, provider, fallback, and QA accuracy reports from structured benchmark result and provider ledger data.",
       "deliverables": [
         "Cost report renderer",
@@ -11930,17 +12168,26 @@
       "target": "alpha",
       "projects": ["itotori", "suite"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": ["ITOTORI-084", "ITOTORI-025", "ITOTORI-040", "ITOTORI-042", "UNIV-016"],
+      "dependsOn": [
+        "ITOTORI-084",
+        "ITOTORI-025",
+        "ITOTORI-040",
+        "ITOTORI-042",
+        "UNIV-016",
+        "SHARED-025"
+      ],
       "summary": "Implement the Itotori public fixture iteration command across import, draft, QA, review, export, feedback, and rerun state.",
       "deliverables": [
-        "Itotori fixture iteration command owned command, service, schema, or artifact surface",
-        "Fixture data for Itotori fixture iteration command positive and negative paths",
-        "Regression assertions for Itotori fixture iteration command behavior"
+        "pnpm exec vp run itotori:fixture-iteration command contract",
+        "FixtureIterationResult artifact schema for import, draft, QA, review, export, feedback, and rerun stages",
+        "Public fixture bundle for successful iteration, QA rejection, runtime feedback, and rerun repair paths",
+        "Alpha proof manifest emission for Itotori stage artifact ids and hashes"
       ],
       "acceptanceCriteria": [
-        "Itotori fixture iteration command exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "The fixture iteration command runs public recorded inputs through import, draft, QA, reviewer action, export, feedback import, targeted rerun, and final result artifacts.",
+        "Each stage emits schema-valid artifact ids, locale branch id, source revision, provider proof ids when present, and content hashes for SHARED-025.",
+        "Unsupported or negative paths return semantic diagnostics with stage id, artifact id, and remediation code.",
+        "The command does not require private local assets, live provider credentials, raw prompts, or raw provider responses."
       ],
       "verification": [
         {
@@ -11950,12 +12197,16 @@
         {
           "type": "command",
           "value": "pnpm exec vp run ts:typecheck"
+        },
+        {
+          "type": "command",
+          "value": "just check"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Fixture iteration skipping reviewer or feedback states",
+        "Stage artifacts missing hashes or manifest ids",
+        "Recorded public run depending on private assets or live providers"
       ]
     },
     {
@@ -11966,17 +12217,28 @@
       "target": "alpha",
       "projects": ["suite", "itotori", "kaifuu", "utsushi"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": ["ITOTORI-095", "KAIFUU-010", "UTSUSHI-006", "UTSUSHI-011", "UNIV-016"],
-      "summary": "Run the public fixture vertical across Itotori, Kaifuu, and Utsushi.",
+      "dependsOn": [
+        "ITOTORI-095",
+        "KAIFUU-010",
+        "UTSUSHI-006",
+        "UTSUSHI-011",
+        "UTSUSHI-102",
+        "UNIV-016",
+        "SHARED-025",
+        "ALPHA-008"
+      ],
+      "summary": "Run the public fixture vertical command across Itotori, Kaifuu, and Utsushi using named patch, runtime, provider, benchmark, and alpha proof manifest artifacts.",
       "deliverables": [
-        "Suite public fixture vertical run owned command, service, schema, or artifact surface",
-        "Fixture data for Suite public fixture vertical run positive and negative paths",
-        "Regression assertions for Suite public fixture vertical run behavior"
+        "pnpm exec vp run alpha:public-fixture command contract",
+        "Public fixture vertical manifest tying bridge, patch, runtime, provider, benchmark, and result artifact ids",
+        "Regression fixtures for success, unsupported runtime, patch failure, provider fallback, and rerun repair paths"
       ],
       "acceptanceCriteria": [
-        "Suite public fixture vertical run exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "The public fixture command composes Itotori fixture iteration, Kaifuu patch result, Utsushi runtime observation, provider proof, benchmark report, and SHARED-025 manifest artifacts.",
+        "Every emitted artifact is schema-valid, hash-addressed, and linked to the same fixture id and source revision.",
+        "The SHARED-025 manifest includes a non-empty provider proof id from the sanitized ALPHA-008 proof bundle.",
+        "Unsupported runtime, patch failure, provider fallback, and rerun repair paths return semantic diagnostics instead of prose-only reports.",
+        "Public validation uses fixtures or recorded provider data and never requires private local assets."
       ],
       "verification": [
         {
@@ -11986,11 +12248,31 @@
         {
           "type": "command",
           "value": "pnpm exec vp run ts:typecheck"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run alpha:public-fixture"
+        },
+        {
+          "type": "command",
+          "value": "test -s artifacts/alpha/public-fixture/runtime-observation-proof.json"
+        },
+        {
+          "type": "command",
+          "value": "test -s artifacts/alpha/public-fixture/provider-proof.json"
+        },
+        {
+          "type": "command",
+          "value": "test -s artifacts/alpha/public-fixture/benchmark-report.json"
+        },
+        {
+          "type": "command",
+          "value": "test -s artifacts/alpha/public-fixture/shared-025-manifest-linkage.json"
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
+        "Vertical run artifacts not tied by manifest ids",
+        "Integration command hiding unsupported paths",
         "Dependency bypass of prerequisite slices"
       ]
     },
@@ -12002,7 +12284,7 @@
       "target": "alpha",
       "projects": ["suite", "itotori"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": ["ITOTORI-039", "ITOTORI-052", "ITOTORI-100"],
+      "dependsOn": ["ITOTORI-039", "ITOTORI-052", "ITOTORI-100", "ITOTORI-116", "SHARED-025"],
       "summary": "Generate a sanitized proof bundle showing an opted-in live provider route, ledger cost metadata, fallback behavior, and structured-output evidence without exposing prompts or private corpus text.",
       "deliverables": [
         "Sanitized provider proof command",
@@ -12036,7 +12318,7 @@
     {
       "id": "CATALOG-008",
       "title": "Exact external-id linker",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -12044,14 +12326,14 @@
       "dependsOn": ["CATALOG-000", "UNIV-016"],
       "summary": "Implement deterministic external-id linking without fuzzy matching or automatic merge behavior.",
       "deliverables": [
-        "Exact external-id linker owned command, service, schema, or artifact surface",
-        "Fixture data for Exact external-id linker positive and negative paths",
-        "Regression assertions for Exact external-id linker behavior"
+        "catalog:exact-link recorded-fixture command",
+        "External-id link table and exactLinkCatalogRecords read model",
+        "Exact-link fixtures for matched, missing, duplicate, and source-conflict cases"
       ],
       "acceptanceCriteria": [
-        "Exact external-id linker exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Exact source ids link deterministically to catalog records without fuzzy matching or automatic merge behavior.",
+        "Missing ids, duplicate ids, and source-conflict cases return semantic diagnostics with source id, catalog id, and reason code.",
+        "Public validation uses fixtures or recorded data, not private local assets."
       ],
       "verification": [
         {
@@ -12064,9 +12346,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Exact linking silently falling back to fuzzy matching",
+        "External-id provenance lost during linking",
+        "Source conflicts mutating catalog records without review"
       ]
     },
     {
@@ -12078,16 +12360,19 @@
       "projects": ["itotori", "shared"],
       "parallelGroup": "catalog",
       "dependsOn": ["CATALOG-008", "UNIV-016"],
-      "summary": "Generate reviewable fuzzy catalog candidates while preventing silent merge decisions.",
+      "summary": "Generate reviewable fuzzy catalog candidates through a command and read model while preserving exact-link behavior and preventing silent merges.",
       "deliverables": [
-        "Fuzzy candidate generator with no auto-merge owned command, service, schema, or artifact surface",
-        "Fixture data for Fuzzy candidate generator with no auto-merge positive and negative paths",
-        "Regression assertions for Fuzzy candidate generator with no auto-merge behavior"
+        "catalog:fuzzy-candidates recorded-fixture command",
+        "catalog_candidate_matches table and catalogCandidateMatches read model",
+        "Exact-match, fuzzy-candidate, and no-auto-merge fixture set",
+        "Candidate diagnostics for conflict, low-confidence, duplicate-source, and provenance-mismatch cases"
       ],
       "acceptanceCriteria": [
-        "Fuzzy candidate generator with no auto-merge exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "The fuzzy candidate command reads catalog records and source facts, then emits candidate rows with source id, target catalog id, score, matched fields, provenance, and diagnostic status.",
+        "Exact external-id matches continue through CATALOG-008 without creating fuzzy review rows.",
+        "Fuzzy matches never mutate canonical catalog records or merge candidates automatically.",
+        "Fixtures cover exact match, high-confidence fuzzy candidate, low-confidence no-candidate, conflicting source ids, and duplicate candidate cases.",
+        "Diagnostics name the source id, candidate id, field, score, and reason code needed for reviewer triage."
       ],
       "verification": [
         {
@@ -12100,9 +12385,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Fuzzy matching silently merging catalog identities",
+        "Candidate rows without provenance or scores",
+        "Exact-link behavior regressing through fuzzy paths"
       ]
     },
     {
@@ -12114,16 +12399,17 @@
       "projects": ["itotori", "shared"],
       "parallelGroup": "catalog",
       "dependsOn": ["CATALOG-009", "SHARED-007", "UNIV-016"],
-      "summary": "Expose catalog conflicts through a provenance-preserving review read model.",
+      "summary": "Expose catalog identity conflicts through a provenance-preserving review read model that consumes fuzzy candidate rows and exact-link facts.",
       "deliverables": [
-        "Catalog conflict review read model owned command, service, schema, or artifact surface",
-        "Fixture data for Catalog conflict review read model positive and negative paths",
-        "Regression assertions for Catalog conflict review read model behavior"
+        "catalogConflictReview read model with source ids, candidate ids, provenance, score, and conflict reason fields",
+        "Conflict fixture set for duplicate external ids, fuzzy collision, source disagreement, and resolved conflict states",
+        "Review API tests for filtering by source, severity, status, and catalog record id"
       ],
       "acceptanceCriteria": [
-        "Catalog conflict review read model exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "The read model returns conflict rows with stable ids, involved source ids, candidate catalog ids, exact-link refs, fuzzy scores, provenance, status, and reason codes.",
+        "Resolved conflicts remain auditable with reviewer id, resolution action, timestamp, and prior candidate ids.",
+        "Duplicate external id, fuzzy collision, source disagreement, and stale candidate fixtures produce distinct diagnostics.",
+        "The read model cannot mutate canonical catalog identity records."
       ],
       "verification": [
         {
@@ -12136,9 +12422,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Conflict review losing source provenance",
+        "Read model mutating canonical catalog state",
+        "Fuzzy and exact conflicts collapsed into one opaque status"
       ]
     },
     {
@@ -12149,7 +12435,7 @@
       "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "catalog",
-      "dependsOn": ["CATALOG-005", "CATALOG-000"],
+      "dependsOn": ["CATALOG-005", "CATALOG-000", "UNIV-013"],
       "summary": "Implement the alpha external-source importer slice with VNDB dump and Epic Games Store recorded-response fixtures on the crawler framework without requiring live network access in CI.",
       "deliverables": [
         "VNDB recorded importer",
@@ -12276,14 +12562,15 @@
       "dependsOn": ["KAIFUU-003", "KAIFUU-019", "KAIFUU-052", "UNIV-016"],
       "summary": "Implement shared byte-span, source-range, and offset-map primitives.",
       "deliverables": [
-        "Binary byte-span and offset-map primitives owned command, service, schema, or artifact surface",
-        "Fixture data for Binary byte-span and offset-map primitives positive and negative paths",
-        "Regression assertions for Binary byte-span and offset-map primitives behavior"
+        "ByteSpan, SourceRange, and OffsetMap types in kaifuu-core",
+        "OffsetMap builder fixtures for UTF-8, Shift-JIS, binary table, and sliced-buffer cases",
+        "CLI diagnostics for invalid offsets, overlapping spans, and out-of-range source ranges"
       ],
       "acceptanceCriteria": [
-        "Binary byte-span and offset-map primitives exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "ByteSpan and SourceRange values validate start, end, encoding, source file id, and source revision fields.",
+        "OffsetMap fixtures translate between source bytes, decoded text ranges, and patched byte ranges without lossy rounding.",
+        "Overlapping spans, invalid ranges, and missing source revision ids fail with semantic diagnostics.",
+        "Kaifuu adapters can reuse the primitives without engine-specific span structs."
       ],
       "verification": [
         {
@@ -12296,9 +12583,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Binary offsets represented as unchecked numbers",
+        "Decoded text ranges detached from source byte ranges",
+        "Engine adapters defining incompatible span models"
       ]
     },
     {
@@ -12312,14 +12599,15 @@
       "dependsOn": ["KAIFUU-081", "KAIFUU-004", "UNIV-016"],
       "summary": "Add encoded string-slot preflight for byte budgets, encodings, terminators, and protected spans.",
       "deliverables": [
-        "Encoded string-slot byte-budget preflight owned command, service, schema, or artifact surface",
-        "Fixture data for Encoded string-slot byte-budget preflight positive and negative paths",
-        "Regression assertions for Encoded string-slot byte-budget preflight behavior"
+        "EncodedStringSlot preflight validator for byte budget, encoding, terminator, and protected span rules",
+        "Fixture set for UTF-8, Shift-JIS, null-terminated, fixed-width, and protected-token slots",
+        "Preflight diagnostics for overflow, invalid encoding, terminator loss, and protected span mutation"
       ],
       "acceptanceCriteria": [
-        "Encoded string-slot byte-budget preflight exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Preflight validates encoded byte length, terminator preservation, protected spans, and codec compatibility before patch writes.",
+        "Overflow, invalid character, missing terminator, and protected span mutation cases fail with slot id, byte range, and remediation code.",
+        "Valid fixtures prove byte-budget checks for UTF-8 and Shift-JIS slots with fixed and null-terminated layouts.",
+        "The CLI can report preflight failures without mutating output files."
       ],
       "verification": [
         {
@@ -12332,9 +12620,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "String slots patched before byte-budget validation",
+        "Encoding failures reported without slot ids",
+        "Protected tokens corrupted during preflight"
       ]
     },
     {
@@ -12348,14 +12636,15 @@
       "dependsOn": ["KAIFUU-082", "UNIV-016"],
       "summary": "Implement string-reference relocation and table rebuild fixtures.",
       "deliverables": [
-        "String-reference relocation and rebuild fixtures owned command, service, schema, or artifact surface",
-        "Fixture data for String-reference relocation and rebuild fixtures positive and negative paths",
-        "Regression assertions for String-reference relocation and rebuild fixtures behavior"
+        "String reference relocation planner for pointer table and index table fixtures",
+        "Rebuild fixture set for same-size, expanded, shortened, and shared-string slots",
+        "Relocation diagnostics for unresolved references, overlapping writes, and unsupported pointer formats"
       ],
       "acceptanceCriteria": [
-        "String-reference relocation and rebuild fixtures exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "The planner emits old byte range, new byte range, reference id, relocation kind, and output hash inputs for each relocated string.",
+        "Pointer table, index table, shared string, expanded string, and shortened string fixtures rebuild deterministically.",
+        "Unsupported pointer formats, overlapping writes, and unresolved references fail before output promotion.",
+        "Relocation reports compose with KAIFUU-082 preflight diagnostics."
       ],
       "verification": [
         {
@@ -12368,9 +12657,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Relocation writes without pointer provenance",
+        "Shared strings duplicated silently",
+        "Unsupported pointer formats treated as patchable"
       ]
     },
     {
@@ -12384,14 +12673,15 @@
       "dependsOn": ["KAIFUU-083", "KAIFUU-010", "UNIV-016"],
       "summary": "Provide the binary patch harness that fails before irreversible writes.",
       "deliverables": [
-        "Binary patch rollback and no-write preflight harness owned command, service, schema, or artifact surface",
-        "Fixture data for Binary patch rollback and no-write preflight harness positive and negative paths",
-        "Regression assertions for Binary patch rollback and no-write preflight harness behavior"
+        "Binary patch transaction harness with preflight, staged write, verify, promote, and rollback states",
+        "No-write preflight fixture for byte-budget, relocation, hash, and unsupported-transform failures",
+        "Rollback tests for failed verification, failed promotion, and cancelled patch runs"
       ],
       "acceptanceCriteria": [
-        "Binary patch rollback and no-write preflight harness exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Patch transactions run all byte-budget, relocation, source-hash, output-hash, and transform support checks before irreversible writes.",
+        "Failed preflight leaves source and output paths untouched and emits a PatchResult failure with asset, unit, adapter, and cause.",
+        "Failed staged verification or promotion rolls back staged files and preserves the previous output path.",
+        "Successful transactions emit output hashes and staged-to-final promotion evidence for KAIFUU-010."
       ],
       "verification": [
         {
@@ -12404,9 +12694,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Binary patch writes before preflight completes",
+        "Rollback missing failed-promotion coverage",
+        "PatchResult not tied to transaction states"
       ]
     },
     {
@@ -12458,14 +12748,15 @@
       "dependsOn": ["KAIFUU-085", "UNIV-016"],
       "summary": "Implement a helper registry, capability model, and fixture-only helper stub.",
       "deliverables": [
-        "Helper registry capability model and fixture stub owned command, service, schema, or artifact surface",
-        "Fixture data for Helper registry capability model and fixture stub positive and negative paths",
-        "Regression assertions for Helper registry capability model and fixture stub behavior"
+        "Helper registry schema with helper id, version, capabilities, input schema id, output schema id, redaction class, and execution policy fields",
+        "Fixture-only helper registry entry and stub executable adapter",
+        "Registry validation fixtures for valid helper, missing capability, bad schema id, and unsupported redaction class"
       ],
       "acceptanceCriteria": [
-        "Helper registry capability model and fixture stub exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Helper registry entries validate helper id, version, capability list, input and output schema ids, redaction class, execution policy, and allowlist reference id.",
+        "The fixture helper can be discovered and invoked only through the registry boundary.",
+        "Missing capability, unsupported schema id, incompatible output schema, and invalid redaction class cases fail with semantic diagnostics.",
+        "Engine adapters consume helper capabilities by registry id instead of hard-coded binary paths."
       ],
       "verification": [
         {
@@ -12478,9 +12769,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Helpers launched outside the registry",
+        "Capability claims without schemas",
+        "Redaction policy omitted from helper metadata"
       ]
     },
     {
@@ -12494,14 +12785,15 @@
       "dependsOn": ["KAIFUU-086", "UNIV-016"],
       "summary": "Implement local-only manual key and known-key import boundaries.",
       "deliverables": [
-        "Manual key entry and local known-key import boundary owned command, service, schema, or artifact surface",
-        "Fixture data for Manual key entry and local known-key import boundary positive and negative paths",
-        "Regression assertions for Manual key entry and local known-key import boundary behavior"
+        "Manual key reference import command for local-only key ids and metadata",
+        "Known-key import boundary fixture with raw-key redaction and hash-only public output",
+        "Helper request fixture that passes key refs without serializing key material"
       ],
       "acceptanceCriteria": [
-        "Manual key entry and local known-key import boundary exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Manual and known-key imports store local key references, key purpose, engine profile id, source hash, and redaction status without committing raw key material.",
+        "Public fixtures include key ref ids and hash metadata only; raw keys, decrypted scripts, private paths, and helper dumps are excluded.",
+        "Helper requests receive bounded key refs through the registry boundary and fail when a required local key ref is absent.",
+        "Import diagnostics distinguish missing key, wrong engine profile, hash mismatch, and forbidden public serialization cases."
       ],
       "verification": [
         {
@@ -12514,9 +12806,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Raw keys serialized into fixtures or reports",
+        "Known-key paths bypassing helper registry policy",
+        "Key refs not tied to engine profile hashes"
       ]
     },
     {
@@ -12530,14 +12822,15 @@
       "dependsOn": ["KAIFUU-085", "KAIFUU-043", "UNIV-016"],
       "summary": "Constrain executable helpers with allowlist metadata, versions, capabilities, and hashes.",
       "deliverables": [
-        "Helper binary allowlist schema and hash gate owned command, service, schema, or artifact surface",
-        "Fixture data for Helper binary allowlist schema and hash gate positive and negative paths",
-        "Regression assertions for Helper binary allowlist schema and hash gate behavior"
+        "Helper binary allowlist schema with helper id, platform, version, executable name, SHA-256 hash, signature metadata, and capability ids",
+        "Hash gate validation fixture for allowed, missing, mismatched, wrong-platform, and stale-version binaries",
+        "CLI diagnostics for binary allowlist failures before helper process launch"
       ],
       "acceptanceCriteria": [
-        "Helper binary allowlist schema and hash gate exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Helper process launch is blocked unless the binary matches allowlist helper id, platform, version, executable name, hash, and declared capabilities.",
+        "Missing binary, hash mismatch, wrong platform, stale version, and undeclared capability cases fail before process creation.",
+        "Allowlist fixtures never depend on private helper binaries or local absolute paths.",
+        "Diagnostics name helper id, allowlist entry id, observed hash when safe, platform, and remediation code."
       ],
       "verification": [
         {
@@ -12550,9 +12843,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Executable helpers launched without hash validation",
+        "Allowlist fixtures tied to local private paths",
+        "Helper capabilities broader than allowlist metadata"
       ]
     },
     {
@@ -12566,14 +12859,15 @@
       "dependsOn": ["KAIFUU-086", "KAIFUU-088", "UNIV-016"],
       "summary": "Implement bounded helper process execution with timeout, cancellation, and redacted output.",
       "deliverables": [
-        "Bounded helper process runner with timeout and cancel owned command, service, schema, or artifact surface",
-        "Fixture data for Bounded helper process runner with timeout and cancel positive and negative paths",
-        "Regression assertions for Bounded helper process runner with timeout and cancel behavior"
+        "Bounded helper process runner with timeout, cancellation, stdin limits, stdout/stderr limits, and temp-dir confinement",
+        "Redacted stdout and stderr capture schema with truncation metadata",
+        "Runner fixtures for success, timeout, cancel, nonzero exit, output overflow, and temp-dir escape attempts"
       ],
       "acceptanceCriteria": [
-        "Bounded helper process runner with timeout and cancel exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Helper execution uses the registry entry and allowlist hash gate before creating a bounded process.",
+        "Timeout, cancellation, output overflow, nonzero exit, and temp-dir escape attempts terminate the process and return semantic diagnostics.",
+        "Temporary inputs and outputs remain under a confined per-run directory and are cleaned or retained according to redacted artifact policy.",
+        "stdout and stderr are redacted, size-bounded, and annotated with truncation metadata before any public report is written."
       ],
       "verification": [
         {
@@ -12586,9 +12880,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Unbounded helper execution",
+        "stdout or stderr leaking keys and private paths",
+        "Temporary files escaping managed directories"
       ]
     },
     {
@@ -12647,14 +12941,15 @@
       ],
       "summary": "Add Siglus detector and profile fixtures without parser or runtime behavior.",
       "deliverables": [
-        "Siglus Scene.pck and Gameexe.dat detector profile fixtures owned command, service, schema, or artifact surface",
-        "Fixture data for Siglus Scene.pck and Gameexe.dat detector profile fixtures positive and negative paths",
-        "Regression assertions for Siglus Scene.pck and Gameexe.dat detector profile fixtures behavior"
+        "Siglus Scene.pck and Gameexe.dat detector profile fixtures",
+        "Capability-level detector output for identify and inventory only",
+        "Profile diagnostics for missing files, unknown variant, encrypted payload, and unsupported parser boundary"
       ],
       "acceptanceCriteria": [
-        "Siglus Scene.pck and Gameexe.dat detector profile fixtures exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Detector fixtures identify Scene.pck and Gameexe.dat signatures, profile ids, source hashes, and capability levels without claiming parser, extract, patch, or runtime support.",
+        "Missing pair, unknown variant, encrypted payload, and unsupported parser-boundary cases return semantic diagnostics.",
+        "Public fixtures use synthetic or redistributable metadata and exclude retail asset bytes, decrypted scripts, keys, and private paths.",
+        "Detector output composes with KAIFUU-052 layered access fields."
       ],
       "verification": [
         {
@@ -12667,9 +12962,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Siglus detection overstated as extraction support",
+        "Profile fixtures containing retail bytes",
+        "Scene and Gameexe provenance split across reports"
       ]
     },
     {
@@ -12683,14 +12978,15 @@
       "dependsOn": ["KAIFUU-087", "KAIFUU-091", "UNIV-016"],
       "summary": "Exercise Siglus secondary-key handoff through helper-boundary fixtures.",
       "deliverables": [
-        "Siglus secondary-key helper-boundary fixtures owned command, service, schema, or artifact surface",
-        "Fixture data for Siglus secondary-key helper-boundary fixtures positive and negative paths",
-        "Regression assertions for Siglus secondary-key helper-boundary fixtures behavior"
+        "Siglus secondary-key helper request fixture using KAIFUU-087 key refs",
+        "Helper-boundary validation for required key purpose, profile id, and source hash",
+        "Diagnostics for missing key ref, wrong profile, helper rejection, and redacted output mismatch"
       ],
       "acceptanceCriteria": [
-        "Siglus secondary-key helper-boundary fixtures exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Secondary-key handoff passes local key refs, helper id, profile id, source hash, and requested capability through the helper registry boundary.",
+        "Raw key material, helper dumps, decrypted scripts, and private paths are never serialized in public fixtures or reports.",
+        "Missing key ref, wrong profile, helper rejection, and redacted output mismatch cases fail with semantic diagnostics.",
+        "Successful fixture output remains limited to redacted helper metadata needed by parser-boundary nodes."
       ],
       "verification": [
         {
@@ -12703,9 +12999,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Secondary keys copied into fixtures",
+        "Helper output accepted without redaction validation",
+        "Key profile mismatch hidden from parser-boundary smoke"
       ]
     },
     {
@@ -12719,14 +13015,15 @@
       "dependsOn": ["KAIFUU-082", "KAIFUU-091", "UNIV-016"],
       "summary": "Add a known-key parser-boundary smoke fixture without claiming production support.",
       "deliverables": [
-        "Siglus known-key parser-boundary smoke fixture owned command, service, schema, or artifact surface",
-        "Fixture data for Siglus known-key parser-boundary smoke fixture positive and negative paths",
-        "Regression assertions for Siglus known-key parser-boundary smoke fixture behavior"
+        "Siglus known-key parser-boundary smoke fixture for synthetic Scene.pck and Gameexe.dat inputs",
+        "Parser-boundary output schema for text slot ids, byte spans, source hashes, and unsupported opcode diagnostics",
+        "No-support-claim report fixture that distinguishes smoke coverage from production support"
       ],
       "acceptanceCriteria": [
-        "Siglus known-key parser-boundary smoke fixture exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Known-key smoke consumes synthetic or redistributable inputs and key refs from KAIFUU-087 without serializing raw keys.",
+        "Parser-boundary output names text slot ids, byte spans, source hashes, profile id, and unsupported opcode diagnostics.",
+        "The smoke fixture can fail unsupported variants before patch writes and without claiming production Siglus compatibility.",
+        "Reports distinguish parser-boundary success, helper-required, missing-key, unsupported-opcode, and out-of-profile outcomes."
       ],
       "verification": [
         {
@@ -12739,9 +13036,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Parser-boundary smoke marketed as full Siglus support",
+        "Known-key fixtures leaking raw keys",
+        "Unsupported opcodes missing from diagnostics"
       ]
     },
     {
@@ -12755,14 +13052,15 @@
       "dependsOn": ["KAIFUU-036", "KAIFUU-092", "UNIV-016"],
       "summary": "Render optional private-local Siglus validation summaries through the redacted boundary.",
       "deliverables": [
-        "Siglus private-local redacted validation renderer owned command, service, schema, or artifact surface",
-        "Fixture data for Siglus private-local redacted validation renderer positive and negative paths",
-        "Regression assertions for Siglus private-local redacted validation renderer behavior"
+        "Siglus private-local validation summary renderer with redacted aggregate fields",
+        "Public-safe fixture for local corpus count, profile ids, helper outcomes, and failure categories",
+        "Redaction tests for keys, decrypted scripts, story filenames, helper dumps, and local paths"
       ],
       "acceptanceCriteria": [
-        "Siglus private-local redacted validation renderer exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "Optional private-local summaries include aggregate counts, profile ids, capability levels, helper outcome categories, and validation statuses only.",
+        "Raw keys, decrypted scripts, story filenames, helper dumps, screenshots, source text, and local paths are excluded from rendered summaries.",
+        "Renderer diagnostics distinguish missing private corpus, redaction violation, unknown profile, and helper-required statuses.",
+        "Public CI validates recorded redacted fixtures without needing private local assets."
       ],
       "verification": [
         {
@@ -12775,9 +13073,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Private-local validation leaking Siglus asset details",
+        "Aggregate reports implying unsupported production capability",
+        "Helper-required cases hidden as validation success"
       ]
     },
     {
@@ -13064,14 +13362,16 @@
       "dependsOn": ["KAIFUU-052", "KAIFUU-053", "UNIV-016"],
       "summary": "Build the reusable validator for packed-engine capability profiles.",
       "deliverables": [
-        "Packed-engine readiness profile validator owned command, service, schema, or artifact surface",
-        "Fixture data for Packed-engine readiness profile validator positive and negative paths",
-        "Regression assertions for Packed-engine readiness profile validator behavior"
+        "PackedEngineReadinessProfile schema for engine, container, crypto, codec, helper, key, surface, and patch-back fields",
+        "kaifuu readiness validate command for fixtures/kaifuu/packed-engine/*.profile.json",
+        "target/kaifuu/packed-readiness-validation.json report artifact",
+        "Positive and negative profile fixtures for Siglus, KiriKiri XP3, Wolf, RGSS3, BGI, and MV/MZ encrypted media cases"
       ],
       "acceptanceCriteria": [
-        "Packed-engine readiness profile validator exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "The readiness validator command reads packed-engine profile fixtures and writes target/kaifuu/packed-readiness-validation.json with profile id, fixture id, capability levels, helper ids, key refs, diagnostics, and hashes.",
+        "Validation fails when engine family, container, crypto, codec, helper, key, surface, patch-back, fixture id, or content hash fields are missing or inconsistent.",
+        "Positive fixtures cover profile-ready synthetic cases and negative fixtures cover missing helper, missing key, unsupported codec, hash mismatch, and out-of-profile variants.",
+        "Reports distinguish identify, inventory, extract, patch, helper_required, missing_key, and unsupported_layered_transform outcomes."
       ],
       "verification": [
         {
@@ -13084,9 +13384,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Readiness profiles missing executable validator coverage",
+        "Packed-engine fields collapsed into a boolean support claim",
+        "Report artifacts without hashes or fixture ids"
       ]
     },
     {
@@ -13107,18 +13407,21 @@
         "KAIFUU-070",
         "KAIFUU-072",
         "KAIFUU-103",
-        "UNIV-016"
+        "UNIV-016",
+        "SHARED-025"
       ],
       "summary": "Generate public alpha encrypted-readiness evidence from synthetic engine slices and profile validators.",
       "deliverables": [
-        "Alpha public encrypted-readiness evidence generator owned command, service, schema, or artifact surface",
-        "Fixture data for Alpha public encrypted-readiness evidence generator positive and negative paths",
-        "Regression assertions for Alpha public encrypted-readiness evidence generator behavior"
+        "kaifuu readiness alpha-encrypted command over fixtures/kaifuu/alpha-encrypted",
+        "AlphaEncryptedReadinessReport schema with profile ids, fixture ids, helper ids, key refs, patch result refs, diagnostics, and hashes",
+        "target/kaifuu/alpha-encrypted-readiness.json report artifact",
+        "target/kaifuu/alpha-encrypted-readiness.summary.json README-safe summary artifact"
       ],
       "acceptanceCriteria": [
-        "Alpha public encrypted-readiness evidence generator exposes the named surface or artifact and proves it through the command verification listed on this node",
-        "Unsupported and negative paths return semantic diagnostics",
-        "Public validation uses fixtures or recorded data, not private local assets"
+        "The alpha encrypted-readiness generator command consumes KAIFUU-103 validation reports, packed-engine profile fixtures, and synthetic patch artifacts from the declared alpha encrypted fixture directory.",
+        "Generated reports name profile id, fixture id, engine family, surface ids, helper ids, key refs, capability levels, patch result refs, diagnostics, and content hashes.",
+        "The command fails when required validation reports, fixture inputs, helper/key metadata, patch result refs, or report hashes are missing.",
+        "Summary artifacts distinguish readiness evidence from production support and exclude raw keys, decrypted scripts, helper dumps, private paths, and source text."
       ],
       "verification": [
         {
@@ -13131,9 +13434,9 @@
         }
       ],
       "auditFocus": [
-        "Node still too broad for one PR",
-        "Decision or report-only output instead of executable behavior",
-        "Dependency bypass of prerequisite slices"
+        "Encrypted readiness generated from prose instead of validator outputs",
+        "Report artifacts missing profile, fixture, or hash identity",
+        "Readiness evidence overstated as production patch support"
       ]
     },
     {
@@ -14768,8 +15071,8 @@
       "id": "ITOTORI-113",
       "title": "Atomic benchmark ledger ingestion",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "benchmarks",
       "dependsOn": ["ITOTORI-052"],
@@ -14802,6 +15105,63 @@
         "Partial benchmark artifact writes before ledger validation",
         "Shared benchmark contract drift for optional provider-run fields",
         "Dashboard falling back to raw prompt or report-side cost state"
+      ]
+    },
+    {
+      "id": "ITOTORI-116",
+      "title": "Public real-LLM proof harness",
+      "status": "planned",
+      "priority": "P0",
+      "target": "alpha",
+      "projects": ["itotori", "shared", "suite"],
+      "parallelGroup": "alpha-integration",
+      "dependsOn": [
+        "ITOTORI-064",
+        "ITOTORI-075",
+        "ITOTORI-076",
+        "ITOTORI-077",
+        "ITOTORI-078",
+        "ITOTORI-091",
+        "ITOTORI-099",
+        "ITOTORI-100"
+      ],
+      "summary": "Prove the Itotori provider path with public recorded fixtures and an explicit opt-in live mode that validates structured draft and QA output without committing raw provider payloads.",
+      "deliverables": [
+        "itotori provider proof recorded-mode command",
+        "Opt-in live provider proof command flag",
+        "Strict JSON schema fixtures for draft and QA outputs",
+        "Provider token cost latency ledger fixture",
+        "Seeded QA oracle scoring report"
+      ],
+      "acceptanceCriteria": [
+        "Public recorded mode and opt-in live mode both run over public fixtures with identical schema validation.",
+        "Draft and QA responses must pass strict JSON and shared schema validation before any artifact or ledger row is accepted.",
+        "Repair retries are bounded and recorded with attempt count, retry reason, fallback route, and terminal status metadata.",
+        "Fallback metadata records provider, model, route, structured-output capability, retry state, token estimate, cost estimate, and latency for every accepted or skipped attempt.",
+        "The token, cost, and latency ledger reconciles with provider proof ids and ITOTORI-100 route reports.",
+        "QA-agent findings are scored against a seeded oracle with precision, recall, severity calibration, and false-negative accounting.",
+        "Committed proof artifacts exclude raw prompts, raw responses, API keys, private corpus text, and private asset paths."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Provider proof that only exercises mocks",
+        "Structured-output validation bypass",
+        "Unbounded repair loops",
+        "Ledger cost or latency gaps",
+        "Raw prompt or response leakage"
       ]
     },
     {
@@ -14852,14 +15212,14 @@
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-044"],
-      "summary": "Define and enforce the compatibility policy for the legacy `kaifuu profile <game-dir>` command path after centralized profile write gating.",
+      "summary": "Deprecate the legacy `kaifuu profile <game-dir>` write path after centralized profile write gating and keep it as a read-only compatibility command that exits with a structured warning.",
       "deliverables": [
-        "Documented CLI policy for `kaifuu profile <game-dir>` in docs/subprojects-kaifuu.md",
-        "A focused kaifuu-cli test covering either the legacy command warning path or the explicit supported compatibility path"
+        "Documented deprecation policy for `kaifuu profile <game-dir>` in docs/subprojects-kaifuu.md",
+        "Focused kaifuu-cli test covering the legacy command warning path"
       ],
       "acceptanceCriteria": [
-        "`kaifuu profile <game-dir>` is intentionally documented as supported or deprecated.",
-        "The selected compatibility behavior is covered by a CLI regression test."
+        "`kaifuu profile <game-dir>` exits without writing profiles, prints diagnostic code `kaifuu.profile.legacy_deprecated`, and points to the centralized profile command.",
+        "The deprecated compatibility behavior is covered by a CLI regression test."
       ],
       "verification": [
         {
@@ -14904,14 +15264,14 @@
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-014"],
-      "summary": "Make the before-terminate hook cleanup timing policy explicit in Utsushi runtime harness code and documentation.",
+      "summary": "Make before-terminate hooks best-effort and non-blocking for cleanup after the child process begins termination.",
       "deliverables": [
         "Documented before-terminate cleanup timing policy in docs/subprojects-utsushi.md",
-        "Focused utsushi-core test for the selected before-terminate timeout behavior"
+        "Focused utsushi-core test for the non-blocking before-terminate timeout behavior"
       ],
       "acceptanceCriteria": [
-        "The runtime harness clearly documents whether before-terminate hooks may delay cleanup by hook_timeout.",
-        "A regression test asserts the documented cleanup timing behavior."
+        "The runtime harness documents that before-terminate hooks may not delay cleanup by hook_timeout once termination has begun.",
+        "A regression test asserts cleanup starts immediately after child termination begins and late hook results are recorded only as diagnostics."
       ],
       "verification": [
         {
@@ -14930,13 +15290,14 @@
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-014"],
-      "summary": "Add platform coverage for Utsushi launch cleanup behavior outside Unix process groups.",
+      "summary": "Add Windows Job Object cleanup coverage for Utsushi launch cleanup behavior outside Unix process groups, with other non-Unix hosts returning typed unsupported diagnostics.",
       "deliverables": [
         "CI or test command that covers the non-Unix launch cleanup surface",
-        "Windows Job Object cleanup implementation or tested semantic unsupported-process-cleanup error"
+        "Windows Job Object cleanup implementation and tested semantic unsupported-process-cleanup error for unsupported non-Unix hosts"
       ],
       "acceptanceCriteria": [
-        "The non-Unix launch cleanup path is covered by an automated verification command.",
+        "The Windows launch cleanup path is covered by an automated verification command or target-specific test fixture.",
+        "Non-Windows/non-Unix launch cleanup returns diagnostic code `utsushi.launch_cleanup.unsupported_host` rather than silently passing.",
         "Platform limitations are reflected in docs/subprojects-utsushi.md."
       ],
       "verification": [
@@ -15050,6 +15411,805 @@
         }
       ],
       "auditFocus": ["Nested seed target linkage regression when caller supplies parent entry id"]
+    },
+    {
+      "id": "CATALOG-064",
+      "status": "planned",
+      "title": "Exact-linker malformed JSON diagnostics",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-008"],
+      "summary": "Harden catalog exact-linker CLI and service request parsing so malformed top-level JSON returns semantic diagnostics.",
+      "deliverables": [
+        "Runtime request guard for CatalogExactExternalIdLinkRequest payloads",
+        "CLI and service tests for malformed JSON, null, arrays, and scalar request payloads"
+      ],
+      "acceptanceCriteria": [
+        "Malformed top-level request payloads return stable `catalog.exact_external_id.invalid_request` diagnostics.",
+        "The exact-linker CLI never throws raw type errors for malformed request files."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- test/cli.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db exec vitest run test/catalog-exact-external-id-linker.test.ts"
+        }
+      ],
+      "auditFocus": ["Malformed exact-linker request payloads bypassing semantic diagnostics"]
+    },
+    {
+      "id": "CATALOG-065",
+      "status": "planned",
+      "title": "Exact-linker DB service integration test",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-008"],
+      "summary": "Add a DB-backed exact-linker integration test that exercises the exported linker service against the real catalog repository.",
+      "deliverables": [
+        "DB-backed exact-linker service integration test in packages/itotori-db/test",
+        "Fixture seed data covering exact match and no-match through ItotoriCatalogRepository"
+      ],
+      "acceptanceCriteria": [
+        "The exported linker service returns the same exact-match diagnostics against the real repository as it does against fake repository tests.",
+        "The test runs in the @itotori/db suite with DATABASE_URL."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": ["Exact-linker service and repository composition drift"]
+    },
+    {
+      "id": "ITOTORI-114",
+      "status": "planned",
+      "title": "Dashboard decision kind invariant validation",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-055"],
+      "summary": "Strengthen dashboard decision read-model schema validation with kind-specific nullable field invariants.",
+      "deliverables": [
+        "Decision read-model validator enforcing project, locale-branch, and runtime-validation invariants",
+        "API schema tests for contradictory decision records"
+      ],
+      "acceptanceCriteria": [
+        "`project_finding` records require null localeBranchId and runtimeRunId.",
+        "`runtime_validation` records require runtimeRunId and cannot be counted as branch findings."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vitest run apps/itotori/test/api-handlers.test.ts apps/itotori/test/dashboard.test.ts"
+        }
+      ],
+      "auditFocus": ["Dashboard decision record kind contradicting nullable fields"]
+    },
+    {
+      "id": "ITOTORI-115",
+      "status": "planned",
+      "title": "Review queue row mapping fail-closed guards",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-055"],
+      "summary": "Replace silent string coercion in dashboard decision row mapping with explicit fail-closed guards and tests.",
+      "deliverables": [
+        "Guarded dashboard decision row mapper in packages/itotori-db",
+        "Repository tests for missing or null required decision row aliases"
+      ],
+      "acceptanceCriteria": [
+        "Missing finding_id aliases fail with semantic repository diagnostics or test-visible errors.",
+        "No dashboard decision ID can become the literal string `undefined`."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": ["Silent string coercion hiding SQL alias drift"]
+    },
+    {
+      "id": "KAIFUU-135",
+      "status": "planned",
+      "title": "Non-detected archive variant normalization",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-046"],
+      "summary": "Normalize archive detection variant fields on non-detected rows so marker-only rows cannot imply weak positive support.",
+      "deliverables": [
+        "Archive detection row serialization change for non-detected variants",
+        "Regression tests for marker-only Wolf and other non-detected archive rows"
+      ],
+      "acceptanceCriteria": [
+        "Non-detected archive rows cannot expose a detected variant that looks like positive support.",
+        "Known marker-only subtype rows still report unknown-variant diagnostics where appropriate."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core detection"
+        }
+      ],
+      "auditFocus": ["Non-detected archive row variant field implying support"]
+    },
+    {
+      "id": "KAIFUU-136",
+      "status": "planned",
+      "title": "Wolf primary evidence split tests",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-046"],
+      "summary": "Add focused Wolf archive detection tests for extension-only and header-only primary evidence.",
+      "deliverables": [
+        "Wolf detection regression for `.wolf` extension-only evidence",
+        "Wolf detection regression for `WOLF RPG Editor` header-only evidence"
+      ],
+      "acceptanceCriteria": [
+        "Valid Wolf detection still works with extension-only primary evidence.",
+        "Valid Wolf detection still works with header-only primary evidence."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core detection"
+        }
+      ],
+      "auditFocus": ["Wolf primary evidence predicate drift"]
+    },
+    {
+      "id": "UTSUSHI-099",
+      "status": "planned",
+      "title": "Browser host availability diagnostics",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-050"],
+      "summary": "Expose machine-readable browser host availability diagnostics for Utsushi browser launch adapters.",
+      "deliverables": [
+        "Browser adapter capability output with host availability or equivalent diagnostic state",
+        "CLI capability tests for browser host missing and host configured paths"
+      ],
+      "acceptanceCriteria": [
+        "Automation can distinguish missing browser host from supported browser capture capability without launching a smoke run.",
+        "Host availability diagnostics do not expose raw private local paths."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli capabilities"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        }
+      ],
+      "auditFocus": ["Browser adapter capabilities overclaiming host readiness"]
+    },
+    {
+      "id": "UTSUSHI-100",
+      "status": "planned",
+      "title": "Successful-exit AfterExit cleanup coverage",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-050"],
+      "summary": "Treat successful child exits as terminal success for process cleanup while preserving failing AfterExit hooks as diagnostics that make the capture result failed.",
+      "deliverables": [
+        "Documented AfterExit hook failure cleanup policy for successful child exits",
+        "Focused utsushi-core regression test for successful child exit with failing AfterExit hook diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "The policy states that no extra child cleanup is required after a successful child exit, but failing AfterExit hooks set the capture status to failed with diagnostic code `utsushi.after_exit.failed`.",
+        "The policy is covered by a focused test."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core after_exit"
+        }
+      ],
+      "auditFocus": ["Successful exit plus AfterExit hook failure cleanup ambiguity"]
+    },
+    {
+      "id": "UTSUSHI-101",
+      "status": "planned",
+      "title": "Browser staging stale-data guard",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-050"],
+      "summary": "Prevent stale screenshot staging data from interrupted browser adapter runs from affecting later captures.",
+      "deliverables": [
+        "Exclusive create or pre-launch cleanup for browser screenshot staging paths",
+        "Regression test with stale staging data under the managed artifact root"
+      ],
+      "acceptanceCriteria": [
+        "Stale browser staging data cannot be read as a fresh screenshot artifact.",
+        "The stale-data guard keeps all temporary screenshot bytes inside the managed artifact root."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture browser"
+        }
+      ],
+      "auditFocus": ["Stale browser screenshot staging data after interrupted runs"]
+    },
+    {
+      "id": "UTSUSHI-102",
+      "title": "MV/MZ instrumented runtime observation proof",
+      "status": "planned",
+      "priority": "P0",
+      "target": "alpha",
+      "projects": ["utsushi", "kaifuu", "shared"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-050", "UTSUSHI-056", "KAIFUU-112", "SHARED-025", "UTSUSHI-006"],
+      "summary": "Prove MV/MZ runtime observation through an actual launched browser or NW-style runtime using public fixtures and the typed observation envelope.",
+      "deliverables": [
+        "MV/MZ launched runtime observation proof command that consumes the UTSUSHI-006 trace probe output",
+        "Public MV/MZ browser/NW fixture runtime trace artifact generated from the UTSUSHI-006 command contract",
+        "Bridge-unit source-revision linkage assertions",
+        "Artifact-store screenshot capture fixture"
+      ],
+      "acceptanceCriteria": [
+        "An actual launched browser or NW-style runtime consumes the UTSUSHI-006 trace command/probe and emits text and choice observation events from a public MV/MZ fixture.",
+        "Runtime events link to bridge units, source revision, runtime target id, adapter id, environment metadata, and evidence tier.",
+        "Static fixture reads cannot satisfy E1 runtime observation evidence.",
+        "Screenshots are E2 evidence only when captured through the managed artifact store with content hashes and redacted paths.",
+        "The proof report cites the UTSUSHI-056 envelope schema version and KAIFUU-112 bridge-unit fixture revision."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run utsushi:mv-observe -- --fixture fixtures/public/utsushi-browser-smoke.manifest.json --trace artifacts/utsushi/mv-mz-trace-probe.json --output artifacts/utsushi/mv-mz-observation-proof.json"
+        },
+        {
+          "type": "command",
+          "value": "test -s artifacts/utsushi/mv-mz-observation-proof.json"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Static fixture reads mislabeled as runtime evidence",
+        "Browser/NW launch not actually exercised",
+        "Runtime events detached from bridge units",
+        "Screenshots stored outside the artifact store"
+      ]
+    },
+    {
+      "id": "UTSUSHI-103",
+      "status": "planned",
+      "title": "Engine-port runner crate template and ABI conformance",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-050", "UTSUSHI-056"],
+      "summary": "Create the reusable Utsushi engine-port runner template with manifest-driven ABI checks for launch, observe, capture, jump capability declaration, and shutdown operations.",
+      "deliverables": [
+        "Engine-port manifest schema for launch, observe, capture, optional jump, and shutdown operations",
+        "utsushi-core fixture port implementing the runner ABI",
+        "ABI conformance test harness for valid, missing-method, and version-mismatch ports"
+      ],
+      "acceptanceCriteria": [
+        "The fixture port passes ABI conformance checks for launch, observation envelope emission, cancellation, artifact-root usage, and shutdown.",
+        "`jump` may be declared unsupported with typed capability diagnostics until UTSUSHI-104 and UTSUSHI-106 provide moment indexing and traversal scheduling.",
+        "Ports with missing required methods, unsupported ABI versions, or unredacted environment fields fail with semantic diagnostics.",
+        "The runner template documents crate boundaries without requiring engine-specific code in utsushi-core."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core engine_port"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Engine ports bypassing shared lifecycle controls",
+        "ABI drift between ports",
+        "Private environment leakage through manifests"
+      ]
+    },
+    {
+      "id": "UTSUSHI-104",
+      "status": "planned",
+      "title": "Cross-engine moment index and jump planner",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-103", "SHARED-025"],
+      "summary": "Build a cross-engine moment index that maps bridge units, runtime target ids, observation events, and source revisions into jumpable review moments.",
+      "deliverables": [
+        "Moment index schema keyed by bridge unit, runtime target, scene, branch, and source revision",
+        "Jump planner fixture for MV/MZ, KAG, RenPy, Siglus, and Wolf profile rows",
+        "Planner diagnostics for missing target, ambiguous branch, and unsupported jump cases"
+      ],
+      "acceptanceCriteria": [
+        "Moment index fixtures link every jumpable row to a bridge unit id, source revision, runtime target id, observation event id, and artifact manifest hash.",
+        "The planner emits deterministic next-jump commands for supported moments and semantic diagnostics for unsupported or ambiguous moments.",
+        "Cross-engine rows share one schema while preserving engine-specific target metadata under typed profile fields."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core moment_index"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Jump plans detached from bridge evidence",
+        "Engine-specific metadata flattened into strings",
+        "Ambiguous branches treated as valid jumps"
+      ]
+    },
+    {
+      "id": "UTSUSHI-105",
+      "status": "planned",
+      "title": "Patch playback validator",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-103", "KAIFUU-010", "SHARED-025"],
+      "summary": "Validate that patched artifacts can be played back through engine-port runners and compared against expected observation events and artifact hashes.",
+      "deliverables": [
+        "Patch playback validation command contract",
+        "Expected observation-event comparison fixture",
+        "Patch artifact hash and runtime artifact hash reconciliation report"
+      ],
+      "acceptanceCriteria": [
+        "Playback validation consumes a Kaifuu PatchResult, an alpha proof manifest, and expected observation events for the same fixture id.",
+        "The validator fails when patch artifact hashes, bridge unit ids, runtime target ids, or observed text and choice events do not match expectations.",
+        "Unsupported playback capabilities produce semantic diagnostics instead of passing as skipped validation."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core patch_playback"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Patch outputs accepted without runtime playback",
+        "Hash mismatch hidden by review packaging",
+        "Unsupported playback treated as success"
+      ]
+    },
+    {
+      "id": "UTSUSHI-106",
+      "status": "planned",
+      "title": "Branch frontier traversal scheduler",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-104", "UTSUSHI-056"],
+      "summary": "Schedule bounded traversal of branch frontiers from observation events so review captures cover reachable choices without infinite loops or duplicate work.",
+      "deliverables": [
+        "Branch frontier queue schema",
+        "Traversal scheduler fixture with loop, duplicate, and dead-end branches",
+        "Observation event coverage report for branch and scene ids"
+      ],
+      "acceptanceCriteria": [
+        "Scheduler fixtures produce stable traversal plans for text, choice, branch, scene, and frame observation events.",
+        "Looping or duplicate branch frontiers are deduplicated with diagnostics that cite event ids and runtime target ids.",
+        "Traversal coverage reports distinguish visited, queued, unsupported, and blocked branch frontiers."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core branch_frontier"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Traversal loops hiding incomplete evidence",
+        "Choice coverage overstated",
+        "Branch diagnostics without source event ids"
+      ]
+    },
+    {
+      "id": "UTSUSHI-107",
+      "status": "planned",
+      "title": "Engine-port browser demo bundle generator",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-050", "UTSUSHI-103", "SHARED-025", "UTSUSHI-024"],
+      "summary": "Generate a browser demo bundle from engine-port metadata, public fixture artifacts, and alpha proof manifests for local review without private asset leakage.",
+      "deliverables": [
+        "Browser demo bundle manifest schema",
+        "Generated public fixture demo bundle index",
+        "Artifact-root path and content-hash validator for demo assets"
+      ],
+      "acceptanceCriteria": [
+        "The generator emits a manifest that names engine port id, fixture id, runtime target ids, artifact hashes, and supported review actions.",
+        "Demo bundle validation fails when assets escape the managed artifact root or omit content hashes.",
+        "Public demo bundles exclude private paths, raw source text beyond fixture allowance, and provider payloads."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core browser_demo"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Demo bundles leaking local paths",
+        "Engine-port metadata drift",
+        "Review action claims without runtime target ids"
+      ]
+    },
+    {
+      "id": "UTSUSHI-108",
+      "status": "planned",
+      "title": "Cross-engine annotation ledger and feedback export",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-010", "ITOTORI-081", "SHARED-025"],
+      "summary": "Record runtime review annotations against observation events and export feedback records that Itotori can ingest for repair and rerun workflows.",
+      "deliverables": [
+        "Runtime annotation ledger schema keyed by observation event id and runtime target id",
+        "Feedback export fixture for approve, reject, screenshot note, and branch mismatch annotations",
+        "Itotori reviewer queue handoff validation report"
+      ],
+      "acceptanceCriteria": [
+        "Annotations record reviewer action, observation event id, runtime target id, bridge unit id, evidence tier, and artifact hash.",
+        "Feedback exports validate against Itotori reviewer queue action fixtures without raw screenshot bytes or private paths.",
+        "Invalid references to missing runtime events, missing bridge units, or mismatched fixture ids fail with semantic diagnostics."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core annotations"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": [
+        "Annotations detached from runtime evidence",
+        "Feedback export schema drift from Itotori",
+        "Private review artifacts leaking into exports"
+      ]
+    },
+    {
+      "id": "UTSUSHI-109",
+      "status": "planned",
+      "title": "Reference capture corpus validator",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-056", "SHARED-012", "SHARED-025"],
+      "summary": "Validate the public reference capture corpus used by runtime adapters, including observation envelopes, artifact-store screenshots, hashes, and redaction metadata.",
+      "deliverables": [
+        "Reference capture corpus manifest schema",
+        "Positive and negative public capture fixtures",
+        "Capture hash, evidence-tier, and redaction validation command"
+      ],
+      "acceptanceCriteria": [
+        "Every reference capture fixture names fixture id, source revision, runtime target id, observation event ids, artifact hashes, evidence tier, and redaction status.",
+        "Validation fails for missing hashes, screenshots outside the artifact store, static reads labeled as runtime evidence, or unredacted local paths.",
+        "The corpus validator can run without provider credentials, private corpora, or live engine launches."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core capture_corpus"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Reference captures that cannot be reproduced or traced",
+        "Screenshot evidence tier overclaim",
+        "Private path leakage in public captures"
+      ]
+    },
+    {
+      "id": "UTSUSHI-110",
+      "status": "planned",
+      "title": "MV/MZ observation shim package",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-102", "UTSUSHI-103", "KAIFUU-112"],
+      "summary": "Package the MV/MZ browser and NW observation shim that emits typed events for text, choice, branch, scene, frame, and errors from public fixture games.",
+      "deliverables": [
+        "MV/MZ observation shim package manifest",
+        "Injected hook fixture for browser and NW-style launch targets",
+        "Shim teardown and redaction regression tests"
+      ],
+      "acceptanceCriteria": [
+        "The shim emits UTSUSHI-056 observation envelopes for MV/MZ text, choice, branch, scene, frame, and error events.",
+        "Package validation names injected files, runtime target ids, bridge fixture revision, teardown behavior, and artifact-root outputs.",
+        "Unsupported plugin-owned text surfaces produce profile diagnostics instead of untyped event payloads."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core mvmz_shim"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        }
+      ],
+      "auditFocus": [
+        "MV/MZ shim events outside shared envelope",
+        "Injected files not tracked in package manifest",
+        "Plugin surface overclaim"
+      ]
+    },
+    {
+      "id": "UTSUSHI-111",
+      "status": "planned",
+      "title": "MV/MZ patch playback and branch command pack",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-105", "UTSUSHI-110", "KAIFUU-112"],
+      "summary": "Add MV/MZ branch navigation commands and patch playback fixtures over the observation shim and Kaifuu full-surface JSON bridge units.",
+      "deliverables": [
+        "MV/MZ branch command schema",
+        "Patch playback fixture for map, common event, database, system, and terms text",
+        "Playback mismatch diagnostics for missing choice, wrong branch, and stale patch artifact cases"
+      ],
+      "acceptanceCriteria": [
+        "Branch commands cite scene id, event id, choice index, runtime target id, and source bridge unit ids.",
+        "Patch playback verifies observed post-patch text and choice events against expected bridge units and patch result hashes.",
+        "Unsupported plugin-owned or encrypted-media surfaces remain explicit diagnostics separate from JSON text playback."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core mvmz_playback"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        }
+      ],
+      "auditFocus": [
+        "Patch playback not tied to choices or branches",
+        "JSON text support overstated into plugin/media support",
+        "Stale patch artifacts accepted as current"
+      ]
+    },
+    {
+      "id": "UTSUSHI-112",
+      "status": "planned",
+      "title": "Siglus headless text-window and choice VM profile",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-034", "UTSUSHI-103", "KAIFUU-015"],
+      "summary": "Define a Siglus headless VM profile for redistributable or synthetic text-window and choice observation through clean-room Utsushi contracts.",
+      "deliverables": [
+        "Siglus headless VM profile manifest",
+        "Text-window and choice observation fixture",
+        "Key-reference redaction and unsupported-opcode diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "The profile emits text-window and choice observation envelopes from a synthetic or redistributable fixture without raw key material.",
+        "siglus_rs provenance notes and clean-room boundaries are recorded in profile metadata without copying implementation text.",
+        "Unsupported VM opcodes, missing key refs, and unavailable parser boundaries fail with semantic diagnostics."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core siglus_vm_profile"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        }
+      ],
+      "auditFocus": [
+        "Raw Siglus key leakage",
+        "siglus_rs provenance or license boundary gaps",
+        "Headless VM profile overclaiming retail compatibility"
+      ]
+    },
+    {
+      "id": "UTSUSHI-113",
+      "status": "planned",
+      "title": "Siglus Scene/Gameexe patch playback conformance",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-105", "UTSUSHI-112", "KAIFUU-093", "KAIFUU-070"],
+      "summary": "Validate Siglus Scene.pck and Gameexe.dat patch playback conformance using known-key synthetic fixtures, parser-boundary outputs, and headless VM observations.",
+      "deliverables": [
+        "Siglus Scene/Gameexe playback conformance schema",
+        "Known-key synthetic patch playback fixture",
+        "Conformance report for text-window, choice, hash, and unsupported-opcode outcomes"
+      ],
+      "acceptanceCriteria": [
+        "Conformance validation consumes KAIFUU-093 parser-boundary artifacts, KAIFUU-070 known-key extract-patch smoke outputs, and UTSUSHI-112 headless VM observation events for the same fixture id.",
+        "Scene.pck and Gameexe.dat patch playback reports content hashes, bridge unit ids, text-window events, choice events, and unsupported opcode diagnostics.",
+        "No raw keys, decrypted retail scripts, or private asset paths are serialized in conformance fixtures."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core siglus_playback"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        }
+      ],
+      "auditFocus": [
+        "Siglus patch playback detached from parser-boundary proof",
+        "Conformance fixtures leaking secrets",
+        "Unsupported opcodes hidden as passing playback"
+      ]
+    },
+    {
+      "id": "UTSUSHI-114",
+      "status": "planned",
+      "title": "KiriKiri/KAG label macro TJS-lite replay pack",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-008", "UTSUSHI-103", "KAIFUU-054"],
+      "summary": "Implement a declared KAG replay pack for plaintext or already-extracted labels, macros, choices, and TJS-lite expressions with explicit XP3 readiness boundaries.",
+      "deliverables": [
+        "KAG label and macro replay grammar fixture",
+        "TJS-lite expression evaluator diagnostics",
+        "Bridge-unit trace fixture for plaintext and extracted script inputs"
+      ],
+      "acceptanceCriteria": [
+        "Replay fixtures cover labels, jumps, macros, choices, speaker text, and declared TJS-lite expressions from plaintext or already-extracted scripts.",
+        "Packed XP3, encrypted scripts, unsupported macro expansion, and full TJS execution produce semantic diagnostics tied to KAIFUU-054 readiness fields.",
+        "Observed replay traces cite bridge unit ids, source revision, evidence tier, and unsupported command diagnostics."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core kag_replay"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        }
+      ],
+      "auditFocus": [
+        "Plaintext KAG replay overclaiming packed XP3 support",
+        "Macro and TJS gaps hidden from diagnostics",
+        "Trace events without bridge linkage"
+      ]
+    },
+    {
+      "id": "UTSUSHI-115",
+      "status": "planned",
+      "title": "RenPy callback instrumentation package",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-007", "UTSUSHI-041", "UTSUSHI-103", "UTSUSHI-042"],
+      "summary": "Package RenPy callback instrumentation for public native or web fixtures while keeping route replay and screen-language gaps separate from observed runtime events.",
+      "deliverables": [
+        "RenPy callback hook package manifest",
+        "Say, menu, label, and visible screen text callback fixture",
+        "Observed-versus-inferred evidence regression tests"
+      ],
+      "acceptanceCriteria": [
+        "Callback instrumentation emits observation envelopes for say, menu, label, and visible screen text callbacks with runtime target ids and environment metadata.",
+        "Route replay output from UTSUSHI-040 and screen probes from UTSUSHI-042 remain labeled separately from observed callback evidence.",
+        "Python execution, rollback, packaging, native/web drift, and screen-language gaps produce semantic diagnostics."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core renpy_callbacks"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": [
+        "RenPy inferred routes mislabeled as observed runtime",
+        "Screen text callback gaps hidden",
+        "Native and web instrumentation drift"
+      ]
+    },
+    {
+      "id": "UTSUSHI-116",
+      "status": "planned",
+      "title": "Wolf common-event database browser bridge pack",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-103", "KAIFUU-040", "SHARED-025", "UTSUSHI-076", "UTSUSHI-077"],
+      "summary": "Add a Wolf RPG Editor browser bridge pack for common-event and database text observation over profile-ready public or synthetic fixtures.",
+      "deliverables": [
+        "Wolf common-event and database bridge manifest",
+        "Browser bridge observation fixture for common events and database rows",
+        "Profile mismatch and helper-required diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "Wolf bridge fixtures emit text, choice, branch, scene, and error observation envelopes tied to common-event ids, database row ids, bridge units, and runtime target ids.",
+        "Profile mismatch, helper-required, unsupported codec, and missing database table cases fail with semantic diagnostics from KAIFUU-040 readiness fields.",
+        "Browser bridge artifacts stay under the managed artifact root and exclude private local paths or raw corpus text."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core wolf_bridge"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        }
+      ],
+      "auditFocus": [
+        "Wolf common-event support overstated beyond profile evidence",
+        "Database rows detached from bridge units",
+        "Helper-required diagnostics hidden from runtime review"
+      ]
     }
   ]
 }

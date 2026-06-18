@@ -1,0 +1,140 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-046-20260618T045720Z",
+  "generatedAt": "2026-06-18T04:57:20Z",
+  "spec": {
+    "id": "KAIFUU-046",
+    "title": "Archive detection report semantics hardening",
+    "branch": "spec/kaifuu-046",
+    "worktree": "/tmp/itotori-spec-kaifuu-046",
+    "commit": "43cb37dfcb2ee7bbab46073d1f6a98d415106f7c"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-leibniz-wegener",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audit found a P1 marker-only Wolf detection overclaim. The branch repaired that issue and re-audit found no remaining P0/P1 blockers. Non-detected variant clarity and split Wolf primary-evidence tests are recorded as follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-046-F001", "KAIFUU-046-F002"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-046-F001",
+      "severity": "P3",
+      "title": "Non-detected archive variant normalization",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-core/src/lib.rs",
+          "symbol": "ArchiveDetectionRow"
+        }
+      ],
+      "description": "Non-detected archive rows can still serialize a detectedVariant value such as `wolf-protected-archive` despite `detected: false`. No match, signals, requirements, diagnostics, or capabilities leak, but normalizing variants for non-detected rows would reduce consumer confusion.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Kaifuu re-audit accepted the P1 repair while noting non-detected rows still carry detectedVariant values."
+        }
+      ],
+      "impact": "Consumers may misread a non-detected row's variant field as a weak positive signal.",
+      "actionableAcceptanceCriteria": [
+        "Non-detected archive rows omit detectedVariant or use an explicit unknown/non-detected variant.",
+        "Regression tests cover marker-only Wolf rows and other non-detected archive rows."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Non-detected archive variant normalization",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-046"],
+          "summary": "Normalize archive detection variant fields on non-detected rows so marker-only rows cannot imply weak positive support.",
+          "deliverables": [
+            "Archive detection row serialization change for non-detected variants",
+            "Regression tests for marker-only Wolf and other non-detected archive rows"
+          ],
+          "acceptanceCriteria": [
+            "Non-detected archive rows cannot expose a detected variant that looks like positive support.",
+            "Known marker-only subtype rows still report unknown-variant diagnostics where appropriate."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core detection"
+            }
+          ],
+          "auditFocus": ["Non-detected archive row variant field implying support"]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-046-F002",
+      "severity": "P3",
+      "title": "Split Wolf primary evidence regression tests",
+      "category": "test",
+      "locations": [
+        {
+          "path": "crates/kaifuu-core/src/lib.rs",
+          "symbol": "wolf_primary_evidence"
+        }
+      ],
+      "description": "Current tests prove valid combined Wolf primary evidence still works and code inspection confirms OR logic. Separate extension-only and header-only tests would protect the stricter predicate.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Kaifuu re-audit recommended separate tests for `.wolf` extension-only and `WOLF RPG Editor` header-only primary evidence."
+        }
+      ],
+      "impact": "A future predicate refactor could accidentally require both extension and header evidence or weaken the predicate without a focused failure.",
+      "actionableAcceptanceCriteria": [
+        "Wolf detection tests cover `.wolf` extension-only primary evidence.",
+        "Wolf detection tests cover `WOLF RPG Editor` header-only primary evidence."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Wolf primary evidence split tests",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-046"],
+          "summary": "Add focused Wolf archive detection tests for extension-only and header-only primary evidence.",
+          "deliverables": [
+            "Wolf detection regression for `.wolf` extension-only evidence",
+            "Wolf detection regression for `WOLF RPG Editor` header-only evidence"
+          ],
+          "acceptanceCriteria": [
+            "Valid Wolf detection still works with extension-only primary evidence.",
+            "Valid Wolf detection still works with header-only primary evidence."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core detection"
+            }
+          ],
+          "auditFocus": ["Wolf primary evidence predicate drift"]
+        }
+      }
+    }
+  ]
+}

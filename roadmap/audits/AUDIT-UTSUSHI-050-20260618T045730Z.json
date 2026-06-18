@@ -1,0 +1,197 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-050-20260618T045730Z",
+  "generatedAt": "2026-06-18T04:57:30Z",
+  "spec": {
+    "id": "UTSUSHI-050",
+    "title": "Browser and NW.js launch adapter",
+    "branch": "spec/utsushi-050",
+    "worktree": "/tmp/itotori-spec-utsushi-050",
+    "commit": "6a58383b4d670fc8ea8f563545746c58dbca7a7e"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-plato-archimedes-lovelace",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audits found P1 screenshot staging and process cleanup gaps. The branch repaired managed staging, non-zero cleanup, and AfterExit hook cleanup bypasses, and final re-audit found no remaining P0/P1 blockers. Host-availability and additional hardening items are recorded as follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UTSUSHI-050-F001", "UTSUSHI-050-F002", "UTSUSHI-050-F003"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-050-F001",
+      "severity": "P2",
+      "title": "Browser host availability capability field",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+          "symbol": "BrowserLaunchAdapter"
+        }
+      ],
+      "description": "Browser capabilities are advertised structurally even when no browser host is present. Host unavailability is communicated through limitations and runtime failure, but automation would benefit from a machine-readable host availability field.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final Utsushi audit found no P0/P1 blockers and recommended a machine-readable host availability field for browser adapters."
+        }
+      ],
+      "impact": "Automated planning may need to attempt a run to distinguish unsupported host state from supported capture capability.",
+      "actionableAcceptanceCriteria": [
+        "Browser adapter capability output includes machine-readable host availability or equivalent diagnostic state.",
+        "CLI capability tests cover host-present and host-missing behavior where practical."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Browser host availability diagnostics",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-050"],
+          "summary": "Expose machine-readable browser host availability diagnostics for Utsushi browser launch adapters.",
+          "deliverables": [
+            "Browser adapter capability output with host availability or equivalent diagnostic state",
+            "CLI capability tests for browser host missing and host configured paths"
+          ],
+          "acceptanceCriteria": [
+            "Automation can distinguish missing browser host from supported browser capture capability without launching a smoke run.",
+            "Host availability diagnostics do not expose raw private local paths."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-cli capabilities"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            }
+          ],
+          "auditFocus": ["Browser adapter capabilities overclaiming host readiness"]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-050-F002",
+      "severity": "P3",
+      "title": "Successful-exit AfterExit cleanup coverage",
+      "category": "test",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/lib.rs",
+          "symbol": "AfterExit"
+        }
+      ],
+      "description": "The repaired P1 covers non-zero exit plus failing AfterExit hook. If the desired contract is that all AfterExit hook failures clean up, a successful-exit plus failing hook branch should get explicit coverage.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final Utsushi audit found the prior non-zero combo fixed and suggested successful-exit AfterExit coverage if that broader contract is desired."
+        }
+      ],
+      "impact": "The intended cleanup behavior for successful child exit plus AfterExit hook failure is less explicit than the non-zero failure path.",
+      "actionableAcceptanceCriteria": [
+        "The AfterExit hook failure cleanup policy for successful child exits is documented.",
+        "A focused test covers successful child exit plus AfterExit hook failure if cleanup is required."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Successful-exit AfterExit cleanup coverage",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-050"],
+          "summary": "Clarify and test cleanup behavior for successful child exits followed by failing AfterExit hooks.",
+          "deliverables": [
+            "Documented AfterExit hook failure cleanup policy for successful child exits",
+            "Focused utsushi-core regression test when cleanup is required"
+          ],
+          "acceptanceCriteria": [
+            "The successful-exit AfterExit failure policy is explicit in code comments or docs.",
+            "The selected policy is covered by a focused test."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core after_exit"
+            }
+          ],
+          "auditFocus": ["Successful exit plus AfterExit hook failure cleanup ambiguity"]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-050-F003",
+      "severity": "P3",
+      "title": "Browser staging path stale-data guard",
+      "category": "security",
+      "locations": [
+        {
+          "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+          "symbol": "BrowserScreenshotHook"
+        }
+      ],
+      "description": "Browser staging is now under the managed root, but clearing or exclusively creating the staging screenshot path before launch would reduce stale-data risk after interrupted runs.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final Utsushi audit accepted managed staging and suggested a stale-data guard for interrupted prior runs."
+        }
+      ],
+      "impact": "Interrupted runs could leave stale staging data under the managed root that a later run might encounter.",
+      "actionableAcceptanceCriteria": [
+        "Browser screenshot staging path is exclusively created or cleared before launch.",
+        "Tests cover stale staging screenshot data from an interrupted prior run."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Browser staging stale-data guard",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-050"],
+          "summary": "Prevent stale screenshot staging data from interrupted browser adapter runs from affecting later captures.",
+          "deliverables": [
+            "Exclusive create or pre-launch cleanup for browser screenshot staging paths",
+            "Regression test with stale staging data under the managed artifact root"
+          ],
+          "acceptanceCriteria": [
+            "Stale browser staging data cannot be read as a fresh screenshot artifact.",
+            "The stale-data guard keeps all temporary screenshot bytes inside the managed artifact root."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture browser"
+            }
+          ],
+          "auditFocus": ["Stale browser screenshot staging data after interrupted runs"]
+        }
+      }
+    }
+  ]
+}

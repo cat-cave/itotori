@@ -513,18 +513,9 @@ export function assertDashboardDecisionReadModel(
       decision.localeBranchId,
       `${label}.pendingDecisions[${index}].localeBranchId`,
     );
-    assertNullableString(
-      decision.targetLocale,
-      `${label}.pendingDecisions[${index}].targetLocale`,
-    );
-    assertNullableString(
-      decision.branchStatus,
-      `${label}.pendingDecisions[${index}].branchStatus`,
-    );
-    assertNullableString(
-      decision.runtimeRunId,
-      `${label}.pendingDecisions[${index}].runtimeRunId`,
-    );
+    assertNullableString(decision.targetLocale, `${label}.pendingDecisions[${index}].targetLocale`);
+    assertNullableString(decision.branchStatus, `${label}.pendingDecisions[${index}].branchStatus`);
+    assertNullableString(decision.runtimeRunId, `${label}.pendingDecisions[${index}].runtimeRunId`);
     assertNullableString(
       decision.runtimeStatus,
       `${label}.pendingDecisions[${index}].runtimeStatus`,

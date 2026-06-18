@@ -1,0 +1,140 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-055-20260618T045710Z",
+  "generatedAt": "2026-06-18T04:57:10Z",
+  "spec": {
+    "id": "ITOTORI-055",
+    "title": "Dashboard decision read model",
+    "branch": "spec/itotori-055",
+    "worktree": "/tmp/itotori-spec-itotori-055",
+    "commit": "7bdd64215e0a4f2b6394e5d07e052696616b7cbb"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-faraday",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Audit found no P0/P1 blockers. The dashboard decision read model distinguishes project-level, locale-branch, and runtime validation decision counts and has DB/API/MSW/dashboard tests. Stricter API kind invariants and DB row mapping fail-closed behavior are recorded as follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-055-F001", "ITOTORI-055-F002"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-055-F001",
+      "severity": "P2",
+      "title": "Decision read-model kind invariant validation",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "apps/itotori/src/api-schema.ts",
+          "symbol": "DashboardDecisionReadModel"
+        }
+      ],
+      "description": "The response validator checks shape and count consistency, but does not enforce kind-specific invariants such as `project_finding` requiring `localeBranchId === null` or `runtime_validation` requiring `runtimeRunId !== null`.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Dashboard audit found current schema validation sufficient for acceptance but weaker than the semantic kind model."
+        }
+      ],
+      "impact": "Future API or repository drift could produce internally contradictory decision records while still satisfying structural validation.",
+      "actionableAcceptanceCriteria": [
+        "Dashboard decision read-model validation enforces kind-specific nullable field invariants.",
+        "API tests reject contradictory project_finding, locale_branch_finding, and runtime_validation examples."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Dashboard decision kind invariant validation",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "dashboard",
+          "dependsOn": ["ITOTORI-055"],
+          "summary": "Strengthen dashboard decision read-model schema validation with kind-specific nullable field invariants.",
+          "deliverables": [
+            "Decision read-model validator enforcing project, locale-branch, and runtime-validation invariants",
+            "API schema tests for contradictory decision records"
+          ],
+          "acceptanceCriteria": [
+            "`project_finding` records require null localeBranchId and runtimeRunId.",
+            "`runtime_validation` records require runtimeRunId and cannot be counted as branch findings."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm exec vitest run apps/itotori/test/api-handlers.test.ts apps/itotori/test/dashboard.test.ts"
+            }
+          ],
+          "auditFocus": ["Dashboard decision record kind contradicting nullable fields"]
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-055-F002",
+      "severity": "P3",
+      "title": "Decision row mapping fail-closed coercion",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/project-repository.ts",
+          "symbol": "listDashboardDecisions"
+        }
+      ],
+      "description": "The DB row mapper uses string coercion for finding IDs. A SQL alias drift could become the literal string `undefined` instead of failing close to the source.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Dashboard audit identified `String(row.finding_id)` as a non-blocking fail-closed weakness in row mapping."
+        }
+      ],
+      "impact": "A future query alias regression could produce misleading IDs rather than a direct validation failure.",
+      "actionableAcceptanceCriteria": [
+        "Decision row mapping uses explicit nullable/string guards instead of blind `String(...)` coercion.",
+        "Repository tests fail when required decision row aliases are missing or null."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Review queue row mapping fail-closed guards",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "dashboard",
+          "dependsOn": ["ITOTORI-055"],
+          "summary": "Replace silent string coercion in dashboard decision row mapping with explicit fail-closed guards and tests.",
+          "deliverables": [
+            "Guarded dashboard decision row mapper in packages/itotori-db",
+            "Repository tests for missing or null required decision row aliases"
+          ],
+          "acceptanceCriteria": [
+            "Missing finding_id aliases fail with semantic repository diagnostics or test-visible errors.",
+            "No dashboard decision ID can become the literal string `undefined`."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": ["Silent string coercion hiding SQL alias drift"]
+        }
+      }
+    }
+  ]
+}

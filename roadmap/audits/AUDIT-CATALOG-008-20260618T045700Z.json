@@ -1,0 +1,150 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-008-20260618T045700Z",
+  "generatedAt": "2026-06-18T04:57:00Z",
+  "spec": {
+    "id": "CATALOG-008",
+    "title": "Exact external-id linker",
+    "branch": "spec/catalog-008",
+    "worktree": "/tmp/itotori-spec-catalog-008",
+    "commit": "b57f19a541a08ef613dc5cac8bf46174286da189"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-darwin",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Audit found no P0/P1 blockers. The exact linker exposes a CLI and service surface, uses exact equality, does not fuzzy match or merge, and has fixture-backed positive and negative paths. Malformed JSON hardening and DB-backed service integration coverage are recorded as follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["CATALOG-008-F001", "CATALOG-008-F002"]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-008-F001",
+      "severity": "P2",
+      "title": "Malformed exact-linker CLI JSON handling",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "apps/itotori/src/cli-handlers.ts",
+          "symbol": "catalog-link-exact"
+        },
+        {
+          "path": "packages/itotori-db/src/services/catalog-exact-external-id-linker.ts",
+          "symbol": "ItotoriCatalogExactExternalIdLinkerService"
+        }
+      ],
+      "description": "The CLI casts parsed JSON to the exact-link request type and the service dereferences request fields without a top-level object guard. Valid negative fixture paths return semantic diagnostics, but malformed top-level JSON can throw instead of returning `catalog.exact_external_id.invalid_request`.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Catalog audit identified direct unknown-to-request casting in the CLI and missing object guard in the linker service."
+        }
+      ],
+      "impact": "Malformed CLI inputs can bypass the intended semantic diagnostic surface and produce less stable process failures.",
+      "actionableAcceptanceCriteria": [
+        "Malformed top-level JSON and non-object request payloads return `catalog.exact_external_id.invalid_request`.",
+        "CLI tests cover malformed JSON syntax, arrays, null, and scalar request payloads."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Exact-linker malformed JSON diagnostics",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-008"],
+          "summary": "Harden catalog exact-linker CLI and service request parsing so malformed top-level JSON returns semantic diagnostics.",
+          "deliverables": [
+            "Runtime request guard for CatalogExactExternalIdLinkRequest payloads",
+            "CLI and service tests for malformed JSON, null, arrays, and scalar request payloads"
+          ],
+          "acceptanceCriteria": [
+            "Malformed top-level request payloads return stable `catalog.exact_external_id.invalid_request` diagnostics.",
+            "The exact-linker CLI never throws raw type errors for malformed request files."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test -- test/cli.test.ts"
+            },
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db exec vitest run test/catalog-exact-external-id-linker.test.ts"
+            }
+          ],
+          "auditFocus": ["Malformed exact-linker request payloads bypassing semantic diagnostics"]
+        }
+      }
+    },
+    {
+      "id": "CATALOG-008-F002",
+      "severity": "P3",
+      "title": "DB-backed exact-linker service integration test",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/test/catalog-exact-external-id-linker.test.ts"
+        },
+        {
+          "path": "packages/itotori-db/src/services/catalog-exact-external-id-linker.ts"
+        }
+      ],
+      "description": "The linker service tests use a fake repository while the repository exact lookup is covered separately. A small DB-backed integration test would prove the service and real repository work together.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Catalog audit found service behavior and repository exact lookup covered separately but not by a single DB-backed service integration test."
+        }
+      ],
+      "impact": "Future service/repository drift could pass isolated fake-repository tests and repository tests while breaking the composed linker path.",
+      "actionableAcceptanceCriteria": [
+        "A DB-backed test seeds catalog works through ItotoriCatalogRepository and invokes ItotoriCatalogExactExternalIdLinkerService.",
+        "The integration test covers exact match and no-match behavior through the real repository."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Exact-linker DB service integration test",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-008"],
+          "summary": "Add a DB-backed exact-linker integration test that exercises the exported linker service against the real catalog repository.",
+          "deliverables": [
+            "DB-backed exact-linker service integration test in packages/itotori-db/test",
+            "Fixture seed data covering exact match and no-match through ItotoriCatalogRepository"
+          ],
+          "acceptanceCriteria": [
+            "The exported linker service returns the same exact-match diagnostics against the real repository as it does against fake repository tests.",
+            "The test runs in the @itotori/db suite with DATABASE_URL."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": ["Exact-linker service and repository composition drift"]
+        }
+      }
+    }
+  ]
+}

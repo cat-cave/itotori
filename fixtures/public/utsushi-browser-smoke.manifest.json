@@ -32,8 +32,8 @@
       "path": "fixtures/public/utsushi-browser-smoke/index.html",
       "role": "asset",
       "mediaType": "text/html",
-      "sha256": "038157ef4116aa1df9fa8d2af48ee8f3b9c44ead42e54884667828b4292cfcec",
-      "bytes": 826,
+      "sha256": "467b08158ed9c62e0874143694c449dca2ef67a1e56a7f93cefaf2bb7ce40e48",
+      "bytes": 830,
       "redistributable": true
     }
   ],
