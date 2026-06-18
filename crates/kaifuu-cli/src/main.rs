@@ -8,7 +8,7 @@ use kaifuu_core::{
     GoldenHarnessRequest, KaifuuResult, PatchExport, PatchPreflightRequest, PatchRequest,
     PatchResult, ProfileRequest, VerifyRequest, atomic_write_text,
     promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
-    run_round_trip_golden, validate_profile_value, write_json,
+    run_round_trip_golden, validate_offset_map_value, validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -143,6 +143,9 @@ fn run_with_args_and_registry(
         Some("golden") => {
             run_golden_command(&args, registry)?;
         }
+        Some("offset-map" | "offsets") => {
+            run_offset_map_command(&args)?;
+        }
         Some("profile") => {
             run_profile_command(&args, registry)?;
         }
@@ -157,8 +160,39 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|profile|capabilities> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|profile|capabilities> ..."
                     .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run_offset_map_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    match positional(args, 1)? {
+        "validate" => {
+            let offset_map_path = PathBuf::from(positional(args, 2)?);
+            let output = PathBuf::from(flag(args, "--output")?);
+            let value: serde_json::Value = read_json(&offset_map_path)?;
+            let validation = validate_offset_map_value(&value);
+            let failed = validation.status == kaifuu_core::OperationStatus::Failed;
+            write_json(&output, &validation)?;
+            if failed {
+                return Err(format!(
+                    "offset map validation failed: {}",
+                    validation
+                        .diagnostics
+                        .iter()
+                        .map(|diagnostic| diagnostic.code.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+                .into());
+            }
+        }
+        _ => {
+            return Err(
+                "usage: kaifuu offset-map validate <offset-map.json> --output <report.json>".into(),
             );
         }
     }
@@ -682,6 +716,12 @@ mod tests {
             .join(relative_path)
     }
 
+    fn core_fixture_path(relative_path: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../kaifuu-core")
+            .join(relative_path)
+    }
+
     fn write_fixture_file(root: &Path, relative_path: &str, bytes: &[u8]) {
         let path = root.join(relative_path);
         if let Some(parent) = path.parent() {
@@ -703,6 +743,139 @@ mod tests {
         registry: &AdapterRegistry,
     ) -> Result<(), Box<dyn std::error::Error>> {
         run_with_args_and_registry(args.iter().map(|arg| arg.to_string()).collect(), registry)
+    }
+
+    #[test]
+    fn offset_map_validate_command_accepts_valid_fixture() {
+        let root = temp_dir("offset-map-valid");
+        let output = root.join("offset-map-report.json");
+        let fixture = core_fixture_path("fixtures/offset-map/shift-jis.json");
+
+        run_cli(&[
+            "offset-map",
+            "validate",
+            fixture.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["diagnostics"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn offset_map_validate_command_writes_semantic_diagnostics() {
+        let root = temp_dir("offset-map-invalid");
+        let input = root.join("invalid-offset-map.json");
+        let output = root.join("offset-map-report.json");
+        fs::write(
+            &input,
+            r#"{
+  "sourceFileId": "script.ks",
+  "encoding": "utf_8",
+  "sourceLength": 6,
+  "decodedTextLength": 6,
+  "patchedLength": 6,
+  "segments": [
+    {
+      "sourceBytes": { "start": 0, "end": 4 },
+      "decodedText": { "start": 0, "end": 4 },
+      "patchedBytes": { "start": 0, "end": 4 }
+    },
+    {
+      "sourceBytes": { "start": 3, "end": 8 },
+      "decodedText": { "start": 4, "end": 6 },
+      "patchedBytes": { "start": 4, "end": 6 }
+    }
+  ]
+}
+"#,
+        )
+        .unwrap();
+
+        let error = run_cli_with_registry_result(
+            &[
+                "offset-map",
+                "validate",
+                input.to_str().unwrap(),
+                "--output",
+                output.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .expect_err("invalid offset map should fail");
+        let error = error.to_string();
+        assert!(
+            error.contains("kaifuu.missing_source_revision_id"),
+            "{error}"
+        );
+        assert!(error.contains("kaifuu.overlapping_spans"), "{error}");
+        assert!(
+            error.contains("kaifuu.out_of_range_source_range"),
+            "{error}"
+        );
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        let codes = report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|diagnostic| diagnostic["code"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(codes.contains(&"kaifuu.missing_source_revision_id"));
+        assert!(codes.contains(&"kaifuu.overlapping_spans"));
+        assert!(codes.contains(&"kaifuu.out_of_range_source_range"));
+    }
+
+    #[test]
+    fn offset_map_validate_command_rejects_detached_decoded_source_axes() {
+        let root = temp_dir("offset-map-detached");
+        let input = root.join("detached-offset-map.json");
+        let output = root.join("offset-map-report.json");
+        fs::write(
+            &input,
+            r#"{
+  "sourceFileId": "script.ks",
+  "sourceRevisionId": "rev-detached-001",
+  "encoding": "utf_8",
+  "sourceLength": 4,
+  "decodedTextLength": 4,
+  "patchedLength": 4,
+  "segments": [
+    {
+      "sourceBytes": { "start": 0, "end": 0 },
+      "decodedText": { "start": 0, "end": 4 },
+      "patchedBytes": { "start": 0, "end": 4 }
+    }
+  ]
+}
+"#,
+        )
+        .unwrap();
+
+        let error = run_cli_with_registry_result(
+            &[
+                "offset-map",
+                "validate",
+                input.to_str().unwrap(),
+                "--output",
+                output.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .expect_err("detached offset map should fail");
+        let error = error.to_string();
+        assert!(error.contains("kaifuu.detached_offset_segment"), "{error}");
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        let codes = report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|diagnostic| diagnostic["code"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(codes.contains(&"kaifuu.detached_offset_segment"));
     }
 
     fn write_apply_delta(root: &Path) -> (PathBuf, PathBuf) {

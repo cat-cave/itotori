@@ -1,0 +1,38 @@
+{
+  "sourceFileId": "script/shift-jis.ks",
+  "sourceRevisionId": "rev-sjis-001",
+  "encoding": "shift_jis",
+  "sourceLength": 3,
+  "decodedTextLength": 4,
+  "patchedLength": 5,
+  "segments": [
+    {
+      "sourceBytes": {
+        "start": 0,
+        "end": 2
+      },
+      "decodedText": {
+        "start": 0,
+        "end": 3
+      },
+      "patchedBytes": {
+        "start": 0,
+        "end": 4
+      }
+    },
+    {
+      "sourceBytes": {
+        "start": 2,
+        "end": 3
+      },
+      "decodedText": {
+        "start": 3,
+        "end": 4
+      },
+      "patchedBytes": {
+        "start": 4,
+        "end": 5
+      }
+    }
+  ]
+}
