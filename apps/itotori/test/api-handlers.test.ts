@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import {
   AuthorizationError,
   ItotoriProjectRepository,
@@ -7,6 +8,7 @@ import {
   type ProjectCostReport,
 } from "@itotori/db";
 import { describe, expect, it, vi } from "vitest";
+import { assertForbiddenApiMutation } from "../../../packages/itotori-db/test/authorization-test-helpers.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import {
   handleItotoriApiRequest,
@@ -28,6 +30,78 @@ import {
   runtimeReportFixture,
   runtimeStatusFixture,
 } from "./api-fixtures.js";
+
+const deniedActor = { userId: "api-user-without-required-permission" };
+
+type PermissionKey = keyof typeof permissionValues;
+type MutatingProjectWorkflowService = Exclude<
+  keyof ItotoriApiServices["projectWorkflow"],
+  "getDashboardStatus" | "getDashboardDecisions" | "getRuntimeStatus" | "getCostReport"
+>;
+
+type ApiMutationPermissionCase = {
+  name: string;
+  request: ItotoriApiRequest;
+  permissionKey: PermissionKey;
+  permission: Permission;
+  service: MutatingProjectWorkflowService;
+  successFixture: string;
+  denialFixture: string;
+};
+
+const apiMutationPermissionMatrix = [
+  apiGate(
+    "bridge import",
+    post("/api/imports/bridge", { bridge: bridgeFixture }),
+    "projectImport",
+    "importBridge",
+  ),
+  apiGate(
+    "branch draft",
+    post("/api/projects/project-1/branches", {
+      project: projectFixture,
+      targetLocale: "fr-FR",
+    }),
+    "draftWrite",
+    "draftProject",
+  ),
+  apiGate(
+    "finding record",
+    post("/api/projects/project-1/findings", {
+      localeBranchId: "locale-1",
+      finding: findingRecordFixture,
+    }),
+    "runtimeIngest",
+    "recordFinding",
+  ),
+  apiGate(
+    "decision record",
+    post("/api/projects/project-1/decisions", {
+      localeBranchId: "locale-1",
+      event: decisionEventFixture,
+    }),
+    "runtimeIngest",
+    "recordDecision",
+  ),
+  apiGate(
+    "benchmark record",
+    post("/api/projects/project-1/benchmarks", {
+      localeBranchId: "locale-1",
+      benchmarkReport: benchmarkReportFixture,
+    }),
+    "runtimeIngest",
+    "recordBenchmarkReport",
+  ),
+  apiGate(
+    "runtime evidence ingest",
+    post("/api/projects/project-1/runtime-evidence", {
+      project: projectFixture,
+      runtimeReport: runtimeReportFixture,
+    }),
+    "runtimeIngest",
+    "ingestRuntimeReport",
+  ),
+] as const satisfies readonly ApiMutationPermissionCase[];
 
 describe("Itotori API handlers", () => {
   it("routes project and runtime status reads without permission checks", async () => {
@@ -147,59 +221,7 @@ describe("Itotori API handlers", () => {
     expect(response.body.error).toMatch(error);
   });
 
-  it.each([
-    {
-      name: "bridge import",
-      request: post("/api/imports/bridge", { bridge: bridgeFixture }),
-      permission: permissionValues.projectImport,
-      service: "importBridge",
-    },
-    {
-      name: "branch draft",
-      request: post("/api/projects/project-1/branches", {
-        project: projectFixture,
-        targetLocale: "fr-FR",
-      }),
-      permission: permissionValues.draftWrite,
-      service: "draftProject",
-    },
-    {
-      name: "finding record",
-      request: post("/api/projects/project-1/findings", {
-        localeBranchId: "locale-1",
-        finding: findingRecordFixture,
-      }),
-      permission: permissionValues.runtimeIngest,
-      service: "recordFinding",
-    },
-    {
-      name: "decision record",
-      request: post("/api/projects/project-1/decisions", {
-        localeBranchId: "locale-1",
-        event: decisionEventFixture,
-      }),
-      permission: permissionValues.runtimeIngest,
-      service: "recordDecision",
-    },
-    {
-      name: "benchmark record",
-      request: post("/api/projects/project-1/benchmarks", {
-        localeBranchId: "locale-1",
-        benchmarkReport: benchmarkReportFixture,
-      }),
-      permission: permissionValues.runtimeIngest,
-      service: "recordBenchmarkReport",
-    },
-    {
-      name: "runtime evidence ingest",
-      request: post("/api/projects/project-1/runtime-evidence", {
-        project: projectFixture,
-        runtimeReport: runtimeReportFixture,
-      }),
-      permission: permissionValues.runtimeIngest,
-      service: "ingestRuntimeReport",
-    },
-  ] as const)(
+  it.each(apiMutationPermissionMatrix)(
     "checks permissions before the $name mutation",
     async ({ request, permission, service }) => {
       const services = serviceFixture();
@@ -240,6 +262,79 @@ describe("Itotori API handlers", () => {
     expect(response.statusCode).toBe(403);
     expect(response.body).toMatchObject({ code: "forbidden" });
     expect(services.projectWorkflow.importBridge).not.toHaveBeenCalled();
+  });
+
+  it.each(apiMutationPermissionMatrix)(
+    "returns forbidden before invoking the $name mutation when authorization rejects",
+    async ({ request, permission, service }) => {
+      const services = serviceFixture();
+      services.authorization.requirePermission.mockRejectedValueOnce(
+        new AuthorizationError(deniedActor, permission),
+      );
+
+      const response = await handleItotoriApiRequest(request, services);
+
+      assertForbiddenApiMutation(response, { actor: deniedActor, permission });
+      expect(services.projectWorkflow[service]).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps the API mutation permission matrix aligned with handler gates", () => {
+    const source = readFileSync(new URL("../src/api-handlers.ts", import.meta.url), "utf8");
+    const sourcePermissionKeys = [
+      ...source.matchAll(/requireApiPermission\(services,\s*permissionValues\.([A-Za-z0-9_]+)\)/gu),
+    ].map((match) => match[1]);
+
+    expect(apiMutationPermissionMatrix.map(({ permissionKey }) => permissionKey).sort()).toEqual(
+      sourcePermissionKeys.sort(),
+    );
+    expect(
+      apiMutationPermissionMatrix.map(({ name, permission, successFixture, denialFixture }) => ({
+        mutation: name,
+        requiredPermission: permission,
+        successFixture,
+        denialFixture,
+      })),
+    ).toMatchInlineSnapshot(`
+      [
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "bridge import",
+          "requiredPermission": "project.import",
+          "successFixture": "api-handlers.test.ts bridge import success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "branch draft",
+          "requiredPermission": "draft.write",
+          "successFixture": "api-handlers.test.ts branch draft success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "finding record",
+          "requiredPermission": "runtime.ingest",
+          "successFixture": "api-handlers.test.ts finding record success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "decision record",
+          "requiredPermission": "runtime.ingest",
+          "successFixture": "api-handlers.test.ts decision record success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "benchmark record",
+          "requiredPermission": "runtime.ingest",
+          "successFixture": "api-handlers.test.ts benchmark record success fixture",
+        },
+        {
+          "denialFixture": "permission middleware rejects as api-user-without-required-permission",
+          "mutation": "runtime evidence ingest",
+          "requiredPermission": "runtime.ingest",
+          "successFixture": "api-handlers.test.ts runtime evidence ingest success fixture",
+        },
+      ]
+    `);
   });
 
   it("allows failed runtime evidence ingest results with validation findings", async () => {
@@ -384,6 +479,23 @@ describe("Itotori API handlers", () => {
 
 function post(pathname: string, body: unknown): ItotoriApiRequest {
   return { method: "POST", pathname, body };
+}
+
+function apiGate(
+  name: string,
+  request: ItotoriApiRequest,
+  permissionKey: PermissionKey,
+  service: MutatingProjectWorkflowService,
+): ApiMutationPermissionCase {
+  return {
+    name,
+    request,
+    permissionKey,
+    permission: permissionValues[permissionKey],
+    service,
+    successFixture: `api-handlers.test.ts ${name} success fixture`,
+    denialFixture: `permission middleware rejects as ${deniedActor.userId}`,
+  };
 }
 
 function serviceFixture(): ItotoriApiServices {
