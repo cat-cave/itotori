@@ -7949,7 +7949,7 @@
     {
       "id": "UTSUSHI-004",
       "title": "Runtime artifact storage foundation",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "itotori"],
@@ -7991,7 +7991,10 @@
         "Path traversal",
         "Large DB blobs",
         "Catalog sidecar scope leaking into runtime storage"
-      ]
+      ],
+      "owner": "orchestrator-utsushi-004",
+      "branch": "spec/utsushi-004",
+      "worktree": "/tmp/itotori-spec-utsushi-004"
     },
     {
       "id": "UTSUSHI-049",

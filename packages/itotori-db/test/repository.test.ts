@@ -254,7 +254,7 @@ function runtimeEvidenceReportFixture(
         artifactRef: {
           artifactId: "019ed003-0000-7000-8000-000000000931",
           artifactKind: "screenshot",
-          uri: "artifacts/utsushi/hello/frame-0901.png",
+          uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000901/screenshots/019ed003-0000-7000-8000-000000000931.png",
           mediaType: "image/png",
         },
       },
@@ -1133,7 +1133,7 @@ describe("ItotoriProjectRepository", () => {
               artifactRef: {
                 artifactId: "019ed003-0000-7000-8000-000000000401",
                 artifactKind: "screenshot",
-                uri: "artifacts/utsushi/hello/frame-0001.png",
+                uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000001/screenshots/019ed003-0000-7000-8000-000000000401.png",
                 mediaType: "image/png",
               },
             },
@@ -1201,7 +1201,7 @@ describe("ItotoriProjectRepository", () => {
       ]);
       expect(artifactResult.rows[0]).toEqual({
         artifact_kind: "screenshot",
-        uri: "artifacts/utsushi/hello/frame-0001.png",
+        uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000001/screenshots/019ed003-0000-7000-8000-000000000401.png",
       });
 
       const evidenceArtifacts = await context.pool.query<{
@@ -1321,7 +1321,7 @@ describe("ItotoriProjectRepository", () => {
               artifactRef: {
                 artifactId: "019ed003-0000-7000-8000-000000000932",
                 artifactKind: "trace_log",
-                uri: "artifacts/utsushi/hello/trace-0902.json",
+                uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/traces/019ed003-0000-7000-8000-000000000932.json",
                 mediaType: "application/json",
               },
             },
@@ -1341,7 +1341,7 @@ describe("ItotoriProjectRepository", () => {
               artifactRef: {
                 artifactId: "019ed003-0000-7000-8000-000000000933",
                 artifactKind: "screenshot",
-                uri: "artifacts/utsushi/hello/frame-0902.png",
+                uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/screenshots/019ed003-0000-7000-8000-000000000933.png",
                 mediaType: "image/png",
               },
             },
@@ -1373,7 +1373,7 @@ describe("ItotoriProjectRepository", () => {
               artifactRef: {
                 artifactId: "019ed003-0000-7000-8000-000000000961",
                 artifactKind: "trace_log",
-                uri: "artifacts/utsushi/hello/validation-0902.json",
+                uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/traces/019ed003-0000-7000-8000-000000000961.json",
                 mediaType: "application/json",
               },
               message: "Observed runtime text differed from the drafted locale branch text.",
@@ -1463,14 +1463,16 @@ describe("ItotoriProjectRepository", () => {
           evidence_kind: "capture",
           bridge_unit_id: "bridge-unit-test",
           artifact_id: "019ed003-0000-7000-8000-000000000933",
-          portable_artifact_uri: "artifacts/utsushi/hello/frame-0902.png",
+          portable_artifact_uri:
+            "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/screenshots/019ed003-0000-7000-8000-000000000933.png",
         },
         {
           runtime_evidence_id: "019ed003-0000-7000-8000-000000000912",
           evidence_kind: "trace_event",
           bridge_unit_id: "bridge-unit-test",
           artifact_id: "019ed003-0000-7000-8000-000000000932",
-          portable_artifact_uri: "artifacts/utsushi/hello/trace-0902.json",
+          portable_artifact_uri:
+            "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/traces/019ed003-0000-7000-8000-000000000932.json",
         },
       ]);
 
@@ -1531,8 +1533,211 @@ describe("ItotoriProjectRepository", () => {
         artifact_id: "019ed003-0000-7000-8000-000000000961",
         finding_status: "open",
         quality_category: "runtime_validation",
-        artifact_uri: "artifacts/utsushi/hello/validation-0902.json",
+        artifact_uri:
+          "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/traces/019ed003-0000-7000-8000-000000000961.json",
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("stores runtime artifact references without embedding artifact blobs", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      await repo.importSourceBundle(localActor, project);
+
+      const base = runtimeEvidenceReportFixture();
+      const runtimeReport = runtimeEvidenceReportFixture({
+        runtimeReportId: "019ed003-0000-7000-8000-000000000904",
+        fidelityTier: "reference_fidelity",
+        evidenceTier: "E4",
+        runtimeCapabilities: {
+          ...base.runtimeCapabilities!,
+          capabilityClass: "reference_vm",
+          fidelityTierCeiling: "reference_fidelity",
+          evidenceTierCeiling: "E4",
+          features: [
+            ...base.runtimeCapabilities!.features.filter(
+              (feature) => !["recording", "reference_comparison"].includes(feature.feature),
+            ),
+            {
+              feature: "recording",
+              status: "supported",
+              evidenceTierCeiling: "E3",
+              description: "Stores runtime recording artifact references.",
+              limitations: [],
+            },
+            {
+              feature: "reference_comparison",
+              status: "supported",
+              evidenceTierCeiling: "E4",
+              description: "Stores conformance comparison artifact references.",
+              limitations: [],
+            },
+          ],
+        },
+        controlledPlaybackSession: {
+          ...base.controlledPlaybackSession!,
+          capabilityClass: "reference_vm",
+          requestedOperation: "smoke_validation",
+          fidelityTier: "reference_fidelity",
+          evidenceTier: "E4",
+          featuresUsed: [
+            "static_trace",
+            "text_trace",
+            "frame_capture",
+            "recording",
+            "reference_comparison",
+          ],
+        },
+        traceEvents: [
+          {
+            ...base.traceEvents[0]!,
+            artifactRef: {
+              artifactId: "019ed003-0000-7000-8000-000000000971",
+              artifactKind: "trace_log",
+              uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000904/traces/019ed003-0000-7000-8000-000000000971.json",
+              mediaType: "application/json",
+              byteSize: 128,
+              data: "raw-trace-blob-should-not-persist",
+            } as RuntimeEvidenceReportV02["traceEvents"][number]["artifactRef"] & {
+              data: string;
+            },
+          },
+        ],
+        captures: [
+          {
+            ...base.captures[0]!,
+            artifactRef: {
+              artifactId: "019ed003-0000-7000-8000-000000000972",
+              artifactKind: "screenshot",
+              uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000904/screenshots/019ed003-0000-7000-8000-000000000972.png",
+              mediaType: "image/png",
+              byteSize: 256,
+              bytes: "raw-pixel-data-should-not-persist",
+            } as RuntimeEvidenceReportV02["captures"][number]["artifactRef"] & {
+              bytes: string;
+            },
+          },
+        ],
+        recordings: [
+          {
+            recordingId: "019ed003-0000-7000-8000-000000000973",
+            bridgeUnitRef: {
+              bridgeUnitId: "bridge-unit-test",
+              sourceUnitKey: "hello.scene.001.line.001",
+            },
+            evidenceTier: "E3",
+            startedAtFrame: 1,
+            frameCount: 12,
+            width: 320,
+            height: 180,
+            encoding: "vp9/webm",
+            artifactRef: {
+              artifactId: "019ed003-0000-7000-8000-000000000974",
+              artifactKind: "recording",
+              uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000904/recordings/019ed003-0000-7000-8000-000000000974.webm",
+              mediaType: "video/webm",
+              byteSize: 512,
+              data: "raw-video-data-should-not-persist",
+            } as RuntimeEvidenceReportV02["recordings"][number]["artifactRef"] & {
+              data: string;
+            },
+          },
+        ],
+        referenceComparisons: [
+          {
+            comparisonId: "019ed003-0000-7000-8000-000000000975",
+            comparisonKind: "conformance_fixture",
+            status: "passed",
+            scope: "runtime artifact storage contract",
+            coveredBridgeUnitRefs: [
+              {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+            ],
+            artifactRef: {
+              artifactId: "019ed003-0000-7000-8000-000000000976",
+              artifactKind: "reference_comparison",
+              uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000904/conformance-reports/019ed003-0000-7000-8000-000000000976.json",
+              mediaType: "application/json",
+              byteSize: 768,
+              data: "raw-conformance-data-should-not-persist",
+            } as NonNullable<
+              RuntimeEvidenceReportV02["referenceComparisons"]
+            >[number]["artifactRef"] & { data: string },
+          },
+        ],
+      });
+
+      await repo.saveRuntimeReport(
+        localActor,
+        project,
+        runtimeReport,
+        "019ed003-0000-7000-8000-000000000984",
+      );
+
+      const itemRows = await context.pool.query<{
+        runtime_evidence_id: string;
+        evidence_kind: string;
+        artifact_id: string | null;
+        portable_artifact_uri: string | null;
+        metadata: Record<string, unknown>;
+      }>(
+        `
+        select runtime_evidence_id, evidence_kind, artifact_id, portable_artifact_uri, metadata
+        from itotori_runtime_evidence_items
+        where runtime_run_id = $1
+          and evidence_kind in ('trace_event', 'capture', 'recording', 'reference_comparison')
+        order by evidence_kind, runtime_evidence_id
+        `,
+        ["019ed003-0000-7000-8000-000000000904"],
+      );
+
+      expect(itemRows.rows).toHaveLength(4);
+      for (const row of itemRows.rows) {
+        expect(row.artifact_id).toBeTruthy();
+        expect(row.portable_artifact_uri).toMatch(/^artifacts\/utsushi\/runtime\//);
+        const metadata = JSON.stringify(row.metadata);
+        expect(metadata).not.toContain("raw-trace-blob-should-not-persist");
+        expect(metadata).not.toContain("raw-pixel-data-should-not-persist");
+        expect(metadata).not.toContain("raw-video-data-should-not-persist");
+        expect(metadata).not.toContain("raw-conformance-data-should-not-persist");
+      }
+
+      const artifactRows = await context.pool.query<{
+        artifact_kind: string;
+        uri: string | null;
+        metadata: Record<string, unknown>;
+      }>(
+        `
+        select artifact_kind, uri, metadata
+        from itotori_artifacts
+        where artifact_id in ($1, $2, $3, $4)
+        order by artifact_kind
+        `,
+        [
+          "019ed003-0000-7000-8000-000000000971",
+          "019ed003-0000-7000-8000-000000000972",
+          "019ed003-0000-7000-8000-000000000974",
+          "019ed003-0000-7000-8000-000000000976",
+        ],
+      );
+
+      expect(artifactRows.rows.map((row) => row.artifact_kind).sort()).toEqual([
+        "recording",
+        "reference_comparison",
+        "screenshot",
+        "trace_log",
+      ]);
+      for (const row of artifactRows.rows) {
+        expect(row.uri).toMatch(/^artifacts\/utsushi\/runtime\//);
+        expect(JSON.stringify(row.metadata)).not.toMatch(/raw-.*-should-not-persist/);
+      }
     } finally {
       await context.close();
     }
