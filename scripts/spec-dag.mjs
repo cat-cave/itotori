@@ -99,13 +99,23 @@ const docsOnlyPattern = /\b(?:docs?|documentation|readme|adr|policy|spec|guide|p
 const implementationPattern =
   /\b(?:adapter|api|artifact|bridge|cli|command|contract|dashboard|database|delta|fixture|generator|harness|implementation|ingest|migration|model|parser|patch|queue|repository|runner|schema|service|smoke|test|ui|validator|workflow)\b/iu;
 const metaNodePattern =
-  /\b(?:meta[- ]?pack|follow[- ]up pack|normalize[- ]later|granularity follow[- ]up normalizer|report[- ]only|decision[- ]only|decision node|decision record|feasibility[- ]only|feasibility report|feasibility node|feasibility study)\b/iu;
+  /\b(?:meta[- ]?pack|follow[- ]up pack|normalize[- ]later|granularity follow[- ]up normalizer|report[- ]only|decision[- ]only|decision node|decision record|feasibility[- ]only|feasibility (?:assessment|report|node|study))\b/iu;
 const implementableDecisionPattern =
   /\b(?:api|command|contract|dashboard|events?|generator|import|model|persistence|queue|read model|renderer|schema|service|ui|validator|workflow|wiring)\b/iu;
 const placeholderCommandVerificationPattern =
   /^(?:tbd|todo|manual review|command|verification command|exact command|owned command(?:,\s+service,\s+schema,\s+or artifact surface)?)$/iu;
 const commandLikeVerificationPattern =
   /^(?:(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*|env\s+(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*)(?:cargo|node|pnpm|just|npm|npx|uv|python|python3|bash|sh|test|make|go|deno|bun|ruby|rspec|pytest|ruff|vitest|jest|tsx|ts-node|docker|docker\s+compose|git|gh)\b(?:\s+[^\n]+)?$/iu;
+const concreteCommandEvidencePatterns = [
+  /\s(?:--?[a-z][a-z0-9-]*)(?:[=\s]|$)/iu,
+  /\s(?:\.{0,2}\/|[a-z0-9._-]+\/|[a-z0-9._/-]+\.[a-z0-9]+)\S*/iu,
+  /(?:^|\s)@[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)?\b/iu,
+  /\b[a-z0-9][a-z0-9._-]*:[a-z0-9][a-z0-9._:-]*\b/iu,
+  /^(?:(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*|env\s+(?:-[a-z]\s+[A-Z_][A-Z0-9_]*\s+|[A-Z_][A-Z0-9_]*=[^\s]+\s+)*)(?:cargo|go)\s+(?:build|check|clippy|deny|fmt|test)\b/iu,
+  /^(?:(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*|env\s+(?:-[a-z]\s+[A-Z_][A-Z0-9_]*\s+|[A-Z_][A-Z0-9_]*=[^\s]+\s+)*)(?:just|make|npm|npx|pnpm|uv|pytest|ruff|vitest|jest|rspec)\s+[a-z0-9][a-z0-9:_-]*\b/iu,
+  /^(?:(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*|env\s+(?:-[a-z]\s+[A-Z_][A-Z0-9_]*\s+|[A-Z_][A-Z0-9_]*=[^\s]+\s+)*)(?:docker\s+compose|docker|git|gh)\s+[a-z0-9][a-z0-9:_-]*\b/iu,
+  /^(?:(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*|env\s+(?:-[a-z]\s+[A-Z_][A-Z0-9_]*\s+|[A-Z_][A-Z0-9_]*=[^\s]+\s+)*)(?:bash|sh|node|python|python3|deno|bun|ruby|tsx|ts-node)\s+\S*(?:\/|\.[a-z0-9]+)\S*/iu,
+];
 const timeEstimateFieldPattern =
   /(?:estimate|estimated|duration|hours?|days?|effort|points?|tshirt|t[- ]shirt)/iu;
 const timeEstimateQuantityPattern =
@@ -116,7 +126,8 @@ const timeEstimateTextPattern = new RegExp(
   String.raw`\b(?:${timeEstimateQuantityPattern.source})(?:\s+|-)(?:person[-\s]?)?(?:minutes?|hours?|days?|weeks?|months?|story\s+points?|points?|pts?)\b|\bt[- ]?shirt\s+size(?:\s*(?:[:=]|\bis\b|\bas\b)\s*${effortSizePattern})?\b|\b(?:estimated?\s+)?(?:effort|duration)\s*(?:[:=]|\bis\b|\bof\b|\bat\b|\babout\b|\baround\b|\broughly\b)?\s*(?:(?:${timeEstimateQuantityPattern.source})(?:\s+|-)(?:minutes?|hours?|days?|weeks?|months?|story\s+points?|points?|pts?)|${compactTimeEstimateQuantityPattern}|${effortSizePattern})\b|\b(?:sized|sizing)\s*(?:[:=]|\bas\b|\bat\b|\bfor\b)\s*${effortSizePattern}\b`,
   "iu",
 );
-const schedulingTextPattern = /\b(?:in\s+sprint\s+\d+|scheduled\s+for\s+(?:next\s+)?sprint)\b/iu;
+const schedulingTextPattern =
+  /\b(?:in\s+sprint\s+\d+|planned\s+for\s+sprint\s+\d+|scheduled\s+for\s+(?:next\s+)?sprint|runs\s+next\s+sprint)\b/iu;
 const exactIntegrationSurfaceQualifierPattern = String.raw`(?:asset|benchmark|bgi|binary|branch|catalog|capability|capture|community|corpus|cost|cross[- ]source|dashboard|decision|delta|draft|edition|encrypted|encrypted[- ]profile|engine|event|experiment|feedback|full[- ]surface|helper|install[- ]state|key|kirikiri|ledger|locale|local|local[- ]corpus|manual|matrix|model|mv\/mz|openrouter|patch|permission|private[- ]local|provider|public[- ]fixture|qa|quality|readiness|real[- ]engine|review|reviewer|runtime|siglus|source|style|trace|translation|triage|vm|wolf|xp3)`;
 const exactIntegrationSurfaceNounPattern = String.raw`(?:adapter|api|artifact|artifacts|bridge|command|contract|dashboard|delta|diagnostic|diagnostics|evidence|export|fixture|fixtures|generator|harness|import|ledger|manifest|matrix|model|parser|patcher|profile|queue|record|records|renderer|report|resolver|route|run|schema|service|smoke|storage|store|surface|tool|tools|ui|ux|validator|workflow)`;
 const genericIntegrationSurfaceCandidateTerms = new Set([
@@ -1061,7 +1072,8 @@ function isConcreteCommandVerification(value) {
   return (
     normalized.length > 0 &&
     !placeholderCommandVerificationPattern.test(normalized) &&
-    commandLikeVerificationPattern.test(normalized)
+    commandLikeVerificationPattern.test(normalized) &&
+    concreteCommandEvidencePatterns.some((pattern) => pattern.test(normalized))
   );
 }
 
@@ -1178,7 +1190,7 @@ function isOwnedSurfacePlaceholder(value) {
     .replace(/[^a-z0-9]+/gu, " ")
     .trim()
     .replace(/\s+/gu, " ");
-  return /^(?:names an? )?owned command service schema (?:or )?artifact surface$/iu.test(
+  return /^(?:names an? )?owned command service schema (?:(?:or|and) )?artifact surfaces?$/iu.test(
     normalized,
   );
 }
