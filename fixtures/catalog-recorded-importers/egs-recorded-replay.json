@@ -1,0 +1,210 @@
+{
+  "fixtureId": "catalog-recorded-importer-egs-response-v0.1",
+  "fixtureName": "catalog-recorded-importer-egs-public-response",
+  "catalogSource": "egs",
+  "adapterName": "egs-recorded-response-importer",
+  "adapterVersion": "adapter-catalog-011-v1",
+  "sourceVersion": "egs-recorded-synthetic-2026-06-18",
+  "parserVersion": "catalog-recorded-importers.v0.1",
+  "readiness": "alpha_ready",
+  "factImportContract": {
+    "contractId": "CATALOG-065",
+    "strategy": "upsert",
+    "factIdentity": ["catalogSource", "sourceId"],
+    "replayValidation": [
+      "sourceId",
+      "fixtureId",
+      "stableImportKey",
+      "importTransactionId",
+      "factCount",
+      "factIdentities"
+    ]
+  },
+  "partitionKey": "public-egs-recorded",
+  "steps": [
+    {
+      "stepKey": "egs-prod-starlight",
+      "sourceId": "prod-starlight-001",
+      "requestIdentity": "GET /storefront/products/prod-starlight-001?locale=en-US",
+      "fetchedAt": "2026-06-18T13:05:00.000Z",
+      "checkpointCursor": { "afterStepKey": "egs-prod-starlight", "cursor": "prod-starlight-001" },
+      "httpStatus": 200,
+      "payload": {
+        "id": "prod-starlight-001",
+        "namespace": "fixture-starlight",
+        "catalogItemId": "9c3f4ad2fixture",
+        "slug": "promise-under-starlight",
+        "title": "Promise Under Starlight",
+        "developer": "Fixture Circle",
+        "publisher": "Fixture Works",
+        "releaseDate": "2021-09-10T00:00:00.000Z",
+        "locales": ["en-US", "ja-JP"],
+        "seller": { "name": "Fixture Works" }
+      },
+      "facts": [
+        {
+          "sourceId": "prod-starlight-001",
+          "canonicalTitle": "Promise Under Starlight",
+          "originalLanguage": "ja-JP",
+          "firstReleaseYear": 2021,
+          "externalIds": [
+            {
+              "sourceId": "prod-starlight-001",
+              "externalIdKind": "store_product",
+              "metadata": {
+                "namespace": "fixture-starlight",
+                "catalogItemId": "9c3f4ad2fixture",
+                "slug": "promise-under-starlight"
+              }
+            }
+          ],
+          "releases": [
+            {
+              "sourceReleaseId": "prod-starlight-001:egs",
+              "releaseTitle": "Promise Under Starlight",
+              "releaseKind": "official_translation",
+              "platform": "egs",
+              "language": "en-US",
+              "releaseDate": "2021-09-10",
+              "releaseYear": 2021,
+              "isOfficial": true,
+              "metadata": {
+                "namespace": "fixture-starlight",
+                "catalogItemId": "9c3f4ad2fixture",
+                "slug": "promise-under-starlight",
+                "developer": "Fixture Circle",
+                "publisher": "Fixture Works"
+              }
+            }
+          ],
+          "languageStatuses": [
+            {
+              "language": "en-US",
+              "status": "official_full",
+              "statusScope": "platform",
+              "platform": "egs",
+              "releaseSourceId": "prod-starlight-001:egs",
+              "metadata": { "sourceField": "locales", "locale": "en-US" }
+            },
+            {
+              "language": "ja-JP",
+              "status": "official_full",
+              "statusScope": "platform",
+              "platform": "egs",
+              "releaseSourceId": "prod-starlight-001:egs",
+              "metadata": { "sourceField": "locales", "locale": "ja-JP" }
+            }
+          ],
+          "seedTarget": { "priority": 30, "metadata": { "benchmarkHint": "egs-official-en" } },
+          "metadata": {
+            "store": {
+              "namespace": "fixture-starlight",
+              "catalogItemId": "9c3f4ad2fixture",
+              "slug": "promise-under-starlight",
+              "developer": "Fixture Circle",
+              "publisher": "Fixture Works"
+            }
+          }
+        }
+      ],
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/egs-recorded-replay.json",
+        "redactionClass": "public_metadata"
+      },
+      "rateLimit": {
+        "remaining": 99,
+        "limit": 100,
+        "resetAt": "2026-06-18T13:06:00.000Z",
+        "metadata": { "policy": "recorded-fixture" }
+      }
+    },
+    {
+      "stepKey": "egs-prod-moon",
+      "sourceId": "prod-moon-002",
+      "requestIdentity": "GET /storefront/products/prod-moon-002?locale=ja-JP",
+      "fetchedAt": "2026-06-18T13:05:02.000Z",
+      "checkpointCursor": { "afterStepKey": "egs-prod-moon", "cursor": "prod-moon-002" },
+      "httpStatus": 200,
+      "payload": {
+        "id": "prod-moon-002",
+        "namespace": "fixture-moon",
+        "catalogItemId": "1aa45bd7fixture",
+        "slug": "moonlit-glass-journey",
+        "title": "Moonlit Glass Journey",
+        "developer": "Fixture Studio",
+        "publisher": "Fixture Studio",
+        "releaseDate": "2022-03-01T00:00:00.000Z",
+        "locales": ["ja-JP"],
+        "seller": { "name": "Fixture Studio" }
+      },
+      "facts": [
+        {
+          "sourceId": "prod-moon-002",
+          "canonicalTitle": "Moonlit Glass Journey",
+          "originalLanguage": "ja-JP",
+          "firstReleaseYear": 2022,
+          "externalIds": [
+            {
+              "sourceId": "prod-moon-002",
+              "externalIdKind": "store_product",
+              "metadata": {
+                "namespace": "fixture-moon",
+                "catalogItemId": "1aa45bd7fixture",
+                "slug": "moonlit-glass-journey"
+              }
+            }
+          ],
+          "releases": [
+            {
+              "sourceReleaseId": "prod-moon-002:egs",
+              "releaseTitle": "Moonlit Glass Journey",
+              "releaseKind": "original",
+              "platform": "egs",
+              "language": "ja-JP",
+              "releaseDate": "2022-03-01",
+              "releaseYear": 2022,
+              "isOfficial": true,
+              "metadata": {
+                "namespace": "fixture-moon",
+                "catalogItemId": "1aa45bd7fixture",
+                "slug": "moonlit-glass-journey",
+                "developer": "Fixture Studio",
+                "publisher": "Fixture Studio"
+              }
+            }
+          ],
+          "languageStatuses": [
+            {
+              "language": "ja-JP",
+              "status": "official_full",
+              "statusScope": "platform",
+              "platform": "egs",
+              "releaseSourceId": "prod-moon-002:egs",
+              "metadata": { "sourceField": "locales", "locale": "ja-JP" }
+            },
+            {
+              "language": "en-US",
+              "status": "unknown",
+              "confidence": "low",
+              "metadata": { "sourceField": "locales", "locale": "en-US" }
+            }
+          ],
+          "seedTarget": { "priority": 12, "metadata": { "benchmarkHint": "egs-unknown-en" } },
+          "metadata": {
+            "store": {
+              "namespace": "fixture-moon",
+              "catalogItemId": "1aa45bd7fixture",
+              "slug": "moonlit-glass-journey",
+              "developer": "Fixture Studio",
+              "publisher": "Fixture Studio"
+            }
+          }
+        }
+      ],
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/egs-recorded-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    }
+  ]
+}

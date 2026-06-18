@@ -1,0 +1,190 @@
+{
+  "fixtureId": "catalog-recorded-importer-vndb-dump-v0.1",
+  "fixtureName": "catalog-recorded-importer-vndb-public-dump",
+  "catalogSource": "vndb",
+  "adapterName": "vndb-recorded-dump-importer",
+  "adapterVersion": "adapter-catalog-011-v1",
+  "sourceVersion": "vndb-dump-synthetic-2026-06-18",
+  "parserVersion": "catalog-recorded-importers.v0.1",
+  "readiness": "alpha_ready",
+  "factImportContract": {
+    "contractId": "CATALOG-065",
+    "strategy": "upsert",
+    "factIdentity": ["catalogSource", "sourceId"],
+    "replayValidation": [
+      "sourceId",
+      "fixtureId",
+      "stableImportKey",
+      "importTransactionId",
+      "factCount",
+      "factIdentities"
+    ]
+  },
+  "partitionKey": "public-vndb-dump",
+  "steps": [
+    {
+      "stepKey": "vndb-v1001",
+      "sourceId": "v1001",
+      "requestIdentity": "dump://vndb/vn+releases/v1001",
+      "fetchedAt": "2026-06-18T13:00:00.000Z",
+      "checkpointCursor": { "afterStepKey": "vndb-v1001", "cursor": "v1001" },
+      "httpStatus": 200,
+      "payload": {
+        "vn": {
+          "id": "v1001",
+          "titles": [
+            { "lang": "ja", "title": "星影の約束", "official": true, "main": true },
+            { "lang": "en", "title": "Promise Under Starlight", "official": true }
+          ],
+          "released": "2019-04-26",
+          "olang": "ja"
+        },
+        "releases": [
+          {
+            "id": "r5001",
+            "title": "星影の約束",
+            "released": "2019-04-26",
+            "languages": ["ja"],
+            "platforms": ["win"],
+            "type": "complete"
+          },
+          {
+            "id": "r5002",
+            "title": "Promise Under Starlight",
+            "released": "2021-09-10",
+            "languages": ["en"],
+            "platforms": ["win"],
+            "type": "complete"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "sourceId": "v1001",
+          "canonicalTitle": "Promise Under Starlight",
+          "originalLanguage": "ja-JP",
+          "firstReleaseYear": 2019,
+          "titles": ["星影の約束", "Promise Under Starlight"],
+          "releases": [
+            {
+              "sourceReleaseId": "r5001",
+              "releaseTitle": "星影の約束",
+              "releaseKind": "original",
+              "platform": "pc",
+              "language": "ja-JP",
+              "releaseDate": "2019-04-26",
+              "releaseYear": 2019,
+              "isOfficial": true,
+              "metadata": { "vndbReleaseType": "complete", "vndbPlatforms": ["win"] }
+            },
+            {
+              "sourceReleaseId": "r5002",
+              "releaseTitle": "Promise Under Starlight",
+              "releaseKind": "official_translation",
+              "platform": "pc",
+              "language": "en-US",
+              "releaseDate": "2021-09-10",
+              "releaseYear": 2021,
+              "isOfficial": true,
+              "metadata": { "vndbReleaseType": "complete", "vndbPlatforms": ["win"] }
+            }
+          ],
+          "languageStatuses": [
+            {
+              "language": "ja-JP",
+              "status": "official_full",
+              "statusScope": "release",
+              "platform": "pc",
+              "releaseSourceId": "r5001",
+              "metadata": { "sourceField": "releases.languages" }
+            },
+            {
+              "language": "en-US",
+              "status": "official_full",
+              "statusScope": "release",
+              "platform": "pc",
+              "releaseSourceId": "r5002",
+              "metadata": { "sourceField": "releases.languages" }
+            }
+          ],
+          "seedTarget": { "priority": 20, "metadata": { "benchmarkHint": "official-en-vn" } },
+          "metadata": { "dumpTables": ["vn", "releases"] }
+        }
+      ],
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/vndb-dump-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    },
+    {
+      "stepKey": "vndb-v1002",
+      "sourceId": "v1002",
+      "requestIdentity": "dump://vndb/vn+releases/v1002",
+      "fetchedAt": "2026-06-18T13:00:01.000Z",
+      "checkpointCursor": { "afterStepKey": "vndb-v1002", "cursor": "v1002" },
+      "httpStatus": 200,
+      "payload": {
+        "vn": {
+          "id": "v1002",
+          "titles": [{ "lang": "ja", "title": "硝子の旅路", "official": true, "main": true }],
+          "released": "2020-02-14",
+          "olang": "ja"
+        },
+        "releases": [
+          {
+            "id": "r6001",
+            "title": "硝子の旅路",
+            "released": "2020-02-14",
+            "languages": ["ja"],
+            "platforms": ["win"],
+            "type": "complete"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "sourceId": "v1002",
+          "canonicalTitle": "Glass Journey",
+          "originalLanguage": "ja-JP",
+          "firstReleaseYear": 2020,
+          "titles": ["硝子の旅路"],
+          "releases": [
+            {
+              "sourceReleaseId": "r6001",
+              "releaseTitle": "硝子の旅路",
+              "releaseKind": "original",
+              "platform": "pc",
+              "language": "ja-JP",
+              "releaseDate": "2020-02-14",
+              "releaseYear": 2020,
+              "isOfficial": true,
+              "metadata": { "vndbReleaseType": "complete", "vndbPlatforms": ["win"] }
+            }
+          ],
+          "languageStatuses": [
+            {
+              "language": "ja-JP",
+              "status": "official_full",
+              "statusScope": "release",
+              "platform": "pc",
+              "releaseSourceId": "r6001",
+              "metadata": { "sourceField": "releases.languages" }
+            },
+            {
+              "language": "en-US",
+              "status": "none",
+              "confidence": "medium",
+              "metadata": { "sourceField": "absence-of-en-release" }
+            }
+          ],
+          "seedTarget": { "priority": 10, "metadata": { "benchmarkHint": "no-english-vn" } },
+          "metadata": { "dumpTables": ["vn", "releases"] }
+        }
+      ],
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/vndb-dump-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    }
+  ]
+}

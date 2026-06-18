@@ -171,8 +171,12 @@ export class ItotoriCatalogCrawlerRunner {
       adapterName: adapter.adapterName,
       partitionKey,
     });
-    const startingCursor: CatalogCrawlerCursor =
-      checkpoint?.checkpointCursor ?? adapter.initialCheckpointCursor ?? null;
+    const checkpointMatchesAdapter =
+      checkpoint?.sourceVersion === adapter.sourceVersion &&
+      checkpoint.parserVersion === adapter.parserVersion;
+    const startingCursor: CatalogCrawlerCursor = checkpointMatchesAdapter
+      ? checkpoint.checkpointCursor
+      : (adapter.initialCheckpointCursor ?? null);
     const jobInput: CatalogCrawlerJobInput = {
       catalogSource: adapter.catalogSource,
       adapterName: adapter.adapterName,
