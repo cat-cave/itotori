@@ -4,16 +4,19 @@ use std::io::{self, Write};
 use std::panic::{self, AssertUnwindSafe};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::str::FromStr;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 pub const RUNTIME_ARTIFACT_URI_ROOT: &str = "artifacts/utsushi/runtime";
 pub const RUNTIME_ARTIFACT_ROOT_MARKER: &str = ".utsushi-runtime-artifacts";
+pub const OBSERVATION_HOOK_SCHEMA_VERSION: &str = "0.1.0-alpha";
 
 const DEFAULT_HARNESS_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_HARNESS_SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
@@ -519,6 +522,40 @@ impl EvidenceTier {
     }
 }
 
+impl FromStr for EvidenceTier {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "E0" => Ok(Self::E0),
+            "E1" => Ok(Self::E1),
+            "E2" => Ok(Self::E2),
+            "E3" => Ok(Self::E3),
+            "E4" => Ok(Self::E4),
+            _ => Err(format!("unknown evidence tier: {value}")),
+        }
+    }
+}
+
+impl Serialize for EvidenceTier {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for EvidenceTier {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::from_str(&value).map_err(serde::de::Error::custom)
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum FidelityTier {
     TraceOnly,
@@ -900,6 +937,538 @@ impl ControlledPlaybackSession {
             "limitations": self.limitations
         })
     }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ObservationHookEventKind {
+    Text,
+    Choice,
+    Branch,
+    Scene,
+    Frame,
+    Error,
+}
+
+impl ObservationHookEventKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Choice => "choice",
+            Self::Branch => "branch",
+            Self::Scene => "scene",
+            Self::Frame => "frame",
+            Self::Error => "error",
+        }
+    }
+}
+
+impl FromStr for ObservationHookEventKind {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "text" => Ok(Self::Text),
+            "choice" => Ok(Self::Choice),
+            "branch" => Ok(Self::Branch),
+            "scene" => Ok(Self::Scene),
+            "frame" => Ok(Self::Frame),
+            "error" => Ok(Self::Error),
+            _ => Err(format!("unknown observation hook event kind: {value}")),
+        }
+    }
+}
+
+impl Serialize for ObservationHookEventKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ObservationHookEventKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::from_str(&value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationHookEvent {
+    pub schema_version: String,
+    pub event_id: String,
+    pub observed_at: String,
+    pub event_kind: ObservationHookEventKind,
+    pub runtime_target_id: String,
+    pub adapter_id: ObservationAdapterId,
+    pub evidence_tier: EvidenceTier,
+    pub environment: ObservationEnvironment,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_revision: Option<ObservationSourceRevision>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bridge_refs: Vec<ObservationBridgeRef>,
+    pub redaction: ObservationRedactionMetadata,
+    pub payload: ObservationHookPayload,
+}
+
+impl ObservationHookEvent {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        if self.schema_version != OBSERVATION_HOOK_SCHEMA_VERSION {
+            return Err(format!(
+                "observation hook event schema version must be {OBSERVATION_HOOK_SCHEMA_VERSION}: {}",
+                self.schema_version
+            )
+            .into());
+        }
+        validate_required_metadata("eventId", &self.event_id)?;
+        validate_required_metadata("observedAt", &self.observed_at)?;
+        validate_required_metadata("runtimeTargetId", &self.runtime_target_id)?;
+        self.adapter_id.validate()?;
+        self.environment.validate()?;
+        if let Some(source_revision) = &self.source_revision {
+            source_revision.validate()?;
+        }
+        for bridge_ref in &self.bridge_refs {
+            bridge_ref.validate()?;
+        }
+        self.redaction.validate()?;
+        self.payload.validate()?;
+        if self.event_kind != self.payload.event_kind() {
+            return Err(format!(
+                "observation hook eventKind {} does not match payload kind {}",
+                self.event_kind.as_str(),
+                self.payload.event_kind().as_str()
+            )
+            .into());
+        }
+        let event_value = serde_json::to_value(self)?;
+        reject_unredacted_local_paths("", &event_value)?;
+        Ok(())
+    }
+
+    pub fn to_json_value(&self) -> UtsushiResult<Value> {
+        self.validate()?;
+        Ok(serde_json::to_value(self)?)
+    }
+
+    pub fn from_json_value(value: Value) -> UtsushiResult<Self> {
+        let event: Self = serde_json::from_value(value)?;
+        event.validate()?;
+        Ok(event)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationAdapterId {
+    pub name: String,
+    pub version: String,
+}
+
+impl ObservationAdapterId {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        validate_required_metadata("adapterId.name", &self.name)?;
+        validate_required_metadata("adapterId.version", &self.version)?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationEnvironment {
+    pub runtime: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub engine: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub locale: Option<String>,
+}
+
+impl ObservationEnvironment {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        validate_required_metadata("environment.runtime", &self.runtime)?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationSourceRevision {
+    pub source_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revision_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
+}
+
+impl ObservationSourceRevision {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        validate_required_metadata("sourceRevision.sourceId", &self.source_id)?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationBridgeRef {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_unit_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_unit_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_object_id: Option<String>,
+}
+
+impl ObservationBridgeRef {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        if is_absent_or_blank(self.bridge_unit_id.as_deref())
+            && is_absent_or_blank(self.source_unit_key.as_deref())
+            && is_absent_or_blank(self.runtime_object_id.as_deref())
+        {
+            return Err("observation bridge ref must identify a bridge unit, source unit, or runtime object".into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ObservationRedactionStatus {
+    NotRequired,
+    Redacted,
+}
+
+impl ObservationRedactionStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NotRequired => "not_required",
+            Self::Redacted => "redacted",
+        }
+    }
+}
+
+impl FromStr for ObservationRedactionStatus {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "not_required" => Ok(Self::NotRequired),
+            "redacted" => Ok(Self::Redacted),
+            _ => Err(format!("unknown observation redaction status: {value}")),
+        }
+    }
+}
+
+impl Serialize for ObservationRedactionStatus {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for ObservationRedactionStatus {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::from_str(&value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationRedactionMetadata {
+    pub status: ObservationRedactionStatus,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rules: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redacted_fields: Vec<String>,
+}
+
+impl ObservationRedactionMetadata {
+    pub fn not_required() -> Self {
+        Self {
+            status: ObservationRedactionStatus::NotRequired,
+            rules: Vec::new(),
+            redacted_fields: Vec::new(),
+        }
+    }
+
+    pub fn redacted(rules: Vec<String>, redacted_fields: Vec<String>) -> Self {
+        Self {
+            status: ObservationRedactionStatus::Redacted,
+            rules,
+            redacted_fields,
+        }
+    }
+
+    pub fn validate(&self) -> UtsushiResult<()> {
+        match self.status {
+            ObservationRedactionStatus::NotRequired => {
+                if !self.rules.is_empty() || !self.redacted_fields.is_empty() {
+                    return Err("observation redaction metadata with status not_required must not declare redaction rules or fields".into());
+                }
+            }
+            ObservationRedactionStatus::Redacted => {
+                if self.rules.is_empty() || self.redacted_fields.is_empty() {
+                    return Err("redacted observation hook events must declare redaction rules and redacted fields".into());
+                }
+                for field in &self.redacted_fields {
+                    validate_required_metadata("redaction.redactedFields[]", field)?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "payloadKind", rename_all = "snake_case")]
+pub enum ObservationHookPayload {
+    Text(ObservationTextPayload),
+    Choice(ObservationChoicePayload),
+    Branch(ObservationBranchPayload),
+    Scene(ObservationScenePayload),
+    Frame(ObservationFramePayload),
+    Error(ObservationErrorPayload),
+}
+
+impl ObservationHookPayload {
+    pub fn event_kind(&self) -> ObservationHookEventKind {
+        match self {
+            Self::Text(_) => ObservationHookEventKind::Text,
+            Self::Choice(_) => ObservationHookEventKind::Choice,
+            Self::Branch(_) => ObservationHookEventKind::Branch,
+            Self::Scene(_) => ObservationHookEventKind::Scene,
+            Self::Frame(_) => ObservationHookEventKind::Frame,
+            Self::Error(_) => ObservationHookEventKind::Error,
+        }
+    }
+
+    pub fn validate(&self) -> UtsushiResult<()> {
+        match self {
+            Self::Text(payload) => payload.validate(),
+            Self::Choice(payload) => payload.validate(),
+            Self::Branch(payload) => payload.validate(),
+            Self::Scene(payload) => payload.validate(),
+            Self::Frame(payload) => payload.validate(),
+            Self::Error(payload) => payload.validate(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationTextPayload {
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speaker: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub text_surface: Option<String>,
+}
+
+impl ObservationTextPayload {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        validate_required_metadata("payload.text", &self.text)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationChoicePayload {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+    pub options: Vec<ObservationChoiceOption>,
+}
+
+impl ObservationChoicePayload {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        if self.options.is_empty() {
+            return Err("choice observation payload must include at least one option".into());
+        }
+        for option in &self.options {
+            option.validate()?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationChoiceOption {
+    pub option_id: String,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bridge_ref: Option<ObservationBridgeRef>,
+}
+
+impl ObservationChoiceOption {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        validate_required_metadata("payload.options[].optionId", &self.option_id)?;
+        validate_required_metadata("payload.options[].label", &self.label)?;
+        if let Some(bridge_ref) = &self.bridge_ref {
+            bridge_ref.validate()?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationBranchPayload {
+    pub branch_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub destination: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub taken: Option<bool>,
+}
+
+impl ObservationBranchPayload {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        validate_required_metadata("payload.branchId", &self.branch_id)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationScenePayload {
+    pub scene_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene_name: Option<String>,
+}
+
+impl ObservationScenePayload {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        validate_required_metadata("payload.sceneId", &self.scene_id)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationFramePayload {
+    pub frame: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub height: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_ref: Option<ObservationArtifactRef>,
+}
+
+impl ObservationFramePayload {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        if let Some(artifact_ref) = &self.artifact_ref {
+            artifact_ref.validate()?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationArtifactRef {
+    pub artifact_id: String,
+    pub artifact_kind: String,
+    pub uri: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<String>,
+}
+
+impl ObservationArtifactRef {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        validate_required_metadata("payload.artifactRef.artifactId", &self.artifact_id)?;
+        validate_required_metadata("payload.artifactRef.artifactKind", &self.artifact_kind)?;
+        validate_runtime_artifact_uri(&self.uri)?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ObservationErrorPayload {
+    pub error_type: String,
+    pub message: String,
+    pub fatal: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stack: Option<String>,
+}
+
+impl ObservationErrorPayload {
+    pub fn validate(&self) -> UtsushiResult<()> {
+        validate_required_metadata("payload.errorType", &self.error_type)?;
+        validate_required_metadata("payload.message", &self.message)?;
+        Ok(())
+    }
+}
+
+fn validate_required_metadata(field: &str, value: &str) -> UtsushiResult<()> {
+    if value.trim().is_empty() {
+        return Err(format!("observation hook event missing required field {field}").into());
+    }
+    Ok(())
+}
+
+fn is_absent_or_blank(value: Option<&str>) -> bool {
+    value.is_none_or(|value| value.trim().is_empty())
+}
+
+fn reject_unredacted_local_paths(path: &str, value: &Value) -> UtsushiResult<()> {
+    match value {
+        Value::String(text) if looks_like_local_path(text) => Err(format!(
+            "observation hook event contains unredacted local path at {path}: {text}"
+        )
+        .into()),
+        Value::Array(values) => {
+            for (index, value) in values.iter().enumerate() {
+                reject_unredacted_local_paths(&format!("{path}[{index}]"), value)?;
+            }
+            Ok(())
+        }
+        Value::Object(map) => {
+            for (key, value) in map {
+                let child_path = if path.is_empty() {
+                    key.clone()
+                } else {
+                    format!("{path}.{key}")
+                };
+                reject_unredacted_local_paths(&child_path, value)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn looks_like_local_path(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.starts_with("file:")
+        || lower.contains("file://")
+        || lower.starts_with("~/")
+        || lower.starts_with("/home/")
+        || lower.contains("/home/")
+        || lower.starts_with("/users/")
+        || lower.contains("/users/")
+        || lower.starts_with("/tmp/")
+        || lower.contains("/tmp/")
+        || lower.starts_with("/var/folders/")
+        || lower.contains("/var/folders/")
+        || (value.as_bytes().get(1) == Some(&b':')
+            && value
+                .as_bytes()
+                .get(2)
+                .is_some_and(|separator| *separator == b'\\' || *separator == b'/'))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2486,6 +3055,205 @@ mod tests {
             std::thread::sleep(Duration::from_millis(10));
         }
         path.exists()
+    }
+
+    fn base_observation_event(payload: ObservationHookPayload) -> ObservationHookEvent {
+        ObservationHookEvent {
+            schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
+            event_id: "obs-0001".to_string(),
+            observed_at: "2026-06-17T00:00:00.000Z".to_string(),
+            event_kind: payload.event_kind(),
+            runtime_target_id: "fixture:runtime-target".to_string(),
+            adapter_id: ObservationAdapterId {
+                name: "utsushi-test".to_string(),
+                version: "0.0.0-test".to_string(),
+            },
+            evidence_tier: EvidenceTier::E1,
+            environment: ObservationEnvironment {
+                runtime: "browser".to_string(),
+                engine: Some("test-engine".to_string()),
+                platform: Some("linux".to_string()),
+                display: Some("browser-headless".to_string()),
+                locale: Some("ja-JP".to_string()),
+            },
+            source_revision: Some(ObservationSourceRevision {
+                source_id: "fixture-source".to_string(),
+                revision_id: Some("rev-1".to_string()),
+                content_hash: None,
+            }),
+            bridge_refs: vec![ObservationBridgeRef {
+                bridge_unit_id: Some("bridge-unit-1".to_string()),
+                source_unit_key: Some("scene.001.line.001".to_string()),
+                runtime_object_id: None,
+            }],
+            redaction: ObservationRedactionMetadata::not_required(),
+            payload,
+        }
+    }
+
+    fn valid_payloads() -> Vec<(ObservationHookEventKind, ObservationHookPayload)> {
+        vec![
+            (
+                ObservationHookEventKind::Text,
+                ObservationHookPayload::Text(ObservationTextPayload {
+                    text: "Hello, player.".to_string(),
+                    speaker: Some("Narrator".to_string()),
+                    text_surface: Some("dialogue".to_string()),
+                }),
+            ),
+            (
+                ObservationHookEventKind::Choice,
+                ObservationHookPayload::Choice(ObservationChoicePayload {
+                    prompt: Some("Choose a route".to_string()),
+                    options: vec![ObservationChoiceOption {
+                        option_id: "choice-1".to_string(),
+                        label: "Go left".to_string(),
+                        bridge_ref: None,
+                    }],
+                }),
+            ),
+            (
+                ObservationHookEventKind::Branch,
+                ObservationHookPayload::Branch(ObservationBranchPayload {
+                    branch_id: "branch-1".to_string(),
+                    label: Some("left route".to_string()),
+                    destination: Some("scene.002".to_string()),
+                    taken: Some(true),
+                }),
+            ),
+            (
+                ObservationHookEventKind::Scene,
+                ObservationHookPayload::Scene(ObservationScenePayload {
+                    scene_id: "scene.001".to_string(),
+                    scene_name: Some("Opening".to_string()),
+                }),
+            ),
+            (
+                ObservationHookEventKind::Frame,
+                ObservationHookPayload::Frame(ObservationFramePayload {
+                    frame: 1,
+                    width: Some(320),
+                    height: Some(180),
+                    artifact_ref: Some(ObservationArtifactRef {
+                        artifact_id: "shot-1".to_string(),
+                        artifact_kind: "screenshot".to_string(),
+                        uri: runtime_artifact_uri(
+                            "run-1",
+                            RuntimeArtifactKind::Screenshot,
+                            "shot-1",
+                        )
+                        .unwrap(),
+                        media_type: Some("image/png".to_string()),
+                    }),
+                }),
+            ),
+            (
+                ObservationHookEventKind::Error,
+                ObservationHookPayload::Error(ObservationErrorPayload {
+                    error_type: "hook_exception".to_string(),
+                    message: "observation hook failed".to_string(),
+                    fatal: false,
+                    stack: Some("[REDACTED_LOCAL_PATH]:1:1".to_string()),
+                }),
+            ),
+        ]
+    }
+
+    #[test]
+    fn observation_hook_events_cover_all_payload_kinds_and_round_trip() {
+        for (kind, payload) in valid_payloads() {
+            let event = base_observation_event(payload);
+            assert_eq!(event.event_kind, kind);
+            event.validate().unwrap();
+
+            let value = event.to_json_value().unwrap();
+            assert_eq!(value["schemaVersion"], OBSERVATION_HOOK_SCHEMA_VERSION);
+            assert_eq!(value["eventKind"], kind.as_str());
+            assert_eq!(value["payload"]["payloadKind"], kind.as_str());
+
+            let round_tripped = ObservationHookEvent::from_json_value(value).unwrap();
+            assert_eq!(round_tripped.event_kind, kind);
+        }
+    }
+
+    #[test]
+    fn observation_hook_validation_rejects_missing_required_fields() {
+        let mut event =
+            base_observation_event(ObservationHookPayload::Text(ObservationTextPayload {
+                text: "Hello.".to_string(),
+                speaker: None,
+                text_surface: None,
+            }));
+        event.runtime_target_id.clear();
+        assert!(
+            event
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("runtimeTargetId")
+        );
+
+        let mut value =
+            base_observation_event(ObservationHookPayload::Text(ObservationTextPayload {
+                text: "Hello.".to_string(),
+                speaker: None,
+                text_surface: None,
+            }))
+            .to_json_value()
+            .unwrap();
+        value.as_object_mut().unwrap().remove("evidenceTier");
+        assert!(ObservationHookEvent::from_json_value(value).is_err());
+    }
+
+    #[test]
+    fn observation_hook_redaction_rejects_raw_local_paths_and_allows_markers() {
+        let mut event =
+            base_observation_event(ObservationHookPayload::Error(ObservationErrorPayload {
+                error_type: "hook_exception".to_string(),
+                message: "failed while loading /tmp/private-game/index.html".to_string(),
+                fatal: false,
+                stack: None,
+            }));
+        assert!(
+            event
+                .validate()
+                .unwrap_err()
+                .to_string()
+                .contains("unredacted local path")
+        );
+
+        event.payload = ObservationHookPayload::Error(ObservationErrorPayload {
+            error_type: "hook_exception".to_string(),
+            message: "failed while loading [REDACTED_LOCAL_PATH]".to_string(),
+            fatal: false,
+            stack: None,
+        });
+        event.redaction = ObservationRedactionMetadata::redacted(
+            vec!["local_path".to_string()],
+            vec!["payload.message".to_string()],
+        );
+        event.validate().unwrap();
+    }
+
+    #[test]
+    fn observation_hook_validation_rejects_untyped_error_payloads() {
+        let value = json!({
+            "schemaVersion": OBSERVATION_HOOK_SCHEMA_VERSION,
+            "eventId": "obs-error-1",
+            "observedAt": "2026-06-17T00:00:00.000Z",
+            "eventKind": "error",
+            "runtimeTargetId": "fixture:runtime-target",
+            "adapterId": {"name": "utsushi-test", "version": "0.0.0-test"},
+            "evidenceTier": "E1",
+            "environment": {"runtime": "browser"},
+            "redaction": {"status": "not_required"},
+            "payload": {
+                "message": "missing error type and payload kind",
+                "fatal": false
+            }
+        });
+
+        assert!(ObservationHookEvent::from_json_value(value).is_err());
     }
 
     #[test]

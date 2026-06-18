@@ -282,6 +282,30 @@ mod tests {
             .collect()
     }
 
+    fn write_fixture_source(game_dir: &Path) {
+        fs::create_dir_all(game_dir).unwrap();
+        fs::write(
+            game_dir.join("source.json"),
+            r#"{
+  "gameId": "cli-smoke-fixture",
+  "title": "CLI Smoke Fixture",
+  "sourceLocale": "ja-JP",
+  "units": [
+    {
+      "sourceUnitKey": "cli.smoke.001",
+      "speaker": "Narrator",
+      "textSurface": "dialogue",
+      "sourceText": "確認。",
+      "targetText": "Confirmed.",
+      "protectedSpans": []
+    }
+  ]
+}
+"#,
+        )
+        .unwrap();
+    }
+
     #[test]
     fn capabilities_command_reports_registered_adapter_metadata() {
         let root = temp_dir("capabilities");
@@ -382,6 +406,41 @@ mod tests {
         assert_eq!(report["adapterName"], TEST_ADAPTER_NAME);
         assert_eq!(report["operation"], "smoke");
         assert_eq!(&*calls.borrow(), &["smoke"]);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn smoke_command_writes_fixture_observation_hook_events() {
+        let root = temp_dir("fixture-smoke-output");
+        let game_dir = root.join("game");
+        write_fixture_source(&game_dir);
+        let output = root.join("smoke.json");
+        let registry = utsushi_fixture::registry();
+
+        run_cli_with_registry(
+            &args(&[
+                Path::new("smoke"),
+                game_dir.as_path(),
+                Path::new("--output"),
+                output.as_path(),
+            ]),
+            &registry,
+        )
+        .unwrap();
+
+        let report: Value = serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
+        assert_eq!(
+            report["adapterName"],
+            utsushi_fixture::FixtureRuntimeAdapter::NAME
+        );
+        assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 2);
+        assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
+        assert_eq!(
+            report["observationHookEvents"][0]["schemaVersion"],
+            utsushi_core::OBSERVATION_HOOK_SCHEMA_VERSION
+        );
+        assert_eq!(report["observationHookEvents"][1]["eventKind"], "frame");
+        assert!(output.is_file());
         let _ = fs::remove_dir_all(root);
     }
 

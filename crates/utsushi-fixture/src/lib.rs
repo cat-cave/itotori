@@ -3,9 +3,13 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use utsushi_core::{
-    ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier, RuntimeAdapter,
-    RuntimeAdapterDescriptor, RuntimeAdapterRegistry, RuntimeArtifactKind, RuntimeArtifactRoot,
-    RuntimeCapability, RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
+    ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier,
+    OBSERVATION_HOOK_SCHEMA_VERSION, ObservationAdapterId, ObservationBridgeRef,
+    ObservationEnvironment, ObservationFramePayload, ObservationHookEvent,
+    ObservationHookEventKind, ObservationHookPayload, ObservationRedactionMetadata,
+    ObservationSourceRevision, ObservationTextPayload, RuntimeAdapter, RuntimeAdapterDescriptor,
+    RuntimeAdapterRegistry, RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability,
+    RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
     RuntimePlaybackFeature, RuntimeRequest, UtsushiResult, runtime_artifact_uri,
 };
 
@@ -74,11 +78,19 @@ impl RuntimeAdapter for FixtureRuntimeAdapter {
     fn trace(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
         let source = read_source(request.input_root)?;
         let unit = first_unit(&source)?;
+        let descriptor = self.descriptor();
         Ok(runtime_report(
-            &self.descriptor(),
+            &descriptor,
             &source,
             RuntimeReportInput {
                 trace_events: vec![trace_event(unit, 1)?],
+                observation_events: vec![text_observation_hook_event(
+                    &descriptor,
+                    &source,
+                    unit,
+                    1,
+                    EvidenceTier::E1,
+                )?],
                 captures: vec![],
                 operation: RuntimeOperationLabel::Trace,
                 fidelity_tier: FidelityTier::TraceOnly,
@@ -91,13 +103,19 @@ impl RuntimeAdapter for FixtureRuntimeAdapter {
     fn capture(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
         let source = read_source(request.input_root)?;
         let unit = first_unit(&source)?;
+        let descriptor = self.descriptor();
         let capture = capture_event(unit, 1)?;
+        let observation_events = vec![
+            text_observation_hook_event(&descriptor, &source, unit, 1, EvidenceTier::E1)?,
+            frame_observation_hook_event(&descriptor, &source, unit, &capture, 1)?,
+        ];
         materialize_fixture_capture(request, &capture)?;
         Ok(runtime_report(
-            &self.descriptor(),
+            &descriptor,
             &source,
             RuntimeReportInput {
                 trace_events: vec![trace_event(unit, 1)?],
+                observation_events,
                 captures: vec![capture],
                 operation: RuntimeOperationLabel::Capture,
                 fidelity_tier: FidelityTier::LayoutProbe,
@@ -243,6 +261,7 @@ fn fixture_capability_contract() -> RuntimeCapabilityContract {
 
 struct RuntimeReportInput {
     trace_events: Vec<Value>,
+    observation_events: Vec<Value>,
     captures: Vec<Value>,
     operation: RuntimeOperationLabel,
     fidelity_tier: FidelityTier,
@@ -257,6 +276,7 @@ fn runtime_report(
 ) -> Value {
     let RuntimeReportInput {
         trace_events,
+        observation_events,
         captures,
         operation,
         fidelity_tier,
@@ -295,6 +315,7 @@ fn runtime_report(
         "status": "passed",
         "createdAt": "2026-06-17T00:00:00.000Z",
         "traceEvents": trace_events,
+        "observationHookEvents": observation_events,
         "branchEvents": [],
         "captures": captures,
         "recordings": [],
@@ -311,6 +332,111 @@ fn runtime_report(
         "validationFindings": [],
         "limitations": limitations
     })
+}
+
+fn text_observation_hook_event(
+    descriptor: &RuntimeAdapterDescriptor,
+    source: &Value,
+    unit: &Value,
+    frame: usize,
+    evidence_tier: EvidenceTier,
+) -> UtsushiResult<Value> {
+    ObservationHookEvent {
+        schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
+        event_id: deterministic_uuid("observation-text", frame),
+        observed_at: "2026-06-17T00:00:00.000Z".to_string(),
+        event_kind: ObservationHookEventKind::Text,
+        runtime_target_id: runtime_target_id(source),
+        adapter_id: observation_adapter_id(descriptor),
+        evidence_tier,
+        environment: fixture_observation_environment(source),
+        source_revision: Some(observation_source_revision(source)),
+        bridge_refs: vec![observation_bridge_ref(unit, 1)?],
+        redaction: ObservationRedactionMetadata::not_required(),
+        payload: ObservationHookPayload::Text(ObservationTextPayload {
+            text: unit["targetText"]
+                .as_str()
+                .or_else(|| unit["sourceText"].as_str())
+                .unwrap_or("")
+                .to_string(),
+            speaker: unit["speaker"].as_str().map(ToString::to_string),
+            text_surface: unit["textSurface"].as_str().map(ToString::to_string),
+        }),
+    }
+    .to_json_value()
+}
+
+fn frame_observation_hook_event(
+    descriptor: &RuntimeAdapterDescriptor,
+    source: &Value,
+    unit: &Value,
+    capture: &Value,
+    frame: u64,
+) -> UtsushiResult<Value> {
+    let artifact_ref: utsushi_core::ObservationArtifactRef =
+        serde_json::from_value(capture["artifactRef"].clone())?;
+    ObservationHookEvent {
+        schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
+        event_id: deterministic_uuid("observation-frame", frame as usize),
+        observed_at: "2026-06-17T00:00:00.000Z".to_string(),
+        event_kind: ObservationHookEventKind::Frame,
+        runtime_target_id: runtime_target_id(source),
+        adapter_id: observation_adapter_id(descriptor),
+        evidence_tier: EvidenceTier::E2,
+        environment: fixture_observation_environment(source),
+        source_revision: Some(observation_source_revision(source)),
+        bridge_refs: vec![observation_bridge_ref(unit, 1)?],
+        redaction: ObservationRedactionMetadata::not_required(),
+        payload: ObservationHookPayload::Frame(ObservationFramePayload {
+            frame,
+            width: capture["width"].as_u64().map(|width| width as u32),
+            height: capture["height"].as_u64().map(|height| height as u32),
+            artifact_ref: Some(artifact_ref),
+        }),
+    }
+    .to_json_value()
+}
+
+fn observation_adapter_id(descriptor: &RuntimeAdapterDescriptor) -> ObservationAdapterId {
+    ObservationAdapterId {
+        name: descriptor.name.clone(),
+        version: descriptor.version.clone(),
+    }
+}
+
+fn fixture_observation_environment(source: &Value) -> ObservationEnvironment {
+    ObservationEnvironment {
+        runtime: "fixture".to_string(),
+        engine: Some("utsushi-fixture".to_string()),
+        platform: Some(std::env::consts::OS.to_string()),
+        display: Some("none".to_string()),
+        locale: source["sourceLocale"].as_str().map(ToString::to_string),
+    }
+}
+
+fn observation_source_revision(source: &Value) -> ObservationSourceRevision {
+    ObservationSourceRevision {
+        source_id: source["gameId"].as_str().unwrap_or("fixture").to_string(),
+        revision_id: Some("fixture-source-v0.1".to_string()),
+        content_hash: None,
+    }
+}
+
+fn observation_bridge_ref(unit: &Value, index: usize) -> UtsushiResult<ObservationBridgeRef> {
+    Ok(ObservationBridgeRef {
+        bridge_unit_id: Some(legacy_fixture_id("bridge-unit", index)),
+        source_unit_key: Some(require_str(unit, "sourceUnitKey")?.to_string()),
+        runtime_object_id: None,
+    })
+}
+
+fn runtime_target_id(source: &Value) -> String {
+    format!(
+        "fixture:{}",
+        source["gameId"]
+            .as_str()
+            .unwrap_or("unknown-runtime-target")
+    )
 }
 
 fn trace_event(unit: &Value, frame: usize) -> UtsushiResult<Value> {
@@ -397,6 +523,8 @@ pub(crate) fn deterministic_uuid(kind: &str, index: usize) -> String {
         "screenshot" => 0x4000,
         "approximation" => 0x5000,
         "session" => 0x6000,
+        "observation-text" => 0x7000,
+        "observation-frame" => 0x7100,
         _ => 0xf000,
     };
     format!("019ed003-0000-7000-8000-{kind_code:08x}{index:04x}")
@@ -607,6 +735,27 @@ mod tests {
         );
         assert_eq!(report["controlledPlaybackSession"]["evidenceTier"], "E2");
         assert_eq!(report["traceEvents"].as_array().unwrap().len(), 1);
+        assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            report["observationHookEvents"][0]["schemaVersion"],
+            utsushi_core::OBSERVATION_HOOK_SCHEMA_VERSION
+        );
+        assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
+        assert_eq!(
+            report["observationHookEvents"][0]["payload"]["payloadKind"],
+            "text"
+        );
+        assert_eq!(report["observationHookEvents"][0]["evidenceTier"], "E1");
+        assert_eq!(
+            report["observationHookEvents"][0]["runtimeTargetId"],
+            "fixture:hello-fixture"
+        );
+        assert_eq!(report["observationHookEvents"][1]["eventKind"], "frame");
+        assert_eq!(report["observationHookEvents"][1]["evidenceTier"], "E2");
+        assert_eq!(
+            report["observationHookEvents"][1]["payload"]["artifactRef"]["uri"],
+            report["captures"][0]["artifactRef"]["uri"]
+        );
         assert_eq!(report["captures"].as_array().unwrap().len(), 1);
         assert_eq!(
             report["captures"][0]["artifactRef"]["uri"],
@@ -644,6 +793,9 @@ mod tests {
         assert_eq!(report["fidelityTier"], "trace_only");
         assert_eq!(report["controlledPlaybackSession"]["evidenceTier"], "E1");
         assert_eq!(report["captures"].as_array().unwrap().len(), 0);
+        assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 1);
+        assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
+        assert_eq!(report["observationHookEvents"][0]["evidenceTier"], "E1");
         assert_eq!(report["approximations"][0]["evidenceTierCeiling"], "E1");
         let _ = fs::remove_dir_all(game_dir);
     }

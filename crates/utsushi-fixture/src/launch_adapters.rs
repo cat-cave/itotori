@@ -5,13 +5,15 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use utsushi_core::{
-    ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier, RuntimeAdapter,
-    RuntimeAdapterDescriptor, RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability,
-    RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeCaptureBoundary,
-    RuntimeCaptureContext, RuntimeCaptureHook, RuntimeCaptureHooks, RuntimeCapturedArtifact,
-    RuntimeFeatureSupport, RuntimeHarnessError, RuntimeHarnessErrorKind,
-    RuntimeLaunchCaptureHarness, RuntimeLaunchCapturePlan, RuntimeLaunchCommand, RuntimeOperation,
-    RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
+    ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier,
+    OBSERVATION_HOOK_SCHEMA_VERSION, ObservationEnvironment, ObservationFramePayload,
+    ObservationHookEvent, ObservationHookEventKind, ObservationHookPayload,
+    ObservationRedactionMetadata, ObservationTextPayload, RuntimeAdapter, RuntimeAdapterDescriptor,
+    RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability, RuntimeCapabilityClass,
+    RuntimeCapabilityContract, RuntimeCaptureBoundary, RuntimeCaptureContext, RuntimeCaptureHook,
+    RuntimeCaptureHooks, RuntimeCapturedArtifact, RuntimeFeatureSupport, RuntimeHarnessError,
+    RuntimeHarnessErrorKind, RuntimeLaunchCaptureHarness, RuntimeLaunchCapturePlan,
+    RuntimeLaunchCommand, RuntimeOperation, RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
 };
 
 const BROWSER_RUN_ID: &str = "019ed050-0000-7000-8000-000000001000";
@@ -20,6 +22,8 @@ const BROWSER_CAPTURE_ID: &str = "019ed050-0000-7000-8000-000000003000";
 const BROWSER_SCREENSHOT_ID: &str = "019ed050-0000-7000-8000-000000004000";
 const BROWSER_APPROXIMATION_ID: &str = "019ed050-0000-7000-8000-000000005000";
 const BROWSER_SESSION_ID: &str = "019ed050-0000-7000-8000-000000006000";
+const BROWSER_OBSERVATION_TEXT_ID: &str = "019ed050-0000-7000-8000-000000007000";
+const BROWSER_OBSERVATION_FRAME_ID: &str = "019ed050-0000-7000-8000-000000007100";
 const BROWSER_VIEWPORT_WIDTH: u32 = 320;
 const BROWSER_VIEWPORT_HEIGHT: u32 = 180;
 
@@ -118,6 +122,12 @@ impl RuntimeAdapter for BrowserLaunchAdapter {
                 fidelity_tier: FidelityTier::TraceOnly,
                 evidence_tier: EvidenceTier::E1,
                 trace_events: vec![browser_trace_event(unit)?],
+                observation_events: vec![browser_text_observation_hook_event(
+                    &self.descriptor(),
+                    &source,
+                    unit,
+                    EvidenceTier::E1,
+                )?],
                 captures: vec![],
                 elapsed_millis: outcome.elapsed.as_millis(),
                 launch_target: target.relative,
@@ -165,6 +175,20 @@ impl BrowserLaunchAdapter {
                 fidelity_tier: FidelityTier::LayoutProbe,
                 evidence_tier: EvidenceTier::E2,
                 trace_events: vec![browser_trace_event(unit)?],
+                observation_events: vec![
+                    browser_text_observation_hook_event(
+                        &self.descriptor(),
+                        &source,
+                        unit,
+                        EvidenceTier::E1,
+                    )?,
+                    browser_frame_observation_hook_event(
+                        &self.descriptor(),
+                        &source,
+                        unit,
+                        screenshot,
+                    )?,
+                ],
                 captures: vec![browser_capture_event(unit, screenshot)?],
                 elapsed_millis: outcome.elapsed.as_millis(),
                 launch_target: target.relative,
@@ -578,6 +602,7 @@ struct BrowserReportInput {
     fidelity_tier: FidelityTier,
     evidence_tier: EvidenceTier,
     trace_events: Vec<Value>,
+    observation_events: Vec<Value>,
     captures: Vec<Value>,
     elapsed_millis: u128,
     launch_target: String,
@@ -594,6 +619,7 @@ fn browser_runtime_report(
         fidelity_tier,
         evidence_tier,
         trace_events,
+        observation_events,
         captures,
         elapsed_millis,
         launch_target,
@@ -636,6 +662,7 @@ fn browser_runtime_report(
         "status": "passed",
         "createdAt": "2026-06-17T00:00:00.000Z",
         "traceEvents": trace_events,
+        "observationHookEvents": observation_events,
         "branchEvents": [],
         "captures": captures,
         "recordings": [],
@@ -653,6 +680,76 @@ fn browser_runtime_report(
         "referenceComparisons": [],
         "limitations": limitations
     })
+}
+
+fn browser_text_observation_hook_event(
+    descriptor: &RuntimeAdapterDescriptor,
+    source: &Value,
+    unit: &Value,
+    evidence_tier: EvidenceTier,
+) -> UtsushiResult<Value> {
+    ObservationHookEvent {
+        schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
+        event_id: BROWSER_OBSERVATION_TEXT_ID.to_string(),
+        observed_at: "2026-06-17T00:00:00.000Z".to_string(),
+        event_kind: ObservationHookEventKind::Text,
+        runtime_target_id: super::runtime_target_id(source),
+        adapter_id: super::observation_adapter_id(descriptor),
+        evidence_tier,
+        environment: browser_observation_environment(source),
+        source_revision: Some(super::observation_source_revision(source)),
+        bridge_refs: vec![super::observation_bridge_ref(unit, 1)?],
+        redaction: ObservationRedactionMetadata::not_required(),
+        payload: ObservationHookPayload::Text(ObservationTextPayload {
+            text: unit["targetText"]
+                .as_str()
+                .or_else(|| unit["sourceText"].as_str())
+                .unwrap_or("")
+                .to_string(),
+            speaker: unit["speaker"].as_str().map(ToString::to_string),
+            text_surface: unit["textSurface"].as_str().map(ToString::to_string),
+        }),
+    }
+    .to_json_value()
+}
+
+fn browser_frame_observation_hook_event(
+    descriptor: &RuntimeAdapterDescriptor,
+    source: &Value,
+    unit: &Value,
+    screenshot: &RuntimeCapturedArtifact,
+) -> UtsushiResult<Value> {
+    let artifact_ref = serde_json::from_value(screenshot.artifact_ref_json())?;
+    ObservationHookEvent {
+        schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
+        event_id: BROWSER_OBSERVATION_FRAME_ID.to_string(),
+        observed_at: "2026-06-17T00:00:00.000Z".to_string(),
+        event_kind: ObservationHookEventKind::Frame,
+        runtime_target_id: super::runtime_target_id(source),
+        adapter_id: super::observation_adapter_id(descriptor),
+        evidence_tier: EvidenceTier::E2,
+        environment: browser_observation_environment(source),
+        source_revision: Some(super::observation_source_revision(source)),
+        bridge_refs: vec![super::observation_bridge_ref(unit, 1)?],
+        redaction: ObservationRedactionMetadata::not_required(),
+        payload: ObservationHookPayload::Frame(ObservationFramePayload {
+            frame: 1,
+            width: Some(BROWSER_VIEWPORT_WIDTH),
+            height: Some(BROWSER_VIEWPORT_HEIGHT),
+            artifact_ref: Some(artifact_ref),
+        }),
+    }
+    .to_json_value()
+}
+
+fn browser_observation_environment(source: &Value) -> ObservationEnvironment {
+    ObservationEnvironment {
+        runtime: "browser".to_string(),
+        engine: Some("browser-smoke-fixture".to_string()),
+        platform: Some(env::consts::OS.to_string()),
+        display: Some("browser-headless".to_string()),
+        locale: source["sourceLocale"].as_str().map(ToString::to_string),
+    }
 }
 
 fn browser_features_used(operation: RuntimeOperation) -> Vec<RuntimePlaybackFeature> {
@@ -913,6 +1010,17 @@ printf '\211PNG\r\n\032\nutsushi fake browser screenshot\n' > "$screenshot"
             "smoke_validation"
         );
         assert_eq!(report["captures"].as_array().unwrap().len(), 1);
+        assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 2);
+        assert_eq!(
+            report["observationHookEvents"][0]["schemaVersion"],
+            utsushi_core::OBSERVATION_HOOK_SCHEMA_VERSION
+        );
+        assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
+        assert_eq!(
+            report["observationHookEvents"][0]["environment"]["runtime"],
+            "browser"
+        );
+        assert_eq!(report["observationHookEvents"][1]["eventKind"], "frame");
         let artifact_ref = &report["captures"][0]["artifactRef"];
         assert_eq!(artifact_ref["artifactKind"], "screenshot");
         assert_eq!(
@@ -920,6 +1028,10 @@ printf '\211PNG\r\n\032\nutsushi fake browser screenshot\n' > "$screenshot"
             format!(
                 "artifacts/utsushi/runtime/{BROWSER_RUN_ID}/screenshots/{BROWSER_SCREENSHOT_ID}.png"
             )
+        );
+        assert_eq!(
+            report["observationHookEvents"][1]["payload"]["artifactRef"]["uri"],
+            artifact_ref["uri"]
         );
         assert!(artifact_ref.get("localPath").is_none());
         assert!(artifact_ref.get("data").is_none());

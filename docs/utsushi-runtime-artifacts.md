@@ -42,6 +42,30 @@ Path segments are deterministic identifiers, not user-provided filenames.
 Absolute paths, URI schemes, backslashes, `.` segments, and `..` segments are
 invalid.
 
+## Observation Hook Events
+
+Runtime reports may include `observationHookEvents`, an alpha envelope emitted
+by browser, NW-style, native, or engine hooks before proof-specific adapters add
+deeper evidence. The Rust source of truth is
+`ObservationHookEvent` in `utsushi-core`; events use
+`schemaVersion: "0.1.0-alpha"`.
+
+Each event carries common metadata:
+
+- `eventId`, `observedAt`, and `eventKind`.
+- `runtimeTargetId`, `adapterId`, `evidenceTier`, and `environment`.
+- Optional `sourceRevision` and `bridgeRefs`.
+- `redaction` metadata declaring whether local/private fields were redacted.
+- A typed `payload` with `payloadKind`.
+
+The alpha payload kinds are `text`, `choice`, `branch`, `scene`, `frame`, and
+`error`. Validation rejects missing evidence tiers, missing runtime target ids,
+event kind/payload kind mismatches, untyped error payloads, invalid managed
+artifact URIs, and unredacted local filesystem paths. Local paths must be
+replaced with redaction markers and accompanied by redaction rules and
+`redactedFields`; portable artifact URIs under `artifacts/utsushi/runtime/...`
+remain valid references.
+
 ## Postgres References
 
 Runtime artifact payloads are stored on disk or in external artifact storage.
