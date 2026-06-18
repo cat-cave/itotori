@@ -1605,18 +1605,33 @@ impl RuntimeLaunchCaptureHarness {
                 }
             };
 
-        self.run_hooks(
-            RuntimeCaptureBoundary::AfterExit,
-            hook_run,
-            hooks,
-            &mut artifacts,
-            plan.hook_timeout,
-        )?;
+        let after_exit_error = self
+            .run_hooks(
+                RuntimeCaptureBoundary::AfterExit,
+                hook_run,
+                hooks,
+                &mut artifacts,
+                plan.hook_timeout,
+            )
+            .err();
 
         let exit = RuntimeProcessExit::from_status(status);
         if !exit.success {
             let cleanup =
                 terminate_runtime_process(&mut child, plan.shutdown_grace, plan.poll_interval);
+            if let Some(error) = after_exit_error {
+                let mut error = error
+                    .with_process_id(process_id)
+                    .with_cleanup(cleanup)
+                    .with_detail(
+                        "processFailure",
+                        RuntimeHarnessErrorKind::ProcessFailed.code(),
+                    );
+                if let Some(code) = exit.code {
+                    error = error.with_detail("exitCode", code.to_string());
+                }
+                return Err(error);
+            }
             let mut error = RuntimeHarnessError::new(
                 RuntimeHarnessErrorKind::ProcessFailed,
                 plan.operation,
@@ -1627,6 +1642,10 @@ impl RuntimeLaunchCaptureHarness {
             if let Some(code) = exit.code {
                 error = error.with_detail("exitCode", code.to_string());
             }
+            return Err(error);
+        }
+
+        if let Some(error) = after_exit_error {
             return Err(error);
         }
 
@@ -2640,6 +2659,26 @@ mod tests {
         }
     }
 
+    struct FailingCaptureHook {
+        boundary: RuntimeCaptureBoundary,
+    }
+
+    impl RuntimeCaptureHook for FailingCaptureHook {
+        fn boundary(&self) -> RuntimeCaptureBoundary {
+            self.boundary
+        }
+
+        fn capture(
+            &mut self,
+            context: &mut RuntimeCaptureContext,
+        ) -> Result<(), RuntimeHarnessError> {
+            Err(RuntimeHarnessError::capture_failed(
+                context.operation,
+                "intentional after-exit hook failure",
+            ))
+        }
+    }
+
     impl RuntimeAdapter for FakeTraceAdapter {
         fn descriptor(&self) -> RuntimeAdapterDescriptor {
             RuntimeAdapterDescriptor {
@@ -3171,6 +3210,73 @@ mod tests {
             fs::read_to_string(&heartbeat_path).unwrap(),
             heartbeat_after_cleanup,
             "grandchild heartbeat changed after non-zero process cleanup"
+        );
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn nonzero_exit_after_exit_hook_failure_cleans_process_tree_before_returning() {
+        let temp = temp_root("nonzero-after-exit-hook-process-tree");
+        let heartbeat_path = temp.join("grandchild-heartbeat");
+        let pid_path = temp.join("grandchild.pid");
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command_with_env(
+                "tests::harness_child_spawns_grandchild_then_fails",
+                &[
+                    ("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT", &heartbeat_path),
+                    ("UTSUSHI_TEST_GRANDCHILD_PID", &pid_path),
+                ],
+            ),
+        )
+        .with_timeout(Duration::from_secs(5))
+        .with_shutdown_grace(Duration::from_secs(1))
+        .with_poll_interval(Duration::from_millis(5));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hooks = RuntimeCaptureHooks::new();
+        hooks.push(FailingCaptureHook {
+            boundary: RuntimeCaptureBoundary::AfterExit,
+        });
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::CaptureFailed);
+        assert_eq!(error.code(), "runtime_capture_failed");
+        assert_eq!(error.boundary, Some(RuntimeCaptureBoundary::AfterExit));
+        assert!(
+            error
+                .message
+                .contains("intentional after-exit hook failure")
+        );
+        assert!(
+            error
+                .details
+                .iter()
+                .any(|(key, value)| key == "processFailure" && value == "runtime_process_failed")
+        );
+        assert!(
+            error
+                .details
+                .iter()
+                .any(|(key, value)| key == "exitCode" && value == "42")
+        );
+        let cleanup = error.cleanup.unwrap();
+        assert!(cleanup.attempted);
+        assert!(cleanup.completed);
+        assert_eq!(cleanup.scope, RuntimeProcessCleanupScope::ProcessTree);
+        assert!(pid_path.is_file(), "grandchild should have started");
+        assert!(
+            heartbeat_path.is_file(),
+            "grandchild should have written at least one heartbeat"
+        );
+        let heartbeat_after_cleanup = fs::read_to_string(&heartbeat_path).unwrap();
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(
+            fs::read_to_string(&heartbeat_path).unwrap(),
+            heartbeat_after_cleanup,
+            "grandchild heartbeat changed after after-exit hook/process cleanup"
         );
         let _ = fs::remove_dir_all(temp);
     }
