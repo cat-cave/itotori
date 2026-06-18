@@ -734,7 +734,7 @@
     {
       "id": "UNIV-013",
       "title": "Self-contained DB test and scale smoke recipe",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["universal", "itotori", "shared"],
@@ -778,7 +778,10 @@
         "Unset DATABASE_URL producing noisy failures",
         "Required scale smoke docs without a runnable CI-safe target",
         "Shared tooling that leaks implementation-specific setup"
-      ]
+      ],
+      "owner": "codex-orchestrator",
+      "branch": "spec/univ-013",
+      "worktree": "/tmp/itotori-spec-univ-013"
     },
     {
       "id": "UNIV-014",
@@ -1418,7 +1421,7 @@
     {
       "id": "SHARED-013",
       "title": "Permission-gate negative test matrix",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["shared", "itotori"],
@@ -1455,7 +1458,10 @@
         "Only happy-path permission checks are tested",
         "A newly added mutation bypasses denial coverage",
         "Repository and API authorization behavior diverge"
-      ]
+      ],
+      "owner": "codex-orchestrator",
+      "branch": "spec/shared-013",
+      "worktree": "/tmp/itotori-spec-shared-013"
     },
     {
       "id": "SHARED-014",
@@ -2226,7 +2232,7 @@
     {
       "id": "CATALOG-005",
       "title": "Crawler job and checkpoint framework",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -2265,7 +2271,10 @@
         "Live-network CI coupling",
         "Lost fetched-at/provenance metadata",
         "Framework node absorbing storefront adapter scope"
-      ]
+      ],
+      "owner": "codex-orchestrator",
+      "branch": "spec/catalog-005",
+      "worktree": "/tmp/itotori-spec-catalog-005"
     },
     {
       "id": "CATALOG-006",
@@ -9825,7 +9834,7 @@
     {
       "id": "KAIFUU-048",
       "title": "Delta apply report collision safety",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -9856,7 +9865,10 @@
         "Command artifact overwrites game file",
         "Reserved path ambiguity",
         "Silent snapshot omission"
-      ]
+      ],
+      "owner": "codex-orchestrator",
+      "branch": "spec/kaifuu-048",
+      "worktree": "/tmp/itotori-spec-kaifuu-048"
     },
     {
       "id": "KAIFUU-049",
