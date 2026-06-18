@@ -84,9 +84,7 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     _actor: AuthorizationActor,
     input: CatalogCrawlerStepInput,
   ): Promise<CatalogCrawlerStepResult> {
-    if (input.workerId !== undefined) {
-      this.assertActiveJob(input.crawlerJobId, input.workerId);
-    }
+    this.assertActiveJob(input.crawlerJobId, input.workerId);
     const stepKey = `${input.crawlerJobId}:${input.stepKey}`;
     const previous = this.steps.get(stepKey);
     const key = normalizeKey(input);
@@ -101,8 +99,7 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
         step.sourceVersion === input.sourceVersion &&
         step.parserVersion === input.parserVersion &&
         step.payloadHash === payloadHash &&
-        (step.status === catalogCrawlerStepStatusValues.imported ||
-          step.status === catalogCrawlerStepStatusValues.fetched),
+        (step.status === catalogCrawlerStepStatusValues.imported || step.importedAt !== null),
     );
     const now = new Date();
     const step: CatalogCrawlerStepRecord = {
@@ -164,7 +161,7 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
   async markStepImported(
     _actor: AuthorizationActor,
     crawlerJobStepId: string,
-    workerId?: string,
+    workerId: string,
   ): Promise<CatalogCrawlerStepRecord> {
     return this.updateStep(crawlerJobStepId, catalogCrawlerStepStatusValues.imported, null, undefined, workerId);
   }
@@ -173,7 +170,7 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     _actor: AuthorizationActor,
     crawlerJobStepId: string,
     error: unknown,
-    workerId?: string,
+    workerId: string,
   ): Promise<CatalogCrawlerStepRecord> {
     return this.updateStep(
       crawlerJobStepId,
@@ -188,9 +185,10 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     _actor: AuthorizationActor,
     input: CatalogCrawlerCheckpointInput,
   ): Promise<CatalogCrawlerCheckpointRecord> {
-    if (input.lastCrawlerJobId !== undefined && input.workerId !== undefined) {
-      this.assertActiveJob(input.lastCrawlerJobId, input.workerId);
-    }
+    this.assertActiveJob(
+      requiredString(input.lastCrawlerJobId, "lastCrawlerJobId"),
+      requiredString(input.workerId, "workerId"),
+    );
     const key = normalizeKey(input);
     const checkpoint: CatalogCrawlerCheckpointRecord = {
       catalogSource: key.catalogSource,
@@ -212,9 +210,10 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     _actor: AuthorizationActor,
     input: CatalogCrawlerRateLimitInput,
   ): Promise<CatalogCrawlerRateLimitRecord> {
-    if (input.crawlerJobId !== undefined && input.workerId !== undefined) {
-      this.assertActiveJob(input.crawlerJobId, input.workerId);
-    }
+    this.assertActiveJob(
+      requiredString(input.crawlerJobId, "crawlerJobId"),
+      requiredString(input.workerId, "workerId"),
+    );
     const key = normalizeKey(input);
     const rateLimit: CatalogCrawlerRateLimitRecord = {
       catalogSource: key.catalogSource,
@@ -266,8 +265,8 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     crawlerJobStepId: string,
     status: CatalogCrawlerStepStatus,
     error: string | null = null,
-    expectedCrawlerJobId?: string,
-    workerId?: string,
+    expectedCrawlerJobId: string | undefined,
+    workerId: string,
   ): CatalogCrawlerStepRecord {
     const entry = [...this.steps.entries()].find(([, step]) => step.crawlerJobStepId === crawlerJobStepId);
     if (entry === undefined) {
@@ -277,9 +276,7 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     if (expectedCrawlerJobId !== undefined && step.crawlerJobId !== expectedCrawlerJobId) {
       throw new Error(`crawler step ${crawlerJobStepId} does not belong to job ${expectedCrawlerJobId}`);
     }
-    if (workerId !== undefined) {
-      this.assertActiveJob(step.crawlerJobId, workerId);
-    }
+    this.assertActiveJob(step.crawlerJobId, workerId);
     const updated: CatalogCrawlerStepRecord = {
       ...step,
       status,

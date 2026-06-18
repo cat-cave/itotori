@@ -72,6 +72,38 @@ describe("ItotoriCatalogCrawlerRepository", () => {
           afterStepKey: "step-001",
         }),
       ).rejects.toThrow(/expected row/u);
+      await expect(
+        repository.saveCheckpoint(
+          actor,
+          checkpointInput(job.crawlerJobId) as unknown as Parameters<
+            typeof repository.saveCheckpoint
+          >[1],
+        ),
+      ).rejects.toThrow(/workerId is required/u);
+      await expect(
+        repository.saveRateLimit(actor, {
+          catalogSource: "vndb",
+          adapterName: "vndb-recorded-public-fixture",
+          partitionKey: "public-fixture",
+          crawlerJobId: job.crawlerJobId,
+          remaining: 9,
+        } as unknown as Parameters<typeof repository.saveRateLimit>[1]),
+      ).rejects.toThrow(/workerId is required/u);
+      await expect(
+        repository.markStepImported(
+          actor,
+          step.step.crawlerJobStepId,
+          undefined as unknown as string,
+        ),
+      ).rejects.toThrow(/workerId is required/u);
+      await expect(
+        repository.markStepFailed(
+          actor,
+          step.step.crawlerJobStepId,
+          new Error("late failure"),
+          undefined as unknown as string,
+        ),
+      ).rejects.toThrow(/workerId is required/u);
 
       await expect(
         repository.getCheckpoint(actor, {
@@ -80,6 +112,11 @@ describe("ItotoriCatalogCrawlerRepository", () => {
           partitionKey: "public-fixture",
         }),
       ).resolves.toBeNull();
+      const stepRows = await context.db
+        .select({ status: catalogCrawlerJobSteps.status })
+        .from(catalogCrawlerJobSteps)
+        .where(eq(catalogCrawlerJobSteps.crawlerJobStepId, step.step.crawlerJobStepId));
+      expect(stepRows[0]?.status).toBe(catalogCrawlerStepStatusValues.fetched);
     } finally {
       await context.close();
     }
@@ -123,6 +160,84 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         .from(catalogCrawlerJobSteps)
         .where(eq(catalogCrawlerJobSteps.crawlerJobStepId, step.step.crawlerJobStepId));
       expect(rows[0]?.status).toBe(catalogCrawlerStepStatusValues.fetched);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("replays a fetched-only row when a crash happens before fact ingest", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await context.pool.query("create table catalog_fact_imports (source_id text primary key)");
+      const repository = new ItotoriCatalogCrawlerRepository(context.db);
+      const partitionKey = fixture.partitionKey ?? "default";
+      const firstStep = fixture.steps[0];
+      if (firstStep === undefined) {
+        throw new Error("fixture must contain at least one step");
+      }
+
+      const interrupted = await repository.startCrawlerJob(actor, "worker-fetch-only", {
+        catalogSource: fixture.catalogSource,
+        adapterName: fixture.adapterName,
+        adapterVersion: fixture.adapterVersion,
+        sourceVersion: fixture.sourceVersion,
+        parserVersion: fixture.parserVersion,
+        partitionKey,
+      });
+      await repository.recordFetchedStep(actor, {
+        crawlerJobId: interrupted.crawlerJobId,
+        workerId: "worker-fetch-only",
+        stepKey: firstStep.stepKey,
+        catalogSource: fixture.catalogSource,
+        adapterName: fixture.adapterName,
+        adapterVersion: fixture.adapterVersion,
+        partitionKey,
+        sourceId: firstStep.sourceId,
+        requestIdentity: firstStep.requestIdentity,
+        sourceVersion: fixture.sourceVersion,
+        parserVersion: fixture.parserVersion,
+        checkpointCursor: firstStep.checkpointCursor,
+        fetchedAt: firstStep.fetchedAt,
+        payload: firstStep.payload,
+      });
+      await repository.failCrawlerJob(
+        actor,
+        interrupted.crawlerJobId,
+        "worker-fetch-only",
+        new Error("crash after fetch before ingest"),
+      );
+
+      const runner = new ItotoriCatalogCrawlerRunner();
+      const importedFacts: string[] = [];
+      const resumed = await runner.run(createRecordedCatalogCrawlerAdapter(fixture), {
+        repository,
+        actor,
+        workerId: "worker-resumed",
+        mode: "recorded_fixture",
+        ingestStep: async ({ facts }) => {
+          for (const fact of facts) {
+            importedFacts.push(fact.sourceId);
+            await context.pool.query("insert into catalog_fact_imports (source_id) values ($1)", [
+              fact.sourceId,
+            ]);
+          }
+        },
+      });
+
+      expect(resumed).toMatchObject({
+        fetchedSteps: 2,
+        importedSteps: 2,
+        skippedSteps: 0,
+      });
+      expect(importedFacts).toEqual(["v1", "v2"]);
+      expect(resumed.checkpoint).toMatchObject({
+        lastStepKey: "step-002",
+        checkpointCursor: { afterStepKey: "step-002", cursor: "page-2" },
+      });
+      const factRows = await context.pool.query<{ source_id: string }>(
+        "select source_id from catalog_fact_imports order by source_id",
+      );
+      expect(factRows.rows.map((row) => row.source_id)).toEqual(["v1", "v2"]);
     } finally {
       await context.close();
     }
@@ -181,17 +296,18 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         mode: "recorded_fixture",
         ingestStep: async ({ facts }) => {
           for (const fact of facts) {
-            await context.pool.query("insert into catalog_fact_imports (source_id) values ($1)", [
-              fact.sourceId,
-            ]);
+            await context.pool.query(
+              "insert into catalog_fact_imports (source_id) values ($1) on conflict do nothing",
+              [fact.sourceId],
+            );
           }
         },
       });
 
       expect(resumed).toMatchObject({
         fetchedSteps: 2,
-        importedSteps: 1,
-        skippedSteps: 1,
+        importedSteps: 2,
+        skippedSteps: 0,
       });
       expect(resumed.checkpoint).toMatchObject({
         lastStepKey: "step-002",

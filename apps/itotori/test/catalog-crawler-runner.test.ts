@@ -131,6 +131,7 @@ describe("Itotori catalog crawler runner", () => {
     });
     const recorded = await repository.recordFetchedStep(actor, {
       crawlerJobId: interruptedJob.crawlerJobId,
+      workerId: "worker-interrupted",
       stepKey: firstStep.stepKey,
       catalogSource: fixture.catalogSource,
       adapterName: fixture.adapterName,
@@ -144,7 +145,7 @@ describe("Itotori catalog crawler runner", () => {
       fetchedAt: firstStep.fetchedAt,
       payload: firstStep.payload,
     });
-    await repository.markStepImported(actor, recorded.step.crawlerJobStepId);
+    await repository.markStepImported(actor, recorded.step.crawlerJobStepId, "worker-interrupted");
     await repository.failCrawlerJob(
       actor,
       interruptedJob.crawlerJobId,
