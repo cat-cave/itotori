@@ -1421,6 +1421,13 @@ pub struct RuntimeLaunchCaptureOutcome {
     pub artifacts: Vec<RuntimeCapturedArtifact>,
 }
 
+#[derive(Clone, Copy)]
+struct RuntimeHookRun<'a> {
+    plan: &'a RuntimeLaunchCapturePlan,
+    process_id: u32,
+    artifact_store: Option<&'a RuntimeCaptureArtifactStore>,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct RuntimeLaunchCaptureHarness;
 
@@ -1464,12 +1471,15 @@ impl RuntimeLaunchCaptureHarness {
         })?;
         let process_id = child.id();
         let mut artifacts = Vec::new();
+        let hook_run = RuntimeHookRun {
+            plan,
+            process_id,
+            artifact_store: artifact_store.as_ref(),
+        };
 
         if let Err(error) = self.run_hooks(
             RuntimeCaptureBoundary::AfterLaunch,
-            plan,
-            process_id,
-            artifact_store.as_ref(),
+            hook_run,
             hooks,
             &mut artifacts,
             bounded_hook_timeout(plan, deadline),
@@ -1485,9 +1495,7 @@ impl RuntimeLaunchCaptureHarness {
                 Ok(None) => {
                     let before_terminate_error = self.run_hooks(
                         RuntimeCaptureBoundary::BeforeTerminate,
-                        plan,
-                        process_id,
-                        artifact_store.as_ref(),
+                        hook_run,
                         hooks,
                         &mut artifacts,
                         plan.hook_timeout,
@@ -1531,9 +1539,7 @@ impl RuntimeLaunchCaptureHarness {
 
         self.run_hooks(
             RuntimeCaptureBoundary::AfterExit,
-            plan,
-            process_id,
-            artifact_store.as_ref(),
+            hook_run,
             hooks,
             &mut artifacts,
             plan.hook_timeout,
@@ -1564,9 +1570,7 @@ impl RuntimeLaunchCaptureHarness {
     fn run_hooks(
         &self,
         boundary: RuntimeCaptureBoundary,
-        plan: &RuntimeLaunchCapturePlan,
-        process_id: u32,
-        artifact_store: Option<&RuntimeCaptureArtifactStore>,
+        run: RuntimeHookRun<'_>,
         hooks: &mut RuntimeCaptureHooks,
         artifacts: &mut Vec<RuntimeCapturedArtifact>,
         hook_timeout: Duration,
@@ -1579,11 +1583,11 @@ impl RuntimeLaunchCaptureHarness {
             }
             let hook = hooks.hooks.remove(index);
             let context = RuntimeCaptureContext::new(
-                plan.operation,
+                run.plan.operation,
                 boundary,
-                process_id,
-                plan.run_id.clone(),
-                artifact_store.cloned(),
+                run.process_id,
+                run.plan.run_id.clone(),
+                run.artifact_store.cloned(),
             );
             match run_capture_hook_with_timeout(hook, context, hook_timeout) {
                 Ok((hook, hook_artifacts)) => {
@@ -1593,7 +1597,9 @@ impl RuntimeLaunchCaptureHarness {
                 }
                 Err(RuntimeHookExecutionError::Failed { hook, error }) => {
                     hooks.hooks.insert(index, hook);
-                    return Err(error.with_boundary(boundary).with_process_id(process_id));
+                    return Err(error
+                        .with_boundary(boundary)
+                        .with_process_id(run.process_id));
                 }
                 Err(RuntimeHookExecutionError::Unrecoverable(error)) => return Err(error),
             }
