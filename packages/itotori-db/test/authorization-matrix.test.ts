@@ -201,6 +201,12 @@ const repositoryPermissionGateMatrix = [
     "catalog-repository.test.ts candidate match read coverage",
     (repo) => repo.listCatalogCandidateMatches(deniedActor),
   ),
+  catalogGate(
+    "catalogConflictReview",
+    "catalogRead",
+    "catalog-conflict-review.test.ts read model coverage",
+    (repo) => repo.catalogConflictReview(deniedActor),
+  ),
   catalogCrawlerGate(
     "getCheckpoint",
     "catalogRead",
@@ -467,6 +473,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriCatalogRepository.listCatalogCandidateMatches",
           "requiredPermission": "catalog.read",
           "successFixture": "catalog-repository.test.ts candidate match read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogRepository.catalogConflictReview",
+          "requiredPermission": "catalog.read",
+          "successFixture": "catalog-conflict-review.test.ts read model coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

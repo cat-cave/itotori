@@ -58,9 +58,17 @@ describe("catalogConflictReview read model", () => {
             sourceId: "RJCAT010",
           }),
         ],
+        candidateCatalogIds: [seeded.works.duplicate, seeded.works.duplicateCompeting],
         sourceIds: expect.arrayContaining([
           { catalogSource: catalogSourceValues.dlsite, sourceId: "RJCAT010" },
         ]),
+        provenance: [
+          expect.objectContaining({
+            sourceProvenanceId: seeded.provenance.dlsite,
+            catalogSource: catalogSourceValues.dlsite,
+            sourceId: "RJCAT010",
+          }),
+        ],
       });
 
       const fuzzyA = review.rows.find(
@@ -147,6 +155,16 @@ describe("catalogConflictReview read model", () => {
           expect.objectContaining({ reviewId: `catalog-candidate:${seeded.candidates.fuzzyB}` }),
         ]),
       });
+      await expect(
+        repo.catalogConflictReview(localActor, { catalogRecordId: seeded.works.duplicateCompeting }),
+      ).resolves.toEqual({
+        rows: [
+          expect.objectContaining({
+            reviewId: `catalog-conflict:${seeded.conflicts.duplicateExternalId}`,
+            candidateCatalogIds: [seeded.works.duplicate, seeded.works.duplicateCompeting],
+          }),
+        ],
+      });
 
       const after = await repo.getWorkSnapshot(localActor, seeded.works.duplicate);
       expect(after).toEqual(before);
@@ -158,7 +176,10 @@ describe("catalogConflictReview read model", () => {
 
 async function seedConflictReviewFixture(repo: ItotoriCatalogRepository): Promise<{
   provenance: Record<"dlsite" | "egs" | "steam" | "vndb", string>;
-  works: Record<"duplicate" | "fuzzyA" | "fuzzyB" | "sourceDisagreement" | "resolved" | "stale", string>;
+  works: Record<
+    "duplicate" | "duplicateCompeting" | "fuzzyA" | "fuzzyB" | "sourceDisagreement" | "resolved" | "stale",
+    string
+  >;
   externalIds: Record<"duplicateDlsite", string>;
   conflicts: Record<"duplicateExternalId" | "sourceDisagreement" | "resolved", string>;
   candidates: Record<"fuzzyA" | "fuzzyB" | "stale", string>;
@@ -178,11 +199,12 @@ async function seedConflictReviewFixture(repo: ItotoriCatalogRepository): Promis
 
   const works = {
     duplicate: uuid(2001),
-    fuzzyA: uuid(2002),
-    fuzzyB: uuid(2003),
-    sourceDisagreement: uuid(2004),
-    resolved: uuid(2005),
-    stale: uuid(2006),
+    duplicateCompeting: uuid(2002),
+    fuzzyA: uuid(2003),
+    fuzzyB: uuid(2004),
+    sourceDisagreement: uuid(2005),
+    resolved: uuid(2006),
+    stale: uuid(2007),
   };
   const externalIds = {
     duplicateDlsite: uuid(3001),
@@ -197,6 +219,12 @@ async function seedConflictReviewFixture(repo: ItotoriCatalogRepository): Promis
     fuzzyB: uuid(5002),
     stale: uuid(5003),
   };
+
+  await repo.upsertWork(localActor, {
+    workId: works.duplicateCompeting,
+    canonicalTitle: "Catalog 010 competing external ID claimant",
+    originalLanguage: "ja-JP",
+  });
 
   await repo.upsertWork(localActor, {
     workId: works.duplicate,
@@ -223,7 +251,11 @@ async function seedConflictReviewFixture(repo: ItotoriCatalogRepository): Promis
             conflictEvidenceId: uuid(6001),
             subjectKind: catalogConflictSubjectKindValues.externalId,
             subjectId: externalIds.duplicateDlsite,
-            sourceProvenanceId: provenance.dlsite,
+          },
+          {
+            conflictEvidenceId: uuid(6004),
+            subjectKind: catalogConflictSubjectKindValues.work,
+            subjectId: works.duplicateCompeting,
           },
         ],
       },

@@ -1038,6 +1038,9 @@ async function readCatalogConflictReview(
     if (evidence.subjectKind === catalogConflictSubjectKindValues.externalId) {
       externalIdIds.add(evidence.subjectId);
     }
+    if (evidence.subjectKind === catalogConflictSubjectKindValues.work) {
+      workIds.add(evidence.subjectId);
+    }
   }
   for (const candidate of candidateRows) {
     workIds.add(candidate.targetWorkId);
@@ -1046,13 +1049,7 @@ async function readCatalogConflictReview(
     }
   }
 
-  const [provenanceRows, externalIdRows, workExternalIdRows] = await Promise.all([
-    provenanceIds.size === 0
-      ? []
-      : db
-          .select()
-          .from(catalogSourceProvenance)
-          .where(inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(provenanceIds))),
+  const [externalIdRows, workExternalIdRows] = await Promise.all([
     externalIdIds.size === 0
       ? []
       : db
@@ -1063,6 +1060,19 @@ async function readCatalogConflictReview(
       ? []
       : db.select().from(catalogExternalIds).where(inArray(catalogExternalIds.workId, Array.from(workIds))),
   ]);
+  for (const externalId of [...externalIdRows, ...workExternalIdRows]) {
+    if (externalId.sourceProvenanceId !== null) {
+      provenanceIds.add(externalId.sourceProvenanceId);
+    }
+  }
+
+  const provenanceRows =
+    provenanceIds.size === 0
+      ? []
+      : await db
+          .select()
+          .from(catalogSourceProvenance)
+          .where(inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(provenanceIds)));
 
   const provenanceById = new Map(
     provenanceRows.map((row) => [row.sourceProvenanceId, sourceProvenanceFromRow(row)]),
@@ -1124,12 +1134,18 @@ function catalogConflictReviewRowFromConflict(
     .filter((evidence) => evidence.subjectKind === catalogConflictSubjectKindValues.externalId)
     .map((evidence) => exactLinkById.get(evidence.subjectId))
     .filter((ref): ref is CatalogConflictReviewExactLinkRef => ref !== undefined);
-  const provenance = evidenceRows
-    .map((evidence) =>
-      evidence.sourceProvenanceId === null ? undefined : provenanceById.get(evidence.sourceProvenanceId),
-    )
-    .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined)
-    .map(conflictReviewProvenanceFromRecord);
+  const provenance = [
+    ...evidenceRows
+      .map((evidence) =>
+        evidence.sourceProvenanceId === null ? undefined : provenanceById.get(evidence.sourceProvenanceId),
+      )
+      .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined),
+    ...exactLinkRefs
+      .map((ref) =>
+        ref.sourceProvenanceId === null ? undefined : provenanceById.get(ref.sourceProvenanceId),
+      )
+      .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined),
+  ].map(conflictReviewProvenanceFromRecord);
   const metadata = conflict.metadata;
   const priorCandidateIds = stringArrayMetadata(metadata, "priorCandidateIds");
   const candidateIds = uniqueStrings([
@@ -1138,13 +1154,20 @@ function catalogConflictReviewRowFromConflict(
       .filter((evidence) => evidence.subjectKind === catalogConflictSubjectKindValues.work)
       .flatMap((evidence) => stringArrayMetadata(evidence.metadata, "candidateIds")),
   ]);
+  const candidateCatalogIds = uniqueStrings([
+    conflict.workId,
+    ...evidenceRows
+      .filter((evidence) => evidence.subjectKind === catalogConflictSubjectKindValues.work)
+      .map((evidence) => evidence.subjectId),
+    ...exactLinkRefs.map((ref) => ref.workId),
+  ]);
 
   return {
     reviewId: `catalog-conflict:${conflict.conflictId}`,
     catalogRecordId: conflict.workId,
     conflictId: conflict.conflictId,
     candidateIds,
-    candidateCatalogIds: uniqueStrings([conflict.workId, ...exactLinkRefs.map((ref) => ref.workId)]),
+    candidateCatalogIds,
     exactLinkRefs: exactLinkRefs.sort(compareExactLinkRefs),
     fuzzyScores: [],
     sourceIds: uniqueSourceIds([
@@ -1171,8 +1194,14 @@ function catalogConflictReviewRowFromCandidate(
   const candidateRecord = candidateMatchFromRow(candidate);
   const provenanceRecord =
     candidate.sourceProvenanceId === null ? undefined : provenanceById.get(candidate.sourceProvenanceId);
-  const provenance =
-    provenanceRecord === undefined ? [] : [conflictReviewProvenanceFromRecord(provenanceRecord)];
+  const provenance = [
+    provenanceRecord,
+    ...targetExactLinkRefs.map((ref) =>
+      ref.sourceProvenanceId === null ? undefined : provenanceById.get(ref.sourceProvenanceId),
+    ),
+  ]
+    .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined)
+    .map(conflictReviewProvenanceFromRecord);
   const fuzzyScores = sourcePeerRows
     .map(candidateMatchFromRow)
     .map((row) => ({
