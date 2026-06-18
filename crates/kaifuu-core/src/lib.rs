@@ -11025,6 +11025,23 @@ mod tests {
     }
 
     #[test]
+    fn shared_contract_fixture_suite_accepts_permission_local_user_grants() {
+        let fixture = contract_example_fixture_value("./permission-local-user-v0.2.json");
+        let grants = fixture["grants"]
+            .as_array()
+            .expect("permission fixture grants should be an array");
+
+        assert!(
+            grants
+                .iter()
+                .any(|grant| grant.as_str() == Some("queue.read")),
+            "shared permission fixture should include queue.read"
+        );
+        contracts::validate_permission_local_user_fixture_v02(&fixture)
+            .expect("Rust permission validator should accept queue.read");
+    }
+
+    #[test]
     fn shared_contract_fixture_suite_rejects_alpha_proof_hash_link_mutations() {
         let mut fixture = alpha_proof_fixture_value();
         fixture["contentHashes"]

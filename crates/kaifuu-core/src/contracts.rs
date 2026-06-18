@@ -28,6 +28,10 @@ const ITOTORI_PERMISSION_VALUES_V02: &[&str] = &[
     "patch.export",
     "runtime.ingest",
     "feedback.import",
+    "queue.manage",
+    "queue.read",
+    "catalog.read",
+    "catalog.write",
     "system.reset",
 ];
 
