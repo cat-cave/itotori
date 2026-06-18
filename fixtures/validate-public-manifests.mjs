@@ -162,11 +162,15 @@ function isValidSecretRef(value) {
     name.includes("\\") ||
     name.split("/").some((component) => component.length === 0 || component === "..") ||
     isLocalAbsolutePath(name) ||
-    looksLikeRawKeyMaterial(name)
+    secretRefNameContainsRawKeyMaterial(name)
   ) {
     return false;
   }
   return /^[A-Za-z0-9._/-]+$/.test(name);
+}
+
+function secretRefNameContainsRawKeyMaterial(name) {
+  return looksLikeRawKeyMaterial(name) || name.split("/").some(looksLikeRawKeyMaterial);
 }
 
 function isLocalAbsolutePath(text) {

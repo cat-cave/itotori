@@ -803,6 +803,43 @@ mod tests {
     }
 
     #[test]
+    fn helper_result_validate_command_rejects_raw_secret_ref_path_component() {
+        let root = temp_dir("helper-result-invalid-path-component");
+        let output = root.join("helper-result-report.json");
+        let fixture = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/invalid/raw-base64url-path-component-secret-ref.json",
+        );
+
+        let result = run_with_args(vec![
+            "helper-result".to_string(),
+            "validate".to_string(),
+            fixture.to_str().unwrap().to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+
+        assert!(result.is_err());
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(
+            report["fixtureId"],
+            "kaifuu-helper-invalid-encoded-path-component-ref"
+        );
+        assert!(
+            report["failures"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|failure| {
+                    failure["fixtureId"] == "kaifuu-helper-invalid-encoded-path-component-ref"
+                        && failure["field"] == "secretRefs.0.secretRef"
+                })
+        );
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("mP9xZpQ2rS7vLj4N8aW_KtYd0hF3uC6b"));
+    }
+
+    #[test]
     fn helper_result_validate_command_reports_redacted_field_and_fixture_id() {
         let root = temp_dir("helper-result-invalid");
         let helper_result_path = root.join("helper-result.json");

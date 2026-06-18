@@ -124,17 +124,17 @@
             },
             {
               "not": {
-                "pattern": "^(local-secret|os-keychain|secret-manager|prompt):[A-Fa-f0-9-]{32,}$"
+                "pattern": "^(local-secret|os-keychain|secret-manager|prompt):(?:[A-Za-z0-9._-]+/)*[A-Fa-f0-9-]{32,}(?:/|$)"
               }
             },
             {
               "not": {
-                "pattern": "^(local-secret|os-keychain|secret-manager|prompt):(?=.{22,256}$)(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9_-]+=*$"
+                "pattern": "^(local-secret|os-keychain|secret-manager|prompt):(?:[A-Za-z0-9._-]+/)*(?=[A-Za-z0-9_-]{22,256}(?:/|$))(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[0-9])[A-Za-z0-9_-]+(?:/|$)"
               }
             },
             {
               "not": {
-                "pattern": "^(local-secret|os-keychain|secret-manager|prompt):(?=.{24,256}$)(?=.*[a-z])(?=.*[A-Z])[A-Za-z]+=*$"
+                "pattern": "^(local-secret|os-keychain|secret-manager|prompt):(?:[A-Za-z0-9._-]+/)*(?=[A-Za-z]{24,256}(?:/|$))(?=[A-Za-z]*[a-z])(?=[A-Za-z]*[A-Z])[A-Za-z]+(?:/|$)"
               }
             }
           ]

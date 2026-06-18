@@ -5614,13 +5614,20 @@ fn is_valid_secret_ref(value: &str) -> bool {
             .split('/')
             .any(|component| component.is_empty() || component == "..")
         || is_local_absolute_path(name)
-        || looks_like_raw_key_material_without_secret_ref(name)
+        || secret_ref_name_contains_raw_key_material(name)
     {
         return false;
     }
     name.chars().all(|character| {
         character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | '/')
     })
+}
+
+fn secret_ref_name_contains_raw_key_material(name: &str) -> bool {
+    looks_like_raw_key_material_without_secret_ref(name)
+        || name
+            .split('/')
+            .any(looks_like_raw_key_material_without_secret_ref)
 }
 
 fn looks_like_raw_key_material_without_secret_ref(text: &str) -> bool {
@@ -11917,6 +11924,7 @@ mod tests {
             "absolute-path-secret-ref",
             "traversal-secret-ref",
             "raw-base64-secret-ref",
+            "raw-base64url-path-component-secret-ref",
             "raw-hex-secret-ref",
         ] {
             let value = invalid_public_helper_result_fixture_value(fixture);
