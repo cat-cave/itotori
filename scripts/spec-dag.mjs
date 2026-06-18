@@ -75,6 +75,7 @@ const genericDeliverableValues = new Set([
   "end to end fixture",
   "e2e fixture",
   "integration surface",
+  "owned command service schema or artifact surface",
 ]);
 const titleDerivedGenericDeliverableSuffixes = [
   "implementation",
@@ -91,6 +92,7 @@ const placeholderAcceptancePatterns = [
   /^has schema validation$/iu,
   /^acceptance is based on executable fixtures, validators, services, or commands$/iu,
   /^the integration composes (?:the )?prerequisite implementation slices without expanding their scope$/iu,
+  /\bowned command,\s+service,\s+schema,\s+or artifact surface\b/iu,
 ];
 const manualOnlyVerificationPattern =
   /\b(?:test|tests|smoke|fixture|fixtures|golden|round[- ]trip|validation|validate|check)\b/iu;
@@ -98,9 +100,11 @@ const docsOnlyPattern = /\b(?:docs?|documentation|readme|adr|policy|spec|guide|p
 const implementationPattern =
   /\b(?:adapter|api|artifact|bridge|cli|command|contract|dashboard|database|delta|fixture|generator|harness|implementation|ingest|migration|model|parser|patch|queue|repository|runner|schema|service|smoke|test|ui|validator|workflow)\b/iu;
 const metaNodePattern =
-  /\b(?:meta[- ]?pack|follow[- ]up pack|normalize[- ]later|granularity follow[- ]up normalizer|report[- ]only|decision node|decision record|feasibility report|feasibility node)\b/iu;
+  /\b(?:meta[- ]?pack|follow[- ]up pack|normalize[- ]later|granularity follow[- ]up normalizer|report[- ]only|decision[- ]only|decision node|decision record|feasibility[- ]only|feasibility report|feasibility node|feasibility study)\b/iu;
 const implementableDecisionPattern =
   /\b(?:api|command|contract|dashboard|events?|generator|import|model|persistence|queue|read model|renderer|schema|service|ui|validator|workflow|wiring)\b/iu;
+const placeholderCommandVerificationPattern =
+  /^(?:tbd|todo|manual review|command|verification command|exact command|owned command(?:,\s+service,\s+schema,\s+or artifact surface)?)$/iu;
 const timeEstimateFieldPattern =
   /(?:estimate|estimated|duration|hours?|days?|effort|points?|tshirt|t[- ]shirt)/iu;
 const timeEstimateQuantityPattern =
@@ -175,8 +179,9 @@ const exactIntegrationSurfaceCandidatePatterns = [
 ];
 const explicitIntegrationSurfacePatterns = [
   /\b(?:apps|crates|docs|fixtures|packages|roadmap|scripts|src|tests|tools)\/[a-z0-9._/-]+\b/iu,
-  /\b@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\b/iu,
+  /(?:^|\s)@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\b/iu,
   /\b[a-z0-9][a-z0-9._-]*(?:\.json|\.mjs|\.ts|\.tsx|\.rs|\.md)\b/iu,
+  /^command:\s*(?:[A-Z_][A-Z0-9_]*=[^\s]+\s+)*(?:env\s+(?:-[a-z]\s+[A-Z_][A-Z0-9_]*\s+)?)*(?:cargo|node|pnpm|just|npm|npx|uv|python|bash|test|make)\s+[^\n]+$/imu,
   /\b(?:map\/common[- ]event|database\/system\/terms|json text|plugin[- ]profile|source bundle|locale branch|runtime evidence|dashboard evidence|dashboard status|patch package|patch output|patch payload|delta apply|bridge import|feedback ux|style guide|triage wiring|repair rerun|before\/after dashboard|provider route|provider proof|provider ledger|cost report|quality report|benchmark report|experiment matrix|cost ledger|model ledger|reviewer queue|triage queue|decision queue|catalog resolver|cross[- ]source resolver|local corpus|corpus sidecar|readiness record|adapter registry|engine capability|managed artifact|artifact store|capture hook|launch harness|vm adapter|text trace|trace smoke)\b/iu,
 ];
 
@@ -852,6 +857,7 @@ function validateNodeSemantics(node, errors) {
   validateNonPlaceholderAcceptance(node, errors);
   validateImplementableNodeKind(node, errors);
   validateIntegrationNodeSurfaces(node, errors);
+  validateAlphaPriorityCommandVerification(node, errors);
 }
 
 function validateRunnableVerification(node, errors) {
@@ -941,7 +947,7 @@ function validateImplementableNodeKind(node, errors) {
 }
 
 function validateIntegrationNodeSurfaces(node, errors) {
-  if (!isIntegrationNode(node)) {
+  if (!isIntegrationOrReadinessNode(node)) {
     return;
   }
 
@@ -950,6 +956,7 @@ function validateIntegrationNodeSurfaces(node, errors) {
     node.summary,
     ...(Array.isArray(node.deliverables) ? node.deliverables : []),
     ...(Array.isArray(node.acceptanceCriteria) ? node.acceptanceCriteria : []),
+    ...exactSurfaceVerificationValues(node),
     ...(Array.isArray(node.auditFocus) ? node.auditFocus : []),
   ]
     .filter((value) => typeof value === "string")
@@ -957,8 +964,36 @@ function validateIntegrationNodeSurfaces(node, errors) {
 
   if (!hasExactIntegrationSurface(text)) {
     errors.push(
-      `${node.id} parallelGroup integration node must name exact composed surfaces, artifacts, commands, or adapters: ${node.parallelGroup}`,
+      `${node.id} integration/readiness node must name exact composed surfaces, artifacts, commands, or adapters: ${node.parallelGroup}`,
     );
+  }
+}
+
+function validateAlphaPriorityCommandVerification(node, errors) {
+  if (node.target !== "alpha" || !["P0", "P1"].includes(node.priority)) {
+    return;
+  }
+
+  const verification = Array.isArray(node.verification) ? node.verification : [];
+  const commandEntries = verification.filter(
+    (entry) => isRecord(entry) && entry.type === "command" && typeof entry.value === "string",
+  );
+  if (commandEntries.some((entry) => isConcreteCommandVerification(entry.value))) {
+    return;
+  }
+
+  errors.push(`${node.id} alpha ${node.priority} node must include concrete command verification`);
+  for (const [index, entry] of verification.entries()) {
+    if (
+      isRecord(entry) &&
+      entry.type === "command" &&
+      typeof entry.value === "string" &&
+      !isConcreteCommandVerification(entry.value)
+    ) {
+      errors.push(
+        `${node.id} verification[${index}] command entry is not concrete runnable evidence: ${entry.value}`,
+      );
+    }
   }
 }
 
@@ -1016,6 +1051,34 @@ function hasExactIntegrationSurface(text) {
   return false;
 }
 
+function isConcreteCommandVerification(value) {
+  return value.trim().length > 0 && !placeholderCommandVerificationPattern.test(value.trim());
+}
+
+function exactSurfaceVerificationValues(node) {
+  if (!Array.isArray(node.verification)) {
+    return [];
+  }
+  return node.verification
+    .filter(
+      (entry) =>
+        isRecord(entry) &&
+        entry.type === "command" &&
+        typeof entry.value === "string" &&
+        !isGenericRoadmapVerificationCommand(entry.value),
+    )
+    .map((entry) => `command: ${entry.value}`);
+}
+
+function isGenericRoadmapVerificationCommand(value) {
+  const normalized = value.trim();
+  return (
+    /^node\s+scripts\/spec-dag(?:-validator)?(?:\.test)?\.mjs(?:\s+validate)?$/iu.test(
+      normalized,
+    ) || /^just\s+(?:check|ci)$/iu.test(normalized)
+  );
+}
+
 function isExactIntegrationSurfaceCandidate(candidate) {
   const tokens = normalizeSemanticText(candidate).split(" ").filter(Boolean);
   return tokens.some((token) => !genericIntegrationSurfaceCandidateTerms.has(token));
@@ -1056,7 +1119,7 @@ function isPlaceholderAcceptanceCriterion(criterion) {
   return placeholderAcceptancePatterns.some((pattern) => pattern.test(criterion.trim()));
 }
 
-function isIntegrationNode(node) {
+function isIntegrationOrReadinessNode(node) {
   if (node.parallelGroup === "alpha-integration") {
     return true;
   }
@@ -1068,7 +1131,7 @@ function isIntegrationNode(node) {
     .filter((value) => typeof value === "string")
     .join("\n")
     .replace(/\bintegration[- ]nodes?\b/giu, "");
-  return /\b(?:integration|vertical|end[- ]to[- ]end)\b/iu.test(text);
+  return /\b(?:integration|vertical|end[- ]to[- ]end|readiness)\b/iu.test(text);
 }
 
 function normalizeSemanticText(value) {

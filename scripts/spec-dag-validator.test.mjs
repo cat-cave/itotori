@@ -122,7 +122,7 @@ test("rejects integration nodes that do not identify exact composed surfaces", (
   );
   assertError(
     errors,
-    "VALID-001 parallelGroup integration node must name exact composed surfaces, artifacts, commands, or adapters: alpha-integration",
+    "VALID-001 integration/readiness node must name exact composed surfaces, artifacts, commands, or adapters: alpha-integration",
   );
 });
 
@@ -143,7 +143,7 @@ test("rejects integration nodes satisfied only by broad project membership", () 
 
   assertError(
     errors,
-    "VALID-001 parallelGroup integration node must name exact composed surfaces, artifacts, commands, or adapters: alpha-integration",
+    "VALID-001 integration/readiness node must name exact composed surfaces, artifacts, commands, or adapters: alpha-integration",
   );
 });
 
@@ -164,8 +164,179 @@ test("rejects generic readiness evidence as an integration surface", () => {
 
   assertError(
     errors,
-    "VALID-001 parallelGroup integration node must name exact composed surfaces, artifacts, commands, or adapters: alpha-integration",
+    "VALID-001 integration/readiness node must name exact composed surfaces, artifacts, commands, or adapters: alpha-integration",
   );
+});
+
+test("accepts exact integration and readiness surface tokens", () => {
+  const cases = [
+    {
+      name: "file path",
+      overrides: {
+        parallelGroup: "alpha-integration",
+        title: "Roadmap validator integration",
+        deliverables: ["scripts/spec-dag.mjs roadmap validator surface"],
+        acceptanceCriteria: ["scripts/spec-dag.mjs validates the composed roadmap graph"],
+      },
+    },
+    {
+      name: "package name",
+      overrides: {
+        parallelGroup: "alpha-integration",
+        title: "DB readiness integration",
+        deliverables: ["@itotori/db readiness service test path"],
+        acceptanceCriteria: ["The @itotori/db service path is part of the readiness gate"],
+      },
+    },
+    {
+      name: "artifact token",
+      overrides: {
+        parallelGroup: "alpha-integration",
+        title: "Provider proof readiness",
+        deliverables: ["artifacts/alpha/public-fixture/provider-proof.json readiness artifact"],
+        acceptanceCriteria: ["The provider proof artifact is present after the fixture command"],
+      },
+    },
+    {
+      name: "verification command",
+      overrides: {
+        parallelGroup: "alpha-integration",
+        title: "Provider proof readiness",
+        deliverables: ["Provider proof command"],
+        acceptanceCriteria: ["The provider proof command emits the alpha fixture artifact"],
+        verification: [{ type: "command", value: "pnpm exec vp run alpha:public-fixture" }],
+      },
+    },
+  ];
+
+  for (const { name, overrides } of cases) {
+    assert.deepEqual(errorsFor(nodeFixture(overrides)), [], name);
+  }
+});
+
+test("rejects placeholder implementability surface wording", () => {
+  const cases = [
+    {
+      name: "deliverable",
+      overrides: {
+        deliverables: ["Owned command, service, schema, or artifact surface"],
+      },
+      expected:
+        "VALID-001 deliverables[0] is a placeholder deliverable: Owned command, service, schema, or artifact surface",
+    },
+    {
+      name: "acceptance criterion",
+      overrides: {
+        acceptanceCriteria: ["Names an owned command, service, schema, or artifact surface"],
+      },
+      expected:
+        "VALID-001 acceptanceCriteria[0] is placeholder acceptance: Names an owned command, service, schema, or artifact surface",
+    },
+  ];
+
+  for (const { name, overrides, expected } of cases) {
+    assertError(errorsFor(nodeFixture(overrides)), expected, name);
+  }
+});
+
+test("rejects active report-only decision-only and feasibility nodes", () => {
+  const cases = [
+    {
+      name: "planned report-only",
+      overrides: {
+        title: "Report-only localization result",
+        summary: "Collect implementation output as a report-only bundle.",
+      },
+      expected:
+        "VALID-001 title describes meta or decision-only work: Report-only localization result",
+    },
+    {
+      name: "in-progress decision-only",
+      overrides: {
+        status: "in_progress",
+        owner: "codex",
+        branch: "spec/univ-021-fixture",
+        title: "Decision-only provider route",
+      },
+      expected:
+        "VALID-001 title describes meta or decision-only work: Decision-only provider route",
+    },
+    {
+      name: "blocked feasibility",
+      overrides: {
+        status: "blocked",
+        statusReason: "Waiting on named input.",
+        blockedBy: "UNIV-016",
+        title: "Feasibility study",
+      },
+      expected: "VALID-001 title describes meta or decision-only work: Feasibility study",
+    },
+  ];
+
+  for (const { name, overrides, expected } of cases) {
+    assertError(errorsFor(nodeFixture(overrides)), expected, name);
+  }
+});
+
+test("rejects integration and readiness nodes without exact implementability surfaces", () => {
+  const cases = [
+    {
+      name: "integration",
+      overrides: {
+        parallelGroup: "alpha-integration",
+        title: "Suite integration gate",
+        summary: "Coordinate dependencies across alpha work.",
+        deliverables: ["Project dependency checklist"],
+        acceptanceCriteria: ["The checklist confirms project membership and dependency order"],
+      },
+    },
+    {
+      name: "readiness",
+      overrides: {
+        title: "Alpha readiness gate",
+        summary: "Coordinate readiness across dependent projects.",
+        deliverables: ["Readiness evidence bundle"],
+        acceptanceCriteria: ["Readiness evidence is available after dependency coordination"],
+      },
+    },
+  ];
+
+  for (const { name, overrides } of cases) {
+    assertError(
+      errorsFor(nodeFixture(overrides)),
+      "VALID-001 integration/readiness node must name exact composed surfaces, artifacts, commands, or adapters",
+      name,
+    );
+  }
+});
+
+test("rejects alpha P0/P1 nodes without concrete command verification", () => {
+  const cases = [
+    {
+      name: "manual only",
+      overrides: {
+        priority: "P1",
+        target: "alpha",
+        verification: [{ type: "manual", value: "Readiness review" }],
+      },
+      expected: "VALID-001 alpha P1 node must include concrete command verification",
+    },
+    {
+      name: "placeholder command",
+      overrides: {
+        priority: "P0",
+        target: "alpha",
+        verification: [
+          { type: "command", value: "owned command, service, schema, or artifact surface" },
+        ],
+      },
+      expected: "VALID-001 alpha P0 node must include concrete command verification",
+    },
+  ];
+
+  for (const { name, overrides, expected } of cases) {
+    assertError(errorsFor(nodeFixture(overrides)), expected, name);
+  }
 });
 
 test("rejects roadmap time estimate fields", () => {
@@ -231,10 +402,10 @@ function errorsFor(...nodes) {
   return validateDag(dagFixture(nodes)).errors;
 }
 
-function assertError(errors, expected) {
+function assertError(errors, expected, message = expected) {
   assert.ok(
     errors.some((error) => error.includes(expected)),
-    `expected error containing ${JSON.stringify(expected)}, got:\n${errors.join("\n")}`,
+    `${message}: expected error containing ${JSON.stringify(expected)}, got:\n${errors.join("\n")}`,
   );
 }
 
