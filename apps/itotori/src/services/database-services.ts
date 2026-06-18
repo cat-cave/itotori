@@ -1,6 +1,7 @@
 import {
   ItotoriFeedbackRepository,
   ItotoriCatalogExactExternalIdLinkerService,
+  ItotoriCatalogFuzzyCandidateGeneratorService,
   ItotoriCatalogRepository,
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
@@ -9,6 +10,7 @@ import {
   databaseUrlFromEnv,
   migrate,
   type ItotoriCatalogExactExternalIdLinkerPort,
+  type ItotoriCatalogFuzzyCandidateGeneratorPort,
 } from "@itotori/db";
 import {
   ItotoriAuthorizationService,
@@ -26,6 +28,7 @@ export type ItotoriApplicationServices = {
   projectWorkflow: ItotoriProjectWorkflowPort;
   manualFeedback: ManualFeedbackImportPort;
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
+  catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -64,6 +67,10 @@ export async function withDatabaseItotoriServices<T>(
       ),
       manualFeedback: new ManualFeedbackImportService(feedbackRepository, localUserActor),
       catalogExactExternalIdLinker: new ItotoriCatalogExactExternalIdLinkerService(
+        catalogRepository,
+        localUserActor,
+      ),
+      catalogFuzzyCandidateGenerator: new ItotoriCatalogFuzzyCandidateGeneratorService(
         catalogRepository,
         localUserActor,
       ),

@@ -1,0 +1,45 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "catalog-fuzzy-candidate-generator",
+    "title": "Catalog Fuzzy Candidate Generator Fixtures",
+    "kind": "synthetic",
+    "summary": "Synthetic public request fixtures for deterministic fuzzy catalog candidate generation without auto-merge behavior.",
+    "sourceLocale": "ja-JP",
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Hand-authored synthetic catalog IDs, titles, and request metadata for repository tests; no third-party raw assets."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic request bundle for CATALOG-009 fuzzy candidate verification.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/catalog-fuzzy-candidate-generator/requests.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "9834da439a49c58cc590fc4b9bdd12ab9223db54eb8f51b121d993b2d2ab0bab",
+      "bytes": 2400,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 1,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "engineKinds": ["catalog-synthetic"],
+    "notes": "Covers exact external-id skip, high-confidence fuzzy candidate, low-confidence no-candidate, conflicting exact source ids, and duplicate source diagnostics."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:catalog-fuzzy-candidate-generator"
+  }
+}

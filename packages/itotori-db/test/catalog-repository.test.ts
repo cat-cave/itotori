@@ -10,6 +10,8 @@ import {
   catalogConflictKindValues,
   catalogConflictSubjectKindValues,
   catalogConfidenceValues,
+  catalogCandidateMatches,
+  catalogCandidateMatchStatusValues,
   catalogEngineSourceValues,
   catalogExternalIdKindValues,
   catalogExternalIds,
@@ -799,6 +801,83 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("records fuzzy candidate matches as reviewable read-model rows without mutating works", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const work = await repo.upsertWork(localActor, {
+        workId: uuid(861),
+        canonicalTitle: "Moonlight Refrain HD",
+        originalLanguage: "ja-JP",
+        firstReleaseYear: 2021,
+      });
+
+      const first = await repo.recordCatalogCandidateMatch(localActor, {
+        candidateId: uuid(862),
+        sourceCatalogSource: catalogSourceValues.egs,
+        sourceId: "egs-moonlight-001",
+        sourceTitle: "Moonlight Refrain",
+        targetWorkId: work.workId,
+        score: 860,
+        matchedFields: {
+          title: { score: 760, algorithm: "normalized_token_dice" },
+          releaseYear: { score: 100, algorithm: "exact_year_bonus" },
+        },
+        status: catalogCandidateMatchStatusValues.reviewPending,
+        diagnosticCode: "catalog.fuzzy_candidate.generated",
+        generatorVersion: "deterministic-title-year.v0.1",
+        metadata: { autoMerge: false },
+      });
+      const second = await repo.recordCatalogCandidateMatch(localActor, {
+        candidateId: uuid(863),
+        sourceCatalogSource: catalogSourceValues.egs,
+        sourceId: "egs-moonlight-001",
+        sourceTitle: "Moonlight Refrain updated",
+        targetWorkId: work.workId,
+        score: 850,
+        matchedFields: {
+          title: { score: 750, algorithm: "normalized_token_dice" },
+          releaseYear: { score: 100, algorithm: "exact_year_bonus" },
+        },
+        status: catalogCandidateMatchStatusValues.reviewPending,
+        diagnosticCode: "catalog.fuzzy_candidate.generated",
+        generatorVersion: "deterministic-title-year.v0.1",
+        metadata: { autoMerge: false, revision: 2 },
+      });
+
+      expect(second).toMatchObject({
+        candidateId: first.candidateId,
+        sourceTitle: "Moonlight Refrain updated",
+        score: 850,
+        status: catalogCandidateMatchStatusValues.reviewPending,
+        metadata: { autoMerge: false, revision: 2 },
+      });
+      const candidates = await repo.listCatalogCandidateMatches(
+        localActor,
+        catalogCandidateMatchStatusValues.reviewPending,
+      );
+      expect(candidates).toEqual([expect.objectContaining({ candidateId: first.candidateId })]);
+
+      const snapshot = await repo.getWorkSnapshot(localActor, work.workId);
+      expect(snapshot).toMatchObject({
+        workId: work.workId,
+        canonicalTitle: "Moonlight Refrain HD",
+        externalIds: [],
+      });
+
+      const counts = await context.db.execute(sql`
+        select count(*)::int as candidate_count
+        from ${catalogCandidateMatches}
+        where source_catalog_source = ${catalogSourceValues.egs}
+          and source_id = ${"egs-moonlight-001"}
+          and target_work_id = ${work.workId}
+      `);
+      expect(counts.rows[0]).toMatchObject({ candidate_count: 1 });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("bootstraps catalog permissions and creates catalog lookup indexes", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -820,7 +899,8 @@ describe("ItotoriCatalogRepository", () => {
             'itotori_catalog_source_provenance_lookup_idx',
             'itotori_catalog_language_statuses_work_lang_idx',
             'itotori_catalog_seed_targets_status_idx',
-            'itotori_catalog_local_scan_entries_path_idx'
+            'itotori_catalog_local_scan_entries_path_idx',
+            'itotori_catalog_candidate_matches_source_target_idx'
           )
       `);
       expect(new Set(result.rows.map((row) => String(row.indexname)))).toEqual(
@@ -830,6 +910,7 @@ describe("ItotoriCatalogRepository", () => {
           "itotori_catalog_language_statuses_work_lang_idx",
           "itotori_catalog_seed_targets_status_idx",
           "itotori_catalog_local_scan_entries_path_idx",
+          "itotori_catalog_candidate_matches_source_target_idx",
         ]),
       );
     } finally {

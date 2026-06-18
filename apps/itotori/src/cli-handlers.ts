@@ -1,7 +1,9 @@
 import { assertRuntimeReport } from "@itotori/localization-bridge-schema";
 import type {
   CatalogExactExternalIdLinkRequest,
+  CatalogFuzzyCandidateRequest,
   ItotoriCatalogExactExternalIdLinkerPort,
+  ItotoriCatalogFuzzyCandidateGeneratorPort,
 } from "@itotori/db";
 import { assertBridgeInput } from "./api-schema.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
@@ -16,6 +18,7 @@ export type ItotoriCliServices = {
   projectWorkflow: ItotoriProjectWorkflowPort;
   manualFeedback: ManualFeedbackImportPort;
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
+  catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
 };
 
 export type ItotoriCliDependencies = {
@@ -56,6 +59,9 @@ export async function runItotoriCliCommand(
       break;
     case "catalog-link-exact":
       await runCatalogLinkExact(args, dependencies);
+      break;
+    case "catalog-fuzzy-candidates":
+      await runCatalogFuzzyCandidates(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -144,6 +150,19 @@ async function runCatalogLinkExact(
   const request = dependencies.io.readJson(requestPath) as CatalogExactExternalIdLinkRequest;
   const result = await dependencies.withServices((services) =>
     services.catalogExactExternalIdLinker.linkExactExternalIds(request),
+  );
+  dependencies.io.writeJson(outputPath, result);
+}
+
+async function runCatalogFuzzyCandidates(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const requestPath = requiredFlag(args, "--request");
+  const outputPath = requiredFlag(args, "--output");
+  const request = dependencies.io.readJson(requestPath) as CatalogFuzzyCandidateRequest;
+  const result = await dependencies.withServices((services) =>
+    services.catalogFuzzyCandidateGenerator.generateFuzzyCandidates(request),
   );
   dependencies.io.writeJson(outputPath, result);
 }

@@ -22,6 +22,7 @@ export {
   runtimeBridgeUnitRefRoleValues,
   runtimeEvidenceKindValues,
   runtimeRunStatusValues,
+  catalogCandidateMatchStatusValues,
   catalogConfidenceValues,
   catalogConflictKindValues,
   catalogConflictStatusValues,
@@ -62,6 +63,7 @@ export type {
   RuntimeBridgeUnitRefRole,
   RuntimeEvidenceKind,
   RuntimeRunStatus,
+  CatalogCandidateMatchStatus,
 } from "./schema.js";
 export {
   defaultWorkspaceId,
@@ -143,6 +145,9 @@ export type {
 export { ItotoriCatalogRepository } from "./repositories/catalog-repository.js";
 export type {
   CatalogDateInput,
+  CatalogCandidateMatchInput,
+  CatalogCandidateMatchRecord,
+  CatalogCandidateTargetWorkRecord,
   CatalogEngineInput,
   CatalogExternalIdInput,
   CatalogExternalIdRecord,
@@ -178,6 +183,23 @@ export type {
   OutboxPublishResult,
   QueueServiceRunOptions,
 } from "./services/event-queue-service.js";
+export {
+  catalogFuzzyCandidateDiagnosticCodeValues,
+  catalogFuzzyCandidateGeneratorVersion,
+  catalogFuzzyCandidateSchemaVersion,
+  catalogFuzzyCandidateStatusValues,
+  ItotoriCatalogFuzzyCandidateGeneratorService,
+} from "./services/catalog-fuzzy-candidate-generator.js";
+export type {
+  CatalogFuzzyCandidateDiagnostic,
+  CatalogFuzzyCandidateDiagnosticCode,
+  CatalogFuzzyCandidateExternalId,
+  CatalogFuzzyCandidateRequest,
+  CatalogFuzzyCandidateResult,
+  CatalogFuzzyCandidateSourceFact,
+  CatalogFuzzyCandidateStatus,
+  ItotoriCatalogFuzzyCandidateGeneratorPort,
+} from "./services/catalog-fuzzy-candidate-generator.js";
 export {
   catalogExactExternalIdLinkDiagnosticCodeValues,
   catalogExactExternalIdLinkSchemaVersion,

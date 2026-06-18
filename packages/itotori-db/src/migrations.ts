@@ -96,6 +96,10 @@ const migrations = [
     id: "0009_catalog_foundation",
     file: "0009_catalog_foundation.sql",
   },
+  {
+    id: "0010_catalog_candidate_matches",
+    file: "0010_catalog_candidate_matches.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

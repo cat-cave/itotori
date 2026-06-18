@@ -291,6 +291,14 @@ export const catalogSeedStatusValues = {
 export type CatalogSeedStatus =
   (typeof catalogSeedStatusValues)[keyof typeof catalogSeedStatusValues];
 
+export const catalogCandidateMatchStatusValues = {
+  reviewPending: "review_pending",
+  duplicateSource: "duplicate_source",
+} as const;
+
+export type CatalogCandidateMatchStatus =
+  (typeof catalogCandidateMatchStatusValues)[keyof typeof catalogCandidateMatchStatusValues];
+
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -671,6 +679,52 @@ export const catalogSeedTargets = pgTable(
     ),
     index("itotori_catalog_seed_targets_local_scan_entry_idx").on(table.localScanEntryId),
     index("itotori_catalog_seed_targets_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogCandidateMatches = pgTable(
+  "itotori_catalog_candidate_matches",
+  {
+    candidateId: text("candidate_id").primaryKey(),
+    sourceCatalogSource: text("source_catalog_source").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceTitle: text("source_title").notNull(),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    targetWorkId: text("target_work_id")
+      .notNull()
+      .references(() => catalogWorks.workId, { onDelete: "cascade" }),
+    score: integer("score").notNull(),
+    matchedFields: jsonb("matched_fields")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    status: text("status").notNull(),
+    diagnosticCode: text("diagnostic_code").notNull(),
+    generatorVersion: text("generator_version").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_catalog_candidate_matches_source_target_idx").on(
+      table.sourceCatalogSource,
+      table.sourceId,
+      table.targetWorkId,
+      table.generatorVersion,
+    ),
+    index("itotori_catalog_candidate_matches_status_idx").on(
+      table.status,
+      table.score.desc(),
+      table.createdAt,
+    ),
+    index("itotori_catalog_candidate_matches_target_idx").on(table.targetWorkId),
+    index("itotori_catalog_candidate_matches_provenance_idx").on(table.sourceProvenanceId),
   ],
 );
 

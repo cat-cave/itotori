@@ -3,8 +3,12 @@ import {
   type AuthorizationActor,
   type CatalogExactExternalIdLinkRequest,
   type CatalogExactExternalIdLinkResult,
+  type CatalogFuzzyCandidateRequest,
+  type CatalogFuzzyCandidateResult,
   catalogExactExternalIdLinkStatusValues,
   catalogExactExternalIdLinkSchemaVersion,
+  catalogFuzzyCandidateSchemaVersion,
+  catalogFuzzyCandidateStatusValues,
   type DashboardDecisionReadModel,
   feedbackTypeValues,
   type ManualFeedbackImportInput,
@@ -166,6 +170,34 @@ describe("Itotori CLI handlers", () => {
     );
     expect(writes.get("catalog-link-result.json")).toEqual(exactLinkResultFixture);
   });
+
+  it("writes fuzzy catalog candidates from fixture requests", async () => {
+    const services = servicesFixture();
+    const reads = new Map<string, unknown>([
+      ["catalog-fuzzy-request.json", fuzzyCandidateRequestFixture],
+    ]);
+    const writes = new Map<string, unknown>();
+
+    await runItotoriCliCommand(
+      [
+        "catalog-fuzzy-candidates",
+        "--request",
+        "catalog-fuzzy-request.json",
+        "--output",
+        "catalog-fuzzy-result.json",
+      ],
+      {
+        io: jsonStoreFixture(reads, writes),
+        migrateDatabase: vi.fn(async () => {}),
+        withServices: async (callback) => await callback(services),
+      },
+    );
+
+    expect(services.catalogFuzzyCandidateGenerator.generateFuzzyCandidates).toHaveBeenCalledWith(
+      fuzzyCandidateRequestFixture,
+    );
+    expect(writes.get("catalog-fuzzy-result.json")).toEqual(fuzzyCandidateResultFixture);
+  });
 });
 
 function jsonStoreFixture(reads: Map<string, unknown>, writes: Map<string, unknown>) {
@@ -241,6 +273,10 @@ function servicesFixture(): ItotoriCliServices {
     },
     catalogExactExternalIdLinker: {
       linkExactExternalIds: vi.fn(async () => exactLinkResultFixture),
+    },
+    catalogFuzzyCandidateGenerator: {
+      generateFuzzyCandidates: vi.fn(async () => fuzzyCandidateResultFixture),
+      listCatalogCandidateMatches: vi.fn(async () => fuzzyCandidateResultFixture.candidates),
     },
   };
 }
@@ -395,6 +431,43 @@ const exactLinkResultFixture: CatalogExactExternalIdLinkResult = {
       externalIdKind: "store_product",
       workId: "work-dlsite",
       canonicalTitle: "DLsite-only fixture",
+    },
+  ],
+  diagnostics: [],
+};
+
+const fuzzyCandidateRequestFixture: CatalogFuzzyCandidateRequest = {
+  schemaVersion: catalogFuzzyCandidateSchemaVersion,
+  sourceFacts: [
+    {
+      catalogSource: "egs",
+      sourceId: "egs-777",
+      title: "Moonlight Refrain",
+      releaseYear: 2021,
+    },
+  ],
+};
+
+const fuzzyCandidateResultFixture: CatalogFuzzyCandidateResult = {
+  schemaVersion: catalogFuzzyCandidateSchemaVersion,
+  generatorVersion: "deterministic-title-year.v0.1",
+  status: catalogFuzzyCandidateStatusValues.generated,
+  candidates: [
+    {
+      candidateId: "candidate-1",
+      sourceCatalogSource: "egs",
+      sourceId: "egs-777",
+      sourceTitle: "Moonlight Refrain",
+      sourceProvenanceId: null,
+      targetWorkId: "work-moonlight",
+      score: 820,
+      matchedFields: {},
+      status: "review_pending",
+      diagnosticCode: "catalog.fuzzy_candidate.generated",
+      generatorVersion: "deterministic-title-year.v0.1",
+      metadata: { autoMerge: false },
+      createdAt: new Date("2026-06-18T00:00:00.000Z"),
+      updatedAt: new Date("2026-06-18T00:00:00.000Z"),
     },
   ],
   diagnostics: [],

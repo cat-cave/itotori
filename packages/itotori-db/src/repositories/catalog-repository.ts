@@ -4,6 +4,8 @@ import { type AuthorizationActor, permissionValues, requirePermission } from "..
 import { createUuid7 } from "./event-queue-repository.js";
 import {
   catalogConfidenceValues,
+  catalogCandidateMatches,
+  catalogCandidateMatchStatusValues,
   catalogConflictEvidence,
   catalogConflictKindValues,
   catalogConflicts,
@@ -29,6 +31,7 @@ import {
   catalogSourceValues,
   catalogWorks,
   type CatalogConfidence,
+  type CatalogCandidateMatchStatus,
   type CatalogConflictKind,
   type CatalogConflictStatus,
   type CatalogConflictSubjectKind,
@@ -363,6 +366,43 @@ export type CatalogLocalScanRecord = {
   entries: CatalogLocalScanEntryRecord[];
 };
 
+export type CatalogCandidateMatchInput = {
+  candidateId?: string;
+  sourceCatalogSource: CatalogSource;
+  sourceId: string;
+  sourceTitle: string;
+  sourceProvenanceId?: string;
+  targetWorkId: string;
+  score: number;
+  matchedFields: CatalogJsonRecord;
+  status?: CatalogCandidateMatchStatus;
+  diagnosticCode: string;
+  generatorVersion: string;
+  metadata?: CatalogJsonRecord;
+};
+
+export type CatalogCandidateMatchRecord = {
+  candidateId: string;
+  sourceCatalogSource: CatalogSource;
+  sourceId: string;
+  sourceTitle: string;
+  sourceProvenanceId: string | null;
+  targetWorkId: string;
+  score: number;
+  matchedFields: CatalogJsonRecord;
+  status: CatalogCandidateMatchStatus;
+  diagnosticCode: string;
+  generatorVersion: string;
+  metadata: CatalogJsonRecord;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CatalogCandidateTargetWorkRecord = Pick<
+  CatalogWorkRecord,
+  "workId" | "canonicalTitle" | "firstReleaseYear" | "originalLanguage" | "workKind"
+>;
+
 export interface ItotoriCatalogRepositoryPort {
   recordSourceProvenance(
     actor: AuthorizationActor,
@@ -388,6 +428,17 @@ export interface ItotoriCatalogRepositoryPort {
     actor: AuthorizationActor,
     status?: CatalogSeedStatus,
   ): Promise<CatalogSeedTargetRecord[]>;
+  listCatalogCandidateTargetWorks(
+    actor: AuthorizationActor,
+  ): Promise<CatalogCandidateTargetWorkRecord[]>;
+  recordCatalogCandidateMatch(
+    actor: AuthorizationActor,
+    input: CatalogCandidateMatchInput,
+  ): Promise<CatalogCandidateMatchRecord>;
+  listCatalogCandidateMatches(
+    actor: AuthorizationActor,
+    status?: CatalogCandidateMatchStatus,
+  ): Promise<CatalogCandidateMatchRecord[]>;
 }
 
 const catalogSources = Object.values(catalogSourceValues) as CatalogSource[];
@@ -418,6 +469,9 @@ const catalogPathRedactionClasses = Object.values(
 ) as CatalogPathRedactionClass[];
 const catalogSeedOrigins = Object.values(catalogSeedOriginValues) as CatalogSeedOrigin[];
 const catalogSeedStatuses = Object.values(catalogSeedStatusValues) as CatalogSeedStatus[];
+const catalogCandidateMatchStatuses = Object.values(
+  catalogCandidateMatchStatusValues,
+) as CatalogCandidateMatchStatus[];
 
 export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
@@ -808,6 +862,76 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
             .where(eq(catalogSeedTargets.status, status))
             .orderBy(desc(catalogSeedTargets.priority), catalogSeedTargets.addedAt);
     return rows.map(seedTargetFromRow);
+  }
+
+  async listCatalogCandidateTargetWorks(
+    actor: AuthorizationActor,
+  ): Promise<CatalogCandidateTargetWorkRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const rows = await this.db
+      .select({
+        workId: catalogWorks.workId,
+        canonicalTitle: catalogWorks.canonicalTitle,
+        firstReleaseYear: catalogWorks.firstReleaseYear,
+        originalLanguage: catalogWorks.originalLanguage,
+        workKind: catalogWorks.workKind,
+      })
+      .from(catalogWorks)
+      .orderBy(catalogWorks.canonicalTitle, catalogWorks.workId);
+    return rows;
+  }
+
+  async recordCatalogCandidateMatch(
+    actor: AuthorizationActor,
+    input: CatalogCandidateMatchInput,
+  ): Promise<CatalogCandidateMatchRecord> {
+    await requirePermission(this.db, actor, permissionValues.catalogWrite);
+    const normalized = assertCandidateMatchInput(input);
+    const rows = await this.db
+      .insert(catalogCandidateMatches)
+      .values(normalized)
+      .onConflictDoUpdate({
+        target: [
+          catalogCandidateMatches.sourceCatalogSource,
+          catalogCandidateMatches.sourceId,
+          catalogCandidateMatches.targetWorkId,
+          catalogCandidateMatches.generatorVersion,
+        ],
+        set: {
+          sourceTitle: normalized.sourceTitle,
+          sourceProvenanceId: normalized.sourceProvenanceId,
+          score: normalized.score,
+          matchedFields: normalized.matchedFields,
+          status: normalized.status,
+          diagnosticCode: normalized.diagnosticCode,
+          metadata: normalized.metadata,
+          updatedAt: sql`now()`,
+        },
+      })
+      .returning();
+    return candidateMatchFromRow(requiredRow(rows, normalized.candidateId));
+  }
+
+  async listCatalogCandidateMatches(
+    actor: AuthorizationActor,
+    status?: CatalogCandidateMatchStatus,
+  ): Promise<CatalogCandidateMatchRecord[]> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    if (status !== undefined) {
+      assertEnumValue(status, catalogCandidateMatchStatuses, "status");
+    }
+    const rows =
+      status === undefined
+        ? await this.db
+            .select()
+            .from(catalogCandidateMatches)
+            .orderBy(desc(catalogCandidateMatches.score), catalogCandidateMatches.createdAt)
+        : await this.db
+            .select()
+            .from(catalogCandidateMatches)
+            .where(eq(catalogCandidateMatches.status, status))
+            .orderBy(desc(catalogCandidateMatches.score), catalogCandidateMatches.createdAt);
+    return rows.map(candidateMatchFromRow);
   }
 }
 
@@ -1326,6 +1450,21 @@ type NormalizedSeedTargetInput = {
   metadata: CatalogJsonRecord;
 };
 
+type NormalizedCandidateMatchInput = {
+  candidateId: string;
+  sourceCatalogSource: CatalogSource;
+  sourceId: string;
+  sourceTitle: string;
+  sourceProvenanceId: string | null;
+  targetWorkId: string;
+  score: number;
+  matchedFields: CatalogJsonRecord;
+  status: CatalogCandidateMatchStatus;
+  diagnosticCode: string;
+  generatorVersion: string;
+  metadata: CatalogJsonRecord;
+};
+
 function assertLocalScanInput(input: CatalogLocalScanInput): NormalizedLocalScanInput {
   assertSha256(input.scanRootPathHash, "scanRootPathHash");
   const startedAt =
@@ -1440,6 +1579,32 @@ function assertSeedTargetInput(input: CatalogSeedTargetInput): NormalizedSeedTar
     addedAt:
       input.addedAt === undefined ? new Date() : dateInput(input.addedAt, "seedTarget.addedAt"),
     metadata: jsonRecord(input.metadata ?? {}, "seedTarget.metadata"),
+  };
+}
+
+function assertCandidateMatchInput(
+  input: CatalogCandidateMatchInput,
+): NormalizedCandidateMatchInput {
+  assertEnumValue(input.sourceCatalogSource, catalogSources, "candidate.sourceCatalogSource");
+  if (input.status !== undefined) {
+    assertEnumValue(input.status, catalogCandidateMatchStatuses, "candidate.status");
+  }
+  if (!Number.isInteger(input.score) || input.score < 0 || input.score > 1000) {
+    throw new Error("candidate.score must be an integer between 0 and 1000");
+  }
+  return {
+    candidateId: input.candidateId ?? createUuid7(),
+    sourceCatalogSource: input.sourceCatalogSource,
+    sourceId: requiredString(input.sourceId, "candidate.sourceId"),
+    sourceTitle: requiredString(input.sourceTitle, "candidate.sourceTitle"),
+    sourceProvenanceId: input.sourceProvenanceId ?? null,
+    targetWorkId: requiredString(input.targetWorkId, "candidate.targetWorkId"),
+    score: input.score,
+    matchedFields: jsonRecord(input.matchedFields, "candidate.matchedFields"),
+    status: input.status ?? catalogCandidateMatchStatusValues.reviewPending,
+    diagnosticCode: requiredString(input.diagnosticCode, "candidate.diagnosticCode"),
+    generatorVersion: requiredString(input.generatorVersion, "candidate.generatorVersion"),
+    metadata: jsonRecord(input.metadata ?? {}, "candidate.metadata"),
   };
 }
 
@@ -1632,6 +1797,27 @@ function seedTargetFromRow(row: typeof catalogSeedTargets.$inferSelect): Catalog
     priority: row.priority,
     addedAt: row.addedAt,
     metadata: row.metadata,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function candidateMatchFromRow(
+  row: typeof catalogCandidateMatches.$inferSelect,
+): CatalogCandidateMatchRecord {
+  return {
+    candidateId: row.candidateId,
+    sourceCatalogSource: row.sourceCatalogSource as CatalogSource,
+    sourceId: row.sourceId,
+    sourceTitle: row.sourceTitle,
+    sourceProvenanceId: row.sourceProvenanceId,
+    targetWorkId: row.targetWorkId,
+    score: row.score,
+    matchedFields: row.matchedFields,
+    status: row.status as CatalogCandidateMatchStatus,
+    diagnosticCode: row.diagnosticCode,
+    generatorVersion: row.generatorVersion,
+    metadata: row.metadata,
+    createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
 }

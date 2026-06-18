@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "catalog.fuzzy_candidates.fixture.v0.1",
+  "summary": "Synthetic public fixture requests for deterministic fuzzy catalog candidate generation.",
+  "requests": {
+    "exactExternalIdSkipsFuzzy": {
+      "schemaVersion": "catalog.fuzzy_candidates.v0.1",
+      "sourceFacts": [
+        {
+          "catalogSource": "dlsite",
+          "sourceId": "RJ349517",
+          "title": "DLsite-only fixture typo",
+          "releaseYear": 2022,
+          "externalIds": [
+            {
+              "catalogSource": "dlsite",
+              "sourceId": "RJ349517",
+              "externalIdKind": "store_product"
+            }
+          ]
+        }
+      ]
+    },
+    "highConfidenceFuzzy": {
+      "schemaVersion": "catalog.fuzzy_candidates.v0.1",
+      "sourceFacts": [
+        {
+          "catalogSource": "egs",
+          "sourceId": "egs-moonlight-001",
+          "title": "Moonlight Refrain",
+          "releaseYear": 2021
+        }
+      ]
+    },
+    "lowConfidenceNoCandidate": {
+      "schemaVersion": "catalog.fuzzy_candidates.v0.1",
+      "sourceFacts": [
+        {
+          "catalogSource": "egs",
+          "sourceId": "egs-unrelated-001",
+          "title": "Unrelated Orchard Mystery",
+          "releaseYear": 1999
+        }
+      ]
+    },
+    "conflictingExactExternalIds": {
+      "schemaVersion": "catalog.fuzzy_candidates.v0.1",
+      "sourceFacts": [
+        {
+          "catalogSource": "manual",
+          "sourceId": "manual-conflict-001",
+          "title": "Ambiguous exact source fixture",
+          "releaseYear": 2022,
+          "externalIds": [
+            {
+              "catalogSource": "dlsite",
+              "sourceId": "RJ349517",
+              "externalIdKind": "store_product"
+            },
+            {
+              "catalogSource": "steam",
+              "sourceId": "333600",
+              "externalIdKind": "store_product"
+            }
+          ]
+        }
+      ]
+    },
+    "duplicateSource": {
+      "schemaVersion": "catalog.fuzzy_candidates.v0.1",
+      "sourceFacts": [
+        {
+          "catalogSource": "egs",
+          "sourceId": "egs-moonlight-001",
+          "title": "Moonlight Refrain",
+          "releaseYear": 2021
+        },
+        {
+          "catalogSource": "egs",
+          "sourceId": "egs-moonlight-001",
+          "title": "Moonlight Refrain duplicate",
+          "releaseYear": 2021
+        }
+      ]
+    }
+  }
+}
