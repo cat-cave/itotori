@@ -1,8 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fmt;
 use std::fs::{self, File, OpenOptions};
-use std::io::{ErrorKind, Read, Write};
+use std::io::{self, ErrorKind, Read, Write};
 use std::path::{Path, PathBuf};
+
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+use std::ffi::CString;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -6475,6 +6478,170 @@ pub fn atomic_write_text(path: &Path, content: &str) -> KaifuuResult<()> {
     }
     sync_directory_best_effort(parent);
     Ok(())
+}
+
+pub fn promote_staged_directory_no_clobber(
+    staging_dir: &Path,
+    output_dir: &Path,
+    output_label: &str,
+) -> KaifuuResult<()> {
+    let staging_metadata = fs::symlink_metadata(staging_dir)?;
+    if !staging_metadata.is_dir() || staging_metadata.file_type().is_symlink() {
+        return Err(format!(
+            "{output_label} staging path must be a real directory: {}",
+            redact_for_log_or_report(&staging_dir.display().to_string())
+        )
+        .into());
+    }
+
+    let parent = output_dir.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    if fs::symlink_metadata(output_dir).is_ok() {
+        return Err(output_already_exists_error(output_label, output_dir));
+    }
+
+    match rename_directory_no_replace(staging_dir, output_dir) {
+        Ok(()) => {
+            sync_directory_best_effort(parent);
+            Ok(())
+        }
+        Err(error) if error.kind() == ErrorKind::AlreadyExists => {
+            Err(output_already_exists_error(output_label, output_dir))
+        }
+        Err(_error) if fs::symlink_metadata(output_dir).is_ok() => {
+            Err(output_already_exists_error(output_label, output_dir))
+        }
+        Err(error) => Err(format!(
+            "{output_label} promotion failed without replacing an existing output path: {}",
+            error
+        )
+        .into()),
+    }
+}
+
+fn output_already_exists_error(
+    output_label: &str,
+    output_dir: &Path,
+) -> Box<dyn std::error::Error> {
+    format!(
+        "{output_label} already exists; refusing to replace it during no-clobber promotion: {}",
+        redact_for_log_or_report(&output_dir.display().to_string())
+    )
+    .into()
+}
+
+#[cfg(all(
+    target_os = "linux",
+    any(
+        target_arch = "aarch64",
+        target_arch = "arm",
+        target_arch = "powerpc64",
+        target_arch = "riscv64",
+        target_arch = "s390x",
+        target_arch = "x86",
+        target_arch = "x86_64"
+    )
+))]
+fn rename_directory_no_replace(staging_dir: &Path, output_dir: &Path) -> io::Result<()> {
+    use std::os::raw::{c_char, c_long};
+    use std::os::unix::ffi::OsStrExt;
+
+    const AT_FDCWD: c_long = -100;
+    const RENAME_NOREPLACE: c_long = 1;
+
+    #[cfg(target_arch = "aarch64")]
+    const SYS_RENAMEAT2: c_long = 276;
+    #[cfg(target_arch = "arm")]
+    const SYS_RENAMEAT2: c_long = 382;
+    #[cfg(target_arch = "powerpc64")]
+    const SYS_RENAMEAT2: c_long = 357;
+    #[cfg(target_arch = "riscv64")]
+    const SYS_RENAMEAT2: c_long = 276;
+    #[cfg(target_arch = "s390x")]
+    const SYS_RENAMEAT2: c_long = 347;
+    #[cfg(target_arch = "x86")]
+    const SYS_RENAMEAT2: c_long = 353;
+    #[cfg(target_arch = "x86_64")]
+    const SYS_RENAMEAT2: c_long = 316;
+
+    unsafe extern "C" {
+        fn syscall(num: c_long, ...) -> c_long;
+    }
+
+    let staging = CString::new(staging_dir.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "staging path contains NUL byte"))?;
+    let output = CString::new(output_dir.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "output path contains NUL byte"))?;
+    let result = unsafe {
+        syscall(
+            SYS_RENAMEAT2,
+            AT_FDCWD,
+            staging.as_ptr() as *const c_char,
+            AT_FDCWD,
+            output.as_ptr() as *const c_char,
+            RENAME_NOREPLACE,
+        )
+    };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(all(
+    target_os = "linux",
+    not(any(
+        target_arch = "aarch64",
+        target_arch = "arm",
+        target_arch = "powerpc64",
+        target_arch = "riscv64",
+        target_arch = "s390x",
+        target_arch = "x86",
+        target_arch = "x86_64"
+    ))
+))]
+fn rename_directory_no_replace(_staging_dir: &Path, _output_dir: &Path) -> io::Result<()> {
+    Err(io::Error::new(
+        ErrorKind::Unsupported,
+        "no-clobber directory promotion is not implemented for this Linux architecture",
+    ))
+}
+
+#[cfg(target_os = "macos")]
+fn rename_directory_no_replace(staging_dir: &Path, output_dir: &Path) -> io::Result<()> {
+    use std::os::raw::{c_char, c_int};
+    use std::os::unix::ffi::OsStrExt;
+
+    const RENAME_EXCL: u32 = 0x0000_0004;
+
+    unsafe extern "C" {
+        fn renamex_np(from: *const c_char, to: *const c_char, flags: u32) -> c_int;
+    }
+
+    let staging = CString::new(staging_dir.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "staging path contains NUL byte"))?;
+    let output = CString::new(output_dir.as_os_str().as_bytes())
+        .map_err(|_| io::Error::new(ErrorKind::InvalidInput, "output path contains NUL byte"))?;
+    let result = unsafe { renamex_np(staging.as_ptr(), output.as_ptr(), RENAME_EXCL) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+
+#[cfg(windows)]
+fn rename_directory_no_replace(staging_dir: &Path, output_dir: &Path) -> io::Result<()> {
+    fs::rename(staging_dir, output_dir)
+}
+
+#[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
+fn rename_directory_no_replace(_staging_dir: &Path, _output_dir: &Path) -> io::Result<()> {
+    Err(io::Error::new(
+        ErrorKind::Unsupported,
+        "no-clobber directory promotion requires a platform no-replace rename primitive",
+    ))
 }
 
 fn write_and_sync(file: &mut File, content: &str) -> KaifuuResult<()> {

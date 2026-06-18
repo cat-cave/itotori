@@ -68,6 +68,22 @@ or multi-file engine rebuild. If an adapter cannot provide single-file atomic
 rename semantics, it must document the limitation and fail before modifying the
 original game directory.
 
+Directory promotion has a separate no-clobber rule. Applying a `.kaifuu` delta
+or promoting a CLI patch staging directory must never replace an output path
+that appears after preflight. Rust's `std::fs::rename` is not portable for this:
+Unix platforms can replace an existing empty destination directory, while
+Windows rejects an existing destination directory. Kaifuu directory promotion
+therefore must use `kaifuu_core::promote_staged_directory_no_clobber`, which
+uses a platform no-replace rename primitive where available and fails safely
+when the output path already exists.
+
+When no-clobber directory promotion fails because the output path exists as a
+file, empty directory, non-empty directory, or symlink, the staging directory and
+the existing output path must remain untouched. Callers may then remove only the
+staging directory they created. On platforms or filesystems without an atomic
+no-replace directory rename primitive, promotion must fail before replacing the
+destination path rather than falling back to clobbering rename behavior.
+
 ## Output Directories And Path Traversal
 
 Patch packages and adapter profiles must store asset paths as relative paths.

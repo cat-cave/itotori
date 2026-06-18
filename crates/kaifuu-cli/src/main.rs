@@ -6,9 +6,9 @@ use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
     DetectionResult, EngineAdapter, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
     GoldenHarnessRequest, KaifuuResult, PatchExport, PatchPreflightRequest, PatchRequest,
-    PatchResult, ProfileRequest, VerifyRequest, atomic_write_text, read_json,
-    redact_for_log_or_report, redact_report_value, run_round_trip_golden, validate_profile_value,
-    write_json,
+    PatchResult, ProfileRequest, VerifyRequest, atomic_write_text,
+    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
+    run_round_trip_golden, validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -578,15 +578,7 @@ fn remove_patch_staging_dir(staging_output: &Path) -> KaifuuResult<()> {
 }
 
 fn promote_patch_staging_dir(staging_output: &Path, output: &Path) -> KaifuuResult<()> {
-    if output.exists() {
-        return Err(format!(
-            "patch output directory already exists: {}",
-            redact_for_log_or_report(&output.display().to_string())
-        )
-        .into());
-    }
-    fs::rename(staging_output, output)?;
-    Ok(())
+    promote_staged_directory_no_clobber(staging_output, output, "patch output directory")
 }
 
 fn positional(args: &[String], index: usize) -> Result<&str, Box<dyn std::error::Error>> {
@@ -2502,6 +2494,88 @@ mod tests {
         assert!(!output_dir.join("patch-result.json").exists());
         assert_no_patch_staging_entries(&root, "patched-output");
 
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_promotion_rejects_empty_directory_created_after_staging() {
+        let root = temp_dir("patch-promotion-empty-dir-race");
+        let output_dir = root.join("patched-output");
+        let staging_dir = allocate_patch_staging_dir(&output_dir).unwrap();
+        fs::write(staging_dir.join("adapter-output.txt"), "staged output\n").unwrap();
+        fs::create_dir(&output_dir).unwrap();
+
+        let error = promote_patch_staging_dir(&staging_dir, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("patch output directory already exists"),
+            "{error}"
+        );
+        assert_eq!(
+            fs::read_to_string(staging_dir.join("adapter-output.txt")).unwrap(),
+            "staged output\n"
+        );
+        assert!(fs::read_dir(&output_dir).unwrap().next().is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn patch_promotion_rejects_existing_file_without_touching_staging_or_output() {
+        let root = temp_dir("patch-promotion-existing-file");
+        let output_dir = root.join("patched-output");
+        let staging_dir = allocate_patch_staging_dir(&output_dir).unwrap();
+        fs::write(staging_dir.join("adapter-output.txt"), "staged output\n").unwrap();
+        fs::write(&output_dir, "existing file\n").unwrap();
+
+        let error = promote_patch_staging_dir(&staging_dir, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("patch output directory already exists"),
+            "{error}"
+        );
+        assert_eq!(
+            fs::read_to_string(staging_dir.join("adapter-output.txt")).unwrap(),
+            "staged output\n"
+        );
+        assert_eq!(fs::read_to_string(&output_dir).unwrap(), "existing file\n");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn patch_promotion_rejects_existing_symlink_like_output() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("patch-promotion-existing-symlink");
+        let output_dir = root.join("patched-output");
+        let linked_target = root.join("linked-target");
+        let staging_dir = allocate_patch_staging_dir(&output_dir).unwrap();
+        fs::write(staging_dir.join("adapter-output.txt"), "staged output\n").unwrap();
+        fs::create_dir(&linked_target).unwrap();
+        unix_fs::symlink(&linked_target, &output_dir).unwrap();
+
+        let error = promote_patch_staging_dir(&staging_dir, &output_dir)
+            .unwrap_err()
+            .to_string();
+
+        assert!(
+            error.contains("patch output directory already exists"),
+            "{error}"
+        );
+        assert_eq!(
+            fs::read_to_string(staging_dir.join("adapter-output.txt")).unwrap(),
+            "staged output\n"
+        );
+        assert!(
+            fs::symlink_metadata(&output_dir)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
         let _ = fs::remove_dir_all(root);
     }
 

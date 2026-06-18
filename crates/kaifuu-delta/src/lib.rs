@@ -4,7 +4,8 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use kaifuu_core::{
-    KaifuuResult, deterministic_id, read_json, safe_join_relative, validate_safe_relative_path,
+    KaifuuResult, deterministic_id, promote_staged_directory_no_clobber, read_json,
+    safe_join_relative, validate_safe_relative_path,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -258,7 +259,9 @@ pub fn apply_delta(game_dir: &Path, delta_path: &Path, output_dir: &Path) -> Kai
         let _ = fs::remove_dir_all(&staging_dir);
         return Err("staged delta output does not match target manifest".into());
     }
-    if let Err(error) = fs::rename(&staging_dir, output_dir) {
+    if let Err(error) =
+        promote_staged_directory_no_clobber(&staging_dir, output_dir, "delta output directory")
+    {
         let _ = fs::remove_dir_all(&staging_dir);
         return Err(error.into());
     }
@@ -1041,6 +1044,150 @@ mod tests {
             result["outputHash"],
             create_delta(&original, &output_dir).unwrap()["target"]["rootHash"]
         );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delta_promotion_rejects_empty_directory_created_after_staging() {
+        let root = temp_dir("promotion-empty-dir-race");
+        let output_dir = root.join("output");
+        let staging_dir = allocate_staging_dir(&output_dir).unwrap();
+        write_file(&staging_dir, "staged.txt", b"staged output\n");
+        fs::create_dir(&output_dir).unwrap();
+
+        let error = promote_staged_directory_no_clobber(
+            &staging_dir,
+            &output_dir,
+            "delta output directory",
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            error.contains("delta output directory already exists"),
+            "{error}"
+        );
+        assert_eq!(
+            fs::read_to_string(staging_dir.join("staged.txt")).unwrap(),
+            "staged output\n"
+        );
+        assert!(fs::read_dir(&output_dir).unwrap().next().is_none());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delta_promotion_rejects_existing_file_without_touching_staging_or_output() {
+        let root = temp_dir("promotion-existing-file");
+        let output_dir = root.join("output");
+        let staging_dir = allocate_staging_dir(&output_dir).unwrap();
+        write_file(&staging_dir, "staged.txt", b"staged output\n");
+        fs::write(&output_dir, "existing file\n").unwrap();
+
+        let error = promote_staged_directory_no_clobber(
+            &staging_dir,
+            &output_dir,
+            "delta output directory",
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            error.contains("delta output directory already exists"),
+            "{error}"
+        );
+        assert_eq!(
+            fs::read_to_string(staging_dir.join("staged.txt")).unwrap(),
+            "staged output\n"
+        );
+        assert_eq!(fs::read_to_string(&output_dir).unwrap(), "existing file\n");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn delta_promotion_rejects_existing_symlink_like_output() {
+        use std::os::unix::fs as unix_fs;
+
+        let root = temp_dir("promotion-existing-symlink");
+        let output_dir = root.join("output");
+        let linked_target = root.join("linked-target");
+        let staging_dir = allocate_staging_dir(&output_dir).unwrap();
+        write_file(&staging_dir, "staged.txt", b"staged output\n");
+        fs::create_dir(&linked_target).unwrap();
+        unix_fs::symlink(&linked_target, &output_dir).unwrap();
+
+        let error = promote_staged_directory_no_clobber(
+            &staging_dir,
+            &output_dir,
+            "delta output directory",
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(
+            error.contains("delta output directory already exists"),
+            "{error}"
+        );
+        assert_eq!(
+            fs::read_to_string(staging_dir.join("staged.txt")).unwrap(),
+            "staged output\n"
+        );
+        assert!(
+            fs::symlink_metadata(&output_dir)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn std_rename_replaces_existing_empty_directory_on_unix() {
+        let root = temp_dir("unix-stdlib-dir-rename");
+        let source = root.join("source");
+        let target = root.join("target");
+        fs::create_dir(&source).unwrap();
+        fs::create_dir(&target).unwrap();
+        write_file(&source, "staged.txt", b"staged output\n");
+
+        fs::rename(&source, &target).unwrap();
+
+        assert!(!source.exists());
+        assert_eq!(
+            fs::read_to_string(target.join("staged.txt")).unwrap(),
+            "staged output\n"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn std_rename_rejects_existing_empty_directory_on_windows() {
+        let root = temp_dir("windows-stdlib-dir-rename");
+        let source = root.join("source");
+        let target = root.join("target");
+        fs::create_dir(&source).unwrap();
+        fs::create_dir(&target).unwrap();
+        write_file(&source, "staged.txt", b"staged output\n");
+
+        let error = fs::rename(&source, &target).unwrap_err();
+
+        assert!(
+            matches!(
+                error.kind(),
+                ErrorKind::AlreadyExists
+                    | ErrorKind::PermissionDenied
+                    | ErrorKind::DirectoryNotEmpty
+                    | ErrorKind::Other
+            ),
+            "{error}"
+        );
+        assert_eq!(
+            fs::read_to_string(source.join("staged.txt")).unwrap(),
+            "staged output\n"
+        );
+        assert!(fs::read_dir(&target).unwrap().next().is_none());
         let _ = fs::remove_dir_all(root);
     }
 
