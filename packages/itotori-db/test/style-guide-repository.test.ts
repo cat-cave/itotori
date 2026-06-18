@@ -3,9 +3,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { localUserId, type AuthorizationActor } from "../src/authorization.js";
+import { localUserId, permissionValues, type AuthorizationActor } from "../src/authorization.js";
 import type { ItotoriDatabase } from "../src/connection.js";
-import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
@@ -18,8 +17,11 @@ import { ItotoriStyleGuideService } from "../src/services/style-guide-service.js
 import {
   eventOutbox,
   outboxEventTypeValues,
+  styleGuides,
   styleGuideVersions,
   styleGuideVersionStatusValues,
+  userPermissionGrants,
+  users,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
 
@@ -33,13 +35,13 @@ describe("ItotoriStyleGuideRepository", () => {
       const repository = new ItotoriStyleGuideRepository(context.db);
       const fixture = styleGuideFixture();
 
-      const v1 = await repository.createVersion(localActor, {
+      const createdV1 = await repository.createVersion(localActor, {
         projectId: fixture.projectId,
         localeBranchId: fixture.localeBranchId,
         styleGuideVersionId: fixture.cases.create.styleGuideVersionId,
         policy: fixture.cases.create.policy,
       });
-      const v2 = await repository.createVersion(localActor, {
+      const createdV2 = await repository.createVersion(localActor, {
         projectId: fixture.projectId,
         localeBranchId: fixture.localeBranchId,
         styleGuideVersionId: fixture.cases.update.styleGuideVersionId,
@@ -47,6 +49,8 @@ describe("ItotoriStyleGuideRepository", () => {
         contentHash: "sha256:fixture-approved-version",
         policy: fixture.cases.update.policy,
       });
+      const v1 = createdV1.version;
+      const v2 = createdV2.version;
 
       expect(v1).toMatchObject({
         projectId: "project-test",
@@ -98,6 +102,111 @@ describe("ItotoriStyleGuideRepository", () => {
       await context.close();
     }
   });
+
+  it("rejects stale direct repository approval inside the approval transaction", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const repository = new ItotoriStyleGuideRepository(context.db);
+      const fixture = styleGuideFixture();
+
+      const createdV1 = await repository.createVersion(localActor, {
+        projectId: fixture.projectId,
+        localeBranchId: fixture.localeBranchId,
+        styleGuideVersionId: fixture.cases.create.styleGuideVersionId,
+        policy: fixture.cases.create.policy,
+      });
+      const createdV2 = await repository.createVersion(localActor, {
+        projectId: fixture.projectId,
+        localeBranchId: fixture.localeBranchId,
+        styleGuideVersionId: fixture.cases.update.styleGuideVersionId,
+        policy: fixture.cases.update.policy,
+      });
+
+      await expect(
+        repository.approveVersion(localActor, {
+          projectId: fixture.projectId,
+          localeBranchId: fixture.localeBranchId,
+          styleGuideVersionId: createdV1.version.styleGuideVersionId,
+          expectedLatestVersionId: createdV1.version.styleGuideVersionId,
+        }),
+      ).rejects.toThrow(/expected latest version/);
+
+      await expect(
+        repository.getLatestVersionByLocaleBranchId(fixture.localeBranchId),
+      ).resolves.toMatchObject({
+        styleGuideVersionId: createdV2.version.styleGuideVersionId,
+        status: styleGuideVersionStatusValues.draft,
+      });
+      await expect(
+        repository.getApprovedVersionByLocaleBranchId(fixture.localeBranchId),
+      ).resolves.toBeNull();
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("commits versions and outbox events atomically for draft-write-only actors", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const draftActor: AuthorizationActor = { userId: "style-guide-draft-only-user" };
+      await seedDraftWriteOnlyUser(context.db, draftActor.userId);
+      const repository = new ItotoriStyleGuideRepository(context.db);
+      const service = new ItotoriStyleGuideService(repository);
+      const fixture = styleGuideFixture();
+
+      const created = await service.submitVersion(draftActor, {
+        projectId: fixture.projectId,
+        localeBranchId: fixture.localeBranchId,
+        styleGuideVersionId: "style-guide-version-draft-only",
+        expectedPreviousVersionId: null,
+        policy: fixture.cases.create.policy,
+      });
+      expect(created).toMatchObject({
+        status: "created",
+        version: {
+          styleGuideVersionId: "style-guide-version-draft-only",
+          authorUserId: draftActor.userId,
+        },
+        outboxEvent: {
+          eventType: outboxEventTypeValues.styleGuideVersionChanged,
+        },
+      });
+
+      const draftActorPermissions = await context.db
+        .select({ permission: userPermissionGrants.permission })
+        .from(userPermissionGrants)
+        .where(eq(userPermissionGrants.userId, draftActor.userId));
+      expect(draftActorPermissions.map((entry) => entry.permission).sort()).toEqual([
+        permissionValues.draftWrite,
+      ]);
+
+      await installStyleGuideOutboxFailureTrigger(context.db);
+      await expect(
+        service.submitVersion(draftActor, {
+          projectId: fixture.projectId,
+          localeBranchId: "locale-fr-fr",
+          styleGuideVersionId: "style-guide-version-rollback",
+          expectedPreviousVersionId: null,
+          policy: fixture.cases.create.policy,
+        }),
+      ).rejects.toThrow(/forced style guide outbox failure/);
+
+      const rollbackVersions = await context.db
+        .select()
+        .from(styleGuideVersions)
+        .where(eq(styleGuideVersions.styleGuideVersionId, "style-guide-version-rollback"));
+      expect(rollbackVersions).toHaveLength(0);
+      const rolledBackGuide = await context.db
+        .select()
+        .from(styleGuides)
+        .where(eq(styleGuides.localeBranchId, "locale-fr-fr"));
+      expect(rolledBackGuide).toHaveLength(0);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 describe("ItotoriStyleGuideService", () => {
@@ -106,8 +215,7 @@ describe("ItotoriStyleGuideService", () => {
     try {
       await seedProject(context.db);
       const repository = new ItotoriStyleGuideRepository(context.db);
-      const queue = new ItotoriEventQueueRepository(context.db);
-      const service = new ItotoriStyleGuideService(repository, queue);
+      const service = new ItotoriStyleGuideService(repository);
       const fixture = styleGuideFixture();
 
       const created = await service.submitVersion(localActor, {
@@ -318,4 +426,34 @@ async function seedProject(db: ItotoriDatabase): Promise<void> {
       drafts: { "bridge-unit-test": "Bonjour, {player}." },
     }),
   );
+}
+
+async function seedDraftWriteOnlyUser(db: ItotoriDatabase, userId: string): Promise<void> {
+  await db.insert(users).values({ userId, displayName: "Style guide draft writer" });
+  await db.insert(userPermissionGrants).values({
+    userId,
+    permission: permissionValues.draftWrite,
+  });
+}
+
+async function installStyleGuideOutboxFailureTrigger(db: ItotoriDatabase): Promise<void> {
+  await db.execute(sql`
+    create or replace function itotori_fail_style_guide_outbox()
+    returns trigger
+    language plpgsql
+    as $$
+    begin
+      if new.event_type = 'style_guide_version_changed' then
+        raise exception 'forced style guide outbox failure';
+      end if;
+      return new;
+    end;
+    $$;
+  `);
+  await db.execute(sql`
+    create trigger itotori_fail_style_guide_outbox
+    before insert on ${eventOutbox}
+    for each row
+    execute function itotori_fail_style_guide_outbox();
+  `);
 }

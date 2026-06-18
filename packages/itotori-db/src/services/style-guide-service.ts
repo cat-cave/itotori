@@ -1,19 +1,14 @@
 import type { AuthorizationActor } from "../authorization.js";
-import { outboxEventTypeValues } from "../schema.js";
-import type {
-  ItotoriEventQueueRepositoryPort,
-  OutboxEventRecord,
-} from "../repositories/event-queue-repository.js";
+import type { OutboxEventRecord } from "../repositories/event-queue-repository.js";
 import type {
   CreateStyleGuideVersionInput,
   ItotoriStyleGuideRepositoryPort,
-  SourceRevisionReference,
   StyleGuideVersionRecord,
 } from "../repositories/style-guide-repository.js";
+export { styleGuideVersionChangedPayloadSchemaVersion } from "../repositories/style-guide-repository.js";
+export type { StyleGuideVersionChangedPayload } from "../repositories/style-guide-repository.js";
 
 export const styleGuidePolicySchemaVersion = "style-guide-policy.v0";
-export const styleGuideVersionChangedPayloadSchemaVersion =
-  "itotori.style_guide_version_changed.v1";
 
 export type StyleGuideDiagnostic = {
   code: string;
@@ -22,17 +17,6 @@ export type StyleGuideDiagnostic = {
   reasonCode: string;
   field?: string;
   metadata?: Record<string, unknown>;
-};
-
-export type StyleGuideVersionChangedPayload = {
-  schemaVersion: typeof styleGuideVersionChangedPayloadSchemaVersion;
-  eventName: "StyleGuideVersionChanged";
-  changeKind: "version_created" | "version_approved";
-  projectId: string;
-  localeBranchId: string;
-  previousVersionId: string | null;
-  newVersionId: string;
-  sourceRevisionReference: SourceRevisionReference;
 };
 
 export type SubmitStyleGuideVersionInput = {
@@ -58,10 +42,7 @@ export type StyleGuideCommandResult = {
 };
 
 export class ItotoriStyleGuideService {
-  constructor(
-    private readonly repository: ItotoriStyleGuideRepositoryPort,
-    private readonly queueRepository: ItotoriEventQueueRepositoryPort,
-  ) {}
+  constructor(private readonly repository: ItotoriStyleGuideRepositoryPort) {}
 
   async submitVersion(
     actor: AuthorizationActor,
@@ -117,18 +98,18 @@ export class ItotoriStyleGuideService {
       ...(input.styleGuideVersionId === undefined
         ? {}
         : { styleGuideVersionId: input.styleGuideVersionId }),
+      ...(input.expectedPreviousVersionId === undefined
+        ? {}
+        : { expectedPreviousVersionId: input.expectedPreviousVersionId }),
     };
-    const version = await this.repository.createVersion(actor, createInput);
-    const outboxEvent = await this.appendVersionChangedEvent(actor, {
-      changeKind: "version_created",
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      previousVersionId,
-      newVersionId: version.styleGuideVersionId,
-      sourceRevisionReference: version.sourceRevisionReference,
-    });
+    const created = await this.repository.createVersion(actor, createInput);
 
-    return { status: "created", diagnostics: [], version, outboxEvent };
+    return {
+      status: "created",
+      diagnostics: [],
+      version: created.version,
+      outboxEvent: created.outboxEvent,
+    };
   }
 
   async approveVersion(
@@ -184,45 +165,13 @@ export class ItotoriStyleGuideService {
     }
 
     const approved = await this.repository.approveVersion(actor, input);
-    const outboxEvent = await this.appendVersionChangedEvent(actor, {
-      changeKind: "version_approved",
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      previousVersionId: approved.previousApprovedVersionId,
-      newVersionId: approved.version.styleGuideVersionId,
-      sourceRevisionReference: approved.version.sourceRevisionReference,
-    });
 
     return {
       status: "approved",
       diagnostics: [],
       version: approved.version,
-      outboxEvent,
+      outboxEvent: approved.outboxEvent,
     };
-  }
-
-  private async appendVersionChangedEvent(
-    actor: AuthorizationActor,
-    payload: Omit<StyleGuideVersionChangedPayload, "schemaVersion" | "eventName">,
-  ): Promise<OutboxEventRecord> {
-    const eventPayload: StyleGuideVersionChangedPayload = {
-      schemaVersion: styleGuideVersionChangedPayloadSchemaVersion,
-      eventName: "StyleGuideVersionChanged",
-      ...payload,
-    };
-    return this.queueRepository.appendOutboxEvent(actor, {
-      projectId: payload.projectId,
-      localeBranchId: payload.localeBranchId,
-      eventType: outboxEventTypeValues.styleGuideVersionChanged,
-      idempotencyKey: [
-        "style-guide-version-changed",
-        payload.changeKind,
-        payload.localeBranchId,
-        payload.previousVersionId ?? "none",
-        payload.newVersionId,
-      ].join(":"),
-      payload: eventPayload,
-    });
   }
 }
 

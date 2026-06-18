@@ -160,6 +160,7 @@ export type {
   ApproveStyleGuideVersionInput,
   ApproveStyleGuideVersionResult,
   CreateStyleGuideVersionInput,
+  CreateStyleGuideVersionResult,
   ItotoriStyleGuideRepositoryPort,
   LocaleBranchStyleGuideContext,
   SourceRevisionReference,
