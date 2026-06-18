@@ -29,14 +29,14 @@ wrong patch output, glyph/font problems, line overflow, branch reachability
 gaps, untranslated UI/image surfaces, and runtime-only strings that static
 extraction missed.
 
-The first real-engine proof should be an RPG Maker MV/MZ validation probe that
-uses the existing MV/MZ runtime where possible, such as browser or NW.js-style
-launch/capture plus injected observation hooks. That is not because Utsushi is
-afraid of building runtimes; it is because RPG Maker already ships a web-shaped
-runtime that can plausibly deliver trace, branch, snapshot, screenshot, and
-review evidence faster than a ground-up port. A Rust-side adapter still owns
-orchestration, capability reporting, artifact storage, semantic errors, and
-normalized runtime evidence.
+The first instrument-existing-runtime proof should be an RPG Maker MV/MZ
+validation probe that uses the existing MV/MZ runtime where possible, such as
+browser or NW.js-style launch/capture plus injected observation hooks. That is
+not because Utsushi is afraid of building runtimes; it is because RPG Maker
+already ships a web-shaped runtime that can plausibly deliver trace, branch,
+snapshot, screenshot, and review evidence faster than a ground-up port. A
+Rust-side adapter still owns orchestration, capability reporting, artifact
+storage, semantic errors, and normalized runtime evidence.
 
 For engines where the native runtime cannot provide controlled playback,
 deterministic jumping, snapshots, recordings, embedded browser demos, or
@@ -47,6 +47,13 @@ controlled playback when Itotori needs it. Engine-specific specs can then choose
 the implementation strategy, such as wrapping, instrumentation, Wine/native
 launch, browser runtime, partial VM, or reference VM, against that already-agreed
 feature bar.
+
+Siglus is the first full VM proof candidate after Kaifuu has established the
+key/profile boundary and scene/gameexe parsing handoff. Ren'Py should prefer
+instrumentation of the existing runtime unless a bounded replay subset proves
+useful enough to justify a port. Utsushi roadmap specs are implementable
+engine-port slices, not feasibility reports or decisions about whether runtime
+work should exist.
 
 ## Runtime Strategy Bar
 
@@ -104,6 +111,17 @@ runtime instrumentation, parser/replay, VM adapter smoke, archive handoff, or a
 specific subsystem pack. Follow-up slices then expand concrete subsystems such
 as KAG macro handling, Siglus opcode coverage, MV/MZ event commands, Wolf common
 events, or BGI bytecode opcodes.
+
+Current engine-port strategy:
+
+- **SiglusEngine** is the first full VM proof candidate, sequenced after Kaifuu
+  key/profile boundaries plus Scene.pck and Gameexe parsing make a clean runtime
+  handoff possible.
+- **RPG Maker MV/MZ** is the first instrument-existing-runtime proof because its
+  browser/NW.js-shaped runtime can provide observation hooks and capture quickly.
+- **Ren'Py** starts with existing-runtime instrumentation (`UTSUSHI-041`).
+  Route replay (`UTSUSHI-040`) is a follow-up subset only after observed-runtime
+  evidence boundaries are established.
 
 ## Runtime Evidence v0.2
 

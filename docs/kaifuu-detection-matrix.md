@@ -40,15 +40,15 @@ Each row contains:
 
 ## Detector Rows
 
-| Row id                             | Engine family   | Primary evidence                                                                                  | Signals reported when matched                                                             |
-| ---------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `kirikiri-xp3`                     | KiriKiri/XP3    | `*.xp3`, XP3 magic, synthetic encrypted XP3 mark                                                  | `packed`; encrypted fixture marks add `encrypted`, `missing_key`, `helper_required`       |
-| `siglus-scene-pck`                 | SiglusEngine    | `Scene.pck`, `Gameexe.dat` aggregate presence                                                     | `packed`, `encrypted`, `missing_key`, `helper_required`                                   |
-| `rpg-maker-mv-mz-encrypted-assets` | RPG Maker MV/MZ | `*.rpgmvp`, `*.rpgmvm`, `*.rpgmvo`, `*.png_`, `*.m4a_`, `*.ogg_`, `System.json` encryption fields | `encrypted`, `missing_key`                                                                |
-| `wolf-rpg-editor-archives`         | Wolf RPG Editor | `*.wolf`, WOLF header, synthetic protection mark                                                  | `packed`, `encrypted`, `missing_key`, `helper_required`; protection marks add `protected` |
-| `bgi-ethornell-containers`         | BGI/Ethornell   | `BURIKO ARC20` header                                                                             | `packed`, `unknown_variant`; encrypted fixture marks add `encrypted`, `missing_key`       |
-| `renpy-packed-inputs`              | Ren'Py          | `*.rpa`, `*.rpyc` aggregate counts                                                                | `packed`                                                                                  |
-| `unknown-archive-variant`          | Unknown         | Unprofiled archive-like extension counts                                                          | `unknown_variant`                                                                         |
+| Row id                             | Engine family   | Primary evidence                                                                                  | Signals reported when matched                                                                                                                                             |
+| ---------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `kirikiri-xp3`                     | KiriKiri/XP3    | `*.xp3`, XP3 magic, synthetic encrypted XP3 mark                                                  | `packed`; encrypted fixture marks add `encrypted`, `missing_key`, `helper_required`                                                                                       |
+| `siglus-scene-pck`                 | SiglusEngine    | `Scene.pck`, `Gameexe.dat` aggregate presence                                                     | `packed`, `encrypted`, `missing_key`, `helper_required`                                                                                                                   |
+| `rpg-maker-mv-mz-encrypted-assets` | RPG Maker MV/MZ | `*.rpgmvp`, `*.rpgmvm`, `*.rpgmvo`, `*.png_`, `*.m4a_`, `*.ogg_`, `System.json` encryption fields | `encrypted`; concrete media-key requirements can add `missing_key`; redacted candidate and bad-key cases are reported through requirements and diagnostics                |
+| `wolf-rpg-editor-archives`         | Wolf RPG Editor | `*.wolf`, WOLF header, synthetic protection mark                                                  | `packed`, `encrypted`, `missing_key`, `helper_required`; protection marks add `protected`                                                                                 |
+| `bgi-ethornell-containers`         | BGI/Ethornell   | `BURIKO ARC20` header                                                                             | `packed`, `unknown_variant`; encrypted/compressed marks add `encrypted` plus crypto-capability or layered-transform diagnostics until a concrete key requirement is known |
+| `renpy-packed-inputs`              | Ren'Py          | `*.rpa`, `*.rpyc` aggregate counts                                                                | `packed`                                                                                                                                                                  |
+| `unknown-archive-variant`          | Unknown         | Unprofiled archive-like extension counts                                                          | `unknown_variant`                                                                                                                                                         |
 
 The matrix intentionally uses synthetic marker strings only for public tests
 where real encryption/protection markers are not redistributable. Private-local
@@ -64,9 +64,30 @@ Matrix diagnostics reuse Kaifuu capability codes:
 - `kaifuu.unsupported_variant.packed`
 - `kaifuu.protected_executable_unsupported`
 - `kaifuu.missing_key_material`
+- `kaifuu.invalid_key_material`
 - `kaifuu.helper_unavailable`
 - `kaifuu.unknown_engine_variant`
+- `kaifuu.missing_capability.crypto`
+- `kaifuu.unsupported_layered_transform`
 
 These diagnostics block support overclaims. A row can say "this looks packed"
 or "this requires key/helper evidence" without saying Kaifuu can unpack,
 decrypt, decompile, patch, or rebuild that input.
+
+RPG Maker MV/MZ encrypted asset detection distinguishes four key states:
+
+- A concrete encrypted media surface with no usable key material reports a
+  secret requirement plus `missing_key` and `kaifuu.missing_key_material`.
+- A key candidate found in `System.json` or equivalent metadata is recorded as a
+  redacted candidate reference in `requirements`; raw key bytes are never
+  serialized in `signals`, `evidence`, or `diagnostics`.
+- Present but malformed, wrong-length, or validation-failed key material reports
+  bad-key diagnostics while preserving the concrete secret requirement.
+- Unsupported surfaces, such as plugin-owned asset transforms or unknown media
+  suffixes, report unsupported surface or layered-transform diagnostics instead
+  of pretending the only problem is a missing key.
+
+BGI/Ethornell encrypted or compressed containers must not emit
+`missing_key_material` merely because bytes appear transformed. Until a concrete
+variant proves a key is required, those rows should report an unknown variant,
+missing crypto capability, or unsupported layered transform.

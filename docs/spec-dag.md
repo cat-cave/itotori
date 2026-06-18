@@ -92,6 +92,18 @@ recommendation, risk register, future DAG split, or choice between alternatives.
 If a report is necessary, the node should build the generator, schema,
 validation rules, and fixture inputs that make the report reproducible.
 
+Spec nodes must be implementable, PR-reviewable work. They are not decision
+makers, feasibility reports, or meta follow-up packs that only say more planning
+is needed. If follow-up work is real, split it into concrete nodes with owned
+artifacts and verification.
+
+Integration nodes must name the exact composed surfaces, artifacts, and commands
+they prove. Placeholder deliverables such as only "implementation", "fixtures",
+or "tests" are not enough, and acceptance criteria cannot stop at generic claims
+like "has concrete executable behavior" or "has schema validation." The node
+must say which behavior runs, which schemas or artifacts are produced, and which
+command or manual review proves the composed path.
+
 Every node includes:
 
 - `id`: stable id such as `KAIFUU-007`.
@@ -227,10 +239,14 @@ When adding a node:
 2. Keep it PR-reviewable.
 3. Make it implementable; do not use the DAG node to decide whether work should
    exist.
-4. Add only real dependencies; avoid using dependencies as vague sequencing.
-5. Include concrete verification commands or tests.
-6. Include audit focus areas specific enough for a reviewer to find bugs.
-7. Run `just roadmap-validate`.
+4. Do not add decision-maker, feasibility-report, or meta follow-up-pack nodes.
+5. For integration nodes, name exact composed surfaces, artifacts, commands, and
+   review evidence instead of placeholder deliverables or generic acceptance
+   wording.
+6. Add only real dependencies; avoid using dependencies as vague sequencing.
+7. Include concrete verification commands or tests.
+8. Include audit focus areas specific enough for a reviewer to find bugs.
+9. Run `just roadmap-validate`.
 
 When an audit finds issues:
 
