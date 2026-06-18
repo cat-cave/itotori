@@ -7722,7 +7722,7 @@
     {
       "id": "ITOTORI-052",
       "title": "Provider ledger hardening",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -7749,7 +7749,10 @@
           "value": "just check"
         }
       ],
-      "auditFocus": ["Cost drift", "Fallback chain missing", "Provider data policy hidden"]
+      "auditFocus": ["Cost drift", "Fallback chain missing", "Provider data policy hidden"],
+      "owner": "orchestrator-itotori-052",
+      "branch": "spec/itotori-052",
+      "worktree": "/tmp/itotori-spec-itotori-052"
     },
     {
       "id": "ITOTORI-053",

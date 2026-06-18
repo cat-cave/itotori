@@ -44,6 +44,8 @@ describe("ItotoriModelLedgerRepository", () => {
           },
           fallbackUsed: true,
           fallbackPlan: ["fixture-model-v1", "fixture-model-v2"],
+          retryCount: 1,
+          errorClasses: ["provider_timeout_retry"],
           providerPreset: {
             slug: "openrouter/fixture-draft",
             version: "2026-06-17",
@@ -59,6 +61,22 @@ describe("ItotoriModelLedgerRepository", () => {
               allowFallbacks: true,
               order: ["fixture-upstream"],
             },
+          },
+          dataHandling: {
+            costTier: "paid",
+            promptLogging: "unknown",
+            completionLogging: "unknown",
+            retention: "unknown",
+            trainingUse: "unknown",
+            dataCollection: "deny",
+            rawCaptureDefault: "disabled",
+          },
+          accountPrivacy: {
+            inputOutputLogging: "disabled",
+            useOfInputsOutputs: "deny",
+            providerDataPolicyFilters: "enabled",
+            metadataCollection: "expected",
+            euRouting: "unknown",
           },
         }),
       );
@@ -103,7 +121,20 @@ describe("ItotoriModelLedgerRepository", () => {
         promptTemplateVersion: "1.0.0",
         fallbackUsed: true,
         fallbackPlan: ["fixture-model-v1", "fixture-model-v2"],
+        retryCount: 1,
+        errorClasses: ["provider_timeout_retry"],
         costKind: "provider_estimate",
+        promptTokens: 10,
+        completionTokens: 5,
+        totalTokens: 15,
+        dataHandling: expect.objectContaining({
+          dataCollection: "deny",
+          trainingUse: "unknown",
+        }),
+        accountPrivacy: expect.objectContaining({
+          inputOutputLogging: "disabled",
+          providerDataPolicyFilters: "enabled",
+        }),
       });
 
       const counts = await context.db.execute(sql`
@@ -168,6 +199,161 @@ describe("ItotoriModelLedgerRepository", () => {
         amountMicrosUsd: null,
         tokenCountSource: "unknown",
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects provider runs with missing fallback chain or token drift", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await expect(
+        ledger.recordProviderRun(
+          localActor,
+          runInput("run-empty-fallback", "zero", 0, { fallbackPlan: [] }),
+        ),
+      ).rejects.toThrow(/fallbackPlan/u);
+
+      await expect(
+        ledger.recordProviderRun(
+          localActor,
+          runInput("run-token-drift", "zero", 0, {
+            tokenUsage: {
+              tokenCountSource: "provider_reported",
+              promptTokens: 10,
+              completionTokens: 5,
+              totalTokens: 12,
+            },
+          }),
+        ),
+      ).rejects.toThrow(/totalTokens/u);
+
+      const report = await ledger.getProjectCostReport("project-test");
+      expect(report.runCount).toBe(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects provider runs when reasoning tokens make total tokens drift", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await expect(
+        ledger.recordProviderRun(
+          localActor,
+          runInput("run-reasoning-token-drift", "zero", 0, {
+            tokenUsage: {
+              tokenCountSource: "provider_reported",
+              promptTokens: 10,
+              completionTokens: 5,
+              reasoningTokens: 3,
+              totalTokens: 15,
+            },
+          }),
+        ),
+      ).rejects.toThrow(/reasoningTokens/u);
+
+      const report = await ledger.getProjectCostReport("project-test");
+      expect(report.runCount).toBe(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("records unknown token sources with component counters but no total", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await ledger.recordProviderRun(
+        localActor,
+        runInput("run-unknown-token-components", "unknown", undefined, {
+          tokenUsage: {
+            tokenCountSource: "unknown",
+            promptTokens: 10,
+            completionTokens: 5,
+            reasoningTokens: 3,
+            cachedInputTokens: 2,
+          },
+        }),
+      );
+
+      const report = await ledger.getProjectCostReport("project-test");
+      expect(report.recentRuns[0]).toMatchObject({
+        providerRunId: "run-unknown-token-components",
+        tokenCountSource: "unknown",
+        promptTokens: 10,
+        completionTokens: 5,
+        reasoningTokens: 3,
+        cachedInputTokens: 2,
+        totalTokens: null,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects unknown token sources with totalTokens", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await expect(
+        ledger.recordProviderRun(
+          localActor,
+          runInput("run-unknown-token-totals", "zero", 0, {
+            tokenUsage: {
+              tokenCountSource: "unknown",
+              promptTokens: 10,
+              completionTokens: 5,
+              totalTokens: 15,
+            },
+          }),
+        ),
+      ).rejects.toThrow(/unknown tokenCountSource/u);
+
+      const report = await ledger.getProjectCostReport("project-test");
+      expect(report.runCount).toBe(0);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects typo token count sources", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+
+      await expect(
+        ledger.recordProviderRun(
+          localActor,
+          runInput("run-token-source-typo", "zero", 0, {
+            tokenUsage: {
+              tokenCountSource: "provider-reported",
+              promptTokens: 10,
+              completionTokens: 5,
+              totalTokens: 15,
+            } as ProviderRunLedgerInput["tokenUsage"],
+          }),
+        ),
+      ).rejects.toThrow(/tokenUsage\.tokenCountSource/u);
+
+      const report = await ledger.getProjectCostReport("project-test");
+      expect(report.runCount).toBe(0);
     } finally {
       await context.close();
     }

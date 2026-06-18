@@ -55,6 +55,8 @@ describe("Itotori dashboard", () => {
     expect(root.textContent).toContain("provider_estimate");
     expect(root.textContent).toContain("itotori-draft-default-v1");
     expect(root.textContent).toContain("benchmark_qa");
+    expect(root.textContent).toContain("itotori-fake-qa-v0 -> itotori-fake-qa-v1");
+    expect(root.textContent).toContain("collection:deny training:unknown io:disabled");
     expect(root.textContent).toContain("hello_world_passed");
   });
 

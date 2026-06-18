@@ -12,6 +12,7 @@ import {
   assertPatchExportV02,
   assertRuntimeReport,
   assertTriageBundleV02,
+  BENCHMARK_TOKEN_COUNT_SOURCES,
   BRIDGE_SCHEMA_VERSION_V02,
   TRIAGE_EVENT_KINDS,
   type BenchmarkReportV02,
@@ -384,6 +385,12 @@ export function assertProjectCostReport(
     assertString(run.taskKind, `${label}.recentRuns[${index}].taskKind`);
     assertString(run.status, `${label}.recentRuns[${index}].status`);
     assertString(run.startedAt, `${label}.recentRuns[${index}].startedAt`);
+    assertString(run.structuredOutputMode, `${label}.recentRuns[${index}].structuredOutputMode`);
+    assertNonNegativeInteger(run.retryCount, `${label}.recentRuns[${index}].retryCount`);
+    const errorClasses = asArray(run.errorClasses, `${label}.recentRuns[${index}].errorClasses`);
+    for (const [errorIndex, errorClass] of errorClasses.entries()) {
+      assertString(errorClass, `${label}.recentRuns[${index}].errorClasses[${errorIndex}]`);
+    }
     assertString(run.providerFamily, `${label}.recentRuns[${index}].providerFamily`);
     assertString(run.endpointFamily, `${label}.recentRuns[${index}].endpointFamily`);
     assertString(run.providerName, `${label}.recentRuns[${index}].providerName`);
@@ -410,9 +417,42 @@ export function assertProjectCostReport(
         `${label}.recentRuns[${index}].amountMicrosUsd`,
       );
     }
-    assertString(run.tokenCountSource, `${label}.recentRuns[${index}].tokenCountSource`);
+    assertEnum(
+      run.tokenCountSource,
+      BENCHMARK_TOKEN_COUNT_SOURCES,
+      `${label}.recentRuns[${index}].tokenCountSource`,
+    );
+    const tokenTotalLabel = `${label}.recentRuns[${index}].totalTokens`;
+    for (const tokenField of [
+      "promptTokens",
+      "completionTokens",
+      "reasoningTokens",
+      "cachedInputTokens",
+    ] as const) {
+      if (run[tokenField] !== null) {
+        assertNonNegativeInteger(run[tokenField], `${label}.recentRuns[${index}].${tokenField}`);
+      }
+    }
     if (run.totalTokens !== null) {
-      assertNonNegativeInteger(run.totalTokens, `${label}.recentRuns[${index}].totalTokens`);
+      assertNonNegativeInteger(run.totalTokens, tokenTotalLabel);
+    }
+    if (run.tokenCountSource === "unknown" && run.totalTokens !== null) {
+      throw new Error(
+        `${label}.recentRuns[${index}] unknown token source must not include totalTokens`,
+      );
+    }
+    const tokenSubtotal =
+      (run.promptTokens === null ? 0 : Number(run.promptTokens)) +
+      (run.completionTokens === null ? 0 : Number(run.completionTokens)) +
+      (run.reasoningTokens === null ? 0 : Number(run.reasoningTokens));
+    if (run.totalTokens !== null && run.totalTokens < tokenSubtotal) {
+      throw new Error(
+        `${tokenTotalLabel} must cover promptTokens, completionTokens, and reasoningTokens`,
+      );
+    }
+    asRecord(run.dataHandling, `${label}.recentRuns[${index}].dataHandling`);
+    if (run.accountPrivacy !== null) {
+      asRecord(run.accountPrivacy, `${label}.recentRuns[${index}].accountPrivacy`);
     }
   }
 }
