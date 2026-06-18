@@ -6392,9 +6392,10 @@ pub fn safe_join_relative(root: &Path, relative_path: &str) -> KaifuuResult<Path
 /// canonicalize, or return a safe output path. Use [`safe_join_relative`] when a
 /// validated relative path must be materialized under a trusted root.
 ///
-/// The rule treats `/` and `\` as separators and rejects empty paths, absolute
-/// paths, empty components, `.` components, `..` components, NUL bytes, and
-/// Windows drive-prefix components anywhere in the path.
+/// The rule uses `/` as the only path separator and rejects empty paths,
+/// absolute paths, empty components, `.` components, `..` components, NUL
+/// bytes, backslashes, and Windows drive-prefix components anywhere in the
+/// path.
 pub fn validate_safe_relative_path(relative_path: &str) -> KaifuuResult<()> {
     safe_relative_path_parts(relative_path)?;
     Ok(())
@@ -6403,13 +6404,13 @@ pub fn validate_safe_relative_path(relative_path: &str) -> KaifuuResult<()> {
 fn safe_relative_path_parts(relative_path: &str) -> KaifuuResult<Vec<&str>> {
     if relative_path.is_empty()
         || relative_path.starts_with('/')
-        || relative_path.starts_with('\\')
+        || relative_path.contains('\\')
         || relative_path.contains('\0')
     {
         return Err(unsafe_relative_path_error(relative_path));
     }
 
-    let parts = relative_path.split(['/', '\\']).collect::<Vec<_>>();
+    let parts = relative_path.split('/').collect::<Vec<_>>();
     if parts.iter().enumerate().any(|(index, part)| {
         part.is_empty()
             || *part == "."
@@ -6435,7 +6436,7 @@ fn path_has_windows_drive_prefix_component(path: &str) -> bool {
 
 fn unsafe_relative_path_error(relative_path: &str) -> Box<dyn std::error::Error> {
     format!(
-        "unsafe relative output path {relative_path:?}: path must be relative and must not contain dot components, traversal, or drive prefixes"
+        "unsafe relative output path {relative_path:?}: path must be relative and must not contain backslashes, dot components, traversal, or drive prefixes"
     )
     .into()
 }
@@ -8669,6 +8670,7 @@ mod tests {
         ("empty", ""),
         ("absolute slash", "/source.json"),
         ("absolute backslash", "\\source.json"),
+        ("ordinary backslash", "data\\source.json"),
         ("drive absolute slash", "C:/source.json"),
         ("drive absolute backslash", "C:\\source.json"),
         ("drive relative upper", "C:source.json"),

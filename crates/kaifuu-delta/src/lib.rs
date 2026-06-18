@@ -693,7 +693,7 @@ fn validate_materializable_file_paths<'a>(
 
 fn materializable_path_key(path: &str) -> KaifuuResult<String> {
     validate_relative_package_path(path)?;
-    Ok(path.split(['/', '\\']).collect::<Vec<_>>().join("/"))
+    Ok(path.to_string())
 }
 
 fn file_records(files: &BTreeMap<String, FileSnapshot>) -> Vec<FileRecord> {
@@ -946,6 +946,7 @@ mod tests {
         ("empty", ""),
         ("absolute slash", "/source.json"),
         ("absolute backslash", "\\source.json"),
+        ("ordinary backslash", "data\\source.json"),
         ("drive absolute slash", "C:/source.json"),
         ("drive absolute backslash", "C:\\source.json"),
         ("drive relative upper", "C:source.json"),
@@ -1312,8 +1313,8 @@ mod tests {
     }
 
     #[test]
-    fn apply_delta_rejects_backslash_target_file_dir_prefix_conflict_before_staging_allocation() {
-        let root = temp_dir("target-backslash-prefix-conflict");
+    fn apply_delta_rejects_backslash_changed_entry_before_staging_allocation() {
+        let root = temp_dir("target-backslash-changed-entry");
         let original = root.join("original");
         fs::create_dir_all(&original).unwrap();
         write_file(&original, "data", b"source\n");
@@ -1330,16 +1331,16 @@ mod tests {
             .unwrap_err()
             .to_string();
 
-        assert!(error.contains("file/dir prefix conflict"));
-        assert!(error.contains("data blocks data/nested.txt"));
+        assert!(error.contains("unsafe relative output path"));
+        assert!(error.contains("backslashes"));
         assert!(!output_dir.exists());
         assert!(!output_parent.exists());
         let _ = fs::remove_dir_all(root);
     }
 
     #[test]
-    fn apply_delta_rejects_backslash_descendant_blocked_by_added_file_before_staging_allocation() {
-        let root = temp_dir("target-backslash-descendant-conflict");
+    fn apply_delta_rejects_backslash_target_manifest_collision_before_staging_allocation() {
+        let root = temp_dir("target-backslash-manifest-collision");
         let original = root.join("original");
         fs::create_dir_all(&original).unwrap();
         write_file(&original, "data/nested.txt", b"source\n");
@@ -1347,18 +1348,18 @@ mod tests {
         let output_dir = output_parent.join("output");
         let delta_path = root.join("conflict.kaifuu");
         let mut package = create_delta(&original, &original).unwrap();
-        add_utf8_changed_entry(&mut package, "data", b"file\n");
-        add_target_file_record(&mut package, "data", b"file\n");
-        package["target"]["files"].as_array_mut().unwrap()[0]["path"] = json!("data\\nested.txt");
-        refresh_manifest(&mut package, "target");
+        add_target_file_record(&mut package, "data\\nested.txt", b"colliding target\n");
+        package["target"]["fileCount"] = json!(2);
+        package["target"]["byteCount"] =
+            json!(b"source\n".len() as u64 + b"colliding target\n".len() as u64);
         write_json(&delta_path, &package).unwrap();
 
         let error = apply_delta(&original, &delta_path, &output_dir)
             .unwrap_err()
             .to_string();
 
-        assert!(error.contains("file/dir prefix conflict"));
-        assert!(error.contains("data blocks data/nested.txt"));
+        assert!(error.contains("unsafe relative output path"));
+        assert!(error.contains("backslashes"));
         assert!(!output_dir.exists());
         assert!(!output_parent.exists());
         let _ = fs::remove_dir_all(root);
