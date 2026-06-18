@@ -1,0 +1,68 @@
+{
+  "fixtureId": "catalog-recorded-importer-steam-storefront-v0.1",
+  "fixtureName": "catalog-recorded-importer-steam-public-storefront",
+  "catalogSource": "steam",
+  "adapterName": "steam-recorded-storefront-importer",
+  "adapterVersion": "adapter-catalog-012-v1",
+  "sourceVersion": "steam-storefront-synthetic-2026-06-18",
+  "parserVersion": "catalog-recorded-importers.v0.1",
+  "partitionKey": "public-steam-storefront",
+  "responses": [
+    {
+      "stepKey": "steam-2100010",
+      "sourceId": "2100010",
+      "requestIdentity": "GET /api/appdetails?appids=2100010&cc=us&l=english",
+      "fetchedAt": "2026-06-18T13:15:00.000Z",
+      "checkpointCursor": { "afterStepKey": "steam-2100010", "cursor": "2100010" },
+      "httpStatus": 200,
+      "payload": {
+        "2100010": {
+          "success": true,
+          "data": {
+            "steam_appid": 2100010,
+            "type": "game",
+            "name": "Promise Under Starlight",
+            "developers": ["Fixture Circle"],
+            "publishers": ["Fixture Works"],
+            "release_date": { "coming_soon": false, "date": "10 Sep, 2021" },
+            "supported_languages": "English<strong>*</strong>, Japanese, Simplified Chinese",
+            "packages": [710001, 710002],
+            "price_overview": { "currency": "USD", "initial": 1999, "final": 1499 },
+            "genres": [{ "id": "23", "description": "Adventure" }]
+          }
+        }
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/steam-storefront-replay.json",
+        "redactionClass": "public_metadata"
+      },
+      "rateLimit": {
+        "remaining": 199,
+        "limit": 200,
+        "resetAt": "2026-06-18T13:16:00.000Z",
+        "metadata": { "policy": "recorded-fixture", "source": "steam" }
+      }
+    },
+    {
+      "stepKey": "steam-2100099-delisted",
+      "sourceId": "2100099",
+      "requestIdentity": "GET /api/appdetails?appids=2100099&cc=us&l=english",
+      "fetchedAt": "2026-06-18T13:15:03.000Z",
+      "checkpointCursor": { "afterStepKey": "steam-2100099-delisted", "cursor": "2100099" },
+      "httpStatus": 200,
+      "ok": true,
+      "payload": {
+        "2100099": {
+          "success": false,
+          "steam_appid": "2100099",
+          "name": "Moonlit Glass Journey",
+          "delisting_status": "delisted"
+        }
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/steam-storefront-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    }
+  ]
+}

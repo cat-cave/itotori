@@ -1,0 +1,122 @@
+{
+  "fixtureId": "catalog-recorded-importer-dlsite-storefront-v0.1",
+  "fixtureName": "catalog-recorded-importer-dlsite-public-storefront",
+  "catalogSource": "dlsite",
+  "adapterName": "dlsite-recorded-storefront-importer",
+  "adapterVersion": "adapter-catalog-012-v1",
+  "sourceVersion": "dlsite-storefront-synthetic-2026-06-18",
+  "parserVersion": "catalog-recorded-importers.v0.1",
+  "partitionKey": "public-dlsite-storefront",
+  "responses": [
+    {
+      "stepKey": "dlsite-rj01111111",
+      "sourceId": "RJ01111111",
+      "requestIdentity": "GET /maniax/work/=/product_id/RJ01111111.html?locale=en_US",
+      "fetchedAt": "2026-06-18T13:10:00.000Z",
+      "checkpointCursor": { "afterStepKey": "dlsite-rj01111111", "cursor": "RJ01111111" },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ01111111",
+        "title": "Promise Under Starlight",
+        "maker": { "id": "RG00001", "name": "Fixture Circle" },
+        "release_date": "2021-09-10",
+        "age_category": "all_ages",
+        "work_type": "ADV",
+        "titles": [
+          { "lang": "ja-JP", "title": "星影の約束" },
+          { "lang": "en-US", "title": "Promise Under Starlight" }
+        ],
+        "translation_info": {
+          "original": { "workno": "RJ00001001", "locale": "ja-JP" },
+          "original_workno": "RJ00001001",
+          "parent_workno": "RJ00001001",
+          "child_worknos": ["RJ01111111"],
+          "translations": [
+            { "workno": "RJ01111111", "locale": "en-US", "relationship": "official_translation" }
+          ],
+          "language_editions": [
+            {
+              "workno": "RJ00001001",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            },
+            {
+              "workno": "RJ01111111",
+              "locale": "en-US",
+              "label": "English",
+              "status": "official_full",
+              "translation_role": "official_translation"
+            }
+          ]
+        },
+        "dl_count": 18420,
+        "rating_summary": { "average": 4.72, "count": 512 },
+        "rating_histogram": { "5": 401, "4": 82, "3": 23, "2": 4, "1": 2 },
+        "wishlist_count": 9321,
+        "rank_facts": [
+          { "scope": "daily", "category": "ADV", "rank": 8, "observed_at": "2026-06-18" }
+        ]
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-storefront-replay.json",
+        "redactionClass": "public_metadata"
+      },
+      "rateLimit": {
+        "remaining": 18,
+        "limit": 20,
+        "resetAt": "2026-06-18T13:11:00.000Z",
+        "metadata": { "policy": "recorded-fixture", "source": "dlsite" }
+      }
+    },
+    {
+      "stepKey": "dlsite-rj02222222",
+      "sourceId": "RJ02222222",
+      "requestIdentity": "GET /maniax/work/=/product_id/RJ02222222.html?locale=ja_JP",
+      "fetchedAt": "2026-06-18T13:10:03.000Z",
+      "checkpointCursor": { "afterStepKey": "dlsite-rj02222222", "cursor": "RJ02222222" },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ02222222",
+        "title": "硝子の旅路",
+        "maker_name": "Fixture Studio",
+        "release_date": "2022-03-01",
+        "age_category": "all_ages",
+        "work_type": "RPG",
+        "titles": [{ "lang": "ja-JP", "title": "硝子の旅路" }],
+        "translation_info": {
+          "original": { "workno": "RJ02222222", "locale": "ja-JP" },
+          "original_workno": "RJ02222222",
+          "parent_workno": null,
+          "child_worknos": [],
+          "translations": [],
+          "language_editions": [
+            {
+              "workno": "RJ02222222",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            },
+            {
+              "workno": "RJ02222222",
+              "locale": "en-US",
+              "label": "English",
+              "status": "unknown",
+              "translation_role": "missing_storefront_indicator",
+              "confidence": "low"
+            }
+          ]
+        },
+        "dl_count": 640,
+        "rating_summary": { "average": 4.1, "count": 27 },
+        "rating_histogram": { "5": 13, "4": 8, "3": 5, "2": 1, "1": 0 }
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-storefront-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    }
+  ]
+}

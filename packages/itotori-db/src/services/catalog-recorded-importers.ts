@@ -13,6 +13,7 @@ import {
   catalogConfidenceValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusScopeValues,
+  catalogLanguageStatusValues,
   catalogRawContentRedactionClassValues,
   catalogReleaseKindValues,
   catalogSeedOriginValues,
@@ -27,14 +28,173 @@ import {
 } from "../schema.js";
 import {
   catalogCrawlerFactImportStrategyValues,
+  catalogCrawlerIdempotentFactImportContractId,
+  createRecordedCatalogCrawlerAdapter,
   type CatalogCrawlerFactImportEvidence,
+  type CatalogCrawlerFactImportContract,
   type CatalogCrawlerFactImportProof,
   type CatalogCrawlerIngestContext,
   type CatalogCrawlerIngestStep,
+  type CatalogCrawlerRateLimitMetadata,
+  type CatalogCrawlerSourceAdapter,
   type CatalogCrawlerVerifyFactImportStep,
+  type RecordedCatalogCrawlerFixture,
 } from "./catalog-crawler-runner.js";
 
 export const catalogRecordedImporterVersion = "catalog-recorded-importers.v0.1" as const;
+
+export const catalogRecordedStorefrontDiagnosticCodeValues = {
+  missingDemandField: "missing_demand_field",
+  parseDrift: "parse_drift",
+  unsupportedResponseShape: "unsupported_response_shape",
+} as const;
+
+export type CatalogRecordedStorefrontDiagnosticCode =
+  (typeof catalogRecordedStorefrontDiagnosticCodeValues)[keyof typeof catalogRecordedStorefrontDiagnosticCodeValues];
+
+export type CatalogRecordedStorefrontSource = Extract<CatalogSource, "dlsite" | "steam">;
+
+export type CatalogRecordedStorefrontDiagnostic = {
+  code: CatalogRecordedStorefrontDiagnosticCode;
+  severity: "info" | "warning" | "error";
+  fixtureId: string;
+  sourceRevision: string;
+  stepKey: string;
+  sourceId: string;
+  sourceField?: string;
+  message: string;
+};
+
+export type CatalogRecordedStorefrontResponse = {
+  stepKey: string;
+  sourceId: string;
+  requestIdentity: string;
+  fetchedAt: string;
+  checkpointCursor: unknown | null;
+  httpStatus?: number;
+  ok?: boolean;
+  payloadHash?: string;
+  payload: CatalogJsonRecord;
+  metadata?: CatalogJsonRecord;
+  rateLimit?: CatalogCrawlerRateLimitMetadata;
+};
+
+export type CatalogRecordedStorefrontFixture = {
+  fixtureId: string;
+  fixtureName: string;
+  catalogSource: CatalogRecordedStorefrontSource;
+  adapterName: string;
+  adapterVersion: string;
+  sourceVersion: string;
+  parserVersion: string;
+  partitionKey?: string;
+  responses: readonly CatalogRecordedStorefrontResponse[];
+};
+
+type ParsedStorefrontFact = {
+  fact: CatalogRecordedImporterFact;
+  diagnostics: readonly CatalogRecordedStorefrontDiagnostic[];
+};
+
+type NormalizedDlsiteStorefrontPayload = {
+  sourceId: string;
+  title: string;
+  releaseDate?: string;
+  workType?: string;
+  makerName?: string;
+  translationInfo: CatalogJsonRecord;
+  languageStatuses: CatalogRecordedLanguageStatusFact[];
+  demand: CatalogJsonRecord;
+};
+
+type SteamLanguageStatusParseResult = {
+  statuses: CatalogRecordedLanguageStatusFact[];
+  diagnostics: CatalogRecordedStorefrontDiagnostic[];
+  unknownLocaleLabels: string[];
+};
+
+type StorefrontParser = (
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+) => ParsedStorefrontFact;
+
+const storefrontFactImportContract = {
+  contractId: catalogCrawlerIdempotentFactImportContractId,
+  strategy: catalogCrawlerFactImportStrategyValues.upsert,
+  factIdentity: ["catalogSource", "sourceId"],
+  replayValidation: [
+    "sourceId",
+    "fixtureId",
+    "stableImportKey",
+    "importTransactionId",
+    "factCount",
+    "factIdentities",
+  ],
+} as const satisfies CatalogCrawlerFactImportContract;
+
+export function createDlsiteRecordedStorefrontAdapter(
+  fixture: CatalogRecordedStorefrontFixture,
+): CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact> {
+  if (fixture.catalogSource !== "dlsite") {
+    throw new Error(`DLsite recorded storefront adapter received ${fixture.catalogSource} fixture`);
+  }
+  return createRecordedStorefrontAdapter(fixture, parseDlsiteStorefrontResponse);
+}
+
+export function createSteamRecordedStorefrontAdapter(
+  fixture: CatalogRecordedStorefrontFixture,
+): CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact> {
+  if (fixture.catalogSource !== "steam") {
+    throw new Error(`Steam recorded storefront adapter received ${fixture.catalogSource} fixture`);
+  }
+  return createRecordedStorefrontAdapter(fixture, parseSteamStorefrontResponse);
+}
+
+function createRecordedStorefrontAdapter(
+  fixture: CatalogRecordedStorefrontFixture,
+  parser: StorefrontParser,
+): CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact> {
+  validateStorefrontFixture(fixture);
+  const steps = fixture.responses.map((response) => {
+    const parsed = parser(fixture, response);
+    return {
+      stepKey: response.stepKey,
+      sourceId: response.sourceId,
+      requestIdentity: response.requestIdentity,
+      fetchedAt: response.fetchedAt,
+      checkpointCursor: response.checkpointCursor,
+      payload: response.payload,
+      facts: [parsed.fact],
+      ...(response.httpStatus === undefined ? {} : { httpStatus: response.httpStatus }),
+      ...(response.ok === undefined ? {} : { ok: response.ok }),
+      ...(response.payloadHash === undefined ? {} : { payloadHash: response.payloadHash }),
+      metadata: compactJson({
+        ...response.metadata,
+        fixtureId: fixture.fixtureId,
+        sourceRevision: fixture.sourceVersion,
+        parserVersion: fixture.parserVersion,
+        diagnostics: parsed.diagnostics,
+      }),
+      ...(response.rateLimit === undefined ? {} : { rateLimit: response.rateLimit }),
+    };
+  });
+  const replay: RecordedCatalogCrawlerFixture<CatalogRecordedImporterFact> = {
+    fixtureId: fixture.fixtureId,
+    fixtureName: fixture.fixtureName,
+    catalogSource: fixture.catalogSource,
+    adapterName: fixture.adapterName,
+    adapterVersion: fixture.adapterVersion,
+    sourceVersion: fixture.sourceVersion,
+    parserVersion: fixture.parserVersion,
+    readiness: "alpha_ready",
+    factImportContract: storefrontFactImportContract,
+    steps,
+  };
+  if (fixture.partitionKey !== undefined) {
+    replay.partitionKey = fixture.partitionKey;
+  }
+  return createRecordedCatalogCrawlerAdapter(replay);
+}
 
 export type CatalogRecordedExternalIdFact = {
   catalogSource?: CatalogSource;
@@ -89,6 +249,697 @@ export type CatalogRecordedImporterFact = {
   seedTarget?: CatalogRecordedSeedTargetFact | false;
   metadata?: CatalogJsonRecord;
 };
+
+function parseDlsiteStorefrontResponse(
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): ParsedStorefrontFact {
+  const normalized = normalizeDlsiteStorefrontPayload(fixture, response);
+  const sourceId = normalized.sourceId;
+  const title = normalized.title;
+  const releaseDate = normalized.releaseDate;
+  const releaseYear = releaseDate === undefined ? undefined : yearFromDate(releaseDate);
+  const workType = normalized.workType;
+  const makerName = normalized.makerName;
+  const translationInfo = normalized.translationInfo;
+  const demand = normalized.demand;
+  const diagnostics = demandDiagnostics(
+    fixture,
+    response,
+    demand,
+    ["dl_count", "rating_summary", "rating_histogram", "wishlist_count", "rank_facts"],
+    "DLsite",
+  );
+  const languages = normalized.languageStatuses;
+  const primaryLanguage = languages[0]?.language ?? "ja-JP";
+
+  return {
+    diagnostics,
+    fact: {
+      sourceId,
+      canonicalTitle: title,
+      originalLanguage: primaryLanguage,
+      titles: titlesFromPayload(response.payload, title),
+      ...(releaseYear === undefined ? {} : { firstReleaseYear: releaseYear }),
+      ...(workType === undefined ? {} : { workKind: workType }),
+      externalIds: [
+        {
+          sourceId,
+          externalIdKind: catalogExternalIdKindValues.storeProduct,
+          metadata: compactJson({ workno: sourceId, makerName, workType }),
+        },
+      ],
+      releases: [
+        compactJson({
+          sourceReleaseId: `${sourceId}:dlsite`,
+          releaseTitle: title,
+          releaseKind: catalogReleaseKindValues.original,
+          platform: "dlsite",
+          language: primaryLanguage,
+          releaseDate,
+          releaseYear,
+          isOfficial: true,
+          metadata: compactJson({
+            workno: sourceId,
+            makerName,
+            workType,
+            ageCategory: optionalString(response.payload, "age_category"),
+            translationInfo,
+          }),
+        }) as CatalogRecordedReleaseFact,
+      ],
+      languageStatuses: languages,
+      seedTarget: false,
+      metadata: compactJson({
+        storefront: "dlsite",
+        workno: sourceId,
+        releaseMetadata: compactJson({ releaseDate, releaseYear, makerName }),
+        workType,
+        translationInfo,
+        translationTree: translationInfo,
+        demand: compactJson({
+          dlCount: demandNumber(demand, "dl_count"),
+          ratingSummary: optionalRecord(demand, "rating_summary"),
+          ratingHistogram: optionalRecord(demand, "rating_histogram"),
+          wishlistCount: demandNumber(demand, "wishlist_count"),
+          rankFacts: optionalArray(demand, "rank_facts"),
+        }),
+        diagnostics,
+      }),
+    },
+  };
+}
+
+function parseSteamStorefrontResponse(
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): ParsedStorefrontFact {
+  const { envelopeKey, appdetails } = unwrapSteamAppdetailsEnvelope(fixture, response);
+  if (appdetails.success === false) {
+    if (appdetails.delisting_status !== "delisted") {
+      throw storefrontSemanticError(
+        catalogRecordedStorefrontDiagnosticCodeValues.unsupportedResponseShape,
+        "Steam unsuccessful response must declare delisting_status=delisted in recorded fixtures",
+        fixture,
+        response,
+        `${envelopeKey}.success`,
+      );
+    }
+    const appId = firstString(appdetails, ["steam_appid", "appid", "app_id"]) ?? envelopeKey;
+    if (appId !== response.sourceId) {
+      throw storefrontSemanticError(
+        catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+        `Steam unsuccessful app id ${appId} does not match fixture source id ${response.sourceId}`,
+        fixture,
+        response,
+        `${envelopeKey}.steam_appid`,
+      );
+    }
+    return {
+      diagnostics: [],
+      fact: {
+        sourceId: appId,
+        canonicalTitle: optionalString(appdetails, "name") ?? `Steam app ${appId}`,
+        externalIds: [
+          {
+            sourceId: appId,
+            externalIdKind: catalogExternalIdKindValues.storeProduct,
+            metadata: { appId, delistingStatus: "delisted" },
+          },
+        ],
+        seedTarget: false,
+        metadata: {
+          storefront: "steam",
+          appId,
+          packageStatus: "delisted",
+          delistingStatus: "delisted",
+          diagnostics: [],
+        },
+      },
+    };
+  }
+
+  const data = optionalRecord(appdetails, "data");
+  if (data === undefined || appdetails.success !== true) {
+    throw storefrontSemanticError(
+      catalogRecordedStorefrontDiagnosticCodeValues.unsupportedResponseShape,
+      "Steam recorded fixture must use appdetails envelope { [appId]: { success: true, data: object } } or explicit delisted response",
+      fixture,
+      response,
+      `${envelopeKey}.data`,
+    );
+  }
+  const appId = String(numberOrStringField(data, "steam_appid", fixture, response));
+  if (appId !== response.sourceId) {
+    throw storefrontSemanticError(
+      catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+      `Steam app id ${appId} does not match fixture source id ${response.sourceId}`,
+      fixture,
+      response,
+      "data.steam_appid",
+    );
+  }
+  const title = stringField(data, "name", fixture, response);
+  const releaseDate = steamReleaseDate(optionalRecord(data, "release_date"));
+  const releaseYear = releaseDate === undefined ? undefined : yearFromDate(releaseDate);
+  const languageParse = steamLanguageStatuses(data, appId, fixture, response);
+  const languages = languageParse.statuses;
+  const originalLanguage = languages.find((status) => status.language === "ja-JP")?.language ?? languages[0]?.language;
+  const packages = optionalArray(data, "packages") ?? [];
+  const packageStatus = packages.length === 0 ? "no_packages_recorded" : "packages_recorded";
+  const developers = stringArray(data, "developers");
+  const publishers = stringArray(data, "publishers");
+
+  return {
+    diagnostics: languageParse.diagnostics,
+    fact: {
+      sourceId: appId,
+      canonicalTitle: title,
+      ...(originalLanguage === undefined ? {} : { originalLanguage }),
+      ...(releaseYear === undefined ? {} : { firstReleaseYear: releaseYear }),
+      externalIds: [
+        {
+          sourceId: appId,
+          externalIdKind: catalogExternalIdKindValues.storeProduct,
+          metadata: compactJson({ appId, packageStatus, packages }),
+        },
+      ],
+      releases: [
+        compactJson({
+          sourceReleaseId: `${appId}:steam`,
+          releaseTitle: title,
+          releaseKind:
+            originalLanguage === "ja-JP"
+              ? catalogReleaseKindValues.original
+              : catalogReleaseKindValues.officialTranslation,
+          platform: "steam",
+          language: originalLanguage,
+          releaseDate,
+          releaseYear,
+          isOfficial: true,
+          metadata: compactJson({ appId, packageStatus, packages, developers, publishers }),
+        }) as CatalogRecordedReleaseFact,
+      ],
+      languageStatuses: languages,
+      seedTarget: false,
+      metadata: compactJson({
+        storefront: "steam",
+        appId,
+        releaseMetadata: compactJson({ releaseDate, releaseYear, developers, publishers }),
+        localeMetadata: compactJson({
+          supportedLanguages: data.supported_languages,
+          parsedLocales: languages.map((status) => status.language),
+          unknownLocaleLabels: languageParse.unknownLocaleLabels,
+        }),
+        packageStatus,
+        packages,
+        delistingStatus: "listed",
+        diagnostics: languageParse.diagnostics,
+      }),
+    },
+  };
+}
+
+function validateStorefrontFixture(fixture: CatalogRecordedStorefrontFixture): void {
+  requiredString(fixture.fixtureId, "fixture.fixtureId");
+  requiredString(fixture.fixtureName, "fixture.fixtureName");
+  requiredString(fixture.adapterName, "fixture.adapterName");
+  requiredString(fixture.adapterVersion, "fixture.adapterVersion");
+  requiredString(fixture.sourceVersion, "fixture.sourceVersion");
+  requiredString(fixture.parserVersion, "fixture.parserVersion");
+  if (fixture.catalogSource !== "dlsite" && fixture.catalogSource !== "steam") {
+    throw new Error(`unsupported recorded storefront source ${String(fixture.catalogSource)}`);
+  }
+  if (!Array.isArray(fixture.responses) || fixture.responses.length === 0) {
+    throw new Error("recorded storefront fixture responses must be a nonempty array");
+  }
+  for (const [index, response] of fixture.responses.entries()) {
+    requiredString(response.stepKey, `fixture.responses[${index}].stepKey`);
+    requiredString(response.sourceId, `fixture.responses[${index}].sourceId`);
+    requiredString(response.requestIdentity, `fixture.responses[${index}].requestIdentity`);
+    requiredString(response.fetchedAt, `fixture.responses[${index}].fetchedAt`);
+    if (response.payload === null || typeof response.payload !== "object" || Array.isArray(response.payload)) {
+      throw new Error(`fixture.responses[${index}].payload must be a JSON object`);
+    }
+  }
+}
+
+function normalizeDlsiteStorefrontPayload(
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): NormalizedDlsiteStorefrontPayload {
+  const payload = response.payload;
+  const sourceId = firstString(payload, ["workno", "product_id", "id"]);
+  if (sourceId === null) {
+    throw storefrontSemanticError(
+      catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+      "DLsite response is missing workno/product_id identity",
+      fixture,
+      response,
+      "workno",
+    );
+  }
+  if (sourceId !== response.sourceId) {
+    throw storefrontSemanticError(
+      catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+      `DLsite response source id ${sourceId} does not match fixture source id ${response.sourceId}`,
+      fixture,
+      response,
+      "workno",
+    );
+  }
+
+  const translationInfo = optionalRecord(payload, "translation_info");
+  if (translationInfo === undefined) {
+    throw storefrontSemanticError(
+      catalogRecordedStorefrontDiagnosticCodeValues.unsupportedResponseShape,
+      "DLsite recorded fixture must preserve source translation_info tree",
+      fixture,
+      response,
+      "translation_info",
+    );
+  }
+  const languageEditions = requiredArray(
+    translationInfo,
+    "language_editions",
+    fixture,
+    response,
+    "translation_info.language_editions",
+  );
+  const maker = optionalRecord(payload, "maker");
+  const demand = compactJson({
+    dl_count: demandNumber(payload, "dl_count"),
+    rating_summary: optionalRecord(payload, "rating_summary"),
+    rating_histogram: optionalRecord(payload, "rating_histogram"),
+    wishlist_count: demandNumber(payload, "wishlist_count"),
+    rank_facts: optionalArray(payload, "rank_facts"),
+  });
+
+  return compactJson({
+    sourceId,
+    title: stringField(payload, "title", fixture, response),
+    releaseDate: optionalString(payload, "release_date"),
+    workType: optionalString(payload, "work_type"),
+    makerName: optionalString(payload, "maker_name") ?? optionalString(maker, "name"),
+    translationInfo,
+    languageStatuses: languageEditions.map((entry, index) =>
+      dlsiteLanguageStatus(entry, index, sourceId, fixture, response),
+    ),
+    demand,
+  }) as NormalizedDlsiteStorefrontPayload;
+}
+
+function unwrapSteamAppdetailsEnvelope(
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): { envelopeKey: string; appdetails: CatalogJsonRecord } {
+  const keys = Object.keys(response.payload);
+  if (keys.length !== 1) {
+    throw storefrontSemanticError(
+      catalogRecordedStorefrontDiagnosticCodeValues.unsupportedResponseShape,
+      "Steam appdetails recorded fixture must contain exactly one app-id keyed envelope",
+      fixture,
+      response,
+      "appdetails",
+    );
+  }
+  const envelopeKey = keys[0] ?? "";
+  if (envelopeKey !== response.sourceId) {
+    throw storefrontSemanticError(
+      catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+      `Steam appdetails envelope key ${envelopeKey} does not match fixture source id ${response.sourceId}`,
+      fixture,
+      response,
+      envelopeKey,
+    );
+  }
+  const appdetails = response.payload[envelopeKey];
+  if (appdetails === null || typeof appdetails !== "object" || Array.isArray(appdetails)) {
+    throw storefrontSemanticError(
+      catalogRecordedStorefrontDiagnosticCodeValues.unsupportedResponseShape,
+      "Steam appdetails envelope value must be an object",
+      fixture,
+      response,
+      envelopeKey,
+    );
+  }
+  return { envelopeKey, appdetails: appdetails as CatalogJsonRecord };
+}
+
+function dlsiteLanguageStatus(
+  input: unknown,
+  index: number,
+  sourceId: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): CatalogRecordedLanguageStatusFact {
+  const sourceField = `translation_info.language_editions[${index}]`;
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    throw storefrontSemanticError(
+      catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+      `DLsite ${sourceField} must be a JSON object`,
+      fixture,
+      response,
+      sourceField,
+    );
+  }
+  const record = input as CatalogJsonRecord;
+  const language = requiredStringFromUnknown(
+    record.locale ?? record.language,
+    `${sourceField}.locale`,
+    fixture,
+    response,
+  );
+  const status = enumStringField(
+    record.status,
+    Object.values(catalogLanguageStatusValues),
+    `${sourceField}.status`,
+    fixture,
+    response,
+  );
+  const statusScope = optionalEnumStringField(
+    record.status_scope ?? record.scope,
+    Object.values(catalogLanguageStatusScopeValues),
+    `${sourceField}.status_scope`,
+    fixture,
+    response,
+  );
+  const statusFact: CatalogRecordedLanguageStatusFact = {
+    language,
+    status,
+    statusScope: statusScope ?? catalogLanguageStatusScopeValues.platform,
+    platform: "dlsite",
+    releaseSourceId: `${sourceId}:dlsite`,
+    metadata: compactJson({
+      sourceField: "translation_info.language_editions",
+      localeLabel: optionalString(record, "label"),
+      translationRole: optionalString(record, "translation_role"),
+    }),
+  };
+  const confidence = optionalEnumStringField(
+    record.confidence,
+    Object.values(catalogConfidenceValues),
+    `${sourceField}.confidence`,
+    fixture,
+    response,
+  );
+  const rawContentRedactionClass = optionalEnumStringField(
+    record.raw_content_redaction_class,
+    Object.values(catalogRawContentRedactionClassValues),
+    `${sourceField}.raw_content_redaction_class`,
+    fixture,
+    response,
+  );
+  if (confidence !== undefined) {
+    statusFact.confidence = confidence;
+  }
+  if (rawContentRedactionClass !== undefined) {
+    statusFact.rawContentRedactionClass = rawContentRedactionClass;
+  }
+  return statusFact;
+}
+
+function steamLanguageStatuses(
+  data: CatalogJsonRecord,
+  appId: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): SteamLanguageStatusParseResult {
+  const raw = data.supported_languages;
+  const labels =
+    typeof raw === "string"
+      ? raw
+          .replace(/<[^>]*>/gu, "")
+          .split(/[,;]/u)
+          .map((value) => value.trim())
+          .filter((value) => value.length > 0)
+      : stringArray(data, "supported_language_codes");
+  const mapped = labels.map((label) => ({ label, locale: steamLocaleFromLabel(label) }));
+  const unknownLocaleLabels = mapped
+    .filter((entry) => entry.locale === null)
+    .map((entry) => entry.label);
+  const diagnostics = unknownLocaleLabels.map((label) => ({
+    code: catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    severity: "warning" as const,
+    fixtureId: fixture.fixtureId,
+    sourceRevision: fixture.sourceVersion,
+    stepKey: response.stepKey,
+    sourceId: response.sourceId,
+    sourceField: "data.supported_languages",
+    message: `Steam supported_languages label ${label} could not be mapped to a catalog locale`,
+  }));
+  const locales = mapped
+    .map((entry) => entry.locale)
+    .filter((value): value is string => value !== null);
+  const uniqueLocales = [...new Set(locales)];
+  return {
+    diagnostics,
+    unknownLocaleLabels,
+    statuses: uniqueLocales.map((language) => ({
+      language,
+      status: catalogLanguageStatusValues.officialFull,
+      statusScope: catalogLanguageStatusScopeValues.platform,
+      platform: "steam",
+      releaseSourceId: `${appId}:steam`,
+      metadata: { sourceField: "supported_languages" },
+    })),
+  };
+}
+
+function demandDiagnostics(
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+  demand: CatalogJsonRecord,
+  fields: readonly string[],
+  sourceLabel: string,
+): CatalogRecordedStorefrontDiagnostic[] {
+  return fields
+    .filter((field) => demand[field] === undefined)
+    .map((field) => ({
+      code: catalogRecordedStorefrontDiagnosticCodeValues.missingDemandField,
+      severity: "warning",
+      fixtureId: fixture.fixtureId,
+      sourceRevision: fixture.sourceVersion,
+      stepKey: response.stepKey,
+      sourceId: response.sourceId,
+      sourceField: `demand.${field}`,
+      message: `${sourceLabel} recorded response did not include demand.${field}`,
+    }));
+}
+
+function storefrontSemanticError(
+  code: CatalogRecordedStorefrontDiagnosticCode,
+  message: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+  sourceField?: string,
+): Error {
+  const field = sourceField === undefined ? "" : ` sourceField=${sourceField}`;
+  return new Error(
+    `CATALOG-012 semantic diagnostic ${code} fixtureId=${fixture.fixtureId} sourceRevision=${fixture.sourceVersion} stepKey=${response.stepKey} sourceId=${response.sourceId}${field}: ${message}`,
+  );
+}
+
+function firstString(record: CatalogJsonRecord, keys: readonly string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.length > 0) {
+      return value;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+  }
+  return null;
+}
+
+function stringField(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): string {
+  const value = record[field];
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `recorded storefront response is missing required string field ${field}`,
+    fixture,
+    response,
+    field,
+  );
+}
+
+function numberOrStringField(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): string | number {
+  const value = record[field];
+  if (
+    (typeof value === "string" && value.length > 0) ||
+    (typeof value === "number" && Number.isFinite(value))
+  ) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `recorded storefront response is missing required string/number field ${field}`,
+    fixture,
+    response,
+    field,
+  );
+}
+
+function optionalString(record: CatalogJsonRecord | undefined, field: string): string | undefined {
+  const value = record?.[field];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function optionalRecord(record: CatalogJsonRecord, field: string): CatalogJsonRecord | undefined {
+  const value = record[field];
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as CatalogJsonRecord)
+    : undefined;
+}
+
+function requiredArray(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+  sourceField: string = field,
+): unknown[] {
+  const value = record[field];
+  if (Array.isArray(value)) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `recorded storefront response is missing required array field ${field}`,
+    fixture,
+    response,
+    sourceField,
+  );
+}
+
+function optionalArray(record: CatalogJsonRecord, field: string): unknown[] | undefined {
+  const value = record[field];
+  return Array.isArray(value) ? value : undefined;
+}
+
+function stringArray(record: CatalogJsonRecord, field: string): string[] {
+  return (optionalArray(record, field) ?? []).filter(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+}
+
+function titlesFromPayload(payload: CatalogJsonRecord, canonicalTitle: string): string[] {
+  const rawTitles = optionalArray(payload, "titles") ?? [];
+  const titles = rawTitles
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return entry;
+      }
+      if (entry !== null && typeof entry === "object" && !Array.isArray(entry)) {
+        return optionalString(entry as CatalogJsonRecord, "title");
+      }
+      return undefined;
+    })
+    .filter((title): title is string => title !== undefined);
+  return [...new Set([canonicalTitle, ...titles])];
+}
+
+function yearFromDate(date: string): number | undefined {
+  const match = /^(\d{4})/u.exec(date);
+  return match === null ? undefined : Number(match[1]);
+}
+
+function demandNumber(record: CatalogJsonRecord, field: string): number | undefined {
+  const value = record[field];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function steamReleaseDate(releaseDate: CatalogJsonRecord | undefined): string | undefined {
+  const date = optionalString(releaseDate, "date");
+  if (date === undefined || optionalString(releaseDate, "coming_soon") === "true") {
+    return undefined;
+  }
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/u.exec(date);
+  if (iso !== null) {
+    return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  }
+  const parsed = new Date(date);
+  return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString().slice(0, 10);
+}
+
+function steamLocaleFromLabel(label: string): string | null {
+  const normalized = label.toLowerCase().replace(/\s*\*+\s*$/u, "").trim();
+  const map: Record<string, string> = {
+    english: "en-US",
+    japanese: "ja-JP",
+    "simplified chinese": "zh-Hans",
+    "traditional chinese": "zh-Hant",
+    korean: "ko-KR",
+    french: "fr-FR",
+    german: "de-DE",
+    spanish: "es-ES",
+  };
+  return map[normalized] ?? (normalized.includes("japanese") ? "ja-JP" : null);
+}
+
+function requiredStringFromUnknown(
+  value: unknown,
+  label: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw storefrontSemanticError(
+      catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+      `${label} is required`,
+      fixture,
+      response,
+      label,
+    );
+  }
+  return value;
+}
+
+function enumStringField<TValue extends string>(
+  value: unknown,
+  allowed: readonly TValue[],
+  label: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): TValue {
+  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) {
+    return value as TValue;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `${label} must be one of ${allowed.join(", ")}`,
+    fixture,
+    response,
+    label,
+  );
+}
+
+function optionalEnumStringField<TValue extends string>(
+  value: unknown,
+  allowed: readonly TValue[],
+  label: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): TValue | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  return enumStringField(value, allowed, label, fixture, response);
+}
 
 export type CatalogRecordedImporterOptions = {
   catalogRepository: ItotoriCatalogRepositoryPort;
