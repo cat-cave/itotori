@@ -1491,7 +1491,7 @@
     {
       "id": "SHARED-015",
       "title": "Unified relative path validator",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["shared", "kaifuu"],
@@ -1528,10 +1528,7 @@
         "Profile/write path validation drift",
         "Dot components accepted by one surface only",
         "Validator broadens allowed package-controlled writes"
-      ],
-      "owner": "orchestrator-wave11",
-      "branch": "spec/shared-015",
-      "worktree": "/tmp/itotori-spec-shared-015"
+      ]
     },
     {
       "id": "SHARED-016",
