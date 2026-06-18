@@ -1,0 +1,142 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UNIV-016-20260618T034620Z",
+  "generatedAt": "2026-06-18T03:46:20Z",
+  "spec": {
+    "id": "UNIV-016",
+    "title": "Roadmap verification semantics and placeholder validator",
+    "branch": "spec/univ-016",
+    "worktree": "/tmp/itotori-spec-univ-016",
+    "commit": "34864a4b26a7dc32b2608ac0159593e88d95c3dd"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-kierkegaard-hegel-nash",
+    "kind": "orchestration"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audits found P1 validator false negatives for broad integration wording and time-estimate wording. The branch repaired those cases and re-audit found no remaining P0/P1 blockers. Remaining heuristic hardening items are recorded as follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UNIV-016-F001", "UNIV-016-F002"]
+  },
+  "findings": [
+    {
+      "id": "UNIV-016-F001",
+      "severity": "P2",
+      "title": "Path-token surface validator contract",
+      "category": "test",
+      "locations": [
+        {
+          "path": "scripts/spec-dag.mjs",
+          "symbol": "validateIntegrationNodeSurfaces"
+        },
+        {
+          "path": "scripts/spec-dag-validator.test.mjs"
+        }
+      ],
+      "description": "The validator now rejects the audited broad wording cases, but the exact contract for generic file/path mentions satisfying integration-surface validation should be captured in tests.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit found no P0/P1 blockers and suggested explicit tests for whether path/package/file tokens alone satisfy integration-surface validation."
+        }
+      ],
+      "impact": "Future validator tuning could accidentally over-accept or over-reject integration nodes that mention paths without naming composed runtime surfaces.",
+      "actionableAcceptanceCriteria": [
+        "Tests define whether file path, package name, command, and artifact tokens satisfy integration-surface validation.",
+        "Validator diagnostics explain why a path-only integration node is accepted or rejected."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UNIV",
+          "title": "Spec DAG surface-token validator tests",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["universal"],
+          "parallelGroup": "roadmap-infra",
+          "dependsOn": ["UNIV-016"],
+          "summary": "Define and test how roadmap surface validation treats exact file paths, package names, commands, and artifact tokens.",
+          "deliverables": [
+            "Table-driven roadmap validator tests for file path, package name, command, and artifact surface examples",
+            "Validator diagnostic wording that identifies the accepted exact surface token or the rejected generic wording"
+          ],
+          "acceptanceCriteria": [
+            "Path-only and package-only integration examples have explicit expected pass/fail cases.",
+            "Integration-surface validation errors tell spec authors what exact surface wording is missing."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "node scripts/spec-dag-validator.test.mjs"
+            }
+          ],
+          "auditFocus": ["Spec DAG surface validator accepting vague path-token wording"]
+        }
+      }
+    },
+    {
+      "id": "UNIV-016-F002",
+      "severity": "P3",
+      "title": "Time-estimate phrase fixtures are not table-driven",
+      "category": "test",
+      "locations": [
+        {
+          "path": "scripts/spec-dag-validator.test.mjs"
+        }
+      ],
+      "description": "The validator now covers the audited time-estimate false negatives, but the phrase cases should be organized as table-driven fixtures to make future regex tuning reviewable.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit passed the exact time-estimate probes and suggested moving phrase cases into a small table-driven fixture."
+        }
+      ],
+      "impact": "Ad hoc estimate phrase tests are harder to extend safely as the roadmap wording validator grows.",
+      "actionableAcceptanceCriteria": [
+        "Time-estimate rejection examples are table-driven in scripts/spec-dag-validator.test.mjs.",
+        "The fixture covers numeric durations, compact durations, qualitative size labels, and story-point wording."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UNIV",
+          "title": "Table-driven time-estimate validator fixtures",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["universal"],
+          "parallelGroup": "roadmap-infra",
+          "dependsOn": ["UNIV-016"],
+          "summary": "Move roadmap time-estimate wording tests into table-driven fixtures for maintainable validator tuning.",
+          "deliverables": [
+            "Table-driven invalid time-estimate fixture in scripts/spec-dag-validator.test.mjs",
+            "Coverage for duration units, compact duration tokens, qualitative sizes, and story-point wording"
+          ],
+          "acceptanceCriteria": [
+            "Adding a new disallowed estimate phrase requires appending a fixture case, not duplicating test logic.",
+            "The fixture keeps the live roadmap validation green."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "node scripts/spec-dag-validator.test.mjs"
+            }
+          ],
+          "auditFocus": ["Time-estimate phrase regex changes without focused fixture coverage"]
+        }
+      }
+    }
+  ]
+}

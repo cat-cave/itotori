@@ -1,0 +1,90 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-044-20260618T034600Z",
+  "generatedAt": "2026-06-18T03:46:00Z",
+  "spec": {
+    "id": "KAIFUU-044",
+    "title": "Centralized profile write gate",
+    "branch": "spec/kaifuu-044",
+    "worktree": "/tmp/itotori-spec-kaifuu-044",
+    "commit": "d499bad6b7d968daeb97df6cab8ebcdbeb6263b7"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-noether",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Audit verified that legacy profile writes and profile init now share the same validation and redaction gate, with no P0/P1 blockers. One non-blocking CLI compatibility cleanup is recorded as a follow-up.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-044-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-044-F001",
+      "severity": "P3",
+      "title": "Legacy profile command compatibility policy",
+      "category": "documentation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "symbol": "ProfileCommand::LegacyGenerate"
+        },
+        {
+          "path": "docs/subprojects-kaifuu.md"
+        }
+      ],
+      "description": "The compatibility-only `kaifuu profile <game-dir>` spelling is now safely gated, but the long-term policy should be explicit so future CLI changes do not accidentally preserve or remove the legacy path without intent.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final audit found no P0/P1 issues and suggested a future cleanup node to document whether the legacy spelling is supported or deprecated."
+        }
+      ],
+      "impact": "CLI behavior is safe today, but future agents may not know whether the legacy command should remain supported, warn, or be removed.",
+      "actionableAcceptanceCriteria": [
+        "The `kaifuu profile <game-dir>` compatibility policy is documented as supported or deprecated.",
+        "CLI tests cover the chosen behavior for the legacy spelling."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Legacy profile command compatibility policy",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-044"],
+          "summary": "Define and enforce the compatibility policy for the legacy `kaifuu profile <game-dir>` command path after centralized profile write gating.",
+          "deliverables": [
+            "Documented CLI policy for `kaifuu profile <game-dir>` in docs/subprojects-kaifuu.md",
+            "A focused kaifuu-cli test covering either the legacy command warning path or the explicit supported compatibility path"
+          ],
+          "acceptanceCriteria": [
+            "`kaifuu profile <game-dir>` is intentionally documented as supported or deprecated.",
+            "The selected compatibility behavior is covered by a CLI regression test."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli profile"
+            }
+          ],
+          "auditFocus": ["Legacy profile command behavior changes without documented policy"]
+        }
+      }
+    }
+  ]
+}

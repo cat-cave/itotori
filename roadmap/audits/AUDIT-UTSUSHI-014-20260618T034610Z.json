@@ -1,0 +1,193 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-014-20260618T034610Z",
+  "generatedAt": "2026-06-18T03:46:10Z",
+  "spec": {
+    "id": "UTSUSHI-014",
+    "title": "Launch and capture harness core",
+    "branch": "spec/utsushi-014",
+    "worktree": "/tmp/itotori-spec-utsushi-014",
+    "commit": "4740510fe29b7dc299cefdbd7f37c5261892c8fa"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-dalton-ampere",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audit found P1 lifecycle blockers around unbounded hooks and direct-child-only cleanup. The branch repaired both issues and re-audit found no remaining P0/P1 blockers. Remaining lifecycle hardening items are recorded as follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UTSUSHI-014-F001", "UTSUSHI-014-F002", "UTSUSHI-014-F003"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-014-F001",
+      "severity": "P2",
+      "title": "Timed-out capture hook side-effect containment",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/lib.rs",
+          "symbol": "run_capture_hook_with_timeout"
+        }
+      ],
+      "description": "Timed-out hook worker threads no longer block process cleanup, but detached hook code can continue running and may still perform late side effects through cloned context state.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit confirmed hook timeout and panic containment close the P1 lifecycle blocker, while noting detached hook workers can continue after harness return."
+        }
+      ],
+      "impact": "Late artifact writes or other side effects could confuse runtime evidence if an adapter hook ignores the timeout boundary.",
+      "actionableAcceptanceCriteria": [
+        "Timed-out capture hooks cannot write managed runtime artifacts after the harness has returned.",
+        "A regression test proves a timed-out hook cannot mutate artifact state after timeout completion."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Timed-out capture hook side-effect fence",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-014"],
+          "summary": "Fence or cancel timed-out capture hook contexts so detached hook workers cannot write managed runtime artifacts after launch-capture completion.",
+          "deliverables": [
+            "Capture hook cancellation or write-fence mechanism in crates/utsushi-core/src/lib.rs",
+            "Regression test proving late writes from a timed-out hook are rejected or ignored after harness completion"
+          ],
+          "acceptanceCriteria": [
+            "Timed-out hooks cannot mutate managed runtime artifact state after launch-capture returns.",
+            "Hook timeout diagnostics still identify the capture boundary and hook name."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core launch_capture_harness"
+            }
+          ],
+          "auditFocus": ["Detached capture hook worker performing late artifact writes"]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-014-F002",
+      "severity": "P3",
+      "title": "Before-terminate hook timeout policy can delay cleanup",
+      "category": "performance",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/lib.rs",
+          "symbol": "BeforeTerminate"
+        }
+      ],
+      "description": "Before-terminate hooks are bounded by hook_timeout, but cleanup can still be delayed by that bounded interval after the runtime deadline.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit accepted the bounded behavior as non-blocking while recommending a future policy decision if timeout cleanup should begin immediately."
+        }
+      ],
+      "impact": "Runtime timeout cleanup remains bounded but may be slower than the main runtime timeout implies.",
+      "actionableAcceptanceCriteria": [
+        "The before-terminate timeout policy is documented as bounded delay or changed to immediate cleanup.",
+        "Tests cover the selected before-terminate cleanup timing behavior."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Before-terminate cleanup timing policy",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-014"],
+          "summary": "Make the before-terminate hook cleanup timing policy explicit in Utsushi runtime harness code and documentation.",
+          "deliverables": [
+            "Documented before-terminate cleanup timing policy in docs/subprojects-utsushi.md",
+            "Focused utsushi-core test for the selected before-terminate timeout behavior"
+          ],
+          "acceptanceCriteria": [
+            "The runtime harness clearly documents whether before-terminate hooks may delay cleanup by hook_timeout.",
+            "A regression test asserts the documented cleanup timing behavior."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core before_terminate"
+            }
+          ],
+          "auditFocus": ["Before-terminate hooks delaying timeout cleanup beyond documented policy"]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-014-F003",
+      "severity": "P3",
+      "title": "Non-Unix process cleanup path lacks CI coverage",
+      "category": "test",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/lib.rs",
+          "symbol": "spawn_runtime_process"
+        }
+      ],
+      "description": "Non-Unix launch cleanup currently fails closed with a semantic unsupported error, but the cfg-gated behavior was not executed in the Linux audit environment.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit verified Unix process-group cleanup and noted non-Unix behavior is cfg-gated and unexecuted by local Linux tests."
+        }
+      ],
+      "impact": "Windows or other non-Unix launch behavior could regress without local CI detecting it.",
+      "actionableAcceptanceCriteria": [
+        "Non-Unix process cleanup behavior is compiled and tested in CI or has an explicit platform support gate.",
+        "Windows Job Object cleanup is added or the unsupported semantic error remains tested on a non-Unix target."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Non-Unix launch cleanup coverage",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-014"],
+          "summary": "Add platform coverage for Utsushi launch cleanup behavior outside Unix process groups.",
+          "deliverables": [
+            "CI or test command that covers the non-Unix launch cleanup surface",
+            "Windows Job Object cleanup implementation or tested semantic unsupported-process-cleanup error"
+          ],
+          "acceptanceCriteria": [
+            "The non-Unix launch cleanup path is covered by an automated verification command.",
+            "Platform limitations are reflected in docs/subprojects-utsushi.md."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core launch_capture_harness"
+            }
+          ],
+          "auditFocus": ["Non-Unix launch cleanup behavior drifting without CI coverage"]
+        }
+      }
+    }
+  ]
+}

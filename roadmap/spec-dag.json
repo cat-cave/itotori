@@ -865,7 +865,7 @@
     {
       "id": "UNIV-016",
       "title": "Roadmap verification semantics and placeholder validator",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["universal"],
@@ -1920,7 +1920,7 @@
     {
       "id": "CATALOG-000",
       "title": "Catalog schema and provenance model",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["shared", "itotori"],
@@ -5424,7 +5424,7 @@
     {
       "id": "KAIFUU-044",
       "title": "Centralized profile write gate",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -8400,7 +8400,7 @@
     {
       "id": "UTSUSHI-014",
       "title": "Launch and capture harness core",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -14842,6 +14842,214 @@
         "Utsushi verification wording drift"
       ],
       "statusReason": "Replaced by concrete runtime/browser specs and UNIV-016 validator rules."
+    },
+    {
+      "id": "KAIFUU-134",
+      "status": "planned",
+      "title": "Legacy profile command compatibility policy",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-044"],
+      "summary": "Define and enforce the compatibility policy for the legacy `kaifuu profile <game-dir>` command path after centralized profile write gating.",
+      "deliverables": [
+        "Documented CLI policy for `kaifuu profile <game-dir>` in docs/subprojects-kaifuu.md",
+        "A focused kaifuu-cli test covering either the legacy command warning path or the explicit supported compatibility path"
+      ],
+      "acceptanceCriteria": [
+        "`kaifuu profile <game-dir>` is intentionally documented as supported or deprecated.",
+        "The selected compatibility behavior is covered by a CLI regression test."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli profile"
+        }
+      ],
+      "auditFocus": ["Legacy profile command behavior changes without documented policy"]
+    },
+    {
+      "id": "UTSUSHI-096",
+      "status": "planned",
+      "title": "Timed-out capture hook side-effect fence",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-014"],
+      "summary": "Fence or cancel timed-out capture hook contexts so detached hook workers cannot write managed runtime artifacts after launch-capture completion.",
+      "deliverables": [
+        "Capture hook cancellation or write-fence mechanism in crates/utsushi-core/src/lib.rs",
+        "Regression test proving late writes from a timed-out hook are rejected or ignored after harness completion"
+      ],
+      "acceptanceCriteria": [
+        "Timed-out hooks cannot mutate managed runtime artifact state after launch-capture returns.",
+        "Hook timeout diagnostics still identify the capture boundary and hook name."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core launch_capture_harness"
+        }
+      ],
+      "auditFocus": ["Detached capture hook worker performing late artifact writes"]
+    },
+    {
+      "id": "UTSUSHI-097",
+      "status": "planned",
+      "title": "Before-terminate cleanup timing policy",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-014"],
+      "summary": "Make the before-terminate hook cleanup timing policy explicit in Utsushi runtime harness code and documentation.",
+      "deliverables": [
+        "Documented before-terminate cleanup timing policy in docs/subprojects-utsushi.md",
+        "Focused utsushi-core test for the selected before-terminate timeout behavior"
+      ],
+      "acceptanceCriteria": [
+        "The runtime harness clearly documents whether before-terminate hooks may delay cleanup by hook_timeout.",
+        "A regression test asserts the documented cleanup timing behavior."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core before_terminate"
+        }
+      ],
+      "auditFocus": ["Before-terminate hooks delaying timeout cleanup beyond documented policy"]
+    },
+    {
+      "id": "UTSUSHI-098",
+      "status": "planned",
+      "title": "Non-Unix launch cleanup coverage",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-014"],
+      "summary": "Add platform coverage for Utsushi launch cleanup behavior outside Unix process groups.",
+      "deliverables": [
+        "CI or test command that covers the non-Unix launch cleanup surface",
+        "Windows Job Object cleanup implementation or tested semantic unsupported-process-cleanup error"
+      ],
+      "acceptanceCriteria": [
+        "The non-Unix launch cleanup path is covered by an automated verification command.",
+        "Platform limitations are reflected in docs/subprojects-utsushi.md."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core launch_capture_harness"
+        }
+      ],
+      "auditFocus": ["Non-Unix launch cleanup behavior drifting without CI coverage"]
+    },
+    {
+      "id": "UNIV-019",
+      "status": "planned",
+      "title": "Spec DAG surface-token validator tests",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["universal"],
+      "parallelGroup": "roadmap-infra",
+      "dependsOn": ["UNIV-016"],
+      "summary": "Define and test how roadmap surface validation treats exact file paths, package names, commands, and artifact tokens.",
+      "deliverables": [
+        "Table-driven roadmap validator tests for file path, package name, command, and artifact surface examples",
+        "Validator diagnostic wording that identifies the accepted exact surface token or the rejected generic wording"
+      ],
+      "acceptanceCriteria": [
+        "Path-only and package-only integration examples have explicit expected pass/fail cases.",
+        "Integration-surface validation errors tell spec authors what exact surface wording is missing."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag-validator.test.mjs"
+        }
+      ],
+      "auditFocus": ["Spec DAG surface validator accepting vague path-token wording"]
+    },
+    {
+      "id": "UNIV-020",
+      "status": "planned",
+      "title": "Table-driven time-estimate validator fixtures",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["universal"],
+      "parallelGroup": "roadmap-infra",
+      "dependsOn": ["UNIV-016"],
+      "summary": "Move roadmap time-estimate wording tests into table-driven fixtures for maintainable validator tuning.",
+      "deliverables": [
+        "Table-driven invalid time-estimate fixture in scripts/spec-dag-validator.test.mjs",
+        "Coverage for duration units, compact duration tokens, qualitative sizes, and story-point wording"
+      ],
+      "acceptanceCriteria": [
+        "Adding a new disallowed estimate phrase requires appending a fixture case, not duplicating test logic.",
+        "The fixture keeps the live roadmap validation green."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag-validator.test.mjs"
+        }
+      ],
+      "auditFocus": ["Time-estimate phrase regex changes without focused fixture coverage"]
+    },
+    {
+      "id": "CATALOG-062",
+      "status": "planned",
+      "title": "Catalog index definition regression tests",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-000"],
+      "summary": "Strengthen catalog migration tests to assert exact Postgres index definitions, not only index names.",
+      "deliverables": [
+        "DB-backed catalog test querying pg_get_indexdef for natural-key and priority indexes",
+        "Assertions for uniqueness, coalesce(origin_ref, ''), and priority desc ordering"
+      ],
+      "acceptanceCriteria": [
+        "Changing catalog index uniqueness, expression columns, or ordering causes a DB test failure.",
+        "The index definition test runs under the @itotori/db test suite."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": ["Catalog index name test passing despite definition drift"]
+    },
+    {
+      "id": "CATALOG-063",
+      "status": "planned",
+      "title": "Nested seed target supplied-entry-id regression",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["shared", "itotori"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-000"],
+      "summary": "Add DB coverage for nested seed targets with caller-supplied localScanEntryId matching the parent scan entry.",
+      "deliverables": [
+        "Focused @itotori/db regression test for nested seed targets with caller-supplied parent localScanEntryId",
+        "Assertions that repeated local-scan natural-key upserts preserve the persisted parent-child linkage"
+      ],
+      "acceptanceCriteria": [
+        "Caller-supplied parent entry IDs and omitted parent entry IDs both keep nested seed targets linked to the persisted local scan entry.",
+        "The regression runs in packages/itotori-db/test/catalog-repository.test.ts."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": ["Nested seed target linkage regression when caller supplies parent entry id"]
     }
   ]
 }

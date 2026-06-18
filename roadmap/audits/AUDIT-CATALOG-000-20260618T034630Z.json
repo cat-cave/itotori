@@ -1,0 +1,148 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-000-20260618T034630Z",
+  "generatedAt": "2026-06-18T03:46:30Z",
+  "spec": {
+    "id": "CATALOG-000",
+    "title": "Catalog schema and provenance model",
+    "branch": "spec/catalog-000",
+    "worktree": "/tmp/itotori-spec-catalog-000",
+    "commit": "c974ef7a3007ef367d752f36c12291624898a19b"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-james-euler-pasteur",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audits found P1 natural-key upsert failures. The branch repaired external id, local scan, seed target, and nested seed-target paths, with DB-backed re-audit passing. Remaining index/test hardening items are recorded as follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["CATALOG-000-F001", "CATALOG-000-F002"]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-000-F001",
+      "severity": "P3",
+      "title": "Catalog index definition regression coverage",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/test/catalog-repository.test.ts",
+          "symbol": "catalog index presence test"
+        },
+        {
+          "path": "packages/itotori-db/migrations/0009_catalog_foundation.sql"
+        }
+      ],
+      "description": "Catalog tests currently assert index presence by name, but do not assert the full index definitions for key columns, uniqueness, expression indexes, and ordering.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit passed DB-backed tests and recommended strengthening index tests with pg_get_indexdef checks."
+        }
+      ],
+      "impact": "Future migration/schema drift could preserve index names while changing uniqueness, expression-index behavior, or ordering semantics.",
+      "actionableAcceptanceCriteria": [
+        "Catalog index tests assert pg_get_indexdef output for key unique and ordered indexes.",
+        "Tests cover the coalesced seed-target origin_ref expression index and priority-desc ordering index."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Catalog index definition regression tests",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["shared", "itotori"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-000"],
+          "summary": "Strengthen catalog migration tests to assert exact Postgres index definitions, not only index names.",
+          "deliverables": [
+            "DB-backed catalog test querying pg_get_indexdef for natural-key and priority indexes",
+            "Assertions for uniqueness, coalesce(origin_ref, ''), and priority desc ordering"
+          ],
+          "acceptanceCriteria": [
+            "Changing catalog index uniqueness, expression columns, or ordering causes a DB test failure.",
+            "The index definition test runs under the @itotori/db test suite."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": ["Catalog index name test passing despite definition drift"]
+        }
+      }
+    },
+    {
+      "id": "CATALOG-000-F002",
+      "severity": "P3",
+      "title": "Caller-supplied nested seed target entry id coverage",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/catalog-repository.ts",
+          "symbol": "recordLocalScan"
+        },
+        {
+          "path": "packages/itotori-db/test/catalog-repository.test.ts"
+        }
+      ],
+      "description": "The repaired nested seed-target regression covers omitted child IDs. A smaller test should also cover the caller-supplied localScanEntryId path where the supplied ID equals the parent entry ID.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit confirmed the omitted-child-ID path is fixed and suggested an explicit caller-supplied entry-id regression."
+        }
+      ],
+      "impact": "A future refactor could regress supplied nested entry IDs while preserving the omitted-ID case that originally failed.",
+      "actionableAcceptanceCriteria": [
+        "DB tests cover nested seed targets whose supplied localScanEntryId equals the parent local scan entry ID.",
+        "The test proves repeated local-scan natural-key upserts preserve correct parent linkage."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Nested seed target supplied-entry-id regression",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["shared", "itotori"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-000"],
+          "summary": "Add DB coverage for nested seed targets with caller-supplied localScanEntryId matching the parent scan entry.",
+          "deliverables": [
+            "Focused @itotori/db regression test for nested seed targets with caller-supplied parent localScanEntryId",
+            "Assertions that repeated local-scan natural-key upserts preserve the persisted parent-child linkage"
+          ],
+          "acceptanceCriteria": [
+            "Caller-supplied parent entry IDs and omitted parent entry IDs both keep nested seed targets linked to the persisted local scan entry.",
+            "The regression runs in packages/itotori-db/test/catalog-repository.test.ts."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "Nested seed target linkage regression when caller supplies parent entry id"
+          ]
+        }
+      }
+    }
+  ]
+}
