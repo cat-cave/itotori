@@ -160,6 +160,22 @@ contract accepts local-only references using `local-secret:`, `os-keychain:`,
 absolute paths, raw hex/base64/base64url keys, helper dump offsets, account ids,
 or machine-specific filenames.
 
+`kaifuu-core` resolves key refs through `LocalKeyResolver` only after profile
+validation succeeds. The built-in resolver reads `local-secret:` ids from a
+caller-provided `LocalSecretStore` and returns adapter-facing bytes in
+`ResolvedKeyMaterial`; the byte wrapper is not serializable, redacts `Debug`
+output, and zeroes its buffer on drop. `os-keychain:`, `secret-manager:`, and
+`prompt:` refs remain typed helper-required results until an explicit external
+resolver is wired in. Missing refs, malformed refs, resolver-policy denials,
+invalid byte shapes, and helper-required schemes produce semantic diagnostics
+without echoing secret ids, paths, or key bytes.
+
+The read-only directory store is intended for ignored local paths such as
+`.kaifuu/secrets.local/` or `fixtures/private-local/.../secrets.local/`. It
+rejects traversal, symlinks, non-files, and oversized material before reading.
+Public CI should use the fixture in-memory store (`fixture/...` refs) or other
+synthetic keys authored for the repository, never private local material.
+
 Adapters declare required key material through capability output
 `keyRequirements`, including the requirement id, material kind, byte length when
 fixed, required archive parameters, validation proof method, and stable

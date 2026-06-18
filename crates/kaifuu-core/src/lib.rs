@@ -23,6 +23,8 @@ pub const SEMANTIC_MISSING_KEY_MATERIAL: &str = "kaifuu.missing_key_material";
 pub const SEMANTIC_HELPER_UNAVAILABLE: &str = "kaifuu.helper_unavailable";
 pub const SEMANTIC_KEY_VALIDATION_FAILED: &str = "kaifuu.key_validation_failed";
 pub const SEMANTIC_SECRET_REDACTED: &str = "kaifuu.secret_redacted";
+pub const SEMANTIC_MALFORMED_SECRET_REF: &str = "kaifuu.malformed_secret_ref";
+pub const SEMANTIC_SECRET_REF_OUT_OF_POLICY: &str = "kaifuu.secret_ref_out_of_policy";
 pub const SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED: &str =
     "kaifuu.protected_executable_unsupported";
 pub const SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM: &str = "kaifuu.unsupported_layered_transform";
@@ -3243,6 +3245,154 @@ pub enum KeyValidationMethod {
     FixtureRoundTripProof,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SecretRefScheme {
+    LocalSecret,
+    OsKeychain,
+    SecretManager,
+    Prompt,
+}
+
+impl SecretRefScheme {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LocalSecret => "local-secret",
+            Self::OsKeychain => "os-keychain",
+            Self::SecretManager => "secret-manager",
+            Self::Prompt => "prompt",
+        }
+    }
+}
+
+impl fmt::Display for SecretRefScheme {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyResolutionStatus {
+    Resolved,
+    Missing,
+    HelperRequired,
+    OutOfPolicy,
+    Malformed,
+    ValidationFailed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedKeyProofRecord {
+    pub requirement_id: String,
+    pub secret_ref_scheme: SecretRefScheme,
+    pub material_kind: KeyMaterialKind,
+    pub byte_length: usize,
+    pub readiness_status: KeyResolutionStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_method: Option<KeyValidationMethod>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proof_hash: Option<ProofHash>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub helper_tool_version: Option<String>,
+}
+
+impl ResolvedKeyProofRecord {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            requirement_id: redact_for_log_or_report(&self.requirement_id),
+            secret_ref_scheme: self.secret_ref_scheme,
+            material_kind: self.material_kind,
+            byte_length: self.byte_length,
+            readiness_status: self.readiness_status,
+            validation_method: self.validation_method,
+            proof_hash: self.proof_hash.clone(),
+            helper_tool_version: self
+                .helper_tool_version
+                .as_deref()
+                .map(redact_for_log_or_report),
+        }
+    }
+}
+
+pub struct ResolvedKeyMaterial {
+    bytes: Vec<u8>,
+}
+
+impl ResolvedKeyMaterial {
+    fn new(bytes: Vec<u8>) -> Self {
+        Self { bytes }
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    pub fn byte_len(&self) -> usize {
+        self.bytes.len()
+    }
+}
+
+impl Drop for ResolvedKeyMaterial {
+    fn drop(&mut self) {
+        self.bytes.fill(0);
+    }
+}
+
+impl fmt::Debug for ResolvedKeyMaterial {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ResolvedKeyMaterial")
+            .field(
+                "bytes",
+                &format_args!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED),
+            )
+            .field("byte_len", &self.bytes.len())
+            .finish()
+    }
+}
+
+#[derive(Default)]
+pub struct ResolvedKeySet {
+    materials: BTreeMap<String, ResolvedKeyMaterial>,
+    proof_records: Vec<ResolvedKeyProofRecord>,
+}
+
+impl ResolvedKeySet {
+    pub fn get(&self, requirement_id: &str) -> Option<&ResolvedKeyMaterial> {
+        self.materials.get(requirement_id)
+    }
+
+    pub fn get_bytes(&self, requirement_id: &str) -> Option<&[u8]> {
+        self.get(requirement_id).map(ResolvedKeyMaterial::as_bytes)
+    }
+
+    pub fn proof_records(&self) -> &[ResolvedKeyProofRecord] {
+        &self.proof_records
+    }
+
+    pub fn redacted_proof_records(&self) -> Vec<ResolvedKeyProofRecord> {
+        self.proof_records
+            .iter()
+            .map(ResolvedKeyProofRecord::redacted_for_report)
+            .collect()
+    }
+}
+
+impl fmt::Debug for ResolvedKeySet {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("ResolvedKeySet")
+            .field(
+                "requirement_ids",
+                &self.materials.keys().collect::<Vec<_>>(),
+            )
+            .field("proof_records", &self.redacted_proof_records())
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArchiveParameter {
@@ -3395,6 +3545,28 @@ impl SecretRef {
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    pub fn scheme(&self) -> SecretRefScheme {
+        let (scheme, _) = self
+            .0
+            .split_once(':')
+            .expect("SecretRef is validated before construction");
+        match scheme {
+            "local-secret" => SecretRefScheme::LocalSecret,
+            "os-keychain" => SecretRefScheme::OsKeychain,
+            "secret-manager" => SecretRefScheme::SecretManager,
+            "prompt" => SecretRefScheme::Prompt,
+            _ => unreachable!("SecretRef scheme is validated before construction"),
+        }
+    }
+
+    pub fn name(&self) -> &str {
+        let (_, name) = self
+            .0
+            .split_once(':')
+            .expect("SecretRef is validated before construction");
+        name
+    }
 }
 
 impl fmt::Debug for SecretRef {
@@ -3422,6 +3594,550 @@ impl<'de> Deserialize<'de> for SecretRef {
     {
         let value = String::deserialize(deserializer)?;
         Self::new(value).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KeyResolverErrorKind {
+    MalformedRef,
+    MissingSecret,
+    HelperRequired,
+    OutOfPolicy,
+    InvalidMaterial,
+    ValidationFailed,
+    StoreUnavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyResolverDiagnostic {
+    pub code: SemanticErrorCode,
+    pub kind: KeyResolverErrorKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirement_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_ref_scheme: Option<SecretRefScheme>,
+    pub message: String,
+}
+
+impl KeyResolverDiagnostic {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            code: self.code,
+            kind: self.kind,
+            requirement_id: self.requirement_id.as_deref().map(redact_for_log_or_report),
+            secret_ref_scheme: self.secret_ref_scheme,
+            message: redact_for_log_or_report(&self.message),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct KeyResolverError {
+    diagnostic: KeyResolverDiagnostic,
+}
+
+impl KeyResolverError {
+    fn new(
+        kind: KeyResolverErrorKind,
+        code: SemanticErrorCode,
+        requirement_id: Option<&str>,
+        secret_ref_scheme: Option<SecretRefScheme>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            diagnostic: KeyResolverDiagnostic {
+                code,
+                kind,
+                requirement_id: requirement_id.map(ToOwned::to_owned),
+                secret_ref_scheme,
+                message: message.into(),
+            },
+        }
+    }
+
+    pub fn malformed_ref(message: impl Into<String>) -> Self {
+        Self::new(
+            KeyResolverErrorKind::MalformedRef,
+            SemanticErrorCode::MalformedSecretRef,
+            None,
+            None,
+            message,
+        )
+    }
+
+    pub fn missing_secret(requirement_id: &str, scheme: SecretRefScheme) -> Self {
+        Self::new(
+            KeyResolverErrorKind::MissingSecret,
+            SemanticErrorCode::MissingKeyMaterial,
+            Some(requirement_id),
+            Some(scheme),
+            "referenced local secret material was not found",
+        )
+    }
+
+    pub fn helper_required(requirement_id: &str, scheme: SecretRefScheme) -> Self {
+        Self::new(
+            KeyResolverErrorKind::HelperRequired,
+            SemanticErrorCode::HelperUnavailable,
+            Some(requirement_id),
+            Some(scheme),
+            "secret ref scheme requires an external helper, keychain, secret manager, or prompt resolver",
+        )
+    }
+
+    pub fn out_of_policy(
+        requirement_id: Option<&str>,
+        scheme: Option<SecretRefScheme>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self::new(
+            KeyResolverErrorKind::OutOfPolicy,
+            SemanticErrorCode::SecretRefOutOfPolicy,
+            requirement_id,
+            scheme,
+            message,
+        )
+    }
+
+    pub fn invalid_material(requirement_id: &str, scheme: SecretRefScheme) -> Self {
+        Self::new(
+            KeyResolverErrorKind::InvalidMaterial,
+            SemanticErrorCode::KeyValidationFailed,
+            Some(requirement_id),
+            Some(scheme),
+            "resolved secret material did not match the key requirement shape",
+        )
+    }
+
+    pub fn validation_failed(requirement_id: &str, scheme: SecretRefScheme) -> Self {
+        Self::new(
+            KeyResolverErrorKind::ValidationFailed,
+            SemanticErrorCode::KeyValidationFailed,
+            Some(requirement_id),
+            Some(scheme),
+            "resolved secret material failed key validation",
+        )
+    }
+
+    pub fn store_unavailable(message: impl Into<String>) -> Self {
+        Self::new(
+            KeyResolverErrorKind::StoreUnavailable,
+            SemanticErrorCode::MissingKeyMaterial,
+            None,
+            Some(SecretRefScheme::LocalSecret),
+            message,
+        )
+    }
+
+    pub fn kind(&self) -> KeyResolverErrorKind {
+        self.diagnostic.kind
+    }
+
+    pub fn semantic_code(&self) -> SemanticErrorCode {
+        self.diagnostic.code
+    }
+
+    pub fn diagnostic(&self) -> &KeyResolverDiagnostic {
+        &self.diagnostic
+    }
+
+    pub fn redacted_diagnostic(&self) -> KeyResolverDiagnostic {
+        self.diagnostic.redacted_for_report()
+    }
+}
+
+impl fmt::Debug for KeyResolverError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("KeyResolverError")
+            .field("diagnostic", &self.redacted_diagnostic())
+            .finish()
+    }
+}
+
+impl fmt::Display for KeyResolverError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let diagnostic = self.redacted_diagnostic();
+        match (&diagnostic.requirement_id, diagnostic.secret_ref_scheme) {
+            (Some(requirement_id), Some(scheme)) => write!(
+                formatter,
+                "{} for requirement {} using {}",
+                diagnostic.code, requirement_id, scheme
+            ),
+            (Some(requirement_id), None) => {
+                write!(
+                    formatter,
+                    "{} for requirement {}",
+                    diagnostic.code, requirement_id
+                )
+            }
+            (None, Some(scheme)) => write!(formatter, "{} using {}", diagnostic.code, scheme),
+            (None, None) => formatter.write_str(diagnostic.code.as_str()),
+        }
+    }
+}
+
+impl std::error::Error for KeyResolverError {}
+
+pub trait LocalSecretStore {
+    fn read_secret(&self, local_secret_id: &str) -> Result<Option<Vec<u8>>, KeyResolverError>;
+}
+
+#[derive(Clone, Default)]
+pub struct InMemoryLocalSecretStore {
+    secrets: BTreeMap<String, Vec<u8>>,
+}
+
+impl InMemoryLocalSecretStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_secret(mut self, local_secret_id: impl Into<String>, material: Vec<u8>) -> Self {
+        self.secrets.insert(local_secret_id.into(), material);
+        self
+    }
+
+    pub fn fixture_ci() -> Self {
+        Self::new()
+            .with_secret(
+                "fixture/siglus/secondary-key",
+                (0_u8..16).collect::<Vec<_>>(),
+            )
+            .with_secret(
+                "fixture/rpg-maker/asset-key",
+                b"00112233445566778899aabbccddeeff".to_vec(),
+            )
+    }
+}
+
+impl LocalSecretStore for InMemoryLocalSecretStore {
+    fn read_secret(&self, local_secret_id: &str) -> Result<Option<Vec<u8>>, KeyResolverError> {
+        Ok(self.secrets.get(local_secret_id).cloned())
+    }
+}
+
+impl fmt::Debug for InMemoryLocalSecretStore {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("InMemoryLocalSecretStore")
+            .field("secret_count", &self.secrets.len())
+            .finish()
+    }
+}
+
+#[derive(Clone)]
+pub struct LocalSecretDirectoryStore {
+    root: PathBuf,
+    max_secret_bytes: usize,
+}
+
+impl LocalSecretDirectoryStore {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self {
+            root: root.into(),
+            max_secret_bytes: 4096,
+        }
+    }
+
+    pub fn with_max_secret_bytes(mut self, max_secret_bytes: usize) -> Self {
+        self.max_secret_bytes = max_secret_bytes;
+        self
+    }
+}
+
+impl LocalSecretStore for LocalSecretDirectoryStore {
+    fn read_secret(&self, local_secret_id: &str) -> Result<Option<Vec<u8>>, KeyResolverError> {
+        validate_safe_relative_path(local_secret_id).map_err(|_| {
+            KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret ids must map to safe relative store paths",
+            )
+        })?;
+        let path = safe_join_relative(&self.root, local_secret_id).map_err(|_| {
+            KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret ids must map to safe relative store paths",
+            )
+        })?;
+        let metadata = match fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(_) => {
+                return Err(KeyResolverError::store_unavailable(
+                    "local secret store could not read secret metadata",
+                ));
+            }
+        };
+        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret material must be stored in regular files",
+            ));
+        }
+        if metadata.len() > self.max_secret_bytes as u64 {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret material exceeds the configured byte limit",
+            ));
+        }
+        fs::read(&path).map(Some).map_err(|_| {
+            KeyResolverError::store_unavailable("local secret store could not read secret material")
+        })
+    }
+}
+
+impl fmt::Debug for LocalSecretDirectoryStore {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LocalSecretDirectoryStore")
+            .field(
+                "root",
+                &format_args!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED),
+            )
+            .field("max_secret_bytes", &self.max_secret_bytes)
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyResolverPolicy {
+    pub allowed_local_secret_prefixes: Vec<String>,
+}
+
+impl KeyResolverPolicy {
+    pub fn allow_all_local() -> Self {
+        Self {
+            allowed_local_secret_prefixes: vec![],
+        }
+    }
+
+    pub fn allow_prefixes(prefixes: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        Self {
+            allowed_local_secret_prefixes: prefixes.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    fn permits_local_secret_id(&self, local_secret_id: &str) -> bool {
+        self.allowed_local_secret_prefixes.is_empty()
+            || self
+                .allowed_local_secret_prefixes
+                .iter()
+                .any(|prefix| local_secret_id.starts_with(prefix))
+    }
+}
+
+impl Default for KeyResolverPolicy {
+    fn default() -> Self {
+        Self::allow_all_local()
+    }
+}
+
+pub struct LocalKeyResolver<S> {
+    store: S,
+    policy: KeyResolverPolicy,
+}
+
+impl<S> fmt::Debug for LocalKeyResolver<S>
+where
+    S: fmt::Debug,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LocalKeyResolver")
+            .field("store", &self.store)
+            .field("policy", &self.policy)
+            .finish()
+    }
+}
+
+impl<S> LocalKeyResolver<S>
+where
+    S: LocalSecretStore,
+{
+    pub fn new(store: S) -> Self {
+        Self {
+            store,
+            policy: KeyResolverPolicy::default(),
+        }
+    }
+
+    pub fn with_policy(mut self, policy: KeyResolverPolicy) -> Self {
+        self.policy = policy;
+        self
+    }
+
+    pub fn resolve_profile(
+        &self,
+        profile: &GameProfile,
+    ) -> Result<ResolvedKeySet, KeyResolverError> {
+        let validation = profile.validate();
+        if validation.status != OperationStatus::Passed {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                None,
+                "profile must pass key-profile validation before resolving secret refs",
+            ));
+        }
+        self.resolve_requirements(
+            &profile.key_requirements,
+            profile
+                .helper_evidence
+                .as_ref()
+                .map(|evidence| evidence.tool_version.as_str()),
+        )
+    }
+
+    pub fn resolve_requirements(
+        &self,
+        requirements: &[KeyRequirement],
+        helper_tool_version: Option<&str>,
+    ) -> Result<ResolvedKeySet, KeyResolverError> {
+        let mut resolved = ResolvedKeySet::default();
+        for requirement in requirements {
+            let scheme = requirement.secret_ref.scheme();
+            let raw_material = match scheme {
+                SecretRefScheme::LocalSecret => {
+                    let local_secret_id = requirement.secret_ref.name();
+                    if !self.policy.permits_local_secret_id(local_secret_id) {
+                        return Err(KeyResolverError::out_of_policy(
+                            Some(&requirement.requirement_id),
+                            Some(scheme),
+                            "local-secret id is outside the resolver policy",
+                        ));
+                    }
+                    self.store.read_secret(local_secret_id)?.ok_or_else(|| {
+                        KeyResolverError::missing_secret(&requirement.requirement_id, scheme)
+                    })?
+                }
+                SecretRefScheme::OsKeychain
+                | SecretRefScheme::SecretManager
+                | SecretRefScheme::Prompt => {
+                    return Err(KeyResolverError::helper_required(
+                        &requirement.requirement_id,
+                        scheme,
+                    ));
+                }
+            };
+            let material = normalize_key_material(requirement, scheme, raw_material)?;
+            let byte_length = material.byte_len();
+            resolved.proof_records.push(ResolvedKeyProofRecord {
+                requirement_id: requirement.requirement_id.clone(),
+                secret_ref_scheme: scheme,
+                material_kind: requirement.kind,
+                byte_length,
+                readiness_status: KeyResolutionStatus::Resolved,
+                validation_method: requirement.validation.as_ref().map(|proof| proof.method),
+                proof_hash: requirement
+                    .validation
+                    .as_ref()
+                    .map(|proof| proof.proof_hash.clone()),
+                helper_tool_version: helper_tool_version.map(ToOwned::to_owned),
+            });
+            resolved
+                .materials
+                .insert(requirement.requirement_id.clone(), material);
+        }
+        resolved.proof_records.sort_by_key(|proof| {
+            (
+                proof.requirement_id.clone(),
+                serde_json::to_string(&proof.material_kind).unwrap_or_default(),
+            )
+        });
+        Ok(resolved)
+    }
+
+    pub fn resolve_secret_ref_str(
+        &self,
+        requirement_id: &str,
+        secret_ref: &str,
+        kind: KeyMaterialKind,
+        bytes: Option<u32>,
+    ) -> Result<ResolvedKeyMaterial, KeyResolverError> {
+        let secret_ref =
+            SecretRef::new(secret_ref.to_string()).map_err(KeyResolverError::malformed_ref)?;
+        let requirement = KeyRequirement {
+            requirement_id: requirement_id.to_string(),
+            secret_ref,
+            kind,
+            bytes,
+            validation: None,
+        };
+        let mut resolved = self.resolve_requirements(&[requirement], None)?;
+        resolved.materials.remove(requirement_id).ok_or_else(|| {
+            KeyResolverError::missing_secret(requirement_id, SecretRefScheme::LocalSecret)
+        })
+    }
+}
+
+fn normalize_key_material(
+    requirement: &KeyRequirement,
+    scheme: SecretRefScheme,
+    raw_material: Vec<u8>,
+) -> Result<ResolvedKeyMaterial, KeyResolverError> {
+    let bytes = match requirement.kind {
+        KeyMaterialKind::FixedBytes => raw_material,
+        KeyMaterialKind::HexBytes | KeyMaterialKind::RpgMakerAssetKey => {
+            let text = std::str::from_utf8(&raw_material).map_err(|_| {
+                KeyResolverError::invalid_material(&requirement.requirement_id, scheme)
+            })?;
+            decode_hex_material(text).ok_or_else(|| {
+                KeyResolverError::invalid_material(&requirement.requirement_id, scheme)
+            })?
+        }
+        KeyMaterialKind::Utf8String | KeyMaterialKind::ArchivePassword => {
+            std::str::from_utf8(&raw_material).map_err(|_| {
+                KeyResolverError::invalid_material(&requirement.requirement_id, scheme)
+            })?;
+            raw_material
+        }
+    };
+    if let Some(expected_len) = requirement.bytes
+        && bytes.len() != expected_len as usize
+    {
+        return Err(KeyResolverError::invalid_material(
+            &requirement.requirement_id,
+            scheme,
+        ));
+    }
+    if bytes.is_empty() {
+        return Err(KeyResolverError::invalid_material(
+            &requirement.requirement_id,
+            scheme,
+        ));
+    }
+    Ok(ResolvedKeyMaterial::new(bytes))
+}
+
+fn decode_hex_material(text: &str) -> Option<Vec<u8>> {
+    let compact = text
+        .chars()
+        .filter(|character| !matches!(character, ' ' | '\t' | '\n' | '\r' | ':' | '-'))
+        .collect::<String>();
+    if compact.is_empty() || compact.len() % 2 != 0 {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(compact.len() / 2);
+    for pair in compact.as_bytes().chunks_exact(2) {
+        let high = hex_nibble(pair[0])?;
+        let low = hex_nibble(pair[1])?;
+        bytes.push((high << 4) | low);
+    }
+    Some(bytes)
+}
+
+fn hex_nibble(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
     }
 }
 
@@ -3480,6 +4196,10 @@ pub enum SemanticErrorCode {
     KeyValidationFailed,
     #[serde(rename = "kaifuu.secret_redacted")]
     SecretRedacted,
+    #[serde(rename = "kaifuu.malformed_secret_ref")]
+    MalformedSecretRef,
+    #[serde(rename = "kaifuu.secret_ref_out_of_policy")]
+    SecretRefOutOfPolicy,
     #[serde(rename = "kaifuu.protected_executable_unsupported")]
     ProtectedExecutableUnsupported,
     #[serde(rename = "kaifuu.unsupported_layered_transform")]
@@ -3508,6 +4228,8 @@ impl SemanticErrorCode {
             Self::HelperUnavailable => SEMANTIC_HELPER_UNAVAILABLE,
             Self::KeyValidationFailed => SEMANTIC_KEY_VALIDATION_FAILED,
             Self::SecretRedacted => SEMANTIC_SECRET_REDACTED,
+            Self::MalformedSecretRef => SEMANTIC_MALFORMED_SECRET_REF,
+            Self::SecretRefOutOfPolicy => SEMANTIC_SECRET_REF_OUT_OF_POLICY,
             Self::ProtectedExecutableUnsupported => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
             Self::UnsupportedLayeredTransform => SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM,
             Self::MissingContainerCapability => SEMANTIC_MISSING_CONTAINER_CAPABILITY,
@@ -9825,6 +10547,205 @@ mod tests {
             profile.helper_evidence.unwrap().redacted_log_hash.as_str(),
             "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
         );
+    }
+
+    #[test]
+    fn local_key_resolver_returns_fixture_bytes_and_redacted_proofs() {
+        let mut profile_value = valid_key_profile_value();
+        profile_value["keyRequirements"][0]["secretRef"] =
+            serde_json::json!("local-secret:fixture/siglus/secondary-key");
+        let profile: GameProfile = serde_json::from_value(profile_value).unwrap();
+        let resolver = LocalKeyResolver::new(InMemoryLocalSecretStore::fixture_ci())
+            .with_policy(KeyResolverPolicy::allow_prefixes(["fixture/"]));
+
+        let resolved = resolver.resolve_profile(&profile).unwrap();
+
+        assert_eq!(
+            resolved.get_bytes("siglus-secondary-key").unwrap(),
+            (0_u8..16).collect::<Vec<_>>().as_slice()
+        );
+        assert_eq!(resolved.proof_records().len(), 1);
+        let proof = &resolved.proof_records()[0];
+        assert_eq!(proof.requirement_id, "siglus-secondary-key");
+        assert_eq!(proof.secret_ref_scheme, SecretRefScheme::LocalSecret);
+        assert_eq!(proof.material_kind, KeyMaterialKind::FixedBytes);
+        assert_eq!(proof.byte_length, 16);
+        assert_eq!(proof.readiness_status, KeyResolutionStatus::Resolved);
+        assert_eq!(
+            proof.validation_method,
+            Some(KeyValidationMethod::DecryptHeaderProof)
+        );
+        assert_eq!(
+            proof.proof_hash.as_ref().unwrap().as_str(),
+            "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        );
+        assert_eq!(
+            proof.helper_tool_version.as_deref(),
+            Some("kaifuu-key-helper/0.1.0")
+        );
+
+        let debug = format!("{resolved:?}");
+        assert!(!debug.contains("00112233445566778899aabbccddeeff"));
+        assert!(!debug.contains("fixture/siglus/secondary-key"));
+        let report = serde_json::to_string(&resolved.redacted_proof_records()).unwrap();
+        assert!(!report.contains("fixture/siglus/secondary-key"));
+    }
+
+    #[test]
+    fn local_key_resolver_decodes_public_fixture_hex_keys_for_adapters() {
+        let resolver = LocalKeyResolver::new(InMemoryLocalSecretStore::fixture_ci())
+            .with_policy(KeyResolverPolicy::allow_prefixes(["fixture/"]));
+
+        let material = resolver
+            .resolve_secret_ref_str(
+                "rpg-maker-asset-key",
+                "local-secret:fixture/rpg-maker/asset-key",
+                KeyMaterialKind::RpgMakerAssetKey,
+                Some(16),
+            )
+            .unwrap();
+
+        assert_eq!(
+            material.as_bytes(),
+            &[
+                0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
+                0xee, 0xff
+            ]
+        );
+    }
+
+    #[test]
+    fn local_key_resolver_debug_and_diagnostics_do_not_leak_raw_material() {
+        let raw_secret = "fixture-password-material";
+        let resolver = LocalKeyResolver::new(
+            InMemoryLocalSecretStore::new()
+                .with_secret("fixture/password", raw_secret.as_bytes().to_vec()),
+        );
+
+        let material = resolver
+            .resolve_secret_ref_str(
+                "archive-password",
+                "local-secret:fixture/password",
+                KeyMaterialKind::ArchivePassword,
+                None,
+            )
+            .unwrap();
+
+        assert_eq!(material.as_bytes(), raw_secret.as_bytes());
+        assert!(!format!("{material:?}").contains(raw_secret));
+        let store = InMemoryLocalSecretStore::new()
+            .with_secret("fixture/password", raw_secret.as_bytes().to_vec());
+        assert!(!format!("{store:?}").contains(raw_secret));
+        assert!(
+            !format!(
+                "{:?}",
+                LocalSecretDirectoryStore::new("/home/dev/private/secrets.local")
+            )
+            .contains("/home/dev/private")
+        );
+    }
+
+    #[test]
+    fn local_key_resolver_reports_missing_malformed_policy_helper_and_material_errors() {
+        let empty_resolver = LocalKeyResolver::new(InMemoryLocalSecretStore::new());
+        let missing = empty_resolver.resolve_profile(
+            &serde_json::from_value::<GameProfile>(valid_key_profile_value()).unwrap(),
+        );
+        let missing_error = missing.unwrap_err();
+        assert!(matches!(
+            missing_error.kind(),
+            KeyResolverErrorKind::MissingSecret
+        ));
+        assert_eq!(
+            missing_error.semantic_code(),
+            SemanticErrorCode::MissingKeyMaterial
+        );
+
+        let malformed = empty_resolver.resolve_secret_ref_str(
+            "bad-key",
+            "local-secret:00112233445566778899aabbccddeeff",
+            KeyMaterialKind::FixedBytes,
+            Some(16),
+        );
+        let malformed_error = malformed.unwrap_err();
+        assert_eq!(malformed_error.kind(), KeyResolverErrorKind::MalformedRef);
+        assert_eq!(
+            malformed_error.semantic_code(),
+            SemanticErrorCode::MalformedSecretRef
+        );
+        assert!(!format!("{malformed_error:?}").contains("00112233445566778899aabbccddeeff"));
+
+        let mut policy_profile = valid_key_profile_value();
+        policy_profile["keyRequirements"][0]["secretRef"] =
+            serde_json::json!("local-secret:private/siglus/secondary-key");
+        let policy_profile: GameProfile = serde_json::from_value(policy_profile).unwrap();
+        let policy_resolver = LocalKeyResolver::new(
+            InMemoryLocalSecretStore::new()
+                .with_secret("private/siglus/secondary-key", (0_u8..16).collect()),
+        )
+        .with_policy(KeyResolverPolicy::allow_prefixes(["fixture/"]));
+        let policy_error = policy_resolver
+            .resolve_profile(&policy_profile)
+            .unwrap_err();
+        assert_eq!(policy_error.kind(), KeyResolverErrorKind::OutOfPolicy);
+        assert_eq!(
+            policy_error.semantic_code(),
+            SemanticErrorCode::SecretRefOutOfPolicy
+        );
+        assert!(!format!("{policy_error:?}").contains("private/siglus/secondary-key"));
+
+        let mut prompt_profile = valid_key_profile_value();
+        prompt_profile["keyRequirements"][0]["secretRef"] =
+            serde_json::json!("prompt:fixture/manual-key");
+        let prompt_profile: GameProfile = serde_json::from_value(prompt_profile).unwrap();
+        let helper_error = empty_resolver.resolve_profile(&prompt_profile).unwrap_err();
+        assert_eq!(helper_error.kind(), KeyResolverErrorKind::HelperRequired);
+        assert_eq!(
+            helper_error.semantic_code(),
+            SemanticErrorCode::HelperUnavailable
+        );
+
+        let invalid_resolver = LocalKeyResolver::new(
+            InMemoryLocalSecretStore::new().with_secret("siglus/example/secondary-key", vec![1, 2]),
+        );
+        let invalid_error = invalid_resolver
+            .resolve_profile(
+                &serde_json::from_value::<GameProfile>(valid_key_profile_value()).unwrap(),
+            )
+            .unwrap_err();
+        assert_eq!(invalid_error.kind(), KeyResolverErrorKind::InvalidMaterial);
+        assert_eq!(
+            invalid_error.semantic_code(),
+            SemanticErrorCode::KeyValidationFailed
+        );
+    }
+
+    #[test]
+    fn local_secret_directory_store_reads_ignored_local_material_without_path_diagnostics() {
+        let root = temp_dir("local-secret-store");
+        let secret_path = root.join("fixture").join("siglus");
+        fs::create_dir_all(&secret_path).unwrap();
+        fs::write(
+            secret_path.join("secondary-key"),
+            (0_u8..16).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let resolver = LocalKeyResolver::new(LocalSecretDirectoryStore::new(&root));
+
+        let material = resolver
+            .resolve_secret_ref_str(
+                "siglus-secondary-key",
+                "local-secret:fixture/siglus/secondary-key",
+                KeyMaterialKind::FixedBytes,
+                Some(16),
+            )
+            .unwrap();
+
+        assert_eq!(
+            material.as_bytes(),
+            (0_u8..16).collect::<Vec<_>>().as_slice()
+        );
+        assert!(!format!("{resolver:?}").contains(&root.display().to_string()));
     }
 
     #[test]
