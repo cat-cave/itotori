@@ -183,7 +183,7 @@ describe("ItotoriStyleGuideRepository", () => {
       ]);
 
       await installStyleGuideOutboxFailureTrigger(context.db);
-      await expect(
+      await expectForcedStyleGuideOutboxFailure(
         service.submitVersion(draftActor, {
           projectId: fixture.projectId,
           localeBranchId: "locale-fr-fr",
@@ -191,7 +191,7 @@ describe("ItotoriStyleGuideRepository", () => {
           expectedPreviousVersionId: null,
           policy: fixture.cases.create.policy,
         }),
-      ).rejects.toThrow(/forced style guide outbox failure/);
+      );
 
       const rollbackVersions = await context.db
         .select()
@@ -456,4 +456,33 @@ async function installStyleGuideOutboxFailureTrigger(db: ItotoriDatabase): Promi
     for each row
     execute function itotori_fail_style_guide_outbox();
   `);
+}
+
+async function expectForcedStyleGuideOutboxFailure(promise: Promise<unknown>): Promise<void> {
+  try {
+    await promise;
+  } catch (error) {
+    expect(errorCauseMessage(error)).toContain("forced style guide outbox failure");
+    return;
+  }
+  throw new Error("expected style guide outbox append to fail");
+}
+
+function errorCauseMessage(error: unknown): string | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    return cause.message;
+  }
+  if (
+    typeof cause === "object" &&
+    cause !== null &&
+    "message" in cause &&
+    typeof cause.message === "string"
+  ) {
+    return cause.message;
+  }
+  return null;
 }
