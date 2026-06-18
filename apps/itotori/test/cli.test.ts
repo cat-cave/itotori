@@ -458,6 +458,8 @@ const dashboardStatusFixture: ProjectDashboardStatus = {
   artifactCount: 3,
   latestEventKind: "patch_result_recorded",
   latestEventAt: "2026-06-17T00:00:00.000Z",
+  selectedLocaleBranchId: null,
+  currentStyleGuidePolicyVersionId: null,
   importStatus: {
     bridgeImportId: "bridge-import:project-1:bridge-1:revision-1",
     projectId: "project-1",

@@ -6,6 +6,7 @@ import {
   renderStyleGuideBuilder,
   styleGuideBuilderFixtureStateValues,
 } from "../src/style-guide-builder.js";
+import { dashboardStatusFixture } from "./api-fixtures.js";
 
 const localeBranchId = "019ed065-0000-7000-8000-000000000010";
 const policyVersionId = "019ed065-0000-7000-8000-000000000020";
@@ -43,6 +44,20 @@ describe("StyleGuideBuilder dashboard", () => {
       status: "approved",
       versionId: "019ed065-0000-7000-8000-000000000030",
     });
+  });
+
+  it("rejects invalid dashboard fixture route IDs instead of mixing fallback contract IDs", async () => {
+    const fixtureLocaleBranchId = dashboardStatusFixture.localeBranches[0]?.localeBranchId;
+
+    expect(fixtureLocaleBranchId).toBe("locale-1");
+    await expect(
+      loadStyleGuideContext({
+        localeBranchId: fixtureLocaleBranchId ?? "",
+        policyVersionId,
+        fixtureState: "empty_policy",
+        permissionProfile: "reviewer",
+      }),
+    ).rejects.toThrow("invalid locale branch id locale-1; expected UUIDv7");
   });
 
   it("renders denial state and blocks proposal approval without mutation permission", async () => {

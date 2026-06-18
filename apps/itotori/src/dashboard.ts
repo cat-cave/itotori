@@ -726,10 +726,14 @@ function resolveDashboardEndpoints(config: DashboardEndpointConfig): DashboardEn
 }
 
 function styleGuideInputFromStatus(status: ProjectDashboardStatus) {
-  const localeBranchId = status.localeBranches[0]?.localeBranchId ?? "locale-1";
+  const localeBranchId = status.selectedLocaleBranchId;
+  const policyVersionId = status.currentStyleGuidePolicyVersionId;
+  if (localeBranchId === null || policyVersionId === null) {
+    throw new Error("dashboard status is missing style-guide builder route context");
+  }
   return {
     localeBranchId,
-    policyVersionId: "019ed065-0000-7000-8000-000000000020",
+    policyVersionId,
     fixtureState: "empty_policy" as const,
     permissionProfile: "reviewer" as const,
   };

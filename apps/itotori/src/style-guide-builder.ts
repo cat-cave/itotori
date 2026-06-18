@@ -136,7 +136,8 @@ export async function loadStyleGuideContext(
 ): Promise<StyleGuideBuilderContext> {
   const state = input.fixtureState ?? "empty_policy";
   const permissionProfile = input.permissionProfile ?? "reviewer";
-  const contractIds = contractIdsForRoute(input.localeBranchId, input.policyVersionId);
+  assertValidRouteId("locale branch id", input.localeBranchId);
+  assertValidRouteId("policy version id", input.policyVersionId);
   const branch = localeBranchContext(input.localeBranchId);
   const latestVersionId = state === "stale_version" ? versionId("latest") : input.policyVersionId;
   const currentPolicy = currentPolicyForState({
@@ -145,11 +146,7 @@ export async function loadStyleGuideContext(
     latestVersionId,
     state,
   });
-  const transcript = transcriptForState(
-    contractIds.localeBranchId,
-    contractIds.policyVersionId,
-    state,
-  );
+  const transcript = transcriptForState(input.localeBranchId, input.policyVersionId, state);
   const conversationDiagnostics =
     validateStyleGuideConversationTranscript(transcript).map(conversationDiagnostic);
   const projected = conversationDiagnostics.length === 0 ? projectOrNull(transcript) : null;
@@ -879,7 +876,7 @@ function versionId(suffix: keyof typeof fixtureUuidByName): string {
 }
 
 function loadInputFromUrl(url: URL): Required<LoadStyleGuideContextInput> {
-  const localeBranchId = url.searchParams.get("localeBranchId") ?? "locale-1";
+  const localeBranchId = url.searchParams.get("localeBranchId") ?? fallbackContractLocaleBranchId;
   const policyVersionId =
     url.searchParams.get("policyVersionId") ?? fallbackContractPolicyVersionId;
   const fixtureState = parseFixtureState(url.searchParams.get("fixtureState"));
@@ -897,14 +894,10 @@ function parseFixtureState(value: string | null): StyleGuideBuilderFixtureState 
   return "empty_policy";
 }
 
-function contractIdsForRoute(
-  localeBranchId: string,
-  policyVersionId: string,
-): { localeBranchId: string; policyVersionId: string } {
-  return {
-    localeBranchId: isUuid7(localeBranchId) ? localeBranchId : fallbackContractLocaleBranchId,
-    policyVersionId: isUuid7(policyVersionId) ? policyVersionId : fallbackContractPolicyVersionId,
-  };
+function assertValidRouteId(label: string, value: string): void {
+  if (!isUuid7(value)) {
+    throw new Error(`invalid ${label} ${value}; expected UUIDv7`);
+  }
 }
 
 function isUuid7(value: string): boolean {

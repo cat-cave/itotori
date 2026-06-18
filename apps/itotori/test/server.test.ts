@@ -41,7 +41,7 @@ describe("Itotori server API contracts", () => {
       status: "runtime_ingested",
       localeBranches: [
         { localeBranchId: "locale-1", targetLocale: "en-US" },
-        { localeBranchId: "locale-fr-fr", targetLocale: "fr-FR" },
+        { localeBranchId: "019ed065-0000-7000-8000-000000000110", targetLocale: "fr-FR" },
       ],
     });
     expect(getDashboardStatus).toHaveBeenCalledTimes(1);

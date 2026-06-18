@@ -875,6 +875,8 @@ const dashboardStatusFixture: ProjectDashboardStatus = {
   artifactCount: 0,
   latestEventKind: null,
   latestEventAt: null,
+  selectedLocaleBranchId: null,
+  currentStyleGuidePolicyVersionId: null,
   importStatus: importStatusFixture,
   cost: costReportFixture,
   localeBranches: [],

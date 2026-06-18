@@ -480,6 +480,11 @@ export function assertProjectDashboardStatus(
   assertNonNegativeInteger(status.artifactCount, `${label}.artifactCount`);
   assertNullableString(status.latestEventKind, `${label}.latestEventKind`);
   assertNullableString(status.latestEventAt, `${label}.latestEventAt`);
+  assertNullableString(status.selectedLocaleBranchId, `${label}.selectedLocaleBranchId`);
+  assertNullableString(
+    status.currentStyleGuidePolicyVersionId,
+    `${label}.currentStyleGuidePolicyVersionId`,
+  );
   assertBridgeImportStatus(status.importStatus, `${label}.importStatus`);
   assertProjectCostReport(status.cost, `${label}.cost`);
   const branches = asArray(status.localeBranches, `${label}.localeBranches`);
@@ -488,6 +493,10 @@ export function assertProjectDashboardStatus(
     assertString(branch.localeBranchId, `${label}.localeBranches[${index}].localeBranchId`);
     assertString(branch.targetLocale, `${label}.localeBranches[${index}].targetLocale`);
     assertString(branch.status, `${label}.localeBranches[${index}].status`);
+    assertNullableString(
+      branch.currentStyleGuidePolicyVersionId,
+      `${label}.localeBranches[${index}].currentStyleGuidePolicyVersionId`,
+    );
     assertNonNegativeInteger(branch.unitCount, `${label}.localeBranches[${index}].unitCount`);
     assertNonNegativeInteger(
       branch.translatedUnitCount,
