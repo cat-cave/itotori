@@ -8,13 +8,13 @@ use kaifuu_core::{
     AssetInventoryPatchMode, AssetInventoryRequest, AssetInventorySurface,
     AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind, AssetList,
     AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability, CapabilityReport,
-    DetectRequest, DetectionEvidence, DetectionResult, EngineAdapter, EngineProfile,
-    EvidenceStatus, ExtractRequest, ExtractionResult, GameProfile, KaifuuResult,
-    LayeredAccessCapabilityContract, LayeredAccessProfile, OperationStatus, PatchRef, PatchRequest,
-    PatchResult, ProfileRequest, ProfileRequirement, ProtectedSpan, RequirementCategory,
-    RequirementStatus, TextSurface, VerificationResult, VerifyRequest, atomic_write_text,
-    content_hash, deterministic_id, normalize_protected_spans, require_str, require_u64,
-    safe_join_relative,
+    DetectRequest, DetectionEvidence, DetectionResult, EncodedStringSlot,
+    EncodedStringSlotProtectedSpan, EngineAdapter, EngineProfile, EvidenceStatus, ExtractRequest,
+    ExtractionResult, GameProfile, KaifuuResult, LayeredAccessCapabilityContract,
+    LayeredAccessProfile, OperationStatus, PatchRef, PatchRequest, PatchResult, ProfileRequest,
+    ProfileRequirement, ProtectedSpan, RequirementCategory, RequirementStatus, TextSurface,
+    VerificationResult, VerifyRequest, atomic_write_text, content_hash, deterministic_id,
+    normalize_protected_spans, parse_hex_bytes, require_str, require_u64, safe_join_relative,
 };
 use serde_json::{Value, json};
 
@@ -418,6 +418,152 @@ impl FixtureAdapter {
         let mut spans = Self::parse_fixture_markup_spans(text)?;
         spans.extend(Self::explicit_protected_spans_for_unit(unit, text)?);
         normalize_protected_spans(text, spans)
+    }
+
+    fn encoded_string_slot_for_unit(
+        unit: &Value,
+        protected_spans: &[ProtectedSpan],
+    ) -> KaifuuResult<Option<EncodedStringSlot>> {
+        let Some(slot_value) = unit.get("encodedStringSlot") else {
+            return Ok(None);
+        };
+        let mut slot: EncodedStringSlot = serde_json::from_value(slot_value.clone())?;
+        if slot.protected_spans.is_empty() {
+            slot.protected_spans = protected_spans
+                .iter()
+                .filter(|span| !span.raw.is_empty())
+                .map(|span| EncodedStringSlotProtectedSpan::new(span.raw.clone()))
+                .collect();
+        }
+        Ok(Some(slot))
+    }
+
+    fn source_slot_bytes_for_unit(unit: &Value) -> KaifuuResult<Option<Vec<u8>>> {
+        unit.get("encodedStringSlot")
+            .and_then(|slot| slot.get("sourceBytesHex"))
+            .and_then(Value::as_str)
+            .map(parse_hex_bytes)
+            .transpose()
+            .map_err(Into::into)
+    }
+
+    fn patch_preflight_failures(
+        &self,
+        source: &Value,
+        patch_export: &kaifuu_core::PatchExport,
+    ) -> KaifuuResult<Vec<AdapterFailure>> {
+        let units = source["units"]
+            .as_array()
+            .ok_or("fixture source missing units")?;
+        let mut source_hashes = BTreeMap::new();
+        let mut source_protected_spans = BTreeMap::new();
+        let mut encoded_slots = BTreeMap::new();
+        let mut seen_source_unit_keys = BTreeSet::new();
+        let mut duplicate_source_unit_keys = BTreeSet::new();
+
+        for unit in units {
+            let key = require_str(unit, "sourceUnitKey")?;
+            let unit_source_text = require_str(unit, "sourceText")?;
+            if !seen_source_unit_keys.insert(key.to_string()) {
+                duplicate_source_unit_keys.insert(key.to_string());
+                continue;
+            }
+            let protected_spans = Self::protected_spans_for_unit(unit, unit_source_text)?;
+            if let Some(slot) = Self::encoded_string_slot_for_unit(unit, &protected_spans)? {
+                encoded_slots.insert(
+                    key.to_string(),
+                    (slot, Self::source_slot_bytes_for_unit(unit)?),
+                );
+            }
+            source_hashes.insert(key.to_string(), content_hash(unit_source_text));
+            source_protected_spans.insert(key.to_string(), protected_spans);
+        }
+
+        if !duplicate_source_unit_keys.is_empty() {
+            let duplicate_keys = duplicate_source_unit_keys
+                .into_iter()
+                .collect::<Vec<_>>()
+                .join(", ");
+            return Ok(vec![Self::patch_failure(
+                "duplicate_source_unit_key_in_source",
+                format!("source.json#{duplicate_keys}"),
+                "fixture patching requires source.json units to have unique sourceUnitKey values",
+                format!(
+                    "Fix duplicate source.json sourceUnitKey values before applying this export: {duplicate_keys}"
+                ),
+            )]);
+        }
+
+        let mut failures = Vec::new();
+        let mut entries_by_source_unit_key = BTreeMap::new();
+        for entry in &patch_export.entries {
+            if entries_by_source_unit_key
+                .insert(entry.source_unit_key.as_str(), entry)
+                .is_some()
+            {
+                failures.push(Self::patch_failure(
+                    "duplicate_source_unit_key",
+                    format!("source.json#{}", entry.source_unit_key),
+                    "fixture patching requires at most one patch entry per sourceUnitKey",
+                    format!(
+                        "Remove duplicate patch entries for sourceUnitKey {} before applying this export",
+                        entry.source_unit_key
+                    ),
+                ));
+            }
+
+            let Some(current_hash) = source_hashes.get(&entry.source_unit_key) else {
+                failures.push(Self::patch_failure(
+                    "unmatched_source_unit_key",
+                    format!("source.json#{}", entry.source_unit_key),
+                    "fixture patching only updates existing source.json units by sourceUnitKey",
+                    format!(
+                        "Re-extract the fixture or remove patch entry {} before applying this export",
+                        entry.source_unit_key
+                    ),
+                ));
+                continue;
+            };
+
+            if current_hash != &entry.source_hash {
+                failures.push(Self::patch_failure(
+                    "source_hash_mismatch",
+                    format!("source.json#{}", entry.source_unit_key),
+                    "fixture patching requires PatchExportEntry.sourceHash to match the current sourceText hash",
+                    format!(
+                        "Re-extract sourceUnitKey {} and regenerate the patch export before applying it",
+                        entry.source_unit_key
+                    ),
+                ));
+            }
+
+            let required_spans = source_protected_spans
+                .get(&entry.source_unit_key)
+                .expect("source hashes and protected spans should have matching keys");
+            failures.extend(Self::protected_span_patch_failures(entry, required_spans));
+
+            if let Some((slot, current_slot_bytes)) = encoded_slots.get(&entry.source_unit_key) {
+                let report = slot.preflight(
+                    &entry.target_text,
+                    &entry.protected_span_mappings,
+                    current_slot_bytes.as_deref(),
+                );
+                failures.extend(report.diagnostics.into_iter().map(|diagnostic| {
+                    AdapterFailure::encoded_string_slot_preflight(
+                        FIXTURE_ADAPTER_ID,
+                        "fixture",
+                        "plain-json-source",
+                        format!(
+                            "source.json#{}#{}",
+                            entry.source_unit_key, diagnostic.slot_id
+                        ),
+                        diagnostic,
+                    )
+                }));
+            }
+        }
+
+        Ok(failures)
     }
 
     fn explicit_protected_spans_for_unit(
@@ -1034,6 +1180,26 @@ impl EngineAdapter for FixtureAdapter {
         })
     }
 
+    fn patch_preflight(
+        &self,
+        request: kaifuu_core::PatchPreflightRequest<'_>,
+    ) -> KaifuuResult<PatchResult> {
+        let (_source_text, source) = Self::read_source(request.game_dir)?;
+        let failures = self.patch_preflight_failures(&source, request.patch_export)?;
+        Ok(PatchResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("patch-preflight", 1),
+            patch_export_id: request.patch_export.patch_export_id.clone(),
+            status: if failures.is_empty() {
+                OperationStatus::Passed
+            } else {
+                OperationStatus::Failed
+            },
+            output_hash: content_hash("fixture patch preflight without output"),
+            failures,
+        })
+    }
+
     fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
         let source_path = Self::source_path(request.game_dir);
         let source_text = fs::read_to_string(&source_path)?;
@@ -1041,6 +1207,17 @@ impl EngineAdapter for FixtureAdapter {
         let units = source["units"]
             .as_array()
             .ok_or("fixture source missing units")?;
+        let preflight_failures = self.patch_preflight_failures(&source, request.patch_export)?;
+        if !preflight_failures.is_empty() {
+            return Ok(PatchResult {
+                schema_version: "0.1.0".to_string(),
+                patch_result_id: deterministic_id("patch-result", 1),
+                patch_export_id: request.patch_export.patch_export_id.clone(),
+                status: OperationStatus::Failed,
+                output_hash: content_hash(&source_text),
+                failures: preflight_failures,
+            });
+        }
         let mut source_hashes = BTreeMap::new();
         let mut source_protected_spans = BTreeMap::new();
         let mut seen_source_unit_keys = BTreeSet::new();

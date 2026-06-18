@@ -1,0 +1,10 @@
+{
+  "slot": {
+    "slotId": "sjis-fixed-line",
+    "encoding": "shift_jis",
+    "byteRange": { "start": 128, "end": 140 },
+    "layout": { "kind": "fixed_width" },
+    "protectedSpans": []
+  },
+  "targetText": "こんにちは"
+}

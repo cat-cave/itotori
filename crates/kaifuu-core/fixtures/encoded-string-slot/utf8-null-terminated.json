@@ -1,0 +1,11 @@
+{
+  "slot": {
+    "slotId": "utf8-null-line",
+    "encoding": "utf_8",
+    "byteRange": { "start": 64, "end": 80 },
+    "layout": { "kind": "null_terminated", "terminatorHex": "00" },
+    "protectedSpans": []
+  },
+  "targetText": "Save",
+  "currentSlotBytesHex": "53617665000000000000000000000000"
+}

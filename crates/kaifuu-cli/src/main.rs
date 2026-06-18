@@ -3005,6 +3005,82 @@ mod tests {
     }
 
     #[test]
+    fn patch_command_reports_encoded_string_slot_preflight_without_output_mutation() {
+        let root = temp_dir("patch-encoded-string-slot-preflight");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        fs::write(
+            game_dir.join("source.json"),
+            r#"{
+  "gameId": "encoded-slot-fixture",
+  "title": "Encoded Slot Fixture",
+  "sourceLocale": "ja-JP",
+  "units": [
+    {
+      "sourceUnitKey": "slot.line.001",
+      "speaker": "Narrator",
+      "textSurface": "dialogue",
+      "sourceText": "Hi",
+      "encodedStringSlot": {
+        "slotId": "slot.line.001",
+        "encoding": "utf_8",
+        "byteRange": { "start": 32, "end": 37 },
+        "layout": { "kind": "null_terminated", "terminatorHex": "00" },
+        "sourceBytesHex": "4869000000"
+      }
+    }
+  ]
+}
+"#,
+        )
+        .unwrap();
+        let bridge_path = root.join("bridge.json");
+        run_cli(&[
+            "extract",
+            game_dir.to_str().unwrap(),
+            "--output",
+            bridge_path.to_str().unwrap(),
+        ]);
+        let bridge: BridgeBundle = read_json(&bridge_path).unwrap();
+        let patch_export = PatchExport {
+            patch_export_id: deterministic_id("patch", 82),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![PatchExportEntry {
+                bridge_unit_id: bridge.units[0].bridge_unit_id.clone(),
+                source_unit_key: bridge.units[0].source_unit_key.clone(),
+                source_hash: bridge.units[0].source_hash.clone(),
+                target_text: "Overflow".to_string(),
+                protected_span_mappings: vec![],
+            }],
+        };
+        let patch_export_path = root.join("patch-export.json");
+        write_json(&patch_export_path, &patch_export).unwrap();
+        let output_dir = root.join("patched-output");
+
+        let result = run_with_args(
+            [
+                "patch",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                patch_export_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(error.contains("patch preflight failed"), "{error}");
+        assert!(error.contains(kaifuu_core::STRING_SLOT_OVERFLOW), "{error}");
+        assert!(!output_dir.exists());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn patch_command_cleans_malicious_adapter_output_on_late_preflight_failure() {
         let root = temp_dir("patch-preflight-malicious-output");
         let game_dir = root.join("malicious-game");

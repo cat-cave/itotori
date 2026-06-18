@@ -1,0 +1,17 @@
+{
+  "slot": {
+    "slotId": "protected-token-line",
+    "encoding": "utf_8",
+    "byteRange": { "start": 256, "end": 288 },
+    "layout": { "kind": "fixed_width" },
+    "protectedSpans": [{ "raw": "{player}" }]
+  },
+  "targetText": "Hello, {player}.",
+  "protectedSpanMappings": [
+    {
+      "raw": "{player}",
+      "targetStart": 7,
+      "targetEnd": 15
+    }
+  ]
+}
