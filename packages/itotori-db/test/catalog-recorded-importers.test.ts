@@ -3,7 +3,10 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
-import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
+import {
+  catalogCompletenessPoolValues,
+  ItotoriCatalogRepository,
+} from "../src/repositories/catalog-repository.js";
 import {
   createRecordedCatalogCrawlerAdapter,
   ItotoriCatalogCrawlerRunner,
@@ -12,14 +15,20 @@ import {
   type RecordedCatalogCrawlerFixture,
 } from "../src/services/catalog-crawler-runner.js";
 import {
-  createDlsiteRecordedStorefrontAdapter,
+  catalogRecordedConfidenceForSourceFact,
   createCatalogRecordedImporterIngestStep,
   createCatalogRecordedImporterVerifier,
+  createDlsiteRecordedStorefrontAdapter,
+  createIgdbRecordedPlatformAdapter,
   type CatalogRecordedImporterFact,
+  type CatalogRecordedPlatformFixture,
   createSteamRecordedStorefrontAdapter,
   type CatalogRecordedStorefrontFixture,
+  createWikidataRecordedPlatformAdapter,
 } from "../src/services/catalog-recorded-importers.js";
 import {
+  catalogConfidenceValues,
+  catalogConflictKindValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusValues,
   catalogSeedOriginValues,
@@ -34,6 +43,8 @@ const vndbFixture = readFixture("vndb-dump-replay.json");
 const egsFixture = readFixture("egs-recorded-replay.json");
 const dlsiteFixture = readStorefrontFixture("dlsite-storefront-replay.json");
 const steamFixture = readStorefrontFixture("steam-storefront-replay.json");
+const igdbFixture = readPlatformFixture("igdb-platform-replay.json");
+const wikidataFixture = readPlatformFixture("wikidata-platform-replay.json");
 
 describe("catalog recorded source importers", () => {
   it("imports VNDB dump facts with releases, language facts, source ids, and source-version provenance", async () => {
@@ -472,6 +483,240 @@ describe("catalog recorded source importers", () => {
     }
   });
 
+  it("imports IGDB recorded platform releases and language facts with source provenance", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const services = servicesFor(context.db);
+      const result = await runStorefrontFixture(
+        services,
+        createIgdbRecordedPlatformAdapter(igdbFixture),
+        "worker-igdb",
+      );
+
+      expect(result).toMatchObject({
+        fetchedSteps: 1,
+        importedSteps: 1,
+        skippedSteps: 0,
+        replayValidation: [
+          {
+            sourceId: "252001",
+            fixtureId: "catalog-recorded-importer-igdb-platform-v0.1",
+            factCount: 1,
+            factIdentities: ["catalogSource=igdb|sourceId=252001"],
+            alreadyImported: false,
+          },
+        ],
+      });
+
+      const starlight = await services.catalogRepository.getWorkByExternalId(
+        actor,
+        "igdb",
+        "252001",
+      );
+      expect(starlight).toMatchObject({
+        canonicalTitle: "Promise Under Starlight",
+        originalLanguage: "ja-JP",
+        firstReleaseYear: 2021,
+      });
+      expect(starlight?.externalIds).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            catalogSource: "igdb",
+            sourceId: "252001",
+            externalIdKind: catalogExternalIdKindValues.sourceRecord,
+            confidence: catalogConfidenceValues.high,
+          }),
+          expect.objectContaining({
+            catalogSource: "wikidata",
+            sourceId: "Q130001",
+            externalIdKind: catalogExternalIdKindValues.knowledgeBaseEntity,
+          }),
+          expect.objectContaining({
+            catalogSource: "steam",
+            sourceId: "2100011",
+            externalIdKind: catalogExternalIdKindValues.storeProduct,
+          }),
+        ]),
+      );
+      expect(starlight?.releases).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceReleaseId: "770001",
+            platform: "pc",
+            releaseYear: 2021,
+            isOfficial: true,
+          }),
+        ]),
+      );
+      expect(starlight?.languageStatuses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            language: "en-US",
+            status: catalogLanguageStatusValues.officialFull,
+            statusScope: "platform",
+            platform: "pc",
+            confidence: catalogConfidenceValues.high,
+          }),
+        ]),
+      );
+      expect(starlight?.conflicts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            conflictKind: catalogConflictKindValues.languageStatus,
+            summary: expect.stringContaining("IGDB reports official English"),
+            metadata: expect.objectContaining({
+              reasonCode: "official_english_platform_disagreement",
+              severity: "warning",
+            }),
+          }),
+        ]),
+      );
+
+      const pools = await services.catalogRepository.catalogCompletenessBenchmarkPools(actor, {
+        targetLanguage: "en-US",
+      });
+      expect(pools.pools[catalogCompletenessPoolValues.noEnglish]).toHaveLength(0);
+      expect(
+        pools.pools[catalogCompletenessPoolValues.conflict].map((work) => work.workId),
+      ).toEqual([required(starlight?.workId, "IGDB work id")]);
+      expect(pools.publicReport.statuses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            status: catalogLanguageStatusValues.officialFull,
+            factCount: 1,
+          }),
+        ]),
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("imports Wikidata entity links, qualifier-backed language statements, and reviewable conflicts", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const services = servicesFor(context.db);
+      await runFixture(services, vndbFixture, "worker-vndb-before-wikidata");
+      const vndbBefore = await services.catalogRepository.getWorkByExternalId(
+        actor,
+        "vndb",
+        "v1002",
+      );
+
+      const result = await runStorefrontFixture(
+        services,
+        createWikidataRecordedPlatformAdapter(wikidataFixture),
+        "worker-wikidata",
+      );
+      expect(result).toMatchObject({
+        fetchedSteps: 1,
+        importedSteps: 1,
+        skippedSteps: 0,
+      });
+
+      const moon = await services.catalogRepository.getWorkByExternalId(
+        actor,
+        "wikidata",
+        "Q130099",
+      );
+      expect(moon).toMatchObject({
+        canonicalTitle: "Moonlit Glass Journey",
+        originalLanguage: "ja-JP",
+        firstReleaseYear: 2022,
+      });
+      expect(moon?.externalIds).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            catalogSource: "wikidata",
+            sourceId: "Q130099",
+            externalIdKind: catalogExternalIdKindValues.sourceRecord,
+          }),
+          expect.objectContaining({
+            catalogSource: "igdb",
+            sourceId: "252099",
+            externalIdKind: catalogExternalIdKindValues.knowledgeBaseEntity,
+          }),
+          expect.objectContaining({
+            catalogSource: "steam",
+            sourceId: "2100998",
+            externalIdKind: catalogExternalIdKindValues.storeProduct,
+          }),
+        ]),
+      );
+      expect(
+        moon?.externalIds.some(
+          (externalId) => externalId.catalogSource === "vndb" && externalId.sourceId === "v1002",
+        ),
+      ).toBe(false);
+      await expect(
+        services.catalogRepository.getWorkByExternalId(actor, "vndb", "v1002"),
+      ).resolves.toMatchObject({ workId: vndbBefore?.workId });
+
+      expect(moon?.languageStatuses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            language: "en-US",
+            status: catalogLanguageStatusValues.officialFull,
+            platform: "nintendo_switch",
+            confidence: catalogConfidenceValues.medium,
+            metadata: expect.objectContaining({
+              qualifiers: expect.objectContaining({
+                basis: "official platform language statement with platform qualifier",
+              }),
+            }),
+          }),
+        ]),
+      );
+      expect(moon?.conflicts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            conflictKind: catalogConflictKindValues.languageStatus,
+            summary: expect.stringContaining("Wikidata reports official English"),
+          }),
+          expect.objectContaining({
+            conflictKind: catalogConflictKindValues.externalId,
+            summary: expect.stringContaining("links vndb v1002"),
+            metadata: expect.objectContaining({
+              reasonCode: "external_id_already_attached",
+              linkedCatalogSource: "vndb",
+            }),
+          }),
+        ]),
+      );
+
+      const conflictRows = await services.catalogRepository.catalogConflictReview(actor, {
+        catalogRecordId: required(moon?.workId, "Wikidata work id"),
+      });
+      expect(conflictRows.rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            conflictKind: catalogConflictKindValues.languageStatus,
+            reasonCode: "official_english_platform_disagreement",
+            sourceIds: expect.arrayContaining([
+              { catalogSource: "wikidata", sourceId: "Q130099" },
+            ]),
+          }),
+          expect.objectContaining({
+            conflictKind: catalogConflictKindValues.externalId,
+            reasonCode: "external_id_already_attached",
+          }),
+        ]),
+      );
+
+      const pools = await services.catalogRepository.catalogCompletenessBenchmarkPools(actor, {
+        targetLanguage: "en-US",
+      });
+      expect(
+        pools.pools[catalogCompletenessPoolValues.noEnglish].map((work) => work.workId),
+      ).toEqual(expect.not.arrayContaining([moon?.workId]));
+      expect(
+        pools.pools[catalogCompletenessPoolValues.conflict].map((work) => work.workId),
+      ).toEqual(expect.arrayContaining([required(moon?.workId, "Wikidata work id")]));
+    } finally {
+      await context.close();
+    }
+  });
+
   it("reruns updated VNDB and EGS fixtures idempotently without duplicate facts", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -573,6 +818,59 @@ describe("catalog recorded source importers", () => {
     } finally {
       await context.close();
     }
+  });
+
+  it("reruns IGDB and Wikidata platform adapters idempotently without duplicate facts", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const services = servicesFor(context.db);
+      await runStorefrontFixture(
+        services,
+        createIgdbRecordedPlatformAdapter(igdbFixture),
+        "worker-igdb-initial",
+      );
+      await runStorefrontFixture(
+        services,
+        createWikidataRecordedPlatformAdapter(wikidataFixture),
+        "worker-wikidata-initial",
+      );
+      const initialCounts = await catalogCounts(context.pool);
+
+      await expect(
+        runStorefrontFixture(
+          services,
+          createIgdbRecordedPlatformAdapter(igdbFixture),
+          "worker-igdb-noop",
+        ),
+      ).resolves.toMatchObject({ fetchedSteps: 0, importedSteps: 0, skippedSteps: 0 });
+      await expect(
+        runStorefrontFixture(
+          services,
+          createWikidataRecordedPlatformAdapter(wikidataFixture),
+          "worker-wikidata-noop",
+        ),
+      ).resolves.toMatchObject({ fetchedSteps: 0, importedSteps: 0, skippedSteps: 0 });
+      await expect(catalogCounts(context.pool)).resolves.toEqual(initialCounts);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("maps platform source confidence without upgrading weak Wikidata language statements", () => {
+    expect(catalogRecordedConfidenceForSourceFact("igdb", "language_status")).toBe(
+      catalogConfidenceValues.high,
+    );
+    expect(
+      catalogRecordedConfidenceForSourceFact("wikidata", "language_status", {
+        qualifierProvenance: "official platform qualifier",
+      }),
+    ).toBe(catalogConfidenceValues.medium);
+    expect(catalogRecordedConfidenceForSourceFact("wikidata", "language_status")).toBe(
+      catalogConfidenceValues.low,
+    );
+    expect(catalogRecordedConfidenceForSourceFact("wikidata", "external_id")).toBe(
+      catalogConfidenceValues.high,
+    );
   });
 
   it("reports parser drift and unsupported storefront response shapes as semantic diagnostics", () => {
@@ -829,6 +1127,15 @@ function readStorefrontFixture(name: string): CatalogRecordedStorefrontFixture {
       "utf8",
     ),
   ) as CatalogRecordedStorefrontFixture;
+}
+
+function readPlatformFixture(name: string): CatalogRecordedPlatformFixture {
+  return JSON.parse(
+    readFileSync(
+      new URL(`../../../fixtures/catalog-recorded-importers/${name}`, import.meta.url),
+      "utf8",
+    ),
+  ) as CatalogRecordedPlatformFixture;
 }
 
 function withUpdatedFact(

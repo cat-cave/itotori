@@ -1,0 +1,102 @@
+{
+  "fixtureId": "catalog-recorded-importer-wikidata-platform-v0.1",
+  "fixtureName": "catalog-recorded-importer-wikidata-public-platform",
+  "catalogSource": "wikidata",
+  "adapterName": "wikidata-recorded-platform-importer",
+  "adapterVersion": "adapter-catalog-013-v1",
+  "sourceVersion": "wikidata-platform-synthetic-2026-06-18",
+  "parserVersion": "catalog-recorded-importers.v0.1",
+  "partitionKey": "public-wikidata-platform",
+  "responses": [
+    {
+      "stepKey": "wikidata-q130099",
+      "sourceId": "Q130099",
+      "requestIdentity": "recorded://wikidata/entities/Q130099?props=claims,identifiers,labels",
+      "fetchedAt": "2026-06-18T13:25:00.000Z",
+      "checkpointCursor": { "afterStepKey": "wikidata-q130099", "cursor": "Q130099" },
+      "httpStatus": 200,
+      "payload": {
+        "id": "Q130099",
+        "labels": {
+          "en": { "value": "Moonlit Glass Journey" },
+          "ja": { "value": "硝子の旅路" }
+        },
+        "publication_date": "2022-03-01",
+        "external_ids": {
+          "igdb": "252099",
+          "steam": "2100998",
+          "vndb": "v1002"
+        },
+        "claims": {
+          "platforms": [
+            {
+              "property": "P400",
+              "id": "Q19610114",
+              "name": "Nintendo Switch",
+              "catalog_platform": "nintendo_switch",
+              "statement_id": "Q130099$platform-switch"
+            }
+          ],
+          "language_statements": [
+            {
+              "property": "P407",
+              "statement_id": "Q130099$lang-ja",
+              "locale": "ja-JP",
+              "status": "official_full",
+              "platform": { "catalog_platform": "nintendo_switch" },
+              "qualifiers": { "basis": "original-language statement with platform qualifier" },
+              "references": [{ "property": "P854", "value": "recorded://wikidata/reference/ja" }]
+            },
+            {
+              "property": "P407",
+              "statement_id": "Q130099$lang-en",
+              "locale": "en-US",
+              "status": "official_full",
+              "platform": { "catalog_platform": "nintendo_switch" },
+              "qualifiers": {
+                "basis": "official platform language statement with platform qualifier"
+              },
+              "references": [{ "property": "P854", "value": "recorded://wikidata/reference/en" }]
+            }
+          ]
+        },
+        "references": [
+          {
+            "statement": "Q130099$lang-en",
+            "retrieved": "2026-06-18",
+            "source": "synthetic public Wikidata-shaped fixture"
+          }
+        ],
+        "conflicts": [
+          {
+            "summary": "Wikidata reports official English on Nintendo Switch while recorded VNDB and DLsite evidence do not establish an English PC/storefront release.",
+            "reason_code": "official_english_platform_disagreement",
+            "severity": "warning",
+            "language": "en-US",
+            "status": "official_full",
+            "sources": [
+              {
+                "catalogSource": "wikidata",
+                "sourceId": "Q130099",
+                "status": "official_full",
+                "platform": "nintendo_switch"
+              },
+              { "catalogSource": "vndb", "sourceId": "v1002", "status": "none" },
+              { "catalogSource": "dlsite", "sourceId": "RJ02222222", "status": "unknown" }
+            ]
+          }
+        ]
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/wikidata-platform-replay.json",
+        "redactionClass": "public_metadata"
+      },
+      "rateLimit": {
+        "remaining": 49,
+        "limit": 50,
+        "resetAt": "2026-06-18T13:26:00.000Z",
+        "metadata": { "policy": "recorded-fixture", "source": "wikidata" }
+      }
+    }
+  ]
+}
