@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { assertItotoriApiResponse } from "../../itotori/src/api-schema.js";
-import { renderRuntimeDashboard } from "../src/dashboard.js";
+import { renderRuntimeDashboard, renderRuntimeEvidenceRoute } from "../src/dashboard.js";
 
 type RuntimeDashboardStatus = Parameters<typeof assertRuntimeStatus>[0];
 
@@ -11,7 +11,9 @@ let currentFixture = runtimeFixture("passed-e2-capture");
 
 const server = setupServer(
   http.get("http://localhost/api/runtime/v0.2/status", () => apiRuntimeStatus(currentFixture)),
-  http.get("http://itotori.test/api/runtime/v0.2/status", () => apiRuntimeStatus(currentFixture)),
+  http.get("http://itotori.test/api/runtime/v0.2/status", () =>
+    apiRuntimeStatus(currentFixture),
+  ),
   http.get("http://itotori.test/api/hello/status", () => apiRuntimeStatus(currentFixture)),
 );
 
@@ -38,6 +40,33 @@ describe("Utsushi runtime dashboard", () => {
     expect(root.textContent).toContain("report-passed-e2-capture");
     expect(root.textContent).toContain("E2");
     expect(root.querySelector("img, video")).toBeNull();
+  });
+
+  it("loads the runtime run id requested by the evidence route", async () => {
+    server.use(
+      http.get("http://itotori.test/api/runtime/v0.2/status", ({ request }) => {
+        const runtimeRunId = new URL(request.url).searchParams.get("runtimeRunId");
+        return apiRuntimeStatus(
+          runtimeRunId === "run-failed-text-mismatch"
+            ? runtimeFixture("failed-text-mismatch")
+            : runtimeFixture("passed-e2-capture"),
+        );
+      }),
+    );
+    window.history.pushState({}, "", "/runtime/evidence/run-failed-text-mismatch");
+    const root = document.createElement("div");
+    document.body.append(root);
+
+    await renderRuntimeEvidenceRoute(
+      root,
+      "run-failed-text-mismatch",
+      "http://itotori.test/api/runtime/v0.2/status",
+    );
+
+    expect(root.textContent).toContain("run-failed-text-mismatch");
+    expect(root.textContent).toContain("hello_world_failed");
+    expect(root.textContent).not.toContain("run-passed-e2-capture");
+    expect(root.textContent).not.toContain("Loaded latest run differs from route run id.");
   });
 
   it("renders trace rows linking runtime events to bridge units, source keys, drafts, and artifacts", async () => {
@@ -80,6 +109,20 @@ describe("Utsushi runtime dashboard", () => {
     expect(root.textContent).toContain("application/json");
     expect(root.innerHTML).not.toContain("/tmp/");
     expect(root.innerHTML).not.toContain("file:");
+  });
+
+  it("blocks managed artifact links that are missing content hashes", async () => {
+    currentFixture = runtimeFixture("missing-managed-hash");
+    const root = document.createElement("div");
+    document.body.append(root);
+
+    await renderRuntimeDashboard(root, "http://itotori.test/api/runtime/v0.2/status");
+
+    expect(root.textContent).toContain("managed artifact link missing content hash");
+    expect(root.textContent).toContain("sha256:trace-missing-managed-hash");
+    const links = [...root.querySelectorAll<HTMLAnchorElement>('a[href^="/artifact-store/"]')];
+    expect(links).toHaveLength(2);
+    expect(links.every((link) => link.href.includes("/traces/trace.json"))).toBe(true);
   });
 
   it.each([
@@ -200,6 +243,7 @@ function runtimeFixture(
     | "failed-text-mismatch"
     | "unsupported-runtime-feature"
     | "missing-capture"
+    | "missing-managed-hash"
     | "stale-artifact-hash",
 ): RuntimeDashboardStatus {
   const runId = `run-${state}`;
@@ -340,6 +384,20 @@ function runtimeFixture(
           diagnostic: "artifact record has no managed artifact-store URI",
         },
       ],
+    };
+  }
+
+  if (state === "missing-managed-hash") {
+    return {
+      ...base,
+      artifacts: base.artifacts.map((artifact) =>
+        artifact.artifactId === screenshotArtifactId
+          ? {
+              ...artifact,
+              hash: null,
+            }
+          : artifact,
+      ),
     };
   }
 

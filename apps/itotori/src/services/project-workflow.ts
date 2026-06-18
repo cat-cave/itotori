@@ -69,7 +69,7 @@ export type BenchmarkRecordResult = {
 export interface ItotoriProjectWorkflowPort {
   reset(): Promise<void>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
-  getRuntimeStatus(): Promise<RuntimeDashboardStatus>;
+  getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
   getCostReport(projectId?: string): Promise<ProjectCostReport>;
   importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState>;
@@ -119,8 +119,8 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     return await this.repository.getDashboardStatus();
   }
 
-  async getRuntimeStatus(): Promise<RuntimeDashboardStatus> {
-    return await this.repository.getRuntimeStatus();
+  async getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus> {
+    return await this.repository.getRuntimeStatus(runtimeRunId);
   }
 
   async getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel> {

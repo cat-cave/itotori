@@ -171,10 +171,28 @@ describe("Itotori API handlers", () => {
     expect(catalogConflicts).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
     expect(services.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(2);
+    expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenNthCalledWith(1, undefined);
+    expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenNthCalledWith(2, undefined);
     expect(services.projectWorkflow.getCostReport).toHaveBeenCalledTimes(1);
     expect(services.projectWorkflow.getDashboardDecisions).toHaveBeenCalledTimes(1);
     expect(services.catalogRepository.catalogConflictReview).toHaveBeenCalledWith({});
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it("passes the requested runtime run id to the runtime status read model", async () => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/runtime/v0.2/status",
+        search: "?runtimeRunId=runtime-older",
+      },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: runtimeStatusFixture });
+    expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledWith("runtime-older");
   });
 
   it.each([

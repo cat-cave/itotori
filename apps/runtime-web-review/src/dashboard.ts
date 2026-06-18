@@ -111,7 +111,7 @@ export async function renderRuntimeEvidenceRoute(
   runtimeRunId: string,
   endpoint = DEFAULT_RUNTIME_STATUS_ENDPOINT,
 ): Promise<void> {
-  await renderRuntimeDashboard(root, `${endpoint}?runtimeRunId=${encodeURIComponent(runtimeRunId)}`);
+  await renderRuntimeDashboard(root, runtimeStatusEndpointForRun(endpoint, runtimeRunId));
 }
 
 function renderRuntimeEvidence(status: RuntimeStatus, routeRuntimeRunId: string | null): string {
@@ -361,6 +361,9 @@ function renderManagedArtifactLink(artifact: RuntimeArtifact): string {
   if (uri === null || !isManagedArtifactUri(uri)) {
     return diagnostic("blocked unmanaged artifact link");
   }
+  if (artifact.hash === null) {
+    return diagnostic("managed artifact link missing content hash");
+  }
   return `<a href="${escapeHtml(managedArtifactUrl(uri))}" target="_blank" rel="noreferrer">${escapeHtml(uri)}</a>`;
 }
 
@@ -384,9 +387,15 @@ function diagnostic(value: string): string {
   return `<span role="status" style="color:#b91c1c; font-weight:600">${escapeHtml(value)}</span>`;
 }
 
-function runtimeRunIdFromPath(pathname: string): string | null {
+export function runtimeRunIdFromPath(pathname: string): string | null {
   const match = /^\/runtime\/evidence\/([^/]+)\/?$/u.exec(pathname);
   return match === null ? null : decodeURIComponent(match[1] ?? "");
+}
+
+function runtimeStatusEndpointForRun(endpoint: string, runtimeRunId: string): string {
+  const url = new URL(endpoint, window.location.href);
+  url.searchParams.set("runtimeRunId", runtimeRunId);
+  return endpoint.startsWith("http") ? url.toString() : `${url.pathname}${url.search}${url.hash}`;
 }
 
 function isManagedArtifactUri(uri: string): boolean {

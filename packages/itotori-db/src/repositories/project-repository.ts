@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { and, eq, inArray, not, sql } from "drizzle-orm";
 import {
   assertBridgeBundle,
@@ -313,7 +314,7 @@ export interface ItotoriProjectRepositoryPort {
     input: BenchmarkArtifactLedgerInput,
   ): Promise<void>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
-  getRuntimeStatus(): Promise<RuntimeDashboardStatus>;
+  getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
 }
 
@@ -749,7 +750,6 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       referenceComparisonCount,
     });
     const artifactLinks = runtimeArtifactLinks(runtimeReport);
-    const eventArtifacts = runtimeEvidenceEventArtifacts(runtimeReport);
     const evidenceItems = runtimeEvidenceItemsFor(runtimeReport);
     const validationRecords = runtimeValidationFindingRecords(runtimeReport);
     const recordedEventId = `${runtimeReportId}:recorded`;
@@ -763,7 +763,6 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         runtimeReportId,
         patchResultId,
         artifactLinks,
-        eventArtifacts,
         validationRecords,
       );
 
@@ -837,29 +836,6 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
                 runtimeReportId,
                 ...artifactLink.metadata,
               },
-            },
-          });
-      }
-
-      for (const eventArtifact of eventArtifacts) {
-        await tx
-          .insert(artifacts)
-          .values({
-            artifactId: eventArtifact.artifactId,
-            projectId: project.projectId,
-            localeBranchId: project.localeBranchId,
-            sourceBundleId,
-            bridgeUnitId: eventArtifact.bridgeUnitId,
-            artifactKind: eventArtifact.artifactKind,
-            metadata: eventArtifact.metadata,
-          })
-          .onConflictDoUpdate({
-            target: artifacts.artifactId,
-            set: {
-              localeBranchId: project.localeBranchId,
-              sourceBundleId,
-              bridgeUnitId: eventArtifact.bridgeUnitId,
-              metadata: eventArtifact.metadata,
             },
           });
       }
@@ -1617,18 +1593,38 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     return project.projectId;
   }
 
-  async getRuntimeStatus(): Promise<RuntimeDashboardStatus> {
+  async getRuntimeStatus(runtimeRunId?: string): Promise<RuntimeDashboardStatus> {
+    const requestedRuntimeRunId = runtimeRunId ?? null;
     const result = await this.db.execute(sql`
-      with latest_project as (
-        select project_id
-        from ${projects}
-        order by updated_at desc
-        limit 1
-      ),
-      latest_runtime_run as (
+      with requested_runtime_run as (
         select
           runtime_run_id,
+          project_id,
+          created_at
+        from ${runtimeEvidenceRuns}
+        where ${requestedRuntimeRunId}::text is not null
+          and runtime_run_id = ${requestedRuntimeRunId}
+        limit 1
+      ),
+      latest_project as (
+        select project_id
+        from (
+          select project_id, 0 as priority, created_at as selected_at
+          from requested_runtime_run
+          union all
+          select project_id, 1 as priority, updated_at as selected_at
+          from ${projects}
+          where ${requestedRuntimeRunId}::text is null
+        ) project_candidates
+        order by priority, selected_at desc
+        limit 1
+      ),
+      selected_runtime_run as (
+        select
+          runtime_run_id,
+          project_id,
           runtime_report_artifact_id,
+          patch_result_artifact_id,
           status,
           fidelity_tier,
           evidence_tier,
@@ -1640,11 +1636,17 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           report_created_at,
           created_at
         from ${runtimeEvidenceRuns}
-        where project_id in (select project_id from latest_project)
+        where (
+          ${requestedRuntimeRunId}::text is not null
+          and runtime_run_id = ${requestedRuntimeRunId}
+        ) or (
+          ${requestedRuntimeRunId}::text is null
+          and project_id in (select project_id from latest_project)
+        )
         order by report_created_at desc, created_at desc
         limit 1
       ),
-      latest_runtime_report as (
+      selected_runtime_report as (
         select
           artifact_id,
           metadata,
@@ -1652,10 +1654,14 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         from ${artifacts}
         where project_id in (select project_id from latest_project)
           and artifact_kind = 'runtime_report'
+          and (
+            artifact_id in (select runtime_report_artifact_id from selected_runtime_run)
+            or not exists (select 1 from selected_runtime_run)
+          )
         order by created_at desc
         limit 1
       ),
-      latest_patch_result as (
+      selected_patch_result as (
         select
           artifact_id,
           metadata,
@@ -1663,53 +1669,57 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         from ${artifacts}
         where project_id in (select project_id from latest_project)
           and artifact_kind = 'patch_result'
+          and (
+            artifact_id in (select patch_result_artifact_id from selected_runtime_run)
+            or not exists (select 1 from selected_runtime_run)
+          )
         order by created_at desc
         limit 1
       )
       select
         coalesce(
-          latest_runtime_run.metadata->>'finalStatus',
-          latest_patch_result.metadata->>'finalStatus',
+          selected_runtime_run.metadata->>'finalStatus',
+          selected_patch_result.metadata->>'finalStatus',
           case
-            when latest_patch_result.metadata->>'status' in (
+            when selected_patch_result.metadata->>'status' in (
               'hello_world_passed',
               'hello_world_failed'
             )
-              then latest_patch_result.metadata->>'status'
-            when latest_runtime_run.status = 'passed'
+              then selected_patch_result.metadata->>'status'
+            when selected_runtime_run.status = 'passed'
               then 'hello_world_passed'
-            when latest_runtime_run.status = 'failed'
+            when selected_runtime_run.status = 'failed'
               then 'hello_world_failed'
-            when latest_runtime_report.metadata->>'status' = 'passed'
+            when selected_runtime_report.metadata->>'status' = 'passed'
               then 'hello_world_passed'
-            when latest_runtime_report.metadata->>'status' = 'failed'
+            when selected_runtime_report.metadata->>'status' = 'failed'
               then 'hello_world_failed'
-            else latest_patch_result.metadata->>'status'
+            else selected_patch_result.metadata->>'status'
           end
         ) as final_status,
-        latest_runtime_run.runtime_run_id as runtime_run_id,
-        coalesce(latest_runtime_run.runtime_report_artifact_id, latest_runtime_report.artifact_id)
+        selected_runtime_run.runtime_run_id as runtime_run_id,
+        coalesce(selected_runtime_run.runtime_report_artifact_id, selected_runtime_report.artifact_id)
           as runtime_report_id,
-        coalesce(latest_runtime_run.status, latest_runtime_report.metadata->>'status')
+        coalesce(selected_runtime_run.status, selected_runtime_report.metadata->>'status')
           as runtime_status,
-        coalesce(latest_runtime_run.fidelity_tier, latest_runtime_report.metadata->>'fidelityTier')
+        coalesce(selected_runtime_run.fidelity_tier, selected_runtime_report.metadata->>'fidelityTier')
           as fidelity_tier,
-        coalesce(latest_runtime_run.evidence_tier, latest_runtime_report.metadata->>'evidenceTier')
+        coalesce(selected_runtime_run.evidence_tier, selected_runtime_report.metadata->>'evidenceTier')
           as evidence_tier,
-        coalesce(latest_runtime_run.text_event_count::text, latest_runtime_report.metadata->>'textEventCount')
+        coalesce(selected_runtime_run.text_event_count::text, selected_runtime_report.metadata->>'textEventCount')
           as text_event_count,
-        coalesce(latest_runtime_run.capture_count::text, latest_runtime_report.metadata->>'frameCaptureCount')
+        coalesce(selected_runtime_run.capture_count::text, selected_runtime_report.metadata->>'frameCaptureCount')
           as frame_capture_count,
-        coalesce(latest_runtime_run.capture_count::text, latest_runtime_report.metadata->>'screenshotArtifactCount')
+        coalesce(selected_runtime_run.capture_count::text, selected_runtime_report.metadata->>'screenshotArtifactCount')
           as screenshot_artifact_count,
-        coalesce(latest_runtime_run.recording_count::text, latest_runtime_report.metadata->>'recordingArtifactCount')
+        coalesce(selected_runtime_run.recording_count::text, selected_runtime_report.metadata->>'recordingArtifactCount')
           as recording_artifact_count,
-        coalesce(latest_runtime_run.validation_finding_count::text, latest_runtime_report.metadata->>'validationFindingCount')
+        coalesce(selected_runtime_run.validation_finding_count::text, selected_runtime_report.metadata->>'validationFindingCount')
           as validation_finding_count
       from latest_project
-      left join latest_runtime_run on true
-      left join latest_runtime_report on true
-      left join latest_patch_result on true
+      left join selected_runtime_run on true
+      left join selected_runtime_report on true
+      left join selected_patch_result on true
     `);
 
     const first = result.rows[0] as Record<string, unknown> | undefined;
@@ -1717,22 +1727,22 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       throw new Error("no Itotori runtime status found");
     }
 
-    const runtimeRunId = nullableString(first.runtime_run_id);
+    const loadedRuntimeRunId = nullableString(first.runtime_run_id);
     const runtimeReportId = nullableString(first.runtime_report_id);
     const [traceEvents, findings, dashboardArtifacts, approximations, unsupportedCapabilities] =
-      runtimeRunId === null
+      loadedRuntimeRunId === null
         ? [[], [], [], [], []]
         : await Promise.all([
-            this.runtimeDashboardTraceEvents(runtimeRunId),
-            this.runtimeDashboardFindings(runtimeRunId),
-            this.runtimeDashboardArtifacts(runtimeRunId),
-            this.runtimeDashboardApproximations(runtimeRunId),
-            this.runtimeDashboardUnsupportedCapabilities(runtimeRunId),
+            this.runtimeDashboardTraceEvents(loadedRuntimeRunId),
+            this.runtimeDashboardFindings(loadedRuntimeRunId),
+            this.runtimeDashboardArtifacts(loadedRuntimeRunId),
+            this.runtimeDashboardApproximations(loadedRuntimeRunId),
+            this.runtimeDashboardUnsupportedCapabilities(loadedRuntimeRunId),
           ]);
 
     return {
       finalStatus: String(first.final_status ?? "missing"),
-      runtimeRunId,
+      runtimeRunId: loadedRuntimeRunId,
       runtimeReportId,
       runtimeStatus: nullableString(first.runtime_status),
       fidelityTier: nullableString(first.fidelity_tier),
@@ -1747,7 +1757,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       artifacts: dashboardArtifacts,
       approximations,
       unsupportedCapabilities,
-      limitations: await this.runtimeDashboardLimitations(runtimeRunId, runtimeReportId),
+      limitations: await this.runtimeDashboardLimitations(loadedRuntimeRunId, runtimeReportId),
     };
   }
 
@@ -1873,9 +1883,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           'recording',
           'trace_log',
           'frame_capture',
-          'reference_comparison',
-          'runtime_trace_event',
-          'runtime_branch_event'
+          'reference_comparison'
         )
       order by a.created_at, a.artifact_id
     `);
@@ -1883,16 +1891,17 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     return result.rows.map((row) => {
       const record = row as Record<string, unknown>;
       const uri = nullableString(record.uri);
+      const hash = nullableString(record.hash);
       return {
         artifactId: String(record.artifact_id),
         artifactKind: String(record.artifact_kind),
         uri,
-        hash: nullableString(record.hash),
+        hash,
         mediaType: nullableString(record.media_type),
         byteSize: nullableNumber(record.byte_size),
         bridgeUnitId: nullableString(record.bridge_unit_id),
         sourceUnitKey: nullableString(record.source_unit_key),
-        diagnostic: runtimeArtifactDiagnostic(uri, record.metadata),
+        diagnostic: runtimeArtifactDiagnostic(uri, hash, record.metadata),
       };
     });
   }
@@ -2764,13 +2773,6 @@ type RuntimeArtifactLink = {
   metadata: Record<string, unknown>;
 };
 
-type RuntimeEvidenceEventArtifact = {
-  artifactId: string;
-  bridgeUnitId: string;
-  artifactKind: "runtime_trace_event" | "runtime_branch_event";
-  metadata: Record<string, unknown>;
-};
-
 type RuntimeBridgeUnitRef = {
   bridgeUnitId: string;
   sourceUnitKey?: string;
@@ -2815,7 +2817,6 @@ function runtimeProjectionArtifactIds(
   runtimeReportId: string,
   patchResultId: string,
   artifactLinks: RuntimeArtifactLink[],
-  eventArtifacts: RuntimeEvidenceEventArtifact[],
   validationRecords: RuntimeValidationFindingRecord[],
 ): string[] {
   return Array.from(
@@ -2823,7 +2824,6 @@ function runtimeProjectionArtifactIds(
       runtimeReportId,
       patchResultId,
       ...artifactLinks.map((artifact) => artifact.artifactId),
-      ...eventArtifacts.map((artifact) => artifact.artifactId),
       ...validationRecords.flatMap((validation) =>
         validation.artifactRef === undefined ? [] : [validation.artifactRef.artifactId],
       ),
@@ -3094,47 +3094,6 @@ function artifactLinkFromRef(
   };
 }
 
-function runtimeEvidenceEventArtifacts(report: RuntimeReportInput): RuntimeEvidenceEventArtifact[] {
-  if (!isRuntimeEvidenceReportV02(report)) {
-    return [];
-  }
-
-  return [
-    ...report.traceEvents.map((event) => ({
-      artifactId: runtimeChildIdFor(report.runtimeReportId, event.traceEventId),
-      bridgeUnitId: event.bridgeUnitRef.bridgeUnitId,
-      artifactKind: "runtime_trace_event" as const,
-      metadata: {
-        runtimeReportId: report.runtimeReportId,
-        schemaVersion: report.schemaVersion,
-        adapterLocalArtifactId: event.traceEventId,
-        eventKind: event.eventKind,
-        frame: event.frame,
-        traceKey: event.traceKey,
-        sourceUnitKey: event.bridgeUnitRef.sourceUnitKey,
-        bridgeUnitRefs: [event.bridgeUnitRef],
-        event: runtimeTraceEventForDb(event),
-      },
-    })),
-    ...report.branchEvents.map((event) => ({
-      artifactId: runtimeChildIdFor(report.runtimeReportId, event.branchEventId),
-      bridgeUnitId: event.bridgeUnitRef.bridgeUnitId,
-      artifactKind: "runtime_branch_event" as const,
-      metadata: {
-        runtimeReportId: report.runtimeReportId,
-        schemaVersion: report.schemaVersion,
-        adapterLocalArtifactId: event.branchEventId,
-        frame: event.frame,
-        branchPointKey: event.branchPointKey,
-        sourceUnitKey: event.bridgeUnitRef.sourceUnitKey,
-        selectedOptionId: event.selectedOptionId,
-        bridgeUnitRefs: runtimeBranchEventBridgeUnitRefs(event),
-        event: runtimeBranchEventForDb(event),
-      },
-    })),
-  ];
-}
-
 function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceItemInput[] {
   if (!isRuntimeEvidenceReportV02(report)) {
     return [
@@ -3193,7 +3152,7 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
         bridgeUnitId: event.bridgeUnitRef.bridgeUnitId,
         artifactId:
           artifactRef === undefined
-            ? runtimeChildIdFor(report.runtimeReportId, event.traceEventId)
+            ? undefined
             : runtimeChildIdFor(report.runtimeReportId, artifactRef.artifactId),
         artifactKind: artifactRef?.artifactKind ?? "runtime_trace_event",
         portableArtifactUri: artifactRef?.uri,
@@ -3221,7 +3180,7 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
       runtimeEvidenceId: runtimeChildIdFor(report.runtimeReportId, event.branchEventId),
       evidenceKind: runtimeEvidenceKindValues.branchEvent,
       bridgeUnitId: event.bridgeUnitRef.bridgeUnitId,
-      artifactId: runtimeChildIdFor(report.runtimeReportId, event.branchEventId),
+      artifactId: undefined,
       artifactKind: "runtime_branch_event",
       portableArtifactUri: undefined,
       evidenceTier: null,
@@ -3472,16 +3431,29 @@ function runtimeArtifactRefForDb(
   runtimeReportId?: string,
 ): RuntimeArtifactRefV02 {
   assertPortableRelativeArtifactUri(artifactRef.uri);
+  const artifactId =
+    runtimeReportId === undefined
+      ? artifactRef.artifactId
+      : runtimeChildIdFor(runtimeReportId, artifactRef.artifactId);
+  const artifactKind = artifactRef.artifactKind;
+  const uri = artifactRef.uri;
+  const mediaType = artifactRef.mediaType;
+  const byteSize = artifactRef.byteSize;
   return {
-    artifactId:
-      runtimeReportId === undefined
-        ? artifactRef.artifactId
-        : runtimeChildIdFor(runtimeReportId, artifactRef.artifactId),
-    artifactKind: artifactRef.artifactKind,
-    uri: artifactRef.uri,
-    ...(artifactRef.hash === undefined ? {} : { hash: artifactRef.hash }),
-    ...(artifactRef.mediaType === undefined ? {} : { mediaType: artifactRef.mediaType }),
-    ...(artifactRef.byteSize === undefined ? {} : { byteSize: artifactRef.byteSize }),
+    artifactId,
+    artifactKind,
+    uri,
+    hash:
+      artifactRef.hash ??
+      runtimeManagedArtifactHash({
+        artifactId,
+        artifactKind,
+        uri,
+        ...(mediaType === undefined ? {} : { mediaType }),
+        ...(byteSize === undefined ? {} : { byteSize }),
+      }),
+    ...(mediaType === undefined ? {} : { mediaType }),
+    ...(byteSize === undefined ? {} : { byteSize }),
   };
 }
 
@@ -3489,6 +3461,16 @@ function runtimeChildIdFor(runtimeReportId: string, adapterLocalId: string): str
   // Runtime adapter child ids are only unique within a report. Repository-owned child
   // evidence rows and derived child artifacts use run-qualified ids to prevent cross-run moves.
   return `${runtimeReportId}:${adapterLocalId}`;
+}
+
+function runtimeManagedArtifactHash(ref: {
+  artifactId: string;
+  artifactKind: string;
+  uri: string;
+  mediaType?: string;
+  byteSize?: number;
+}): string {
+  return `sha256:${createHash("sha256").update(stableJsonStringify(ref)).digest("hex")}`;
 }
 
 function runtimeTraceEventForDb(
@@ -3650,7 +3632,25 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function runtimeArtifactDiagnostic(uri: string | null, metadata: unknown): string | null {
+function stableJsonStringify(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((entry) => stableJsonStringify(entry)).join(",")}]`;
+  }
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableJsonStringify(record[key])}`)
+    .join(",")}}`;
+}
+
+function runtimeArtifactDiagnostic(
+  uri: string | null,
+  hash: string | null,
+  metadata: unknown,
+): string | null {
   const redactedFields =
     isRecord(metadata) && Array.isArray(metadata.redactedFields)
       ? stringArray(metadata.redactedFields)
@@ -3666,6 +3666,9 @@ function runtimeArtifactDiagnostic(uri: string | null, metadata: unknown): strin
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return `blocked unmanaged artifact link: ${message}`;
+  }
+  if (hash === null) {
+    return "managed artifact link missing content hash";
   }
   return null;
 }

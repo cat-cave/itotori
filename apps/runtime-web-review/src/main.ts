@@ -1,3 +1,14 @@
-import { renderRuntimeDashboard } from "./dashboard.js";
+import {
+  renderRuntimeDashboard,
+  renderRuntimeEvidenceRoute,
+  runtimeRunIdFromPath,
+} from "./dashboard.js";
 
-await renderRuntimeDashboard(document.querySelector<HTMLDivElement>("#app")!);
+const root = document.querySelector<HTMLDivElement>("#app")!;
+const runtimeRunId = runtimeRunIdFromPath(window.location.pathname);
+
+if (runtimeRunId === null) {
+  await renderRuntimeDashboard(root);
+} else {
+  await renderRuntimeEvidenceRoute(root, runtimeRunId);
+}

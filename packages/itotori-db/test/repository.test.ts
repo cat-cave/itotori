@@ -1217,9 +1217,7 @@ describe("ItotoriProjectRepository", () => {
             evidenceTier: null,
             frame: 1,
             textPreview: "Hello, {player}.",
-            artifactIds: [
-              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
-            ],
+            artifactIds: [],
           },
           {
             runtimeEventId:
@@ -1232,42 +1230,16 @@ describe("ItotoriProjectRepository", () => {
             evidenceTier: null,
             frame: 2,
             textPreview: null,
-            artifactIds: [
-              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
-            ],
+            artifactIds: [],
           },
         ],
         artifacts: [
-          {
-            artifactId:
-              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
-            artifactKind: "runtime_trace_event",
-            uri: null,
-            hash: null,
-            mediaType: null,
-            byteSize: null,
-            bridgeUnitId: "bridge-unit-test",
-            sourceUnitKey: "hello.scene.001.line.001",
-            diagnostic: "artifact record has no managed artifact-store URI",
-          },
-          {
-            artifactId:
-              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
-            artifactKind: "runtime_branch_event",
-            uri: null,
-            hash: null,
-            mediaType: null,
-            byteSize: null,
-            bridgeUnitId: "bridge-unit-test",
-            sourceUnitKey: "hello.scene.001.line.001",
-            diagnostic: "artifact record has no managed artifact-store URI",
-          },
           expect.objectContaining({
             artifactId:
               "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000401",
             artifactKind: "screenshot",
             uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000001/screenshots/019ed003-0000-7000-8000-000000000401.png",
-            hash: null,
+            hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
             mediaType: "image/png",
             byteSize: null,
             bridgeUnitId: "bridge-unit-test",
@@ -1300,12 +1272,14 @@ describe("ItotoriProjectRepository", () => {
       const artifactResult = await context.pool.query<{
         artifact_kind: string;
         uri: string | null;
-      }>("select artifact_kind, uri from itotori_artifacts where artifact_id = $1", [
+        hash: string | null;
+      }>("select artifact_kind, uri, hash from itotori_artifacts where artifact_id = $1", [
         "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000401",
       ]);
-      expect(artifactResult.rows[0]).toEqual({
+      expect(artifactResult.rows[0]).toMatchObject({
         artifact_kind: "screenshot",
         uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000001/screenshots/019ed003-0000-7000-8000-000000000401.png",
+        hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
       });
 
       const evidenceArtifacts = await context.pool.query<{
@@ -1321,69 +1295,7 @@ describe("ItotoriProjectRepository", () => {
         order by artifact_kind
       `,
       );
-      expect(evidenceArtifacts.rows).toHaveLength(2);
-
-      const branchArtifact = evidenceArtifacts.rows.find(
-        (row) => row.artifact_kind === "runtime_branch_event",
-      );
-      expect(branchArtifact).toMatchObject({
-        artifact_id: "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
-        bridge_unit_id: "bridge-unit-test",
-      });
-      expect(branchArtifact?.metadata).toMatchObject({
-        runtimeReportId: "019ed003-0000-7000-8000-000000000001",
-        branchPointKey: "hello.choice.001",
-        bridgeUnitRefs: [
-          {
-            bridgeUnitId: "bridge-unit-test",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-        ],
-        event: {
-          branchEventId: "019ed003-0000-7000-8000-000000000201",
-          bridgeUnitRef: {
-            bridgeUnitId: "bridge-unit-test",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-          options: [
-            {
-              labelBridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
-                sourceUnitKey: "hello.scene.001.line.001",
-              },
-              targetBridgeUnitRef: {
-                bridgeUnitId: "bridge-unit-test",
-                sourceUnitKey: "hello.scene.001.line.001",
-              },
-            },
-          ],
-        },
-      });
-
-      const traceArtifact = evidenceArtifacts.rows.find(
-        (row) => row.artifact_kind === "runtime_trace_event",
-      );
-      expect(traceArtifact).toMatchObject({
-        artifact_id: "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
-        bridge_unit_id: "bridge-unit-test",
-      });
-      expect(traceArtifact?.metadata).toMatchObject({
-        runtimeReportId: "019ed003-0000-7000-8000-000000000001",
-        eventKind: "text_observed",
-        bridgeUnitRefs: [
-          {
-            bridgeUnitId: "bridge-unit-test",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-        ],
-        event: {
-          traceEventId: "019ed003-0000-7000-8000-000000000101",
-          bridgeUnitRef: {
-            bridgeUnitId: "bridge-unit-test",
-            sourceUnitKey: "hello.scene.001.line.001",
-          },
-        },
-      });
+      expect(evidenceArtifacts.rows).toEqual([]);
     } finally {
       await context.close();
     }
@@ -1533,6 +1445,49 @@ describe("ItotoriProjectRepository", () => {
         runtimeStatus: "failed",
         validationFindingCount: 1,
       });
+
+      await expect(repo.getRuntimeStatus("019ed003-0000-7000-8000-000000000901")).resolves
+        .toMatchObject({
+          finalStatus: "hello_world_passed",
+          runtimeRunId: "019ed003-0000-7000-8000-000000000901",
+          runtimeReportId: "019ed003-0000-7000-8000-000000000901",
+          runtimeStatus: "passed",
+          validationFindingCount: 0,
+        });
+
+      const managedArtifacts = await context.pool.query<{
+        artifact_id: string;
+        artifact_kind: string;
+        uri: string;
+        hash: string | null;
+      }>(
+        `
+        select artifact_id, artifact_kind, uri, hash
+        from itotori_artifacts
+        where metadata->>'runtimeReportId' = $1
+          and uri like 'artifacts/utsushi/runtime/%'
+        order by artifact_id
+      `,
+        ["019ed003-0000-7000-8000-000000000902"],
+      );
+      expect(managedArtifacts.rows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            artifact_kind: "screenshot",
+            hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+          }),
+          expect.objectContaining({
+            artifact_kind: "trace_log",
+            hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+          }),
+        ]),
+      );
+      expect(managedArtifacts.rows.every((artifact) => artifact.hash !== null)).toBe(true);
+      expect(
+        managedArtifacts.rows.some((artifact) =>
+          ["runtime_trace_event", "runtime_branch_event"].includes(artifact.artifact_kind),
+        ),
+      ).toBe(false);
 
       const evidence = await context.pool.query<{
         runtime_evidence_id: string;
@@ -1850,7 +1805,7 @@ describe("ItotoriProjectRepository", () => {
           runtime_run_id: firstRuntimeReportId,
           runtime_evidence_id: `${firstRuntimeReportId}:${branchEventId}`,
           evidence_kind: "branch_event",
-          artifact_id: `${firstRuntimeReportId}:${branchEventId}`,
+          artifact_id: null,
           adapter_local_evidence_id: branchEventId,
         },
         {
@@ -1878,7 +1833,7 @@ describe("ItotoriProjectRepository", () => {
           runtime_run_id: firstRuntimeReportId,
           runtime_evidence_id: `${firstRuntimeReportId}:${traceEventId}`,
           evidence_kind: "trace_event",
-          artifact_id: `${firstRuntimeReportId}:${traceEventId}`,
+          artifact_id: null,
           adapter_local_evidence_id: traceEventId,
         },
         {
@@ -1892,7 +1847,7 @@ describe("ItotoriProjectRepository", () => {
           runtime_run_id: secondRuntimeReportId,
           runtime_evidence_id: `${secondRuntimeReportId}:${branchEventId}`,
           evidence_kind: "branch_event",
-          artifact_id: `${secondRuntimeReportId}:${branchEventId}`,
+          artifact_id: null,
           adapter_local_evidence_id: branchEventId,
         },
         {
@@ -1920,7 +1875,7 @@ describe("ItotoriProjectRepository", () => {
           runtime_run_id: secondRuntimeReportId,
           runtime_evidence_id: `${secondRuntimeReportId}:${traceEventId}`,
           evidence_kind: "trace_event",
-          artifact_id: `${secondRuntimeReportId}:${traceEventId}`,
+          artifact_id: null,
           adapter_local_evidence_id: traceEventId,
         },
       ]);
@@ -1940,37 +1895,19 @@ describe("ItotoriProjectRepository", () => {
           metadata->>'adapterLocalArtifactId' as adapter_local_artifact_id,
           uri
         from itotori_artifacts
-        where artifact_id in ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        where artifact_id in ($1, $2, $3, $4, $5, $6)
         order by artifact_id
       `,
         [
           `${firstRuntimeReportId}:${captureArtifactId}`,
-          `${firstRuntimeReportId}:${traceEventId}`,
-          `${firstRuntimeReportId}:${branchEventId}`,
           `${firstRuntimeReportId}:${recordingArtifactId}`,
           `${firstRuntimeReportId}:${comparisonArtifactId}`,
           `${secondRuntimeReportId}:${captureArtifactId}`,
-          `${secondRuntimeReportId}:${traceEventId}`,
-          `${secondRuntimeReportId}:${branchEventId}`,
           `${secondRuntimeReportId}:${recordingArtifactId}`,
           `${secondRuntimeReportId}:${comparisonArtifactId}`,
         ],
       );
       expect(artifactRows.rows).toEqual([
-        {
-          artifact_id: `${firstRuntimeReportId}:${traceEventId}`,
-          artifact_kind: "runtime_trace_event",
-          runtime_report_id: firstRuntimeReportId,
-          adapter_local_artifact_id: traceEventId,
-          uri: null,
-        },
-        {
-          artifact_id: `${firstRuntimeReportId}:${branchEventId}`,
-          artifact_kind: "runtime_branch_event",
-          runtime_report_id: firstRuntimeReportId,
-          adapter_local_artifact_id: branchEventId,
-          uri: null,
-        },
         {
           artifact_id: `${firstRuntimeReportId}:${captureArtifactId}`,
           artifact_kind: "screenshot",
@@ -1991,20 +1928,6 @@ describe("ItotoriProjectRepository", () => {
           runtime_report_id: firstRuntimeReportId,
           adapter_local_artifact_id: comparisonArtifactId,
           uri: `artifacts/utsushi/runtime/${firstRuntimeReportId}/conformance-reports/${comparisonArtifactId}.json`,
-        },
-        {
-          artifact_id: `${secondRuntimeReportId}:${traceEventId}`,
-          artifact_kind: "runtime_trace_event",
-          runtime_report_id: secondRuntimeReportId,
-          adapter_local_artifact_id: traceEventId,
-          uri: null,
-        },
-        {
-          artifact_id: `${secondRuntimeReportId}:${branchEventId}`,
-          artifact_kind: "runtime_branch_event",
-          runtime_report_id: secondRuntimeReportId,
-          adapter_local_artifact_id: branchEventId,
-          uri: null,
         },
         {
           artifact_id: `${secondRuntimeReportId}:${captureArtifactId}`,
@@ -2291,19 +2214,17 @@ describe("ItotoriProjectRepository", () => {
         `
         select artifact_id
         from itotori_artifacts
-        where artifact_id in ($1, $2, $3, $4)
+        where artifact_id in ($1, $2, $3)
         order by artifact_id
       `,
-        [
-          runtimeReportId,
-          "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a31",
-          "patch-result-reingest-new",
-          "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000911",
-        ],
+      [
+        runtimeReportId,
+        "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a31",
+        "patch-result-reingest-new",
+      ],
       );
       expect(retainedArtifacts.rows.map((row) => row.artifact_id)).toEqual([
         "019ed003-0000-7000-8000-000000000a18",
-        "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000911",
         "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a31",
         "patch-result-reingest-new",
       ]);

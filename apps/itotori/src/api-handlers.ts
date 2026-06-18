@@ -129,7 +129,10 @@ async function routeItotoriApiRequest(
     request.method === "GET" &&
     (request.pathname === "/api/hello/status" || request.pathname === "/api/runtime/v0.2/status")
   ) {
-    return ok("runtime.status", await services.projectWorkflow.getRuntimeStatus());
+    return ok(
+      "runtime.status",
+      await services.projectWorkflow.getRuntimeStatus(parseRuntimeRunIdQuery(request.search)),
+    );
   }
 
   if (request.method === "GET" && request.pathname === "/api/catalog/conflicts") {
@@ -256,6 +259,18 @@ function parseCatalogConflictReviewFilter(search = ""): CatalogConflictReviewFil
     filter.catalogRecordId = catalogRecordId;
   }
   return filter;
+}
+
+function parseRuntimeRunIdQuery(search = ""): string | undefined {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const runtimeRunId = params.get("runtimeRunId");
+  if (runtimeRunId === null) {
+    return undefined;
+  }
+  if (runtimeRunId.trim().length === 0) {
+    throw new ApiValidationError("runtimeRunId must be non-empty");
+  }
+  return runtimeRunId;
 }
 
 function enumParam<T extends string>(value: string, allowed: readonly T[], label: string): T {
