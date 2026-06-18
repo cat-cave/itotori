@@ -92,6 +92,10 @@ const migrations = [
     id: "0008_bridge_import_status",
     file: "0008_bridge_import_status.sql",
   },
+  {
+    id: "0009_catalog_foundation",
+    file: "0009_catalog_foundation.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

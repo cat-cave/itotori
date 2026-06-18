@@ -26,9 +26,14 @@ after the database has been migrated.
 | `patch.export`    | Persist patch export metadata                     |
 | `runtime.ingest`  | Persist runtime verification evidence and status  |
 | `feedback.import` | Import manual feedback and playtest notes         |
+| `queue.manage`    | Append, claim, retry, and complete durable jobs   |
+| `catalog.read`    | Read catalog work identity and provenance records |
+| `catalog.write`   | Persist catalog work identity and provenance      |
 | `system.reset`    | Reset local hello-world persisted state           |
 
-Reads such as dashboard status do not currently require a permission gate.
+Project dashboard reads do not currently require a permission gate. Catalog
+reads are gated because local corpus scan entries can carry private-library
+ownership and redacted-path provenance.
 
 ## Future Teams
 

@@ -132,6 +132,165 @@ export const runtimeBridgeUnitRefRoleValues = {
 export type RuntimeBridgeUnitRefRole =
   (typeof runtimeBridgeUnitRefRoleValues)[keyof typeof runtimeBridgeUnitRefRoleValues];
 
+export const catalogSourceValues = {
+  vndb: "vndb",
+  egs: "egs",
+  dlsite: "dlsite",
+  steam: "steam",
+  igdb: "igdb",
+  wikidata: "wikidata",
+  localCorpus: "local_corpus",
+  kaifuu: "kaifuu",
+  manual: "manual",
+} as const;
+
+export type CatalogSource = (typeof catalogSourceValues)[keyof typeof catalogSourceValues];
+
+export const catalogSourceRecordKindValues = {
+  rawCache: "raw_cache",
+  normalizedRecord: "normalized_record",
+  recordedFixture: "recorded_fixture",
+  localScan: "local_scan",
+  manualAssertion: "manual_assertion",
+  importerRequest: "importer_request",
+} as const;
+
+export type CatalogSourceRecordKind =
+  (typeof catalogSourceRecordKindValues)[keyof typeof catalogSourceRecordKindValues];
+
+export const catalogExternalIdKindValues = {
+  sourceRecord: "source_record",
+  releaseRecord: "release_record",
+  storeProduct: "store_product",
+  knowledgeBaseEntity: "knowledge_base_entity",
+  localDetection: "local_detection",
+  manualAlias: "manual_alias",
+} as const;
+
+export type CatalogExternalIdKind =
+  (typeof catalogExternalIdKindValues)[keyof typeof catalogExternalIdKindValues];
+
+export const catalogConfidenceValues = {
+  high: "high",
+  medium: "medium",
+  low: "low",
+  unknown: "unknown",
+} as const;
+
+export type CatalogConfidence =
+  (typeof catalogConfidenceValues)[keyof typeof catalogConfidenceValues];
+
+export const catalogEngineSourceValues = {
+  localScan: "local_scan",
+  vndb: "vndb",
+  dlsiteWorktypeInferred: "dlsite_worktype_inferred",
+  sourceProvenance: "source_provenance",
+  manual: "manual",
+  unknown: "unknown",
+} as const;
+
+export type CatalogEngineSource =
+  (typeof catalogEngineSourceValues)[keyof typeof catalogEngineSourceValues];
+
+export const catalogReleaseKindValues = {
+  original: "original",
+  officialTranslation: "official_translation",
+  fanPatch: "fan_patch",
+  patch: "patch",
+  remaster: "remaster",
+  bundle: "bundle",
+  unknown: "unknown",
+} as const;
+
+export type CatalogReleaseKind =
+  (typeof catalogReleaseKindValues)[keyof typeof catalogReleaseKindValues];
+
+export const catalogLanguageStatusValues = {
+  officialFull: "official_full",
+  fanFull: "fan_full",
+  fanPartial: "fan_partial",
+  mtl: "mtl",
+  interfaceOnly: "interface_only",
+  none: "none",
+  unverifiedConsole: "unverified_console",
+  unknown: "unknown",
+} as const;
+
+export type CatalogLanguageStatus =
+  (typeof catalogLanguageStatusValues)[keyof typeof catalogLanguageStatusValues];
+
+export const catalogLanguageStatusScopeValues = {
+  work: "work",
+  release: "release",
+  platform: "platform",
+} as const;
+
+export type CatalogLanguageStatusScope =
+  (typeof catalogLanguageStatusScopeValues)[keyof typeof catalogLanguageStatusScopeValues];
+
+export const catalogConflictKindValues = {
+  externalId: "external_id",
+  languageStatus: "language_status",
+  release: "release",
+  title: "title",
+  engine: "engine",
+} as const;
+
+export type CatalogConflictKind =
+  (typeof catalogConflictKindValues)[keyof typeof catalogConflictKindValues];
+
+export const catalogConflictStatusValues = {
+  open: "open",
+  resolved: "resolved",
+  ignored: "ignored",
+} as const;
+
+export type CatalogConflictStatus =
+  (typeof catalogConflictStatusValues)[keyof typeof catalogConflictStatusValues];
+
+export const catalogConflictSubjectKindValues = {
+  externalId: "external_id",
+  languageStatus: "language_status",
+  release: "release",
+  work: "work",
+  sourceProvenance: "source_provenance",
+} as const;
+
+export type CatalogConflictSubjectKind =
+  (typeof catalogConflictSubjectKindValues)[keyof typeof catalogConflictSubjectKindValues];
+
+export const catalogPathRedactionClassValues = {
+  privatePathHash: "private_path_hash",
+  publicFixturePath: "public_fixture_path",
+  redacted: "redacted",
+} as const;
+
+export type CatalogPathRedactionClass =
+  (typeof catalogPathRedactionClassValues)[keyof typeof catalogPathRedactionClassValues];
+
+export const catalogSeedOriginValues = {
+  localScan: "local_scan",
+  recordedFixture: "recorded_fixture",
+  researchFixture: "research_fixture",
+  manual: "manual",
+  importer: "importer",
+  catalogCrawl: "catalog_crawl",
+} as const;
+
+export type CatalogSeedOrigin =
+  (typeof catalogSeedOriginValues)[keyof typeof catalogSeedOriginValues];
+
+export const catalogSeedStatusValues = {
+  pending: "pending",
+  queued: "queued",
+  imported: "imported",
+  ignored: "ignored",
+  failed: "failed",
+} as const;
+
+export type CatalogSeedStatus =
+  (typeof catalogSeedStatusValues)[keyof typeof catalogSeedStatusValues];
+
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -148,6 +307,367 @@ export const userPermissionGrants = pgTable(
     grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [primaryKey({ columns: [table.userId, table.permission] })],
+);
+
+export const catalogSourceProvenance = pgTable(
+  "itotori_catalog_source_provenance",
+  {
+    sourceProvenanceId: text("source_provenance_id").primaryKey(),
+    catalogSource: text("catalog_source").notNull(),
+    sourceRecordKind: text("source_record_kind").notNull(),
+    sourceId: text("source_id").notNull(),
+    sourceVersion: text("source_version"),
+    requestId: text("request_id"),
+    httpStatus: integer("http_status"),
+    ok: boolean("ok").notNull(),
+    payloadHash: text("payload_hash"),
+    payload: jsonb("payload")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_catalog_source_provenance_lookup_idx").on(
+      table.catalogSource,
+      table.sourceRecordKind,
+      table.sourceId,
+      table.fetchedAt,
+    ),
+    index("itotori_catalog_source_provenance_hash_idx").on(table.payloadHash),
+  ],
+);
+
+export const catalogWorks = pgTable(
+  "itotori_catalog_works",
+  {
+    workId: text("work_id").primaryKey(),
+    canonicalTitle: text("canonical_title").notNull(),
+    originalLanguage: text("original_language"),
+    firstReleaseYear: integer("first_release_year"),
+    workKind: text("work_kind").notNull().default("game"),
+    engineName: text("engine_name"),
+    engineSource: text("engine_source"),
+    engineConfidence: text("engine_confidence"),
+    engineProvenanceId: text("engine_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_catalog_works_title_idx").on(table.canonicalTitle),
+    index("itotori_catalog_works_engine_idx").on(table.engineName, table.engineSource),
+    index("itotori_catalog_works_engine_provenance_idx").on(table.engineProvenanceId),
+  ],
+);
+
+export const catalogExternalIds = pgTable(
+  "itotori_catalog_external_ids",
+  {
+    externalIdId: text("external_id_id").primaryKey(),
+    workId: text("work_id")
+      .notNull()
+      .references(() => catalogWorks.workId, { onDelete: "cascade" }),
+    catalogSource: text("catalog_source").notNull(),
+    sourceId: text("source_id").notNull(),
+    externalIdKind: text("external_id_kind").notNull(),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    confidence: text("confidence").notNull(),
+    discoveredAt: timestamp("discovered_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+  },
+  (table) => [
+    uniqueIndex("itotori_catalog_external_ids_source_idx").on(
+      table.catalogSource,
+      table.sourceId,
+      table.externalIdKind,
+    ),
+    index("itotori_catalog_external_ids_work_idx").on(table.workId),
+    index("itotori_catalog_external_ids_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogReleases = pgTable(
+  "itotori_catalog_releases",
+  {
+    releaseId: text("release_id").primaryKey(),
+    workId: text("work_id")
+      .notNull()
+      .references(() => catalogWorks.workId, { onDelete: "cascade" }),
+    catalogSource: text("catalog_source").notNull(),
+    sourceReleaseId: text("source_release_id"),
+    releaseTitle: text("release_title").notNull(),
+    releaseKind: text("release_kind").notNull(),
+    platform: text("platform"),
+    language: text("language"),
+    releaseDate: text("release_date"),
+    releaseYear: integer("release_year"),
+    isOfficial: boolean("is_official").notNull().default(false),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_catalog_releases_work_kind_idx").on(table.workId, table.releaseKind),
+    index("itotori_catalog_releases_source_idx").on(table.catalogSource, table.sourceReleaseId),
+    index("itotori_catalog_releases_platform_language_idx").on(table.platform, table.language),
+    index("itotori_catalog_releases_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogLanguageStatuses = pgTable(
+  "itotori_catalog_language_statuses",
+  {
+    languageStatusId: text("language_status_id").primaryKey(),
+    workId: text("work_id")
+      .notNull()
+      .references(() => catalogWorks.workId, { onDelete: "cascade" }),
+    language: text("language").notNull(),
+    status: text("status").notNull(),
+    statusScope: text("status_scope").notNull(),
+    platform: text("platform"),
+    releaseId: text("release_id").references(() => catalogReleases.releaseId, {
+      onDelete: "set null",
+    }),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    confidence: text("confidence").notNull(),
+    isCurrent: boolean("is_current").notNull().default(true),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_catalog_language_statuses_work_lang_idx").on(
+      table.workId,
+      table.language,
+      table.status,
+    ),
+    index("itotori_catalog_language_statuses_release_idx").on(table.releaseId),
+    index("itotori_catalog_language_statuses_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogConflicts = pgTable(
+  "itotori_catalog_conflicts",
+  {
+    conflictId: text("conflict_id").primaryKey(),
+    workId: text("work_id")
+      .notNull()
+      .references(() => catalogWorks.workId, { onDelete: "cascade" }),
+    conflictKind: text("conflict_kind").notNull(),
+    status: text("status").notNull(),
+    summary: text("summary").notNull(),
+    detectedAt: timestamp("detected_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_catalog_conflicts_work_status_idx").on(
+      table.workId,
+      table.conflictKind,
+      table.status,
+    ),
+  ],
+);
+
+export const catalogConflictEvidence = pgTable(
+  "itotori_catalog_conflict_evidence",
+  {
+    conflictEvidenceId: text("conflict_evidence_id").primaryKey(),
+    conflictId: text("conflict_id")
+      .notNull()
+      .references(() => catalogConflicts.conflictId, { onDelete: "cascade" }),
+    subjectKind: text("subject_kind").notNull(),
+    subjectId: text("subject_id").notNull(),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    evidencePosition: integer("evidence_position").notNull().default(0),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_catalog_conflict_evidence_conflict_idx").on(table.conflictId),
+    index("itotori_catalog_conflict_evidence_subject_idx").on(table.subjectKind, table.subjectId),
+    index("itotori_catalog_conflict_evidence_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogLocalScans = pgTable(
+  "itotori_catalog_local_scans",
+  {
+    localScanId: text("local_scan_id").primaryKey(),
+    scanRootLabel: text("scan_root_label").notNull(),
+    scanRootPathHash: text("scan_root_path_hash").notNull(),
+    scannerName: text("scanner_name").notNull(),
+    scannerVersion: text("scanner_version").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
+    createdByUserId: text("created_by_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_catalog_local_scans_root_completed_idx").on(
+      table.scanRootPathHash,
+      table.completedAt,
+    ),
+    index("itotori_catalog_local_scans_user_idx").on(table.createdByUserId),
+  ],
+);
+
+export const catalogLocalScanEntries = pgTable(
+  "itotori_catalog_local_scan_entries",
+  {
+    localScanEntryId: text("local_scan_entry_id").primaryKey(),
+    localScanId: text("local_scan_id")
+      .notNull()
+      .references(() => catalogLocalScans.localScanId, { onDelete: "cascade" }),
+    workId: text("work_id").references(() => catalogWorks.workId, { onDelete: "set null" }),
+    pathHash: text("path_hash").notNull(),
+    pathRedactionClass: text("path_redaction_class").notNull(),
+    owned: boolean("owned").notNull().default(true),
+    engineName: text("engine_name"),
+    engineSource: text("engine_source"),
+    engineConfidence: text("engine_confidence"),
+    signals: jsonb("signals")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    scannedAt: timestamp("scanned_at", { withTimezone: true }).notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_catalog_local_scan_entries_path_idx").on(
+      table.localScanId,
+      table.pathHash,
+    ),
+    index("itotori_catalog_local_scan_entries_work_idx").on(table.workId),
+    index("itotori_catalog_local_scan_entries_engine_idx").on(table.engineName, table.engineSource),
+    index("itotori_catalog_local_scan_entries_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogLocalScanExternalIds = pgTable(
+  "itotori_catalog_local_scan_external_ids",
+  {
+    localScanEntryId: text("local_scan_entry_id")
+      .notNull()
+      .references(() => catalogLocalScanEntries.localScanEntryId, { onDelete: "cascade" }),
+    catalogSource: text("catalog_source").notNull(),
+    sourceId: text("source_id").notNull(),
+    externalIdKind: text("external_id_kind").notNull(),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.localScanEntryId, table.catalogSource, table.sourceId, table.externalIdKind],
+    }),
+    index("itotori_catalog_local_scan_external_ids_source_idx").on(
+      table.catalogSource,
+      table.sourceId,
+    ),
+    index("itotori_catalog_local_scan_external_ids_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogSeedTargets = pgTable(
+  "itotori_catalog_seed_targets",
+  {
+    seedTargetId: text("seed_target_id").primaryKey(),
+    catalogSource: text("catalog_source").notNull(),
+    sourceId: text("source_id").notNull(),
+    seedOrigin: text("seed_origin").notNull(),
+    originRef: text("origin_ref"),
+    localScanEntryId: text("local_scan_entry_id").references(
+      () => catalogLocalScanEntries.localScanEntryId,
+      { onDelete: "set null" },
+    ),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    status: text("status").notNull(),
+    priority: integer("priority").notNull().default(0),
+    addedAt: timestamp("added_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_catalog_seed_targets_source_origin_idx").on(
+      table.catalogSource,
+      table.sourceId,
+      table.seedOrigin,
+      table.originRef,
+    ),
+    index("itotori_catalog_seed_targets_status_idx").on(table.status, table.priority),
+    index("itotori_catalog_seed_targets_local_scan_entry_idx").on(table.localScanEntryId),
+    index("itotori_catalog_seed_targets_provenance_idx").on(table.sourceProvenanceId),
+  ],
 );
 
 export const workspaces = pgTable("itotori_workspaces", {
