@@ -90,7 +90,7 @@
           "artifactId": "019ed003-0000-7000-8000-000040000001",
           "artifactKind": "screenshot",
           "uri": "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png",
-          "mediaType": "image/png"
+          "mediaType": "text/plain"
         }
       }
     }
@@ -98,7 +98,21 @@
   "branchEvents": [],
   "captures": [],
   "recordings": [],
-  "approximations": [],
+  "approximations": [
+    {
+      "approximationId": "019ed003-0000-7000-8000-000050000001",
+      "approximationTier": "deterministic_fixture",
+      "scope": "fixture runtime",
+      "description": "Reference capture fixture documents deterministic layout-probe evidence without reference-runtime pixel comparison.",
+      "affectedBridgeUnitRefs": [
+        {
+          "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+          "sourceUnitKey": "reference.capture.001"
+        }
+      ],
+      "evidenceTierCeiling": "E2"
+    }
+  ],
   "validationFindings": [],
   "limitations": []
 }

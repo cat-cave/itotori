@@ -24,16 +24,16 @@
       "path": "fixtures/public/utsushi-reference-captures/reference-capture-corpus.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "1bdf81df48965b304d2f24a5c3ce7ccec30b5d98201cf4614504c8b56ef7999a",
-      "bytes": 1002,
+      "sha256": "d19a8288c0cc2c4751017f4998cf49c46cab7f999331b99d3eb0a0671f56d6aa",
+      "bytes": 1075,
       "redistributable": true
     },
     {
       "path": "fixtures/public/utsushi-reference-captures/runtime-report.json",
       "role": "runtime-evidence",
       "mediaType": "application/json",
-      "sha256": "a9067e9ac33ad958e9ca1ce5273fe9a5fbdcb51e97c5af1e3b52595a72d85b2c",
-      "bytes": 3676,
+      "sha256": "89ed1e045e23b7f040107dfd6677dcbffc01008303202a981e9071088ce7577a",
+      "bytes": 4198,
       "redistributable": true
     },
     {
@@ -47,7 +47,7 @@
     {
       "path": "fixtures/public/utsushi-reference-captures/artifact-store/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png",
       "role": "asset",
-      "mediaType": "image/png",
+      "mediaType": "text/plain",
       "sha256": "fea02f42d0815df80a48355bfbee008c261e5a516f2f23f333efb757f618f232",
       "bytes": 53,
       "redistributable": true
@@ -64,40 +64,40 @@
       "path": "fixtures/public/utsushi-reference-captures/invalid/outside-artifact-store-corpus.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "76621de438aca619181d2a0569be84d13d80d4757829f02496a8d4be3437c240",
-      "bytes": 947,
+      "sha256": "7bf019b4945657f869336d01c76b06899bb240913737de5fe91ffc4d05def28f",
+      "bytes": 1062,
       "redistributable": true
     },
     {
       "path": "fixtures/public/utsushi-reference-captures/invalid/static-read-corpus.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "60b9d76c3d746c0b767350a6f95e70052234216f572425c5b5f53a3e8d6484cf",
-      "bytes": 1014,
+      "sha256": "80bca1cebda7476243e2f31b2e24b68028ed43768acce880b4821cf05ecca7a7",
+      "bytes": 1087,
       "redistributable": true
     },
     {
       "path": "fixtures/public/utsushi-reference-captures/invalid/static-read-report.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "2ea4fed9c2a2571ed60266ef099fd044564a1f215af8b373c8401ef835f554bd",
-      "bytes": 2980,
+      "sha256": "ef05b3a1c2360494455f6c80ed668ad79bc4af8cdff385d587fbdb3e18eb8ce0",
+      "bytes": 3501,
       "redistributable": true
     },
     {
       "path": "fixtures/public/utsushi-reference-captures/invalid/unredacted-local-path-corpus.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "941faa846a8dd64dfd50153b1d9ce2b884d03550ee6a56d2f97d338181d60d39",
-      "bytes": 1034,
+      "sha256": "f787d77719fa7c06f4e64043ab6b30bc17346d57900cf5a96872e552487be889",
+      "bytes": 1107,
       "redistributable": true
     },
     {
       "path": "fixtures/public/utsushi-reference-captures/invalid/unredacted-local-path-report.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "2dd4b5310263f9dfafbfa05be8836685e34dc4d5503ebbf529386ab17590b034",
-      "bytes": 3682,
+      "sha256": "ce61a45a20bf25cc73463dd13d683d05fa0c3abc54c6a0e704b6d31bacdeb395",
+      "bytes": 4204,
       "redistributable": true
     }
   ],

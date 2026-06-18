@@ -27,10 +27,12 @@ fn run_cli_with_registry(
 ) -> Result<(), Box<dyn std::error::Error>> {
     match args.first().map(String::as_str) {
         Some("capabilities") => {
+            validate_exact_flags(args, &[], &["--output"])?;
             let output = flag(args, "--output")?;
             write_json(&PathBuf::from(output), &capabilities_output(registry))?;
         }
         Some("validate-reference-captures") => {
+            validate_exact_flags(args, &["corpus_manifest"], &["--output"])?;
             let corpus_path = PathBuf::from(args.get(1).ok_or("missing corpus_manifest")?);
             let output = flag(args, "--output")?;
             let report = utsushi_fixture::validate_reference_capture_corpus(&corpus_path)?;
@@ -38,6 +40,11 @@ fn run_cli_with_registry(
         }
         Some(command) => {
             let operation = operation_from_command(command).ok_or(USAGE)?;
+            validate_exact_flags(
+                args,
+                &["game_dir"],
+                &["--adapter", "--artifact-root", "--output"],
+            )?;
             let input_root = PathBuf::from(args.get(1).ok_or("missing game_dir")?);
             let output = flag(args, "--output")?;
             let adapter_name = selected_adapter_name(args, registry)?;
@@ -128,6 +135,52 @@ fn optional_flag<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
         .position(|arg| arg == name)
         .and_then(|index| args.get(index + 1))
         .map(String::as_str)
+}
+
+fn validate_exact_flags(
+    args: &[String],
+    positional_labels: &[&str],
+    allowed_flags: &[&str],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let expected_positionals = 1 + positional_labels.len();
+    if args.len() < expected_positionals {
+        let missing = positional_labels[args.len().saturating_sub(1)];
+        return Err(format!("missing {missing}; {USAGE}").into());
+    }
+    for index in 1..expected_positionals {
+        if args[index].starts_with("--") {
+            return Err(format!("missing {}; {USAGE}", positional_labels[index - 1]).into());
+        }
+    }
+
+    let mut seen_flags = std::collections::HashSet::new();
+    let mut index = expected_positionals;
+    while index < args.len() {
+        let flag = args[index].as_str();
+        if !flag.starts_with("--") {
+            return Err(format!("unexpected argument {flag}; {USAGE}").into());
+        }
+        if !allowed_flags.contains(&flag) {
+            return Err(format!("unknown flag {flag}; {USAGE}").into());
+        }
+        if !seen_flags.insert(flag) {
+            return Err(format!("duplicate flag {flag}; {USAGE}").into());
+        }
+        let Some(value) = args.get(index + 1) else {
+            return Err(format!("missing value for flag {flag}; {USAGE}").into());
+        };
+        if value.starts_with("--") {
+            return Err(format!("missing value for flag {flag}; {USAGE}").into());
+        }
+        index += 2;
+    }
+
+    for required_flag in allowed_flags.iter().filter(|flag| **flag == "--output") {
+        if !seen_flags.contains(required_flag) {
+            return Err(format!("missing flag {required_flag}; {USAGE}").into());
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -527,5 +580,42 @@ mod tests {
         assert_eq!(report["fixturesValidated"], 1);
         assert_eq!(report["artifactsValidated"], 1);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn validate_reference_captures_rejects_unknown_and_trailing_args() {
+        let corpus_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/public/utsushi-reference-captures/reference-capture-corpus.json");
+        let output = PathBuf::from("validation-report.json");
+        let registry = utsushi_fixture::registry();
+
+        let unknown = run_cli_with_registry(
+            &args(&[
+                Path::new("validate-reference-captures"),
+                corpus_path.as_path(),
+                Path::new("--bogus"),
+                output.as_path(),
+                Path::new("--output"),
+                output.as_path(),
+            ]),
+            &registry,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(unknown.contains("unknown flag --bogus"));
+
+        let trailing = run_cli_with_registry(
+            &args(&[
+                Path::new("validate-reference-captures"),
+                corpus_path.as_path(),
+                Path::new("extra"),
+                Path::new("--output"),
+                output.as_path(),
+            ]),
+            &registry,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(trailing.contains("unexpected argument extra"));
     }
 }

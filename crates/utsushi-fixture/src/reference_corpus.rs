@@ -7,7 +7,7 @@ use serde_json::Value;
 use utsushi_core::{
     EvidenceTier, ObservationArtifactRef, ObservationHookEvent, ObservationHookPayload,
     ObservationRedactionStatus, RUNTIME_ARTIFACT_ROOT_MARKER, RuntimeArtifactRoot, UtsushiResult,
-    validate_runtime_artifact_uri,
+    validate_runtime_artifact_uri, validate_runtime_evidence_report_value,
 };
 
 const REFERENCE_CAPTURE_CORPUS_SCHEMA_VERSION: &str = "0.1.0";
@@ -61,6 +61,7 @@ struct ReferenceCaptureSourceRevision {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ReferenceCaptureArtifactHash {
     artifact_id: String,
+    observation_event_id: String,
     uri: String,
     sha256: String,
     bytes: u64,
@@ -71,6 +72,7 @@ struct ReferenceCaptureArtifactHash {
 struct ReportArtifactRef {
     artifact_id: String,
     artifact_kind: String,
+    observation_event_id: Option<String>,
     uri: String,
     media_type: Option<String>,
 }
@@ -79,7 +81,9 @@ pub fn validate_reference_capture_corpus(
     corpus_path: &Path,
 ) -> UtsushiResult<ReferenceCaptureValidationReport> {
     let corpus_text = fs::read_to_string(corpus_path)?;
-    let corpus: ReferenceCaptureCorpus = serde_json::from_str(&corpus_text)?;
+    let corpus_value: Value = serde_json::from_str(&corpus_text)?;
+    reject_unredacted_local_paths_in_value("referenceCaptureCorpus", &corpus_value)?;
+    let corpus: ReferenceCaptureCorpus = serde_json::from_value(corpus_value)?;
     corpus.validate_schema(corpus_path)?;
 
     let base_dir = corpus_path.parent().unwrap_or_else(|| Path::new("."));
@@ -168,6 +172,11 @@ impl ReferenceCaptureArtifactHash {
             "artifactHashes[].artifactId",
             &self.artifact_id,
         )?;
+        require_non_blank(
+            corpus_path,
+            "artifactHashes[].observationEventId",
+            &self.observation_event_id,
+        )?;
         require_non_blank(corpus_path, "artifactHashes[].uri", &self.uri)?;
         if !is_sha256_hex(&self.sha256) {
             return Err(format!(
@@ -201,11 +210,14 @@ fn validate_reference_capture_fixture(
     let label = format!("reference capture fixture {}", fixture.fixture_id);
     let report_path = resolve_corpus_path(base_dir, &fixture.runtime_report_path);
     let report: Value = serde_json::from_str(&fs::read_to_string(&report_path)?)?;
+    reject_unredacted_local_paths_in_value(&format!("{label} runtime report"), &report)?;
+    validate_runtime_evidence_report_value(&report)
+        .map_err(|error| format!("{label} runtime report contract invalid: {error}"))?;
 
     if report["schemaVersion"] != "0.2.0" {
         return Err(format!("{label} runtime report schemaVersion must be 0.2.0").into());
     }
-    require_report_string(&report, "runtimeReportId", &label)?;
+    let runtime_report_id = require_report_string(&report, "runtimeReportId", &label)?;
     let report_evidence_tier = require_report_string(&report, "evidenceTier", &label)?;
     if report_evidence_tier != fixture.evidence_tier.as_str() {
         return Err(format!(
@@ -222,6 +234,7 @@ fn validate_reference_capture_fixture(
     reject_static_runtime_claims(&report, captures, fixture, &label)?;
 
     let report_artifacts = collect_report_artifacts(&report, &events, &label)?;
+    validate_screenshot_artifact_runs(runtime_report_id, &report_artifacts, &label)?;
     validate_artifact_hashes(artifact_store_root, fixture, &report_artifacts, &label)
 }
 
@@ -263,6 +276,15 @@ fn validate_observation_metadata(
             "{label} observationEventIds must name exactly the runtime report observation hook event ids"
         )
         .into());
+    }
+    for artifact in &fixture.artifact_hashes {
+        if !expected_ids.contains(&artifact.observation_event_id) {
+            return Err(format!(
+                "{label} artifact {} observationEventId {} must name one of fixture observationEventIds",
+                artifact.artifact_id, artifact.observation_event_id
+            )
+            .into());
+        }
     }
 
     for event in events {
@@ -358,6 +380,7 @@ fn collect_report_artifacts(
                 artifacts.push(ReportArtifactRef {
                     artifact_id: artifact_ref.artifact_id.clone(),
                     artifact_kind: artifact_ref.artifact_kind.clone(),
+                    observation_event_id: Some(event.event_id.clone()),
                     uri: artifact_ref.uri.clone(),
                     media_type: artifact_ref.media_type.clone(),
                 });
@@ -374,9 +397,31 @@ fn parse_report_artifact_ref(value: &Value, label: &str) -> UtsushiResult<Report
     Ok(ReportArtifactRef {
         artifact_id: artifact_ref.artifact_id,
         artifact_kind: artifact_ref.artifact_kind,
+        observation_event_id: None,
         uri: artifact_ref.uri,
         media_type: artifact_ref.media_type,
     })
+}
+
+fn validate_screenshot_artifact_runs(
+    runtime_report_id: &str,
+    report_artifacts: &[ReportArtifactRef],
+    label: &str,
+) -> UtsushiResult<()> {
+    for artifact in report_artifacts {
+        if artifact.artifact_kind != "screenshot" {
+            continue;
+        }
+        let run_id = runtime_artifact_run_segment(&artifact.uri)?;
+        if run_id != runtime_report_id {
+            return Err(format!(
+                "{label} screenshot artifact {} run segment {run_id} must match runtimeReportId {runtime_report_id}",
+                artifact.artifact_id
+            )
+            .into());
+        }
+    }
+    Ok(())
 }
 
 fn validate_artifact_hashes(
@@ -388,19 +433,29 @@ fn validate_artifact_hashes(
     let mut expected_by_key = HashMap::new();
     for artifact in &fixture.artifact_hashes {
         expected_by_key.insert(
-            (artifact.artifact_id.as_str(), artifact.uri.as_str()),
+            (
+                artifact.artifact_id.as_str(),
+                artifact.observation_event_id.as_str(),
+                artifact.uri.as_str(),
+            ),
             artifact,
         );
     }
 
     for artifact in report_artifacts {
         if artifact.artifact_kind == "screenshot"
-            && !expected_by_key
-                .contains_key(&(artifact.artifact_id.as_str(), artifact.uri.as_str()))
+            && artifact.observation_event_id.is_some()
+            && !expected_by_key.contains_key(&(
+                artifact.artifact_id.as_str(),
+                artifact.observation_event_id.as_deref().unwrap_or_default(),
+                artifact.uri.as_str(),
+            ))
         {
             return Err(format!(
-                "{label} screenshot artifact {} at {} is missing from artifactHashes",
-                artifact.artifact_id, artifact.uri
+                "{label} screenshot artifact {} from observation event {} at {} is missing from artifactHashes",
+                artifact.artifact_id,
+                artifact.observation_event_id.as_deref().unwrap_or("<none>"),
+                artifact.uri
             )
             .into());
         }
@@ -410,11 +465,14 @@ fn validate_artifact_hashes(
     let canonical_root = fs::canonicalize(artifact_store_root)?;
     for expected in &fixture.artifact_hashes {
         let Some(report_artifact) = report_artifacts.iter().find(|artifact| {
-            artifact.artifact_id == expected.artifact_id && artifact.uri == expected.uri
+            artifact.artifact_id == expected.artifact_id
+                && artifact.observation_event_id.as_deref()
+                    == Some(expected.observation_event_id.as_str())
+                && artifact.uri == expected.uri
         }) else {
             return Err(format!(
-                "{label} artifactHashes entry {} at {} is not referenced by the runtime report",
-                expected.artifact_id, expected.uri
+                "{label} artifactHashes entry {} for observation event {} at {} is not referenced by the runtime report",
+                expected.artifact_id, expected.observation_event_id, expected.uri
             )
             .into());
         };
@@ -510,6 +568,60 @@ fn resolve_corpus_path(base_dir: &Path, path: &str) -> PathBuf {
     } else {
         base_dir.join(path)
     }
+}
+
+fn runtime_artifact_run_segment(uri: &str) -> UtsushiResult<String> {
+    let relative = validate_runtime_artifact_uri(uri)?;
+    relative
+        .components()
+        .next()
+        .map(|component| component.as_os_str().to_string_lossy().into_owned())
+        .ok_or_else(|| format!("runtime artifact uri is missing run segment: {uri}").into())
+}
+
+fn reject_unredacted_local_paths_in_value(label: &str, value: &Value) -> UtsushiResult<()> {
+    reject_unredacted_local_paths_at(label, value)
+}
+
+fn reject_unredacted_local_paths_at(path: &str, value: &Value) -> UtsushiResult<()> {
+    match value {
+        Value::String(text) if looks_like_local_path(text) => {
+            Err(format!("{path} contains unredacted local path: {text}").into())
+        }
+        Value::Array(values) => {
+            for (index, value) in values.iter().enumerate() {
+                reject_unredacted_local_paths_at(&format!("{path}[{index}]"), value)?;
+            }
+            Ok(())
+        }
+        Value::Object(map) => {
+            for (key, value) in map {
+                reject_unredacted_local_paths_at(&format!("{path}.{key}"), value)?;
+            }
+            Ok(())
+        }
+        _ => Ok(()),
+    }
+}
+
+fn looks_like_local_path(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.starts_with("file:")
+        || lower.contains("file://")
+        || lower.starts_with("~/")
+        || lower.starts_with("/home/")
+        || lower.contains("/home/")
+        || lower.starts_with("/users/")
+        || lower.contains("/users/")
+        || lower.starts_with("/tmp/")
+        || lower.contains("/tmp/")
+        || lower.starts_with("/var/folders/")
+        || lower.contains("/var/folders/")
+        || (value.as_bytes().get(1) == Some(&b':')
+            && value
+                .as_bytes()
+                .get(2)
+                .is_some_and(|separator| *separator == b'\\' || *separator == b'/'))
 }
 
 fn report_array<'a>(report: &'a Value, field: &str, label: &str) -> UtsushiResult<&'a [Value]> {
@@ -743,6 +855,59 @@ mod tests {
     }
 
     #[test]
+    fn rejects_additional_reference_capture_contract_failures() {
+        for (variant, expected_error) in [
+            (
+                FixtureVariant::ReportSchemaInvalid,
+                "runtime report contract invalid",
+            ),
+            (
+                FixtureVariant::SourceRevisionMismatch,
+                "sourceRevision does not match",
+            ),
+            (
+                FixtureVariant::RuntimeTargetMismatch,
+                "runtimeTargetId fixture:reference-capture-public does not match",
+            ),
+            (
+                FixtureVariant::EventIdMismatch,
+                "observationEventIds must name exactly",
+            ),
+            (
+                FixtureVariant::DuplicateEventIds,
+                "observationEventIds must be unique",
+            ),
+            (FixtureVariant::WrongHash, "sha256"),
+            (FixtureVariant::WrongByteCount, "byte count"),
+            (
+                FixtureVariant::ReportIdArtifactRunMismatch,
+                "must match runtimeReportId",
+            ),
+            (
+                FixtureVariant::ReportLevelPrivatePath,
+                "unredacted local path",
+            ),
+            (
+                FixtureVariant::CorpusMetadataPrivatePath,
+                "unredacted local path",
+            ),
+        ] {
+            let root = temp_dir("additional-negative");
+            let corpus = write_corpus_fixture(&root, variant);
+
+            let error = validate_reference_capture_corpus(&corpus)
+                .unwrap_err()
+                .to_string();
+
+            assert!(
+                error.contains(expected_error),
+                "error {error:?} did not contain {expected_error:?}"
+            );
+            let _ = fs::remove_dir_all(root);
+        }
+    }
+
+    #[test]
     fn public_reference_capture_fixtures_cover_positive_and_negative_cases() {
         let public_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../fixtures/public/utsushi-reference-captures");
@@ -770,12 +935,23 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Copy)]
     enum FixtureVariant {
         Valid,
         MissingHashes,
         OutsideArtifactStore,
         StaticRead,
         UnredactedLocalPath,
+        ReportSchemaInvalid,
+        SourceRevisionMismatch,
+        RuntimeTargetMismatch,
+        EventIdMismatch,
+        DuplicateEventIds,
+        WrongHash,
+        WrongByteCount,
+        ReportIdArtifactRunMismatch,
+        ReportLevelPrivatePath,
+        CorpusMetadataPrivatePath,
     }
 
     fn temp_dir(name: &str) -> PathBuf {
@@ -791,7 +967,12 @@ mod tests {
     fn write_corpus_fixture(root: &Path, variant: FixtureVariant) -> PathBuf {
         let artifact_root = root.join("artifact-store");
         let artifact_uri = match variant {
-            FixtureVariant::OutsideArtifactStore => "/tmp/reference-capture.png",
+            FixtureVariant::OutsideArtifactStore => {
+                "artifacts/utsushi/elsewhere/019ed003-0000-7000-8000-000040000001.png"
+            }
+            FixtureVariant::ReportIdArtifactRunMismatch => {
+                "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000099990001/screenshots/019ed003-0000-7000-8000-000040000001.png"
+            }
             _ => {
                 "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png"
             }
@@ -806,6 +987,13 @@ mod tests {
         )
         .unwrap();
         fs::write(&artifact_path, SCREENSHOT_BYTES).unwrap();
+        if matches!(variant, FixtureVariant::ReportIdArtifactRunMismatch) {
+            let mismatch_artifact_path = artifact_root.join(
+                "019ed003-0000-7000-8000-000099990001/screenshots/019ed003-0000-7000-8000-000040000001.png",
+            );
+            fs::create_dir_all(mismatch_artifact_path.parent().unwrap()).unwrap();
+            fs::write(&mismatch_artifact_path, SCREENSHOT_BYTES).unwrap();
+        }
 
         let report = runtime_report_json(artifact_uri, &variant);
         fs::write(
@@ -819,29 +1007,58 @@ mod tests {
             _ => json!([
                 {
                     "artifactId": "019ed003-0000-7000-8000-000040000001",
+                    "observationEventId": "019ed003-0000-7000-8000-000071000001",
                     "uri": artifact_uri,
-                    "sha256": SCREENSHOT_SHA256,
-                    "bytes": 53,
-                    "mediaType": "image/png"
+                    "sha256": match variant {
+                        FixtureVariant::WrongHash => "0000000000000000000000000000000000000000000000000000000000000000",
+                        _ => SCREENSHOT_SHA256
+                    },
+                    "bytes": match variant {
+                        FixtureVariant::WrongByteCount => 54,
+                        _ => 53
+                    },
+                    "mediaType": "text/plain"
                 }
+            ]),
+        };
+        let source_revision_source_id = match variant {
+            FixtureVariant::SourceRevisionMismatch => "different-source",
+            _ => "reference-capture-public",
+        };
+        let runtime_target_id = match variant {
+            FixtureVariant::RuntimeTargetMismatch => "fixture:different-target",
+            _ => "fixture:reference-capture-public",
+        };
+        let observation_event_ids = match variant {
+            FixtureVariant::EventIdMismatch => json!([
+                "019ed003-0000-7000-8000-000070000001",
+                "019ed003-0000-7000-8000-000071000999"
+            ]),
+            FixtureVariant::DuplicateEventIds => json!([
+                "019ed003-0000-7000-8000-000070000001",
+                "019ed003-0000-7000-8000-000070000001"
+            ]),
+            _ => json!([
+                "019ed003-0000-7000-8000-000070000001",
+                "019ed003-0000-7000-8000-000071000001"
             ]),
         };
         let corpus = json!({
             "schemaVersion": "0.1.0",
-            "artifactStoreRoot": "artifact-store",
+            "artifactStoreRoot": match variant {
+                FixtureVariant::CorpusMetadataPrivatePath => "/tmp/private-artifact-store",
+                _ => "artifact-store"
+            },
             "fixtures": [
                 {
                     "fixtureId": "reference-capture-test",
                     "runtimeReportPath": "runtime-report.json",
                     "sourceRevision": {
-                        "sourceId": "reference-capture-public",
+                        "sourceId": source_revision_source_id,
                         "revisionId": "fixture-source-v0.1"
                     },
-                    "runtimeTargetId": "fixture:reference-capture-public",
-                    "observationEventIds": [
-                        "019ed003-0000-7000-8000-000070000001",
-                        "019ed003-0000-7000-8000-000071000001"
-                    ],
+                    "runtimeTargetId": runtime_target_id,
+                    "observationEventIds": observation_event_ids,
                     "artifactHashes": artifact_hashes,
                     "evidenceTier": "E2",
                     "redactionStatus": "not_required"
@@ -884,6 +1101,28 @@ mod tests {
         let text = match variant {
             FixtureVariant::UnredactedLocalPath => "/tmp/private/reference-capture",
             _ => "Reference capture ready.",
+        };
+        let approximations = match variant {
+            FixtureVariant::ReportSchemaInvalid => json!([]),
+            _ => json!([
+                {
+                    "approximationId": "019ed003-0000-7000-8000-000050000001",
+                    "approximationTier": "deterministic_fixture",
+                    "scope": "fixture runtime",
+                    "description": "Reference capture fixture documents deterministic layout-probe evidence without reference-runtime pixel comparison.",
+                    "affectedBridgeUnitRefs": [
+                        {
+                            "bridgeUnitId": "019ed000-0000-7000-8000-bridgeun0001",
+                            "sourceUnitKey": "reference.capture.001"
+                        }
+                    ],
+                    "evidenceTierCeiling": "E2"
+                }
+            ]),
+        };
+        let limitations = match variant {
+            FixtureVariant::ReportLevelPrivatePath => json!(["Captured at /tmp/private/run"]),
+            _ => json!([]),
         };
         json!({
             "schemaVersion": "0.2.0",
@@ -966,9 +1205,9 @@ mod tests {
             "branchEvents": [],
             "captures": captures,
             "recordings": [],
-            "approximations": [],
+            "approximations": approximations,
             "validationFindings": [],
-            "limitations": []
+            "limitations": limitations
         })
     }
 
@@ -977,7 +1216,7 @@ mod tests {
             "artifactId": "019ed003-0000-7000-8000-000040000001",
             "artifactKind": "screenshot",
             "uri": artifact_uri,
-            "mediaType": "image/png"
+            "mediaType": "text/plain"
         })
     }
 }

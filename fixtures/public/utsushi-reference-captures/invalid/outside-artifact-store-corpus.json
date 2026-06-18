@@ -17,10 +17,11 @@
       "artifactHashes": [
         {
           "artifactId": "019ed003-0000-7000-8000-000040000001",
-          "uri": "/tmp/reference-capture.png",
+          "observationEventId": "019ed003-0000-7000-8000-000071000001",
+          "uri": "artifacts/utsushi/elsewhere/019ed003-0000-7000-8000-000040000001.png",
           "sha256": "fea02f42d0815df80a48355bfbee008c261e5a516f2f23f333efb757f618f232",
           "bytes": 53,
-          "mediaType": "image/png"
+          "mediaType": "text/plain"
         }
       ],
       "evidenceTier": "E2",

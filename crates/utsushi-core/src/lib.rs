@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::collections::HashSet;
 use std::fs;
 use std::io::{self, Write};
 use std::panic::{self, AssertUnwindSafe};
@@ -10,7 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -1397,6 +1398,857 @@ impl ObservationArtifactRef {
         validate_runtime_artifact_uri(&self.uri)?;
         Ok(())
     }
+}
+
+pub fn validate_runtime_evidence_report_value(report: &Value) -> UtsushiResult<()> {
+    let report = value_object(report, "RuntimeEvidenceReportV02")?;
+    require_literal(
+        report,
+        "schemaVersion",
+        "0.2.0",
+        "RuntimeEvidenceReportV02.schemaVersion",
+    )?;
+    require_non_blank_field(
+        report,
+        "runtimeReportId",
+        "RuntimeEvidenceReportV02.runtimeReportId",
+    )?;
+    optional_non_blank_field(
+        report,
+        "sourceBundleHash",
+        "RuntimeEvidenceReportV02.sourceBundleHash",
+    )?;
+    optional_non_blank_field(
+        report,
+        "sourceLocale",
+        "RuntimeEvidenceReportV02.sourceLocale",
+    )?;
+    optional_non_blank_field(
+        report,
+        "targetLocale",
+        "RuntimeEvidenceReportV02.targetLocale",
+    )?;
+    let adapter_name = require_non_blank_field(
+        report,
+        "adapterName",
+        "RuntimeEvidenceReportV02.adapterName",
+    )?;
+    let adapter_version = require_non_blank_field(
+        report,
+        "adapterVersion",
+        "RuntimeEvidenceReportV02.adapterVersion",
+    )?;
+    let fidelity_tier = parse_fidelity_tier_field(
+        report,
+        "fidelityTier",
+        "RuntimeEvidenceReportV02.fidelityTier",
+    )?;
+    let evidence_tier = parse_evidence_tier_field(
+        report,
+        "evidenceTier",
+        "RuntimeEvidenceReportV02.evidenceTier",
+    )?;
+    if evidence_tier > fidelity_tier.evidence_ceiling() {
+        return Err(format!(
+            "RuntimeEvidenceReportV02.evidenceTier must not exceed {} for the declared fidelityTier",
+            fidelity_tier.evidence_ceiling().as_str()
+        )
+        .into());
+    }
+    let status = require_one_of_field(
+        report,
+        "status",
+        &["passed", "failed"],
+        "RuntimeEvidenceReportV02.status",
+    )?;
+    let created_at =
+        require_non_blank_field(report, "createdAt", "RuntimeEvidenceReportV02.createdAt")?;
+    validate_rfc3339_instant_metadata("RuntimeEvidenceReportV02.createdAt", created_at)?;
+
+    let trace_events = required_value_array(
+        report,
+        "traceEvents",
+        "RuntimeEvidenceReportV02.traceEvents",
+    )?;
+    for (index, event) in trace_events.iter().enumerate() {
+        validate_runtime_trace_event_value(
+            event,
+            &format!("RuntimeEvidenceReportV02.traceEvents[{index}]"),
+        )?;
+    }
+    let branch_events = required_value_array(
+        report,
+        "branchEvents",
+        "RuntimeEvidenceReportV02.branchEvents",
+    )?;
+    for (index, event) in branch_events.iter().enumerate() {
+        validate_runtime_branch_event_value(
+            event,
+            &format!("RuntimeEvidenceReportV02.branchEvents[{index}]"),
+        )?;
+    }
+    let observation_events = optional_value_array(
+        report,
+        "observationHookEvents",
+        "RuntimeEvidenceReportV02.observationHookEvents",
+    )?;
+    for (index, event) in observation_events.iter().enumerate() {
+        let event = ObservationHookEvent::from_json_value(event.clone()).map_err(|error| {
+            format!("RuntimeEvidenceReportV02.observationHookEvents[{index}] invalid: {error}")
+        })?;
+        if event.evidence_tier > evidence_tier {
+            return Err(format!(
+                "RuntimeEvidenceReportV02.observationHookEvents[{index}].evidenceTier must not exceed report evidenceTier {}",
+                evidence_tier.as_str()
+            )
+            .into());
+        }
+    }
+    let captures = required_value_array(report, "captures", "RuntimeEvidenceReportV02.captures")?;
+    for (index, capture) in captures.iter().enumerate() {
+        validate_runtime_capture_value(
+            capture,
+            &format!("RuntimeEvidenceReportV02.captures[{index}]"),
+        )?;
+    }
+    let recordings =
+        required_value_array(report, "recordings", "RuntimeEvidenceReportV02.recordings")?;
+    for (index, recording) in recordings.iter().enumerate() {
+        validate_runtime_recording_value(
+            recording,
+            &format!("RuntimeEvidenceReportV02.recordings[{index}]"),
+        )?;
+    }
+    let approximations = required_value_array(
+        report,
+        "approximations",
+        "RuntimeEvidenceReportV02.approximations",
+    )?;
+    for (index, approximation) in approximations.iter().enumerate() {
+        validate_runtime_approximation_value(
+            approximation,
+            &format!("RuntimeEvidenceReportV02.approximations[{index}]"),
+        )?;
+    }
+    let findings = required_value_array(
+        report,
+        "validationFindings",
+        "RuntimeEvidenceReportV02.validationFindings",
+    )?;
+    for (index, finding) in findings.iter().enumerate() {
+        validate_runtime_validation_finding_value(
+            finding,
+            &format!("RuntimeEvidenceReportV02.validationFindings[{index}]"),
+        )?;
+    }
+    let reference_comparisons = optional_value_array(
+        report,
+        "referenceComparisons",
+        "RuntimeEvidenceReportV02.referenceComparisons",
+    )?;
+    validate_string_array_field(
+        report,
+        "limitations",
+        "RuntimeEvidenceReportV02.limitations",
+    )?;
+
+    if let Some(runtime_capabilities) = report.get("runtimeCapabilities") {
+        validate_runtime_capability_contract_value(
+            runtime_capabilities,
+            "RuntimeEvidenceReportV02.runtimeCapabilities",
+            fidelity_tier,
+            evidence_tier,
+        )?;
+    }
+    if let Some(session) = report.get("controlledPlaybackSession") {
+        validate_controlled_playback_session_value(
+            session,
+            adapter_name,
+            adapter_version,
+            fidelity_tier,
+            evidence_tier,
+            status,
+            report.get("runtimeCapabilities"),
+        )?;
+        let operation = value_object(
+            session,
+            "RuntimeEvidenceReportV02.controlledPlaybackSession",
+        )
+        .and_then(|session| {
+            require_one_of_field(
+                session,
+                "requestedOperation",
+                &["trace", "branch_discovery", "capture", "smoke_validation"],
+                "RuntimeEvidenceReportV02.controlledPlaybackSession.requestedOperation",
+            )
+        })?;
+        validate_controlled_playback_surface(
+            operation,
+            !branch_events.is_empty(),
+            !captures.is_empty(),
+            !recordings.is_empty(),
+            !reference_comparisons.is_empty(),
+        )?;
+    }
+
+    if trace_events.is_empty()
+        && branch_events.is_empty()
+        && observation_events.is_empty()
+        && captures.is_empty()
+        && recordings.is_empty()
+    {
+        return Err("RuntimeEvidenceReportV02 must contain trace, observation hook, capture, branch, or recording evidence".into());
+    }
+    if !captures.is_empty() && evidence_tier < EvidenceTier::E2 {
+        return Err(
+            "RuntimeEvidenceReportV02.evidenceTier must be at least E2 when captures are present"
+                .into(),
+        );
+    }
+    if !recordings.is_empty() && evidence_tier < EvidenceTier::E3 {
+        return Err(
+            "RuntimeEvidenceReportV02.evidenceTier must be at least E3 when recordings are present"
+                .into(),
+        );
+    }
+    if fidelity_tier != FidelityTier::ReferenceFidelity && approximations.is_empty() {
+        return Err(
+            "RuntimeEvidenceReportV02.approximations must document non-reference runtime limits"
+                .into(),
+        );
+    }
+    if (fidelity_tier == FidelityTier::ReferenceFidelity || evidence_tier == EvidenceTier::E4)
+        && reference_comparisons.is_empty()
+    {
+        return Err("RuntimeEvidenceReportV02.referenceComparisons must include reference-runtime or conformance comparison evidence for E4/reference_fidelity claims".into());
+    }
+    if status == "failed" && findings.is_empty() {
+        return Err(
+            "RuntimeEvidenceReportV02.validationFindings must explain failed runtime evidence"
+                .into(),
+        );
+    }
+    Ok(())
+}
+
+fn value_object<'a>(value: &'a Value, label: &str) -> UtsushiResult<&'a Map<String, Value>> {
+    value
+        .as_object()
+        .ok_or_else(|| format!("{label} must be an object").into())
+}
+
+fn require_literal<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+    expected: &str,
+    label: &str,
+) -> UtsushiResult<&'a str> {
+    let value = require_non_blank_field(object, field, label)?;
+    if value != expected {
+        return Err(format!("{label} must be {expected}").into());
+    }
+    Ok(value)
+}
+
+fn require_non_blank_field<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+    label: &str,
+) -> UtsushiResult<&'a str> {
+    object
+        .get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| format!("{label} must be a non-empty string").into())
+}
+
+fn optional_non_blank_field<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+    label: &str,
+) -> UtsushiResult<Option<&'a str>> {
+    object
+        .get(field)
+        .map(|_| require_non_blank_field(object, field, label))
+        .transpose()
+}
+
+fn require_one_of_field<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+    allowed: &[&str],
+    label: &str,
+) -> UtsushiResult<&'a str> {
+    let value = require_non_blank_field(object, field, label)?;
+    if !allowed.contains(&value) {
+        return Err(format!("{label} has unsupported value: {value}").into());
+    }
+    Ok(value)
+}
+
+fn parse_fidelity_tier_field(
+    object: &Map<String, Value>,
+    field: &str,
+    label: &str,
+) -> UtsushiResult<FidelityTier> {
+    match require_non_blank_field(object, field, label)? {
+        "trace_only" => Ok(FidelityTier::TraceOnly),
+        "layout_probe" => Ok(FidelityTier::LayoutProbe),
+        "replay_review" => Ok(FidelityTier::ReplayReview),
+        "reference_fidelity" => Ok(FidelityTier::ReferenceFidelity),
+        value => Err(format!("{label} has unsupported value: {value}").into()),
+    }
+}
+
+fn parse_evidence_tier_field(
+    object: &Map<String, Value>,
+    field: &str,
+    label: &str,
+) -> UtsushiResult<EvidenceTier> {
+    EvidenceTier::from_str(require_non_blank_field(object, field, label)?)
+        .map_err(|error| format!("{label} {error}").into())
+}
+
+fn required_value_array<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+    label: &str,
+) -> UtsushiResult<&'a Vec<Value>> {
+    object
+        .get(field)
+        .and_then(Value::as_array)
+        .ok_or_else(|| format!("{label} must be an array").into())
+}
+
+fn optional_value_array<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+    label: &str,
+) -> UtsushiResult<&'a [Value]> {
+    match object.get(field) {
+        Some(value) => value
+            .as_array()
+            .map(Vec::as_slice)
+            .ok_or_else(|| format!("{label} must be an array").into()),
+        None => Ok(&[]),
+    }
+}
+
+fn validate_string_array_field(
+    object: &Map<String, Value>,
+    field: &str,
+    label: &str,
+) -> UtsushiResult<()> {
+    let values = required_value_array(object, field, label)?;
+    for (index, value) in values.iter().enumerate() {
+        if value.as_str().is_none() {
+            return Err(format!("{label}[{index}] must be a string").into());
+        }
+    }
+    Ok(())
+}
+
+fn require_u64_field(object: &Map<String, Value>, field: &str, label: &str) -> UtsushiResult<u64> {
+    object
+        .get(field)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| format!("{label} must be a non-negative integer").into())
+}
+
+fn require_positive_u64_field(
+    object: &Map<String, Value>,
+    field: &str,
+    label: &str,
+) -> UtsushiResult<u64> {
+    let value = require_u64_field(object, field, label)?;
+    if value == 0 {
+        return Err(format!("{label} must be positive").into());
+    }
+    Ok(value)
+}
+
+fn validate_runtime_trace_event_value(value: &Value, label: &str) -> UtsushiResult<()> {
+    let event = value_object(value, label)?;
+    require_non_blank_field(event, "traceEventId", &format!("{label}.traceEventId"))?;
+    require_non_blank_field(event, "eventKind", &format!("{label}.eventKind"))?;
+    validate_runtime_bridge_unit_ref_value(
+        event
+            .get("bridgeUnitRef")
+            .ok_or_else(|| format!("{label}.bridgeUnitRef is required"))?,
+        &format!("{label}.bridgeUnitRef"),
+    )?;
+    require_u64_field(event, "frame", &format!("{label}.frame"))?;
+    Ok(())
+}
+
+fn validate_runtime_branch_event_value(value: &Value, label: &str) -> UtsushiResult<()> {
+    let event = value_object(value, label)?;
+    require_non_blank_field(event, "branchEventId", &format!("{label}.branchEventId"))?;
+    require_non_blank_field(event, "branchKind", &format!("{label}.branchKind"))?;
+    validate_runtime_bridge_unit_ref_value(
+        event
+            .get("bridgeUnitRef")
+            .ok_or_else(|| format!("{label}.bridgeUnitRef is required"))?,
+        &format!("{label}.bridgeUnitRef"),
+    )?;
+    Ok(())
+}
+
+fn validate_runtime_capture_value(value: &Value, label: &str) -> UtsushiResult<()> {
+    let capture = value_object(value, label)?;
+    require_non_blank_field(capture, "captureId", &format!("{label}.captureId"))?;
+    validate_runtime_bridge_unit_ref_value(
+        capture
+            .get("bridgeUnitRef")
+            .ok_or_else(|| format!("{label}.bridgeUnitRef is required"))?,
+        &format!("{label}.bridgeUnitRef"),
+    )?;
+    parse_evidence_tier_field(capture, "evidenceTier", &format!("{label}.evidenceTier"))?;
+    require_u64_field(capture, "frame", &format!("{label}.frame"))?;
+    require_positive_u64_field(capture, "width", &format!("{label}.width"))?;
+    require_positive_u64_field(capture, "height", &format!("{label}.height"))?;
+    validate_runtime_artifact_ref_value(
+        capture
+            .get("artifactRef")
+            .ok_or_else(|| format!("{label}.artifactRef is required"))?,
+        &format!("{label}.artifactRef"),
+        Some("screenshot"),
+    )
+}
+
+fn validate_runtime_recording_value(value: &Value, label: &str) -> UtsushiResult<()> {
+    let recording = value_object(value, label)?;
+    require_non_blank_field(recording, "recordingId", &format!("{label}.recordingId"))?;
+    require_u64_field(
+        recording,
+        "startedAtFrame",
+        &format!("{label}.startedAtFrame"),
+    )?;
+    require_positive_u64_field(recording, "frameCount", &format!("{label}.frameCount"))?;
+    require_positive_u64_field(recording, "width", &format!("{label}.width"))?;
+    require_positive_u64_field(recording, "height", &format!("{label}.height"))?;
+    require_non_blank_field(recording, "encoding", &format!("{label}.encoding"))?;
+    validate_runtime_artifact_ref_value(
+        recording
+            .get("artifactRef")
+            .ok_or_else(|| format!("{label}.artifactRef is required"))?,
+        &format!("{label}.artifactRef"),
+        Some("recording"),
+    )
+}
+
+fn validate_runtime_approximation_value(value: &Value, label: &str) -> UtsushiResult<()> {
+    let approximation = value_object(value, label)?;
+    require_non_blank_field(
+        approximation,
+        "approximationId",
+        &format!("{label}.approximationId"),
+    )?;
+    require_one_of_field(
+        approximation,
+        "approximationTier",
+        &[
+            "none",
+            "deterministic_fixture",
+            "layout_probe",
+            "engine_partial",
+            "reference_matched",
+        ],
+        &format!("{label}.approximationTier"),
+    )?;
+    require_non_blank_field(approximation, "scope", &format!("{label}.scope"))?;
+    require_non_blank_field(
+        approximation,
+        "description",
+        &format!("{label}.description"),
+    )?;
+    let refs = required_value_array(
+        approximation,
+        "affectedBridgeUnitRefs",
+        &format!("{label}.affectedBridgeUnitRefs"),
+    )?;
+    if refs.is_empty() {
+        return Err(format!("{label}.affectedBridgeUnitRefs must not be empty").into());
+    }
+    for (index, unit_ref) in refs.iter().enumerate() {
+        validate_runtime_bridge_unit_ref_value(
+            unit_ref,
+            &format!("{label}.affectedBridgeUnitRefs[{index}]"),
+        )?;
+    }
+    parse_evidence_tier_field(
+        approximation,
+        "evidenceTierCeiling",
+        &format!("{label}.evidenceTierCeiling"),
+    )?;
+    Ok(())
+}
+
+fn validate_runtime_validation_finding_value(value: &Value, label: &str) -> UtsushiResult<()> {
+    let finding = value_object(value, label)?;
+    require_non_blank_field(finding, "findingId", &format!("{label}.findingId"))?;
+    require_non_blank_field(finding, "findingKind", &format!("{label}.findingKind"))?;
+    require_non_blank_field(finding, "severity", &format!("{label}.severity"))?;
+    require_non_blank_field(finding, "message", &format!("{label}.message"))?;
+    parse_evidence_tier_field(finding, "evidenceTier", &format!("{label}.evidenceTier"))?;
+    Ok(())
+}
+
+fn validate_runtime_bridge_unit_ref_value(value: &Value, label: &str) -> UtsushiResult<()> {
+    let unit_ref = value_object(value, label)?;
+    require_non_blank_field(unit_ref, "bridgeUnitId", &format!("{label}.bridgeUnitId"))?;
+    optional_non_blank_field(unit_ref, "sourceUnitKey", &format!("{label}.sourceUnitKey"))?;
+    Ok(())
+}
+
+fn validate_runtime_artifact_ref_value(
+    value: &Value,
+    label: &str,
+    expected_kind: Option<&str>,
+) -> UtsushiResult<()> {
+    let artifact_ref = value_object(value, label)?;
+    require_non_blank_field(artifact_ref, "artifactId", &format!("{label}.artifactId"))?;
+    let kind = require_non_blank_field(
+        artifact_ref,
+        "artifactKind",
+        &format!("{label}.artifactKind"),
+    )?;
+    if let Some(expected_kind) = expected_kind
+        && kind != expected_kind
+    {
+        return Err(format!("{label}.artifactKind must be {expected_kind}").into());
+    }
+    validate_runtime_artifact_uri(require_non_blank_field(
+        artifact_ref,
+        "uri",
+        &format!("{label}.uri"),
+    )?)?;
+    optional_non_blank_field(artifact_ref, "mediaType", &format!("{label}.mediaType"))?;
+    Ok(())
+}
+
+fn validate_runtime_capability_contract_value(
+    value: &Value,
+    label: &str,
+    report_fidelity_tier: FidelityTier,
+    report_evidence_tier: EvidenceTier,
+) -> UtsushiResult<()> {
+    let contract = value_object(value, label)?;
+    require_literal(
+        contract,
+        "contractVersion",
+        "0.2.0",
+        &format!("{label}.contractVersion"),
+    )?;
+    require_one_of_field(
+        contract,
+        "capabilityClass",
+        &[
+            "static_trace",
+            "launch_capture",
+            "instrumented_runtime",
+            "partial_vm",
+            "reference_vm",
+        ],
+        &format!("{label}.capabilityClass"),
+    )?;
+    let fidelity_tier_ceiling = parse_fidelity_tier_field(
+        contract,
+        "fidelityTierCeiling",
+        &format!("{label}.fidelityTierCeiling"),
+    )?;
+    let evidence_tier_ceiling = parse_evidence_tier_field(
+        contract,
+        "evidenceTierCeiling",
+        &format!("{label}.evidenceTierCeiling"),
+    )?;
+    if report_fidelity_tier.rank() > fidelity_tier_ceiling.rank() {
+        return Err(
+            "RuntimeEvidenceReportV02.fidelityTier exceeds runtimeCapabilities.fidelityTierCeiling"
+                .into(),
+        );
+    }
+    if report_evidence_tier > evidence_tier_ceiling {
+        return Err(
+            "RuntimeEvidenceReportV02.evidenceTier exceeds runtimeCapabilities.evidenceTierCeiling"
+                .into(),
+        );
+    }
+    let features = required_value_array(contract, "features", &format!("{label}.features"))?;
+    if features.is_empty() {
+        return Err(format!("{label}.features must not be empty").into());
+    }
+    let mut seen = HashSet::new();
+    for (index, feature) in features.iter().enumerate() {
+        let feature_label = format!("{label}.features[{index}]");
+        let feature = value_object(feature, &feature_label)?;
+        let name = require_one_of_field(
+            feature,
+            "feature",
+            &[
+                "static_trace",
+                "launch",
+                "text_trace",
+                "branch_discovery",
+                "frame_capture",
+                "jump",
+                "snapshot",
+                "screenshot",
+                "recording",
+                "instrumentation_hooks",
+                "vm_state_inspection",
+                "reference_comparison",
+            ],
+            &format!("{feature_label}.feature"),
+        )?;
+        if !seen.insert(name.to_string()) {
+            return Err(format!("{feature_label}.feature must be unique").into());
+        }
+        let status = require_one_of_field(
+            feature,
+            "status",
+            &["supported", "partial", "unsupported"],
+            &format!("{feature_label}.status"),
+        )?;
+        let has_ceiling = feature.get("evidenceTierCeiling").is_some();
+        if status == "unsupported" && has_ceiling {
+            return Err(format!("{feature_label}.evidenceTierCeiling must be omitted for unsupported runtime features").into());
+        }
+        if status != "unsupported" && !has_ceiling {
+            return Err(format!(
+                "{feature_label}.evidenceTierCeiling is required for supported runtime features"
+            )
+            .into());
+        }
+        if has_ceiling {
+            let feature_ceiling = parse_evidence_tier_field(
+                feature,
+                "evidenceTierCeiling",
+                &format!("{feature_label}.evidenceTierCeiling"),
+            )?;
+            if feature_ceiling > evidence_tier_ceiling {
+                return Err(format!(
+                    "{feature_label}.evidenceTierCeiling exceeds contract ceiling"
+                )
+                .into());
+            }
+        }
+        require_non_blank_field(
+            feature,
+            "description",
+            &format!("{feature_label}.description"),
+        )?;
+        validate_string_array_field(
+            feature,
+            "limitations",
+            &format!("{feature_label}.limitations"),
+        )?;
+    }
+    validate_string_array_field(contract, "limitations", &format!("{label}.limitations"))?;
+    Ok(())
+}
+
+fn validate_controlled_playback_session_value(
+    value: &Value,
+    adapter_name: &str,
+    adapter_version: &str,
+    report_fidelity_tier: FidelityTier,
+    report_evidence_tier: EvidenceTier,
+    report_status: &str,
+    runtime_capabilities: Option<&Value>,
+) -> UtsushiResult<()> {
+    let session = value_object(value, "RuntimeEvidenceReportV02.controlledPlaybackSession")?;
+    require_non_blank_field(
+        session,
+        "sessionId",
+        "RuntimeEvidenceReportV02.controlledPlaybackSession.sessionId",
+    )?;
+    if require_non_blank_field(
+        session,
+        "adapterName",
+        "RuntimeEvidenceReportV02.controlledPlaybackSession.adapterName",
+    )? != adapter_name
+    {
+        return Err("RuntimeEvidenceReportV02.controlledPlaybackSession.adapterName must match RuntimeEvidenceReportV02.adapterName".into());
+    }
+    if require_non_blank_field(
+        session,
+        "adapterVersion",
+        "RuntimeEvidenceReportV02.controlledPlaybackSession.adapterVersion",
+    )? != adapter_version
+    {
+        return Err("RuntimeEvidenceReportV02.controlledPlaybackSession.adapterVersion must match RuntimeEvidenceReportV02.adapterVersion".into());
+    }
+    require_one_of_field(
+        session,
+        "capabilityClass",
+        &[
+            "static_trace",
+            "launch_capture",
+            "instrumented_runtime",
+            "partial_vm",
+            "reference_vm",
+        ],
+        "RuntimeEvidenceReportV02.controlledPlaybackSession.capabilityClass",
+    )?;
+    require_one_of_field(
+        session,
+        "requestedOperation",
+        &["trace", "branch_discovery", "capture", "smoke_validation"],
+        "RuntimeEvidenceReportV02.controlledPlaybackSession.requestedOperation",
+    )?;
+    if require_one_of_field(
+        session,
+        "status",
+        &["passed", "failed"],
+        "RuntimeEvidenceReportV02.controlledPlaybackSession.status",
+    )? != report_status
+    {
+        return Err("RuntimeEvidenceReportV02.controlledPlaybackSession.status must match RuntimeEvidenceReportV02.status".into());
+    }
+    let fidelity_tier = parse_fidelity_tier_field(
+        session,
+        "fidelityTier",
+        "RuntimeEvidenceReportV02.controlledPlaybackSession.fidelityTier",
+    )?;
+    let evidence_tier = parse_evidence_tier_field(
+        session,
+        "evidenceTier",
+        "RuntimeEvidenceReportV02.controlledPlaybackSession.evidenceTier",
+    )?;
+    if fidelity_tier.rank() > report_fidelity_tier.rank() {
+        return Err("RuntimeEvidenceReportV02.controlledPlaybackSession.fidelityTier must not exceed report fidelityTier".into());
+    }
+    if evidence_tier > report_evidence_tier {
+        return Err("RuntimeEvidenceReportV02.controlledPlaybackSession.evidenceTier must not exceed report evidenceTier".into());
+    }
+    let features = required_value_array(
+        session,
+        "featuresUsed",
+        "RuntimeEvidenceReportV02.controlledPlaybackSession.featuresUsed",
+    )?;
+    for (index, feature) in features.iter().enumerate() {
+        let feature = feature.as_str().ok_or_else(|| {
+            format!("RuntimeEvidenceReportV02.controlledPlaybackSession.featuresUsed[{index}] must be a string")
+        })?;
+        if !is_runtime_playback_feature(feature) {
+            return Err(format!(
+                "RuntimeEvidenceReportV02.controlledPlaybackSession.featuresUsed[{index}] has unsupported value: {feature}"
+            )
+            .into());
+        }
+        if let Some(runtime_capabilities) = runtime_capabilities {
+            validate_runtime_capability_supports_feature_value(
+                runtime_capabilities,
+                feature,
+                "RuntimeEvidenceReportV02.runtimeCapabilities",
+            )?;
+        }
+    }
+    validate_string_array_field(
+        session,
+        "limitations",
+        "RuntimeEvidenceReportV02.controlledPlaybackSession.limitations",
+    )?;
+    Ok(())
+}
+
+fn validate_runtime_capability_supports_feature_value(
+    value: &Value,
+    feature_name: &str,
+    label: &str,
+) -> UtsushiResult<()> {
+    let contract = value_object(value, label)?;
+    let features = required_value_array(contract, "features", &format!("{label}.features"))?;
+    for feature in features {
+        let feature = value_object(feature, &format!("{label}.features[]"))?;
+        if feature.get("feature").and_then(Value::as_str) == Some(feature_name) {
+            let status = require_one_of_field(
+                feature,
+                "status",
+                &["supported", "partial", "unsupported"],
+                &format!("{label}.features[].status"),
+            )?;
+            if status == "supported" || status == "partial" {
+                return Ok(());
+            }
+        }
+    }
+    Err(format!("{label} does not support {feature_name} capability").into())
+}
+
+fn validate_controlled_playback_surface(
+    requested_operation: &str,
+    has_branch_events: bool,
+    has_captures: bool,
+    has_recordings: bool,
+    has_reference_comparisons: bool,
+) -> UtsushiResult<()> {
+    match requested_operation {
+        "trace" => {
+            reject_operation_evidence(requested_operation, has_branch_events, "branch event")?;
+            reject_operation_evidence(requested_operation, has_captures, "capture")?;
+            reject_operation_evidence(requested_operation, has_recordings, "recording")?;
+            reject_operation_evidence(
+                requested_operation,
+                has_reference_comparisons,
+                "reference comparison",
+            )?;
+        }
+        "branch_discovery" => {
+            reject_operation_evidence(requested_operation, has_captures, "capture")?;
+            reject_operation_evidence(requested_operation, has_recordings, "recording")?;
+            reject_operation_evidence(
+                requested_operation,
+                has_reference_comparisons,
+                "reference comparison",
+            )?;
+        }
+        "capture" => {
+            reject_operation_evidence(requested_operation, has_branch_events, "branch event")?;
+            reject_operation_evidence(requested_operation, has_recordings, "recording")?;
+            reject_operation_evidence(
+                requested_operation,
+                has_reference_comparisons,
+                "reference comparison",
+            )?;
+        }
+        "smoke_validation" => {}
+        _ => unreachable!("requestedOperation validated before evidence surface check"),
+    }
+    Ok(())
+}
+
+fn reject_operation_evidence(
+    requested_operation: &str,
+    has_evidence: bool,
+    evidence_label: &str,
+) -> UtsushiResult<()> {
+    if has_evidence {
+        return Err(format!(
+            "RuntimeEvidenceReportV02.controlledPlaybackSession.requestedOperation {requested_operation} must not carry {evidence_label} evidence"
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn is_runtime_playback_feature(value: &str) -> bool {
+    matches!(
+        value,
+        "static_trace"
+            | "launch"
+            | "text_trace"
+            | "branch_discovery"
+            | "frame_capture"
+            | "jump"
+            | "snapshot"
+            | "screenshot"
+            | "recording"
+            | "instrumentation_hooks"
+            | "vm_state_inspection"
+            | "reference_comparison"
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
