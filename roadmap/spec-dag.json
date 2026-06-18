@@ -4162,7 +4162,7 @@
     {
       "id": "KAIFUU-050",
       "title": "Local key resolver and secret store",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared"],
@@ -4208,7 +4208,10 @@
         "Raw secret leakage",
         "Machine-specific secret refs in committed artifacts",
         "Adapters bypassing the resolver"
-      ]
+      ],
+      "owner": "orchestrator-20260618-wave6",
+      "branch": "spec/kaifuu-050",
+      "worktree": "/tmp/itotori-spec-kaifuu-050"
     },
     {
       "id": "KAIFUU-051",
@@ -15634,7 +15637,7 @@
     },
     {
       "id": "UTSUSHI-109",
-      "status": "planned",
+      "status": "in_progress",
       "title": "Reference capture corpus validator",
       "priority": "P1",
       "target": "alpha",
@@ -15666,7 +15669,10 @@
         "Reference captures that cannot be reproduced or traced",
         "Screenshot evidence tier overclaim",
         "Private path leakage in public captures"
-      ]
+      ],
+      "owner": "orchestrator-20260618-wave6",
+      "branch": "spec/utsushi-109",
+      "worktree": "/tmp/itotori-spec-utsushi-109"
     },
     {
       "id": "UTSUSHI-110",
@@ -17464,7 +17470,7 @@
     },
     {
       "id": "CATALOG-065",
-      "status": "planned",
+      "status": "in_progress",
       "title": "Source adapter idempotent fact import contract",
       "priority": "P1",
       "target": "alpha",
@@ -17497,7 +17503,10 @@
         "Adapter fact duplication",
         "Generic crawler absorbing source-specific behavior",
         "Crash-window idempotency"
-      ]
+      ],
+      "owner": "orchestrator-20260618-wave6",
+      "branch": "spec/catalog-065",
+      "worktree": "/tmp/itotori-spec-catalog-065"
     },
     {
       "id": "CATALOG-066",
