@@ -1,0 +1,85 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-052-20260618T021950Z",
+  "generatedAt": "2026-06-18T02:19:50Z",
+  "spec": {
+    "id": "ITOTORI-052",
+    "title": "Provider ledger hardening",
+    "branch": "spec/itotori-052",
+    "worktree": "/tmp/itotori-spec-itotori-052",
+    "commit": "35d3ad76f424a93e0e9dd25ce2de0098c0a5d1f1"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-curie-leibniz-bacon-heisenberg",
+    "kind": "architecture"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Provider ledger hardening passed final blocker audit after reasoning-token and token source contract repairs. One non-blocking benchmark atomicity issue remains recorded as DAG follow-up work.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-052-F001"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-052-F001",
+      "severity": "P2",
+      "title": "Benchmark artifact recording is not atomic with provider ledger ingestion",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "apps/itotori/src/services/project-workflow.ts",
+          "symbol": "recordBenchmarkReport"
+        },
+        {
+          "path": "packages/itotori-db/src/repositories/project-repository.ts",
+          "symbol": "linkProjectArtifact"
+        }
+      ],
+      "description": "Audits found benchmark artifacts are linked before provider ledger rows are recorded. If a provider ledger row later fails validation or conflicts, the API can return an error after writing a benchmark artifact without complete ledger state.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit observed recordBenchmarkReport linking the benchmark artifact before iterating provider ledger writes, while the happy-path tests do not cover rollback or partial-ingest behavior."
+        }
+      ],
+      "impact": "Benchmark and dashboard reports can observe partial benchmark state, weakening the requirement that reporting reads durable provider ledger state rather than raw prompt logs or report-side cost records.",
+      "actionableAcceptanceCriteria": [
+        "Benchmark artifact recording and provider ledger ingestion are all-or-nothing for one benchmark report.",
+        "Schema-valid skipped provider runs or provider runs with omitted completedAt/latencyMs are accepted when ledger-required fields are otherwise valid.",
+        "A regression test proves invalid ledger rows do not leave partial benchmark artifacts behind."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "ITOTORI-113",
+          "acceptanceCriteria": [
+            "Benchmark artifact recording and provider ledger ingestion are atomic for success and validation-failure paths."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            },
+            {
+              "type": "command",
+              "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": ["Partial benchmark artifact writes before ledger validation"],
+          "notes": "Follow-up node ITOTORI-113 records this non-blocking audit finding."
+        }
+      }
+    }
+  ]
+}

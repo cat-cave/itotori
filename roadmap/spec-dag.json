@@ -7722,7 +7722,7 @@
     {
       "id": "ITOTORI-052",
       "title": "Provider ledger hardening",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -7749,10 +7749,7 @@
           "value": "just check"
         }
       ],
-      "auditFocus": ["Cost drift", "Fallback chain missing", "Provider data policy hidden"],
-      "owner": "orchestrator-itotori-052",
-      "branch": "spec/itotori-052",
-      "worktree": "/tmp/itotori-spec-itotori-052"
+      "auditFocus": ["Cost drift", "Fallback chain missing", "Provider data policy hidden"]
     },
     {
       "id": "ITOTORI-053",
@@ -14670,6 +14667,46 @@
         "Dependency bypass of prerequisite slices"
       ],
       "statusReason": "Replaced by concrete UX/provider specs and UNIV-016 validator rules."
+    },
+    {
+      "id": "ITOTORI-113",
+      "title": "Atomic benchmark ledger ingestion",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "benchmarks",
+      "dependsOn": ["ITOTORI-052"],
+      "summary": "Make benchmark artifact recording atomic with provider ledger ingestion and align optional provider-run fields with the shared benchmark contract.",
+      "deliverables": [
+        "Atomic benchmark artifact and provider-ledger write path",
+        "Schema-valid skipped and partial-timing provider-run fixtures",
+        "Rollback or all-or-nothing regression tests for invalid ledger rows"
+      ],
+      "acceptanceCriteria": [
+        "A schema-valid benchmark provider run with skipped status or omitted completedAt/latencyMs is accepted when ledger-required fields are otherwise present",
+        "If any provider ledger row fails validation or conflicts, benchmark artifact recording does not leave a partial artifact without corresponding ledger state",
+        "Dashboard and benchmark cost reports continue reading provider state from the ledger after atomic ingestion succeeds"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Partial benchmark artifact writes before ledger validation",
+        "Shared benchmark contract drift for optional provider-run fields",
+        "Dashboard falling back to raw prompt or report-side cost state"
+      ]
     },
     {
       "id": "UTSUSHI-091",
