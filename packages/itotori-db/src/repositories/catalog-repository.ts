@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import { createUuid7 } from "./event-queue-repository.js";
@@ -483,7 +483,11 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
             metadata: externalId.metadata,
           })
           .onConflictDoUpdate({
-            target: catalogExternalIds.externalIdId,
+            target: [
+              catalogExternalIds.catalogSource,
+              catalogExternalIds.sourceId,
+              catalogExternalIds.externalIdKind,
+            ],
             set: {
               workId: normalized.workId,
               catalogSource: externalId.catalogSource,
@@ -656,7 +660,7 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
         });
 
       for (const entry of normalized.entries) {
-        await tx
+        const entryRows = await tx
           .insert(catalogLocalScanEntries)
           .values({
             localScanEntryId: entry.localScanEntryId,
@@ -674,7 +678,7 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
             metadata: entry.metadata,
           })
           .onConflictDoUpdate({
-            target: catalogLocalScanEntries.localScanEntryId,
+            target: [catalogLocalScanEntries.localScanId, catalogLocalScanEntries.pathHash],
             set: {
               workId: entry.workId,
               pathHash: entry.pathHash,
@@ -689,13 +693,18 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
               metadata: entry.metadata,
               updatedAt: sql`now()`,
             },
-          });
+          })
+          .returning({ localScanEntryId: catalogLocalScanEntries.localScanEntryId });
+        const persistedLocalScanEntryId = requiredRow(
+          entryRows,
+          entry.localScanEntryId,
+        ).localScanEntryId;
 
         for (const detectedExternalId of entry.detectedExternalIds) {
           await tx
             .insert(catalogLocalScanExternalIds)
             .values({
-              localScanEntryId: entry.localScanEntryId,
+              localScanEntryId: persistedLocalScanEntryId,
               catalogSource: detectedExternalId.catalogSource,
               sourceId: detectedExternalId.sourceId,
               externalIdKind: detectedExternalId.externalIdKind,
@@ -719,7 +728,7 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
         for (const seedTarget of entry.seedTargets) {
           await recordSeedTargetUnchecked(tx as ItotoriDatabase, {
             ...seedTarget,
-            localScanEntryId: seedTarget.localScanEntryId ?? entry.localScanEntryId,
+            localScanEntryId: seedTarget.localScanEntryId ?? persistedLocalScanEntryId,
           });
         }
       }
@@ -787,12 +796,12 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
         ? await this.db
             .select()
             .from(catalogSeedTargets)
-            .orderBy(catalogSeedTargets.priority, catalogSeedTargets.addedAt)
+            .orderBy(desc(catalogSeedTargets.priority), catalogSeedTargets.addedAt)
         : await this.db
             .select()
             .from(catalogSeedTargets)
             .where(eq(catalogSeedTargets.status, status))
-            .orderBy(catalogSeedTargets.priority, catalogSeedTargets.addedAt);
+            .orderBy(desc(catalogSeedTargets.priority), catalogSeedTargets.addedAt);
     return rows.map(seedTargetFromRow);
   }
 }
@@ -828,27 +837,61 @@ async function recordSeedTargetUnchecked(
   db: ItotoriDatabase,
   input: NormalizedSeedTargetInput,
 ): Promise<CatalogSeedTargetRecord> {
-  const rows = await db
-    .insert(catalogSeedTargets)
-    .values(input)
-    .onConflictDoUpdate({
-      target: catalogSeedTargets.seedTargetId,
-      set: {
-        catalogSource: input.catalogSource,
-        sourceId: input.sourceId,
-        seedOrigin: input.seedOrigin,
-        originRef: input.originRef,
-        localScanEntryId: input.localScanEntryId,
-        sourceProvenanceId: input.sourceProvenanceId,
-        status: input.status,
-        priority: input.priority,
-        addedAt: input.addedAt,
-        metadata: input.metadata,
-        updatedAt: sql`now()`,
-      },
-    })
-    .returning();
-  return seedTargetFromRow(requiredRow(rows, input.seedTargetId));
+  const result = await db.execute<typeof catalogSeedTargets.$inferSelect>(sql`
+    insert into ${catalogSeedTargets} (
+      seed_target_id,
+      catalog_source,
+      source_id,
+      seed_origin,
+      origin_ref,
+      local_scan_entry_id,
+      source_provenance_id,
+      status,
+      priority,
+      added_at,
+      metadata
+    )
+    values (
+      ${input.seedTargetId},
+      ${input.catalogSource},
+      ${input.sourceId},
+      ${input.seedOrigin},
+      ${input.originRef},
+      ${input.localScanEntryId},
+      ${input.sourceProvenanceId},
+      ${input.status},
+      ${input.priority},
+      ${input.addedAt},
+      ${input.metadata}::jsonb
+    )
+    on conflict (catalog_source, source_id, seed_origin, coalesce(origin_ref, ''))
+    do update set
+      catalog_source = excluded.catalog_source,
+      source_id = excluded.source_id,
+      seed_origin = excluded.seed_origin,
+      origin_ref = excluded.origin_ref,
+      local_scan_entry_id = excluded.local_scan_entry_id,
+      source_provenance_id = excluded.source_provenance_id,
+      status = excluded.status,
+      priority = excluded.priority,
+      added_at = excluded.added_at,
+      metadata = excluded.metadata,
+      updated_at = now()
+    returning
+      seed_target_id as "seedTargetId",
+      catalog_source as "catalogSource",
+      source_id as "sourceId",
+      seed_origin as "seedOrigin",
+      origin_ref as "originRef",
+      local_scan_entry_id as "localScanEntryId",
+      source_provenance_id as "sourceProvenanceId",
+      status,
+      priority,
+      added_at as "addedAt",
+      metadata,
+      updated_at as "updatedAt"
+  `);
+  return seedTargetFromRow(requiredRow(result.rows, input.seedTargetId));
 }
 
 async function readWorkSnapshot(

@@ -12,13 +12,16 @@ import {
   catalogConfidenceValues,
   catalogEngineSourceValues,
   catalogExternalIdKindValues,
+  catalogExternalIds,
   catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
   catalogLocalScanEntries,
+  catalogLocalScanExternalIds,
   catalogPathRedactionClassValues,
   catalogReleaseKindValues,
   catalogSeedOriginValues,
   catalogSeedStatusValues,
+  catalogSeedTargets,
   catalogSourceProvenance,
   catalogSourceRecordKindValues,
   catalogSourceValues,
@@ -433,6 +436,282 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("upserts catalog external IDs by natural key when child IDs are omitted or differ", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const provenanceRecord = await provenance(
+        repo,
+        801,
+        catalogSourceValues.dlsite,
+        "RJNATURAL001",
+      );
+
+      const first = await repo.upsertWork(localActor, {
+        workId: uuid(811),
+        canonicalTitle: "Natural external ID fixture",
+        originalLanguage: "ja-JP",
+        externalIds: [
+          {
+            catalogSource: catalogSourceValues.dlsite,
+            sourceId: "RJNATURAL001",
+            externalIdKind: catalogExternalIdKindValues.storeProduct,
+            sourceProvenanceId: provenanceRecord.sourceProvenanceId,
+            confidence: catalogConfidenceValues.low,
+            metadata: { revision: 1 },
+          },
+        ],
+      });
+      const firstExternalId = requiredTestRow(first.externalIds, "external ID").externalIdId;
+
+      const second = await repo.upsertWork(localActor, {
+        workId: uuid(811),
+        canonicalTitle: "Natural external ID fixture updated",
+        originalLanguage: "ja-JP",
+        externalIds: [
+          {
+            catalogSource: catalogSourceValues.dlsite,
+            sourceId: "RJNATURAL001",
+            externalIdKind: catalogExternalIdKindValues.storeProduct,
+            sourceProvenanceId: provenanceRecord.sourceProvenanceId,
+            confidence: catalogConfidenceValues.high,
+            metadata: { revision: 2 },
+          },
+        ],
+      });
+      const secondExternalId = requiredTestRow(second.externalIds, "external ID");
+      expect(secondExternalId).toMatchObject({
+        externalIdId: firstExternalId,
+        confidence: catalogConfidenceValues.high,
+        metadata: { revision: 2 },
+      });
+
+      const third = await repo.upsertWork(localActor, {
+        workId: uuid(811),
+        canonicalTitle: "Natural external ID fixture updated again",
+        originalLanguage: "ja-JP",
+        externalIds: [
+          {
+            externalIdId: uuid(812),
+            catalogSource: catalogSourceValues.dlsite,
+            sourceId: "RJNATURAL001",
+            externalIdKind: catalogExternalIdKindValues.storeProduct,
+            sourceProvenanceId: provenanceRecord.sourceProvenanceId,
+            confidence: catalogConfidenceValues.medium,
+            metadata: { revision: 3 },
+          },
+        ],
+      });
+      expect(requiredTestRow(third.externalIds, "external ID")).toMatchObject({
+        externalIdId: firstExternalId,
+        confidence: catalogConfidenceValues.medium,
+        metadata: { revision: 3 },
+      });
+
+      const counts = await context.db.execute(sql`
+        select count(*)::int as external_id_count
+        from ${catalogExternalIds}
+        where catalog_source = ${catalogSourceValues.dlsite}
+          and source_id = ${"RJNATURAL001"}
+          and external_id_kind = ${catalogExternalIdKindValues.storeProduct}
+      `);
+      expect(counts.rows[0]).toMatchObject({ external_id_count: 1 });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("upserts local scan entries and nested scan children by natural key without precomputed child IDs", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const provenanceRecord = await provenance(
+        repo,
+        802,
+        catalogSourceValues.localCorpus,
+        "local-natural-scan",
+        { sourceRecordKind: catalogSourceRecordKindValues.localScan },
+      );
+      const work = await repo.upsertWork(localActor, {
+        workId: uuid(821),
+        canonicalTitle: "Natural local scan fixture",
+        originalLanguage: "ja-JP",
+      });
+      const localScanInput = {
+        localScanId: uuid(822),
+        scanRootLabel: "natural fixture library",
+        scanRootPathHash: hash("natural-scan-root"),
+        scannerName: "natural-scan-regression",
+        scannerVersion: "0.0.0",
+        startedAt: fetchedAt,
+        completedAt: "2026-06-17T12:02:00.000Z",
+        entries: [
+          {
+            workId: work.workId,
+            pathHash: hash("natural-scan-entry-path"),
+            pathRedactionClass: catalogPathRedactionClassValues.privatePathHash,
+            owned: true,
+            engineName: "RPG Maker MV",
+            engineSource: catalogEngineSourceValues.localScan,
+            engineConfidence: catalogConfidenceValues.low,
+            signals: { files: ["data/System.json"] },
+            sourceProvenanceId: provenanceRecord.sourceProvenanceId,
+            detectedExternalIds: [
+              {
+                catalogSource: catalogSourceValues.dlsite,
+                sourceId: "RJSCAN001",
+                externalIdKind: catalogExternalIdKindValues.localDetection,
+                sourceProvenanceId: provenanceRecord.sourceProvenanceId,
+                metadata: { revision: 1 },
+              },
+            ],
+            seedTargets: [
+              {
+                catalogSource: catalogSourceValues.dlsite,
+                sourceId: "RJSCAN001",
+                seedOrigin: catalogSeedOriginValues.localScan,
+                sourceProvenanceId: provenanceRecord.sourceProvenanceId,
+                status: catalogSeedStatusValues.pending,
+                priority: 1,
+                addedAt: fetchedAt,
+                metadata: { revision: 1 },
+              },
+            ],
+          },
+        ],
+      } satisfies Parameters<ItotoriCatalogRepository["recordLocalScan"]>[1];
+
+      const first = await repo.recordLocalScan(localActor, localScanInput);
+      const firstEntry = requiredTestRow(first.entries, "local scan entry");
+      const firstSeedTarget = requiredTestRow(firstEntry.seedTargets, "seed target");
+      const localScanEntryInput = requiredTestRow(localScanInput.entries, "local scan entry input");
+      const detectedExternalIdInput = requiredTestRow(
+        localScanEntryInput.detectedExternalIds,
+        "detected external ID input",
+      );
+      const seedTargetInput = requiredTestRow(localScanEntryInput.seedTargets, "seed target input");
+
+      const second = await repo.recordLocalScan(localActor, {
+        ...localScanInput,
+        entries: [
+          {
+            ...localScanEntryInput,
+            engineConfidence: catalogConfidenceValues.high,
+            detectedExternalIds: [
+              {
+                ...detectedExternalIdInput,
+                metadata: { revision: 2 },
+              },
+            ],
+            seedTargets: [
+              {
+                ...seedTargetInput,
+                priority: 9,
+                metadata: { revision: 2 },
+              },
+            ],
+          },
+        ],
+      });
+      const secondEntry = requiredTestRow(second.entries, "local scan entry");
+      expect(secondEntry).toMatchObject({
+        localScanEntryId: firstEntry.localScanEntryId,
+        engineConfidence: catalogConfidenceValues.high,
+      });
+      expect(requiredTestRow(secondEntry.seedTargets, "seed target")).toMatchObject({
+        seedTargetId: firstSeedTarget.seedTargetId,
+        localScanEntryId: firstEntry.localScanEntryId,
+        priority: 9,
+        metadata: { revision: 2 },
+      });
+
+      const counts = await context.db.execute(sql`
+        select
+          (
+            select count(*)::int
+            from ${catalogLocalScanEntries}
+            where local_scan_id = ${localScanInput.localScanId}
+              and path_hash = ${localScanEntryInput.pathHash}
+          ) as local_scan_entry_count,
+          (
+            select count(*)::int
+            from ${catalogLocalScanExternalIds}
+            where local_scan_entry_id = ${firstEntry.localScanEntryId}
+          ) as detected_external_id_count,
+          (
+            select count(*)::int
+            from ${catalogSeedTargets}
+            where catalog_source = ${catalogSourceValues.dlsite}
+              and source_id = ${"RJSCAN001"}
+              and seed_origin = ${catalogSeedOriginValues.localScan}
+              and coalesce(origin_ref, '') = ''
+          ) as seed_target_count
+      `);
+      expect(counts.rows[0]).toMatchObject({
+        local_scan_entry_count: 1,
+        detected_external_id_count: 1,
+        seed_target_count: 1,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("upserts seed targets by coalesced natural origin and lists higher priority first", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const first = await repo.recordSeedTarget(localActor, {
+        catalogSource: catalogSourceValues.vndb,
+        sourceId: "v-seed-natural",
+        seedOrigin: catalogSeedOriginValues.importer,
+        status: catalogSeedStatusValues.pending,
+        priority: 2,
+        addedAt: "2026-06-17T12:03:00.000Z",
+        metadata: { revision: 1 },
+      });
+      const second = await repo.recordSeedTarget(localActor, {
+        seedTargetId: uuid(831),
+        catalogSource: catalogSourceValues.vndb,
+        sourceId: "v-seed-natural",
+        seedOrigin: catalogSeedOriginValues.importer,
+        status: catalogSeedStatusValues.pending,
+        priority: 8,
+        addedAt: "2026-06-17T12:04:00.000Z",
+        metadata: { revision: 2 },
+      });
+      await repo.recordSeedTarget(localActor, {
+        catalogSource: catalogSourceValues.vndb,
+        sourceId: "v-seed-lower-priority",
+        seedOrigin: catalogSeedOriginValues.importer,
+        status: catalogSeedStatusValues.pending,
+        priority: 1,
+        addedAt: "2026-06-17T12:02:00.000Z",
+      });
+
+      expect(second).toMatchObject({
+        seedTargetId: first.seedTargetId,
+        priority: 8,
+        metadata: { revision: 2 },
+      });
+      const pendingSeeds = await repo.listSeedTargets(localActor, catalogSeedStatusValues.pending);
+      expect(pendingSeeds.map((seed) => seed.sourceId)).toEqual([
+        "v-seed-natural",
+        "v-seed-lower-priority",
+      ]);
+
+      const counts = await context.db.execute(sql`
+        select count(*)::int as seed_target_count
+        from ${catalogSeedTargets}
+        where catalog_source = ${catalogSourceValues.vndb}
+          and seed_origin = ${catalogSeedOriginValues.importer}
+      `);
+      expect(counts.rows[0]).toMatchObject({ seed_target_count: 2 });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("bootstraps catalog permissions and creates catalog lookup indexes", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -556,4 +835,12 @@ function uuid(id: number): string {
 
 function hash(input: string): string {
   return `sha256:${createHash("sha256").update(input).digest("hex")}`;
+}
+
+function requiredTestRow<T>(rows: T[], label: string): T {
+  const row = rows[0];
+  if (row === undefined) {
+    throw new Error(`expected ${label}`);
+  }
+  return row;
 }
