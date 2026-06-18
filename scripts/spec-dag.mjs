@@ -105,21 +105,78 @@ const timeEstimateFieldPattern =
   /(?:estimate|estimated|duration|hours?|days?|effort|points?|tshirt|t[- ]shirt)/iu;
 const timeEstimateQuantityPattern =
   /(?:\d+(?:\.\d+)?|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|a|an|half|couple(?:\s+of)?|few|several)/iu;
+const compactTimeEstimateQuantityPattern = String.raw`\d+(?:\.\d+)?\s*(?:m|h|d|w|mo|mos)`;
+const effortSizePattern = String.raw`(?:x[-\s]?s|xs|s|m|l|x[-\s]?l|xl|small|medium|large|low|high)`;
 const timeEstimateTextPattern = new RegExp(
-  String.raw`\b(?:${timeEstimateQuantityPattern.source})(?:\s+|-)(?:person[-\s]?)?(?:minutes?|hours?|days?|weeks?|months?|story\s+points?|points?|pts?)\b|\bt[- ]?shirt\s+size\b|\b(?:effort|duration)\s*(?:[:=]|\bis\b|\bof\b|\bat\b|\babout\b|\baround\b|\broughly\b)?\s*(?:${timeEstimateQuantityPattern.source})(?:\s+|-)(?:minutes?|hours?|days?|weeks?|months?|story\s+points?|points?|pts?)\b`,
+  String.raw`\b(?:${timeEstimateQuantityPattern.source})(?:\s+|-)(?:person[-\s]?)?(?:minutes?|hours?|days?|weeks?|months?|story\s+points?|points?|pts?)\b|\bt[- ]?shirt\s+size(?:\s*(?:[:=]|\bis\b|\bas\b)\s*${effortSizePattern})?\b|\b(?:estimated?\s+)?(?:effort|duration)\s*(?:[:=]|\bis\b|\bof\b|\bat\b|\babout\b|\baround\b|\broughly\b)?\s*(?:(?:${timeEstimateQuantityPattern.source})(?:\s+|-)(?:minutes?|hours?|days?|weeks?|months?|story\s+points?|points?|pts?)|${compactTimeEstimateQuantityPattern}|${effortSizePattern})\b|\b(?:sized|sizing)\s*(?:[:=]|\bas\b|\bat\b|\bfor\b)\s*${effortSizePattern}\b`,
   "iu",
 );
 const exactIntegrationSurfaceQualifierPattern = String.raw`(?:asset|benchmark|bgi|binary|branch|catalog|capability|capture|community|corpus|cost|cross[- ]source|dashboard|decision|delta|draft|edition|encrypted|encrypted[- ]profile|engine|event|experiment|feedback|full[- ]surface|helper|install[- ]state|key|kirikiri|ledger|locale|local|local[- ]corpus|manual|matrix|model|mv\/mz|openrouter|patch|permission|private[- ]local|provider|public[- ]fixture|qa|quality|readiness|real[- ]engine|review|reviewer|runtime|siglus|source|style|trace|translation|triage|vm|wolf|xp3)`;
 const exactIntegrationSurfaceNounPattern = String.raw`(?:adapter|api|artifact|artifacts|bridge|command|contract|dashboard|delta|diagnostic|diagnostics|evidence|export|fixture|fixtures|generator|harness|import|ledger|manifest|matrix|model|parser|patcher|profile|queue|record|records|renderer|report|resolver|route|run|schema|service|smoke|storage|store|surface|tool|tools|ui|ux|validator|workflow)`;
-const exactIntegrationSurfacePatterns = [
+const genericIntegrationSurfaceCandidateTerms = new Set([
+  "adapter",
+  "adapters",
+  "alpha",
+  "artifact",
+  "artifacts",
+  "bundle",
+  "bundles",
+  "checklist",
+  "command",
+  "commands",
+  "composed",
+  "coordination",
+  "dependency",
+  "dependencies",
+  "evidence",
+  "fixture",
+  "fixtures",
+  "gate",
+  "generator",
+  "integration",
+  "manifest",
+  "manifests",
+  "matrix",
+  "matrices",
+  "path",
+  "paths",
+  "profile",
+  "profiles",
+  "project",
+  "readiness",
+  "record",
+  "records",
+  "renderer",
+  "report",
+  "reports",
+  "schema",
+  "schemas",
+  "service",
+  "services",
+  "status",
+  "surface",
+  "surfaces",
+  "suite",
+  "validator",
+  "validators",
+  "vertical",
+  "workflow",
+  "workflows",
+]);
+const exactIntegrationSurfaceCandidatePatterns = [
   new RegExp(
     String.raw`\b${exactIntegrationSurfaceQualifierPattern}(?:[-\s/]+[a-z0-9.]+){0,4}[-\s/]+${exactIntegrationSurfaceNounPattern}\b`,
-    "iu",
+    "giu",
   ),
   new RegExp(
     String.raw`\b${exactIntegrationSurfaceNounPattern}(?:[-\s/]+[a-z0-9.]+){0,4}[-\s/]+${exactIntegrationSurfaceQualifierPattern}\b`,
-    "iu",
+    "giu",
   ),
+];
+const explicitIntegrationSurfacePatterns = [
+  /\b(?:apps|crates|docs|fixtures|packages|roadmap|scripts|src|tests|tools)\/[a-z0-9._/-]+\b/iu,
+  /\b@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*\b/iu,
+  /\b[a-z0-9][a-z0-9._-]*(?:\.json|\.mjs|\.ts|\.tsx|\.rs|\.md)\b/iu,
   /\b(?:map\/common[- ]event|database\/system\/terms|json text|plugin[- ]profile|source bundle|locale branch|runtime evidence|dashboard evidence|dashboard status|patch package|patch output|patch payload|delta apply|bridge import|feedback ux|style guide|triage wiring|repair rerun|before\/after dashboard|provider route|provider proof|provider ledger|cost report|quality report|benchmark report|experiment matrix|cost ledger|model ledger|reviewer queue|triage queue|decision queue|catalog resolver|cross[- ]source resolver|local corpus|corpus sidecar|readiness record|adapter registry|engine capability|managed artifact|artifact store|capture hook|launch harness|vm adapter|text trace|trace smoke)\b/iu,
 ];
 
@@ -893,9 +950,7 @@ function validateIntegrationNodeSurfaces(node, errors) {
     node.summary,
     ...(Array.isArray(node.deliverables) ? node.deliverables : []),
     ...(Array.isArray(node.acceptanceCriteria) ? node.acceptanceCriteria : []),
-    ...(Array.isArray(node.verification)
-      ? node.verification.map((entry) => (isRecord(entry) ? entry.value : ""))
-      : []),
+    ...(Array.isArray(node.auditFocus) ? node.auditFocus : []),
   ]
     .filter((value) => typeof value === "string")
     .join("\n");
@@ -942,7 +997,28 @@ function validateNoTimeEstimateText(node, errors) {
 }
 
 function hasExactIntegrationSurface(text) {
-  return exactIntegrationSurfacePatterns.some((pattern) => pattern.test(text));
+  if (explicitIntegrationSurfacePatterns.some((pattern) => pattern.test(text))) {
+    return true;
+  }
+
+  for (const line of text.split(/\n+/u)) {
+    for (const pattern of exactIntegrationSurfaceCandidatePatterns) {
+      pattern.lastIndex = 0;
+      let match;
+      while ((match = pattern.exec(line)) !== null) {
+        if (isExactIntegrationSurfaceCandidate(match[0])) {
+          return true;
+        }
+      }
+    }
+  }
+
+  return false;
+}
+
+function isExactIntegrationSurfaceCandidate(candidate) {
+  const tokens = normalizeSemanticText(candidate).split(" ").filter(Boolean);
+  return tokens.some((token) => !genericIntegrationSurfaceCandidateTerms.has(token));
 }
 
 function isDocsOnlyNode(node) {

@@ -6192,7 +6192,7 @@
         "Candidate schema",
         "Agent prompt/preset",
         "Merge/reject workflow",
-        "Search integration"
+        "Locale glossary search API contract"
       ],
       "acceptanceCriteria": [
         "Candidates include evidence and frequency",

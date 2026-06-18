@@ -147,6 +147,27 @@ test("rejects integration nodes satisfied only by broad project membership", () 
   );
 });
 
+test("rejects generic readiness evidence as an integration surface", () => {
+  const errors = errorsFor(
+    nodeFixture({
+      projects: ["itotori", "kaifuu", "suite"],
+      parallelGroup: "alpha-integration",
+      title: "Suite integration readiness",
+      summary: "Coordinate alpha readiness evidence across the dependent projects.",
+      deliverables: ["Readiness evidence"],
+      acceptanceCriteria: [
+        "Readiness evidence is available after dependency coordination completes",
+      ],
+      verification: [{ type: "command", value: "node scripts/spec-dag-validator.test.mjs" }],
+    }),
+  );
+
+  assertError(
+    errors,
+    "VALID-001 parallelGroup integration node must name exact composed surfaces, artifacts, commands, or adapters: alpha-integration",
+  );
+});
+
 test("rejects roadmap time estimate fields", () => {
   const errors = errorsFor(nodeFixture({ estimatedDays: "2" }));
 
@@ -180,6 +201,29 @@ test("rejects time estimate wording inside allowed text fields", () => {
   assertError(
     errors,
     "VALID-001 verification[1].value contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: Complete smoke review in 4 hours",
+  );
+});
+
+test("rejects qualitative and compact time estimate wording inside allowed text fields", () => {
+  const errors = errorsFor(
+    nodeFixture({
+      summary: "Estimated effort is medium.",
+      acceptanceCriteria: ["Estimated effort: 2d."],
+      auditFocus: ["Sized as S for planning."],
+    }),
+  );
+
+  assertError(
+    errors,
+    "VALID-001 summary contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: Estimated effort is medium.",
+  );
+  assertError(
+    errors,
+    "VALID-001 acceptanceCriteria[0] contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: Estimated effort: 2d.",
+  );
+  assertError(
+    errors,
+    "VALID-001 auditFocus[0] contains time-estimate wording; roadmap nodes must use dependencies and verification instead of time estimates: Sized as S for planning.",
   );
 });
 
