@@ -1,4 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
+import * as ts from "typescript";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   permissionValues,
@@ -529,30 +530,148 @@ function sourcePermissionGates(): Pick<
   for (const sourceFile of readdirSync(repositorySourceDir).filter((file) =>
     file.endsWith(".ts"),
   )) {
-    const source = readFileSync(new URL(sourceFile, repositorySourceDir), "utf8");
-    let currentMethod: string | undefined;
-    for (const line of source.split("\n")) {
-      const methodMatch = /^\s{2}async\s+([A-Za-z0-9_]+)\b/u.exec(line);
-      if (methodMatch?.[1]) {
-        currentMethod = methodMatch[1];
-      }
+    const sourceUrl = new URL(sourceFile, repositorySourceDir);
+    const source = readFileSync(sourceUrl, "utf8");
+    const parsedSource = ts.createSourceFile(
+      sourceUrl.pathname,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+    );
 
-      const permissionMatch =
-        /requirePermission\(this\.db,\s*actor,\s*permissionValues\.([A-Za-z0-9_]+)\)/u.exec(line);
-      if (permissionMatch?.[1]) {
-        if (currentMethod === undefined) {
-          throw new Error(`source gate in ${sourceFile} is not inside an async repository method`);
+    function visit(node: ts.Node): void {
+      if (
+        ts.isCallExpression(node) &&
+        callExpressionName(node.expression) === "requirePermission"
+      ) {
+        const gateAnnotation = repositoryGateAnnotation(source, parsedSource, node);
+        const permissionKey = permissionKeyFromRepositoryCall(node, gateAnnotation);
+        const sourceMethod = enclosingRepositoryMethod(node);
+        if (sourceMethod === undefined && gateAnnotation === undefined) {
+          throw new Error(
+            `repository permission call at ${sourceLocation(parsedSource, node)} must be inside a repository method or declare @repository-permission-gate <Repository>.<mutation> <permissionKey>`,
+          );
         }
         gates.push({
           sourceFile,
-          mutation: currentMethod,
-          permissionKey: permissionMatch[1] as PermissionKey,
+          mutation: gateAnnotation?.mutation ?? requiredSourceMethod(sourceMethod).method,
+          permissionKey,
         });
       }
+
+      ts.forEachChild(node, visit);
     }
+
+    visit(parsedSource);
   }
 
   return gates;
+}
+
+type RepositorySourceMethod = {
+  repository: string;
+  method: string;
+};
+
+type RepositoryGateAnnotation = {
+  repository: string;
+  mutation: string;
+  permissionKey: PermissionKey;
+};
+
+function permissionKeyFromRepositoryCall(
+  node: ts.CallExpression,
+  annotation: RepositoryGateAnnotation | undefined,
+): PermissionKey {
+  const permissionArgument = node.arguments[2];
+  const permissionKey =
+    permissionArgument !== undefined && ts.isPropertyAccessExpression(permissionArgument)
+      ? permissionArgument.name.text
+      : undefined;
+
+  if (permissionKey === undefined && annotation !== undefined) {
+    return annotation.permissionKey;
+  }
+  if (permissionKey === undefined) {
+    throw new Error(
+      `repository permission call at ${sourceLocation(node.getSourceFile(), node)} must use permissionValues.<key> or declare @repository-permission-gate`,
+    );
+  }
+  if (annotation !== undefined && annotation.permissionKey !== permissionKey) {
+    throw new Error(
+      `repository permission annotation at ${sourceLocation(node.getSourceFile(), node)} names ${annotation.permissionKey}, but the call uses ${permissionKey}`,
+    );
+  }
+  return permissionKey as PermissionKey;
+}
+
+function repositoryGateAnnotation(
+  source: string,
+  sourceFile: ts.SourceFile,
+  node: ts.Node,
+): RepositoryGateAnnotation | undefined {
+  const comments = ts.getLeadingCommentRanges(source, node.getFullStart()) ?? [];
+  const leadingComment = comments
+    .map((comment) => source.slice(comment.pos, comment.end))
+    .join("\n");
+  const match =
+    /@repository-permission-gate\s+([A-Za-z0-9_]+)\.([A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)/u.exec(
+      leadingComment,
+    );
+  if (match === null) {
+    return undefined;
+  }
+  const [, repository, mutation, permissionKey] = match;
+  if (repository === undefined || mutation === undefined || permissionKey === undefined) {
+    throw new Error(
+      `invalid repository permission annotation at ${sourceLocation(sourceFile, node)}`,
+    );
+  }
+  return {
+    repository,
+    mutation,
+    permissionKey: permissionKey as PermissionKey,
+  };
+}
+
+function enclosingRepositoryMethod(node: ts.Node): RepositorySourceMethod | undefined {
+  let current: ts.Node | undefined = node.parent;
+  while (current !== undefined) {
+    if (ts.isMethodDeclaration(current)) {
+      const methodName = current.name.getText();
+      const parent = current.parent;
+      if (ts.isClassDeclaration(parent) && parent.name !== undefined) {
+        return { repository: parent.name.text, method: methodName };
+      }
+      return undefined;
+    }
+    current = current.parent;
+  }
+  return undefined;
+}
+
+function requiredSourceMethod(
+  sourceMethod: RepositorySourceMethod | undefined,
+): RepositorySourceMethod {
+  if (sourceMethod === undefined) {
+    throw new Error("repository source method is required");
+  }
+  return sourceMethod;
+}
+
+function callExpressionName(expression: ts.Expression): string | undefined {
+  if (ts.isIdentifier(expression)) {
+    return expression.text;
+  }
+  if (ts.isPropertyAccessExpression(expression)) {
+    return expression.name.text;
+  }
+  return undefined;
+}
+
+function sourceLocation(sourceFile: ts.SourceFile, node: ts.Node): string {
+  const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  return `${sourceFile.fileName}:${position.line + 1}:${position.character + 1}`;
 }
 
 function sourceGateKey({

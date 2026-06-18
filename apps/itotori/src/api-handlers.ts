@@ -32,6 +32,21 @@ import type {
   RuntimeIngestResult,
 } from "./services/project-workflow.js";
 
+export type ApiMutationPermissionGate = {
+  mutation: string;
+  permissionKey: keyof typeof permissionValues;
+  permission: Permission;
+};
+
+export const apiMutationPermissionGates = {
+  bridgeImport: apiMutationGate("bridge import", "projectImport"),
+  branchDraft: apiMutationGate("branch draft", "draftWrite"),
+  findingRecord: apiMutationGate("finding record", "runtimeIngest"),
+  decisionRecord: apiMutationGate("decision record", "runtimeIngest"),
+  benchmarkRecord: apiMutationGate("benchmark record", "runtimeIngest"),
+  runtimeEvidenceIngest: apiMutationGate("runtime evidence ingest", "runtimeIngest"),
+} as const;
+
 export type ApiJsonResponse = {
   statusCode: number;
   body: ItotoriApiResponseBody;
@@ -114,7 +129,7 @@ async function routeItotoriApiRequest(
 
   if (request.method === "POST" && request.pathname === "/api/imports/bridge") {
     const body = parseProjectImportRequest(request.body);
-    await requireApiPermission(services, permissionValues.projectImport);
+    await requireApiPermission(services, apiMutationPermissionGates.bridgeImport);
     const project = await services.projectWorkflow.importBridge(body.bridge);
     const status = await services.projectWorkflow.getDashboardStatus();
     return ok("imports.bridge", { project, status });
@@ -133,26 +148,26 @@ async function routeItotoriApiRequest(
     case "branches": {
       const body = parseDraftBranchRequest(request.body);
       assertPathProject(projectRoute.projectId, body.project.projectId);
-      await requireApiPermission(services, permissionValues.draftWrite);
+      await requireApiPermission(services, apiMutationPermissionGates.branchDraft);
       const project = await services.projectWorkflow.draftProject(body.project, body.targetLocale);
       const status = await services.projectWorkflow.getDashboardStatus();
       return ok("branches.draft", { project, status });
     }
     case "findings": {
       const body = parseRecordFindingRequest(request.body);
-      await requireApiPermission(services, permissionValues.runtimeIngest);
+      await requireApiPermission(services, apiMutationPermissionGates.findingRecord);
       const result = await services.projectWorkflow.recordFinding(projectRoute.projectId, body);
       return ok("findings.record", result);
     }
     case "decisions": {
       const body = parseRecordDecisionRequest(request.body);
-      await requireApiPermission(services, permissionValues.runtimeIngest);
+      await requireApiPermission(services, apiMutationPermissionGates.decisionRecord);
       const result = await services.projectWorkflow.recordDecision(projectRoute.projectId, body);
       return ok("decisions.record", result);
     }
     case "benchmarks": {
       const body = parseRecordBenchmarkRequest(request.body);
-      await requireApiPermission(services, permissionValues.runtimeIngest);
+      await requireApiPermission(services, apiMutationPermissionGates.benchmarkRecord);
       const result = await services.projectWorkflow.recordBenchmarkReport(
         projectRoute.projectId,
         body,
@@ -162,7 +177,7 @@ async function routeItotoriApiRequest(
     case "runtime-evidence": {
       const body = parseRuntimeEvidenceRequest(request.body);
       assertPathProject(projectRoute.projectId, body.project.projectId);
-      await requireApiPermission(services, permissionValues.runtimeIngest);
+      await requireApiPermission(services, apiMutationPermissionGates.runtimeEvidenceIngest);
       const result = await services.projectWorkflow.ingestRuntimeReport(
         body.project,
         body.runtimeReport,
@@ -174,9 +189,20 @@ async function routeItotoriApiRequest(
 
 async function requireApiPermission(
   services: ItotoriApiServices,
-  permission: Permission,
+  gate: ApiMutationPermissionGate,
 ): Promise<void> {
-  await services.authorization.requirePermission(permission);
+  await services.authorization.requirePermission(gate.permission);
+}
+
+function apiMutationGate(
+  mutation: string,
+  permissionKey: keyof typeof permissionValues,
+): ApiMutationPermissionGate {
+  return {
+    mutation,
+    permissionKey,
+    permission: permissionValues[permissionKey],
+  };
 }
 
 function ok(routeId: "projects.list", body: ApiProjectsResponse): ApiJsonResponse;

@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import * as ts from "typescript";
 import {
   AuthorizationError,
   ItotoriProjectRepository,
@@ -11,8 +12,10 @@ import { describe, expect, it, vi } from "vitest";
 import { assertForbiddenApiMutation } from "../../../packages/itotori-db/test/authorization-test-helpers.js";
 import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import {
+  apiMutationPermissionGates,
   handleItotoriApiRequest,
   isItotoriApiPath,
+  type ApiMutationPermissionGate,
   type ItotoriApiRequest,
   type ItotoriApiServices,
 } from "../src/api-handlers.js";
@@ -33,16 +36,17 @@ import {
 
 const deniedActor = { userId: "api-user-without-required-permission" };
 
-type PermissionKey = keyof typeof permissionValues;
+type ApiMutationPermissionGateId = keyof typeof apiMutationPermissionGates;
 type MutatingProjectWorkflowService = Exclude<
   keyof ItotoriApiServices["projectWorkflow"],
   "getDashboardStatus" | "getDashboardDecisions" | "getRuntimeStatus" | "getCostReport"
 >;
 
 type ApiMutationPermissionCase = {
+  gateId: ApiMutationPermissionGateId;
   name: string;
   request: ItotoriApiRequest;
-  permissionKey: PermissionKey;
+  permissionKey: ApiMutationPermissionGate["permissionKey"];
   permission: Permission;
   service: MutatingProjectWorkflowService;
   successFixture: string;
@@ -50,55 +54,45 @@ type ApiMutationPermissionCase = {
 };
 
 const apiMutationPermissionMatrix = [
+  apiGate("bridgeImport", post("/api/imports/bridge", { bridge: bridgeFixture }), "importBridge"),
   apiGate(
-    "bridge import",
-    post("/api/imports/bridge", { bridge: bridgeFixture }),
-    "projectImport",
-    "importBridge",
-  ),
-  apiGate(
-    "branch draft",
+    "branchDraft",
     post("/api/projects/project-1/branches", {
       project: projectFixture,
       targetLocale: "fr-FR",
     }),
-    "draftWrite",
     "draftProject",
   ),
   apiGate(
-    "finding record",
+    "findingRecord",
     post("/api/projects/project-1/findings", {
       localeBranchId: "locale-1",
       finding: findingRecordFixture,
     }),
-    "runtimeIngest",
     "recordFinding",
   ),
   apiGate(
-    "decision record",
+    "decisionRecord",
     post("/api/projects/project-1/decisions", {
       localeBranchId: "locale-1",
       event: decisionEventFixture,
     }),
-    "runtimeIngest",
     "recordDecision",
   ),
   apiGate(
-    "benchmark record",
+    "benchmarkRecord",
     post("/api/projects/project-1/benchmarks", {
       localeBranchId: "locale-1",
       benchmarkReport: benchmarkReportFixture,
     }),
-    "runtimeIngest",
     "recordBenchmarkReport",
   ),
   apiGate(
-    "runtime evidence ingest",
+    "runtimeEvidenceIngest",
     post("/api/projects/project-1/runtime-evidence", {
       project: projectFixture,
       runtimeReport: runtimeReportFixture,
     }),
-    "runtimeIngest",
     "ingestRuntimeReport",
   ),
 ] as const satisfies readonly ApiMutationPermissionCase[];
@@ -280,13 +274,14 @@ describe("Itotori API handlers", () => {
   );
 
   it("keeps the API mutation permission matrix aligned with handler gates", () => {
-    const source = readFileSync(new URL("../src/api-handlers.ts", import.meta.url), "utf8");
-    const sourcePermissionKeys = [
-      ...source.matchAll(/requireApiPermission\(services,\s*permissionValues\.([A-Za-z0-9_]+)\)/gu),
-    ].map((match) => match[1]);
+    const sourcePermissionGateIds = sourceApiPermissionGateIds();
+    assertNoUndeclaredAppPermissionCalls();
 
-    expect(apiMutationPermissionMatrix.map(({ permissionKey }) => permissionKey).sort()).toEqual(
-      sourcePermissionKeys.sort(),
+    expect(apiMutationPermissionMatrix.map(({ gateId }) => gateId).sort()).toEqual(
+      sourcePermissionGateIds.sort(),
+    );
+    expect(apiMutationPermissionMatrix.map(({ gateId }) => gateId).sort()).toEqual(
+      Object.keys(apiMutationPermissionGates).sort(),
     );
     expect(
       apiMutationPermissionMatrix.map(({ name, permission, successFixture, denialFixture }) => ({
@@ -482,20 +477,133 @@ function post(pathname: string, body: unknown): ItotoriApiRequest {
 }
 
 function apiGate(
-  name: string,
+  gateId: ApiMutationPermissionGateId,
   request: ItotoriApiRequest,
-  permissionKey: PermissionKey,
   service: MutatingProjectWorkflowService,
 ): ApiMutationPermissionCase {
+  const gate = apiMutationPermissionGates[gateId];
   return {
-    name,
+    gateId,
+    name: gate.mutation,
     request,
-    permissionKey,
-    permission: permissionValues[permissionKey],
+    permissionKey: gate.permissionKey,
+    permission: gate.permission,
     service,
-    successFixture: `api-handlers.test.ts ${name} success fixture`,
+    successFixture: `api-handlers.test.ts ${gate.mutation} success fixture`,
     denialFixture: `permission middleware rejects as ${deniedActor.userId}`,
   };
+}
+
+function sourceApiPermissionGateIds(): ApiMutationPermissionGateId[] {
+  const sourceUrl = new URL("../src/api-handlers.ts", import.meta.url);
+  const source = readFileSync(sourceUrl, "utf8");
+  const sourceFile = ts.createSourceFile(sourceUrl.pathname, source, ts.ScriptTarget.Latest, true);
+  const gateIds: ApiMutationPermissionGateId[] = [];
+
+  function visit(node: ts.Node): void {
+    if (ts.isCallExpression(node)) {
+      const callName = callExpressionName(node.expression);
+      if (callName === "requireApiPermission") {
+        gateIds.push(apiGateIdFromCall(node));
+      }
+      if (callName === "requirePermission" && !isInsideFunction(node, "requireApiPermission")) {
+        throw new Error(
+          `undeclared API permission call at ${sourceLocation(sourceFile, node)}; route permission gates must use apiMutationPermissionGates and requireApiPermission`,
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return gateIds;
+}
+
+function apiGateIdFromCall(node: ts.CallExpression): ApiMutationPermissionGateId {
+  const gate = node.arguments[1];
+  if (
+    gate === undefined ||
+    !ts.isPropertyAccessExpression(gate) ||
+    gate.expression.getText() !== "apiMutationPermissionGates"
+  ) {
+    throw new Error(
+      `API permission call at ${sourceLocation(node.getSourceFile(), node)} must pass apiMutationPermissionGates.<gateId>`,
+    );
+  }
+  return gate.name.text as ApiMutationPermissionGateId;
+}
+
+function assertNoUndeclaredAppPermissionCalls(): void {
+  const sourceDir = new URL("../src/", import.meta.url);
+  for (const sourceUrl of appSourceFiles(sourceDir)) {
+    if (
+      sourceUrl.pathname.endsWith("/auth.ts") ||
+      sourceUrl.pathname.endsWith("/api-handlers.ts")
+    ) {
+      continue;
+    }
+    const source = readFileSync(sourceUrl, "utf8");
+    const sourceFile = ts.createSourceFile(
+      sourceUrl.pathname,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+    );
+
+    function visit(node: ts.Node): void {
+      if (
+        ts.isCallExpression(node) &&
+        callExpressionName(node.expression) === "requirePermission"
+      ) {
+        throw new Error(
+          `undeclared app permission call at ${sourceLocation(sourceFile, node)}; app mutation gates must be represented by apiMutationPermissionGates or a documented follow-up`,
+        );
+      }
+      ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+  }
+}
+
+function appSourceFiles(directory: URL): URL[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const entryUrl = new URL(entry.name, directory);
+    if (entry.isDirectory()) {
+      return appSourceFiles(new URL(`${entry.name}/`, directory));
+    }
+    return entry.name.endsWith(".ts") ? [entryUrl] : [];
+  });
+}
+
+function callExpressionName(expression: ts.Expression): string | undefined {
+  if (ts.isIdentifier(expression)) {
+    return expression.text;
+  }
+  if (ts.isPropertyAccessExpression(expression)) {
+    return expression.name.text;
+  }
+  return undefined;
+}
+
+function isInsideFunction(node: ts.Node, functionName: string): boolean {
+  let current: ts.Node | undefined = node.parent;
+  while (current !== undefined) {
+    if (
+      ts.isFunctionDeclaration(current) &&
+      current.name !== undefined &&
+      current.name.text === functionName
+    ) {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
+}
+
+function sourceLocation(sourceFile: ts.SourceFile, node: ts.Node): string {
+  const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  return `${sourceFile.fileName}:${position.line + 1}:${position.character + 1}`;
 }
 
 function serviceFixture(): ItotoriApiServices {
