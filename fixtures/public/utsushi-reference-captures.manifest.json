@@ -131,17 +131,65 @@
       "sha256": "e400de98d07acf6fd9b481ec1d28fb0d283461c8f06582f10bcd45685ede2084",
       "bytes": 4235,
       "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/embedded-unc-corpus.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "a86d87c8de761c3fbd0b276fb7dc897b62aeccf6af3c43d8da967ac801ff6865",
+      "bytes": 1089,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/embedded-unc-report.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "63230a7dd0e1bd4e2ada3d536bbb57bee2000f3d5f82e9ee2840d439af7e998c",
+      "bytes": 61,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/unlisted-unix-corpus.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "16d154e2f5ab2905552cab01d2563d5b76acabdee3ec3f856df1b85da4d6e96f",
+      "bytes": 1091,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/unlisted-unix-report.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "426a0033ad0105e67e1b0a0226914d65a0272404ff7ba6e7be2a63ff2c7092de",
+      "bytes": 84,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/windows-drive-corpus.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "e012335e2dacb20389e5dcb93b5019d7cb9e6d864086685329f22cc695144041",
+      "bytes": 1091,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/windows-drive-report.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "e7e361e4337c9773af269cc5a1d49bf0def55a9e6ec7a2309c642602efcccd59",
+      "bytes": 61,
+      "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 14,
+    "files": 20,
     "textUnits": 1,
     "sourceTextUtf16CodeUnits": 24,
     "protectedSpans": 0,
     "sourceLocales": ["ja-JP"],
     "targetLocales": ["en-US"],
     "engineKinds": ["utsushi-fixture"],
-    "notes": "Positive corpus plus negative validator cases for missing hashes, unmanaged screenshot references, unmanifested capture screenshots, non-UUID runtime ids, static-only evidence claims, and unredacted local paths."
+    "notes": "Positive corpus plus negative validator cases for missing hashes, unmanaged screenshot references, unmanifested capture screenshots, non-UUID runtime ids, static-only evidence claims, embedded UNC paths, broad Unix absolute paths, Windows drive paths, and unredacted local paths."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

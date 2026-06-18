@@ -619,6 +619,7 @@ fn reject_unredacted_local_paths_at(path: &str, value: &Value) -> UtsushiResult<
 fn looks_like_local_path(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     if lower.starts_with("artifacts/utsushi/runtime/")
+        || lower.starts_with("artifact-store://")
         || lower.contains("<redacted")
         || lower.contains("[redacted")
         || lower.contains("${redacted")
@@ -629,51 +630,40 @@ fn looks_like_local_path(value: &str) -> bool {
     lower.starts_with("file:")
         || lower.contains("file://")
         || lower.starts_with("~/")
-        || has_common_unix_absolute_path(&lower)
+        || has_unix_absolute_path(&lower)
         || has_windows_absolute_path(value)
-        || lower.starts_with("\\\\")
-        || lower.contains("\\\\users\\")
+        || has_unc_path(value)
 }
 
-fn has_common_unix_absolute_path(value: &str) -> bool {
+fn has_unix_absolute_path(value: &str) -> bool {
     value
-        .split(|ch: char| ch.is_whitespace() || matches!(ch, '"' | '\'' | '(' | ')' | ','))
+        .split(|ch: char| {
+            ch.is_whitespace()
+                || matches!(
+                    ch,
+                    '"' | '\'' | '(' | ')' | ',' | '<' | '>' | '=' | '`' | '|'
+                )
+        })
         .map(|token| {
-            token.trim_matches(|ch: char| matches!(ch, '.' | ':' | ';' | ']' | '[' | '{' | '}'))
+            token.trim_matches(|ch: char| {
+                matches!(ch, '.' | ':' | ';' | ']' | '[' | '{' | '}' | '!')
+            })
         })
-        .any(|token| {
-            matches!(
-                token,
-                "/home"
-                    | "/root"
-                    | "/tmp"
-                    | "/var"
-                    | "/var/folders"
-                    | "/users"
-                    | "/private"
-                    | "/opt"
-                    | "/usr"
-                    | "/etc"
-                    | "/mnt"
-                    | "/media"
-                    | "/volumes"
-                    | "/workspace"
-                    | "/workspaces"
-            ) || token.starts_with("/home/")
-                || token.starts_with("/root/")
-                || token.starts_with("/tmp/")
-                || token.starts_with("/var/")
-                || token.starts_with("/users/")
-                || token.starts_with("/private/")
-                || token.starts_with("/opt/")
-                || token.starts_with("/usr/")
-                || token.starts_with("/etc/")
-                || token.starts_with("/mnt/")
-                || token.starts_with("/media/")
-                || token.starts_with("/volumes/")
-                || token.starts_with("/workspace/")
-                || token.starts_with("/workspaces/")
-        })
+        .any(is_private_unix_path_token)
+}
+
+fn is_private_unix_path_token(token: &str) -> bool {
+    let Some(rest) = token.strip_prefix('/') else {
+        return false;
+    };
+    let Some((root, tail)) = rest.split_once('/') else {
+        return false;
+    };
+    if root.is_empty() || tail.is_empty() {
+        return false;
+    }
+    let reserved_public_roots = ["artifacts", "assets", "images", "img", "css", "js", "docs"];
+    !reserved_public_roots.contains(&root)
 }
 
 fn has_windows_absolute_path(value: &str) -> bool {
@@ -682,6 +672,16 @@ fn has_windows_absolute_path(value: &str) -> bool {
         window[0].is_ascii_alphabetic()
             && window[1] == b':'
             && (window[2] == b'\\' || window[2] == b'/')
+    })
+}
+
+fn has_unc_path(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.windows(2).enumerate().any(|(index, window)| {
+        window == b"\\\\"
+            && bytes
+                .get(index + 2)
+                .is_some_and(|byte| byte.is_ascii_alphanumeric())
     })
 }
 
@@ -916,6 +916,23 @@ mod tests {
     }
 
     #[test]
+    fn local_path_detection_allows_artifact_store_redactions_and_normal_prose() {
+        for allowed in [
+            "artifact-store://runtime/report",
+            "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png",
+            "<redacted-local-path>",
+            "[redacted path]",
+            "Dialogue choices use yes/no labels.",
+            "The UI shows 1/2 pages.",
+        ] {
+            assert!(
+                !looks_like_local_path(allowed),
+                "{allowed:?} should not be classified as a local path"
+            );
+        }
+    }
+
+    #[test]
     fn rejects_additional_reference_capture_contract_failures() {
         for (variant, expected_error) in [
             (
@@ -950,6 +967,13 @@ mod tests {
             ),
             (FixtureVariant::RootPrivatePath, "unredacted local path"),
             (FixtureVariant::WindowsPrivatePath, "unredacted local path"),
+            (
+                FixtureVariant::EmbeddedUncPrivatePath,
+                "unredacted local path",
+            ),
+            (FixtureVariant::SrvPrivatePath, "unredacted local path"),
+            (FixtureVariant::DataPrivatePath, "unredacted local path"),
+            (FixtureVariant::RunUserPrivatePath, "unredacted local path"),
             (
                 FixtureVariant::CorpusMetadataPrivatePath,
                 "unredacted local path",
@@ -999,6 +1023,9 @@ mod tests {
                 "top-level capture screenshot artifact",
             ),
             ("non-uuid-run-corpus.json", "must be a UUID7 string"),
+            ("embedded-unc-corpus.json", "unredacted local path"),
+            ("unlisted-unix-corpus.json", "unredacted local path"),
+            ("windows-drive-corpus.json", "unredacted local path"),
         ] {
             let error =
                 validate_reference_capture_corpus(&public_root.join("invalid").join(fixture))
@@ -1029,6 +1056,10 @@ mod tests {
         ReportLevelPrivatePath,
         RootPrivatePath,
         WindowsPrivatePath,
+        EmbeddedUncPrivatePath,
+        SrvPrivatePath,
+        DataPrivatePath,
+        RunUserPrivatePath,
         CorpusMetadataPrivatePath,
         TopLevelCaptureUnmanifested,
         NonUuidRuntimeReportId,
@@ -1215,6 +1246,12 @@ mod tests {
             FixtureVariant::ReportLevelPrivatePath => json!(["Captured at /tmp/private/run"]),
             FixtureVariant::RootPrivatePath => json!(["Captured at /root/private/run"]),
             FixtureVariant::WindowsPrivatePath => json!(["Captured at C:\\Users\\private\\run"]),
+            FixtureVariant::EmbeddedUncPrivatePath => {
+                json!(["Captured at \\\\server\\share\\game"])
+            }
+            FixtureVariant::SrvPrivatePath => json!(["Captured at /srv/game"]),
+            FixtureVariant::DataPrivatePath => json!(["Captured at /data/game"]),
+            FixtureVariant::RunUserPrivatePath => json!(["Captured at /run/user/1000/game"]),
             _ => json!([]),
         };
         let runtime_report_id = match variant {
