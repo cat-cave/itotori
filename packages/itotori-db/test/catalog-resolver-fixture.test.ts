@@ -82,6 +82,85 @@ describe("catalog resolver fixture artifact", () => {
     );
   });
 
+  it("rejects malformed nested resolver payloads instead of producing reviewable null ids", () => {
+    const artifact = createCatalogResolverFixtureArtifact({
+      ...fixture,
+      sourceRegistry: fixture.sourceRegistry.slice(0, 3),
+      exactLinks: [
+        {
+          exactLinkId: "exact-link:malformed",
+          result: {
+            status: "linked",
+            matches: [],
+            diagnostics: [],
+          },
+        },
+      ],
+      fuzzyCandidates: {
+        schemaVersion: "catalog.fuzzy_candidates.v0.1",
+        generatorVersion: "deterministic-title-year.v0.1",
+        status: "generated",
+        candidates: [{}],
+        diagnostics: [],
+      },
+      conflicts: { rows: [{}] },
+    });
+
+    expect(artifact.status).toBe("invalid");
+    expect(artifact.diagnostics).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          code: catalogResolverFixtureDiagnosticCodeValues.invalidExactLinkResult,
+          severity: "error",
+          path: "$.exactLinks[0].result",
+        }),
+        expect.objectContaining({
+          code: catalogResolverFixtureDiagnosticCodeValues.invalidExactLinkResult,
+          severity: "error",
+          path: "$.exactLinks[0].result.workId",
+        }),
+        expect.objectContaining({
+          code: catalogResolverFixtureDiagnosticCodeValues.invalidFuzzyCandidateResult,
+          severity: "error",
+          path: "$.fuzzyCandidates.candidates[0]",
+        }),
+        expect.objectContaining({
+          code: catalogResolverFixtureDiagnosticCodeValues.invalidConflictReview,
+          severity: "error",
+          path: "$.conflicts.rows[0]",
+        }),
+      ]),
+    );
+    expect(artifact.exactLinks).toEqual([]);
+    expect(artifact.fuzzyCandidates.candidateIds).toEqual([]);
+    expect(artifact.conflicts.conflictIds).toEqual([]);
+    expect(artifact.review).toMatchObject({
+      status: "invalid",
+      exactLinkedWorkIds: [],
+      fuzzyCandidateIds: [],
+      conflictIds: [],
+      reviewable: {
+        exactLinks: [],
+        fuzzyCandidates: [],
+        conflicts: [],
+      },
+    });
+  });
+
+  it("asserts nested artifact ids are present strings", () => {
+    const artifact = createCatalogResolverFixtureArtifact(fixture);
+
+    expect(() =>
+      assertCatalogResolverFixtureArtifact({
+        ...artifact,
+        fuzzyCandidates: {
+          ...artifact.fuzzyCandidates,
+          candidateIds: [null],
+        },
+      }),
+    ).toThrow("fuzzyCandidates");
+  });
+
   it("derives a review read model from the recorded artifact without live catalog access", () => {
     const artifact = createCatalogResolverFixtureArtifact(fixture);
     const review = catalogResolverFixtureReviewReadModel(artifact);

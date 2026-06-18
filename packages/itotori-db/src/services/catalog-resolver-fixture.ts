@@ -1,11 +1,16 @@
 import type { CatalogConflictReviewReadModel } from "../repositories/catalog-repository.js";
-import type {
-  CatalogExactExternalIdLinkDiagnostic,
-  CatalogExactExternalIdLinkResult,
+import {
+  catalogExactExternalIdLinkSchemaVersion,
+  catalogExactExternalIdLinkStatusValues,
+  type CatalogExactExternalIdLinkDiagnostic,
+  type CatalogExactExternalIdLinkResult,
 } from "./catalog-exact-external-id-linker.js";
-import type {
-  CatalogFuzzyCandidateDiagnostic,
-  CatalogFuzzyCandidateResult,
+import {
+  catalogFuzzyCandidateGeneratorVersion,
+  catalogFuzzyCandidateSchemaVersion,
+  catalogFuzzyCandidateStatusValues,
+  type CatalogFuzzyCandidateDiagnostic,
+  type CatalogFuzzyCandidateResult,
 } from "./catalog-fuzzy-candidate-generator.js";
 
 export const catalogResolverFixtureSchemaVersion = "catalog.resolver_fixture.v0.1" as const;
@@ -284,10 +289,15 @@ export function assertCatalogResolverFixtureArtifact(
   if (!Array.isArray(value.exactLinks)) {
     throw new Error("catalog resolver artifact exactLinks must be an array");
   }
-  if (!isRecord(value.fuzzyCandidates) || !Array.isArray(value.fuzzyCandidates.candidateIds)) {
+  for (const [index, exactLink] of value.exactLinks.entries()) {
+    if (!isArtifactExactLinkRecord(exactLink)) {
+      throw new Error(`catalog resolver artifact exactLinks[${index}] is malformed`);
+    }
+  }
+  if (!isArtifactFuzzyCandidates(value.fuzzyCandidates)) {
     throw new Error("catalog resolver artifact fuzzyCandidates must include candidateIds");
   }
-  if (!isRecord(value.conflicts) || !Array.isArray(value.conflicts.conflictIds)) {
+  if (!isArtifactConflicts(value.conflicts)) {
     throw new Error("catalog resolver artifact conflicts must include conflictIds");
   }
   if (!Array.isArray(value.diagnostics)) {
@@ -406,21 +416,8 @@ function normalizeExactLinks(
       );
       return [];
     }
-    const result = entry.result as CatalogExactExternalIdLinkResult;
-    if (
-      typeof result.status !== "string" ||
-      !Array.isArray(result.matches) ||
-      !Array.isArray(result.diagnostics)
-    ) {
-      diagnostics.push(
-        diagnostic(
-          catalogResolverFixtureDiagnosticCodeValues.invalidExactLinkResult,
-          "error",
-          `exactLinks[${index}].result is not a recorded exact-link result.`,
-          `$.exactLinks[${index}].result`,
-          { exactLinkId: entry.exactLinkId },
-        ),
-      );
+    const result = normalizeExactLinkResult(entry.result, index, entry.exactLinkId, diagnostics);
+    if (result === null) {
       return [];
     }
     return [{ exactLinkId: entry.exactLinkId, result }];
@@ -441,8 +438,45 @@ function normalizeFuzzyCandidates(
       ),
     );
     return {
-      schemaVersion: "catalog.fuzzy_candidates.v0.1",
-      generatorVersion: "deterministic-title-year.v0.1",
+      schemaVersion: catalogFuzzyCandidateSchemaVersion,
+      generatorVersion: catalogFuzzyCandidateGeneratorVersion,
+      status: "invalid",
+      candidates: [],
+      diagnostics: [],
+    };
+  }
+  const invalidPaths: string[] = [];
+  if (
+    value.schemaVersion !== catalogFuzzyCandidateSchemaVersion ||
+    value.generatorVersion !== catalogFuzzyCandidateGeneratorVersion ||
+    !isEnumValue(value.status, catalogFuzzyCandidateStatusValues)
+  ) {
+    invalidPaths.push("$.fuzzyCandidates");
+  }
+  for (const [index, candidate] of value.candidates.entries()) {
+    if (!isFuzzyCandidateRecord(candidate)) {
+      invalidPaths.push(`$.fuzzyCandidates.candidates[${index}]`);
+    }
+  }
+  for (const [index, entry] of value.diagnostics.entries()) {
+    if (!isBasicDiagnostic(entry)) {
+      invalidPaths.push(`$.fuzzyCandidates.diagnostics[${index}]`);
+    }
+  }
+  if (invalidPaths.length > 0) {
+    for (const path of invalidPaths) {
+      diagnostics.push(
+        diagnostic(
+          catalogResolverFixtureDiagnosticCodeValues.invalidFuzzyCandidateResult,
+          "error",
+          "Catalog resolver fixture fuzzyCandidates includes malformed nested records.",
+          path,
+        ),
+      );
+    }
+    return {
+      schemaVersion: catalogFuzzyCandidateSchemaVersion,
+      generatorVersion: catalogFuzzyCandidateGeneratorVersion,
       status: "invalid",
       candidates: [],
       diagnostics: [],
@@ -466,6 +500,25 @@ function normalizeConflictReview(
     );
     return { rows: [] };
   }
+  const invalidPaths: string[] = [];
+  for (const [index, row] of value.rows.entries()) {
+    if (!isConflictReviewRow(row)) {
+      invalidPaths.push(`$.conflicts.rows[${index}]`);
+    }
+  }
+  if (invalidPaths.length > 0) {
+    for (const path of invalidPaths) {
+      diagnostics.push(
+        diagnostic(
+          catalogResolverFixtureDiagnosticCodeValues.invalidConflictReview,
+          "error",
+          "Catalog resolver fixture conflicts includes malformed nested rows.",
+          path,
+        ),
+      );
+    }
+    return { rows: [] };
+  }
   return value as CatalogConflictReviewReadModel;
 }
 
@@ -484,7 +537,7 @@ function invalidArtifact(
     exactLinks: [],
     fuzzyCandidates: {
       status: "invalid",
-      generatorVersion: "deterministic-title-year.v0.1",
+      generatorVersion: catalogFuzzyCandidateGeneratorVersion,
       candidateIds: [],
       candidates: [],
       diagnostics: [],
@@ -535,6 +588,263 @@ function stringValue(value: unknown): string | null {
 
 function stringOrDefault(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim().length > 0 ? value : fallback;
+}
+
+function normalizeExactLinkResult(
+  value: unknown,
+  index: number,
+  exactLinkId: string,
+  diagnostics: CatalogResolverFixtureDiagnostic[],
+): CatalogExactExternalIdLinkResult | null {
+  if (!isRecord(value)) {
+    diagnostics.push(
+      diagnostic(
+        catalogResolverFixtureDiagnosticCodeValues.invalidExactLinkResult,
+        "error",
+        `exactLinks[${index}].result is not a recorded exact-link result.`,
+        `$.exactLinks[${index}].result`,
+        { exactLinkId },
+      ),
+    );
+    return null;
+  }
+  const invalidPaths: string[] = [];
+  if (
+    value.schemaVersion !== catalogExactExternalIdLinkSchemaVersion ||
+    !isEnumValue(value.status, catalogExactExternalIdLinkStatusValues) ||
+    !("workId" in value) ||
+    !isNullableString(value.workId) ||
+    !isExactLinkSubject(value.subject)
+  ) {
+    invalidPaths.push(`$.exactLinks[${index}].result`);
+  }
+  if (!Array.isArray(value.matches)) {
+    invalidPaths.push(`$.exactLinks[${index}].result.matches`);
+  } else {
+    for (const [matchIndex, match] of value.matches.entries()) {
+      if (!isExactLinkMatch(match)) {
+        invalidPaths.push(`$.exactLinks[${index}].result.matches[${matchIndex}]`);
+      }
+    }
+  }
+  if (!Array.isArray(value.diagnostics)) {
+    invalidPaths.push(`$.exactLinks[${index}].result.diagnostics`);
+  } else {
+    for (const [diagnosticIndex, entry] of value.diagnostics.entries()) {
+      if (!isBasicDiagnostic(entry)) {
+        invalidPaths.push(`$.exactLinks[${index}].result.diagnostics[${diagnosticIndex}]`);
+      }
+    }
+  }
+  if (value.status === catalogExactExternalIdLinkStatusValues.linked && !stringValue(value.workId)) {
+    invalidPaths.push(`$.exactLinks[${index}].result.workId`);
+  }
+  if (invalidPaths.length > 0) {
+    for (const path of invalidPaths) {
+      diagnostics.push(
+        diagnostic(
+          catalogResolverFixtureDiagnosticCodeValues.invalidExactLinkResult,
+          "error",
+          `exactLinks[${index}].result includes malformed nested resolver fields.`,
+          path,
+          { exactLinkId },
+        ),
+      );
+    }
+    return null;
+  }
+  return value as CatalogExactExternalIdLinkResult;
+}
+
+function isArtifactExactLinkRecord(value: unknown): value is CatalogResolverFixtureExactLinkArtifactRecord {
+  return (
+    isRecord(value) &&
+    stringValue(value.exactLinkId) !== null &&
+    isEnumValue(value.status, catalogExactExternalIdLinkStatusValues) &&
+    "workId" in value &&
+    isNullableString(value.workId) &&
+    Array.isArray(value.matchIds) &&
+    value.matchIds.every((entry) => stringValue(entry) !== null) &&
+    Array.isArray(value.matches) &&
+    value.matches.every(isExactLinkMatch) &&
+    Array.isArray(value.diagnostics) &&
+    value.diagnostics.every(isBasicDiagnostic)
+  );
+}
+
+function isArtifactFuzzyCandidates(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isEnumValue(value.status, catalogFuzzyCandidateStatusValues) &&
+    value.generatorVersion === catalogFuzzyCandidateGeneratorVersion &&
+    Array.isArray(value.candidateIds) &&
+    value.candidateIds.every((entry) => stringValue(entry) !== null) &&
+    Array.isArray(value.candidates) &&
+    value.candidates.every(isFuzzyCandidateRecord) &&
+    arraysEqual(
+      value.candidateIds,
+      value.candidates.map((candidate) => candidate.candidateId),
+    ) &&
+    Array.isArray(value.diagnostics) &&
+    value.diagnostics.every(isBasicDiagnostic)
+  );
+}
+
+function isArtifactConflicts(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.conflictIds) &&
+    value.conflictIds.every((entry) => stringValue(entry) !== null) &&
+    Array.isArray(value.rows) &&
+    value.rows.every(isConflictReviewRow) &&
+    arraysEqual(
+      value.conflictIds,
+      value.rows.map((row) => row.reviewId),
+    )
+  );
+}
+
+function isExactLinkSubject(value: unknown): boolean {
+  if (value === null) {
+    return true;
+  }
+  return isRecord(value) && stringValue(value.kind) !== null && stringValue(value.id) !== null;
+}
+
+function isExactLinkMatch(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isFiniteNumber(value.inputIndex) &&
+    stringValue(value.catalogSource) !== null &&
+    stringValue(value.sourceId) !== null &&
+    stringValue(value.externalIdKind) !== null &&
+    stringValue(value.workId) !== null &&
+    stringValue(value.canonicalTitle) !== null
+  );
+}
+
+function isFuzzyCandidateRecord(value: unknown): value is CatalogResolverFixtureFuzzyCandidateArtifactRecord {
+  return (
+    isRecord(value) &&
+    stringValue(value.candidateId) !== null &&
+    stringValue(value.sourceCatalogSource) !== null &&
+    stringValue(value.sourceId) !== null &&
+    stringValue(value.sourceTitle) !== null &&
+    isNullableString(value.sourceProvenanceId) &&
+    stringValue(value.targetWorkId) !== null &&
+    isFiniteNumber(value.score) &&
+    isRecord(value.matchedFields) &&
+    stringValue(value.status) !== null &&
+    stringValue(value.diagnosticCode) !== null &&
+    stringValue(value.generatorVersion) !== null &&
+    isRecord(value.metadata) &&
+    hasDateLikeValue(value.createdAt) &&
+    hasDateLikeValue(value.updatedAt)
+  );
+}
+
+function isConflictReviewRow(value: unknown): value is CatalogConflictReviewReadModel["rows"][number] {
+  return (
+    isRecord(value) &&
+    stringValue(value.reviewId) !== null &&
+    stringValue(value.catalogRecordId) !== null &&
+    isNullableString(value.conflictId) &&
+    isStringArray(value.candidateIds) &&
+    isStringArray(value.candidateCatalogIds) &&
+    Array.isArray(value.exactLinkRefs) &&
+    value.exactLinkRefs.every(isExactLinkRef) &&
+    Array.isArray(value.fuzzyScores) &&
+    value.fuzzyScores.every(isFuzzyScore) &&
+    Array.isArray(value.sourceIds) &&
+    value.sourceIds.every(isSourceId) &&
+    Array.isArray(value.provenance) &&
+    value.provenance.every(isProvenance) &&
+    ["error", "warning", "info"].includes(String(value.severity)) &&
+    stringValue(value.status) !== null &&
+    stringValue(value.reasonCode) !== null &&
+    stringValue(value.reasonDetail) !== null &&
+    isNullableString(value.conflictKind) &&
+    hasDateLikeValue(value.detectedAt) &&
+    (value.resolution === null || isRecord(value.resolution))
+  );
+}
+
+function isExactLinkRef(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    stringValue(value.externalIdId) !== null &&
+    stringValue(value.externalIdKind) !== null &&
+    stringValue(value.workId) !== null &&
+    stringValue(value.catalogSource) !== null &&
+    stringValue(value.sourceId) !== null &&
+    isNullableString(value.sourceProvenanceId)
+  );
+}
+
+function isFuzzyScore(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    stringValue(value.candidateId) !== null &&
+    isFiniteNumber(value.score) &&
+    stringValue(value.diagnosticCode) !== null &&
+    stringValue(value.generatorVersion) !== null
+  );
+}
+
+function isSourceId(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    stringValue(value.catalogSource) !== null &&
+    stringValue(value.sourceId) !== null
+  );
+}
+
+function isProvenance(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    stringValue(value.sourceProvenanceId) !== null &&
+    stringValue(value.catalogSource) !== null &&
+    stringValue(value.sourceId) !== null &&
+    stringValue(value.sourceRecordKind) !== null &&
+    isNullableString(value.payloadHash) &&
+    hasDateLikeValue(value.fetchedAt)
+  );
+}
+
+function isBasicDiagnostic(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    stringValue(value.code) !== null &&
+    ["info", "warning", "error"].includes(String(value.severity)) &&
+    stringValue(value.message) !== null
+  );
+}
+
+function isNullableString(value: unknown): boolean {
+  return value === null || stringValue(value) !== null;
+}
+
+function isStringArray(value: unknown): boolean {
+  return Array.isArray(value) && value.every((entry) => stringValue(entry) !== null);
+}
+
+function isFiniteNumber(value: unknown): boolean {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function hasDateLikeValue(value: unknown): boolean {
+  return value instanceof Date || stringValue(value) !== null;
+}
+
+function isEnumValue<T extends Record<string, string>>(
+  value: unknown,
+  enumValues: T,
+): value is T[keyof T] {
+  return typeof value === "string" && Object.values(enumValues).includes(value);
+}
+
+function arraysEqual(left: unknown[], right: unknown[]): boolean {
+  return left.length === right.length && left.every((entry, index) => entry === right[index]);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
