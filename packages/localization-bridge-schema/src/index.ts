@@ -2173,7 +2173,8 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
     "BenchmarkReportV02.providerModelCostRecords",
   );
   const providerRunIds = new Set<Uuid7>();
-  const llmQaProviderRunIds = new Set<Uuid7>();
+  const providerRunSystemIds = new Map<Uuid7, string>();
+  const llmQaProviderRunSystemIds = new Map<Uuid7, string>();
   const costTotalsBySystem = new Map<string, number>();
   let reportTotalMicrosUsd = 0;
   let includesUnknownCost = false;
@@ -2184,8 +2185,9 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
       throw new Error(`${label}.providerRunId must be unique within providerModelCostRecords`);
     }
     providerRunIds.add(providerRun.providerRunId);
+    providerRunSystemIds.set(providerRun.providerRunId, providerRun.systemId);
     if (providerRun.taskKind === "llm_qa") {
-      llmQaProviderRunIds.add(providerRun.providerRunId);
+      llmQaProviderRunSystemIds.set(providerRun.providerRunId, providerRun.systemId);
     }
     assertKnownStringRefV02(providerRun.systemId, `${label}.systemId`, "system", systemIds);
     if (providerRun.cost.costKind === "unknown") {
@@ -2242,7 +2244,8 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
   const findingRootCauses: LocalizationRootCauseV02[] = [];
   const findingDetectorKinds: QualityDetectorKindV02[] = [];
   const findingAdjudicationStates: LocalizationAdjudicationStateV02[] = [];
-  const llmQaFindingIds = new Set<Uuid7>();
+  const findingSystemIds = new Map<Uuid7, string>();
+  const llmQaFindingSystemIds = new Map<Uuid7, string>();
   for (const [index, finding] of findingRecords.entries()) {
     const label = `BenchmarkReportV02.findingRecords[${index}]`;
     assertBenchmarkFindingRecordV02(finding, label);
@@ -2254,13 +2257,14 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
       throw new Error(`${label}.seededDefectId must reference seededDefectOracle`);
     }
     findingIds.add(finding.findingId);
+    findingSystemIds.set(finding.findingId, finding.systemId);
     findingQualitySeverities.push(finding.qualitySeverity);
     findingCategories.push(finding.category);
     findingRootCauses.push(finding.rootCause);
     findingDetectorKinds.push(finding.detectorKind);
     findingAdjudicationStates.push(finding.adjudicationState);
     if (finding.detectorKind === "llm_qa") {
-      llmQaFindingIds.add(finding.findingId);
+      llmQaFindingSystemIds.set(finding.findingId, finding.systemId);
     }
   }
 
@@ -2348,8 +2352,8 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
     report.qaAgentEvaluations,
     "BenchmarkReportV02.qaAgentEvaluations",
   );
-  const qaAgentProviderRunIds = new Set<Uuid7>();
-  const qaAgentFindingIds = new Set<Uuid7>();
+  const qaAgentProviderRunIdsBySystem = new Map<string, Set<Uuid7>>();
+  const qaAgentFindingIdsBySystem = new Map<string, Set<Uuid7>>();
   for (const [index, evaluation] of qaAgentEvaluations.entries()) {
     const label = `BenchmarkReportV02.qaAgentEvaluations[${index}]`;
     assertQaAgentEvaluationV02(evaluation, label);
@@ -2367,17 +2371,29 @@ export function assertBenchmarkReportV02(value: unknown): asserts value is Bench
     );
     assertKnownUuid7RefsV02(evaluation.findingIds, `${label}.findingIds`, "finding", findingIds);
     for (const providerRunId of evaluation.providerRunIds) {
-      qaAgentProviderRunIds.add(providerRunId);
+      const providerRunSystemId = providerRunSystemIds.get(providerRunId);
+      if (providerRunSystemId !== evaluation.evaluatedSystemId) {
+        throw new Error(
+          `${label}.providerRunIds must reference providerModelCostRecords for evaluatedSystemId ${evaluation.evaluatedSystemId}`,
+        );
+      }
+      addToSetMap(qaAgentProviderRunIdsBySystem, evaluation.evaluatedSystemId, providerRunId);
     }
     for (const findingId of evaluation.findingIds) {
-      qaAgentFindingIds.add(findingId);
+      const findingSystemId = findingSystemIds.get(findingId);
+      if (findingSystemId !== evaluation.evaluatedSystemId) {
+        throw new Error(
+          `${label}.findingIds must reference findingRecords for evaluatedSystemId ${evaluation.evaluatedSystemId}`,
+        );
+      }
+      addToSetMap(qaAgentFindingIdsBySystem, evaluation.evaluatedSystemId, findingId);
     }
   }
   assertQaAgentCoverageV02(
-    llmQaProviderRunIds,
-    llmQaFindingIds,
-    qaAgentProviderRunIds,
-    qaAgentFindingIds,
+    llmQaProviderRunSystemIds,
+    llmQaFindingSystemIds,
+    qaAgentProviderRunIdsBySystem,
+    qaAgentFindingIdsBySystem,
   );
 
   const humanEvaluationResults = asArray(
@@ -5648,25 +5664,34 @@ function assertHumanEvaluationResultV02(
 }
 
 function assertQaAgentCoverageV02(
-  llmQaProviderRunIds: ReadonlySet<Uuid7>,
-  llmQaFindingIds: ReadonlySet<Uuid7>,
-  qaAgentProviderRunIds: ReadonlySet<Uuid7>,
-  qaAgentFindingIds: ReadonlySet<Uuid7>,
+  llmQaProviderRunSystemIds: ReadonlyMap<Uuid7, string>,
+  llmQaFindingSystemIds: ReadonlyMap<Uuid7, string>,
+  qaAgentProviderRunIdsBySystem: ReadonlyMap<string, ReadonlySet<Uuid7>>,
+  qaAgentFindingIdsBySystem: ReadonlyMap<string, ReadonlySet<Uuid7>>,
 ): void {
-  for (const providerRunId of llmQaProviderRunIds) {
-    if (!qaAgentProviderRunIds.has(providerRunId)) {
+  for (const [providerRunId, systemId] of llmQaProviderRunSystemIds) {
+    if (!qaAgentProviderRunIdsBySystem.get(systemId)?.has(providerRunId)) {
       throw new Error(
-        `BenchmarkReportV02.qaAgentEvaluations.providerRunIds must cover llm_qa providerModelCostRecords run ${providerRunId}`,
+        `BenchmarkReportV02.qaAgentEvaluations.providerRunIds must cover llm_qa providerModelCostRecords run ${providerRunId} for evaluatedSystemId ${systemId}`,
       );
     }
   }
-  for (const findingId of llmQaFindingIds) {
-    if (!qaAgentFindingIds.has(findingId)) {
+  for (const [findingId, systemId] of llmQaFindingSystemIds) {
+    if (!qaAgentFindingIdsBySystem.get(systemId)?.has(findingId)) {
       throw new Error(
-        `BenchmarkReportV02.qaAgentEvaluations.findingIds must cover llm_qa findingRecords finding ${findingId}`,
+        `BenchmarkReportV02.qaAgentEvaluations.findingIds must cover llm_qa findingRecords finding ${findingId} for evaluatedSystemId ${systemId}`,
       );
     }
   }
+}
+
+function addToSetMap<Key, Value>(map: Map<Key, Set<Value>>, key: Key, value: Value): void {
+  const existing = map.get(key);
+  if (existing === undefined) {
+    map.set(key, new Set([value]));
+    return;
+  }
+  existing.add(value);
 }
 
 function assertKnownStringRefV02(

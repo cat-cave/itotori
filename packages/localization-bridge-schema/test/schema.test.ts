@@ -288,6 +288,102 @@ function cloneRecord<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+function setBenchmarkCountBucket(
+  buckets: Array<Record<string, unknown>>,
+  bucket: string,
+  count: number,
+): void {
+  const record = buckets.find((candidate) => candidate.bucket === bucket);
+  expect(record, `benchmark count bucket ${bucket}`).toBeDefined();
+  record!.count = count;
+}
+
+function addRawMtlLlmQaCoverage(report: Record<string, unknown>): void {
+  const systems = report.systemsCompared as Array<Record<string, unknown>>;
+  const rawMtlSystem = asTestRecord(
+    systems.find((system) => system.systemId === "raw-mtl-baseline"),
+    "raw MTL benchmark system",
+  );
+  (rawMtlSystem.providerRunIds as string[]).push("019ed006-0000-7000-8000-000000000104");
+
+  const providerRecords = report.providerModelCostRecords as Array<Record<string, unknown>>;
+  const llmQaProviderRecord = asTestRecord(
+    providerRecords.find((record) => record.taskKind === "llm_qa"),
+    "benchmark llm_qa provider record",
+  );
+  const rawMtlQaProviderRecord = cloneRecord(llmQaProviderRecord);
+  rawMtlQaProviderRecord.providerRunId = "019ed006-0000-7000-8000-000000000104";
+  rawMtlQaProviderRecord.systemId = "raw-mtl-baseline";
+  rawMtlQaProviderRecord.startedAt = "2026-06-17T15:00:12.000Z";
+  rawMtlQaProviderRecord.completedAt = "2026-06-17T15:00:13.000Z";
+  rawMtlQaProviderRecord.latencyMs = 1000;
+  rawMtlQaProviderRecord.tokenUsage = {
+    tokenCountSource: "deterministic_counter",
+    promptTokens: 12,
+    completionTokens: 8,
+    totalTokens: 20,
+  };
+  rawMtlQaProviderRecord.cost = {
+    costKind: "zero",
+    currency: "USD",
+    amountMicrosUsd: 0,
+  };
+  providerRecords.push(rawMtlQaProviderRecord);
+
+  const findings = report.findingRecords as Array<Record<string, unknown>>;
+  const llmQaFinding = asTestRecord(
+    findings.find((finding) => finding.detectorKind === "llm_qa"),
+    "benchmark llm_qa finding",
+  );
+  const rawMtlFinding = cloneRecord(llmQaFinding);
+  rawMtlFinding.findingId = "019ed006-0000-7000-8000-000000000303";
+  rawMtlFinding.systemId = "raw-mtl-baseline";
+  rawMtlFinding.category = "accuracy";
+  rawMtlFinding.qualitySubcategory = "mistranslation";
+  rawMtlFinding.rootCause = "model_draft_error";
+  delete rawMtlFinding.seededDefectId;
+  findings.push(rawMtlFinding);
+
+  setBenchmarkCountBucket(
+    report.countsByQualitySeverity as Array<Record<string, unknown>>,
+    "major",
+    3,
+  );
+  setBenchmarkCountBucket(report.countsByCategory as Array<Record<string, unknown>>, "accuracy", 2);
+  setBenchmarkCountBucket(
+    report.countsByRootCause as Array<Record<string, unknown>>,
+    "model_draft_error",
+    2,
+  );
+  setBenchmarkCountBucket(
+    report.countsByDetectorKind as Array<Record<string, unknown>>,
+    "llm_qa",
+    2,
+  );
+  setBenchmarkCountBucket(
+    report.countsByAdjudicationState as Array<Record<string, unknown>>,
+    "confirmed",
+    3,
+  );
+  const penaltySummary = asTestRecord(report.penaltySummary, "benchmark penalty summary");
+  penaltySummary.penaltyTotal = 15;
+  penaltySummary.penaltyPerThousandSourceChars = 483.87;
+  penaltySummary.penaltyPerHundredSourceUnits = 750;
+
+  const qaAgentEvaluations = report.qaAgentEvaluations as Array<Record<string, unknown>>;
+  const qaAgentEvaluation = asTestRecord(qaAgentEvaluations[0], "benchmark QA-agent evaluation");
+  const rawMtlQaAgentEvaluation = cloneRecord(qaAgentEvaluation);
+  rawMtlQaAgentEvaluation.qaAgentEvaluationId = "019ed006-0000-7000-8000-000000000904";
+  rawMtlQaAgentEvaluation.evaluatedSystemId = "raw-mtl-baseline";
+  rawMtlQaAgentEvaluation.providerRunIds = ["019ed006-0000-7000-8000-000000000104"];
+  rawMtlQaAgentEvaluation.findingIds = ["019ed006-0000-7000-8000-000000000303"];
+  qaAgentEvaluations.push(rawMtlQaAgentEvaluation);
+
+  const humanEvaluations = report.humanEvaluationResults as Array<Record<string, unknown>>;
+  const humanEvaluation = asTestRecord(humanEvaluations[0], "benchmark human evaluation");
+  (humanEvaluation.adjudicatedFindingIds as string[]).push("019ed006-0000-7000-8000-000000000303");
+}
+
 function patchExportV02Example(
   bridge: Record<string, unknown>,
   unitCount = 2,
@@ -986,6 +1082,39 @@ describe("localization bridge schema guards", () => {
     );
   });
 
+  it("accepts benchmark reports with separate QA-agent coverage for multiple evaluated systems", () => {
+    const report = benchmarkReportV02Example();
+    addRawMtlLlmQaCoverage(report);
+
+    expect(() => assertBenchmarkReportV02(report)).not.toThrow();
+    expect(report.qaAgentEvaluations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          evaluatedSystemId: "raw-mtl-baseline",
+          providerRunIds: ["019ed006-0000-7000-8000-000000000104"],
+          findingIds: ["019ed006-0000-7000-8000-000000000303"],
+        }),
+        expect.objectContaining({
+          evaluatedSystemId: "itotori-draft",
+          providerRunIds: ["019ed006-0000-7000-8000-000000000103"],
+          findingIds: ["019ed006-0000-7000-8000-000000000302"],
+        }),
+      ]),
+    );
+  });
+
+  it("rejects benchmark reports with only global QA-agent provider run coverage", () => {
+    const report = benchmarkReportV02Example();
+    const qaAgentEvaluations = report.qaAgentEvaluations as Array<Record<string, unknown>>;
+    const firstEvaluation = asTestRecord(qaAgentEvaluations[0], "first QA-agent evaluation");
+    firstEvaluation.evaluatedSystemId = "raw-mtl-baseline";
+    firstEvaluation.findingIds = [];
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /qaAgentEvaluations\[0\]\.providerRunIds.*evaluatedSystemId raw-mtl-baseline/,
+    );
+  });
+
   it("rejects benchmark reports whose QA-agent evaluations omit llm_qa findings", () => {
     const report = benchmarkReportV02Example();
     const qaAgentEvaluations = report.qaAgentEvaluations as Array<Record<string, unknown>>;
@@ -994,6 +1123,18 @@ describe("localization bridge schema guards", () => {
 
     expect(() => assertBenchmarkReportV02(report)).toThrow(
       /qaAgentEvaluations\.findingIds.*llm_qa findingRecords/,
+    );
+  });
+
+  it("rejects benchmark reports with QA-agent finding coverage for a different system", () => {
+    const report = benchmarkReportV02Example();
+    const qaAgentEvaluations = report.qaAgentEvaluations as Array<Record<string, unknown>>;
+    const firstEvaluation = asTestRecord(qaAgentEvaluations[0], "first QA-agent evaluation");
+    firstEvaluation.evaluatedSystemId = "raw-mtl-baseline";
+    firstEvaluation.providerRunIds = [];
+
+    expect(() => assertBenchmarkReportV02(report)).toThrow(
+      /qaAgentEvaluations\[0\]\.findingIds.*evaluatedSystemId raw-mtl-baseline/,
     );
   });
 

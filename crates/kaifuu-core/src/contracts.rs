@@ -1720,7 +1720,8 @@ pub fn validate_benchmark_report_v02(value: &Value) -> BridgeContractResult<()> 
         "BenchmarkReportV02.providerModelCostRecords",
     )?;
     let mut provider_run_ids = HashSet::new();
-    let mut llm_qa_provider_run_ids = HashSet::new();
+    let mut provider_run_system_ids = HashMap::new();
+    let mut llm_qa_provider_run_system_ids = HashMap::new();
     let mut cost_totals_by_system: HashMap<String, u64> = HashMap::new();
     let mut report_total_micros_usd = 0_u64;
     let mut includes_unknown_cost = false;
@@ -1740,8 +1741,10 @@ pub fn validate_benchmark_report_v02(value: &Value) -> BridgeContractResult<()> 
                 "{label}.providerRunId must be unique within providerModelCostRecords"
             ));
         }
+        let provider_run_system_id = string_field(run, "systemId")?.to_string();
+        provider_run_system_ids.insert(provider_run_id.clone(), provider_run_system_id.clone());
         if string_field(run, "taskKind")? == "llm_qa" {
-            llm_qa_provider_run_ids.insert(provider_run_id);
+            llm_qa_provider_run_system_ids.insert(provider_run_id, provider_run_system_id);
         }
     }
     for provider_run_id in &declared_provider_run_ids {
@@ -1804,7 +1807,8 @@ pub fn validate_benchmark_report_v02(value: &Value) -> BridgeContractResult<()> 
     let mut root_causes = Vec::new();
     let mut detector_kinds = Vec::new();
     let mut adjudication_states = Vec::new();
-    let mut llm_qa_finding_ids = HashSet::new();
+    let mut finding_system_ids = HashMap::new();
+    let mut llm_qa_finding_system_ids = HashMap::new();
     for (index, finding) in finding_records.iter().enumerate() {
         let label = format!("BenchmarkReportV02.findingRecords[{index}]");
         let finding = as_record(finding, &label)?;
@@ -1820,8 +1824,10 @@ pub fn validate_benchmark_report_v02(value: &Value) -> BridgeContractResult<()> 
         let root_cause = string_field(finding, "rootCause")?.to_string();
         let detector_kind = string_field(finding, "detectorKind")?.to_string();
         let adjudication_state = string_field(finding, "adjudicationState")?.to_string();
+        let finding_system_id = string_field(finding, "systemId")?.to_string();
+        finding_system_ids.insert(finding_id.clone(), finding_system_id.clone());
         if detector_kind == "llm_qa" {
-            llm_qa_finding_ids.insert(finding_id);
+            llm_qa_finding_system_ids.insert(finding_id, finding_system_id);
         }
         quality_severities.push(severity);
         categories.push(category);
@@ -1899,20 +1905,32 @@ pub fn validate_benchmark_report_v02(value: &Value) -> BridgeContractResult<()> 
     )?;
 
     validate_deterministic_qa_results(report, &system_ids, &finding_ids)?;
-    let (qa_agent_provider_ids, qa_agent_finding_ids) =
-        validate_qa_agent_evaluations(report, &system_ids, &provider_run_ids, &finding_ids)?;
+    let (qa_agent_provider_ids, qa_agent_finding_ids) = validate_qa_agent_evaluations(
+        report,
+        &system_ids,
+        &provider_run_ids,
+        &provider_run_system_ids,
+        &finding_ids,
+        &finding_system_ids,
+    )?;
     validate_human_evaluations(report, &system_ids, &finding_ids)?;
-    for provider_run_id in &llm_qa_provider_run_ids {
-        if !qa_agent_provider_ids.contains(provider_run_id) {
+    for (provider_run_id, system_id) in &llm_qa_provider_run_system_ids {
+        if !qa_agent_provider_ids
+            .get(system_id)
+            .is_some_and(|ids| ids.contains(provider_run_id))
+        {
             return error(format!(
-                "BenchmarkReportV02.qaAgentEvaluations.providerRunIds must cover llm_qa providerModelCostRecords run {provider_run_id}"
+                "BenchmarkReportV02.qaAgentEvaluations.providerRunIds must cover llm_qa providerModelCostRecords run {provider_run_id} for evaluatedSystemId {system_id}"
             ));
         }
     }
-    for finding_id in &llm_qa_finding_ids {
-        if !qa_agent_finding_ids.contains(finding_id) {
+    for (finding_id, system_id) in &llm_qa_finding_system_ids {
+        if !qa_agent_finding_ids
+            .get(system_id)
+            .is_some_and(|ids| ids.contains(finding_id))
+        {
             return error(format!(
-                "BenchmarkReportV02.qaAgentEvaluations.findingIds must cover llm_qa findingRecords finding {finding_id}"
+                "BenchmarkReportV02.qaAgentEvaluations.findingIds must cover llm_qa findingRecords finding {finding_id} for evaluatedSystemId {system_id}"
             ));
         }
     }
@@ -4481,15 +4499,20 @@ fn validate_qa_agent_evaluations(
     report: &Map<String, Value>,
     system_ids: &HashSet<String>,
     provider_run_ids: &HashSet<String>,
+    provider_run_system_ids: &HashMap<String, String>,
     finding_ids: &HashSet<String>,
-) -> BridgeContractResult<(HashSet<String>, HashSet<String>)> {
+    finding_system_ids: &HashMap<String, String>,
+) -> BridgeContractResult<(
+    HashMap<String, HashSet<String>>,
+    HashMap<String, HashSet<String>>,
+)> {
     let evaluations = required_array(
         report,
         "qaAgentEvaluations",
         "BenchmarkReportV02.qaAgentEvaluations",
     )?;
-    let mut qa_agent_provider_ids = HashSet::new();
-    let mut qa_agent_finding_ids = HashSet::new();
+    let mut qa_agent_provider_ids: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut qa_agent_finding_ids: HashMap<String, HashSet<String>> = HashMap::new();
     for (index, evaluation) in evaluations.iter().enumerate() {
         let label = format!("BenchmarkReportV02.qaAgentEvaluations[{index}]");
         let evaluation = as_record(evaluation, &label)?;
@@ -4525,7 +4548,15 @@ fn validate_qa_agent_evaluations(
             "providerRun",
             provider_run_ids,
         )? {
-            qa_agent_provider_ids.insert(id);
+            if provider_run_system_ids.get(&id) != Some(&system_id.to_string()) {
+                return error(format!(
+                    "{label}.providerRunIds must reference providerModelCostRecords for evaluatedSystemId {system_id}"
+                ));
+            }
+            qa_agent_provider_ids
+                .entry(system_id.to_string())
+                .or_default()
+                .insert(id);
         }
         for id in assert_known_uuid_refs(
             required(evaluation, "findingIds", &format!("{label}.findingIds"))?,
@@ -4533,7 +4564,15 @@ fn validate_qa_agent_evaluations(
             "finding",
             finding_ids,
         )? {
-            qa_agent_finding_ids.insert(id);
+            if finding_system_ids.get(&id) != Some(&system_id.to_string()) {
+                return error(format!(
+                    "{label}.findingIds must reference findingRecords for evaluatedSystemId {system_id}"
+                ));
+            }
+            qa_agent_finding_ids
+                .entry(system_id.to_string())
+                .or_default()
+                .insert(id);
         }
         validate_qa_agent_metrics(
             required(evaluation, "metrics", &format!("{label}.metrics"))?,

@@ -236,8 +236,11 @@ Every report records:
 The guard rejects confidence-only report fields, unresolved system/provider/
 finding references, mismatched cost totals, mismatched finding count buckets,
 unknown unadjudicated root causes on adjudicated findings, missing prompt preset
-identity, and unscored QA-agent metric shapes. It does not make quality claims:
-public wording still depends on `docs/quality-claims.md` and review scope.
+identity, and unscored QA-agent metric shapes. Every `llm_qa` provider run and
+`llm_qa` finding must be covered by at least one QA-agent evaluation with the
+same `evaluatedSystemId`; global QA-agent coverage across other systems is not
+valid benchmark evidence. It does not make quality claims: public wording still
+depends on `docs/quality-claims.md` and review scope.
 
 ## Binding Authority
 

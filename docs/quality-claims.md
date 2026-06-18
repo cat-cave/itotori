@@ -67,7 +67,8 @@ A benchmark or quality report may support public wording only when it includes:
 - penalty totals using the taxonomy weights, normalized per 1000 source
   characters and per 100 source units;
 - QA-agent precision, recall, F1, category accuracy, quality-severity accuracy,
-  root-cause accuracy, critical recall, and unscorable rate;
+  root-cause accuracy, critical recall, and unscorable rate for the same
+  `evaluatedSystemId` as the `llm_qa` provider runs and findings being scored;
 - human-review sample counts and reviewer agreement notes when more than one
   reviewer adjudicates the same sample.
 

@@ -19,6 +19,11 @@
       "description": "Benchmark, cost, QA-agent, human evaluation, and finding rollup report."
     },
     {
+      "kind": "benchmark-report-v0.2",
+      "path": "./benchmark-report-v0.2-multi-system-qa.json",
+      "description": "Benchmark report proving multiple evaluated systems can carry separate llm_qa provider run and finding coverage."
+    },
+    {
       "kind": "bridge-v0.2",
       "path": "./bridge-v0.2.json",
       "description": "Full bridge bundle covering dialogue, UI, database, song, image text, and metadata surfaces."
@@ -92,6 +97,18 @@
       "path": "./invalid/benchmark-report-v0.2-missing-qa-evaluation.json",
       "expectedSemanticError": "qaAgentEvaluations\\.providerRunIds",
       "description": "LLM QA provider runs must be covered by QA-agent evaluations."
+    },
+    {
+      "kind": "benchmark-report-v0.2",
+      "path": "./invalid/benchmark-report-v0.2-global-provider-coverage.json",
+      "expectedSemanticError": "qaAgentEvaluations\\[0\\]\\.providerRunIds.*evaluatedSystemId raw-mtl-baseline",
+      "description": "LLM QA provider runs must be covered by QA-agent evaluations for the same evaluated system."
+    },
+    {
+      "kind": "benchmark-report-v0.2",
+      "path": "./invalid/benchmark-report-v0.2-mismatched-finding-coverage.json",
+      "expectedSemanticError": "qaAgentEvaluations\\[0\\]\\.findingIds.*evaluatedSystemId raw-mtl-baseline",
+      "description": "LLM QA findings must not satisfy QA-agent coverage for another evaluated system."
     },
     {
       "kind": "bridge-v0.2",
