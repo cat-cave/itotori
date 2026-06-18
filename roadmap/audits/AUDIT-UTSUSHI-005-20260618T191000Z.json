@@ -1,0 +1,339 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-005-20260618T191000Z",
+  "generatedAt": "2026-06-18T19:10:00Z",
+  "spec": {
+    "id": "UTSUSHI-005",
+    "title": "Runtime review dashboard",
+    "branch": "spec/utsushi-005",
+    "worktree": "/tmp/itotori-spec-utsushi-005",
+    "commit": "e754bcc"
+  },
+  "auditor": {
+    "name": "utsushi-005-final-audit-wave",
+    "kind": "ux"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Architecture, frontend/API, test/CI, and focused server-route re-audits found no remaining P0/P1 blockers after the server deep-link and artifact-store repairs. P2/P3 findings were recorded as follow-up DAG nodes UTSUSHI-135 through UTSUSHI-141 and ITOTORI-121.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 4,
+      "P3": 4
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "UTSUSHI-005-F001",
+      "UTSUSHI-005-F002",
+      "UTSUSHI-005-F003",
+      "UTSUSHI-005-F004",
+      "UTSUSHI-005-F005",
+      "UTSUSHI-005-F006",
+      "UTSUSHI-005-F007",
+      "UTSUSHI-005-F008"
+    ]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-005-F001",
+      "severity": "P2",
+      "title": "Missing runtimeRunId maps to internal error",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/project-repository.ts",
+          "line": 1725,
+          "symbol": "getRuntimeStatus"
+        },
+        {
+          "path": "apps/itotori/src/api-handlers.ts",
+          "line": 326,
+          "symbol": "handleItotoriApiRequest"
+        }
+      ],
+      "description": "A stale or unknown route-specific runtimeRunId can surface as an internal error instead of a typed not-found outcome.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Architecture and frontend/API audits both identified the missing-run path after comparing spec/utsushi-005 against origin/main."
+        }
+      ],
+      "impact": "Deep-linked runtime evidence pages can report a server failure for a normal stale-link case.",
+      "actionableAcceptanceCriteria": [
+        "Unknown runtimeRunId returns typed not-found behavior.",
+        "Dashboard renders a stale-link or not-found state without claiming evidence exists."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-135",
+          "acceptanceCriteria": [
+            "GET /api/runtime/v0.2/status with an unknown runtimeRunId returns a typed not-found response or empty not-found status instead of internal_error."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-005-F002",
+      "severity": "P2",
+      "title": "Runtime artifact hash provenance is blurred",
+      "category": "acceptance_criteria",
+      "locations": [
+        {
+          "path": "packages/localization-bridge-schema/src/index.ts",
+          "line": 900,
+          "symbol": "RuntimeArtifactRefV02"
+        },
+        {
+          "path": "packages/itotori-db/src/repositories/project-repository.ts",
+          "line": 3446,
+          "symbol": "runtimeArtifactHash"
+        }
+      ],
+      "description": "Repository-generated fallback hashes are not distinguished from adapter/content-backed hashes in dashboard evidence.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Architecture and test audits identified that dashboard link quality treats any non-null hash similarly."
+        }
+      ],
+      "impact": "Future proof manifests could overstate screenshot or artifact evidence strength.",
+      "actionableAcceptanceCriteria": [
+        "Artifact refs expose hash provenance.",
+        "Dashboard differentiates content-backed hashes, generated fallback hashes, and missing hashes."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-136",
+          "acceptanceCriteria": [
+            "Runtime artifact refs expose whether a hash came from adapter/content evidence or repository fallback metadata."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-005-F003",
+      "severity": "P3",
+      "title": "Runtime status API method guard is incomplete",
+      "category": "test",
+      "locations": [
+        {
+          "path": "apps/itotori/src/api-handlers.ts",
+          "line": 147,
+          "symbol": "handleItotoriApiRequest"
+        }
+      ],
+      "description": "Non-GET requests to /api/runtime/v0.2/status fall through as unknown route instead of method_not_allowed.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "All three initial audits independently called out the missing method-not-allowed coverage."
+        }
+      ],
+      "impact": "API diagnostics are inconsistent for the new runtime status route.",
+      "actionableAcceptanceCriteria": [
+        "POST /api/runtime/v0.2/status returns method_not_allowed.",
+        "GET behavior and unknown route behavior remain unchanged."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-137",
+          "acceptanceCriteria": [
+            "POST /api/runtime/v0.2/status returns method_not_allowed with allowed GET semantics."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-005-F004",
+      "severity": "P3",
+      "title": "Dashboard tests lack DB-to-API smoke",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "apps/runtime-web-review/test/dashboard.test.ts",
+          "line": 12
+        }
+      ],
+      "description": "Dashboard tests use MSW fixtures; repository tests exercise DB projections, but there is no cross-layer DB-to-API-to-dashboard smoke.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Test audit confirmed runtime-web-review tests are deterministic but not DB-backed."
+        }
+      ],
+      "impact": "MSW fixture drift could mask repository projection bugs.",
+      "actionableAcceptanceCriteria": [
+        "Seed runtime evidence in Postgres and render the dashboard using the API response shape.",
+        "Validate API schema between DB read and dashboard render."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-138",
+          "acceptanceCriteria": [
+            "The smoke starts from repository-backed runtime evidence rows rather than hand-built dashboard JSON."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-005-F005",
+      "severity": "P3",
+      "title": "Utsushi local gate misses touched Itotori surfaces",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "justfile",
+          "line": 68,
+          "symbol": "ci-utsushi"
+        }
+      ],
+      "description": "just ci-utsushi can pass while app API or DB repository changes made by an Utsushi spec are not covered.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Test audit identified the local gate gap; full CI and explicit ci-itotori covered this branch."
+        }
+      ],
+      "impact": "Future Utsushi specs may under-run local validation when they touch Itotori surfaces.",
+      "actionableAcceptanceCriteria": [
+        "Affected validation includes app and DB checks when Utsushi specs touch those paths.",
+        "Skipped DB checks are visible."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-139",
+          "acceptanceCriteria": [
+            "Changes under apps/itotori or packages/itotori-db in Utsushi-labeled specs trigger app and DB checks in the affected report."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-005-F006",
+      "severity": "P2",
+      "title": "DB-backed local test skips need stronger visibility",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "packages/itotori-db/scripts/run-tests.mjs",
+          "line": 24
+        }
+      ],
+      "description": "Local DB repository tests can exit successfully with DATABASE_URL absent, which is convenient but easy for agents to misread as DB validation.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Test audit noted CI is covered, but local validation can report success while skipping DB-backed repository tests."
+        }
+      ],
+      "impact": "Local validation reports can be over-trusted when DB coverage was skipped.",
+      "actionableAcceptanceCriteria": [
+        "A stricter local command fails when DB-backed tests are required and DATABASE_URL is absent.",
+        "Skip reports include remediation details."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "ITOTORI-121",
+          "acceptanceCriteria": [
+            "A stricter local validation command fails when DB-backed repository tests are required and DATABASE_URL is missing."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-005-F007",
+      "severity": "P2",
+      "title": "Artifact symlink escape coverage is missing",
+      "category": "security",
+      "locations": [
+        {
+          "path": "apps/itotori/src/server.ts",
+          "line": 230,
+          "symbol": "readRootedFile"
+        }
+      ],
+      "description": "Focused re-audit found implementation uses realpath confinement, but tests do not cover symlink escape attempts under managedArtifactRoot.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Focused server-route re-audit found no blocker but requested explicit symlink escape regression coverage."
+        }
+      ],
+      "impact": "A future refactor could remove realpath confinement without a failing test.",
+      "actionableAcceptanceCriteria": [
+        "Symlink under managedArtifactRoot pointing outside the root is not served.",
+        "Normal managed artifact files continue to serve."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-140",
+          "acceptanceCriteria": [
+            "A symlink under managedArtifactRoot that targets a file outside the root is not served."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-005-F008",
+      "severity": "P3",
+      "title": "Artifact dot-segment HTTP path coverage is missing",
+      "category": "test",
+      "locations": [
+        {
+          "path": "apps/itotori/src/server.ts",
+          "line": 175,
+          "symbol": "decodeArtifactStoreUri"
+        }
+      ],
+      "description": "Focused re-audit requested explicit raw HTTP path tests for literal and percent-encoded dot segments because URL parsing can normalize them before app validation.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Focused server-route re-audit found no blocker but requested dot-segment status-code regression coverage."
+        }
+      ],
+      "impact": "Server route safety behavior around normalized dot-segment paths is undocumented.",
+      "actionableAcceptanceCriteria": [
+        "Literal and percent-encoded dot-segment artifact-store requests cannot serve files outside configured roots.",
+        "Tests document the intended status code."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-141",
+          "acceptanceCriteria": [
+            "Percent-encoded dot-segment artifact-store requests cannot serve files outside configured roots."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    }
+  ]
+}

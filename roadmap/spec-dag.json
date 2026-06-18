@@ -8116,7 +8116,7 @@
     {
       "id": "UTSUSHI-005",
       "title": "Runtime review dashboard",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "itotori"],
@@ -8159,10 +8159,7 @@
         "Evidence without context",
         "Misleading fidelity presentation",
         "Poor reviewer ergonomics"
-      ],
-      "owner": "orchestrator-20260618-wave5",
-      "branch": "spec/utsushi-005",
-      "worktree": "/tmp/itotori-spec-utsushi-005"
+      ]
     },
     {
       "id": "UTSUSHI-006",
