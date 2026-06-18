@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import Ajv2020 from "ajv/dist/2020.js";
 import {
   createIssueSyncPlan,
@@ -64,71 +64,124 @@ const optionalNodeFields = ["statusReason", "issue", "branch", "worktree", "owne
 
 const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
 const targetRank = { baseline: 0, alpha: 1, continuous: 2 };
+const semanticValidationStatuses = new Set(["planned", "in_progress", "blocked"]);
+const genericDeliverableValues = new Set([
+  "implementation",
+  "fixture",
+  "fixtures",
+  "test",
+  "tests",
+  "regression coverage",
+  "end to end fixture",
+  "e2e fixture",
+  "integration surface",
+]);
+const titleDerivedGenericDeliverableSuffixes = [
+  "implementation",
+  "fixtures",
+  "tests",
+  "regression coverage",
+  "end to end fixture",
+  "e2e fixture",
+  "integration surface",
+];
+const placeholderAcceptancePatterns = [
+  /^(?:.+\s+)?has concrete executable behavior or schema validation$/iu,
+  /^has concrete executable behavior$/iu,
+  /^has schema validation$/iu,
+  /^acceptance is based on executable fixtures, validators, services, or commands$/iu,
+  /^the integration composes (?:the )?prerequisite implementation slices without expanding their scope$/iu,
+];
+const manualOnlyVerificationPattern =
+  /\b(?:test|tests|smoke|fixture|fixtures|golden|round[- ]trip|validation|validate|check)\b/iu;
+const docsOnlyPattern = /\b(?:docs?|documentation|readme|adr|policy|spec|guide|playbook)\b/iu;
+const implementationPattern =
+  /\b(?:adapter|api|artifact|bridge|cli|command|contract|dashboard|database|delta|fixture|generator|harness|implementation|ingest|migration|model|parser|patch|queue|repository|runner|schema|service|smoke|test|ui|validator|workflow)\b/iu;
+const metaNodePattern =
+  /\b(?:meta[- ]?pack|follow[- ]up pack|normalize[- ]later|granularity follow[- ]up normalizer|report[- ]only|decision node|decision record|feasibility report|feasibility node)\b/iu;
+const implementableDecisionPattern =
+  /\b(?:api|command|contract|dashboard|events?|generator|import|model|persistence|queue|read model|renderer|schema|service|ui|validator|workflow|wiring)\b/iu;
+const exactIntegrationSurfacePattern =
+  /\b(?:adapter|bgi|binary patcher|bridge|catalog|dashboard|delta|draft|engine|encrypted|itotori|kaifuu|key discovery|kirikiri|ledger|mv\/mz|openrouter|patch|provider|queue|renpy|reviewer queue|runtime|siglus|style guide|suite|translation|utsushi|wolf|xp3)\b/iu;
+const timeEstimateFieldPattern =
+  /(?:estimate|estimated|duration|hours?|days?|effort|points?|tshirt|t[- ]shirt)/iu;
 
-const [command = "validate", ...args] = process.argv.slice(2);
-const dag = loadDag();
-const validation = validateDag(dag);
-if (command === "validate") {
-  const auditValidation = validateAuditReportArtifacts(dag);
-  validation.errors.push(...auditValidation.errors);
-  validation.auditReportExampleCount = auditValidation.exampleCount;
-} else if (command === "validate-audit-report") {
-  const auditValidation = validateAuditReportFiles(args, dag);
-  validation.errors.push(...auditValidation.errors);
-  validation.auditReportCount = auditValidation.reportCount;
+if (isMainModule()) {
+  runCli(process.argv.slice(2));
 }
 
-if (validation.errors.length > 0) {
-  for (const error of validation.errors) {
-    console.error(error);
+function runCli(argv) {
+  const [command = "validate", ...args] = argv;
+  const dag = loadDag();
+  const validation = validateDag(dag);
+  if (command === "validate") {
+    const auditValidation = validateAuditReportArtifacts(dag);
+    validation.errors.push(...auditValidation.errors);
+    validation.auditReportExampleCount = auditValidation.exampleCount;
+  } else if (command === "validate-audit-report") {
+    const auditValidation = validateAuditReportFiles(args, dag);
+    validation.errors.push(...auditValidation.errors);
+    validation.auditReportCount = auditValidation.reportCount;
   }
-  process.exit(1);
-}
 
-try {
-  switch (command) {
-    case "validate":
-      printValidationSummary(dag, validation);
-      break;
-    case "validate-audit-report":
-      printAuditReportValidationSummary(validation);
-      break;
-    case "ready":
-      printNodes(readyNodes(dag), args);
-      break;
-    case "pop":
-      printPop(dag, args);
-      break;
-    case "show":
-      printShow(dag, args);
-      break;
-    case "graph":
-      printDotGraph(dag);
-      break;
-    case "sync-issues":
-      printIssueSync(dag, args);
-      break;
-    case "claim":
-      printClaim(dag, args);
-      break;
-    case "worktree":
-      printWorktree(dag, args);
-      break;
-    case "ingest-audit":
-      printAuditIngestion(dag, args);
-      break;
-    case "complete":
-      printCompletion(dag, args);
-      break;
-    default:
-      printUsageAndExit();
+  if (validation.errors.length > 0) {
+    for (const error of validation.errors) {
+      console.error(error);
+    }
+    process.exit(1);
   }
-} catch (error) {
-  console.error(error.message);
-  process.exit(1);
+
+  try {
+    switch (command) {
+      case "validate":
+        printValidationSummary(dag, validation);
+        break;
+      case "validate-audit-report":
+        printAuditReportValidationSummary(validation);
+        break;
+      case "ready":
+        printNodes(readyNodes(dag), args);
+        break;
+      case "pop":
+        printPop(dag, args);
+        break;
+      case "show":
+        printShow(dag, args);
+        break;
+      case "graph":
+        printDotGraph(dag);
+        break;
+      case "sync-issues":
+        printIssueSync(dag, args);
+        break;
+      case "claim":
+        printClaim(dag, args);
+        break;
+      case "worktree":
+        printWorktree(dag, args);
+        break;
+      case "ingest-audit":
+        printAuditIngestion(dag, args);
+        break;
+      case "complete":
+        printCompletion(dag, args);
+        break;
+      default:
+        printUsageAndExit();
+    }
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
 }
 
-function loadDag() {
+function isMainModule() {
+  return (
+    Boolean(process.argv[1]) && import.meta.url === pathToFileURL(resolve(process.argv[1])).href
+  );
+}
+
+export function loadDag() {
   return loadJson(dagPath);
 }
 
@@ -136,7 +189,7 @@ function loadJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-function validateDag(value) {
+export function validateDag(value) {
   const errors = [];
   const ajv = new Ajv2020({ allErrors: true });
   const validate = ajv.compile(schema);
@@ -638,6 +691,11 @@ function validateNode(node, index, errors) {
   for (const field of Object.keys(node)) {
     if (!allowedFields.has(field)) {
       errors.push(`${node.id ?? `nodes[${index}]`} has unknown field ${field}`);
+      if (timeEstimateFieldPattern.test(field)) {
+        errors.push(
+          `${node.id ?? `nodes[${index}]`} ${field} is a time estimate field; roadmap nodes must use dependencies and verification instead of time estimates`,
+        );
+      }
     }
   }
   if (typeof node.id !== "string" || !/^[A-Z]+-[0-9]{3}$/.test(node.id)) {
@@ -680,6 +738,7 @@ function validateNode(node, index, errors) {
   validateStringArray(node, "acceptanceCriteria", errors, { min: 1 });
   validateVerification(node, errors);
   validateStringArray(node, "auditFocus", errors, { min: 1 });
+  validateNodeSemantics(node, errors);
 }
 
 function validateVerification(node, errors) {
@@ -706,6 +765,188 @@ function validateVerification(node, errors) {
     }
     seen.add(key);
   }
+}
+
+function validateNodeSemantics(node, errors) {
+  if (!semanticValidationStatuses.has(node.status)) {
+    return;
+  }
+
+  validateRunnableVerification(node, errors);
+  validateConcreteDeliverables(node, errors);
+  validateNonPlaceholderAcceptance(node, errors);
+  validateImplementableNodeKind(node, errors);
+  validateIntegrationNodeSurfaces(node, errors);
+}
+
+function validateRunnableVerification(node, errors) {
+  if (isDocsOnlyNode(node)) {
+    return;
+  }
+  const verification = Array.isArray(node.verification) ? node.verification : [];
+  const hasCommand = verification.some(
+    (entry) => isRecord(entry) && entry.type === "command" && typeof entry.value === "string",
+  );
+  if (hasCommand) {
+    return;
+  }
+
+  errors.push(
+    `${node.id} verification must include at least one command entry for runnable evidence`,
+  );
+  for (const [index, entry] of verification.entries()) {
+    if (
+      isRecord(entry) &&
+      entry.type === "manual" &&
+      typeof entry.value === "string" &&
+      manualOnlyVerificationPattern.test(entry.value)
+    ) {
+      errors.push(
+        `${node.id} verification[${index}] manual entry is not runnable evidence for tests or smoke behavior: ${entry.value}`,
+      );
+    }
+  }
+}
+
+function validateConcreteDeliverables(node, errors) {
+  if (!Array.isArray(node.deliverables)) {
+    return;
+  }
+  for (const [index, deliverable] of node.deliverables.entries()) {
+    if (typeof deliverable !== "string") {
+      continue;
+    }
+    if (isGenericDeliverable(node, deliverable)) {
+      errors.push(`${node.id} deliverables[${index}] is a placeholder deliverable: ${deliverable}`);
+    }
+  }
+}
+
+function validateNonPlaceholderAcceptance(node, errors) {
+  if (!Array.isArray(node.acceptanceCriteria)) {
+    return;
+  }
+  for (const [index, criterion] of node.acceptanceCriteria.entries()) {
+    if (typeof criterion !== "string") {
+      continue;
+    }
+    if (isPlaceholderAcceptanceCriterion(criterion)) {
+      errors.push(
+        `${node.id} acceptanceCriteria[${index}] is placeholder acceptance: ${criterion}`,
+      );
+    }
+  }
+}
+
+function validateImplementableNodeKind(node, errors) {
+  const fields = [
+    ["title", node.title],
+    ["summary", node.summary],
+    ...(Array.isArray(node.deliverables)
+      ? node.deliverables.map((value, index) => [`deliverables[${index}]`, value])
+      : []),
+  ];
+
+  for (const [field, value] of fields) {
+    if (typeof value !== "string") {
+      continue;
+    }
+    if (metaNodePattern.test(value)) {
+      errors.push(`${node.id} ${field} describes meta or decision-only work: ${value}`);
+    }
+  }
+
+  if (
+    typeof node.title === "string" &&
+    /\bdecision\b/iu.test(node.title) &&
+    !implementableDecisionPattern.test(node.title)
+  ) {
+    errors.push(`${node.id} title describes a decision-only node: ${node.title}`);
+  }
+}
+
+function validateIntegrationNodeSurfaces(node, errors) {
+  if (!isIntegrationNode(node)) {
+    return;
+  }
+
+  const text = [
+    node.title,
+    node.summary,
+    ...(Array.isArray(node.projects) ? node.projects : []),
+    ...(Array.isArray(node.deliverables) ? node.deliverables : []),
+    ...(Array.isArray(node.acceptanceCriteria) ? node.acceptanceCriteria : []),
+    ...(Array.isArray(node.verification)
+      ? node.verification.map((entry) => (isRecord(entry) ? entry.value : ""))
+      : []),
+  ]
+    .filter((value) => typeof value === "string")
+    .join("\n");
+
+  if (!exactIntegrationSurfacePattern.test(text)) {
+    errors.push(
+      `${node.id} parallelGroup integration node must name exact composed surfaces, artifacts, commands, or adapters: ${node.parallelGroup}`,
+    );
+  }
+}
+
+function isDocsOnlyNode(node) {
+  if (!Array.isArray(node.deliverables) || node.deliverables.length === 0) {
+    return false;
+  }
+  const deliverablesAreDocs = node.deliverables.every(
+    (deliverable) => typeof deliverable === "string" && docsOnlyPattern.test(deliverable),
+  );
+  if (!deliverablesAreDocs) {
+    return false;
+  }
+  const nodeText = [node.title, node.summary, ...(node.acceptanceCriteria ?? [])]
+    .filter((value) => typeof value === "string")
+    .join("\n");
+  return !implementationPattern.test(nodeText);
+}
+
+function isGenericDeliverable(node, deliverable) {
+  const normalized = normalizeSemanticText(deliverable);
+  if (genericDeliverableValues.has(normalized)) {
+    return true;
+  }
+
+  const normalizedTitle = typeof node.title === "string" ? normalizeSemanticText(node.title) : "";
+  if (!normalizedTitle) {
+    return false;
+  }
+  return titleDerivedGenericDeliverableSuffixes.some(
+    (suffix) => normalized === `${normalizedTitle} ${suffix}`,
+  );
+}
+
+function isPlaceholderAcceptanceCriterion(criterion) {
+  return placeholderAcceptancePatterns.some((pattern) => pattern.test(criterion.trim()));
+}
+
+function isIntegrationNode(node) {
+  if (node.parallelGroup === "alpha-integration") {
+    return true;
+  }
+  const text = [
+    node.title,
+    node.summary,
+    ...(Array.isArray(node.deliverables) ? node.deliverables : []),
+  ]
+    .filter((value) => typeof value === "string")
+    .join("\n")
+    .replace(/\bintegration[- ]nodes?\b/giu, "");
+  return /\b(?:integration|vertical|end[- ]to[- ]end)\b/iu.test(text);
+}
+
+function normalizeSemanticText(value) {
+  return value
+    .toLowerCase()
+    .replace(/['’]/gu, "")
+    .replace(/[^a-z0-9/]+/gu, " ")
+    .trim()
+    .replace(/\s+/gu, " ");
 }
 
 function validateStringArray(node, field, errors, options) {

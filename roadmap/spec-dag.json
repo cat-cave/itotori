@@ -875,7 +875,7 @@
       "deliverables": [
         "Verification semantics rule",
         "Generic placeholder detector",
-        "Meta-pack and decision-node detector",
+        "Roadmap meta-node and planning-only detector",
         "Integration-node validator",
         "Regression tests",
         "Validator docs update"
@@ -890,6 +890,10 @@
         "Validator errors identify the node id, field, and offending value that needs repair"
       ],
       "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag-validator.test.mjs"
+        },
         {
           "type": "command",
           "value": "node scripts/spec-dag-lifecycle.test.mjs"
@@ -1966,13 +1970,13 @@
       "dependsOn": ["CATALOG-008", "CATALOG-009", "CATALOG-010"],
       "summary": "Wire exact linking, fuzzy candidate generation, and conflict review into the catalog resolver.",
       "deliverables": [
-        "Cross-source resolver integration shell integration surface",
-        "Cross-source resolver integration shell end-to-end fixture",
-        "Cross-source resolver integration shell regression coverage"
+        "Cross-source resolver integration shell composed command path",
+        "Cross-source resolver integration shell fixture artifact bundle",
+        "Boundary regression assertions for Cross-source resolver integration shell"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Cross-source resolver integration shell names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Cross-source resolver integration shell fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -2609,16 +2613,16 @@
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Adapter golden tests"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
         },
         {
           "type": "manual",
-          "value": "Patch smoke tests"
-        },
-        {
-          "type": "manual",
-          "value": "Docs review"
+          "value": "RenPy adapter docs review"
         }
       ],
       "auditFocus": [
@@ -2657,16 +2661,12 @@
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "KAG parser tests"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
         },
         {
-          "type": "manual",
-          "value": "Golden bridge fixtures"
-        },
-        {
-          "type": "manual",
-          "value": "Patch smoke tests"
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
         }
       ],
       "auditFocus": [
@@ -2731,13 +2731,13 @@
       "dependsOn": ["KAIFUU-081", "KAIFUU-082", "KAIFUU-083", "KAIFUU-084"],
       "summary": "Integrate byte-span, string-slot, relocation, and rollback primitives into the shared binary patcher API.",
       "deliverables": [
-        "Binary patcher integration shell integration surface",
-        "Binary patcher integration shell end-to-end fixture",
-        "Binary patcher integration shell regression coverage"
+        "Binary patcher integration shell composed command path",
+        "Binary patcher integration shell fixture artifact bundle",
+        "Boundary regression assertions for Binary patcher integration shell"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Binary patcher integration shell names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Binary patcher integration shell fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -2779,16 +2779,12 @@
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Adapter golden tests"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
         },
         {
-          "type": "manual",
-          "value": "Round-trip tests"
-        },
-        {
-          "type": "manual",
-          "value": "Patch smoke"
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
         }
       ],
       "auditFocus": [
@@ -2827,16 +2823,12 @@
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Adapter tests"
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
         },
         {
-          "type": "manual",
-          "value": "Binary patcher tests"
-        },
-        {
-          "type": "manual",
-          "value": "Fixture round-trip"
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
         }
       ],
       "auditFocus": [
@@ -2898,13 +2890,13 @@
       "dependsOn": ["KAIFUU-091", "KAIFUU-092", "KAIFUU-093", "KAIFUU-094"],
       "summary": "Integrate Siglus detector, key-boundary, parser-boundary, and redacted validation slices.",
       "deliverables": [
-        "Siglus key-profile and parser proof integration integration surface",
-        "Siglus key-profile and parser proof integration end-to-end fixture",
-        "Siglus key-profile and parser proof integration regression coverage"
+        "Siglus key-profile and parser proof integration composed command path",
+        "Siglus key-profile and parser proof integration fixture artifact bundle",
+        "Boundary regression assertions for Siglus key-profile and parser proof integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Siglus key-profile and parser proof integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Siglus key-profile and parser proof integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -3076,13 +3068,13 @@
       "dependsOn": ["KAIFUU-085", "KAIFUU-086", "KAIFUU-087"],
       "summary": "Integrate helper validation, registry capabilities, manual key entry, and known-key import boundaries.",
       "deliverables": [
-        "Local key discovery helper contract integration integration surface",
-        "Local key discovery helper contract integration end-to-end fixture",
-        "Local key discovery helper contract integration regression coverage"
+        "Local key discovery helper contract integration composed command path",
+        "Local key discovery helper contract integration fixture artifact bundle",
+        "Boundary regression assertions for Local key discovery helper contract integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Local key discovery helper contract integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Local key discovery helper contract integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -3116,13 +3108,13 @@
       "dependsOn": ["KAIFUU-088", "KAIFUU-089", "KAIFUU-090", "KAIFUU-129"],
       "summary": "Integrate allowlisted helper binaries, bounded execution, and platform adapters.",
       "deliverables": [
-        "Platform-assisted helper execution integration integration surface",
-        "Platform-assisted helper execution integration end-to-end fixture",
-        "Platform-assisted helper execution integration regression coverage"
+        "Platform-assisted helper execution integration composed command path",
+        "Platform-assisted helper execution integration fixture artifact bundle",
+        "Boundary regression assertions for Platform-assisted helper execution integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Platform-assisted helper execution integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Platform-assisted helper execution integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -3431,13 +3423,13 @@
       "dependsOn": ["KAIFUU-097", "KAIFUU-098"],
       "summary": "Integrate plain XP3 inventory and deterministic rebuild behavior.",
       "deliverables": [
-        "Plain XP3 reader and writer integration integration surface",
-        "Plain XP3 reader and writer integration end-to-end fixture",
-        "Plain XP3 reader and writer integration regression coverage"
+        "Plain XP3 reader and writer integration composed command path",
+        "Plain XP3 reader and writer integration fixture artifact bundle",
+        "Boundary regression assertions for Plain XP3 reader and writer integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Plain XP3 reader and writer integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Plain XP3 reader and writer integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -3471,13 +3463,13 @@
       "dependsOn": ["KAIFUU-100", "KAIFUU-101", "KAIFUU-102", "KAIFUU-071"],
       "summary": "Integrate profiled XP3 crypt extraction, trivial patch rebuild, verification, and redacted summaries.",
       "deliverables": [
-        "Profiled KiriKiri XP3 crypt patch integration integration surface",
-        "Profiled KiriKiri XP3 crypt patch integration end-to-end fixture",
-        "Profiled KiriKiri XP3 crypt patch integration regression coverage"
+        "Profiled KiriKiri XP3 crypt patch integration composed command path",
+        "Profiled KiriKiri XP3 crypt patch integration fixture artifact bundle",
+        "Boundary regression assertions for Profiled KiriKiri XP3 crypt patch integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Profiled KiriKiri XP3 crypt patch integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Profiled KiriKiri XP3 crypt patch integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -3862,13 +3854,13 @@
       "dependsOn": ["KAIFUU-095", "KAIFUU-096"],
       "summary": "Integrate XP3 profile schema and helper-required semantic fixtures before archive support claims.",
       "deliverables": [
-        "KiriKiri XP3 profile proof integration integration surface",
-        "KiriKiri XP3 profile proof integration end-to-end fixture",
-        "KiriKiri XP3 profile proof integration regression coverage"
+        "KiriKiri XP3 profile proof integration composed command path",
+        "KiriKiri XP3 profile proof integration fixture artifact bundle",
+        "Boundary regression assertions for KiriKiri XP3 profile proof integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "KiriKiri XP3 profile proof integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "KiriKiri XP3 profile proof integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -3902,13 +3894,13 @@
       "dependsOn": ["KAIFUU-113", "KAIFUU-114"],
       "summary": "Integrate MV/MZ encrypted-media detection and key validation.",
       "deliverables": [
-        "MV/MZ encrypted media readiness integration integration surface",
-        "MV/MZ encrypted media readiness integration end-to-end fixture",
-        "MV/MZ encrypted media readiness integration regression coverage"
+        "MV/MZ encrypted media readiness integration composed command path",
+        "MV/MZ encrypted media readiness integration fixture artifact bundle",
+        "Boundary regression assertions for MV/MZ encrypted media readiness integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "MV/MZ encrypted media readiness integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "MV/MZ encrypted media readiness integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -3942,13 +3934,13 @@
       "dependsOn": ["KAIFUU-120", "KAIFUU-121"],
       "summary": "Integrate Wolf detector and helper-boundary proof without claiming parser or patch support.",
       "deliverables": [
-        "Wolf profile and helper-boundary readiness integration integration surface",
-        "Wolf profile and helper-boundary readiness integration end-to-end fixture",
-        "Wolf profile and helper-boundary readiness integration regression coverage"
+        "Wolf profile and helper-boundary readiness integration composed command path",
+        "Wolf profile and helper-boundary readiness integration fixture artifact bundle",
+        "Boundary regression assertions for Wolf profile and helper-boundary readiness integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Wolf profile and helper-boundary readiness integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Wolf profile and helper-boundary readiness integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -3982,13 +3974,13 @@
       "dependsOn": ["KAIFUU-126", "KAIFUU-127", "KAIFUU-128"],
       "summary": "Integrate BGI detector and profile-negative fixtures without claiming parser or patch support.",
       "deliverables": [
-        "BGI detector and profile readiness integration integration surface",
-        "BGI detector and profile readiness integration end-to-end fixture",
-        "BGI detector and profile readiness integration regression coverage"
+        "BGI detector and profile readiness integration composed command path",
+        "BGI detector and profile readiness integration fixture artifact bundle",
+        "Boundary regression assertions for BGI detector and profile readiness integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "BGI detector and profile readiness integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "BGI detector and profile readiness integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -4022,13 +4014,13 @@
       "dependsOn": ["KAIFUU-036", "KAIFUU-067", "KAIFUU-104"],
       "summary": "Integrate generated encrypted-readiness evidence into alpha readiness artifacts.",
       "deliverables": [
-        "Alpha encrypted-readiness evidence integration integration surface",
-        "Alpha encrypted-readiness evidence integration end-to-end fixture",
-        "Alpha encrypted-readiness evidence integration regression coverage"
+        "Alpha encrypted-readiness evidence integration composed command path",
+        "Alpha encrypted-readiness evidence integration fixture artifact bundle",
+        "Boundary regression assertions for Alpha encrypted-readiness evidence integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Alpha encrypted-readiness evidence integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Alpha encrypted-readiness evidence integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -5794,13 +5786,13 @@
       "dependsOn": ["ITOTORI-062", "ITOTORI-063", "ITOTORI-064", "ITOTORI-065", "ITOTORI-066"],
       "summary": "Integrate style-guide persistence, structured conversation output, recorded suggestions, dashboard UX, and invalidation events.",
       "deliverables": [
-        "Conversational style guide builder integration integration surface",
-        "Conversational style guide builder integration end-to-end fixture",
-        "Conversational style guide builder integration regression coverage"
+        "Conversational style guide builder integration composed command path",
+        "Conversational style guide builder integration fixture artifact bundle",
+        "Boundary regression assertions for Conversational style guide builder integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Conversational style guide builder integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Conversational style guide builder integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -6346,13 +6338,13 @@
       ],
       "summary": "Integrate draft persistence, guarded model invocation, protected-span validation, retry policy, and cost/provenance recording.",
       "deliverables": [
-        "Translation drafting engine integration integration surface",
-        "Translation drafting engine integration end-to-end fixture",
-        "Translation drafting engine integration regression coverage"
+        "Translation drafting engine integration composed command path",
+        "Translation drafting engine integration fixture artifact bundle",
+        "Boundary regression assertions for Translation drafting engine integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Translation drafting engine integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Translation drafting engine integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -6542,13 +6534,13 @@
       "dependsOn": ["ITOTORI-081", "ITOTORI-082", "ITOTORI-083", "ITOTORI-084"],
       "summary": "Integrate reviewer queue state, context UI, batch actions, and targeted rerun wiring.",
       "deliverables": [
-        "Reviewer queue UX integration integration surface",
-        "Reviewer queue UX integration end-to-end fixture",
-        "Reviewer queue UX integration regression coverage"
+        "Reviewer queue UX integration composed command path",
+        "Reviewer queue UX integration fixture artifact bundle",
+        "Boundary regression assertions for Reviewer queue UX integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "Reviewer queue UX integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "Reviewer queue UX integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -6766,13 +6758,13 @@
       "dependsOn": ["ITOTORI-095", "KAIFUU-010", "UTSUSHI-006", "UTSUSHI-011"],
       "summary": "Integrate Itotori iteration with Kaifuu patch and Utsushi runtime validation for the alpha vertical.",
       "deliverables": [
-        "End-to-end draft iteration integration integration surface",
-        "End-to-end draft iteration integration end-to-end fixture",
-        "End-to-end draft iteration integration regression coverage"
+        "End-to-end draft iteration integration composed command path",
+        "End-to-end draft iteration integration fixture artifact bundle",
+        "Boundary regression assertions for End-to-end draft iteration integration"
       ],
       "acceptanceCriteria": [
-        "The integration composes the prerequisite implementation slices without expanding their scope",
-        "Acceptance is based on executable fixtures, validators, services, or commands",
+        "End-to-end draft iteration integration names the prerequisite surfaces, adapters, artifacts, and command evidence it composes",
+        "End-to-end draft iteration integration fixture artifacts prove the composed path without expanding prerequisite slice ownership",
         "Unsupported paths remain semantic diagnostics and do not become hidden success states"
       ],
       "verification": [
@@ -8156,16 +8148,12 @@
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Runtime adapter tests"
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
         },
         {
-          "type": "manual",
-          "value": "Route fixture tests"
-        },
-        {
-          "type": "manual",
-          "value": "Dashboard smoke"
+          "type": "command",
+          "value": "pnpm exec vitest run apps/runtime-web-review/test/dashboard.test.ts"
         }
       ],
       "auditFocus": ["RenPy over-weighting", "Route inference drift", "Runtime evidence overclaim"]
@@ -8194,16 +8182,12 @@
       ],
       "verification": [
         {
-          "type": "manual",
-          "value": "Runtime probe tests"
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
         },
         {
-          "type": "manual",
-          "value": "KAG fixture trace tests"
-        },
-        {
-          "type": "manual",
-          "value": "Dashboard smoke"
+          "type": "command",
+          "value": "pnpm exec vitest run apps/runtime-web-review/test/dashboard.test.ts"
         }
       ],
       "auditFocus": ["Plaintext KAG overclaim", "Command trace gaps", "Packed XP3 readiness bypass"]
@@ -11098,12 +11082,12 @@
       "dependsOn": ["ITOTORI-004", "ITOTORI-029", "UNIV-016"],
       "summary": "Persist versioned target-locale style guide policy and emit change events before conversational UX exists.",
       "deliverables": [
-        "Style guide persistence and version events implementation",
-        "Style guide persistence and version events fixtures",
-        "Style guide persistence and version events tests"
+        "Style guide persistence and version events owned command, service, schema, or artifact surface",
+        "Fixture data for Style guide persistence and version events positive and negative paths",
+        "Regression assertions for Style guide persistence and version events behavior"
       ],
       "acceptanceCriteria": [
-        "Style guide persistence and version events has concrete executable behavior or schema validation",
+        "Style guide persistence and version events exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11134,12 +11118,12 @@
       "dependsOn": ["ITOTORI-000", "ITOTORI-062", "UNIV-016"],
       "summary": "Define the structured style-guide conversation contract, validators, and fixture transcripts.",
       "deliverables": [
-        "Style-guide conversation contract and validators implementation",
-        "Style-guide conversation contract and validators fixtures",
-        "Style-guide conversation contract and validators tests"
+        "Style-guide conversation contract and validators owned command, service, schema, or artifact surface",
+        "Fixture data for Style-guide conversation contract and validators positive and negative paths",
+        "Regression assertions for Style-guide conversation contract and validators behavior"
       ],
       "acceptanceCriteria": [
-        "Style-guide conversation contract and validators has concrete executable behavior or schema validation",
+        "Style-guide conversation contract and validators exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11209,12 +11193,12 @@
       "dependsOn": ["ITOTORI-005", "ITOTORI-063", "UNIV-016"],
       "summary": "Build the style-guide builder dashboard states around context, proposed policy, validation, and consequences.",
       "deliverables": [
-        "Style-guide builder dashboard UI implementation",
-        "Style-guide builder dashboard UI fixtures",
-        "Style-guide builder dashboard UI tests"
+        "Style-guide builder dashboard UI owned command, service, schema, or artifact surface",
+        "Fixture data for Style-guide builder dashboard UI positive and negative paths",
+        "Regression assertions for Style-guide builder dashboard UI behavior"
       ],
       "acceptanceCriteria": [
-        "Style-guide builder dashboard UI has concrete executable behavior or schema validation",
+        "Style-guide builder dashboard UI exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11245,12 +11229,12 @@
       "dependsOn": ["ITOTORI-003", "ITOTORI-062", "UNIV-016"],
       "summary": "Wire style-guide approval into evented affected-work invalidation.",
       "deliverables": [
-        "Style-guide approval and invalidation events implementation",
-        "Style-guide approval and invalidation events fixtures",
-        "Style-guide approval and invalidation events tests"
+        "Style-guide approval and invalidation events owned command, service, schema, or artifact surface",
+        "Fixture data for Style-guide approval and invalidation events positive and negative paths",
+        "Regression assertions for Style-guide approval and invalidation events behavior"
       ],
       "acceptanceCriteria": [
-        "Style-guide approval and invalidation events has concrete executable behavior or schema validation",
+        "Style-guide approval and invalidation events exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11281,12 +11265,12 @@
       "dependsOn": ["ITOTORI-008", "ITOTORI-062", "UNIV-016"],
       "summary": "Provide glossary context and review state for downstream decision queues.",
       "deliverables": [
-        "Glossary policy context and review service implementation",
-        "Glossary policy context and review service fixtures",
-        "Glossary policy context and review service tests"
+        "Glossary policy context and review service owned command, service, schema, or artifact surface",
+        "Fixture data for Glossary policy context and review service positive and negative paths",
+        "Regression assertions for Glossary policy context and review service behavior"
       ],
       "acceptanceCriteria": [
-        "Glossary policy context and review service has concrete executable behavior or schema validation",
+        "Glossary policy context and review service exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11317,12 +11301,12 @@
       "dependsOn": ["ITOTORI-002", "ITOTORI-030", "UNIV-016"],
       "summary": "Implement exact indexed search documents and a typed search tool for agents and dashboard APIs.",
       "deliverables": [
-        "Exact search document table and tool v1 implementation",
-        "Exact search document table and tool v1 fixtures",
-        "Exact search document table and tool v1 tests"
+        "Exact search document table and tool v1 owned command, service, schema, or artifact surface",
+        "Fixture data for Exact search document table and tool v1 positive and negative paths",
+        "Regression assertions for Exact search document table and tool v1 behavior"
       ],
       "acceptanceCriteria": [
-        "Exact search document table and tool v1 has concrete executable behavior or schema validation",
+        "Exact search document table and tool v1 exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11393,12 +11377,12 @@
       "dependsOn": ["ITOTORI-018", "ITOTORI-058", "ITOTORI-034", "UNIV-016"],
       "summary": "Persist draft jobs, inputs, policy versions, context refs, locale branch, and retry state.",
       "deliverables": [
-        "Draft job schema and repository implementation",
-        "Draft job schema and repository fixtures",
-        "Draft job schema and repository tests"
+        "Draft job schema and repository owned command, service, schema, or artifact surface",
+        "Fixture data for Draft job schema and repository positive and negative paths",
+        "Regression assertions for Draft job schema and repository behavior"
       ],
       "acceptanceCriteria": [
-        "Draft job schema and repository has concrete executable behavior or schema validation",
+        "Draft job schema and repository exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11429,12 +11413,12 @@
       "dependsOn": ["ITOTORI-010", "ITOTORI-049", "ITOTORI-074", "UNIV-016"],
       "summary": "Invoke translation agents through guarded structured output and parse validated draft payloads.",
       "deliverables": [
-        "Structured translation invocation and parser implementation",
-        "Structured translation invocation and parser fixtures",
-        "Structured translation invocation and parser tests"
+        "Structured translation invocation and parser owned command, service, schema, or artifact surface",
+        "Fixture data for Structured translation invocation and parser positive and negative paths",
+        "Regression assertions for Structured translation invocation and parser behavior"
       ],
       "acceptanceCriteria": [
-        "Structured translation invocation and parser has concrete executable behavior or schema validation",
+        "Structured translation invocation and parser exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11465,12 +11449,12 @@
       "dependsOn": ["ITOTORI-020", "ITOTORI-075", "UNIV-016"],
       "summary": "Validate protected spans and classify retryable draft failures before draft acceptance.",
       "deliverables": [
-        "Draft protected-span validation and retry policy implementation",
-        "Draft protected-span validation and retry policy fixtures",
-        "Draft protected-span validation and retry policy tests"
+        "Draft protected-span validation and retry policy owned command, service, schema, or artifact surface",
+        "Fixture data for Draft protected-span validation and retry policy positive and negative paths",
+        "Regression assertions for Draft protected-span validation and retry policy behavior"
       ],
       "acceptanceCriteria": [
-        "Draft protected-span validation and retry policy has concrete executable behavior or schema validation",
+        "Draft protected-span validation and retry policy exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11501,12 +11485,12 @@
       "dependsOn": ["ITOTORI-052", "ITOTORI-075", "UNIV-016"],
       "summary": "Record cost, provider, fallback, prompt, policy, and context provenance for each draft attempt.",
       "deliverables": [
-        "Draft cost and provenance recorder implementation",
-        "Draft cost and provenance recorder fixtures",
-        "Draft cost and provenance recorder tests"
+        "Draft cost and provenance recorder owned command, service, schema, or artifact surface",
+        "Fixture data for Draft cost and provenance recorder positive and negative paths",
+        "Regression assertions for Draft cost and provenance recorder behavior"
       ],
       "acceptanceCriteria": [
-        "Draft cost and provenance recorder has concrete executable behavior or schema validation",
+        "Draft cost and provenance recorder exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11537,12 +11521,12 @@
       "dependsOn": ["ITOTORI-010", "ITOTORI-049", "ITOTORI-020", "UNIV-016"],
       "summary": "Invoke LLM QA agents through guarded structured output and persist validated findings.",
       "deliverables": [
-        "Structured QA invocation and parser implementation",
-        "Structured QA invocation and parser fixtures",
-        "Structured QA invocation and parser tests"
+        "Structured QA invocation and parser owned command, service, schema, or artifact surface",
+        "Fixture data for Structured QA invocation and parser positive and negative paths",
+        "Regression assertions for Structured QA invocation and parser behavior"
       ],
       "acceptanceCriteria": [
-        "Structured QA invocation and parser has concrete executable behavior or schema validation",
+        "Structured QA invocation and parser exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11581,12 +11565,12 @@
       ],
       "summary": "Implement typed reviewer queue transitions for QA, style, glossary, feedback, and runtime evidence items.",
       "deliverables": [
-        "Reviewer queue action API and state machine implementation",
-        "Reviewer queue action API and state machine fixtures",
-        "Reviewer queue action API and state machine tests"
+        "Reviewer queue action API and state machine owned command, service, schema, or artifact surface",
+        "Fixture data for Reviewer queue action API and state machine positive and negative paths",
+        "Regression assertions for Reviewer queue action API and state machine behavior"
       ],
       "acceptanceCriteria": [
-        "Reviewer queue action API and state machine has concrete executable behavior or schema validation",
+        "Reviewer queue action API and state machine exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11617,12 +11601,12 @@
       "dependsOn": ["ITOTORI-005", "ITOTORI-081", "UNIV-016"],
       "summary": "Build contextual detail views with source, draft, policy, findings, screenshots, comparisons, and rationale.",
       "deliverables": [
-        "Reviewer detail context and evidence UI implementation",
-        "Reviewer detail context and evidence UI fixtures",
-        "Reviewer detail context and evidence UI tests"
+        "Reviewer detail context and evidence UI owned command, service, schema, or artifact surface",
+        "Fixture data for Reviewer detail context and evidence UI positive and negative paths",
+        "Regression assertions for Reviewer detail context and evidence UI behavior"
       ],
       "acceptanceCriteria": [
-        "Reviewer detail context and evidence UI has concrete executable behavior or schema validation",
+        "Reviewer detail context and evidence UI exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11653,12 +11637,12 @@
       "dependsOn": ["ITOTORI-081", "ITOTORI-082", "UNIV-016"],
       "summary": "Add batch review actions with previewed rerun, policy, glossary, and export consequences.",
       "deliverables": [
-        "Batch action and consequence preview UX implementation",
-        "Batch action and consequence preview UX fixtures",
-        "Batch action and consequence preview UX tests"
+        "Batch action and consequence preview UX owned command, service, schema, or artifact surface",
+        "Fixture data for Batch action and consequence preview UX positive and negative paths",
+        "Regression assertions for Batch action and consequence preview UX behavior"
       ],
       "acceptanceCriteria": [
-        "Batch action and consequence preview UX has concrete executable behavior or schema validation",
+        "Batch action and consequence preview UX exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11689,12 +11673,12 @@
       "dependsOn": ["ITOTORI-038", "ITOTORI-083", "UNIV-016"],
       "summary": "Wire reviewer actions to targeted repair and rerun jobs.",
       "deliverables": [
-        "Reviewer-triggered rerun wiring implementation",
-        "Reviewer-triggered rerun wiring fixtures",
-        "Reviewer-triggered rerun wiring tests"
+        "Reviewer-triggered rerun wiring owned command, service, schema, or artifact surface",
+        "Fixture data for Reviewer-triggered rerun wiring positive and negative paths",
+        "Regression assertions for Reviewer-triggered rerun wiring behavior"
       ],
       "acceptanceCriteria": [
-        "Reviewer-triggered rerun wiring has concrete executable behavior or schema validation",
+        "Reviewer-triggered rerun wiring exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11949,12 +11933,12 @@
       "dependsOn": ["ITOTORI-084", "ITOTORI-025", "ITOTORI-040", "ITOTORI-042", "UNIV-016"],
       "summary": "Implement the Itotori public fixture iteration command across import, draft, QA, review, export, feedback, and rerun state.",
       "deliverables": [
-        "Itotori fixture iteration command implementation",
-        "Itotori fixture iteration command fixtures",
-        "Itotori fixture iteration command tests"
+        "Itotori fixture iteration command owned command, service, schema, or artifact surface",
+        "Fixture data for Itotori fixture iteration command positive and negative paths",
+        "Regression assertions for Itotori fixture iteration command behavior"
       ],
       "acceptanceCriteria": [
-        "Itotori fixture iteration command has concrete executable behavior or schema validation",
+        "Itotori fixture iteration command exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -11985,12 +11969,12 @@
       "dependsOn": ["ITOTORI-095", "KAIFUU-010", "UTSUSHI-006", "UTSUSHI-011", "UNIV-016"],
       "summary": "Run the public fixture vertical across Itotori, Kaifuu, and Utsushi.",
       "deliverables": [
-        "Suite public fixture vertical run implementation",
-        "Suite public fixture vertical run fixtures",
-        "Suite public fixture vertical run tests"
+        "Suite public fixture vertical run owned command, service, schema, or artifact surface",
+        "Fixture data for Suite public fixture vertical run positive and negative paths",
+        "Regression assertions for Suite public fixture vertical run behavior"
       ],
       "acceptanceCriteria": [
-        "Suite public fixture vertical run has concrete executable behavior or schema validation",
+        "Suite public fixture vertical run exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12060,12 +12044,12 @@
       "dependsOn": ["CATALOG-000", "UNIV-016"],
       "summary": "Implement deterministic external-id linking without fuzzy matching or automatic merge behavior.",
       "deliverables": [
-        "Exact external-id linker implementation",
-        "Exact external-id linker fixtures",
-        "Exact external-id linker tests"
+        "Exact external-id linker owned command, service, schema, or artifact surface",
+        "Fixture data for Exact external-id linker positive and negative paths",
+        "Regression assertions for Exact external-id linker behavior"
       ],
       "acceptanceCriteria": [
-        "Exact external-id linker has concrete executable behavior or schema validation",
+        "Exact external-id linker exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12096,12 +12080,12 @@
       "dependsOn": ["CATALOG-008", "UNIV-016"],
       "summary": "Generate reviewable fuzzy catalog candidates while preventing silent merge decisions.",
       "deliverables": [
-        "Fuzzy candidate generator with no auto-merge implementation",
-        "Fuzzy candidate generator with no auto-merge fixtures",
-        "Fuzzy candidate generator with no auto-merge tests"
+        "Fuzzy candidate generator with no auto-merge owned command, service, schema, or artifact surface",
+        "Fixture data for Fuzzy candidate generator with no auto-merge positive and negative paths",
+        "Regression assertions for Fuzzy candidate generator with no auto-merge behavior"
       ],
       "acceptanceCriteria": [
-        "Fuzzy candidate generator with no auto-merge has concrete executable behavior or schema validation",
+        "Fuzzy candidate generator with no auto-merge exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12132,12 +12116,12 @@
       "dependsOn": ["CATALOG-009", "SHARED-007", "UNIV-016"],
       "summary": "Expose catalog conflicts through a provenance-preserving review read model.",
       "deliverables": [
-        "Catalog conflict review read model implementation",
-        "Catalog conflict review read model fixtures",
-        "Catalog conflict review read model tests"
+        "Catalog conflict review read model owned command, service, schema, or artifact surface",
+        "Fixture data for Catalog conflict review read model positive and negative paths",
+        "Regression assertions for Catalog conflict review read model behavior"
       ],
       "acceptanceCriteria": [
-        "Catalog conflict review read model has concrete executable behavior or schema validation",
+        "Catalog conflict review read model exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12292,12 +12276,12 @@
       "dependsOn": ["KAIFUU-003", "KAIFUU-019", "KAIFUU-052", "UNIV-016"],
       "summary": "Implement shared byte-span, source-range, and offset-map primitives.",
       "deliverables": [
-        "Binary byte-span and offset-map primitives implementation",
-        "Binary byte-span and offset-map primitives fixtures",
-        "Binary byte-span and offset-map primitives tests"
+        "Binary byte-span and offset-map primitives owned command, service, schema, or artifact surface",
+        "Fixture data for Binary byte-span and offset-map primitives positive and negative paths",
+        "Regression assertions for Binary byte-span and offset-map primitives behavior"
       ],
       "acceptanceCriteria": [
-        "Binary byte-span and offset-map primitives has concrete executable behavior or schema validation",
+        "Binary byte-span and offset-map primitives exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12328,12 +12312,12 @@
       "dependsOn": ["KAIFUU-081", "KAIFUU-004", "UNIV-016"],
       "summary": "Add encoded string-slot preflight for byte budgets, encodings, terminators, and protected spans.",
       "deliverables": [
-        "Encoded string-slot byte-budget preflight implementation",
-        "Encoded string-slot byte-budget preflight fixtures",
-        "Encoded string-slot byte-budget preflight tests"
+        "Encoded string-slot byte-budget preflight owned command, service, schema, or artifact surface",
+        "Fixture data for Encoded string-slot byte-budget preflight positive and negative paths",
+        "Regression assertions for Encoded string-slot byte-budget preflight behavior"
       ],
       "acceptanceCriteria": [
-        "Encoded string-slot byte-budget preflight has concrete executable behavior or schema validation",
+        "Encoded string-slot byte-budget preflight exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12364,12 +12348,12 @@
       "dependsOn": ["KAIFUU-082", "UNIV-016"],
       "summary": "Implement string-reference relocation and table rebuild fixtures.",
       "deliverables": [
-        "String-reference relocation and rebuild fixtures implementation",
-        "String-reference relocation and rebuild fixtures fixtures",
-        "String-reference relocation and rebuild fixtures tests"
+        "String-reference relocation and rebuild fixtures owned command, service, schema, or artifact surface",
+        "Fixture data for String-reference relocation and rebuild fixtures positive and negative paths",
+        "Regression assertions for String-reference relocation and rebuild fixtures behavior"
       ],
       "acceptanceCriteria": [
-        "String-reference relocation and rebuild fixtures has concrete executable behavior or schema validation",
+        "String-reference relocation and rebuild fixtures exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12400,12 +12384,12 @@
       "dependsOn": ["KAIFUU-083", "KAIFUU-010", "UNIV-016"],
       "summary": "Provide the binary patch harness that fails before irreversible writes.",
       "deliverables": [
-        "Binary patch rollback and no-write preflight harness implementation",
-        "Binary patch rollback and no-write preflight harness fixtures",
-        "Binary patch rollback and no-write preflight harness tests"
+        "Binary patch rollback and no-write preflight harness owned command, service, schema, or artifact surface",
+        "Fixture data for Binary patch rollback and no-write preflight harness positive and negative paths",
+        "Regression assertions for Binary patch rollback and no-write preflight harness behavior"
       ],
       "acceptanceCriteria": [
-        "Binary patch rollback and no-write preflight harness has concrete executable behavior or schema validation",
+        "Binary patch rollback and no-write preflight harness exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12474,12 +12458,12 @@
       "dependsOn": ["KAIFUU-085", "UNIV-016"],
       "summary": "Implement a helper registry, capability model, and fixture-only helper stub.",
       "deliverables": [
-        "Helper registry capability model and fixture stub implementation",
-        "Helper registry capability model and fixture stub fixtures",
-        "Helper registry capability model and fixture stub tests"
+        "Helper registry capability model and fixture stub owned command, service, schema, or artifact surface",
+        "Fixture data for Helper registry capability model and fixture stub positive and negative paths",
+        "Regression assertions for Helper registry capability model and fixture stub behavior"
       ],
       "acceptanceCriteria": [
-        "Helper registry capability model and fixture stub has concrete executable behavior or schema validation",
+        "Helper registry capability model and fixture stub exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12510,12 +12494,12 @@
       "dependsOn": ["KAIFUU-086", "UNIV-016"],
       "summary": "Implement local-only manual key and known-key import boundaries.",
       "deliverables": [
-        "Manual key entry and local known-key import boundary implementation",
-        "Manual key entry and local known-key import boundary fixtures",
-        "Manual key entry and local known-key import boundary tests"
+        "Manual key entry and local known-key import boundary owned command, service, schema, or artifact surface",
+        "Fixture data for Manual key entry and local known-key import boundary positive and negative paths",
+        "Regression assertions for Manual key entry and local known-key import boundary behavior"
       ],
       "acceptanceCriteria": [
-        "Manual key entry and local known-key import boundary has concrete executable behavior or schema validation",
+        "Manual key entry and local known-key import boundary exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12546,12 +12530,12 @@
       "dependsOn": ["KAIFUU-085", "KAIFUU-043", "UNIV-016"],
       "summary": "Constrain executable helpers with allowlist metadata, versions, capabilities, and hashes.",
       "deliverables": [
-        "Helper binary allowlist schema and hash gate implementation",
-        "Helper binary allowlist schema and hash gate fixtures",
-        "Helper binary allowlist schema and hash gate tests"
+        "Helper binary allowlist schema and hash gate owned command, service, schema, or artifact surface",
+        "Fixture data for Helper binary allowlist schema and hash gate positive and negative paths",
+        "Regression assertions for Helper binary allowlist schema and hash gate behavior"
       ],
       "acceptanceCriteria": [
-        "Helper binary allowlist schema and hash gate has concrete executable behavior or schema validation",
+        "Helper binary allowlist schema and hash gate exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12582,12 +12566,12 @@
       "dependsOn": ["KAIFUU-086", "KAIFUU-088", "UNIV-016"],
       "summary": "Implement bounded helper process execution with timeout, cancellation, and redacted output.",
       "deliverables": [
-        "Bounded helper process runner with timeout and cancel implementation",
-        "Bounded helper process runner with timeout and cancel fixtures",
-        "Bounded helper process runner with timeout and cancel tests"
+        "Bounded helper process runner with timeout and cancel owned command, service, schema, or artifact surface",
+        "Fixture data for Bounded helper process runner with timeout and cancel positive and negative paths",
+        "Regression assertions for Bounded helper process runner with timeout and cancel behavior"
       ],
       "acceptanceCriteria": [
-        "Bounded helper process runner with timeout and cancel has concrete executable behavior or schema validation",
+        "Bounded helper process runner with timeout and cancel exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12663,12 +12647,12 @@
       ],
       "summary": "Add Siglus detector and profile fixtures without parser or runtime behavior.",
       "deliverables": [
-        "Siglus Scene.pck and Gameexe.dat detector profile fixtures implementation",
-        "Siglus Scene.pck and Gameexe.dat detector profile fixtures fixtures",
-        "Siglus Scene.pck and Gameexe.dat detector profile fixtures tests"
+        "Siglus Scene.pck and Gameexe.dat detector profile fixtures owned command, service, schema, or artifact surface",
+        "Fixture data for Siglus Scene.pck and Gameexe.dat detector profile fixtures positive and negative paths",
+        "Regression assertions for Siglus Scene.pck and Gameexe.dat detector profile fixtures behavior"
       ],
       "acceptanceCriteria": [
-        "Siglus Scene.pck and Gameexe.dat detector profile fixtures has concrete executable behavior or schema validation",
+        "Siglus Scene.pck and Gameexe.dat detector profile fixtures exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12699,12 +12683,12 @@
       "dependsOn": ["KAIFUU-087", "KAIFUU-091", "UNIV-016"],
       "summary": "Exercise Siglus secondary-key handoff through helper-boundary fixtures.",
       "deliverables": [
-        "Siglus secondary-key helper-boundary fixtures implementation",
-        "Siglus secondary-key helper-boundary fixtures fixtures",
-        "Siglus secondary-key helper-boundary fixtures tests"
+        "Siglus secondary-key helper-boundary fixtures owned command, service, schema, or artifact surface",
+        "Fixture data for Siglus secondary-key helper-boundary fixtures positive and negative paths",
+        "Regression assertions for Siglus secondary-key helper-boundary fixtures behavior"
       ],
       "acceptanceCriteria": [
-        "Siglus secondary-key helper-boundary fixtures has concrete executable behavior or schema validation",
+        "Siglus secondary-key helper-boundary fixtures exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12735,12 +12719,12 @@
       "dependsOn": ["KAIFUU-082", "KAIFUU-091", "UNIV-016"],
       "summary": "Add a known-key parser-boundary smoke fixture without claiming production support.",
       "deliverables": [
-        "Siglus known-key parser-boundary smoke fixture implementation",
-        "Siglus known-key parser-boundary smoke fixture fixtures",
-        "Siglus known-key parser-boundary smoke fixture tests"
+        "Siglus known-key parser-boundary smoke fixture owned command, service, schema, or artifact surface",
+        "Fixture data for Siglus known-key parser-boundary smoke fixture positive and negative paths",
+        "Regression assertions for Siglus known-key parser-boundary smoke fixture behavior"
       ],
       "acceptanceCriteria": [
-        "Siglus known-key parser-boundary smoke fixture has concrete executable behavior or schema validation",
+        "Siglus known-key parser-boundary smoke fixture exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -12771,12 +12755,12 @@
       "dependsOn": ["KAIFUU-036", "KAIFUU-092", "UNIV-016"],
       "summary": "Render optional private-local Siglus validation summaries through the redacted boundary.",
       "deliverables": [
-        "Siglus private-local redacted validation renderer implementation",
-        "Siglus private-local redacted validation renderer fixtures",
-        "Siglus private-local redacted validation renderer tests"
+        "Siglus private-local redacted validation renderer owned command, service, schema, or artifact surface",
+        "Fixture data for Siglus private-local redacted validation renderer positive and negative paths",
+        "Regression assertions for Siglus private-local redacted validation renderer behavior"
       ],
       "acceptanceCriteria": [
-        "Siglus private-local redacted validation renderer has concrete executable behavior or schema validation",
+        "Siglus private-local redacted validation renderer exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -13080,12 +13064,12 @@
       "dependsOn": ["KAIFUU-052", "KAIFUU-053", "UNIV-016"],
       "summary": "Build the reusable validator for packed-engine capability profiles.",
       "deliverables": [
-        "Packed-engine readiness profile validator implementation",
-        "Packed-engine readiness profile validator fixtures",
-        "Packed-engine readiness profile validator tests"
+        "Packed-engine readiness profile validator owned command, service, schema, or artifact surface",
+        "Fixture data for Packed-engine readiness profile validator positive and negative paths",
+        "Regression assertions for Packed-engine readiness profile validator behavior"
       ],
       "acceptanceCriteria": [
-        "Packed-engine readiness profile validator has concrete executable behavior or schema validation",
+        "Packed-engine readiness profile validator exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],
@@ -13127,12 +13111,12 @@
       ],
       "summary": "Generate public alpha encrypted-readiness evidence from synthetic engine slices and profile validators.",
       "deliverables": [
-        "Alpha public encrypted-readiness evidence generator implementation",
-        "Alpha public encrypted-readiness evidence generator fixtures",
-        "Alpha public encrypted-readiness evidence generator tests"
+        "Alpha public encrypted-readiness evidence generator owned command, service, schema, or artifact surface",
+        "Fixture data for Alpha public encrypted-readiness evidence generator positive and negative paths",
+        "Regression assertions for Alpha public encrypted-readiness evidence generator behavior"
       ],
       "acceptanceCriteria": [
-        "Alpha public encrypted-readiness evidence generator has concrete executable behavior or schema validation",
+        "Alpha public encrypted-readiness evidence generator exposes the named surface or artifact and proves it through the command verification listed on this node",
         "Unsupported and negative paths return semantic diagnostics",
         "Public validation uses fixtures or recorded data, not private local assets"
       ],

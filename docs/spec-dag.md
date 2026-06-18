@@ -124,6 +124,13 @@ commands from manual review:
 { "type": "manual", "value": "Docs audit" }
 ```
 
+Planned, in-progress, and blocked implementation nodes need at least one
+`command` verification entry unless the node is truly docs-only. Manual review
+can supplement a command, but it cannot be the only evidence for tests, fixture
+loops, or smoke behavior. Roadmap nodes also do not carry time estimates; use
+dependencies, priority, target, and runnable verification to express scheduling
+and readiness.
+
 The validator derives readiness from graph state: a `planned` node is ready when
 all dependencies are `complete`.
 
@@ -245,8 +252,9 @@ When adding a node:
    wording.
 6. Add only real dependencies; avoid using dependencies as vague sequencing.
 7. Include concrete verification commands or tests.
-8. Include audit focus areas specific enough for a reviewer to find bugs.
-9. Run `just roadmap-validate`.
+8. Do not add estimated hours, days, points, or sizing fields.
+9. Include audit focus areas specific enough for a reviewer to find bugs.
+10. Run `just roadmap-validate`.
 
 When an audit finds issues:
 
