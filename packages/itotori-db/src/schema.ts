@@ -31,11 +31,21 @@ export const localeBranchStatusValues = {
 export type LocaleBranchStatus =
   (typeof localeBranchStatusValues)[keyof typeof localeBranchStatusValues];
 
+export const styleGuideVersionStatusValues = {
+  draft: "draft",
+  approved: "approved",
+  superseded: "superseded",
+} as const;
+
+export type StyleGuideVersionStatus =
+  (typeof styleGuideVersionStatusValues)[keyof typeof styleGuideVersionStatusValues];
+
 export const outboxEventTypeValues = {
   agentTaskRequested: "agent_task_requested",
   deterministicToolTaskRequested: "deterministic_tool_task_requested",
   rerunRequested: "rerun_requested",
   triageLoopRequested: "triage_loop_requested",
+  styleGuideVersionChanged: "style_guide_version_changed",
   jobScheduled: "job_scheduled",
   jobCompleted: "job_completed",
   jobFailed: "job_failed",
@@ -1130,6 +1140,76 @@ export const localeBranches = pgTable(
   (table) => [
     index("itotori_locale_branches_project_locale_idx").on(table.projectId, table.targetLocale),
     index("itotori_locale_branches_bundle_idx").on(table.sourceBundleId),
+  ],
+);
+
+export const styleGuides = pgTable(
+  "itotori_style_guides",
+  {
+    styleGuideId: text("style_guide_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    latestVersionId: text("latest_version_id"),
+    approvedVersionId: text("approved_version_id"),
+    createdByUserId: text("created_by_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_style_guides_locale_branch_idx").on(table.localeBranchId),
+    index("itotori_style_guides_project_idx").on(table.projectId),
+  ],
+);
+
+export const styleGuideVersions = pgTable(
+  "itotori_style_guide_versions",
+  {
+    styleGuideVersionId: text("style_guide_version_id").primaryKey(),
+    styleGuideId: text("style_guide_id")
+      .notNull()
+      .references(() => styleGuides.styleGuideId, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    previousVersionId: text("previous_version_id"),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    versionSequence: integer("version_sequence").notNull(),
+    authorUserId: text("author_user_id")
+      .notNull()
+      .references(() => users.userId, { onDelete: "restrict" }),
+    approverUserId: text("approver_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    status: text("status").notNull(),
+    contentHash: text("content_hash").notNull(),
+    policy: jsonb("policy").$type<Record<string, unknown>>().notNull(),
+    semanticDiagnostics: jsonb("semantic_diagnostics")
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_style_guide_versions_branch_sequence_idx").on(
+      table.localeBranchId,
+      table.versionSequence,
+    ),
+    index("itotori_style_guide_versions_guide_created_idx").on(table.styleGuideId, table.createdAt),
+    index("itotori_style_guide_versions_source_revision_idx").on(table.sourceRevisionId),
+    index("itotori_style_guide_versions_status_idx").on(table.status),
   ],
 );
 
