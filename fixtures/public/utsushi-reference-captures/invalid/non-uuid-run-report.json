@@ -1,6 +1,6 @@
 {
   "schemaVersion": "0.2.0",
-  "runtimeReportId": "019ed003-0000-7000-8000-000010000001",
+  "runtimeReportId": "not-a-uuid-run",
   "sourceLocale": "ja-JP",
   "adapterName": "utsushi-fixture",
   "adapterVersion": "0.0.0",
@@ -28,14 +28,9 @@
       "observedAt": "2026-06-17T00:00:00.000Z",
       "eventKind": "text",
       "runtimeTargetId": "fixture:reference-capture-public",
-      "adapterId": {
-        "name": "utsushi-fixture",
-        "version": "0.0.0"
-      },
+      "adapterId": { "name": "utsushi-fixture", "version": "0.0.0" },
       "evidenceTier": "E1",
-      "environment": {
-        "runtime": "fixture"
-      },
+      "environment": { "runtime": "fixture" },
       "sourceRevision": {
         "sourceId": "reference-capture-public",
         "revisionId": "fixture-source-v0.1"
@@ -46,13 +41,8 @@
           "sourceUnitKey": "reference.capture.001"
         }
       ],
-      "redaction": {
-        "status": "not_required"
-      },
-      "payload": {
-        "payloadKind": "text",
-        "text": "/tmp/private/reference-capture"
-      }
+      "redaction": { "status": "not_required" },
+      "payload": { "payloadKind": "text", "text": "Reference capture ready." }
     },
     {
       "schemaVersion": "0.1.0-alpha",
@@ -60,14 +50,9 @@
       "observedAt": "2026-06-17T00:00:00.000Z",
       "eventKind": "frame",
       "runtimeTargetId": "fixture:reference-capture-public",
-      "adapterId": {
-        "name": "utsushi-fixture",
-        "version": "0.0.0"
-      },
+      "adapterId": { "name": "utsushi-fixture", "version": "0.0.0" },
       "evidenceTier": "E2",
-      "environment": {
-        "runtime": "fixture"
-      },
+      "environment": { "runtime": "fixture" },
       "sourceRevision": {
         "sourceId": "reference-capture-public",
         "revisionId": "fixture-source-v0.1"
@@ -78,9 +63,7 @@
           "sourceUnitKey": "reference.capture.001"
         }
       ],
-      "redaction": {
-        "status": "not_required"
-      },
+      "redaction": { "status": "not_required" },
       "payload": {
         "payloadKind": "frame",
         "frame": 1,
@@ -89,7 +72,7 @@
         "artifactRef": {
           "artifactId": "019ed003-0000-7000-8000-000040000001",
           "artifactKind": "screenshot",
-          "uri": "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png",
+          "uri": "artifacts/utsushi/runtime/not-a-uuid-run/screenshots/019ed003-0000-7000-8000-000040000001.png",
           "mediaType": "text/plain"
         }
       }
@@ -111,7 +94,7 @@
       "artifactRef": {
         "artifactId": "019ed003-0000-7000-8000-000040000001",
         "artifactKind": "screenshot",
-        "uri": "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png",
+        "uri": "artifacts/utsushi/runtime/not-a-uuid-run/screenshots/019ed003-0000-7000-8000-000040000001.png",
         "mediaType": "text/plain"
       }
     }
@@ -133,5 +116,5 @@
     }
   ],
   "validationFindings": [],
-  "limitations": ["Captured at /root/private/run"]
+  "limitations": []
 }

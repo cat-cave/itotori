@@ -444,6 +444,18 @@ fn validate_artifact_hashes(
 
     for artifact in report_artifacts {
         if artifact.artifact_kind == "screenshot"
+            && artifact.observation_event_id.is_none()
+            && !fixture.artifact_hashes.iter().any(|expected| {
+                expected.artifact_id == artifact.artifact_id && expected.uri == artifact.uri
+            })
+        {
+            return Err(format!(
+                "{label} top-level capture screenshot artifact {} at {} is missing byte/hash provenance in artifactHashes",
+                artifact.artifact_id, artifact.uri
+            )
+            .into());
+        }
+        if artifact.artifact_kind == "screenshot"
             && artifact.observation_event_id.is_some()
             && !expected_by_key.contains_key(&(
                 artifact.artifact_id.as_str(),
@@ -606,22 +618,71 @@ fn reject_unredacted_local_paths_at(path: &str, value: &Value) -> UtsushiResult<
 
 fn looks_like_local_path(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
+    if lower.starts_with("artifacts/utsushi/runtime/")
+        || lower.contains("<redacted")
+        || lower.contains("[redacted")
+        || lower.contains("${redacted")
+        || lower.contains("__redacted")
+    {
+        return false;
+    }
     lower.starts_with("file:")
         || lower.contains("file://")
         || lower.starts_with("~/")
-        || lower.starts_with("/home/")
-        || lower.contains("/home/")
-        || lower.starts_with("/users/")
-        || lower.contains("/users/")
-        || lower.starts_with("/tmp/")
-        || lower.contains("/tmp/")
-        || lower.starts_with("/var/folders/")
-        || lower.contains("/var/folders/")
-        || (value.as_bytes().get(1) == Some(&b':')
-            && value
-                .as_bytes()
-                .get(2)
-                .is_some_and(|separator| *separator == b'\\' || *separator == b'/'))
+        || has_common_unix_absolute_path(&lower)
+        || has_windows_absolute_path(value)
+        || lower.starts_with("\\\\")
+        || lower.contains("\\\\users\\")
+}
+
+fn has_common_unix_absolute_path(value: &str) -> bool {
+    value
+        .split(|ch: char| ch.is_whitespace() || matches!(ch, '"' | '\'' | '(' | ')' | ','))
+        .map(|token| {
+            token.trim_matches(|ch: char| matches!(ch, '.' | ':' | ';' | ']' | '[' | '{' | '}'))
+        })
+        .any(|token| {
+            matches!(
+                token,
+                "/home"
+                    | "/root"
+                    | "/tmp"
+                    | "/var"
+                    | "/var/folders"
+                    | "/users"
+                    | "/private"
+                    | "/opt"
+                    | "/usr"
+                    | "/etc"
+                    | "/mnt"
+                    | "/media"
+                    | "/volumes"
+                    | "/workspace"
+                    | "/workspaces"
+            ) || token.starts_with("/home/")
+                || token.starts_with("/root/")
+                || token.starts_with("/tmp/")
+                || token.starts_with("/var/")
+                || token.starts_with("/users/")
+                || token.starts_with("/private/")
+                || token.starts_with("/opt/")
+                || token.starts_with("/usr/")
+                || token.starts_with("/etc/")
+                || token.starts_with("/mnt/")
+                || token.starts_with("/media/")
+                || token.starts_with("/volumes/")
+                || token.starts_with("/workspace/")
+                || token.starts_with("/workspaces/")
+        })
+}
+
+fn has_windows_absolute_path(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    bytes.windows(3).any(|window| {
+        window[0].is_ascii_alphabetic()
+            && window[1] == b':'
+            && (window[2] == b'\\' || window[2] == b'/')
+    })
 }
 
 fn report_array<'a>(report: &'a Value, field: &str, label: &str) -> UtsushiResult<&'a [Value]> {
@@ -887,9 +948,19 @@ mod tests {
                 FixtureVariant::ReportLevelPrivatePath,
                 "unredacted local path",
             ),
+            (FixtureVariant::RootPrivatePath, "unredacted local path"),
+            (FixtureVariant::WindowsPrivatePath, "unredacted local path"),
             (
                 FixtureVariant::CorpusMetadataPrivatePath,
                 "unredacted local path",
+            ),
+            (
+                FixtureVariant::TopLevelCaptureUnmanifested,
+                "top-level capture screenshot artifact",
+            ),
+            (
+                FixtureVariant::NonUuidRuntimeReportId,
+                "must be a UUID7 string",
             ),
         ] {
             let root = temp_dir("additional-negative");
@@ -923,6 +994,11 @@ mod tests {
                 "static reads labeled as runtime evidence",
             ),
             ("unredacted-local-path-corpus.json", "unredacted local path"),
+            (
+                "capture-unmanifested-corpus.json",
+                "top-level capture screenshot artifact",
+            ),
+            ("non-uuid-run-corpus.json", "must be a UUID7 string"),
         ] {
             let error =
                 validate_reference_capture_corpus(&public_root.join("invalid").join(fixture))
@@ -951,7 +1027,11 @@ mod tests {
         WrongByteCount,
         ReportIdArtifactRunMismatch,
         ReportLevelPrivatePath,
+        RootPrivatePath,
+        WindowsPrivatePath,
         CorpusMetadataPrivatePath,
+        TopLevelCaptureUnmanifested,
+        NonUuidRuntimeReportId,
     }
 
     fn temp_dir(name: &str) -> PathBuf {
@@ -973,6 +1053,9 @@ mod tests {
             FixtureVariant::ReportIdArtifactRunMismatch => {
                 "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000099990001/screenshots/019ed003-0000-7000-8000-000040000001.png"
             }
+            FixtureVariant::NonUuidRuntimeReportId => {
+                "artifacts/utsushi/runtime/not-a-uuid-run/screenshots/019ed003-0000-7000-8000-000040000001.png"
+            }
             _ => {
                 "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000001.png"
             }
@@ -987,10 +1070,12 @@ mod tests {
         )
         .unwrap();
         fs::write(&artifact_path, SCREENSHOT_BYTES).unwrap();
-        if matches!(variant, FixtureVariant::ReportIdArtifactRunMismatch) {
-            let mismatch_artifact_path = artifact_root.join(
-                "019ed003-0000-7000-8000-000099990001/screenshots/019ed003-0000-7000-8000-000040000001.png",
-            );
+        if matches!(
+            variant,
+            FixtureVariant::ReportIdArtifactRunMismatch | FixtureVariant::NonUuidRuntimeReportId
+        ) {
+            let mismatch_artifact_path =
+                artifact_root.join(runtime_artifact_path_suffix(artifact_uri));
             fs::create_dir_all(mismatch_artifact_path.parent().unwrap()).unwrap();
             fs::write(&mismatch_artifact_path, SCREENSHOT_BYTES).unwrap();
         }
@@ -1071,6 +1156,12 @@ mod tests {
     }
 
     fn runtime_report_json(artifact_uri: &str, variant: &FixtureVariant) -> Value {
+        let capture_artifact_uri = match variant {
+            FixtureVariant::TopLevelCaptureUnmanifested => {
+                "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000010000001/screenshots/019ed003-0000-7000-8000-000040000999.png"
+            }
+            _ => artifact_uri,
+        };
         let captures = match variant {
             FixtureVariant::StaticRead => json!([]),
             _ => json!([
@@ -1085,7 +1176,7 @@ mod tests {
                     "width": 320,
                     "height": 180,
                     "nonZeroPixels": 57600,
-                    "artifactRef": artifact_ref_json(artifact_uri)
+                    "artifactRef": artifact_ref_json(capture_artifact_uri)
                 }
             ]),
         };
@@ -1122,11 +1213,17 @@ mod tests {
         };
         let limitations = match variant {
             FixtureVariant::ReportLevelPrivatePath => json!(["Captured at /tmp/private/run"]),
+            FixtureVariant::RootPrivatePath => json!(["Captured at /root/private/run"]),
+            FixtureVariant::WindowsPrivatePath => json!(["Captured at C:\\Users\\private\\run"]),
             _ => json!([]),
+        };
+        let runtime_report_id = match variant {
+            FixtureVariant::NonUuidRuntimeReportId => "not-a-uuid-run",
+            _ => "019ed003-0000-7000-8000-000010000001",
         };
         json!({
             "schemaVersion": "0.2.0",
-            "runtimeReportId": "019ed003-0000-7000-8000-000010000001",
+            "runtimeReportId": runtime_report_id,
             "sourceLocale": "ja-JP",
             "adapterName": "utsushi-fixture",
             "adapterVersion": "0.0.0",
@@ -1209,6 +1306,10 @@ mod tests {
             "validationFindings": [],
             "limitations": limitations
         })
+    }
+
+    fn runtime_artifact_path_suffix(uri: &str) -> &str {
+        uri.strip_prefix("artifacts/utsushi/runtime/").unwrap()
     }
 
     fn artifact_ref_json(artifact_uri: &str) -> Value {

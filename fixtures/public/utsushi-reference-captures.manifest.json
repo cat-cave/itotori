@@ -61,6 +61,38 @@
       "redistributable": true
     },
     {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/capture-unmanifested-corpus.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "230b39116f3ae151f714f3885384a142b714f96d0c4a5750faa72dda52098427",
+      "bytes": 1105,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/capture-unmanifested-report.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "a916d8e2dfa4430e79a0bc9ca3b90d06599d75753a01977e7c42c2482ae88aa4",
+      "bytes": 4076,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/non-uuid-run-corpus.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "0d433df768f3446aacf7365bb168d63cb6c59421075e9832d2eb2d8b75fc1f2a",
+      "bytes": 1067,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/utsushi-reference-captures/invalid/non-uuid-run-report.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "577de6e602b69f1314b33acb680c879f19826cc00a5b6113038dbfe1328b2c81",
+      "bytes": 4010,
+      "redistributable": true
+    },
+    {
       "path": "fixtures/public/utsushi-reference-captures/invalid/outside-artifact-store-corpus.json",
       "role": "metadata",
       "mediaType": "application/json",
@@ -96,20 +128,20 @@
       "path": "fixtures/public/utsushi-reference-captures/invalid/unredacted-local-path-report.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "ce61a45a20bf25cc73463dd13d683d05fa0c3abc54c6a0e704b6d31bacdeb395",
-      "bytes": 4204,
+      "sha256": "e400de98d07acf6fd9b481ec1d28fb0d283461c8f06582f10bcd45685ede2084",
+      "bytes": 4235,
       "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 10,
+    "files": 14,
     "textUnits": 1,
     "sourceTextUtf16CodeUnits": 24,
     "protectedSpans": 0,
     "sourceLocales": ["ja-JP"],
     "targetLocales": ["en-US"],
     "engineKinds": ["utsushi-fixture"],
-    "notes": "Positive corpus plus negative validator cases for missing hashes, unmanaged screenshot references, static-only evidence claims, and unredacted local paths."
+    "notes": "Positive corpus plus negative validator cases for missing hashes, unmanaged screenshot references, unmanifested capture screenshots, non-UUID runtime ids, static-only evidence claims, and unredacted local paths."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

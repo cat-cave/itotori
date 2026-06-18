@@ -1408,10 +1408,15 @@ pub fn validate_runtime_evidence_report_value(report: &Value) -> UtsushiResult<(
         "0.2.0",
         "RuntimeEvidenceReportV02.schemaVersion",
     )?;
-    require_non_blank_field(
+    require_uuid7_field(
         report,
         "runtimeReportId",
         "RuntimeEvidenceReportV02.runtimeReportId",
+    )?;
+    optional_uuid7_field(
+        report,
+        "sourceBridgeId",
+        "RuntimeEvidenceReportV02.sourceBridgeId",
     )?;
     optional_non_blank_field(
         report,
@@ -1673,6 +1678,47 @@ fn optional_non_blank_field<'a>(
         .transpose()
 }
 
+fn require_uuid7_field<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+    label: &str,
+) -> UtsushiResult<&'a str> {
+    let value = require_non_blank_field(object, field, label)?;
+    validate_uuid7(value, label)?;
+    Ok(value)
+}
+
+fn optional_uuid7_field<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+    label: &str,
+) -> UtsushiResult<Option<&'a str>> {
+    object
+        .get(field)
+        .map(|_| require_uuid7_field(object, field, label))
+        .transpose()
+}
+
+fn validate_uuid7(value: &str, label: &str) -> UtsushiResult<()> {
+    let bytes = value.as_bytes();
+    let valid = bytes.len() == 36
+        && bytes[8] == b'-'
+        && bytes[13] == b'-'
+        && bytes[18] == b'-'
+        && bytes[23] == b'-'
+        && bytes[14] == b'7'
+        && matches!(bytes[19], b'8' | b'9' | b'a' | b'b' | b'A' | b'B')
+        && bytes
+            .iter()
+            .enumerate()
+            .all(|(index, byte)| matches!(index, 8 | 13 | 18 | 23) || byte.is_ascii_hexdigit());
+    if valid {
+        Ok(())
+    } else {
+        Err(format!("{label} must be a UUID7 string").into())
+    }
+}
+
 fn require_one_of_field<'a>(
     object: &'a Map<String, Value>,
     field: &str,
@@ -1769,7 +1815,7 @@ fn require_positive_u64_field(
 
 fn validate_runtime_trace_event_value(value: &Value, label: &str) -> UtsushiResult<()> {
     let event = value_object(value, label)?;
-    require_non_blank_field(event, "traceEventId", &format!("{label}.traceEventId"))?;
+    require_uuid7_field(event, "traceEventId", &format!("{label}.traceEventId"))?;
     require_non_blank_field(event, "eventKind", &format!("{label}.eventKind"))?;
     validate_runtime_bridge_unit_ref_value(
         event
@@ -1783,7 +1829,7 @@ fn validate_runtime_trace_event_value(value: &Value, label: &str) -> UtsushiResu
 
 fn validate_runtime_branch_event_value(value: &Value, label: &str) -> UtsushiResult<()> {
     let event = value_object(value, label)?;
-    require_non_blank_field(event, "branchEventId", &format!("{label}.branchEventId"))?;
+    require_uuid7_field(event, "branchEventId", &format!("{label}.branchEventId"))?;
     require_non_blank_field(event, "branchKind", &format!("{label}.branchKind"))?;
     validate_runtime_bridge_unit_ref_value(
         event
@@ -1796,7 +1842,7 @@ fn validate_runtime_branch_event_value(value: &Value, label: &str) -> UtsushiRes
 
 fn validate_runtime_capture_value(value: &Value, label: &str) -> UtsushiResult<()> {
     let capture = value_object(value, label)?;
-    require_non_blank_field(capture, "captureId", &format!("{label}.captureId"))?;
+    require_uuid7_field(capture, "captureId", &format!("{label}.captureId"))?;
     validate_runtime_bridge_unit_ref_value(
         capture
             .get("bridgeUnitRef")
@@ -1818,7 +1864,7 @@ fn validate_runtime_capture_value(value: &Value, label: &str) -> UtsushiResult<(
 
 fn validate_runtime_recording_value(value: &Value, label: &str) -> UtsushiResult<()> {
     let recording = value_object(value, label)?;
-    require_non_blank_field(recording, "recordingId", &format!("{label}.recordingId"))?;
+    require_uuid7_field(recording, "recordingId", &format!("{label}.recordingId"))?;
     require_u64_field(
         recording,
         "startedAtFrame",
@@ -1839,7 +1885,7 @@ fn validate_runtime_recording_value(value: &Value, label: &str) -> UtsushiResult
 
 fn validate_runtime_approximation_value(value: &Value, label: &str) -> UtsushiResult<()> {
     let approximation = value_object(value, label)?;
-    require_non_blank_field(
+    require_uuid7_field(
         approximation,
         "approximationId",
         &format!("{label}.approximationId"),
@@ -1886,7 +1932,7 @@ fn validate_runtime_approximation_value(value: &Value, label: &str) -> UtsushiRe
 
 fn validate_runtime_validation_finding_value(value: &Value, label: &str) -> UtsushiResult<()> {
     let finding = value_object(value, label)?;
-    require_non_blank_field(finding, "findingId", &format!("{label}.findingId"))?;
+    require_uuid7_field(finding, "findingId", &format!("{label}.findingId"))?;
     require_non_blank_field(finding, "findingKind", &format!("{label}.findingKind"))?;
     require_non_blank_field(finding, "severity", &format!("{label}.severity"))?;
     require_non_blank_field(finding, "message", &format!("{label}.message"))?;
@@ -1907,7 +1953,7 @@ fn validate_runtime_artifact_ref_value(
     expected_kind: Option<&str>,
 ) -> UtsushiResult<()> {
     let artifact_ref = value_object(value, label)?;
-    require_non_blank_field(artifact_ref, "artifactId", &format!("{label}.artifactId"))?;
+    require_uuid7_field(artifact_ref, "artifactId", &format!("{label}.artifactId"))?;
     let kind = require_non_blank_field(
         artifact_ref,
         "artifactKind",
@@ -2058,7 +2104,7 @@ fn validate_controlled_playback_session_value(
     runtime_capabilities: Option<&Value>,
 ) -> UtsushiResult<()> {
     let session = value_object(value, "RuntimeEvidenceReportV02.controlledPlaybackSession")?;
-    require_non_blank_field(
+    require_uuid7_field(
         session,
         "sessionId",
         "RuntimeEvidenceReportV02.controlledPlaybackSession.sessionId",
