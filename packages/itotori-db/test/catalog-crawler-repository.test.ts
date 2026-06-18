@@ -565,6 +565,101 @@ describe("ItotoriCatalogCrawlerRepository", () => {
     }
   });
 
+  it("fails an already-imported contract step when persisted evidence is absent", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await createCatalogFactImportsTable(context);
+      const repository = new ItotoriCatalogCrawlerRepository(context.db);
+      const runner = new ItotoriCatalogCrawlerRunner();
+      const partitionKey = fixture.partitionKey ?? "default";
+      const firstStep = fixture.steps[0];
+      if (firstStep === undefined) {
+        throw new Error("fixture must contain at least one step");
+      }
+
+      const interrupted = await repository.startCrawlerJob(actor, "worker-generic-imported", {
+        catalogSource: fixture.catalogSource,
+        adapterName: fixture.adapterName,
+        adapterVersion: fixture.adapterVersion,
+        sourceVersion: fixture.sourceVersion,
+        parserVersion: fixture.parserVersion,
+        partitionKey,
+      });
+      const recorded = await repository.recordFetchedStep(actor, {
+        crawlerJobId: interrupted.crawlerJobId,
+        workerId: "worker-generic-imported",
+        stepKey: firstStep.stepKey,
+        catalogSource: fixture.catalogSource,
+        adapterName: fixture.adapterName,
+        adapterVersion: fixture.adapterVersion,
+        partitionKey,
+        sourceId: firstStep.sourceId,
+        requestIdentity: firstStep.requestIdentity,
+        sourceVersion: fixture.sourceVersion,
+        parserVersion: fixture.parserVersion,
+        checkpointCursor: firstStep.checkpointCursor,
+        fetchedAt: firstStep.fetchedAt,
+        payload: firstStep.payload,
+      });
+      await repository.markStepImported(
+        actor,
+        recorded.step.crawlerJobStepId,
+        "worker-generic-imported",
+      );
+      await repository.failCrawlerJob(
+        actor,
+        interrupted.crawlerJobId,
+        "worker-generic-imported",
+        new Error("generic imported marker without persisted evidence"),
+      );
+
+      await expect(
+        runner.run(createRecordedCatalogCrawlerAdapter(fixture), {
+          repository,
+          actor,
+          workerId: "worker-resumed-no-evidence",
+          mode: "recorded_fixture",
+          ingestStep: async (ingestContext) => {
+            for (const [index, fact] of ingestContext.facts.entries()) {
+              await context.pool.query(
+                `insert into catalog_fact_imports (
+                  source_id,
+                  fixture_id,
+                  stable_import_key,
+                  first_import_transaction_id,
+                  fact_identity,
+                  deterministic_fact_count,
+                  normalized_title
+                ) values ($1, $2, $3, $4, $5, $6, $7)`,
+                [
+                  fact.sourceId,
+                  fixture.fixtureId,
+                  ingestContext.stableImportKey,
+                  ingestContext.importTransactionId,
+                  ingestContext.expectedFactIdentities[index],
+                  ingestContext.facts.length,
+                  fact.normalizedTitle,
+                ],
+              );
+            }
+            return importProof(ingestContext);
+          },
+          verifyFactImport: verifyPersistedFactImports(context),
+        }),
+      ).rejects.toThrow(/persisted import evidence/u);
+
+      await expect(
+        repository.getCheckpoint(actor, {
+          catalogSource: "vndb",
+          adapterName: "vndb-recorded-public-fixture",
+          partitionKey: "public-fixture",
+        }),
+      ).resolves.toBeNull();
+    } finally {
+      await context.close();
+    }
+  });
+
   it("fails durable marker importers before commit when the marker is absent or wrong", async () => {
     const context = await isolatedMigratedContext();
     try {

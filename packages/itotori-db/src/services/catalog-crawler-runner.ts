@@ -232,54 +232,56 @@ export class ItotoriCatalogCrawlerRunner {
           adapter.factImportContract === undefined
             ? []
             : createExpectedFactIdentities(adapter, adapterStep);
+        const ingestContext: CatalogCrawlerIngestContext<TFact> = {
+          adapter,
+          job,
+          step: recorded.step,
+          stableImportKey,
+          importTransactionId: stableImportKey,
+          expectedFactIdentities,
+          facts: adapterStep.facts,
+        };
 
-        if (recorded.alreadyImported) {
-          skippedSteps += 1;
-        } else {
-          try {
+        try {
+          if (recorded.alreadyImported) {
+            if (adapter.factImportContract !== undefined) {
+              await verifyPersistedImportEvidenceForStep(
+                adapter,
+                adapterStep,
+                stableImportKey,
+                ingestContext,
+                options.verifyFactImport,
+              );
+            }
+            skippedSteps += 1;
+          } else {
             if (adapter.factImportContract !== undefined && options.ingestStep === undefined) {
               throw new Error(
                 `${adapter.adapterName} declares CATALOG-065; ingestStep must write facts or a durable import marker before commitStepImport`,
               );
             }
-            const ingestContext: CatalogCrawlerIngestContext<TFact> = {
-              adapter,
-              job,
-              step: recorded.step,
-              stableImportKey,
-              importTransactionId: stableImportKey,
-              expectedFactIdentities,
-              facts: adapterStep.facts,
-            };
             const importProof = await options.ingestStep?.(ingestContext);
             if (adapter.factImportContract !== undefined) {
               validateFactImportProof(adapter, adapterStep, stableImportKey, importProof);
-              if (options.verifyFactImport === undefined) {
-                throw new Error(
-                  `${adapter.adapterName} declares CATALOG-065; verifyFactImport must confirm persisted facts or durable marker before commitStepImport`,
-                );
-              }
-              const persistedEvidence = await options.verifyFactImport({
-                ...ingestContext,
-                proof: importProof,
-              });
-              validatePersistedFactImportEvidence(
+              await verifyPersistedImportEvidenceForStep(
                 adapter,
                 adapterStep,
                 stableImportKey,
-                persistedEvidence,
+                ingestContext,
+                options.verifyFactImport,
+                importProof,
               );
             }
             importedSteps += 1;
-          } catch (error) {
-            await options.repository.markStepFailed(
-              options.actor,
-              recorded.step.crawlerJobStepId,
-              error,
-              options.workerId,
-            );
-            throw error;
           }
+        } catch (error) {
+          await options.repository.markStepFailed(
+            options.actor,
+            recorded.step.crawlerJobStepId,
+            error,
+            options.workerId,
+          );
+          throw error;
         }
         const validationRecord = createReplayValidationRecord(
           adapter,
@@ -551,6 +553,54 @@ function validateFactImportProof<TFact>(
       `${adapter.adapterName} durable import marker proof must persist stableImportKey as durableMarkerId`,
     );
   }
+}
+
+async function verifyPersistedImportEvidenceForStep<TFact>(
+  adapter: CatalogCrawlerSourceAdapter<TFact>,
+  step: CatalogCrawlerAdapterStep<TFact>,
+  stableImportKey: string,
+  ingestContext: CatalogCrawlerIngestContext<TFact>,
+  verifyFactImport: CatalogCrawlerVerifyFactImportStep<TFact> | undefined,
+  proof?: CatalogCrawlerFactImportProof,
+): Promise<void> {
+  const contract = adapter.factImportContract;
+  if (contract === undefined) {
+    return;
+  }
+  if (verifyFactImport === undefined) {
+    throw new Error(
+      `${adapter.adapterName} declares CATALOG-065; verifyFactImport must confirm persisted facts or durable marker before commitStepImport`,
+    );
+  }
+  const persistedEvidence = await verifyFactImport({
+    ...ingestContext,
+    proof:
+      proof ??
+      expectedFactImportProof(
+        contract,
+        stableImportKey,
+        step.facts.length,
+        ingestContext.expectedFactIdentities,
+      ),
+  });
+  validatePersistedFactImportEvidence(adapter, step, stableImportKey, persistedEvidence);
+}
+
+function expectedFactImportProof(
+  contract: CatalogCrawlerFactImportContract,
+  stableImportKey: string,
+  factCount: number,
+  factIdentities: readonly string[],
+): CatalogCrawlerFactImportProof {
+  return {
+    stableImportKey,
+    strategy: contract.strategy,
+    factCount,
+    factIdentities,
+    ...(contract.strategy === catalogCrawlerFactImportStrategyValues.durableImportMarker
+      ? { durableMarkerId: stableImportKey }
+      : {}),
+  };
 }
 
 function validatePersistedFactImportEvidence<TFact>(

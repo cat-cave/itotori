@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import {
   catalogCrawlerJobStatusValues,
@@ -188,6 +189,10 @@ describe("Itotori catalog crawler runner", () => {
       fetchedAt: firstStep.fetchedAt,
       payload: firstStep.payload,
     });
+    persistedImports.set(stableImportKeyForStep(adapter, firstStep), {
+      strategy: catalogCrawlerFactImportStrategyValues.upsert,
+      factIdentities: ["catalogSource=vndb|sourceId=v1"],
+    });
     await repository.markStepImported(actor, recorded.step.crawlerJobStepId, "worker-interrupted");
     await repository.failCrawlerJob(
       actor,
@@ -251,6 +256,69 @@ describe("Itotori catalog crawler runner", () => {
       lastStepKey: "step-002",
       checkpointCursor: { afterStepKey: "step-002", cursor: "page-2" },
     });
+  });
+
+  it("fails already-imported contract steps when persisted evidence is absent", async () => {
+    const repository = new InMemoryCatalogCrawlerRepository();
+    const runner = new ItotoriCatalogCrawlerRunner();
+    const adapter = createRecordedCatalogCrawlerAdapter(fixture);
+    const persistedImports = new Map<string, PersistedImport>();
+    const partitionKey = fixture.partitionKey ?? "default";
+    const firstStep = fixture.steps[0];
+    if (firstStep === undefined) {
+      throw new Error("fixture must contain at least one step");
+    }
+
+    const interruptedJob = await repository.startCrawlerJob(actor, "worker-generic-imported", {
+      catalogSource: fixture.catalogSource,
+      adapterName: fixture.adapterName,
+      adapterVersion: fixture.adapterVersion,
+      sourceVersion: fixture.sourceVersion,
+      parserVersion: fixture.parserVersion,
+      partitionKey,
+    });
+    const recorded = await repository.recordFetchedStep(actor, {
+      crawlerJobId: interruptedJob.crawlerJobId,
+      workerId: "worker-generic-imported",
+      stepKey: firstStep.stepKey,
+      catalogSource: fixture.catalogSource,
+      adapterName: fixture.adapterName,
+      adapterVersion: fixture.adapterVersion,
+      partitionKey,
+      sourceId: firstStep.sourceId,
+      requestIdentity: firstStep.requestIdentity,
+      sourceVersion: fixture.sourceVersion,
+      parserVersion: fixture.parserVersion,
+      checkpointCursor: firstStep.checkpointCursor,
+      fetchedAt: firstStep.fetchedAt,
+      payload: firstStep.payload,
+    });
+    await repository.markStepImported(
+      actor,
+      recorded.step.crawlerJobStepId,
+      "worker-generic-imported",
+    );
+    await repository.failCrawlerJob(
+      actor,
+      interruptedJob.crawlerJobId,
+      "worker-generic-imported",
+      new Error("generic imported marker without persisted evidence"),
+    );
+
+    await expect(
+      runner.run(adapter, {
+        repository,
+        actor,
+        workerId: "worker-resumed-no-evidence",
+        mode: "recorded_fixture",
+        ingestStep: (context) => persistFacts(context, persistedImports),
+        verifyFactImport: verifyPersistedImport(persistedImports),
+      }),
+    ).rejects.toThrow(/persisted import evidence/u);
+
+    expect(
+      repository.checkpoints.get("vndb:vndb-recorded-public-fixture:public-fixture"),
+    ).toBeUndefined();
   });
 
   it("rejects two active writers for the same source adapter partition", async () => {
@@ -541,4 +609,46 @@ function importProof(context: CatalogCrawlerIngestContext<FixtureFact>) {
         ? context.stableImportKey
         : undefined,
   };
+}
+
+function stableImportKeyForStep(
+  adapter: CatalogCrawlerSourceAdapter<FixtureFact>,
+  step: RecordedCatalogCrawlerFixture<FixtureFact>["steps"][number],
+): string {
+  const payloadHash = step.payloadHash ?? `sha256:${sha256(stableJsonStringify(step.payload))}`;
+  return `catalog-import:${sha256(
+    stableJsonStringify({
+      catalogSource: adapter.catalogSource,
+      adapterName: adapter.adapterName,
+      partitionKey: adapter.partitionKey ?? "default",
+      sourceVersion: adapter.sourceVersion,
+      parserVersion: adapter.parserVersion,
+      stepKey: step.stepKey,
+      sourceId: step.sourceId,
+      requestIdentity: step.requestIdentity,
+      payloadHash,
+    }),
+  )}`;
+}
+
+function sha256(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
+}
+
+function stableJsonStringify(input: unknown): string {
+  if (input === undefined) {
+    return "undefined";
+  }
+  if (input === null || typeof input !== "object") {
+    return JSON.stringify(input) ?? "undefined";
+  }
+  if (Array.isArray(input)) {
+    return `[${input.map((value) => stableJsonStringify(value)).join(",")}]`;
+  }
+  const entries = Object.entries(input as Record<string, unknown>).sort(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  return `{${entries
+    .map(([key, value]) => `${JSON.stringify(key)}:${stableJsonStringify(value)}`)
+    .join(",")}}`;
 }
