@@ -1197,7 +1197,7 @@ describe("ItotoriProjectRepository", () => {
         artifact_kind: string;
         uri: string | null;
       }>("select artifact_kind, uri from itotori_artifacts where artifact_id = $1", [
-        "019ed003-0000-7000-8000-000000000401",
+        "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000401",
       ]);
       expect(artifactResult.rows[0]).toEqual({
         artifact_kind: "screenshot",
@@ -1223,7 +1223,8 @@ describe("ItotoriProjectRepository", () => {
         (row) => row.artifact_kind === "runtime_branch_event",
       );
       expect(branchArtifact).toMatchObject({
-        artifact_id: "019ed003-0000-7000-8000-000000000201",
+        artifact_id:
+          "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
         bridge_unit_id: "bridge-unit-test",
       });
       expect(branchArtifact?.metadata).toMatchObject({
@@ -1260,7 +1261,8 @@ describe("ItotoriProjectRepository", () => {
         (row) => row.artifact_kind === "runtime_trace_event",
       );
       expect(traceArtifact).toMatchObject({
-        artifact_id: "019ed003-0000-7000-8000-000000000101",
+        artifact_id:
+          "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
         bridge_unit_id: "bridge-unit-test",
       });
       expect(traceArtifact?.metadata).toMatchObject({
@@ -1452,25 +1454,30 @@ describe("ItotoriProjectRepository", () => {
       );
       expect(evidence.rows).toEqual([
         {
-          runtime_evidence_id: "019ed003-0000-7000-8000-000000000942",
+          runtime_evidence_id:
+            "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000942",
           evidence_kind: "approximation",
           bridge_unit_id: "bridge-unit-test",
           artifact_id: null,
           portable_artifact_uri: null,
         },
         {
-          runtime_evidence_id: "019ed003-0000-7000-8000-000000000922",
+          runtime_evidence_id:
+            "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000922",
           evidence_kind: "capture",
           bridge_unit_id: "bridge-unit-test",
-          artifact_id: "019ed003-0000-7000-8000-000000000933",
+          artifact_id:
+            "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000933",
           portable_artifact_uri:
             "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/screenshots/019ed003-0000-7000-8000-000000000933.png",
         },
         {
-          runtime_evidence_id: "019ed003-0000-7000-8000-000000000912",
+          runtime_evidence_id:
+            "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000912",
           evidence_kind: "trace_event",
           bridge_unit_id: "bridge-unit-test",
-          artifact_id: "019ed003-0000-7000-8000-000000000932",
+          artifact_id:
+            "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000932",
           portable_artifact_uri:
             "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/traces/019ed003-0000-7000-8000-000000000932.json",
         },
@@ -1484,9 +1491,9 @@ describe("ItotoriProjectRepository", () => {
         order by ref_role, runtime_evidence_id
       `,
         [
-          "019ed003-0000-7000-8000-000000000912",
-          "019ed003-0000-7000-8000-000000000922",
-          "019ed003-0000-7000-8000-000000000942",
+          "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000912",
+          "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000922",
+          "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000942",
         ],
       );
       expect(refs.rows).toEqual([
@@ -1530,12 +1537,224 @@ describe("ItotoriProjectRepository", () => {
         severity: "P2",
         message: "Observed runtime text differed from the drafted locale branch text.",
         bridge_unit_id: "bridge-unit-test",
-        artifact_id: "019ed003-0000-7000-8000-000000000961",
+        artifact_id:
+          "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000961",
         finding_status: "open",
         quality_category: "runtime_validation",
         artifact_uri:
           "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/traces/019ed003-0000-7000-8000-000000000961.json",
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("namespaces repeated runtime evidence child ids across reports", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      await repo.importSourceBundle(localActor, project);
+
+      const firstRuntimeReportId = "019ed003-0000-7000-8000-000000000b01";
+      const secondRuntimeReportId = "019ed003-0000-7000-8000-000000000b02";
+      const traceEventId = "019ed003-0000-7000-8000-000000000b11";
+      const captureId = "019ed003-0000-7000-8000-000000000b21";
+      const captureArtifactId = "019ed003-0000-7000-8000-000000000b31";
+      const approximationId = "019ed003-0000-7000-8000-000000000b41";
+
+      const reportWithLocalIds = (
+        runtimeReportId: string,
+        createdAt: string,
+      ): RuntimeEvidenceReportV02 =>
+        runtimeEvidenceReportFixture({
+          runtimeReportId,
+          createdAt,
+          traceEvents: [
+            {
+              traceEventId,
+              eventKind: "text_observed",
+              bridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              frame: 1,
+              traceKey: "hello.line.001",
+              observedText: "Hello, {player}.",
+            },
+          ],
+          captures: [
+            {
+              captureId,
+              bridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              evidenceTier: "E2",
+              frame: 1,
+              width: 320,
+              height: 180,
+              nonZeroPixels: 57600,
+              artifactRef: {
+                artifactId: captureArtifactId,
+                artifactKind: "screenshot",
+                uri: `artifacts/utsushi/runtime/${runtimeReportId}/screenshots/${captureArtifactId}.png`,
+                mediaType: "image/png",
+              },
+            },
+          ],
+          approximations: [
+            {
+              approximationId,
+              approximationTier: "deterministic_fixture",
+              scope: "fixture runtime",
+              description: "Fixture evidence validates runtime plumbing, not engine fidelity.",
+              affectedBridgeUnitRefs: [
+                {
+                  bridgeUnitId: "bridge-unit-test",
+                  sourceUnitKey: "hello.scene.001.line.001",
+                },
+              ],
+              evidenceTierCeiling: "E2",
+            },
+          ],
+          validationFindings: [],
+        });
+
+      await repo.saveRuntimeReport(
+        localActor,
+        project,
+        reportWithLocalIds(firstRuntimeReportId, "2026-06-17T00:30:00.000Z"),
+        "patch-result-collision-1",
+      );
+      await repo.saveRuntimeReport(
+        localActor,
+        project,
+        reportWithLocalIds(secondRuntimeReportId, "2026-06-17T00:31:00.000Z"),
+        "patch-result-collision-2",
+      );
+
+      const evidenceRows = await context.pool.query<{
+        runtime_run_id: string;
+        runtime_evidence_id: string;
+        evidence_kind: string;
+        artifact_id: string | null;
+        adapter_local_evidence_id: string | null;
+      }>(
+        `
+        select
+          runtime_run_id,
+          runtime_evidence_id,
+          evidence_kind,
+          artifact_id,
+          metadata->>'adapterLocalEvidenceId' as adapter_local_evidence_id
+        from itotori_runtime_evidence_items
+        where runtime_run_id in ($1, $2)
+        order by runtime_run_id, evidence_kind
+      `,
+        [firstRuntimeReportId, secondRuntimeReportId],
+      );
+      expect(evidenceRows.rows).toEqual([
+        {
+          runtime_run_id: firstRuntimeReportId,
+          runtime_evidence_id: `${firstRuntimeReportId}:${approximationId}`,
+          evidence_kind: "approximation",
+          artifact_id: null,
+          adapter_local_evidence_id: approximationId,
+        },
+        {
+          runtime_run_id: firstRuntimeReportId,
+          runtime_evidence_id: `${firstRuntimeReportId}:${captureId}`,
+          evidence_kind: "capture",
+          artifact_id: `${firstRuntimeReportId}:${captureArtifactId}`,
+          adapter_local_evidence_id: captureId,
+        },
+        {
+          runtime_run_id: firstRuntimeReportId,
+          runtime_evidence_id: `${firstRuntimeReportId}:${traceEventId}`,
+          evidence_kind: "trace_event",
+          artifact_id: `${firstRuntimeReportId}:${traceEventId}`,
+          adapter_local_evidence_id: traceEventId,
+        },
+        {
+          runtime_run_id: secondRuntimeReportId,
+          runtime_evidence_id: `${secondRuntimeReportId}:${approximationId}`,
+          evidence_kind: "approximation",
+          artifact_id: null,
+          adapter_local_evidence_id: approximationId,
+        },
+        {
+          runtime_run_id: secondRuntimeReportId,
+          runtime_evidence_id: `${secondRuntimeReportId}:${captureId}`,
+          evidence_kind: "capture",
+          artifact_id: `${secondRuntimeReportId}:${captureArtifactId}`,
+          adapter_local_evidence_id: captureId,
+        },
+        {
+          runtime_run_id: secondRuntimeReportId,
+          runtime_evidence_id: `${secondRuntimeReportId}:${traceEventId}`,
+          evidence_kind: "trace_event",
+          artifact_id: `${secondRuntimeReportId}:${traceEventId}`,
+          adapter_local_evidence_id: traceEventId,
+        },
+      ]);
+
+      const artifactRows = await context.pool.query<{
+        artifact_id: string;
+        artifact_kind: string;
+        runtime_report_id: string | null;
+        adapter_local_artifact_id: string | null;
+        uri: string | null;
+      }>(
+        `
+        select
+          artifact_id,
+          artifact_kind,
+          metadata->>'runtimeReportId' as runtime_report_id,
+          metadata->>'adapterLocalArtifactId' as adapter_local_artifact_id,
+          uri
+        from itotori_artifacts
+        where artifact_id in ($1, $2, $3, $4)
+        order by artifact_id
+      `,
+        [
+          `${firstRuntimeReportId}:${captureArtifactId}`,
+          `${firstRuntimeReportId}:${traceEventId}`,
+          `${secondRuntimeReportId}:${captureArtifactId}`,
+          `${secondRuntimeReportId}:${traceEventId}`,
+        ],
+      );
+      expect(artifactRows.rows).toEqual([
+        {
+          artifact_id: `${firstRuntimeReportId}:${traceEventId}`,
+          artifact_kind: "runtime_trace_event",
+          runtime_report_id: firstRuntimeReportId,
+          adapter_local_artifact_id: traceEventId,
+          uri: null,
+        },
+        {
+          artifact_id: `${firstRuntimeReportId}:${captureArtifactId}`,
+          artifact_kind: "screenshot",
+          runtime_report_id: firstRuntimeReportId,
+          adapter_local_artifact_id: captureArtifactId,
+          uri: `artifacts/utsushi/runtime/${firstRuntimeReportId}/screenshots/${captureArtifactId}.png`,
+        },
+        {
+          artifact_id: `${secondRuntimeReportId}:${traceEventId}`,
+          artifact_kind: "runtime_trace_event",
+          runtime_report_id: secondRuntimeReportId,
+          adapter_local_artifact_id: traceEventId,
+          uri: null,
+        },
+        {
+          artifact_id: `${secondRuntimeReportId}:${captureArtifactId}`,
+          artifact_kind: "screenshot",
+          runtime_report_id: secondRuntimeReportId,
+          adapter_local_artifact_id: captureArtifactId,
+          uri: `artifacts/utsushi/runtime/${secondRuntimeReportId}/screenshots/${captureArtifactId}.png`,
+        },
+      ]);
     } finally {
       await context.close();
     }
@@ -1736,9 +1955,9 @@ describe("ItotoriProjectRepository", () => {
         select 'evidence' as row_kind, runtime_evidence_id as row_id
         from itotori_runtime_evidence_items
         where runtime_evidence_id in (
-          '019ed003-0000-7000-8000-000000000a22',
-          '019ed003-0000-7000-8000-000000000a41',
-          '019ed003-0000-7000-8000-000000000a51'
+          '019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a22',
+          '019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a41',
+          '019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a51'
         )
         union all
         select 'finding' as row_kind, finding_id as row_id
@@ -1751,10 +1970,10 @@ describe("ItotoriProjectRepository", () => {
         select 'artifact' as row_kind, artifact_id as row_id
         from itotori_artifacts
         where artifact_id in (
-          '019ed003-0000-7000-8000-000000000a32',
-          '019ed003-0000-7000-8000-000000000a41',
-          '019ed003-0000-7000-8000-000000000a52',
-          '019ed003-0000-7000-8000-000000000a62',
+          '019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a32',
+          '019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a41',
+          '019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a52',
+          '019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a62',
           'patch-result-reingest-old'
         )
         order by row_kind, row_id
@@ -1771,15 +1990,15 @@ describe("ItotoriProjectRepository", () => {
       `,
         [
           runtimeReportId,
-          "019ed003-0000-7000-8000-000000000a31",
+          "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a31",
           "patch-result-reingest-new",
-          "019ed003-0000-7000-8000-000000000911",
+          "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000911",
         ],
       );
       expect(retainedArtifacts.rows.map((row) => row.artifact_id)).toEqual([
-        "019ed003-0000-7000-8000-000000000911",
         "019ed003-0000-7000-8000-000000000a18",
-        "019ed003-0000-7000-8000-000000000a31",
+        "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000911",
+        "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a31",
         "patch-result-reingest-new",
       ]);
     } finally {
@@ -1967,10 +2186,10 @@ describe("ItotoriProjectRepository", () => {
         order by artifact_kind
         `,
         [
-          "019ed003-0000-7000-8000-000000000971",
-          "019ed003-0000-7000-8000-000000000972",
-          "019ed003-0000-7000-8000-000000000974",
-          "019ed003-0000-7000-8000-000000000976",
+          "019ed003-0000-7000-8000-000000000904:019ed003-0000-7000-8000-000000000971",
+          "019ed003-0000-7000-8000-000000000904:019ed003-0000-7000-8000-000000000972",
+          "019ed003-0000-7000-8000-000000000904:019ed003-0000-7000-8000-000000000974",
+          "019ed003-0000-7000-8000-000000000904:019ed003-0000-7000-8000-000000000976",
         ],
       );
 

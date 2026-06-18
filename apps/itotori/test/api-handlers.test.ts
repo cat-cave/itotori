@@ -483,6 +483,83 @@ describe("Itotori API handlers", () => {
             patch_result_artifact_id: "runtime-api-2:patch-result",
           },
         ]);
+
+        const evidenceRows = await context.pool.query<{
+          runtime_run_id: string;
+          runtime_evidence_id: string;
+          evidence_kind: string;
+          artifact_id: string | null;
+          adapter_local_evidence_id: string | null;
+        }>(
+          `
+          select
+            runtime_run_id,
+            runtime_evidence_id,
+            evidence_kind,
+            artifact_id,
+            metadata->>'adapterLocalEvidenceId' as adapter_local_evidence_id
+          from itotori_runtime_evidence_items
+          order by runtime_run_id, evidence_kind
+        `,
+        );
+        expect(evidenceRows.rows).toEqual([
+          {
+            runtime_run_id: "runtime-api-1",
+            runtime_evidence_id: "runtime-api-1:frame-1",
+            evidence_kind: "capture",
+            artifact_id: "runtime-api-1:frame-1",
+            adapter_local_evidence_id: "frame-1",
+          },
+          {
+            runtime_run_id: "runtime-api-1",
+            runtime_evidence_id: "runtime-api-1:runtime-text-1",
+            evidence_kind: "trace_event",
+            artifact_id: null,
+            adapter_local_evidence_id: "runtime-text-1",
+          },
+          {
+            runtime_run_id: "runtime-api-2",
+            runtime_evidence_id: "runtime-api-2:frame-1",
+            evidence_kind: "capture",
+            artifact_id: "runtime-api-2:frame-1",
+            adapter_local_evidence_id: "frame-1",
+          },
+          {
+            runtime_run_id: "runtime-api-2",
+            runtime_evidence_id: "runtime-api-2:runtime-text-1",
+            evidence_kind: "trace_event",
+            artifact_id: null,
+            adapter_local_evidence_id: "runtime-text-1",
+          },
+        ]);
+
+        const frameArtifacts = await context.pool.query<{
+          artifact_id: string;
+          runtime_report_id: string | null;
+          adapter_local_artifact_id: string | null;
+        }>(
+          `
+          select
+            artifact_id,
+            metadata->>'runtimeReportId' as runtime_report_id,
+            metadata->>'adapterLocalArtifactId' as adapter_local_artifact_id
+          from itotori_artifacts
+          where artifact_kind = 'frame_capture'
+          order by artifact_id
+        `,
+        );
+        expect(frameArtifacts.rows).toEqual([
+          {
+            artifact_id: "runtime-api-1:frame-1",
+            runtime_report_id: "runtime-api-1",
+            adapter_local_artifact_id: "frame-1",
+          },
+          {
+            artifact_id: "runtime-api-2:frame-1",
+            runtime_report_id: "runtime-api-2",
+            adapter_local_artifact_id: "frame-1",
+          },
+        ]);
       } finally {
         await context.close();
       }
