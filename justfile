@@ -49,6 +49,9 @@ ci: check build db-migrate test
     cargo deny check
 
 ci-itotori:
+    just db-up
+    just db-wait
+    just db-reset
     pnpm --filter @itotori/db typecheck
     pnpm --filter @itotori/db test
     pnpm --filter @itotori/db build
@@ -79,18 +82,25 @@ contract-validate-rust:
 contract-validate: contract-validate-ts contract-validate-rust
 
 db-up:
-    docker compose up -d postgres
+    node scripts/itotori-db-compose-env.mjs
+    docker compose --env-file .tmp/itotori-db/compose.env up -d postgres
 
 db-down:
-    docker compose down
+    node scripts/itotori-db-compose-env.mjs
+    docker compose --env-file .tmp/itotori-db/compose.env down
 
 db-wait:
     for i in {1..60}; do pg_isready -d "$DATABASE_URL" && exit 0; sleep 1; done; exit 1
 
-db-migrate:
+db-cli-build:
+    pnpm --filter @itotori/localization-bridge-schema build
+    pnpm --filter @itotori/db build
+    pnpm --filter @itotori/app build
+
+db-migrate: db-cli-build
     node apps/itotori/dist/cli.js db-migrate
 
-db-reset:
+db-reset: db-migrate
     node apps/itotori/dist/cli.js db-reset
 
 hello: build

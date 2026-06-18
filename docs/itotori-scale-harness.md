@@ -13,9 +13,8 @@ Run the CI-sized smoke profile:
 just itotori-scale-smoke
 ```
 
-Public CI currently covers the normal test/build path through `just ci`; the smoke profile is the
-required local/performance gate for UNIV-010 until the database-backed harness is wired into public
-CI.
+The smoke profile is the alpha-required local and CI-friendly scale gate. It writes
+`.tmp/itotori-scale-harness/smoke/summary.json`.
 
 Run the explicit 1M+ Japanese-character profile:
 
@@ -25,10 +24,11 @@ just itotori-scale-large
 
 Both commands build the TypeScript packages, start/wait for the local Postgres service, create an
 isolated schema, run migrations, execute the harness, and drop the schema when the run finishes.
-Override the database if needed:
+Override the database or schema if needed:
 
 ```sh
 DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori just itotori-scale-large
+ITOTORI_SCALE_SCHEMA=itotori_scale_review just itotori-scale-smoke
 ```
 
 The direct script supports local tuning:
@@ -38,6 +38,7 @@ node scripts/itotori-scale-harness.mjs \
   --profile large \
   --target-japanese-characters 1050000 \
   --asset-count 96 \
+  --schema itotori_scale_review \
   --output .tmp/itotori-scale-harness/large/summary.json
 ```
 
@@ -52,7 +53,52 @@ Reports are written to deterministic gitignored paths:
 - Large: `.tmp/itotori-scale-harness/large/summary.json`
 
 The report includes corpus size, import target IDs, batch counts, queue counts, dashboard status,
-runtime status, cost summary, per-operation timings, and budget pass/fail details.
+runtime status, cost summary, per-operation timings, and budget pass/fail details. The `database`
+section records the schema name and whether it was kept for inspection.
+
+## Disposable Postgres
+
+The local disposable database path is:
+
+```sh
+DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori
+COMPOSE_PROJECT_NAME=itotori
+```
+
+These are no-secret public CI defaults. `just db-up` writes
+`.tmp/itotori-db/compose.env` from `DATABASE_URL`, then starts the `postgres` service with the
+matching host port, database name, user, and password. Set `COMPOSE_PROJECT_NAME` when running
+parallel worktrees so Docker resources do not collide. If `COMPOSE_PROJECT_NAME` is unset locally,
+the generated compose env derives a disposable project name from the worktree directory.
+
+The database recipes are:
+
+```sh
+just db-up
+just db-wait
+just db-migrate
+just db-reset
+```
+
+When `DATABASE_URL` is intentionally unavailable, DB-only verification is deterministic:
+
+```sh
+env -u DATABASE_URL pnpm --filter @itotori/db test
+```
+
+That command exits successfully, prints
+`itotori db tests skipped: DATABASE_URL unset`, and writes
+`.tmp/itotori-db/no-database-skipped.json` with `status`, `reason`, `command`, `checkedEnv`, and
+`timestamp`.
+
+The alpha readiness DB and scale commands are:
+
+```sh
+node scripts/spec-dag.mjs validate
+just ci-itotori
+just itotori-scale-smoke
+env -u DATABASE_URL pnpm --filter @itotori/db test
+```
 
 ## Interpreting Failures
 

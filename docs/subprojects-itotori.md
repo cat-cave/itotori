@@ -21,3 +21,34 @@ Search and indexing decisions live in
 must rely on exact Postgres indexes first, and agent-facing semantic retrieval
 must expose the ADR's tool contract and exact fallback behavior instead of an
 opaque retrieval store.
+
+## Local Database And Scale Checks
+
+Itotori DB-backed checks use `DATABASE_URL`. The local disposable Postgres
+default is `postgres://itotori:itotori@127.0.0.1:55433/itotori`, with
+`COMPOSE_PROJECT_NAME=itotori` as the no-secret public CI default. Use a unique
+`COMPOSE_PROJECT_NAME` for parallel worktrees; when it is unset locally,
+`just db-up` derives one from the worktree directory.
+
+```sh
+just db-up
+just db-wait
+just db-migrate
+just db-reset
+just ci-itotori
+just itotori-scale-smoke
+```
+
+`ITOTORI_SCALE_SCHEMA` optionally pins the schema name used by
+`just itotori-scale-smoke`; otherwise the harness creates a unique temporary
+schema and drops it after the run. The smoke summary is
+`.tmp/itotori-scale-harness/smoke/summary.json`.
+
+For DB-only verification without a database, run:
+
+```sh
+env -u DATABASE_URL pnpm --filter @itotori/db test
+```
+
+The command exits successfully, prints the skip reason, and writes
+`.tmp/itotori-db/no-database-skipped.json`.

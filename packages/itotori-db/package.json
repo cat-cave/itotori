@@ -12,7 +12,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "node scripts/run-tests.mjs",
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {

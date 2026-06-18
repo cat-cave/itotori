@@ -64,7 +64,8 @@ async function main(argv = process.argv.slice(2)) {
   const databaseUrl = args.databaseUrl ?? process.env.DATABASE_URL ?? defaultDatabaseUrl;
 
   const modules = await loadBuiltModules();
-  const schemaName = isolatedSchemaName(args.profile);
+  const schemaName =
+    args.schemaName ?? process.env.ITOTORI_SCALE_SCHEMA ?? isolatedSchemaName(args.profile);
   const measurements = [];
   let context;
   let schemaKept = false;
@@ -340,6 +341,9 @@ function parseArgs(argv) {
       case "--database-url":
         args.databaseUrl = requiredValue(argv, (index += 1), arg);
         break;
+      case "--schema":
+        args.schemaName = schemaName(requiredValue(argv, (index += 1), arg), arg);
+        break;
       case "--output":
         args.outputPath = requiredValue(argv, (index += 1), arg);
         break;
@@ -373,6 +377,13 @@ function positiveInteger(value, label) {
   return parsed;
 }
 
+function schemaName(value, label) {
+  if (!/^[a-z_][a-z0-9_]*$/u.test(value)) {
+    throw new Error(`${label} must be a valid lowercase PostgreSQL schema identifier`);
+  }
+  return value;
+}
+
 function isolatedSchemaName(profile) {
   const safeProfile = profile.replace(/[^a-z0-9_]/giu, "_").toLowerCase();
   return `itotori_scale_${safeProfile}_${process.pid}_${Date.now()}`;
@@ -404,6 +415,7 @@ Options:
   --target-japanese-characters N
   --asset-count N
   --database-url URL
+  --schema NAME
   --output PATH
   --keep-schema
 `);

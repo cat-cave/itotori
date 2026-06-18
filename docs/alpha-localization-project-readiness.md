@@ -242,11 +242,30 @@ pnpm exec vp run ts:typecheck
 cargo fmt --check
 cargo check --workspace
 cargo test --workspace
+just ci-itotori
+just itotori-scale-smoke
+env -u DATABASE_URL pnpm --filter @itotori/db test
 ```
 
 `just check` may be used when practical because it already includes several of
 the required checks. Any skipped command must have an explicit owner waiver that
 names the command, reason, risk, and follow-up node.
+
+The Itotori database readiness path uses a disposable local Postgres by default:
+
+```sh
+DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori
+COMPOSE_PROJECT_NAME=itotori
+ITOTORI_SCALE_SCHEMA=itotori_scale_review
+```
+
+The default values above are public CI-safe and contain no secrets. Developers
+running multiple worktrees should set `COMPOSE_PROJECT_NAME` to a unique value;
+when it is unset locally, `just db-up` derives one from the worktree directory.
+`just db-up`, `just db-wait`, `just db-migrate`, and `just db-reset` are the
+supported local database lifecycle commands. The scale smoke report is written
+to `.tmp/itotori-scale-harness/smoke/summary.json`, and the no-database DB-test
+skip report is written to `.tmp/itotori-db/no-database-skipped.json`.
 
 Manual readiness checks:
 
