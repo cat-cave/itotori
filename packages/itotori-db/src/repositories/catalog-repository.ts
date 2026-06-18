@@ -1277,7 +1277,9 @@ async function readCatalogCompletenessBenchmarkPools(
       : await db
           .select()
           .from(catalogSourceProvenance)
-          .where(inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(sourceProvenanceIds)));
+          .where(
+            inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(sourceProvenanceIds)),
+          );
   const sourcesById = new Map(
     sourceRows.map((row) => [row.sourceProvenanceId, sourceSummaryFromRow(row)]),
   );
@@ -1388,9 +1390,7 @@ function emptyCompletenessPools(): Record<CatalogCompletenessPool, CatalogComple
   };
 }
 
-function poolsForCompletenessWork(
-  work: CatalogCompletenessPoolWork,
-): CatalogCompletenessPool[] {
+function poolsForCompletenessWork(work: CatalogCompletenessPoolWork): CatalogCompletenessPool[] {
   const statuses = work.statuses.map((status) => status.status);
   const pools: CatalogCompletenessPool[] = [];
   if (work.conflicts.length > 0) {
@@ -1441,7 +1441,7 @@ function completenessStatusFactFromRow(
     releaseId: row.releaseId,
     sourceProvenanceId: row.sourceProvenanceId,
     source:
-      row.sourceProvenanceId === null ? null : sourcesById.get(row.sourceProvenanceId) ?? null,
+      row.sourceProvenanceId === null ? null : (sourcesById.get(row.sourceProvenanceId) ?? null),
     confidence: row.confidence as CatalogConfidence,
     observedAt: row.observedAt,
     importedAt: row.importedAt,
@@ -1533,7 +1533,8 @@ function compareCompletenessPoolWorks(
   right: CatalogCompletenessPoolWork,
 ): number {
   return (
-    left.canonicalTitle.localeCompare(right.canonicalTitle) || left.workId.localeCompare(right.workId)
+    left.canonicalTitle.localeCompare(right.canonicalTitle) ||
+    left.workId.localeCompare(right.workId)
   );
 }
 

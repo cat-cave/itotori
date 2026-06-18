@@ -307,7 +307,11 @@ export const catalogCompletenessFixture: CatalogCompletenessBenchmarkPools = {
     totalWorkCount: 1,
     conflictCount: 0,
     pools: [
-      { pool: "mtl_only", workCount: 1, sourceIds: [{ catalogSource: "egs", sourceId: "egs-mtl" }] },
+      {
+        pool: "mtl_only",
+        workCount: 1,
+        sourceIds: [{ catalogSource: "egs", sourceId: "egs-mtl" }],
+      },
       { pool: "fan_partial", workCount: 0, sourceIds: [] },
       { pool: "no_english", workCount: 0, sourceIds: [] },
       { pool: "unknown", workCount: 0, sourceIds: [] },

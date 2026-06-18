@@ -302,8 +302,14 @@ export function assertCatalogCompletenessBenchmarkPools(
           status.languageStatusId,
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].languageStatusId`,
         );
-        assertString(status.language, `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].language`);
-        assertString(status.status, `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].status`);
+        assertString(
+          status.language,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].language`,
+        );
+        assertString(
+          status.status,
+          `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].status`,
+        );
         assertString(
           status.confidence,
           `${label}.pools.${poolName}[${index}].statuses[${statusIndex}].confidence`,
@@ -395,7 +401,10 @@ export function assertCatalogCompletenessBenchmarkPools(
     const pool = asRecord(poolValue, `${label}.publicReport.pools[${index}]`);
     assertString(pool.pool, `${label}.publicReport.pools[${index}].pool`);
     assertNonNegativeInteger(pool.workCount, `${label}.publicReport.pools[${index}].workCount`);
-    assertConflictReviewSourceIds(pool.sourceIds, `${label}.publicReport.pools[${index}].sourceIds`);
+    assertConflictReviewSourceIds(
+      pool.sourceIds,
+      `${label}.publicReport.pools[${index}].sourceIds`,
+    );
   }
   const reportStatuses = asArray(publicReport.statuses, `${label}.publicReport.statuses`);
   for (const [index, statusValue] of reportStatuses.entries()) {
