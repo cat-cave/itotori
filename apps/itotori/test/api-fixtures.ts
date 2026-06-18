@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import type {
+  CatalogConflictReviewReadModel,
   DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
@@ -202,6 +203,47 @@ export const dashboardStatusFixture: ProjectDashboardStatus = {
       translatedUnitCount: 1,
       openFindingCount: 1,
       artifactCount: 3,
+    },
+  ],
+};
+
+export const catalogConflictReviewFixture: CatalogConflictReviewReadModel = {
+  rows: [
+    {
+      reviewId: "catalog-conflict:duplicate-external-id",
+      catalogRecordId: "work-duplicate",
+      conflictId: "duplicate-external-id",
+      candidateIds: ["candidate-prior-1"],
+      candidateCatalogIds: ["work-duplicate", "work-other"],
+      exactLinkRefs: [
+        {
+          externalIdId: "external-dlsite-1",
+          catalogSource: "dlsite",
+          sourceId: "RJ010",
+          externalIdKind: "store_product",
+          workId: "work-duplicate",
+          sourceProvenanceId: "prov-dlsite",
+        },
+      ],
+      fuzzyScores: [],
+      sourceIds: [{ catalogSource: "dlsite", sourceId: "RJ010" }],
+      provenance: [
+        {
+          sourceProvenanceId: "prov-dlsite",
+          catalogSource: "dlsite",
+          sourceId: "RJ010",
+          sourceRecordKind: "recorded_fixture",
+          payloadHash: null,
+          fetchedAt: new Date("2026-06-17T00:00:00.000Z"),
+        },
+      ],
+      severity: "error",
+      status: "open",
+      reasonCode: "duplicate_external_id",
+      reasonDetail: "DLsite id was observed against multiple catalog identities.",
+      conflictKind: "external_id",
+      detectedAt: new Date("2026-06-17T00:00:00.000Z"),
+      resolution: null,
     },
   ],
 };

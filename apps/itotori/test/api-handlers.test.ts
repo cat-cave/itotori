@@ -23,6 +23,7 @@ import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.
 import {
   benchmarkReportFixture,
   bridgeFixture,
+  catalogConflictReviewFixture,
   costReportFixture,
   dashboardDecisionsFixture,
   dashboardStatusFixture,
@@ -134,16 +135,52 @@ describe("Itotori API handlers", () => {
       { method: "GET", pathname: "/api/projects/decisions" },
       services,
     );
+    const catalogConflicts = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/conflicts" },
+      services,
+    );
 
     expect(projects).toEqual({ statusCode: 200, body: { projects: [dashboardStatusFixture] } });
     expect(projectStatus).toEqual({ statusCode: 200, body: dashboardStatusFixture });
     expect(runtimeStatus).toEqual({ statusCode: 200, body: runtimeStatusFixture });
     expect(costStatus).toEqual({ statusCode: 200, body: costReportFixture });
     expect(decisions).toEqual({ statusCode: 200, body: dashboardDecisionsFixture });
+    expect(catalogConflicts).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
     expect(services.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(1);
     expect(services.projectWorkflow.getCostReport).toHaveBeenCalledTimes(1);
     expect(services.projectWorkflow.getDashboardDecisions).toHaveBeenCalledTimes(1);
+    expect(services.catalogRepository.catalogConflictReview).toHaveBeenCalledWith({});
+    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      query: "?source=dlsite",
+      filter: { source: "dlsite" },
+    },
+    {
+      query: "?severity=warning",
+      filter: { severity: "warning" },
+    },
+    {
+      query: "?status=resolved",
+      filter: { status: "resolved" },
+    },
+    {
+      query: "?catalogRecordId=work-duplicate",
+      filter: { catalogRecordId: "work-duplicate" },
+    },
+  ])("passes catalog conflict review filter $query to the read model", async ({ query, filter }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/conflicts", search: query },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
+    expect(services.catalogRepository.catalogConflictReview).toHaveBeenCalledWith(filter);
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
   });
 
@@ -907,6 +944,9 @@ function serviceFixture(): ItotoriApiServices {
         project: projectFixture,
         result: runtimeIngestResultFixture,
       })),
+    },
+    catalogRepository: {
+      catalogConflictReview: vi.fn(async () => catalogConflictReviewFixture),
     },
   };
 }

@@ -32,6 +32,7 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
             {
               method: request.method ?? "GET",
               pathname: url.pathname,
+              search: url.search,
               body,
             },
             services,

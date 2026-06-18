@@ -203,5 +203,54 @@ async function serviceFactory<T>(
         throw new Error("not used");
       }),
     },
+    catalogRepository: {
+      catalogConflictReview: vi.fn(async () => ({ rows: [] })),
+    },
+    catalogExactExternalIdLinker: {
+      linkExactExternalIds: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    },
+    catalogFuzzyCandidateGenerator: {
+      generateFuzzyCandidates: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+      listCatalogCandidateMatches: vi.fn(async () => []),
+    },
+    catalogCrawlerRepository: {
+      getCheckpoint: vi.fn(async () => null),
+      startCrawlerJob: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+      recordFetchedStep: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+      commitStepImport: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+      markStepImported: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+      markStepFailed: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+      saveCheckpoint: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+      saveRateLimit: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+      completeCrawlerJob: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+      failCrawlerJob: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    },
+    catalogCrawlerRunner: {
+      run: vi.fn(async () => {
+        throw new Error("not used");
+      }),
+    },
   });
 }

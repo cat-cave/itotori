@@ -403,6 +403,73 @@ export type CatalogCandidateTargetWorkRecord = Pick<
   "workId" | "canonicalTitle" | "firstReleaseYear" | "originalLanguage" | "workKind"
 >;
 
+export type CatalogConflictReviewSeverity = "error" | "warning" | "info";
+
+export type CatalogConflictReviewStatus = CatalogConflictStatus | CatalogCandidateMatchStatus;
+
+export type CatalogConflictReviewSourceId = {
+  catalogSource: CatalogSource;
+  sourceId: string;
+};
+
+export type CatalogConflictReviewExactLinkRef = CatalogConflictReviewSourceId & {
+  externalIdId: string;
+  externalIdKind: CatalogExternalIdKind;
+  workId: string;
+  sourceProvenanceId: string | null;
+};
+
+export type CatalogConflictReviewFuzzyScore = {
+  candidateId: string;
+  score: number;
+  diagnosticCode: string;
+  generatorVersion: string;
+};
+
+export type CatalogConflictReviewProvenance = CatalogConflictReviewSourceId & {
+  sourceProvenanceId: string;
+  sourceRecordKind: CatalogSourceRecordKind;
+  payloadHash: string | null;
+  fetchedAt: Date;
+};
+
+export type CatalogConflictReviewResolution = {
+  reviewerId: string;
+  action: string;
+  resolvedAt: Date;
+  priorCandidateIds: string[];
+};
+
+export type CatalogConflictReviewRow = {
+  reviewId: string;
+  catalogRecordId: string;
+  conflictId: string | null;
+  candidateIds: string[];
+  candidateCatalogIds: string[];
+  exactLinkRefs: CatalogConflictReviewExactLinkRef[];
+  fuzzyScores: CatalogConflictReviewFuzzyScore[];
+  sourceIds: CatalogConflictReviewSourceId[];
+  provenance: CatalogConflictReviewProvenance[];
+  severity: CatalogConflictReviewSeverity;
+  status: CatalogConflictReviewStatus;
+  reasonCode: string;
+  reasonDetail: string;
+  conflictKind: CatalogConflictKind | null;
+  detectedAt: Date;
+  resolution: CatalogConflictReviewResolution | null;
+};
+
+export type CatalogConflictReviewReadModel = {
+  rows: CatalogConflictReviewRow[];
+};
+
+export type CatalogConflictReviewFilter = {
+  source?: CatalogSource;
+  severity?: CatalogConflictReviewSeverity;
+  status?: CatalogConflictReviewStatus;
+  catalogRecordId?: string;
+};
+
 export interface ItotoriCatalogRepositoryPort {
   recordSourceProvenance(
     actor: AuthorizationActor,
@@ -439,6 +506,10 @@ export interface ItotoriCatalogRepositoryPort {
     actor: AuthorizationActor,
     status?: CatalogCandidateMatchStatus,
   ): Promise<CatalogCandidateMatchRecord[]>;
+  catalogConflictReview(
+    actor: AuthorizationActor,
+    filter?: CatalogConflictReviewFilter,
+  ): Promise<CatalogConflictReviewReadModel>;
 }
 
 const catalogSources = Object.values(catalogSourceValues) as CatalogSource[];
@@ -933,6 +1004,471 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
             .orderBy(desc(catalogCandidateMatches.score), catalogCandidateMatches.createdAt);
     return rows.map(candidateMatchFromRow);
   }
+
+  async catalogConflictReview(
+    actor: AuthorizationActor,
+    filter: CatalogConflictReviewFilter = {},
+  ): Promise<CatalogConflictReviewReadModel> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const normalized = assertCatalogConflictReviewFilter(filter);
+    const rows = await readCatalogConflictReview(this.db);
+    return {
+      rows: rows.filter((row) => catalogConflictReviewRowMatches(row, normalized)),
+    };
+  }
+}
+
+async function readCatalogConflictReview(
+  db: ItotoriDatabase,
+): Promise<CatalogConflictReviewRow[]> {
+  const [conflictRows, evidenceRows, candidateRows] = await Promise.all([
+    db.select().from(catalogConflicts),
+    db.select().from(catalogConflictEvidence),
+    db.select().from(catalogCandidateMatches),
+  ]);
+
+  const provenanceIds = new Set<string>();
+  const externalIdIds = new Set<string>();
+  const workIds = new Set<string>();
+
+  for (const evidence of evidenceRows) {
+    if (evidence.sourceProvenanceId !== null) {
+      provenanceIds.add(evidence.sourceProvenanceId);
+    }
+    if (evidence.subjectKind === catalogConflictSubjectKindValues.externalId) {
+      externalIdIds.add(evidence.subjectId);
+    }
+  }
+  for (const candidate of candidateRows) {
+    workIds.add(candidate.targetWorkId);
+    if (candidate.sourceProvenanceId !== null) {
+      provenanceIds.add(candidate.sourceProvenanceId);
+    }
+  }
+
+  const [provenanceRows, externalIdRows, workExternalIdRows] = await Promise.all([
+    provenanceIds.size === 0
+      ? []
+      : db
+          .select()
+          .from(catalogSourceProvenance)
+          .where(inArray(catalogSourceProvenance.sourceProvenanceId, Array.from(provenanceIds))),
+    externalIdIds.size === 0
+      ? []
+      : db
+          .select()
+          .from(catalogExternalIds)
+          .where(inArray(catalogExternalIds.externalIdId, Array.from(externalIdIds))),
+    workIds.size === 0
+      ? []
+      : db.select().from(catalogExternalIds).where(inArray(catalogExternalIds.workId, Array.from(workIds))),
+  ]);
+
+  const provenanceById = new Map(
+    provenanceRows.map((row) => [row.sourceProvenanceId, sourceProvenanceFromRow(row)]),
+  );
+  const exactLinkById = new Map(
+    externalIdRows.map((row) => [row.externalIdId, exactLinkRefFromExternalIdRow(row)]),
+  );
+  const exactLinksByWorkId = new Map<string, CatalogConflictReviewExactLinkRef[]>();
+  for (const row of workExternalIdRows) {
+    const ref = exactLinkRefFromExternalIdRow(row);
+    const existing = exactLinksByWorkId.get(ref.workId) ?? [];
+    existing.push(ref);
+    exactLinksByWorkId.set(ref.workId, existing);
+  }
+  const evidenceByConflictId = new Map<string, (typeof catalogConflictEvidence.$inferSelect)[]>();
+  for (const evidence of evidenceRows) {
+    const existing = evidenceByConflictId.get(evidence.conflictId) ?? [];
+    existing.push(evidence);
+    evidenceByConflictId.set(evidence.conflictId, existing);
+  }
+
+  const candidateRowsBySource = new Map<string, (typeof catalogCandidateMatches.$inferSelect)[]>();
+  for (const candidate of candidateRows) {
+    const sourceKey = `${candidate.sourceCatalogSource}:${candidate.sourceId}:${candidate.generatorVersion}`;
+    const existing = candidateRowsBySource.get(sourceKey) ?? [];
+    existing.push(candidate);
+    candidateRowsBySource.set(sourceKey, existing);
+  }
+
+  const conflictReviewRows = conflictRows.map((conflict) =>
+    catalogConflictReviewRowFromConflict(
+      conflict,
+      evidenceByConflictId.get(conflict.conflictId) ?? [],
+      provenanceById,
+      exactLinkById,
+    ),
+  );
+  const candidateReviewRows = candidateRows.map((candidate) =>
+    catalogConflictReviewRowFromCandidate(
+      candidate,
+      candidateRowsBySource.get(
+        `${candidate.sourceCatalogSource}:${candidate.sourceId}:${candidate.generatorVersion}`,
+      ) ?? [candidate],
+      provenanceById,
+      exactLinksByWorkId.get(candidate.targetWorkId) ?? [],
+    ),
+  );
+
+  return [...conflictReviewRows, ...candidateReviewRows].sort(compareCatalogConflictReviewRows);
+}
+
+function catalogConflictReviewRowFromConflict(
+  conflict: typeof catalogConflicts.$inferSelect,
+  evidenceRows: (typeof catalogConflictEvidence.$inferSelect)[],
+  provenanceById: Map<string, CatalogSourceProvenanceRecord>,
+  exactLinkById: Map<string, CatalogConflictReviewExactLinkRef>,
+): CatalogConflictReviewRow {
+  const exactLinkRefs = evidenceRows
+    .filter((evidence) => evidence.subjectKind === catalogConflictSubjectKindValues.externalId)
+    .map((evidence) => exactLinkById.get(evidence.subjectId))
+    .filter((ref): ref is CatalogConflictReviewExactLinkRef => ref !== undefined);
+  const provenance = evidenceRows
+    .map((evidence) =>
+      evidence.sourceProvenanceId === null ? undefined : provenanceById.get(evidence.sourceProvenanceId),
+    )
+    .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined)
+    .map(conflictReviewProvenanceFromRecord);
+  const metadata = conflict.metadata;
+  const priorCandidateIds = stringArrayMetadata(metadata, "priorCandidateIds");
+  const candidateIds = uniqueStrings([
+    ...priorCandidateIds,
+    ...evidenceRows
+      .filter((evidence) => evidence.subjectKind === catalogConflictSubjectKindValues.work)
+      .flatMap((evidence) => stringArrayMetadata(evidence.metadata, "candidateIds")),
+  ]);
+
+  return {
+    reviewId: `catalog-conflict:${conflict.conflictId}`,
+    catalogRecordId: conflict.workId,
+    conflictId: conflict.conflictId,
+    candidateIds,
+    candidateCatalogIds: uniqueStrings([conflict.workId, ...exactLinkRefs.map((ref) => ref.workId)]),
+    exactLinkRefs: exactLinkRefs.sort(compareExactLinkRefs),
+    fuzzyScores: [],
+    sourceIds: uniqueSourceIds([
+      ...exactLinkRefs,
+      ...provenance.map(({ catalogSource, sourceId }) => ({ catalogSource, sourceId })),
+    ]),
+    provenance: uniqueProvenance(provenance),
+    severity: conflictSeverity(conflict, exactLinkRefs),
+    status: conflict.status as CatalogConflictStatus,
+    reasonCode: conflictReasonCode(conflict, exactLinkRefs),
+    reasonDetail: conflict.summary,
+    conflictKind: conflict.conflictKind as CatalogConflictKind,
+    detectedAt: conflict.detectedAt,
+    resolution: conflictResolutionFromMetadata(conflict.status as CatalogConflictStatus, metadata),
+  };
+}
+
+function catalogConflictReviewRowFromCandidate(
+  candidate: typeof catalogCandidateMatches.$inferSelect,
+  sourcePeerRows: (typeof catalogCandidateMatches.$inferSelect)[],
+  provenanceById: Map<string, CatalogSourceProvenanceRecord>,
+  targetExactLinkRefs: CatalogConflictReviewExactLinkRef[],
+): CatalogConflictReviewRow {
+  const candidateRecord = candidateMatchFromRow(candidate);
+  const provenanceRecord =
+    candidate.sourceProvenanceId === null ? undefined : provenanceById.get(candidate.sourceProvenanceId);
+  const provenance =
+    provenanceRecord === undefined ? [] : [conflictReviewProvenanceFromRecord(provenanceRecord)];
+  const fuzzyScores = sourcePeerRows
+    .map(candidateMatchFromRow)
+    .map((row) => ({
+      candidateId: row.candidateId,
+      score: row.score,
+      diagnosticCode: row.diagnosticCode,
+      generatorVersion: row.generatorVersion,
+    }))
+    .sort(compareFuzzyScores);
+
+  return {
+    reviewId: `catalog-candidate:${candidate.candidateId}`,
+    catalogRecordId: candidate.targetWorkId,
+    conflictId: null,
+    candidateIds: uniqueStrings(sourcePeerRows.map((row) => row.candidateId)),
+    candidateCatalogIds: uniqueStrings(sourcePeerRows.map((row) => row.targetWorkId)),
+    exactLinkRefs: targetExactLinkRefs.sort(compareExactLinkRefs),
+    fuzzyScores,
+    sourceIds: uniqueSourceIds([
+      { catalogSource: candidateRecord.sourceCatalogSource, sourceId: candidateRecord.sourceId },
+      ...provenance.map(({ catalogSource, sourceId }) => ({ catalogSource, sourceId })),
+      ...targetExactLinkRefs,
+    ]),
+    provenance,
+    severity: candidateSeverity(candidateRecord, sourcePeerRows),
+    status: candidateRecord.status,
+    reasonCode: candidateReasonCode(candidateRecord, sourcePeerRows),
+    reasonDetail: candidateReasonDetail(candidateRecord, sourcePeerRows),
+    conflictKind: catalogConflictKindValues.title,
+    detectedAt: candidateRecord.createdAt,
+    resolution: null,
+  };
+}
+
+function assertCatalogConflictReviewFilter(
+  filter: CatalogConflictReviewFilter,
+): CatalogConflictReviewFilter {
+  if (filter.source !== undefined) {
+    assertEnumValue(filter.source, catalogSources, "source");
+  }
+  if (filter.severity !== undefined) {
+    assertEnumValue(filter.severity, ["error", "warning", "info"], "severity");
+  }
+  if (filter.status !== undefined) {
+    assertEnumValue(filter.status, [...catalogConflictStatuses, ...catalogCandidateMatchStatuses], "status");
+  }
+  return {
+    ...(filter.source === undefined ? {} : { source: filter.source }),
+    ...(filter.severity === undefined ? {} : { severity: filter.severity }),
+    ...(filter.status === undefined ? {} : { status: filter.status }),
+    ...(filter.catalogRecordId === undefined
+      ? {}
+      : { catalogRecordId: requiredString(filter.catalogRecordId, "catalogRecordId") }),
+  };
+}
+
+function catalogConflictReviewRowMatches(
+  row: CatalogConflictReviewRow,
+  filter: CatalogConflictReviewFilter,
+): boolean {
+  if (
+    filter.source !== undefined &&
+    !row.sourceIds.some((sourceId) => sourceId.catalogSource === filter.source)
+  ) {
+    return false;
+  }
+  if (filter.severity !== undefined && row.severity !== filter.severity) {
+    return false;
+  }
+  if (filter.status !== undefined && row.status !== filter.status) {
+    return false;
+  }
+  if (filter.catalogRecordId !== undefined) {
+    const id = filter.catalogRecordId;
+    const matchesId =
+      row.reviewId === id ||
+      row.conflictId === id ||
+      row.catalogRecordId === id ||
+      row.candidateIds.includes(id) ||
+      row.candidateCatalogIds.includes(id) ||
+      row.exactLinkRefs.some((ref) => ref.externalIdId === id || ref.workId === id) ||
+      row.resolution?.priorCandidateIds.includes(id) === true;
+    if (!matchesId) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function conflictSeverity(
+  conflict: typeof catalogConflicts.$inferSelect,
+  exactLinkRefs: CatalogConflictReviewExactLinkRef[],
+): CatalogConflictReviewSeverity {
+  const metadataSeverity = stringMetadata(conflict.metadata, "severity");
+  if (metadataSeverity === "error" || metadataSeverity === "warning" || metadataSeverity === "info") {
+    return metadataSeverity;
+  }
+  if (
+    conflict.status === catalogConflictStatusValues.resolved ||
+    conflict.status === catalogConflictStatusValues.ignored
+  ) {
+    return "info";
+  }
+  if (conflict.conflictKind === catalogConflictKindValues.externalId || exactLinkRefs.length > 1) {
+    return "error";
+  }
+  return "warning";
+}
+
+function conflictReasonCode(
+  conflict: typeof catalogConflicts.$inferSelect,
+  exactLinkRefs: CatalogConflictReviewExactLinkRef[],
+): string {
+  const metadataReasonCode = stringMetadata(conflict.metadata, "reasonCode");
+  if (metadataReasonCode !== null) {
+    return metadataReasonCode;
+  }
+  if (conflict.conflictKind === catalogConflictKindValues.externalId && exactLinkRefs.length > 1) {
+    return "duplicate_external_id";
+  }
+  if (conflict.conflictKind === catalogConflictKindValues.languageStatus) {
+    return "source_disagreement";
+  }
+  return `${conflict.conflictKind}_conflict`;
+}
+
+function candidateSeverity(
+  candidate: CatalogCandidateMatchRecord,
+  sourcePeerRows: (typeof catalogCandidateMatches.$inferSelect)[],
+): CatalogConflictReviewSeverity {
+  const metadataSeverity = stringMetadata(candidate.metadata, "severity");
+  if (metadataSeverity === "error" || metadataSeverity === "warning" || metadataSeverity === "info") {
+    return metadataSeverity;
+  }
+  if (candidate.status === catalogCandidateMatchStatusValues.duplicateSource) {
+    return "info";
+  }
+  if (sourcePeerRows.length > 1 || candidate.score >= 850) {
+    return "warning";
+  }
+  return "info";
+}
+
+function candidateReasonCode(
+  candidate: CatalogCandidateMatchRecord,
+  sourcePeerRows: (typeof catalogCandidateMatches.$inferSelect)[],
+): string {
+  const metadataReasonCode = stringMetadata(candidate.metadata, "reasonCode");
+  if (metadataReasonCode !== null) {
+    return metadataReasonCode;
+  }
+  if (candidate.status === catalogCandidateMatchStatusValues.duplicateSource) {
+    return "stale_candidate";
+  }
+  if (sourcePeerRows.length > 1) {
+    return "fuzzy_collision";
+  }
+  return candidate.diagnosticCode;
+}
+
+function candidateReasonDetail(
+  candidate: CatalogCandidateMatchRecord,
+  sourcePeerRows: (typeof catalogCandidateMatches.$inferSelect)[],
+): string {
+  if (candidate.status === catalogCandidateMatchStatusValues.duplicateSource) {
+    return "Fuzzy candidate was retained as an audit row after a newer source candidate replaced it.";
+  }
+  if (sourcePeerRows.length > 1) {
+    return "Fuzzy source record matches multiple catalog candidates and requires reviewer selection.";
+  }
+  return "Fuzzy source record requires reviewer selection before catalog identity can change.";
+}
+
+function conflictResolutionFromMetadata(
+  status: CatalogConflictStatus,
+  metadata: CatalogJsonRecord,
+): CatalogConflictReviewResolution | null {
+  if (status !== catalogConflictStatusValues.resolved) {
+    return null;
+  }
+  const reviewerId = stringMetadata(metadata, "reviewerId");
+  const action = stringMetadata(metadata, "resolutionAction");
+  const resolvedAt = stringMetadata(metadata, "resolvedAt");
+  if (reviewerId === null || action === null || resolvedAt === null) {
+    return null;
+  }
+  return {
+    reviewerId,
+    action,
+    resolvedAt: dateInput(resolvedAt, "metadata.resolvedAt"),
+    priorCandidateIds: stringArrayMetadata(metadata, "priorCandidateIds"),
+  };
+}
+
+function conflictReviewProvenanceFromRecord(
+  row: CatalogSourceProvenanceRecord,
+): CatalogConflictReviewProvenance {
+  return {
+    sourceProvenanceId: row.sourceProvenanceId,
+    catalogSource: row.catalogSource,
+    sourceId: row.sourceId,
+    sourceRecordKind: row.sourceRecordKind,
+    payloadHash: row.payloadHash,
+    fetchedAt: row.fetchedAt,
+  };
+}
+
+function exactLinkRefFromExternalIdRow(
+  row: typeof catalogExternalIds.$inferSelect,
+): CatalogConflictReviewExactLinkRef {
+  return {
+    externalIdId: row.externalIdId,
+    catalogSource: row.catalogSource as CatalogSource,
+    sourceId: row.sourceId,
+    externalIdKind: row.externalIdKind as CatalogExternalIdKind,
+    workId: row.workId,
+    sourceProvenanceId: row.sourceProvenanceId,
+  };
+}
+
+function uniqueSourceIds(
+  sourceIds: CatalogConflictReviewSourceId[],
+): CatalogConflictReviewSourceId[] {
+  const byKey = new Map<string, CatalogConflictReviewSourceId>();
+  for (const sourceId of sourceIds) {
+    byKey.set(`${sourceId.catalogSource}:${sourceId.sourceId}`, sourceId);
+  }
+  return Array.from(byKey.values()).sort((left, right) =>
+    `${left.catalogSource}:${left.sourceId}`.localeCompare(`${right.catalogSource}:${right.sourceId}`),
+  );
+}
+
+function uniqueProvenance(
+  provenance: CatalogConflictReviewProvenance[],
+): CatalogConflictReviewProvenance[] {
+  const byId = new Map<string, CatalogConflictReviewProvenance>();
+  for (const entry of provenance) {
+    byId.set(entry.sourceProvenanceId, entry);
+  }
+  return Array.from(byId.values()).sort((left, right) =>
+    left.sourceProvenanceId.localeCompare(right.sourceProvenanceId),
+  );
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values)).sort();
+}
+
+function stringMetadata(metadata: CatalogJsonRecord, key: string): string | null {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
+}
+
+function stringArrayMetadata(metadata: CatalogJsonRecord, key: string): string[] {
+  const value = metadata[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
+}
+
+function compareCatalogConflictReviewRows(
+  left: CatalogConflictReviewRow,
+  right: CatalogConflictReviewRow,
+): number {
+  return (
+    severityRank(left.severity) - severityRank(right.severity) ||
+    left.status.localeCompare(right.status) ||
+    left.reasonCode.localeCompare(right.reasonCode) ||
+    left.reviewId.localeCompare(right.reviewId)
+  );
+}
+
+function severityRank(severity: CatalogConflictReviewSeverity): number {
+  switch (severity) {
+    case "error":
+      return 0;
+    case "warning":
+      return 1;
+    case "info":
+      return 2;
+  }
+}
+
+function compareExactLinkRefs(
+  left: CatalogConflictReviewExactLinkRef,
+  right: CatalogConflictReviewExactLinkRef,
+): number {
+  return left.externalIdId.localeCompare(right.externalIdId);
+}
+
+function compareFuzzyScores(
+  left: CatalogConflictReviewFuzzyScore,
+  right: CatalogConflictReviewFuzzyScore,
+): number {
+  return right.score - left.score || left.candidateId.localeCompare(right.candidateId);
 }
 
 async function recordSourceProvenanceUnchecked(

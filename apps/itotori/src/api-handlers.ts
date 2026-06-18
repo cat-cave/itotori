@@ -1,6 +1,14 @@
 import {
   AuthorizationError,
+  catalogCandidateMatchStatusValues,
+  catalogConflictStatusValues,
+  catalogSourceValues,
   permissionValues,
+  type CatalogConflictReviewFilter,
+  type CatalogConflictReviewReadModel,
+  type CatalogConflictReviewSeverity,
+  type CatalogConflictReviewStatus,
+  type CatalogSource,
   type DashboardDecisionReadModel,
   type Permission,
   type ProjectCostReport,
@@ -55,11 +63,17 @@ export type ApiJsonResponse = {
 export type ItotoriApiRequest = {
   method: string;
   pathname: string;
+  search?: string;
   body?: unknown;
 };
 
 export type ItotoriApiServices = {
   authorization: Pick<ItotoriAuthorizationPort, "requirePermission">;
+  catalogRepository: {
+    catalogConflictReview(
+      filter?: CatalogConflictReviewFilter,
+    ): Promise<CatalogConflictReviewReadModel>;
+  };
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "getDashboardStatus"
@@ -118,11 +132,21 @@ async function routeItotoriApiRequest(
     return ok("runtime.status", await services.projectWorkflow.getRuntimeStatus());
   }
 
+  if (request.method === "GET" && request.pathname === "/api/catalog/conflicts") {
+    return ok(
+      "catalog.conflicts",
+      await services.catalogRepository.catalogConflictReview(
+        parseCatalogConflictReviewFilter(request.search),
+      ),
+    );
+  }
+
   if (
     request.pathname === "/api/projects/status" ||
     request.pathname === "/api/projects/decisions" ||
     request.pathname === "/api/projects/cost" ||
-    request.pathname === "/api/hello/status"
+    request.pathname === "/api/hello/status" ||
+    request.pathname === "/api/catalog/conflicts"
   ) {
     return methodNotAllowed(["GET"]);
   }
@@ -194,6 +218,53 @@ async function requireApiPermission(
   await services.authorization.requirePermission(gate.permission);
 }
 
+function parseCatalogConflictReviewFilter(search = ""): CatalogConflictReviewFilter {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const filter: CatalogConflictReviewFilter = {};
+  const source = params.get("source");
+  if (source !== null) {
+    filter.source = enumParam(
+      source,
+      Object.values(catalogSourceValues) as CatalogSource[],
+      "source",
+    );
+  }
+  const severity = params.get("severity");
+  if (severity !== null) {
+    filter.severity = enumParam(
+      severity,
+      ["error", "warning", "info"] as CatalogConflictReviewSeverity[],
+      "severity",
+    );
+  }
+  const status = params.get("status");
+  if (status !== null) {
+    filter.status = enumParam(
+      status,
+      [
+        ...Object.values(catalogConflictStatusValues),
+        ...Object.values(catalogCandidateMatchStatusValues),
+      ] as CatalogConflictReviewStatus[],
+      "status",
+    );
+  }
+  const catalogRecordId = params.get("catalogRecordId");
+  if (catalogRecordId !== null) {
+    if (catalogRecordId.trim().length === 0) {
+      throw new ApiValidationError("catalogRecordId must be non-empty");
+    }
+    filter.catalogRecordId = catalogRecordId;
+  }
+  return filter;
+}
+
+function enumParam<T extends string>(value: string, allowed: readonly T[], label: string): T {
+  if (!allowed.includes(value as T)) {
+    throw new ApiValidationError(`${label} must be one of ${allowed.join(", ")}`);
+  }
+  return value as T;
+}
+
 function apiMutationGate(
   mutation: string,
   permissionKey: keyof typeof permissionValues,
@@ -206,6 +277,7 @@ function apiMutationGate(
 }
 
 function ok(routeId: "projects.list", body: ApiProjectsResponse): ApiJsonResponse;
+function ok(routeId: "catalog.conflicts", body: CatalogConflictReviewReadModel): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
 function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;

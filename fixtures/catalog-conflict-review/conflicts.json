@@ -1,0 +1,38 @@
+{
+  "fixtureId": "catalog-conflict-review.v0.1",
+  "fetchedAt": "2026-06-17T12:00:00.000Z",
+  "cases": [
+    {
+      "caseId": "duplicate-external-id",
+      "reasonCode": "duplicate_external_id",
+      "severity": "error",
+      "status": "open"
+    },
+    {
+      "caseId": "fuzzy-collision",
+      "reasonCode": "fuzzy_collision",
+      "severity": "warning",
+      "status": "review_pending"
+    },
+    {
+      "caseId": "source-disagreement",
+      "reasonCode": "source_disagreement",
+      "severity": "warning",
+      "status": "open"
+    },
+    {
+      "caseId": "resolved-conflict",
+      "reasonCode": "source_disagreement",
+      "severity": "info",
+      "status": "resolved",
+      "reviewerId": "reviewer-catalog-010",
+      "resolutionAction": "merged_into_canonical_work"
+    },
+    {
+      "caseId": "stale-candidate",
+      "reasonCode": "stale_candidate",
+      "severity": "info",
+      "status": "duplicate_source"
+    }
+  ]
+}

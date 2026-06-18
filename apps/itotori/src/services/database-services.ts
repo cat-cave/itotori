@@ -14,6 +14,8 @@ import {
   type ItotoriCatalogExactExternalIdLinkerPort,
   type ItotoriCatalogFuzzyCandidateGeneratorPort,
   type ItotoriCatalogCrawlerRepositoryPort,
+  type CatalogConflictReviewFilter,
+  type CatalogConflictReviewReadModel,
 } from "@itotori/db";
 import {
   ItotoriAuthorizationService,
@@ -30,6 +32,11 @@ export type ItotoriApplicationServices = {
   authorization: ItotoriAuthorizationPort;
   projectWorkflow: ItotoriProjectWorkflowPort;
   manualFeedback: ManualFeedbackImportPort;
+  catalogRepository: {
+    catalogConflictReview(
+      filter?: CatalogConflictReviewFilter,
+    ): Promise<CatalogConflictReviewReadModel>;
+  };
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
   catalogCrawlerRepository: ItotoriCatalogCrawlerRepositoryPort;
@@ -72,6 +79,10 @@ export async function withDatabaseItotoriServices<T>(
         modelLedgerRepository,
       ),
       manualFeedback: new ManualFeedbackImportService(feedbackRepository, localUserActor),
+      catalogRepository: {
+        catalogConflictReview: (filter) =>
+          catalogRepository.catalogConflictReview(localUserActor, filter),
+      },
       catalogExactExternalIdLinker: new ItotoriCatalogExactExternalIdLinkerService(
         catalogRepository,
         localUserActor,

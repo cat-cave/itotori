@@ -1,4 +1,5 @@
 import type {
+  CatalogConflictReviewReadModel,
   DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
@@ -35,6 +36,7 @@ import type {
 } from "./services/project-workflow.js";
 
 export type ItotoriApiRouteId =
+  | "catalog.conflicts"
   | "projects.list"
   | "projects.status"
   | "projects.decisions"
@@ -59,6 +61,8 @@ export type ApiProjectsResponse = {
 export type ApiProjectCostResponse = ProjectCostReport;
 
 export type ApiDashboardDecisionsResponse = DashboardDecisionReadModel;
+
+export type ApiCatalogConflictReviewResponse = CatalogConflictReviewReadModel;
 
 export type ApiProjectImportRequest = {
   bridge: BridgeBundle | BridgeBundleV02;
@@ -109,6 +113,7 @@ export type ApiRuntimeEvidenceRequest = {
 export type ApiRuntimeEvidenceResponse = RuntimeIngestResult;
 
 export type ItotoriApiResponseBody =
+  | ApiCatalogConflictReviewResponse
   | ApiProjectsResponse
   | ProjectDashboardStatus
   | ApiDashboardDecisionsResponse
@@ -213,6 +218,9 @@ export function assertItotoriApiResponse(
   value: unknown,
 ): asserts value is ItotoriApiResponseBody {
   switch (routeId) {
+    case "catalog.conflicts":
+      assertCatalogConflictReviewReadModel(value);
+      return;
     case "projects.list":
       assertProjectsResponse(value);
       return;
@@ -246,6 +254,46 @@ export function assertItotoriApiResponse(
     case "runtimeEvidence.ingest":
       assertRuntimeEvidenceResponse(value);
       return;
+  }
+}
+
+export function assertCatalogConflictReviewReadModel(
+  value: unknown,
+  label = "CatalogConflictReviewReadModel",
+): asserts value is CatalogConflictReviewReadModel {
+  const model = asRecord(value, label);
+  const rows = asArray(model.rows, `${label}.rows`);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asRecord(rowValue, `${label}.rows[${index}]`);
+    assertString(row.reviewId, `${label}.rows[${index}].reviewId`);
+    assertString(row.catalogRecordId, `${label}.rows[${index}].catalogRecordId`);
+    assertNullableString(row.conflictId, `${label}.rows[${index}].conflictId`);
+    assertStringArray(row.candidateIds, `${label}.rows[${index}].candidateIds`);
+    assertStringArray(row.candidateCatalogIds, `${label}.rows[${index}].candidateCatalogIds`);
+    assertConflictReviewExactLinkRefs(row.exactLinkRefs, `${label}.rows[${index}].exactLinkRefs`);
+    assertConflictReviewFuzzyScores(row.fuzzyScores, `${label}.rows[${index}].fuzzyScores`);
+    assertConflictReviewSourceIds(row.sourceIds, `${label}.rows[${index}].sourceIds`);
+    assertConflictReviewProvenance(row.provenance, `${label}.rows[${index}].provenance`);
+    assertEnum(
+      row.severity,
+      ["error", "warning", "info"] as const,
+      `${label}.rows[${index}].severity`,
+    );
+    assertString(row.status, `${label}.rows[${index}].status`);
+    assertString(row.reasonCode, `${label}.rows[${index}].reasonCode`);
+    assertString(row.reasonDetail, `${label}.rows[${index}].reasonDetail`);
+    assertNullableString(row.conflictKind, `${label}.rows[${index}].conflictKind`);
+    assertDateLike(row.detectedAt, `${label}.rows[${index}].detectedAt`);
+    if (row.resolution !== null) {
+      const resolution = asRecord(row.resolution, `${label}.rows[${index}].resolution`);
+      assertString(resolution.reviewerId, `${label}.rows[${index}].resolution.reviewerId`);
+      assertString(resolution.action, `${label}.rows[${index}].resolution.action`);
+      assertDateLike(resolution.resolvedAt, `${label}.rows[${index}].resolution.resolvedAt`);
+      assertStringArray(
+        resolution.priorCandidateIds,
+        `${label}.rows[${index}].resolution.priorCandidateIds`,
+      );
+    }
   }
 }
 
@@ -748,6 +796,66 @@ function assertString(value: unknown, label: string): asserts value is string {
 function assertNullableString(value: unknown, label: string): asserts value is string | null {
   if (value !== null && typeof value !== "string") {
     throw new Error(`${label} must be a string or null`);
+  }
+}
+
+function assertStringArray(value: unknown, label: string): void {
+  const entries = asArray(value, label);
+  for (const [index, entry] of entries.entries()) {
+    assertString(entry, `${label}[${index}]`);
+  }
+}
+
+function assertConflictReviewSourceIds(value: unknown, label: string): void {
+  const rows = asArray(value, label);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asRecord(rowValue, `${label}[${index}]`);
+    assertString(row.catalogSource, `${label}[${index}].catalogSource`);
+    assertString(row.sourceId, `${label}[${index}].sourceId`);
+  }
+}
+
+function assertConflictReviewExactLinkRefs(value: unknown, label: string): void {
+  const rows = asArray(value, label);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asRecord(rowValue, `${label}[${index}]`);
+    assertString(row.externalIdId, `${label}[${index}].externalIdId`);
+    assertString(row.catalogSource, `${label}[${index}].catalogSource`);
+    assertString(row.sourceId, `${label}[${index}].sourceId`);
+    assertString(row.externalIdKind, `${label}[${index}].externalIdKind`);
+    assertString(row.workId, `${label}[${index}].workId`);
+    assertNullableString(row.sourceProvenanceId, `${label}[${index}].sourceProvenanceId`);
+  }
+}
+
+function assertConflictReviewFuzzyScores(value: unknown, label: string): void {
+  const rows = asArray(value, label);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asRecord(rowValue, `${label}[${index}]`);
+    assertString(row.candidateId, `${label}[${index}].candidateId`);
+    assertNonNegativeInteger(row.score, `${label}[${index}].score`);
+    assertString(row.diagnosticCode, `${label}[${index}].diagnosticCode`);
+    assertString(row.generatorVersion, `${label}[${index}].generatorVersion`);
+  }
+}
+
+function assertConflictReviewProvenance(value: unknown, label: string): void {
+  const rows = asArray(value, label);
+  for (const [index, rowValue] of rows.entries()) {
+    const row = asRecord(rowValue, `${label}[${index}]`);
+    assertString(row.sourceProvenanceId, `${label}[${index}].sourceProvenanceId`);
+    assertString(row.catalogSource, `${label}[${index}].catalogSource`);
+    assertString(row.sourceId, `${label}[${index}].sourceId`);
+    assertString(row.sourceRecordKind, `${label}[${index}].sourceRecordKind`);
+    assertNullableString(row.payloadHash, `${label}[${index}].payloadHash`);
+    assertDateLike(row.fetchedAt, `${label}[${index}].fetchedAt`);
+  }
+}
+
+function assertDateLike(value: unknown, label: string): void {
+  const date = value instanceof Date ? value : typeof value === "string" ? new Date(value) : null;
+  if (date === null || Number.isNaN(date.getTime())) {
+    throw new Error(`${label} must be a date`);
   }
 }
 
