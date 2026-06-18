@@ -1,4 +1,8 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { Permission } from "@itotori/db";
 import type { ItotoriApplicationServices } from "../src/services/database-services.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -117,6 +121,120 @@ describe("Itotori server API contracts", () => {
       await closeServer(server);
     }
   });
+
+  it("serves the runtime dashboard index for deep links while preserving API and static routes", async () => {
+    await withTempDir(async (directory) => {
+      const webRoot = join(directory, "web");
+      const runtimeWebRoot = join(directory, "runtime-web");
+      await mkdir(join(webRoot, "assets"), { recursive: true });
+      await mkdir(join(runtimeWebRoot, "assets"), { recursive: true });
+      await writeFile(join(webRoot, "index.html"), "itotori dashboard", "utf8");
+      await writeFile(join(webRoot, "assets", "dashboard.js"), "dashboard asset", "utf8");
+      await writeFile(join(runtimeWebRoot, "index.html"), "runtime dashboard", "utf8");
+      await writeFile(join(runtimeWebRoot, "assets", "runtime.js"), "runtime asset", "utf8");
+
+      const server = createItotoriServer({
+        serviceFactory,
+        webRoot: directoryUrl(webRoot),
+        runtimeWebRoot: directoryUrl(runtimeWebRoot),
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      try {
+        const address = server.address() as AddressInfo;
+        const origin = `http://127.0.0.1:${address.port}`;
+
+        const deepLinkResponse = await fetch(`${origin}/runtime/evidence/runtime-1`);
+        expect(deepLinkResponse.status).toBe(200);
+        expect(deepLinkResponse.headers.get("content-type")).toBe("text/html");
+        await expect(deepLinkResponse.text()).resolves.toBe("runtime dashboard");
+        expect(getRuntimeStatus).not.toHaveBeenCalled();
+
+        const assetResponse = await fetch(`${origin}/assets/runtime.js`);
+        expect(assetResponse.status).toBe(200);
+        expect(assetResponse.headers.get("content-type")).toBe("text/javascript");
+        await expect(assetResponse.text()).resolves.toBe("runtime asset");
+
+        const apiResponse = await fetch(`${origin}/api/runtime/v0.2/status?runtimeRunId=runtime-1`);
+        expect(apiResponse.status).toBe(200);
+        await expect(apiResponse.json()).resolves.toMatchObject({ runtimeReportId: "runtime-1" });
+        expect(getRuntimeStatus).toHaveBeenCalledWith("runtime-1");
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
+
+  it("serves managed artifact-store files only from configured safe roots", async () => {
+    await withTempDir(async (directory) => {
+      const webRoot = join(directory, "web");
+      const managedArtifactRoot = join(directory, "managed-artifacts");
+      const publicFixtureArtifactRoot = join(directory, "public-fixtures");
+      await mkdir(webRoot, { recursive: true });
+      await mkdir(join(managedArtifactRoot, "runtime-1", "traces"), { recursive: true });
+      await mkdir(
+        join(publicFixtureArtifactRoot, "artifacts", "utsushi", "runtime", "runtime-2", "traces"),
+        { recursive: true },
+      );
+      await writeFile(
+        join(managedArtifactRoot, "runtime-1", "traces", "trace-1.json"),
+        '{"source":"managed"}',
+        "utf8",
+      );
+      await writeFile(
+        join(
+          publicFixtureArtifactRoot,
+          "artifacts",
+          "utsushi",
+          "runtime",
+          "runtime-2",
+          "traces",
+          "trace-2.json",
+        ),
+        '{"source":"fixture"}',
+        "utf8",
+      );
+
+      const server = createItotoriServer({
+        serviceFactory,
+        webRoot: directoryUrl(webRoot),
+        managedArtifactRoot: directoryUrl(managedArtifactRoot),
+        publicFixtureArtifactRoot: directoryUrl(publicFixtureArtifactRoot),
+      });
+      await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+      try {
+        const address = server.address() as AddressInfo;
+        const origin = `http://127.0.0.1:${address.port}`;
+
+        const managedResponse = await fetch(
+          `${origin}/artifact-store/artifacts/utsushi/runtime/runtime-1/traces/trace-1.json`,
+        );
+        expect(managedResponse.status).toBe(200);
+        expect(managedResponse.headers.get("content-type")).toBe("application/json");
+        await expect(managedResponse.json()).resolves.toEqual({ source: "managed" });
+
+        const fixtureResponse = await fetch(
+          `${origin}/artifact-store/artifacts/utsushi/runtime/runtime-2/traces/trace-2.json`,
+        );
+        expect(fixtureResponse.status).toBe(200);
+        await expect(fixtureResponse.json()).resolves.toEqual({ source: "fixture" });
+
+        const missingResponse = await fetch(
+          `${origin}/artifact-store/artifacts/utsushi/runtime/runtime-3/traces/missing.json`,
+        );
+        expect(missingResponse.status).toBe(404);
+
+        const traversalResponse = await fetch(
+          `${origin}/artifact-store/artifacts%2Futsushi%2Fruntime%2Fruntime-1%2F..%2Fsecret.json`,
+        );
+        expect(traversalResponse.status).toBe(400);
+
+        const externalResponse = await fetch(`${origin}/artifact-store/file:///tmp/secret.json`);
+        expect(externalResponse.status).toBe(400);
+      } finally {
+        await closeServer(server);
+      }
+    });
+  });
 });
 
 async function requestJson(options: {
@@ -157,6 +275,19 @@ async function closeServer(server: ReturnType<typeof createItotoriServer>): Prom
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });
+}
+
+async function withTempDir(callback: (directory: string) => Promise<void>): Promise<void> {
+  const directory = await mkdtemp(join(tmpdir(), "itotori-server-test-"));
+  try {
+    await callback(directory);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+function directoryUrl(directory: string): URL {
+  return pathToFileURL(`${directory}/`);
 }
 
 async function serviceFactory<T>(

@@ -1235,8 +1235,7 @@ describe("ItotoriProjectRepository", () => {
         ],
         artifacts: [
           expect.objectContaining({
-            artifactId:
-              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000401",
+            artifactId: "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000401",
             artifactKind: "screenshot",
             uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000001/screenshots/019ed003-0000-7000-8000-000000000401.png",
             hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
@@ -1446,14 +1445,15 @@ describe("ItotoriProjectRepository", () => {
         validationFindingCount: 1,
       });
 
-      await expect(repo.getRuntimeStatus("019ed003-0000-7000-8000-000000000901")).resolves
-        .toMatchObject({
-          finalStatus: "hello_world_passed",
-          runtimeRunId: "019ed003-0000-7000-8000-000000000901",
-          runtimeReportId: "019ed003-0000-7000-8000-000000000901",
-          runtimeStatus: "passed",
-          validationFindingCount: 0,
-        });
+      await expect(
+        repo.getRuntimeStatus("019ed003-0000-7000-8000-000000000901"),
+      ).resolves.toMatchObject({
+        finalStatus: "hello_world_passed",
+        runtimeRunId: "019ed003-0000-7000-8000-000000000901",
+        runtimeReportId: "019ed003-0000-7000-8000-000000000901",
+        runtimeStatus: "passed",
+        validationFindingCount: 0,
+      });
 
       const managedArtifacts = await context.pool.query<{
         artifact_id: string;
@@ -2217,11 +2217,11 @@ describe("ItotoriProjectRepository", () => {
         where artifact_id in ($1, $2, $3)
         order by artifact_id
       `,
-      [
-        runtimeReportId,
-        "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a31",
-        "patch-result-reingest-new",
-      ],
+        [
+          runtimeReportId,
+          "019ed003-0000-7000-8000-000000000a18:019ed003-0000-7000-8000-000000000a31",
+          "patch-result-reingest-new",
+        ],
       );
       expect(retainedArtifacts.rows.map((row) => row.artifact_id)).toEqual([
         "019ed003-0000-7000-8000-000000000a18",

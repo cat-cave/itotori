@@ -16175,6 +16175,47 @@
       ]
     },
     {
+      "id": "ITOTORI-121",
+      "title": "DB-backed local test skip visibility",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "universal"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["UNIV-013"],
+      "summary": "Make local DB-backed repository test skips explicit enough that developers and agents cannot treat missing DATABASE_URL runs as equivalent to DB validation.",
+      "deliverables": [
+        "DB test runner skip mode that emits a prominent machine-readable skipped status",
+        "Just or Vite Task command that fails when DB-backed repository tests are required but DATABASE_URL is absent",
+        "Documentation distinguishing optional local skips from required CI DB validation"
+      ],
+      "acceptanceCriteria": [
+        "The DB test runner still supports intentional no-DATABASE_URL skips for fast local checks.",
+        "A stricter local validation command fails when DB-backed repository tests are required and DATABASE_URL is missing.",
+        "Skip reports include package name, required environment variable, skipped test count, and remediation command.",
+        "CI continues to run DB-backed repository tests with DATABASE_URL configured."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Skipped DB tests reported as validated",
+        "Required DB validation silently bypassed by local agents",
+        "CI DB coverage weakened while improving local diagnostics"
+      ]
+    },
+    {
       "id": "UTSUSHI-119",
       "title": "MV/MZ patched-output runtime proof",
       "status": "planned",
@@ -16946,6 +16987,274 @@
         "Screenshot references not validated by capture corpus rules",
         "Review package context missing from playback route",
         "Private assets or absolute paths included in demo artifacts"
+      ]
+    },
+    {
+      "id": "UTSUSHI-135",
+      "title": "Runtime evidence missing-run not-found contract",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-005"],
+      "summary": "Return a typed not-found outcome for route-specific runtime evidence requests when the requested runtimeRunId is stale or unknown instead of surfacing the repository miss as an internal error.",
+      "deliverables": [
+        "Typed runtime evidence not-found diagnostic or API error shape",
+        "Repository and workflow tests for missing runtimeRunId",
+        "Dashboard state for stale runtime evidence deep links"
+      ],
+      "acceptanceCriteria": [
+        "GET /api/runtime/v0.2/status with an unknown runtimeRunId returns a typed not-found response or empty not-found status instead of internal_error.",
+        "Repository lookup distinguishes no project status from requested runtimeRunId not found.",
+        "The runtime dashboard renders a clear stale-link or not-found state without claiming evidence exists."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- runtime-status"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Stale runtime evidence links reported as 500s",
+        "Dashboard claiming evidence for missing runs",
+        "Repository errors that hide typed route-level diagnostics"
+      ]
+    },
+    {
+      "id": "UTSUSHI-136",
+      "title": "Runtime artifact hash provenance distinction",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori", "shared"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-005", "SHARED-025"],
+      "summary": "Distinguish content-backed runtime artifact hashes from repository-generated placeholder hashes so dashboards and proof manifests do not overstate artifact evidence strength.",
+      "deliverables": [
+        "Artifact hash provenance field or diagnostic in runtime evidence responses",
+        "Dashboard treatment for content-backed, generated-placeholder, and missing hashes",
+        "Exact deterministic hash regression tests for generated fallback hashes"
+      ],
+      "acceptanceCriteria": [
+        "Runtime artifact refs expose whether a hash came from adapter/content evidence or repository fallback metadata.",
+        "Dashboard link quality and diagnostics distinguish content-backed hashes from generated placeholder hashes.",
+        "Repository tests assert exact deterministic fallback hash values for at least one fixture."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- runtime-artifact"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/runtime-web-review test -- dashboard"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Placeholder hashes presented as content proof",
+        "Dashboard artifact links without provenance",
+        "Hash tests accepting any sha256-shaped value"
+      ]
+    },
+    {
+      "id": "UTSUSHI-137",
+      "title": "Runtime status method guard",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-005"],
+      "summary": "Extend API method-not-allowed handling to the runtime v0.2 status route so non-GET requests return 405 instead of falling through to unknown-route diagnostics.",
+      "deliverables": [
+        "Method guard coverage for /api/runtime/v0.2/status",
+        "API handler regression test for non-GET runtime status requests",
+        "Consistent allowed-method diagnostics for runtime status APIs"
+      ],
+      "acceptanceCriteria": [
+        "POST /api/runtime/v0.2/status returns method_not_allowed with allowed GET semantics.",
+        "GET /api/runtime/v0.2/status behavior remains unchanged.",
+        "Unknown runtime API routes still return not_found diagnostics."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- api-handlers"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Method guard drift from route handlers",
+        "Runtime status route falling through as unknown",
+        "Over-broad 405 handling for real unknown routes"
+      ]
+    },
+    {
+      "id": "UTSUSHI-138",
+      "title": "Runtime dashboard DB-to-API smoke",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-005", "UNIV-013"],
+      "summary": "Add a cross-layer smoke that seeds runtime evidence in Postgres, reads it through the Itotori API, and renders the runtime dashboard using the same response shape.",
+      "deliverables": [
+        "DB-backed runtime evidence seed fixture",
+        "API response capture for the seeded runtime evidence",
+        "Runtime dashboard render test that consumes the captured API response"
+      ],
+      "acceptanceCriteria": [
+        "The smoke starts from repository-backed runtime evidence rows rather than hand-built dashboard JSON.",
+        "API schema validation runs between DB read and dashboard render.",
+        "Dashboard assertions cover artifact links, diagnostics, findings, and evidence-tier labels from the DB-backed response."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test -- runtime-status"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/runtime-web-review test -- dashboard"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Dashboard tests drifting from DB-backed API shape",
+        "MSW fixtures masking repository projection bugs",
+        "Runtime evidence fields lost between DB, API, and dashboard"
+      ]
+    },
+    {
+      "id": "UTSUSHI-139",
+      "title": "Utsushi touched-surface validation bundle",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori", "universal"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["UTSUSHI-005", "UNIV-014"],
+      "summary": "Add an affected-validation bundle for Utsushi specs that touch Itotori API or DB surfaces so local Utsushi validation cannot pass while changed app or repository tests are skipped.",
+      "deliverables": [
+        "Affected-path rule for Utsushi specs touching apps/itotori or packages/itotori-db",
+        "Just recipe or Vite Task bundle for runtime-web-review, app API, and DB repository checks",
+        "Documentation for choosing ci-utsushi versus touched-surface validation"
+      ],
+      "acceptanceCriteria": [
+        "Changes under apps/itotori or packages/itotori-db in Utsushi-labeled specs trigger app and DB checks in the affected report.",
+        "The validation bundle includes runtime-web-review tests, Itotori API tests, and DB repository tests when those surfaces are touched.",
+        "The documented local command names the checks that are skipped when DATABASE_URL is absent."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/affected.mjs"
+        },
+        {
+          "type": "command",
+          "value": "just ci-utsushi"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Utsushi local gate missing touched Itotori surfaces",
+        "Affected report ignoring DB repository changes",
+        "Skipped DB tests hidden from developers"
+      ]
+    },
+    {
+      "id": "UTSUSHI-140",
+      "title": "Runtime artifact symlink escape regression",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-005"],
+      "summary": "Add explicit server tests proving artifact-store reads cannot escape managed artifact roots through symlinks even though the implementation already uses realpath confinement.",
+      "deliverables": [
+        "Server test fixture with symlink inside managedArtifactRoot pointing outside the root",
+        "Regression assertion for artifact-store symlink escape returning safe failure",
+        "Documented expected status code for symlink-escape artifact requests"
+      ],
+      "acceptanceCriteria": [
+        "A symlink under managedArtifactRoot that targets a file outside the root is not served.",
+        "A normal managed runtime artifact file under the root continues to serve successfully.",
+        "The regression fails if realpath confinement is removed or bypassed."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- server"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Symlink traversal out of artifact roots",
+        "Path validation that relies only on lexical checks",
+        "Server tests missing filesystem escape fixtures"
+      ]
+    },
+    {
+      "id": "UTSUSHI-141",
+      "title": "Runtime artifact normalized dot-segment regression",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-005"],
+      "summary": "Add raw HTTP-path regression coverage for literal and encoded dot segments in artifact-store requests so URL normalization behavior is documented and stable.",
+      "deliverables": [
+        "Server tests for literal dot-dot artifact-store paths",
+        "Server tests for percent-encoded dot-dot artifact-store paths",
+        "Expected status-code documentation in test names or server diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "Literal dot-segment artifact-store requests cannot serve files outside configured roots.",
+        "Percent-encoded dot-segment artifact-store requests cannot serve files outside configured roots.",
+        "Tests document whether normalized unsafe paths return 400 or 404 so future server refactors preserve the chosen behavior."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- server"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "URL parser normalization hiding unsafe path behavior",
+        "Encoded traversal coverage gaps",
+        "Server route refactors changing artifact-store safety semantics silently"
       ]
     },
     {

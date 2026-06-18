@@ -11,9 +11,7 @@ let currentFixture = runtimeFixture("passed-e2-capture");
 
 const server = setupServer(
   http.get("http://localhost/api/runtime/v0.2/status", () => apiRuntimeStatus(currentFixture)),
-  http.get("http://itotori.test/api/runtime/v0.2/status", () =>
-    apiRuntimeStatus(currentFixture),
-  ),
+  http.get("http://itotori.test/api/runtime/v0.2/status", () => apiRuntimeStatus(currentFixture)),
   http.get("http://itotori.test/api/hello/status", () => apiRuntimeStatus(currentFixture)),
 );
 
