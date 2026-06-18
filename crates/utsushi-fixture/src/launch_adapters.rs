@@ -1,16 +1,17 @@
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use serde_json::{Value, json};
 use utsushi_core::{
     ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier, RuntimeAdapter,
-    RuntimeAdapterDescriptor, RuntimeArtifactKind, RuntimeCapability, RuntimeCapabilityClass,
-    RuntimeCapabilityContract, RuntimeCaptureBoundary, RuntimeCaptureContext, RuntimeCaptureHook,
-    RuntimeCaptureHooks, RuntimeCapturedArtifact, RuntimeFeatureSupport, RuntimeHarnessError,
-    RuntimeHarnessErrorKind, RuntimeLaunchCaptureHarness, RuntimeLaunchCapturePlan,
-    RuntimeLaunchCommand, RuntimeOperation, RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
+    RuntimeAdapterDescriptor, RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability,
+    RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeCaptureBoundary,
+    RuntimeCaptureContext, RuntimeCaptureHook, RuntimeCaptureHooks, RuntimeCapturedArtifact,
+    RuntimeFeatureSupport, RuntimeHarnessError, RuntimeHarnessErrorKind,
+    RuntimeLaunchCaptureHarness, RuntimeLaunchCapturePlan, RuntimeLaunchCommand, RuntimeOperation,
+    RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
 };
 
 const BROWSER_RUN_ID: &str = "019ed050-0000-7000-8000-000000001000";
@@ -180,16 +181,40 @@ impl BrowserLaunchAdapter {
         persist_screenshot: bool,
     ) -> Result<utsushi_core::RuntimeLaunchCaptureOutcome, RuntimeHarnessError> {
         let browser_program = self.resolve_browser_program(operation)?;
-        let screenshot_path = temporary_screenshot_path();
-        let command = RuntimeLaunchCommand::new(browser_program).args([
+        let mut args = vec![
             "--headless=new".to_string(),
             "--disable-gpu".to_string(),
             "--no-sandbox".to_string(),
             "--hide-scrollbars".to_string(),
             format!("--window-size={BROWSER_VIEWPORT_WIDTH},{BROWSER_VIEWPORT_HEIGHT}"),
-            format!("--screenshot={}", screenshot_path.display()),
-            target.url.clone(),
-        ]);
+        ];
+        let screenshot_staging = if persist_screenshot {
+            let Some(artifact_root) = artifact_root else {
+                return Err(RuntimeHarnessError::new(
+                    RuntimeHarnessErrorKind::ArtifactStoreUnavailable,
+                    operation,
+                    "browser screenshot capture requires a managed runtime artifact root",
+                )
+                .with_detail("capability", "browser_screenshot_capture"));
+            };
+            let root = RuntimeArtifactRoot::new(artifact_root);
+            let screenshot_path = root
+                .prepare_staging_file(BROWSER_RUN_ID, BROWSER_SCREENSHOT_ID, "png")
+                .map_err(|error| {
+                    RuntimeHarnessError::new(
+                        RuntimeHarnessErrorKind::ArtifactWriteFailed,
+                        operation,
+                        format!("failed to prepare browser screenshot staging path: {error}"),
+                    )
+                })?;
+            args.push(format!("--screenshot={}", screenshot_path.display()));
+            Some((root, screenshot_path))
+        } else {
+            args.push("--dump-dom".to_string());
+            None
+        };
+        args.push(target.url.clone());
+        let command = RuntimeLaunchCommand::new(browser_program).args(args);
         let mut plan = RuntimeLaunchCapturePlan::new(BROWSER_RUN_ID, operation, command)
             .with_timeout(Duration::from_secs(10))
             .with_shutdown_grace(Duration::from_secs(2))
@@ -199,14 +224,29 @@ impl BrowserLaunchAdapter {
         }
 
         let mut hooks = RuntimeCaptureHooks::new();
-        if persist_screenshot {
+        if let Some((_, screenshot_path)) = &screenshot_staging {
             hooks.push(BrowserScreenshotHook {
                 screenshot_path: screenshot_path.clone(),
             });
         }
         let harness = RuntimeLaunchCaptureHarness::new();
         let result = harness.run(&plan, &mut hooks);
-        let _ = fs::remove_file(&screenshot_path);
+        if let Some((root, _)) = &screenshot_staging
+            && let Err(cleanup_error) = root.cleanup_staging_run(BROWSER_RUN_ID)
+        {
+            return match result {
+                Ok(_) => Err(RuntimeHarnessError::new(
+                    RuntimeHarnessErrorKind::ArtifactWriteFailed,
+                    operation,
+                    format!("failed to clean browser screenshot staging path: {cleanup_error}"),
+                )
+                .with_detail("capability", "browser_screenshot_capture")),
+                Err(error) => {
+                    Err(error
+                        .with_detail("screenshotStagingCleanupError", cleanup_error.to_string()))
+                }
+            };
+        }
         result
     }
 
@@ -664,17 +704,6 @@ fn browser_capture_event(
     }))
 }
 
-fn temporary_screenshot_path() -> PathBuf {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_nanos();
-    env::temp_dir().join(format!(
-        "utsushi-browser-screenshot-{}-{nonce}.png",
-        std::process::id()
-    ))
-}
-
 fn resolve_program_candidate(program: &str) -> Option<PathBuf> {
     if program.trim().is_empty() {
         return None;
@@ -732,6 +761,7 @@ fn is_launchable_file(path: &Path) -> bool {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_dir(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
@@ -788,6 +818,11 @@ mod tests {
         path
     }
 
+    #[cfg(unix)]
+    fn shell_quote_path(path: &Path) -> String {
+        format!("'{}'", path.to_string_lossy().replace('\'', "'\\''"))
+    }
+
     #[test]
     fn browser_descriptor_reports_launch_capture_capability() {
         let adapter = BrowserLaunchAdapter::new();
@@ -842,22 +877,27 @@ mod tests {
         let root = temp_dir("browser-smoke");
         write_browser_smoke_fixture(&root);
         let artifact_root = root.join("runtime-artifacts");
+        let observed_screenshot_path = root.join("observed-screenshot-path");
+        let observed_screenshot_path_arg = shell_quote_path(&observed_screenshot_path);
         let fake_browser = fake_browser(
             &root,
-            r#"#!/bin/sh
+            &format!(
+                r#"#!/bin/sh
 set -eu
 screenshot=""
 for arg in "$@"; do
   case "$arg" in
-    --screenshot=*) screenshot="${arg#--screenshot=}" ;;
+    --screenshot=*) screenshot="${{arg#--screenshot=}}" ;;
   esac
 done
 if [ -z "$screenshot" ]; then
   exit 64
 fi
 mkdir -p "$(dirname "$screenshot")"
+printf '%s' "$screenshot" > {observed_screenshot_path_arg}
 printf '\211PNG\r\n\032\nutsushi fake browser screenshot\n' > "$screenshot"
 "#,
+            ),
         );
         let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
 
@@ -890,8 +930,44 @@ printf '\211PNG\r\n\032\nutsushi fake browser screenshot\n' > "$screenshot"
         assert!(artifact_path.starts_with(&artifact_root));
         assert!(artifact_path.is_file());
         assert!(fs::read(&artifact_path).unwrap().starts_with(b"\x89PNG"));
+        let browser_screenshot_path =
+            PathBuf::from(fs::read_to_string(&observed_screenshot_path).unwrap());
+        assert!(browser_screenshot_path.starts_with(&artifact_root));
+        assert!(!browser_screenshot_path.exists());
+        assert!(!artifact_root.join(".staging").exists());
         let report_string = serde_json::to_string(&report).unwrap();
         assert!(!report_string.contains(root.to_string_lossy().as_ref()));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_capture_requires_managed_artifact_root_before_launch() {
+        let root = temp_dir("browser-root-required");
+        write_browser_smoke_fixture(&root);
+        let launched_marker = root.join("launched");
+        let launched_marker_arg = shell_quote_path(&launched_marker);
+        let fake_browser = fake_browser(
+            &root,
+            &format!(
+                r#"#!/bin/sh
+set -eu
+printf launched > {launched_marker_arg}
+exit 0
+"#,
+            ),
+        );
+        let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
+
+        let error = adapter.capture(&RuntimeRequest::new(&root)).unwrap_err();
+        let harness_error = error.downcast_ref::<RuntimeHarnessError>().unwrap();
+
+        assert_eq!(
+            harness_error.kind,
+            RuntimeHarnessErrorKind::ArtifactStoreUnavailable
+        );
+        assert_eq!(harness_error.code(), "runtime_artifact_store_unavailable");
+        assert!(!launched_marker.exists());
         let _ = fs::remove_dir_all(root);
     }
 
@@ -918,6 +994,7 @@ exit 0
         assert_eq!(harness_error.kind, RuntimeHarnessErrorKind::CaptureFailed);
         assert_eq!(harness_error.code(), "runtime_capture_failed");
         assert!(harness_error.message.contains("did not produce"));
+        assert!(!artifact_root.join(".staging").exists());
         let _ = fs::remove_dir_all(root);
     }
 }

@@ -19,6 +19,7 @@ const DEFAULT_HARNESS_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_HARNESS_SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
 const DEFAULT_HARNESS_HOOK_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_HARNESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const RUNTIME_ARTIFACT_STAGING_DIR: &str = ".staging";
 
 const OBVIOUS_UNMANAGED_ROOT_SENTINELS: &[&str] = &[
     ".git",
@@ -217,6 +218,69 @@ impl RuntimeArtifactRoot {
         write_file_atomically(&path, contents)?;
         reject_symlink_destination(&path)?;
         Ok(path)
+    }
+
+    pub fn prepare_staging_file(
+        &self,
+        run_id: &str,
+        artifact_id: &str,
+        extension: &str,
+    ) -> UtsushiResult<PathBuf> {
+        validate_artifact_segment("run id", run_id)?;
+        validate_artifact_segment("artifact id", artifact_id)?;
+        validate_artifact_extension(extension)?;
+        self.prepare()?;
+        let relative_dir = Path::new(RUNTIME_ARTIFACT_STAGING_DIR).join(run_id);
+        create_artifact_directory_path_without_symlinks(&self.root, &relative_dir)?;
+        let path = self
+            .root
+            .join(&relative_dir)
+            .join(format!("{artifact_id}.{extension}"));
+        reject_symlink_destination(&path)?;
+        Ok(path)
+    }
+
+    pub fn cleanup_staging_run(&self, run_id: &str) -> UtsushiResult<()> {
+        validate_artifact_segment("run id", run_id)?;
+        self.assert_managed_root()?;
+        let run_staging_dir = self.root.join(RUNTIME_ARTIFACT_STAGING_DIR).join(run_id);
+        match fs::symlink_metadata(&run_staging_dir) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() {
+                    return Err(format!(
+                        "runtime artifact staging path must not be a symlink: {}",
+                        run_staging_dir.display()
+                    )
+                    .into());
+                }
+                if metadata.is_dir() {
+                    fs::remove_dir_all(&run_staging_dir)?;
+                } else {
+                    fs::remove_file(&run_staging_dir)?;
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+
+        let staging_dir = self.root.join(RUNTIME_ARTIFACT_STAGING_DIR);
+        match fs::symlink_metadata(&staging_dir) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() {
+                    return Err(format!(
+                        "runtime artifact staging root must not be a symlink: {}",
+                        staging_dir.display()
+                    )
+                    .into());
+                }
+                if metadata.is_dir() && !directory_has_entries(&staging_dir)? {
+                    fs::remove_dir(&staging_dir)?;
+                }
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error.into()),
+        }
+        Ok(())
     }
 
     pub fn cleanup_contents(&self) -> UtsushiResult<()> {
@@ -1551,12 +1615,15 @@ impl RuntimeLaunchCaptureHarness {
 
         let exit = RuntimeProcessExit::from_status(status);
         if !exit.success {
+            let cleanup =
+                terminate_runtime_process(&mut child, plan.shutdown_grace, plan.poll_interval);
             let mut error = RuntimeHarnessError::new(
                 RuntimeHarnessErrorKind::ProcessFailed,
                 plan.operation,
                 "runtime process exited with a non-zero status",
             )
-            .with_process_id(process_id);
+            .with_process_id(process_id)
+            .with_cleanup(cleanup);
             if let Some(code) = exit.code {
                 error = error.with_detail("exitCode", code.to_string());
             }
@@ -2141,12 +2208,25 @@ fn terminate_runtime_process(
     poll_interval: Duration,
 ) -> RuntimeProcessCleanup {
     if matches!(child.try_wait(), Ok(Some(_))) {
-        return RuntimeProcessCleanup {
-            attempted: false,
-            completed: true,
-            scope: RuntimeProcessCleanupScope::ProcessTree,
-            escalated: false,
-        };
+        match process_tree_exists(child.id()) {
+            Ok(false) => {
+                return RuntimeProcessCleanup {
+                    attempted: false,
+                    completed: true,
+                    scope: RuntimeProcessCleanupScope::ProcessTree,
+                    escalated: false,
+                };
+            }
+            Ok(true) => {}
+            Err(_) => {
+                return RuntimeProcessCleanup {
+                    attempted: false,
+                    completed: false,
+                    scope: RuntimeProcessCleanupScope::ProcessTree,
+                    escalated: false,
+                };
+            }
+        }
     }
 
     let attempted = terminate_process_tree(child.id()).is_ok();
@@ -2423,6 +2503,28 @@ mod tests {
             }
             std::thread::sleep(Duration::from_millis(50));
         }
+    }
+
+    #[test]
+    #[ignore]
+    fn harness_child_spawns_grandchild_then_fails() {
+        let heartbeat_path =
+            PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT").unwrap());
+        let pid_path = PathBuf::from(std::env::var("UTSUSHI_TEST_GRANDCHILD_PID").unwrap());
+        let _child = StdCommand::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "tests::harness_grandchild_heartbeats",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT", &heartbeat_path)
+            .env("UTSUSHI_TEST_GRANDCHILD_PID", &pid_path)
+            .spawn()
+            .unwrap();
+        assert!(wait_for_path(&pid_path, Duration::from_secs(1)));
+        assert!(wait_for_path(&heartbeat_path, Duration::from_secs(1)));
+        std::process::exit(42);
     }
 
     #[test]
@@ -3017,6 +3119,58 @@ mod tests {
             fs::read_to_string(&heartbeat_path).unwrap(),
             heartbeat_after_cleanup,
             "grandchild heartbeat changed after process-tree cleanup"
+        );
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn nonzero_exit_cleanup_terminates_runtime_process_tree() {
+        let temp = temp_root("nonzero-process-tree");
+        let heartbeat_path = temp.join("grandchild-heartbeat");
+        let pid_path = temp.join("grandchild.pid");
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command_with_env(
+                "tests::harness_child_spawns_grandchild_then_fails",
+                &[
+                    ("UTSUSHI_TEST_GRANDCHILD_HEARTBEAT", &heartbeat_path),
+                    ("UTSUSHI_TEST_GRANDCHILD_PID", &pid_path),
+                ],
+            ),
+        )
+        .with_timeout(Duration::from_secs(5))
+        .with_shutdown_grace(Duration::from_secs(1))
+        .with_poll_interval(Duration::from_millis(5));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hooks = RuntimeCaptureHooks::new();
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::ProcessFailed);
+        assert_eq!(error.code(), "runtime_process_failed");
+        assert!(
+            error
+                .details
+                .iter()
+                .any(|(key, value)| { key == "exitCode" && value == "42" })
+        );
+        let cleanup = error.cleanup.unwrap();
+        assert!(cleanup.attempted);
+        assert!(cleanup.completed);
+        assert_eq!(cleanup.scope, RuntimeProcessCleanupScope::ProcessTree);
+        assert!(pid_path.is_file(), "grandchild should have started");
+        assert!(
+            heartbeat_path.is_file(),
+            "grandchild should have written at least one heartbeat"
+        );
+        let heartbeat_after_cleanup = fs::read_to_string(&heartbeat_path).unwrap();
+        std::thread::sleep(Duration::from_millis(150));
+        assert_eq!(
+            fs::read_to_string(&heartbeat_path).unwrap(),
+            heartbeat_after_cleanup,
+            "grandchild heartbeat changed after non-zero process cleanup"
         );
         let _ = fs::remove_dir_all(temp);
     }
