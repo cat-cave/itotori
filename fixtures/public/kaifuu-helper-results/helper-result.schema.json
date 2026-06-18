@@ -118,7 +118,26 @@
         },
         "secretRef": {
           "type": "string",
-          "pattern": "^(local-secret|os-keychain|secret-manager|prompt):[A-Za-z0-9._/-]+$"
+          "allOf": [
+            {
+              "pattern": "^(local-secret|os-keychain|secret-manager|prompt):(?!(?:[A-Za-z0-9._-]+/)*\\.\\.(?:/|$))[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)*$"
+            },
+            {
+              "not": {
+                "pattern": "^(local-secret|os-keychain|secret-manager|prompt):[A-Fa-f0-9-]{32,}$"
+              }
+            },
+            {
+              "not": {
+                "pattern": "^(local-secret|os-keychain|secret-manager|prompt):(?=.{22,256}$)(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[A-Za-z0-9_-]+=*$"
+              }
+            },
+            {
+              "not": {
+                "pattern": "^(local-secret|os-keychain|secret-manager|prompt):(?=.{24,256}$)(?=.*[a-z])(?=.*[A-Z])[A-Za-z]+=*$"
+              }
+            }
+          ]
         },
         "materialKind": {
           "type": "string",

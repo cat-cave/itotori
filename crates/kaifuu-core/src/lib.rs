@@ -3502,9 +3502,9 @@ pub struct HelperResult {
     pub helper: HelperProvenance,
     pub diagnostic: HelperDiagnostic,
     pub redaction: HelperRedaction,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub secret_refs: Vec<HelperResultSecretRef>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub proof_hashes: Vec<KeyValidationProof>,
 }
 
@@ -4010,6 +4010,13 @@ fn validate_helper_result_secret_refs(
     secret_refs: Option<&Value>,
 ) {
     let Some(secret_refs) = secret_refs else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "secretRefs",
+            "secretRefs must be an array",
+        );
         return;
     };
     let Some(secret_refs) = secret_refs.as_array() else {
@@ -4108,6 +4115,13 @@ fn validate_helper_result_proof_hashes(
     proof_hashes: Option<&Value>,
 ) {
     let Some(proof_hashes) = proof_hashes else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "proofHashes",
+            "proofHashes must be an array",
+        );
         return;
     };
     let Some(proof_hashes) = proof_hashes.as_array() else {
@@ -11791,6 +11805,12 @@ mod tests {
         ))
     }
 
+    fn invalid_public_helper_result_fixture_value(name: &str) -> Value {
+        bridge_fixture_value(&format!(
+            "fixtures/public/kaifuu-helper-results/invalid/{name}.json"
+        ))
+    }
+
     #[test]
     fn public_helper_result_fixtures_validate_and_cover_diagnostic_matrix() {
         let fixture_codes = [
@@ -11824,6 +11844,13 @@ mod tests {
             assert_eq!(helper_result.diagnostic.code, expected_code);
             covered.insert(helper_result.diagnostic.code);
             let serialized = helper_result.stable_json().unwrap();
+            let serialized_value: Value = serde_json::from_str(&serialized).unwrap();
+            assert!(serialized_value["secretRefs"].is_array());
+            assert!(serialized_value["proofHashes"].is_array());
+            assert_eq!(
+                validate_helper_result_value(&serialized_value).status,
+                OperationStatus::Passed
+            );
             assert!(!serialized.contains("rawKey"));
             assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
         }
@@ -11842,6 +11869,79 @@ mod tests {
             .into_iter()
             .collect::<BTreeSet<_>>()
         );
+    }
+
+    #[test]
+    fn helper_result_stable_json_keeps_empty_arrays_in_public_contract() {
+        let value = public_helper_result_fixture_value("unsupported-protected-executable");
+        let helper_result: HelperResult = serde_json::from_value(value).unwrap();
+        assert!(helper_result.secret_refs.is_empty());
+        assert!(helper_result.proof_hashes.is_empty());
+
+        let serialized = helper_result.stable_json().unwrap();
+        let serialized_value: Value = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(serialized_value["secretRefs"], serde_json::json!([]));
+        assert_eq!(serialized_value["proofHashes"], serde_json::json!([]));
+        assert_eq!(
+            validate_helper_result_value(&serialized_value).status,
+            OperationStatus::Passed
+        );
+    }
+
+    #[test]
+    fn helper_result_value_validation_requires_contract_arrays() {
+        for missing_field in ["secretRefs", "proofHashes"] {
+            let mut value = public_helper_result_fixture_value("unsupported-protected-executable");
+            value.as_object_mut().unwrap().remove(missing_field);
+
+            let validation = validate_helper_result_value(&value);
+
+            assert_eq!(validation.status, OperationStatus::Failed);
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.fixture_id.as_deref()
+                        == Some("kaifuu-helper-unsupported-protected-executable")
+                        && failure.code == "missing_required_field"
+                        && failure.field == missing_field
+                }),
+                "missing required-array failure for {missing_field}: {:#?}",
+                validation.failures
+            );
+        }
+    }
+
+    #[test]
+    fn helper_result_invalid_secret_ref_fixtures_name_field_and_redact_values() {
+        for fixture in [
+            "absolute-path-secret-ref",
+            "traversal-secret-ref",
+            "raw-base64-secret-ref",
+            "raw-hex-secret-ref",
+        ] {
+            let value = invalid_public_helper_result_fixture_value(fixture);
+            let fixture_id = value["fixtureId"].as_str().unwrap().to_string();
+
+            let validation = validate_helper_result_value(&value).redacted_for_report();
+
+            assert_eq!(validation.status, OperationStatus::Failed);
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.fixture_id.as_deref() == Some(fixture_id.as_str())
+                        && failure.code == "invalid_secret_ref"
+                        && failure.field == "secretRefs.0.secretRef"
+                }),
+                "missing invalid secretRef failure for {fixture}: {:#?}",
+                validation.failures
+            );
+            let serialized = serde_json::to_string(&validation).unwrap();
+            assert!(!serialized.contains("/home/dev"));
+            assert!(!serialized.contains("private/key.bin"));
+            assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
+            assert!(!serialized.contains("mP9xZpQ2rS7vLj4N8aW_KtYd0hF3uC6b"));
+            assert!(serialized.contains(&fixture_id));
+            assert!(serialized.contains("secretRefs.0.secretRef"));
+        }
     }
 
     #[test]

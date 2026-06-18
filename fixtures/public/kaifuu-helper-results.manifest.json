@@ -23,8 +23,8 @@
       "path": "fixtures/public/kaifuu-helper-results/helper-result.schema.json",
       "role": "metadata",
       "mediaType": "application/schema+json",
-      "sha256": "db88cc58bc6ceaa492a289364fbe1dcdb173d868272448f406b97c323a6e5206",
-      "bytes": 3964,
+      "sha256": "70572082a47e3f6ef91a44d74999cac7da8db22c8793e9c751690c0505017c25",
+      "bytes": 4661,
       "redistributable": true
     },
     {
