@@ -1,0 +1,89 @@
+{
+  "fixtureId": "catalog-recorded-importer-igdb-platform-v0.1",
+  "fixtureName": "catalog-recorded-importer-igdb-public-platform",
+  "catalogSource": "igdb",
+  "adapterName": "igdb-recorded-platform-importer",
+  "adapterVersion": "adapter-catalog-013-v1",
+  "sourceVersion": "igdb-platform-synthetic-2026-06-18",
+  "parserVersion": "catalog-recorded-importers.v0.1",
+  "partitionKey": "public-igdb-platform",
+  "responses": [
+    {
+      "stepKey": "igdb-252001",
+      "sourceId": "252001",
+      "requestIdentity": "recorded://igdb/games/252001?fields=platforms,release_dates,language_supports,external_games",
+      "fetchedAt": "2026-06-18T13:20:00.000Z",
+      "checkpointCursor": { "afterStepKey": "igdb-252001", "cursor": "252001" },
+      "httpStatus": 200,
+      "payload": {
+        "id": 252001,
+        "name": "Promise Under Starlight",
+        "first_release_date": 1631232000,
+        "platforms": [
+          { "id": 6, "name": "PC (Microsoft Windows)", "slug": "pc-microsoft-windows" }
+        ],
+        "release_dates": [
+          {
+            "id": 770001,
+            "date_unix": 1631232000,
+            "platform": {
+              "id": 6,
+              "name": "PC (Microsoft Windows)",
+              "slug": "pc-microsoft-windows"
+            },
+            "region": "worldwide"
+          }
+        ],
+        "language_supports": [
+          {
+            "language": { "locale": "ja-JP", "name": "Japanese" },
+            "support_type": "Interface and subtitles",
+            "status": "official_full",
+            "platform": { "slug": "pc-microsoft-windows" }
+          },
+          {
+            "language": { "locale": "en-US", "name": "English" },
+            "support_type": "Interface and subtitles",
+            "status": "official_full",
+            "platform": { "slug": "pc-microsoft-windows" }
+          }
+        ],
+        "external_games": [
+          {
+            "category": "wikidata",
+            "uid": "Q130001",
+            "url": "https://www.wikidata.org/wiki/Q130001"
+          },
+          {
+            "category": "steam",
+            "uid": "2100011",
+            "url": "https://store.steampowered.com/app/2100011"
+          }
+        ],
+        "conflicts": [
+          {
+            "summary": "IGDB reports official English platform support while a recorded VNDB row for a nearby catalog candidate has no English release.",
+            "reason_code": "official_english_platform_disagreement",
+            "severity": "warning",
+            "language": "en-US",
+            "status": "official_full",
+            "sources": [
+              { "catalogSource": "igdb", "sourceId": "252001", "status": "official_full" },
+              { "catalogSource": "vndb", "sourceId": "v1002", "status": "none" }
+            ]
+          }
+        ]
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/igdb-platform-replay.json",
+        "redactionClass": "public_metadata"
+      },
+      "rateLimit": {
+        "remaining": 499,
+        "limit": 500,
+        "resetAt": "2026-06-18T13:21:00.000Z",
+        "metadata": { "policy": "recorded-fixture", "source": "igdb" }
+      }
+    }
+  ]
+}

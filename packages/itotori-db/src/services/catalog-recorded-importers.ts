@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { AuthorizationActor } from "../authorization.js";
 import type {
+  CatalogConflictInput,
   CatalogExternalIdInput,
   CatalogJsonRecord,
   CatalogLanguageStatusInput,
@@ -11,6 +12,9 @@ import type {
 } from "../repositories/catalog-repository.js";
 import {
   catalogConfidenceValues,
+  catalogConflictKindValues,
+  catalogConflictStatusValues,
+  catalogConflictSubjectKindValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
@@ -19,6 +23,9 @@ import {
   catalogSeedOriginValues,
   catalogSeedStatusValues,
   type CatalogConfidence,
+  type CatalogConflictKind,
+  type CatalogConflictStatus,
+  type CatalogConflictSubjectKind,
   type CatalogExternalIdKind,
   type CatalogLanguageStatus,
   type CatalogLanguageStatusScope,
@@ -53,6 +60,7 @@ export type CatalogRecordedStorefrontDiagnosticCode =
   (typeof catalogRecordedStorefrontDiagnosticCodeValues)[keyof typeof catalogRecordedStorefrontDiagnosticCodeValues];
 
 export type CatalogRecordedStorefrontSource = Extract<CatalogSource, "dlsite" | "steam">;
+export type CatalogRecordedPlatformSource = Extract<CatalogSource, "igdb" | "wikidata">;
 
 export type CatalogRecordedStorefrontDiagnostic = {
   code: CatalogRecordedStorefrontDiagnosticCode;
@@ -118,6 +126,52 @@ type StorefrontParser = (
   response: CatalogRecordedStorefrontResponse,
 ) => ParsedStorefrontFact;
 
+export type CatalogRecordedPlatformResponse = {
+  stepKey: string;
+  sourceId: string;
+  requestIdentity: string;
+  fetchedAt: string;
+  checkpointCursor: unknown | null;
+  httpStatus?: number;
+  ok?: boolean;
+  payloadHash?: string;
+  payload: CatalogJsonRecord;
+  metadata?: CatalogJsonRecord;
+  rateLimit?: CatalogCrawlerRateLimitMetadata;
+};
+
+export type CatalogRecordedPlatformFixture = {
+  fixtureId: string;
+  fixtureName: string;
+  catalogSource: CatalogRecordedPlatformSource;
+  adapterName: string;
+  adapterVersion: string;
+  sourceVersion: string;
+  parserVersion: string;
+  partitionKey?: string;
+  responses: readonly CatalogRecordedPlatformResponse[];
+};
+
+type PlatformParser = (
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+) => ParsedStorefrontFact;
+
+export const catalogRecordedPlatformDiagnosticCodeValues = {
+  parseDrift: "parse_drift",
+  unsupportedResponseShape: "unsupported_response_shape",
+} as const;
+
+export type CatalogRecordedPlatformDiagnosticCode =
+  (typeof catalogRecordedPlatformDiagnosticCodeValues)[keyof typeof catalogRecordedPlatformDiagnosticCodeValues];
+
+export type CatalogRecordedSourceFactKind =
+  | "platform"
+  | "release"
+  | "language_status"
+  | "external_id"
+  | "entity_link";
+
 const storefrontFactImportContract = {
   contractId: catalogCrawlerIdempotentFactImportContractId,
   strategy: catalogCrawlerFactImportStrategyValues.upsert,
@@ -150,11 +204,77 @@ export function createSteamRecordedStorefrontAdapter(
   return createRecordedStorefrontAdapter(fixture, parseSteamStorefrontResponse);
 }
 
+export function createIgdbRecordedPlatformAdapter(
+  fixture: CatalogRecordedPlatformFixture,
+): CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact> {
+  if (fixture.catalogSource !== "igdb") {
+    throw new Error(`IGDB recorded platform adapter received ${fixture.catalogSource} fixture`);
+  }
+  return createRecordedPlatformAdapter(fixture, parseIgdbPlatformResponse);
+}
+
+export function createWikidataRecordedPlatformAdapter(
+  fixture: CatalogRecordedPlatformFixture,
+): CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact> {
+  if (fixture.catalogSource !== "wikidata") {
+    throw new Error(
+      `Wikidata recorded platform adapter received ${fixture.catalogSource} fixture`,
+    );
+  }
+  return createRecordedPlatformAdapter(fixture, parseWikidataPlatformResponse);
+}
+
 function createRecordedStorefrontAdapter(
   fixture: CatalogRecordedStorefrontFixture,
   parser: StorefrontParser,
 ): CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact> {
   validateStorefrontFixture(fixture);
+  const steps = fixture.responses.map((response) => {
+    const parsed = parser(fixture, response);
+    return {
+      stepKey: response.stepKey,
+      sourceId: response.sourceId,
+      requestIdentity: response.requestIdentity,
+      fetchedAt: response.fetchedAt,
+      checkpointCursor: response.checkpointCursor,
+      payload: response.payload,
+      facts: [parsed.fact],
+      ...(response.httpStatus === undefined ? {} : { httpStatus: response.httpStatus }),
+      ...(response.ok === undefined ? {} : { ok: response.ok }),
+      ...(response.payloadHash === undefined ? {} : { payloadHash: response.payloadHash }),
+      metadata: compactJson({
+        ...response.metadata,
+        fixtureId: fixture.fixtureId,
+        sourceRevision: fixture.sourceVersion,
+        parserVersion: fixture.parserVersion,
+        diagnostics: parsed.diagnostics,
+      }),
+      ...(response.rateLimit === undefined ? {} : { rateLimit: response.rateLimit }),
+    };
+  });
+  const replay: RecordedCatalogCrawlerFixture<CatalogRecordedImporterFact> = {
+    fixtureId: fixture.fixtureId,
+    fixtureName: fixture.fixtureName,
+    catalogSource: fixture.catalogSource,
+    adapterName: fixture.adapterName,
+    adapterVersion: fixture.adapterVersion,
+    sourceVersion: fixture.sourceVersion,
+    parserVersion: fixture.parserVersion,
+    readiness: "alpha_ready",
+    factImportContract: storefrontFactImportContract,
+    steps,
+  };
+  if (fixture.partitionKey !== undefined) {
+    replay.partitionKey = fixture.partitionKey;
+  }
+  return createRecordedCatalogCrawlerAdapter(replay);
+}
+
+function createRecordedPlatformAdapter(
+  fixture: CatalogRecordedPlatformFixture,
+  parser: PlatformParser,
+): CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact> {
+  validatePlatformFixture(fixture);
   const steps = fixture.responses.map((response) => {
     const parsed = parser(fixture, response);
     return {
@@ -236,6 +356,25 @@ export type CatalogRecordedSeedTargetFact = {
   metadata?: CatalogJsonRecord;
 };
 
+export type CatalogRecordedConflictEvidenceFact = {
+  subjectKind?: CatalogConflictSubjectKind;
+  subjectId?: string;
+  evidencePosition?: number;
+  metadata?: CatalogJsonRecord;
+};
+
+export type CatalogRecordedConflictFact = {
+  conflictId?: string;
+  conflictKind?: CatalogConflictKind;
+  status?: CatalogConflictStatus;
+  summary: string;
+  reasonCode?: string;
+  severity?: "info" | "warning" | "critical";
+  detectedAt?: string;
+  metadata?: CatalogJsonRecord;
+  evidence?: readonly CatalogRecordedConflictEvidenceFact[];
+};
+
 export type CatalogRecordedImporterFact = {
   sourceId: string;
   canonicalTitle: string;
@@ -246,6 +385,7 @@ export type CatalogRecordedImporterFact = {
   externalIds?: readonly CatalogRecordedExternalIdFact[];
   releases?: readonly CatalogRecordedReleaseFact[];
   languageStatuses?: readonly CatalogRecordedLanguageStatusFact[];
+  conflicts?: readonly CatalogRecordedConflictFact[];
   seedTarget?: CatalogRecordedSeedTargetFact | false;
   metadata?: CatalogJsonRecord;
 };
@@ -461,6 +601,123 @@ function parseSteamStorefrontResponse(
   };
 }
 
+function parseIgdbPlatformResponse(
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+): ParsedStorefrontFact {
+  const payload = response.payload;
+  const sourceId = String(platformNumberOrString(payload, "id", fixture, response));
+  if (sourceId !== response.sourceId) {
+    throw platformSemanticError(
+      "parse_drift",
+      `IGDB game id ${sourceId} does not match fixture source id ${response.sourceId}`,
+      fixture,
+      response,
+      "id",
+    );
+  }
+  const title = platformString(payload, "name", fixture, response);
+  const firstReleaseDate = platformUnixDate(payload.first_release_date);
+  const firstReleaseYear =
+    firstReleaseDate === undefined ? undefined : yearFromDate(firstReleaseDate);
+  const platforms = platformArray(payload, "platforms")
+    .map((entry) => platformLabel(entry))
+    .filter((platform): platform is string => platform !== null);
+  const releases = igdbReleaseFacts(fixture, response, title);
+  const languageStatuses = igdbLanguageStatusFacts(fixture, response);
+  const externalIds = igdbExternalIds(fixture, response);
+
+  return {
+    diagnostics: [],
+    fact: {
+      sourceId,
+      canonicalTitle: title,
+      originalLanguage: "ja-JP",
+      ...(firstReleaseYear === undefined ? {} : { firstReleaseYear }),
+      externalIds,
+      releases,
+      languageStatuses,
+      conflicts: conflictFactsFromPayload(payload),
+      seedTarget: false,
+      metadata: compactJson({
+        platformCatalog: "igdb",
+        igdbId: sourceId,
+        firstReleaseDate,
+        platforms,
+        releaseCount: releases.length,
+        languageSupportCount: languageStatuses.length,
+      }),
+    },
+  };
+}
+
+function parseWikidataPlatformResponse(
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+): ParsedStorefrontFact {
+  const payload = response.payload;
+  const sourceId = platformString(payload, "id", fixture, response);
+  if (sourceId !== response.sourceId) {
+    throw platformSemanticError(
+      "parse_drift",
+      `Wikidata entity id ${sourceId} does not match fixture source id ${response.sourceId}`,
+      fixture,
+      response,
+      "id",
+    );
+  }
+  const labels = platformRecord(payload, "labels");
+  const title = labelValue(labels, "en") ?? labelValue(labels, "ja") ?? sourceId;
+  const publicationDate = optionalString(payload, "publication_date");
+  const releaseYear = publicationDate === undefined ? undefined : yearFromDate(publicationDate);
+  const claims = platformRecord(payload, "claims");
+  const platforms = platformArray(claims, "platforms")
+    .map((entry) => platformLabel(entry))
+    .filter((platform): platform is string => platform !== null);
+  const languageStatuses = wikidataLanguageStatusFacts(fixture, response, claims);
+  const externalIds = wikidataExternalIds(fixture, response, payload);
+
+  return {
+    diagnostics: [],
+    fact: {
+      sourceId,
+      canonicalTitle: title,
+      originalLanguage: "ja-JP",
+      ...(releaseYear === undefined ? {} : { firstReleaseYear: releaseYear }),
+      titles: [
+        ...new Set(
+          [title, labelValue(labels, "ja")].filter(
+            (value): value is string => value !== undefined,
+          ),
+        ),
+      ],
+      externalIds,
+      releases: platforms.map((platform) =>
+        compactJson({
+          sourceReleaseId: `${sourceId}:${platform}`,
+          releaseTitle: title,
+          releaseKind: catalogReleaseKindValues.unknown,
+          platform,
+          releaseDate: publicationDate,
+          releaseYear,
+          isOfficial: true,
+          metadata: compactJson({ sourceField: "claims.platforms", wikidataEntity: sourceId }),
+        }) as CatalogRecordedReleaseFact,
+      ),
+      languageStatuses,
+      conflicts: conflictFactsFromPayload(payload),
+      seedTarget: false,
+      metadata: compactJson({
+        platformCatalog: "wikidata",
+        wikidataEntity: sourceId,
+        statementProvenance: optionalArray(payload, "references"),
+        platforms,
+        languageStatementCount: languageStatuses.length,
+      }),
+    },
+  };
+}
+
 function validateStorefrontFixture(fixture: CatalogRecordedStorefrontFixture): void {
   requiredString(fixture.fixtureId, "fixture.fixtureId");
   requiredString(fixture.fixtureName, "fixture.fixtureName");
@@ -487,6 +744,252 @@ function validateStorefrontFixture(fixture: CatalogRecordedStorefrontFixture): v
       throw new Error(`fixture.responses[${index}].payload must be a JSON object`);
     }
   }
+}
+
+function validatePlatformFixture(fixture: CatalogRecordedPlatformFixture): void {
+  requiredString(fixture.fixtureId, "fixture.fixtureId");
+  requiredString(fixture.fixtureName, "fixture.fixtureName");
+  requiredString(fixture.adapterName, "fixture.adapterName");
+  requiredString(fixture.adapterVersion, "fixture.adapterVersion");
+  requiredString(fixture.sourceVersion, "fixture.sourceVersion");
+  requiredString(fixture.parserVersion, "fixture.parserVersion");
+  if (fixture.catalogSource !== "igdb" && fixture.catalogSource !== "wikidata") {
+    throw new Error(`unsupported recorded platform source ${String(fixture.catalogSource)}`);
+  }
+  if (!Array.isArray(fixture.responses) || fixture.responses.length === 0) {
+    throw new Error("recorded platform fixture responses must be a nonempty array");
+  }
+  for (const [index, response] of fixture.responses.entries()) {
+    requiredString(response.stepKey, `fixture.responses[${index}].stepKey`);
+    requiredString(response.sourceId, `fixture.responses[${index}].sourceId`);
+    requiredString(response.requestIdentity, `fixture.responses[${index}].requestIdentity`);
+    requiredString(response.fetchedAt, `fixture.responses[${index}].fetchedAt`);
+    if (
+      response.payload === null ||
+      typeof response.payload !== "object" ||
+      Array.isArray(response.payload)
+    ) {
+      throw new Error(`fixture.responses[${index}].payload must be a JSON object`);
+    }
+  }
+}
+
+function igdbReleaseFacts(
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+  title: string,
+): CatalogRecordedReleaseFact[] {
+  return platformArray(response.payload, "release_dates").map((entry, index) => {
+    const record = platformRecordFromUnknown(
+      entry,
+      `release_dates[${index}]`,
+      fixture,
+      response,
+    );
+    const releaseId = firstString(record, ["id"]) ?? `${response.sourceId}:release:${index}`;
+    const date = optionalString(record, "date") ?? platformUnixDate(record.date_unix);
+    const platform = platformLabel(record.platform) ?? platformLabel(record);
+    return compactJson({
+      sourceReleaseId: String(releaseId),
+      releaseTitle: optionalString(record, "name") ?? title,
+      releaseKind: catalogReleaseKindValues.unknown,
+      platform,
+      releaseDate: date,
+      releaseYear: date === undefined ? undefined : yearFromDate(date),
+      isOfficial: true,
+      metadata: compactJson({
+        sourceField: `release_dates[${index}]`,
+        region: optionalString(record, "region"),
+        confidence: catalogRecordedConfidenceForSourceFact("igdb", "release"),
+      }),
+    }) as CatalogRecordedReleaseFact;
+  });
+}
+
+function igdbLanguageStatusFacts(
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+): CatalogRecordedLanguageStatusFact[] {
+  return platformArray(response.payload, "language_supports").map((entry, index) => {
+    const record = platformRecordFromUnknown(
+      entry,
+      `language_supports[${index}]`,
+      fixture,
+      response,
+    );
+    const languageRecord = optionalRecord(record, "language");
+    const language = optionalString(record, "locale") ?? optionalString(languageRecord, "locale");
+    if (language === undefined) {
+      throw platformSemanticError(
+        "parse_drift",
+        `IGDB language_supports[${index}] is missing locale`,
+        fixture,
+        response,
+        `language_supports[${index}].language.locale`,
+      );
+    }
+    const supportType = optionalString(record, "support_type");
+    const platform = platformLabel(record.platform);
+    const confidence = catalogRecordedConfidenceForSourceFact(
+      "igdb",
+      "language_status",
+      confidenceOptions(supportType),
+    );
+    return compactJson({
+      language,
+      status: igdbLanguageStatus(record),
+      statusScope: catalogLanguageStatusScopeValues.platform,
+      platform,
+      confidence,
+      metadata: compactJson({
+        sourceField: `language_supports[${index}]`,
+        supportType,
+        languageName: optionalString(languageRecord, "name"),
+      }),
+    }) as CatalogRecordedLanguageStatusFact;
+  });
+}
+
+function igdbExternalIds(
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+): CatalogRecordedExternalIdFact[] {
+  const ids: CatalogRecordedExternalIdFact[] = [
+    {
+      sourceId: response.sourceId,
+      externalIdKind: catalogExternalIdKindValues.sourceRecord,
+      confidence: catalogRecordedConfidenceForSourceFact("igdb", "external_id"),
+      metadata: { sourceField: "id" },
+    },
+  ];
+  for (const [index, entry] of platformArray(response.payload, "external_games").entries()) {
+    const record = platformRecordFromUnknown(
+      entry,
+      `external_games[${index}]`,
+      fixture,
+      response,
+    );
+    const mapped = externalGameCatalogSource(optionalString(record, "category"));
+    const sourceId = firstString(record, ["uid", "id"]);
+    if (mapped === null || sourceId === null) {
+      continue;
+    }
+    ids.push({
+      catalogSource: mapped.catalogSource,
+      sourceId,
+      externalIdKind: mapped.externalIdKind,
+      confidence: catalogRecordedConfidenceForSourceFact("igdb", "external_id"),
+      metadata: compactJson({
+        sourceField: `external_games[${index}]`,
+        category: optionalString(record, "category"),
+        url: optionalString(record, "url"),
+      }),
+    });
+  }
+  return ids;
+}
+
+function wikidataLanguageStatusFacts(
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+  claims: CatalogJsonRecord,
+): CatalogRecordedLanguageStatusFact[] {
+  return platformArray(claims, "language_statements").map((entry, index) => {
+    const record = platformRecordFromUnknown(
+      entry,
+      `claims.language_statements[${index}]`,
+      fixture,
+      response,
+    );
+    const language = platformString(record, "locale", fixture, response);
+    const status = platformEnumStringField(
+      record.status,
+      Object.values(catalogLanguageStatusValues),
+      `claims.language_statements[${index}].status`,
+      fixture,
+      response,
+    );
+    const platform = platformLabel(record.platform);
+    const qualifiers = optionalRecord(record, "qualifiers");
+    const confidence = catalogRecordedConfidenceForSourceFact(
+      "wikidata",
+      "language_status",
+      confidenceOptions(optionalString(qualifiers, "basis")),
+    );
+    return compactJson({
+      language,
+      status,
+      statusScope:
+        platform === undefined
+          ? catalogLanguageStatusScopeValues.work
+          : catalogLanguageStatusScopeValues.platform,
+      platform,
+      confidence,
+      metadata: compactJson({
+        sourceField: `claims.language_statements[${index}]`,
+        statementId: optionalString(record, "statement_id"),
+        property: optionalString(record, "property"),
+        qualifiers,
+        references: optionalArray(record, "references"),
+      }),
+    }) as CatalogRecordedLanguageStatusFact;
+  });
+}
+
+function wikidataExternalIds(
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+  payload: CatalogJsonRecord,
+): CatalogRecordedExternalIdFact[] {
+  const ids: CatalogRecordedExternalIdFact[] = [
+    {
+      sourceId: response.sourceId,
+      externalIdKind: catalogExternalIdKindValues.sourceRecord,
+      confidence: catalogRecordedConfidenceForSourceFact("wikidata", "entity_link"),
+      metadata: { sourceField: "id" },
+    },
+  ];
+  const external: CatalogJsonRecord = optionalRecord(payload, "external_ids") ?? {};
+  const mapped: Array<{
+    key: string;
+    catalogSource: CatalogSource;
+    externalIdKind: CatalogExternalIdKind;
+  }> = [
+    {
+      key: "igdb",
+      catalogSource: "igdb",
+      externalIdKind: catalogExternalIdKindValues.knowledgeBaseEntity,
+    },
+    {
+      key: "steam",
+      catalogSource: "steam",
+      externalIdKind: catalogExternalIdKindValues.storeProduct,
+    },
+    {
+      key: "vndb",
+      catalogSource: "vndb",
+      externalIdKind: catalogExternalIdKindValues.sourceRecord,
+    },
+  ];
+  for (const entry of mapped) {
+    const value = external[entry.key];
+    if (typeof value !== "string" || value.length === 0) {
+      continue;
+    }
+    ids.push({
+      catalogSource: entry.catalogSource,
+      sourceId: value,
+      externalIdKind: entry.externalIdKind,
+      confidence: catalogRecordedConfidenceForSourceFact("wikidata", "external_id", {
+        qualifierProvenance: entry.key,
+      }),
+      metadata: {
+        sourceField: `external_ids.${entry.key}`,
+        wikidataEntity: response.sourceId,
+      },
+    });
+  }
+  return ids;
 }
 
 function normalizeDlsiteStorefrontPayload(
@@ -899,6 +1402,253 @@ function steamLocaleFromLabel(label: string): string | null {
   return map[normalized] ?? (normalized.includes("japanese") ? "ja-JP" : null);
 }
 
+export function catalogRecordedConfidenceForSourceFact(
+  catalogSource: CatalogRecordedPlatformSource,
+  factKind: CatalogRecordedSourceFactKind,
+  options: { qualifierProvenance?: string } = {},
+): CatalogConfidence {
+  if (catalogSource === "igdb") {
+    return catalogConfidenceValues.high;
+  }
+  if (factKind === "external_id" || factKind === "entity_link") {
+    return catalogConfidenceValues.high;
+  }
+  if (options.qualifierProvenance === undefined || options.qualifierProvenance.length === 0) {
+    return catalogConfidenceValues.low;
+  }
+  return catalogConfidenceValues.medium;
+}
+
+function confidenceOptions(value: string | undefined): { qualifierProvenance?: string } {
+  return value === undefined ? {} : { qualifierProvenance: value };
+}
+
+function igdbLanguageStatus(record: CatalogJsonRecord): CatalogLanguageStatus {
+  const explicit = record.status;
+  if (
+    typeof explicit === "string" &&
+    (Object.values(catalogLanguageStatusValues) as string[]).includes(explicit)
+  ) {
+    return explicit as CatalogLanguageStatus;
+  }
+  const supportType = optionalString(record, "support_type")?.toLowerCase() ?? "";
+  if (supportType.includes("interface") || supportType.includes("subtitle")) {
+    return catalogLanguageStatusValues.officialFull;
+  }
+  if (supportType.includes("audio")) {
+    return catalogLanguageStatusValues.interfaceOnly;
+  }
+  return catalogLanguageStatusValues.unknown;
+}
+
+function externalGameCatalogSource(
+  category: string | undefined,
+): { catalogSource: CatalogSource; externalIdKind: CatalogExternalIdKind } | null {
+  switch (category) {
+    case "steam":
+      return {
+        catalogSource: "steam",
+        externalIdKind: catalogExternalIdKindValues.storeProduct,
+      };
+    case "wikidata":
+      return {
+        catalogSource: "wikidata",
+        externalIdKind: catalogExternalIdKindValues.knowledgeBaseEntity,
+      };
+    default:
+      return null;
+  }
+}
+
+function conflictFactsFromPayload(payload: CatalogJsonRecord): CatalogRecordedConflictFact[] {
+  return platformArray(payload, "conflicts")
+    .map((entry): CatalogRecordedConflictFact | null => {
+      if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+        return null;
+      }
+      const record = entry as CatalogJsonRecord;
+      const summary = optionalString(record, "summary");
+      if (summary === undefined) {
+        return null;
+      }
+      const reasonCode =
+        optionalString(record, "reason_code") ?? optionalString(record, "reasonCode");
+      const conflict: CatalogRecordedConflictFact = {
+        summary,
+        severity: conflictSeverityValue(optionalString(record, "severity")),
+        metadata: compactJson({
+          sourceField: "conflicts",
+          sources: optionalArray(record, "sources"),
+          disputedLanguage: optionalString(record, "language"),
+          disputedStatus: optionalString(record, "status"),
+        }),
+      };
+      if (reasonCode !== undefined) {
+        conflict.reasonCode = reasonCode;
+      }
+      return conflict;
+    })
+    .filter((conflict): conflict is CatalogRecordedConflictFact => conflict !== null);
+}
+
+function conflictSeverityValue(value: string | undefined): "info" | "warning" | "critical" {
+  return value === "info" || value === "critical" ? value : "warning";
+}
+
+function platformLabel(value: unknown): string | null {
+  if (typeof value === "string" && value.length > 0) {
+    return normalizePlatformLabel(value);
+  }
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    const record = value as CatalogJsonRecord;
+    const raw =
+      optionalString(record, "catalog_platform") ??
+      optionalString(record, "slug") ??
+      optionalString(record, "name") ??
+      optionalString(record, "id");
+    return raw === undefined ? null : normalizePlatformLabel(raw);
+  }
+  return null;
+}
+
+function normalizePlatformLabel(value: string): string {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9]+/gu, "_").replace(/^_|_$/gu, "");
+  const map: Record<string, string> = {
+    pc_microsoft_windows: "pc",
+    microsoft_windows: "pc",
+    windows: "pc",
+    win: "pc",
+    steam: "steam",
+    epic_games_store: "egs",
+    nintendo_switch: "nintendo_switch",
+  };
+  return map[normalized] ?? normalized;
+}
+
+function platformUnixDate(value: unknown): string | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return undefined;
+  }
+  return new Date(value * 1000).toISOString().slice(0, 10);
+}
+
+function platformArray(record: CatalogJsonRecord, field: string): unknown[] {
+  const value = record[field];
+  return Array.isArray(value) ? value : [];
+}
+
+function platformRecord(
+  record: CatalogJsonRecord,
+  field: string,
+): CatalogJsonRecord {
+  const value = record[field];
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as CatalogJsonRecord)
+    : {};
+}
+
+function platformRecordFromUnknown(
+  value: unknown,
+  label: string,
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+): CatalogJsonRecord {
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    return value as CatalogJsonRecord;
+  }
+  throw platformSemanticError(
+    "parse_drift",
+    `${label} must be a JSON object`,
+    fixture,
+    response,
+    label,
+  );
+}
+
+function platformString(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+): string {
+  const value = record[field];
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  throw platformSemanticError(
+    "parse_drift",
+    `recorded platform response is missing required string field ${field}`,
+    fixture,
+    response,
+    field,
+  );
+}
+
+function platformNumberOrString(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+): string | number {
+  const value = record[field];
+  if (
+    (typeof value === "string" && value.length > 0) ||
+    (typeof value === "number" && Number.isFinite(value))
+  ) {
+    return value;
+  }
+  throw platformSemanticError(
+    "parse_drift",
+    `recorded platform response is missing required string/number field ${field}`,
+    fixture,
+    response,
+    field,
+  );
+}
+
+function labelValue(labels: CatalogJsonRecord, locale: string): string | undefined {
+  const label = labels[locale];
+  if (typeof label === "string" && label.length > 0) {
+    return label;
+  }
+  if (label !== null && typeof label === "object" && !Array.isArray(label)) {
+    return optionalString(label as CatalogJsonRecord, "value");
+  }
+  return undefined;
+}
+
+function platformEnumStringField<TValue extends string>(
+  value: unknown,
+  allowed: readonly TValue[],
+  label: string,
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+): TValue {
+  if (typeof value === "string" && (allowed as readonly string[]).includes(value)) {
+    return value as TValue;
+  }
+  throw platformSemanticError(
+    "parse_drift",
+    `${label} must be one of ${allowed.join(", ")}`,
+    fixture,
+    response,
+    label,
+  );
+}
+
+function platformSemanticError(
+  code: CatalogRecordedPlatformDiagnosticCode,
+  message: string,
+  fixture: CatalogRecordedPlatformFixture,
+  response: CatalogRecordedPlatformResponse,
+  sourceField?: string,
+): Error {
+  const field = sourceField === undefined ? "" : ` sourceField=${sourceField}`;
+  return new Error(
+    `CATALOG-013 semantic diagnostic ${code} fixtureId=${fixture.fixtureId} sourceRevision=${fixture.sourceVersion} stepKey=${response.stepKey} sourceId=${response.sourceId}${field}: ${message}`,
+  );
+}
+
 function requiredStringFromUnknown(
   value: unknown,
   label: string,
@@ -1015,6 +1765,8 @@ async function importRecordedCatalogFact(
   assertFact(fact);
   const sourceProvenanceId = context.step.sourceProvenanceId;
   const importMetadata = importerMetadata(context, fact);
+  const workId = stableCatalogId("catalog-work", [context.adapter.catalogSource, fact.sourceId]);
+  const generatedConflicts: CatalogRecordedConflictFact[] = [];
   const releaseIdsBySourceId = new Map<string, string>();
   for (const release of fact.releases ?? []) {
     if (release.sourceReleaseId !== undefined) {
@@ -1030,14 +1782,23 @@ async function importRecordedCatalogFact(
   }
 
   const workInput: CatalogWorkInput = {
-    workId: stableCatalogId("catalog-work", [context.adapter.catalogSource, fact.sourceId]),
+    workId,
     canonicalTitle: fact.canonicalTitle,
     metadata: compactJson({
       ...fact.metadata,
       ...importMetadata,
       alternateTitles: fact.titles ?? [],
     }),
-    externalIds: externalIdInputs(context, fact, importMetadata, sourceProvenanceId),
+    externalIds: await externalIdInputs(
+      catalogRepository,
+      actor,
+      context,
+      fact,
+      importMetadata,
+      sourceProvenanceId,
+      workId,
+      generatedConflicts,
+    ),
     releases: releaseInputs(context, fact, importMetadata, sourceProvenanceId),
     languageStatuses: languageStatusInputs(
       context,
@@ -1045,6 +1806,16 @@ async function importRecordedCatalogFact(
       importMetadata,
       sourceProvenanceId,
       releaseIdsBySourceId,
+    ),
+    conflicts: conflictInputs(
+      context,
+      {
+        ...fact,
+        conflicts: [...(fact.conflicts ?? []), ...generatedConflicts],
+      },
+      importMetadata,
+      sourceProvenanceId,
+      workId,
     ),
   };
   if (fact.originalLanguage !== undefined) {
@@ -1064,16 +1835,22 @@ async function importRecordedCatalogFact(
   }
 }
 
-function externalIdInputs(
+async function externalIdInputs(
+  catalogRepository: ItotoriCatalogRepositoryPort,
+  actor: AuthorizationActor,
   context: CatalogCrawlerIngestContext<CatalogRecordedImporterFact>,
   fact: CatalogRecordedImporterFact,
   importMetadata: CatalogJsonRecord,
   sourceProvenanceId: string,
-): CatalogExternalIdInput[] {
+  workId: string,
+  generatedConflicts: CatalogRecordedConflictFact[],
+): Promise<CatalogExternalIdInput[]> {
   const inputs = new Map<string, CatalogExternalIdInput>();
   const add = (input: CatalogExternalIdInput) => {
     inputs.set(
-      `${input.catalogSource}:${input.sourceId}:${input.externalIdKind ?? catalogExternalIdKindValues.sourceRecord}`,
+      `${input.catalogSource}:${input.sourceId}:${
+        input.externalIdKind ?? catalogExternalIdKindValues.sourceRecord
+      }`,
       input,
     );
   };
@@ -1095,6 +1872,32 @@ function externalIdInputs(
   for (const externalId of fact.externalIds ?? []) {
     const externalIdKind = externalId.externalIdKind ?? catalogExternalIdKindValues.sourceRecord;
     const catalogSource = externalId.catalogSource ?? context.adapter.catalogSource;
+    const existing = await catalogRepository.getWorkByExternalId(
+      actor,
+      catalogSource,
+      externalId.sourceId,
+      externalIdKind,
+    );
+    if (existing !== null && existing.workId !== workId) {
+      generatedConflicts.push({
+        conflictKind: catalogConflictKindValues.externalId,
+        summary:
+          `${context.adapter.catalogSource} ${fact.sourceId} links ` +
+          `${catalogSource} ${externalId.sourceId}, but that external id is already attached ` +
+          `to ${existing.canonicalTitle}.`,
+        reasonCode: "external_id_already_attached",
+        severity: "warning",
+        metadata: compactJson({
+          linkedCatalogSource: catalogSource,
+          linkedSourceId: externalId.sourceId,
+          linkedExternalIdKind: externalIdKind,
+          existingWorkId: existing.workId,
+          existingCanonicalTitle: existing.canonicalTitle,
+          sourceField: externalId.metadata?.sourceField,
+        }),
+      });
+      continue;
+    }
     const input: CatalogExternalIdInput = {
       externalIdId: stableCatalogId("catalog-external-id", [
         catalogSource,
@@ -1198,6 +2001,80 @@ function languageStatusInputs(
       input.isCurrent = status.isCurrent;
     }
     return input;
+  });
+}
+
+function conflictInputs(
+  context: CatalogCrawlerIngestContext<CatalogRecordedImporterFact>,
+  fact: CatalogRecordedImporterFact,
+  importMetadata: CatalogJsonRecord,
+  sourceProvenanceId: string,
+  workId: string,
+): CatalogConflictInput[] {
+  return (fact.conflicts ?? []).map((conflict, index) => {
+    const conflictId =
+      conflict.conflictId ??
+      stableCatalogId("catalog-conflict", [
+        context.adapter.catalogSource,
+        fact.sourceId,
+        conflict.reasonCode ?? "",
+        conflict.summary,
+        String(index),
+      ]);
+    return {
+      conflictId,
+      conflictKind: conflict.conflictKind ?? catalogConflictKindValues.languageStatus,
+      status: conflict.status ?? catalogConflictStatusValues.open,
+      summary: conflict.summary,
+      detectedAt: conflict.detectedAt ?? context.step.fetchedAt,
+      metadata: compactJson({
+        reasonCode: conflict.reasonCode ?? "source_disagreement",
+        severity: conflict.severity ?? "warning",
+        ...conflict.metadata,
+        ...importMetadata,
+      }),
+      evidence:
+        conflict.evidence?.map((evidence, evidenceIndex) => ({
+          conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
+            conflictId,
+            String(evidenceIndex),
+            evidence.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
+            evidence.subjectId ?? sourceProvenanceId,
+          ]),
+          subjectKind: evidence.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
+          subjectId: evidence.subjectId ?? sourceProvenanceId,
+          sourceProvenanceId,
+          evidencePosition: evidence.evidencePosition ?? evidenceIndex,
+          metadata: compactJson({ ...evidence.metadata, ...importMetadata }),
+        })) ?? [
+          {
+            conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
+              conflictId,
+              "0",
+              catalogConflictSubjectKindValues.sourceProvenance,
+              sourceProvenanceId,
+            ]),
+            subjectKind: catalogConflictSubjectKindValues.sourceProvenance,
+            subjectId: sourceProvenanceId,
+            sourceProvenanceId,
+            evidencePosition: 0,
+            metadata: importMetadata,
+          },
+          {
+            conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
+              conflictId,
+              "1",
+              catalogConflictSubjectKindValues.work,
+              workId,
+            ]),
+            subjectKind: catalogConflictSubjectKindValues.work,
+            subjectId: workId,
+            sourceProvenanceId,
+            evidencePosition: 1,
+            metadata: compactJson({ role: "imported_work", ...importMetadata }),
+          },
+        ],
+    };
   });
 }
 

@@ -5,17 +5,17 @@
     "id": "catalog-recorded-importers",
     "title": "Catalog Recorded Importer Fixtures",
     "kind": "synthetic",
-    "summary": "Synthetic VNDB dump, EGS recorded-response, DLsite storefront, and Steam storefront fixtures for deterministic external-source importer verification without live network access.",
+    "summary": "Synthetic VNDB dump, EGS recorded-response, DLsite storefront, Steam storefront, IGDB platform, and Wikidata platform fixtures for deterministic external-source importer verification without live network access.",
     "sourceLocale": "ja-JP",
     "targetLocales": ["en-US"],
     "publicRedistribution": "allowed",
     "license": {
       "spdx": "CC0-1.0",
-      "evidence": "Hand-authored synthetic VNDB-shaped dump rows, EGS-shaped recorded responses, DLsite-shaped storefront metadata, and Steam-shaped appdetails responses; no third-party raw assets, private catalog payloads, or credentials."
+      "evidence": "Hand-authored synthetic VNDB-shaped dump rows, EGS-shaped recorded responses, DLsite-shaped storefront metadata, Steam-shaped appdetails responses, IGDB-shaped platform metadata, and Wikidata-shaped entity statements; no third-party raw assets, private catalog payloads, or credentials."
     },
     "provenance": {
       "author": "Itotori contributors",
-      "creationMethod": "Hand-authored synthetic public metadata fixtures for CATALOG-011 and CATALOG-012 recorded importer provenance and idempotency tests.",
+      "creationMethod": "Hand-authored synthetic public metadata fixtures for CATALOG-011, CATALOG-012, and CATALOG-013 recorded importer provenance and idempotency tests.",
       "rawAssetPolicy": "contains-no-copyrighted-game-assets"
     }
   },
@@ -51,17 +51,33 @@
       "sha256": "64d60db9a310fffcb2936ffdca74f24a92960a36bcab7211ba31233f34cf54ff",
       "bytes": 2522,
       "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-recorded-importers/igdb-platform-replay.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "ea4cbb5c2ef136b7358c4ba896499ebd355e78b528f24b932a886b0775bbc704",
+      "bytes": 3177,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-recorded-importers/wikidata-platform-replay.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "bcf98f5d42f7a34e4afab2d1b7c37fda10936759d979e9560ee1023c46021ce6",
+      "bytes": 3826,
+      "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 4,
+    "files": 6,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
     "sourceLocales": ["ja-JP"],
     "targetLocales": ["en-US"],
     "engineKinds": ["catalog-recorded-importer-synthetic"],
-    "notes": "Covers VNDB external ids, titles, releases, language facts, source-version provenance, EGS product ids, DLsite product identity, work_type, release metadata, translation_info trees, demand facts, Steam appdetails envelopes, supported-language metadata, package/delisting status, fetched-at/request identity provenance, rate-limit metadata, semantic diagnostics, and CATALOG-065 idempotent reruns."
+    "notes": "Covers VNDB external ids, titles, releases, language facts, source-version provenance, EGS product ids, DLsite product identity, work_type, release metadata, translation_info trees, demand facts, Steam appdetails envelopes, supported-language metadata, package/delisting status, IGDB platform releases and language supports, Wikidata entity links, external ids, language statements with qualifiers, official-English conflict facts, fetched-at/request identity provenance, rate-limit metadata, semantic diagnostics, and CATALOG-065 idempotent reruns."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,
