@@ -141,13 +141,7 @@
         },
         "materialKind": {
           "type": "string",
-          "enum": [
-            "fixedBytes",
-            "hexBytes",
-            "utf8String",
-            "archivePassword",
-            "rpgMakerAssetKey"
-          ]
+          "enum": ["fixedBytes", "hexBytes", "utf8String", "archivePassword", "rpgMakerAssetKey"]
         },
         "bytes": {
           "type": "integer",

@@ -205,7 +205,11 @@ function pathStartsWithHomeOrLocalEnvVar(text) {
     "%LOCALAPPDATA%",
     "%TEMP%",
     "%TMP%",
-  ].some((prefix) => trimmed.slice(0, prefix.length).toLowerCase() === prefix.toLowerCase() && ["\\", "/"].includes(trimmed[prefix.length]));
+  ].some(
+    (prefix) =>
+      trimmed.slice(0, prefix.length).toLowerCase() === prefix.toLowerCase() &&
+      ["\\", "/"].includes(trimmed[prefix.length]),
+  );
 }
 
 function looksLikeRawKeyMaterial(text) {
@@ -214,7 +218,9 @@ function looksLikeRawKeyMaterial(text) {
     return true;
   }
   const encodedCompact = text.replace(/[ \t\n\r]/g, "");
-  return looksLikeBase64KeyMaterial(encodedCompact) || looksLikeBase64UrlKeyMaterial(encodedCompact);
+  return (
+    looksLikeBase64KeyMaterial(encodedCompact) || looksLikeBase64UrlKeyMaterial(encodedCompact)
+  );
 }
 
 function looksLikeBase64KeyMaterial(text) {

@@ -692,9 +692,7 @@ describe("catalog recorded source importers", () => {
           expect.objectContaining({
             conflictKind: catalogConflictKindValues.languageStatus,
             reasonCode: "official_english_platform_disagreement",
-            sourceIds: expect.arrayContaining([
-              { catalogSource: "wikidata", sourceId: "Q130099" },
-            ]),
+            sourceIds: expect.arrayContaining([{ catalogSource: "wikidata", sourceId: "Q130099" }]),
           }),
           expect.objectContaining({
             conflictKind: catalogConflictKindValues.externalId,

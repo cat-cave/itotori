@@ -217,9 +217,7 @@ export function createWikidataRecordedPlatformAdapter(
   fixture: CatalogRecordedPlatformFixture,
 ): CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact> {
   if (fixture.catalogSource !== "wikidata") {
-    throw new Error(
-      `Wikidata recorded platform adapter received ${fixture.catalogSource} fixture`,
-    );
+    throw new Error(`Wikidata recorded platform adapter received ${fixture.catalogSource} fixture`);
   }
   return createRecordedPlatformAdapter(fixture, parseWikidataPlatformResponse);
 }
@@ -686,23 +684,22 @@ function parseWikidataPlatformResponse(
       ...(releaseYear === undefined ? {} : { firstReleaseYear: releaseYear }),
       titles: [
         ...new Set(
-          [title, labelValue(labels, "ja")].filter(
-            (value): value is string => value !== undefined,
-          ),
+          [title, labelValue(labels, "ja")].filter((value): value is string => value !== undefined),
         ),
       ],
       externalIds,
-      releases: platforms.map((platform) =>
-        compactJson({
-          sourceReleaseId: `${sourceId}:${platform}`,
-          releaseTitle: title,
-          releaseKind: catalogReleaseKindValues.unknown,
-          platform,
-          releaseDate: publicationDate,
-          releaseYear,
-          isOfficial: true,
-          metadata: compactJson({ sourceField: "claims.platforms", wikidataEntity: sourceId }),
-        }) as CatalogRecordedReleaseFact,
+      releases: platforms.map(
+        (platform) =>
+          compactJson({
+            sourceReleaseId: `${sourceId}:${platform}`,
+            releaseTitle: title,
+            releaseKind: catalogReleaseKindValues.unknown,
+            platform,
+            releaseDate: publicationDate,
+            releaseYear,
+            isOfficial: true,
+            metadata: compactJson({ sourceField: "claims.platforms", wikidataEntity: sourceId }),
+          }) as CatalogRecordedReleaseFact,
       ),
       languageStatuses,
       conflicts: conflictFactsFromPayload(payload),
@@ -780,12 +777,7 @@ function igdbReleaseFacts(
   title: string,
 ): CatalogRecordedReleaseFact[] {
   return platformArray(response.payload, "release_dates").map((entry, index) => {
-    const record = platformRecordFromUnknown(
-      entry,
-      `release_dates[${index}]`,
-      fixture,
-      response,
-    );
+    const record = platformRecordFromUnknown(entry, `release_dates[${index}]`, fixture, response);
     const releaseId = firstString(record, ["id"]) ?? `${response.sourceId}:release:${index}`;
     const date = optionalString(record, "date") ?? platformUnixDate(record.date_unix);
     const platform = platformLabel(record.platform) ?? platformLabel(record);
@@ -863,12 +855,7 @@ function igdbExternalIds(
     },
   ];
   for (const [index, entry] of platformArray(response.payload, "external_games").entries()) {
-    const record = platformRecordFromUnknown(
-      entry,
-      `external_games[${index}]`,
-      fixture,
-      response,
-    );
+    const record = platformRecordFromUnknown(entry, `external_games[${index}]`, fixture, response);
     const mapped = externalGameCatalogSource(optionalString(record, "category"));
     const sourceId = firstString(record, ["uid", "id"]);
     if (mapped === null || sourceId === null) {
@@ -1512,7 +1499,10 @@ function platformLabel(value: unknown): string | null {
 }
 
 function normalizePlatformLabel(value: string): string {
-  const normalized = value.toLowerCase().replace(/[^a-z0-9]+/gu, "_").replace(/^_|_$/gu, "");
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/gu, "_")
+    .replace(/^_|_$/gu, "");
   const map: Record<string, string> = {
     pc_microsoft_windows: "pc",
     microsoft_windows: "pc",
@@ -1537,10 +1527,7 @@ function platformArray(record: CatalogJsonRecord, field: string): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
-function platformRecord(
-  record: CatalogJsonRecord,
-  field: string,
-): CatalogJsonRecord {
+function platformRecord(record: CatalogJsonRecord, field: string): CatalogJsonRecord {
   const value = record[field];
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as CatalogJsonRecord)
@@ -2033,47 +2020,46 @@ function conflictInputs(
         ...conflict.metadata,
         ...importMetadata,
       }),
-      evidence:
-        conflict.evidence?.map((evidence, evidenceIndex) => ({
+      evidence: conflict.evidence?.map((evidence, evidenceIndex) => ({
+        conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
+          conflictId,
+          String(evidenceIndex),
+          evidence.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
+          evidence.subjectId ?? sourceProvenanceId,
+        ]),
+        subjectKind: evidence.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
+        subjectId: evidence.subjectId ?? sourceProvenanceId,
+        sourceProvenanceId,
+        evidencePosition: evidence.evidencePosition ?? evidenceIndex,
+        metadata: compactJson({ ...evidence.metadata, ...importMetadata }),
+      })) ?? [
+        {
           conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
             conflictId,
-            String(evidenceIndex),
-            evidence.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
-            evidence.subjectId ?? sourceProvenanceId,
+            "0",
+            catalogConflictSubjectKindValues.sourceProvenance,
+            sourceProvenanceId,
           ]),
-          subjectKind: evidence.subjectKind ?? catalogConflictSubjectKindValues.sourceProvenance,
-          subjectId: evidence.subjectId ?? sourceProvenanceId,
+          subjectKind: catalogConflictSubjectKindValues.sourceProvenance,
+          subjectId: sourceProvenanceId,
           sourceProvenanceId,
-          evidencePosition: evidence.evidencePosition ?? evidenceIndex,
-          metadata: compactJson({ ...evidence.metadata, ...importMetadata }),
-        })) ?? [
-          {
-            conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
-              conflictId,
-              "0",
-              catalogConflictSubjectKindValues.sourceProvenance,
-              sourceProvenanceId,
-            ]),
-            subjectKind: catalogConflictSubjectKindValues.sourceProvenance,
-            subjectId: sourceProvenanceId,
-            sourceProvenanceId,
-            evidencePosition: 0,
-            metadata: importMetadata,
-          },
-          {
-            conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
-              conflictId,
-              "1",
-              catalogConflictSubjectKindValues.work,
-              workId,
-            ]),
-            subjectKind: catalogConflictSubjectKindValues.work,
-            subjectId: workId,
-            sourceProvenanceId,
-            evidencePosition: 1,
-            metadata: compactJson({ role: "imported_work", ...importMetadata }),
-          },
-        ],
+          evidencePosition: 0,
+          metadata: importMetadata,
+        },
+        {
+          conflictEvidenceId: stableCatalogId("catalog-conflict-evidence", [
+            conflictId,
+            "1",
+            catalogConflictSubjectKindValues.work,
+            workId,
+          ]),
+          subjectKind: catalogConflictSubjectKindValues.work,
+          subjectId: workId,
+          sourceProvenanceId,
+          evidencePosition: 1,
+          metadata: compactJson({ role: "imported_work", ...importMetadata }),
+        },
+      ],
     };
   });
 }
