@@ -5395,7 +5395,7 @@
     {
       "id": "KAIFUU-043",
       "title": "Report-wide redaction hardening",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -5427,7 +5427,10 @@
         "Absolute path leakage in structured reports",
         "Raw diagnostic echoes bypassing report redaction",
         "Golden fixtures normalizing host-specific output"
-      ]
+      ],
+      "owner": "orchestrator-kaifuu-043",
+      "branch": "spec/kaifuu-043",
+      "worktree": "/tmp/itotori-spec-kaifuu-043"
     },
     {
       "id": "KAIFUU-044",
