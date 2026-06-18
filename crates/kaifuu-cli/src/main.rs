@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
@@ -10,6 +10,8 @@ use kaifuu_core::{
     write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
+
+const APPLY_REPORT_FILE_NAME: &str = "patch-result.json";
 
 fn main() {
     if let Err(error) = run() {
@@ -115,18 +117,16 @@ fn run_with_args_and_registry(
             )?;
         }
         Some("apply") => {
-            let game_dir = positional(&args, 1)?;
-            let patch = flag(&args, "--patch")?;
-            let output = flag(&args, "--output")?;
-            let result = apply_delta(
-                &PathBuf::from(game_dir),
-                &PathBuf::from(patch),
-                &PathBuf::from(output),
-            )?;
-            write_json(
-                &PathBuf::from(output).join("patch-result.json"),
-                &redact_report_value(&result),
-            )?;
+            let game_dir = PathBuf::from(positional(&args, 1)?);
+            let patch = PathBuf::from(flag(&args, "--patch")?);
+            let output = PathBuf::from(flag(&args, "--output")?);
+            let report_output = flag_optional(&args, "--report-output")
+                .map(PathBuf::from)
+                .map(Ok)
+                .unwrap_or_else(|| default_apply_report_output(&output))?;
+            validate_apply_report_output(&game_dir, &output, &report_output)?;
+            let result = apply_delta(&game_dir, &patch, &output)?;
+            write_json(&report_output, &redact_report_value(&result))?;
         }
         Some("verify") => {
             let game_dir = PathBuf::from(positional(&args, 1)?);
@@ -354,6 +354,68 @@ fn write_stable_asset_inventory(
         output,
         &kaifuu_core::stable_json(&redact_report_value(&value))?,
     )
+}
+
+fn default_apply_report_output(output: &Path) -> KaifuuResult<PathBuf> {
+    let output_name = output
+        .file_name()
+        .ok_or("apply output directory must include a final path component")?
+        .to_string_lossy();
+    Ok(output
+        .with_file_name(format!("{output_name}.kaifuu"))
+        .join(APPLY_REPORT_FILE_NAME))
+}
+
+fn validate_apply_report_output(
+    game_dir: &Path,
+    output: &Path,
+    report_output: &Path,
+) -> KaifuuResult<()> {
+    let source_root = lexical_absolute_path(game_dir)?;
+    let output_root = lexical_absolute_path(output)?;
+    let report_path = lexical_absolute_path(report_output)?;
+    if report_path == source_root || report_path.starts_with(&source_root) {
+        return Err(format!(
+            "apply report output must not be inside source game directory: {}",
+            redact_for_log_or_report(&report_output.display().to_string())
+        )
+        .into());
+    }
+    if report_path == output_root || report_path.starts_with(&output_root) {
+        return Err(format!(
+            "apply report output must not be inside patched output directory: {}",
+            redact_for_log_or_report(&report_output.display().to_string())
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn lexical_absolute_path(path: &Path) -> KaifuuResult<PathBuf> {
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir()?.join(path)
+    };
+    let mut normalized = PathBuf::new();
+    for component in absolute.components() {
+        match component {
+            Component::Prefix(prefix) => normalized.push(prefix.as_os_str()),
+            Component::RootDir => normalized.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                let at_root = normalized
+                    .components()
+                    .last()
+                    .is_some_and(|part| matches!(part, Component::Prefix(_) | Component::RootDir));
+                if !at_root {
+                    normalized.pop();
+                }
+            }
+            Component::Normal(part) => normalized.push(part),
+        }
+    }
+    Ok(normalized)
 }
 
 fn allocate_patch_staging_dir(output: &Path) -> KaifuuResult<PathBuf> {
@@ -1807,7 +1869,6 @@ mod tests {
         );
         write_fixture_file(&patched_dir, "readme.txt", b"same\n");
         write_fixture_file(&patched_dir, "extra.txt", b"new\n");
-        write_fixture_file(&patched_dir, "patch-result.json", b"cli artifact\n");
 
         let delta_path = root.join("hello.kaifuu");
         run_cli(&[
@@ -1837,10 +1898,11 @@ mod tests {
             output_dir.to_str().unwrap(),
         ]);
 
-        let apply_result: serde_json::Value =
-            read_json(&output_dir.join("patch-result.json")).unwrap();
+        let report_path = root.join("applied.kaifuu/patch-result.json");
+        let apply_result: serde_json::Value = read_json(&report_path).unwrap();
         assert_eq!(apply_result["status"], "passed");
         assert_eq!(apply_result["changedFileCount"], 2);
+        assert!(!output_dir.join("patch-result.json").exists());
         assert!(
             fs::read_to_string(output_dir.join("source.json"))
                 .unwrap()
@@ -1854,6 +1916,105 @@ mod tests {
             fs::read_to_string(output_dir.join("extra.txt")).unwrap(),
             "new\n"
         );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_command_preserves_target_patch_result_and_writes_report_outside_output() {
+        let root = temp_dir("apply-target-report-collision");
+        let game_dir = temp_game(&root);
+
+        let patched_dir = root.join("patched");
+        fs::create_dir_all(&patched_dir).unwrap();
+        write_fixture_file(
+            &patched_dir,
+            "source.json",
+            br#"{"units":[{"targetText":"Hello, {player}."}]}"#,
+        );
+        write_fixture_file(&patched_dir, "patch-result.json", b"real game file\n");
+
+        let delta_path = root.join("hello.kaifuu");
+        run_cli(&[
+            "diff",
+            game_dir.to_str().unwrap(),
+            patched_dir.to_str().unwrap(),
+            "--output",
+            delta_path.to_str().unwrap(),
+        ]);
+        let delta: serde_json::Value = read_json(&delta_path).unwrap();
+        assert!(
+            delta["target"]["files"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|record| record["path"] == "patch-result.json")
+        );
+
+        let output_dir = root.join("applied");
+        run_cli(&[
+            "apply",
+            game_dir.to_str().unwrap(),
+            "--patch",
+            delta_path.to_str().unwrap(),
+            "--output",
+            output_dir.to_str().unwrap(),
+        ]);
+
+        assert_eq!(
+            fs::read(output_dir.join("patch-result.json")).unwrap(),
+            b"real game file\n"
+        );
+        let report: serde_json::Value =
+            read_json(&root.join("applied.kaifuu/patch-result.json")).unwrap();
+        assert_eq!(report["status"], "passed");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn apply_command_rejects_report_output_inside_patched_output() {
+        let root = temp_dir("apply-report-output-guard");
+        let game_dir = temp_game(&root);
+        let patched_dir = root.join("patched");
+        fs::create_dir_all(&patched_dir).unwrap();
+        write_fixture_file(
+            &patched_dir,
+            "source.json",
+            br#"{"units":[{"targetText":"Hello, {player}."}]}"#,
+        );
+        let delta_path = root.join("hello.kaifuu");
+        run_cli(&[
+            "diff",
+            game_dir.to_str().unwrap(),
+            patched_dir.to_str().unwrap(),
+            "--output",
+            delta_path.to_str().unwrap(),
+        ]);
+        let output_dir = root.join("applied");
+
+        let result = run_with_args(
+            [
+                "apply",
+                game_dir.to_str().unwrap(),
+                "--patch",
+                delta_path.to_str().unwrap(),
+                "--output",
+                output_dir.to_str().unwrap(),
+                "--report-output",
+                output_dir.join("patch-result.json").to_str().unwrap(),
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        let error = result.unwrap_err().to_string();
+        assert!(
+            error.contains("apply report output must not be inside patched output directory"),
+            "{error}"
+        );
+        assert!(!output_dir.exists());
 
         let _ = fs::remove_dir_all(root);
     }

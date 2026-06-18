@@ -12,7 +12,6 @@ use serde_json::{Value, json};
 const DELTA_SCHEMA_VERSION: &str = "0.2.0";
 const DELTA_FORMAT: &str = "kaifuu-delta-package";
 const DELTA_HASH_VERSION: &str = "kaifuu-delta-root-v0.2";
-const ROOT_PATCH_RESULT_ARTIFACT: &str = "patch-result.json";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -169,7 +168,7 @@ pub fn create_delta(original_dir: &Path, patched_dir: &Path) -> KaifuuResult<Val
             hash_algorithm: "sha256".to_string(),
             path_encoding: "relative-utf8-posix".to_string(),
             content_encodings: vec!["utf8".to_string(), "hex".to_string()],
-            ignored_artifacts: vec![ROOT_PATCH_RESULT_ARTIFACT.to_string()],
+            ignored_artifacts: vec![],
         },
         source_compatibility: SourceCompatibility {
             root_hash: original.root_hash,
@@ -319,7 +318,6 @@ fn validate_package_shape(package: &DeltaPackage) -> KaifuuResult<()> {
     let mut paths = BTreeSet::new();
     for entry in &package.changed_entries {
         validate_relative_package_path(&entry.path)?;
-        validate_not_ignored_artifact_path(&entry.path)?;
         if !paths.insert(entry.path.as_str()) {
             return Err(format!(
                 "delta package has duplicate changed entry path {}",
@@ -584,7 +582,6 @@ fn snapshot_from_records(records: &[FileRecord]) -> KaifuuResult<DirectorySnapsh
     let mut files = BTreeMap::new();
     for record in records {
         validate_relative_package_path(&record.path)?;
-        validate_not_ignored_artifact_path(&record.path)?;
         let snapshot = FileSnapshot {
             path: record.path.clone(),
             hash: record.hash.clone(),
@@ -616,9 +613,6 @@ fn collect_files(
             collect_files(root, &path, files)?;
         } else if file_type.is_file() {
             let relative_path = relative_package_path(root, &path)?;
-            if ignored_artifact_path(&relative_path) {
-                continue;
-            }
             let bytes = fs::read(&path)?;
             let snapshot = FileSnapshot {
                 path: relative_path.clone(),
@@ -659,20 +653,6 @@ fn relative_package_path(root: &Path, path: &Path) -> KaifuuResult<String> {
 
 fn validate_relative_package_path(path: &str) -> KaifuuResult<()> {
     validate_safe_relative_path(path)
-}
-
-fn validate_not_ignored_artifact_path(path: &str) -> KaifuuResult<()> {
-    if ignored_artifact_path(path) {
-        return Err(format!("delta package path {path} is an ignored artifact").into());
-    }
-    Ok(())
-}
-
-fn ignored_artifact_path(path: &str) -> bool {
-    path == ROOT_PATCH_RESULT_ARTIFACT
-        || path
-            .strip_prefix(ROOT_PATCH_RESULT_ARTIFACT)
-            .is_some_and(|suffix| suffix.starts_with(['/', '\\']))
 }
 
 fn validate_materializable_file_paths<'a>(
@@ -916,6 +896,8 @@ mod tests {
     use kaifuu_core::write_json;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    const ROOT_PATCH_RESULT_ARTIFACT: &str = "patch-result.json";
+
     fn temp_dir(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -954,7 +936,6 @@ mod tests {
         write_file(&patched, "data/unchanged.txt", b"same\n");
         write_file(&patched, "data/add.txt", b"add\n");
         write_file(&patched, "bin/raw.dat", &[0, 159, 146, 151]);
-        write_file(&patched, ROOT_PATCH_RESULT_ARTIFACT, b"cli artifact\n");
         (original, patched)
     }
 
@@ -995,10 +976,7 @@ mod tests {
         assert_eq!(first["schemaVersion"], DELTA_SCHEMA_VERSION);
         assert_eq!(first["format"], DELTA_FORMAT);
         assert_eq!(first["metadata"]["hashAlgorithm"], "sha256");
-        assert_eq!(
-            first["metadata"]["ignoredArtifacts"][0],
-            ROOT_PATCH_RESULT_ARTIFACT
-        );
+        assert_eq!(first["metadata"]["ignoredArtifacts"], json!([]));
         assert_eq!(first["sourceCompatibility"]["fileCount"], 4);
         assert_eq!(first["target"]["fileCount"], 4);
         assert!(
@@ -1240,165 +1218,71 @@ mod tests {
     }
 
     #[test]
-    fn apply_delta_rejects_ignored_artifact_changed_entry_before_staging_allocation() {
-        let root = temp_dir("ignored-artifact-entry");
+    fn create_delta_includes_source_root_patch_result_as_real_game_file() {
+        let root = temp_dir("source-root-patch-result");
         let (original, patched) = write_sample_dirs(&root);
-        let output_parent = root.join("new-output-parent");
-        let output_dir = output_parent.join("output");
-        let delta_path = root.join("ignored-artifact.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
-        add_utf8_changed_entry(&mut package, ROOT_PATCH_RESULT_ARTIFACT, b"cli artifact\n");
-        add_target_file_record(&mut package, ROOT_PATCH_RESULT_ARTIFACT, b"cli artifact\n");
-        refresh_manifest(&mut package, "target");
+        let output_dir = root.join("output");
+        let delta_path = root.join("delete-source-report.kaifuu");
+        write_file(&original, ROOT_PATCH_RESULT_ARTIFACT, b"source game file\n");
+        let package = create_delta(&original, &patched).unwrap();
         write_json(&delta_path, &package).unwrap();
 
-        let error = apply_delta(&original, &delta_path, &output_dir)
-            .unwrap_err()
-            .to_string();
+        let source_paths = package["sourceCompatibility"]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| record["path"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(source_paths.contains(&ROOT_PATCH_RESULT_ARTIFACT));
+        let delete_entry = package["changedEntries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["path"] == ROOT_PATCH_RESULT_ARTIFACT)
+            .unwrap();
+        assert_eq!(delete_entry["operation"], "delete");
 
-        assert!(error.contains("ignored artifact"));
-        assert!(!output_dir.exists());
-        assert!(!output_parent.exists());
+        apply_delta(&original, &delta_path, &output_dir).unwrap();
+
+        assert!(!output_dir.join(ROOT_PATCH_RESULT_ARTIFACT).exists());
+        assert_eq!(
+            fs::read(original.join(ROOT_PATCH_RESULT_ARTIFACT)).unwrap(),
+            b"source game file\n"
+        );
         let _ = fs::remove_dir_all(root);
     }
 
     #[test]
-    fn apply_delta_rejects_ignored_artifact_changed_entry_descendant_before_staging_allocation() {
-        let root = temp_dir("ignored-artifact-entry-descendant");
+    fn apply_delta_materializes_target_root_patch_result_as_real_game_file() {
+        let root = temp_dir("target-root-patch-result");
         let (original, patched) = write_sample_dirs(&root);
-        let output_parent = root.join("new-output-parent");
-        let output_dir = output_parent.join("output");
-        let delta_path = root.join("ignored-artifact-descendant.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
-        add_utf8_changed_entry(
-            &mut package,
-            "patch-result.json/nested.txt",
-            b"cli artifact descendant\n",
-        );
-        add_target_file_record(
-            &mut package,
-            "patch-result.json/nested.txt",
-            b"cli artifact descendant\n",
-        );
-        refresh_manifest(&mut package, "target");
+        let output_dir = root.join("output");
+        let delta_path = root.join("target-report-file.kaifuu");
+        write_file(&patched, ROOT_PATCH_RESULT_ARTIFACT, b"target game file\n");
+        let package = create_delta(&original, &patched).unwrap();
         write_json(&delta_path, &package).unwrap();
 
-        let error = apply_delta(&original, &delta_path, &output_dir)
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("ignored artifact"));
-        assert!(!output_dir.exists());
-        assert!(!output_parent.exists());
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn apply_delta_rejects_backslash_artifact_changed_entry_before_staging() {
-        let root = temp_dir("ignored-artifact-entry-backslash-descendant");
-        let (original, patched) = write_sample_dirs(&root);
-        let output_parent = root.join("new-output-parent");
-        let output_dir = output_parent.join("output");
-        let delta_path = root.join("ignored-artifact-backslash-descendant.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
-        add_utf8_changed_entry(
-            &mut package,
-            "patch-result.json\\nested.txt",
-            b"cli artifact descendant\n",
+        let target_paths = package["target"]["files"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|record| record["path"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(target_paths.contains(&ROOT_PATCH_RESULT_ARTIFACT));
+        assert!(
+            package["changedEntries"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|entry| entry["path"] == ROOT_PATCH_RESULT_ARTIFACT)
         );
-        add_target_file_record(
-            &mut package,
-            "patch-result.json\\nested.txt",
-            b"cli artifact descendant\n",
+
+        apply_delta(&original, &delta_path, &output_dir).unwrap();
+
+        assert_eq!(
+            fs::read(output_dir.join(ROOT_PATCH_RESULT_ARTIFACT)).unwrap(),
+            b"target game file\n"
         );
-        refresh_manifest(&mut package, "target");
-        write_json(&delta_path, &package).unwrap();
-
-        let error = apply_delta(&original, &delta_path, &output_dir)
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("ignored artifact"));
-        assert!(!output_dir.exists());
-        assert!(!output_parent.exists());
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn apply_delta_rejects_ignored_artifact_manifest_descendant_before_staging_allocation() {
-        let root = temp_dir("ignored-artifact-manifest-descendant");
-        let (original, patched) = write_sample_dirs(&root);
-        let output_parent = root.join("new-output-parent");
-        let output_dir = output_parent.join("output");
-        let delta_path = root.join("ignored-artifact-manifest-descendant.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
-        add_target_file_record(
-            &mut package,
-            "patch-result.json/nested.txt",
-            b"cli artifact descendant\n",
-        );
-        refresh_manifest(&mut package, "target");
-        write_json(&delta_path, &package).unwrap();
-
-        let error = apply_delta(&original, &delta_path, &output_dir)
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("ignored artifact"));
-        assert!(!output_dir.exists());
-        assert!(!output_parent.exists());
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn apply_delta_rejects_backslash_artifact_target_manifest_before_staging() {
-        let root = temp_dir("ignored-artifact-target-manifest-backslash-descendant");
-        let (original, patched) = write_sample_dirs(&root);
-        let output_parent = root.join("new-output-parent");
-        let output_dir = output_parent.join("output");
-        let delta_path = root.join("ignored-artifact-target-manifest-backslash-descendant.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
-        add_target_file_record(
-            &mut package,
-            "patch-result.json\\nested.txt",
-            b"cli artifact descendant\n",
-        );
-        refresh_manifest(&mut package, "target");
-        write_json(&delta_path, &package).unwrap();
-
-        let error = apply_delta(&original, &delta_path, &output_dir)
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("ignored artifact"));
-        assert!(!output_dir.exists());
-        assert!(!output_parent.exists());
-        let _ = fs::remove_dir_all(root);
-    }
-
-    #[test]
-    fn apply_delta_rejects_backslash_artifact_source_manifest_before_staging() {
-        let root = temp_dir("ignored-artifact-source-manifest-backslash-descendant");
-        let (original, patched) = write_sample_dirs(&root);
-        let output_parent = root.join("new-output-parent");
-        let output_dir = output_parent.join("output");
-        let delta_path = root.join("ignored-artifact-source-manifest-backslash-descendant.kaifuu");
-        let mut package = create_delta(&original, &patched).unwrap();
-        add_source_file_record(
-            &mut package,
-            "patch-result.json\\nested.txt",
-            b"cli artifact descendant\n",
-        );
-        refresh_manifest(&mut package, "sourceCompatibility");
-        write_json(&delta_path, &package).unwrap();
-
-        let error = apply_delta(&original, &delta_path, &output_dir)
-            .unwrap_err()
-            .to_string();
-
-        assert!(error.contains("ignored artifact"));
-        assert!(!output_dir.exists());
-        assert!(!output_parent.exists());
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1531,17 +1415,6 @@ mod tests {
 
     fn add_target_file_record(package: &mut Value, path: &str, bytes: &[u8]) {
         package["target"]["files"]
-            .as_array_mut()
-            .unwrap()
-            .push(json!({
-                "path": path,
-                "hash": sha256_hex(bytes),
-                "sizeBytes": bytes.len() as u64,
-            }));
-    }
-
-    fn add_source_file_record(package: &mut Value, path: &str, bytes: &[u8]) {
-        package["sourceCompatibility"]["files"]
             .as_array_mut()
             .unwrap()
             .push(json!({
