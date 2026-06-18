@@ -37,9 +37,17 @@ The literal Hello World workflow is intentionally temporary. It should stay in
 CI until `ALPHA-007` implements the suite public fixture vertical command and
 `ALPHA-009` replaces the workflow with an alpha proof gate.
 
-The replacement must preserve the useful signal from this loop while removing
-placeholder-specific assertions. In particular, CI should stop proving only that
-`status=hello_world_passed` printed and should instead validate that bridge,
-patch, provider proof, benchmark, runtime observation, dashboard/read-model
-ingestion, and the SHARED-025 alpha proof manifest all refer to the same public
-fixture id and source revision.
+The stop condition is not "the scaffold feels old." The stop condition is that
+the replacement alpha proof workflow is implemented, public-fixture-only, green
+in CI, and checks the same or stronger cross-project contract. In particular,
+CI should stop proving only that `status=hello_world_passed` printed and should
+instead validate that bridge, patch, provider proof, benchmark, runtime
+observation, dashboard/read-model ingestion, and the SHARED-025 alpha proof
+manifest all refer to the same public fixture id, source revision, locale branch,
+and content hashes.
+
+After that point there should not be two independent integration truths. The
+old GitHub Hello World workflow should be removed or renamed into the alpha
+proof workflow. If `just hello` remains for compatibility, it should be a thin
+alias for `just alpha-proof` and must not carry a divergent success-string-only
+contract.

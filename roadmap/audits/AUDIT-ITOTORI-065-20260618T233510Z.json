@@ -1,0 +1,146 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-065-20260618T233510Z",
+  "generatedAt": "2026-06-18T23:35:10Z",
+  "spec": {
+    "id": "ITOTORI-065",
+    "title": "Style-guide builder dashboard UI",
+    "branch": "spec/itotori-065",
+    "worktree": "/tmp/itotori-spec-itotori-065",
+    "commit": "472d6273647ecfcf8d3ec936a7bbfb76fe579fe2"
+  },
+  "auditor": {
+    "name": "itotori-065-dashboard-reaudit",
+    "kind": "ux"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers after dashboard style-guide context repair. Two non-blocking follow-ups remain for explicit standalone route context and missing-context panel behavior.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-065-F001", "ITOTORI-065-F002"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-065-F001",
+      "severity": "P2",
+      "title": "Standalone style-guide builder route defaults missing query params",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "apps/itotori/src/style-guide-builder.ts"
+        },
+        {
+          "path": "apps/itotori/src/server.ts"
+        }
+      ],
+      "description": "The dashboard embed uses explicit status-derived IDs, but the standalone /style-guide-builder route still has default contract UUIDs when query params are omitted.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit found no mixed context for dashboard usage, but stricter standalone route behavior should require explicit branch and policy ids."
+        }
+      ],
+      "impact": "Standalone review links can be less explicit than the dashboard embed, which makes route provenance weaker.",
+      "actionableAcceptanceCriteria": [
+        "Standalone /style-guide-builder requests without locale branch id or policy version id return an explicit route diagnostic or unavailable state.",
+        "Valid standalone requests preserve the same locale branch and policy ids across route, branch, policy, transcript, validation, and consequences.",
+        "Route tests cover missing query params, invalid ids, and valid explicit ids."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Explicit standalone style-guide builder route context",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "dashboard",
+          "dependsOn": ["ITOTORI-065"],
+          "summary": "Require explicit locale branch and style-guide policy version context for standalone style-guide builder routes.",
+          "deliverables": [
+            "Standalone route missing-context diagnostic",
+            "Valid explicit route context tests",
+            "Invalid id route tests"
+          ],
+          "acceptanceCriteria": [
+            "Standalone style-guide builder routes without required locale branch and policy ids do not fall back to contract UUID defaults.",
+            "Valid standalone route requests preserve ids across route, branch, policy, transcript, validation, and consequences.",
+            "Route tests cover missing query params, invalid ids, and valid explicit ids."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            }
+          ],
+          "auditFocus": ["Implicit standalone route context", "Mixed branch and policy ids"]
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-065-F002",
+      "severity": "P3",
+      "title": "Missing style-guide context blocks whole dashboard",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "apps/itotori/src/dashboard.ts"
+        }
+      ],
+      "description": "When selected style-guide context is absent, the dashboard treats it as a whole-dashboard load error rather than rendering the rest of the dashboard with the builder panel unavailable.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit found this safe and explicit, but less ergonomic than a panel-scoped unavailable state."
+        }
+      ],
+      "impact": "A missing style-guide context can hide unrelated dashboard status that would still be useful to reviewers.",
+      "actionableAcceptanceCriteria": [
+        "Dashboard can render non-style-guide status while the style-guide builder panel shows a scoped unavailable/diagnostic state.",
+        "Panel unavailable state explains missing selected locale branch or policy version id.",
+        "Existing full-dashboard error handling remains for unrecoverable status load failures."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Style-guide builder panel unavailable state",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "dashboard",
+          "dependsOn": ["ITOTORI-065"],
+          "summary": "Render a panel-scoped unavailable state when style-guide context is missing instead of failing the entire dashboard.",
+          "deliverables": [
+            "Style-guide panel unavailable UI state",
+            "Missing branch and missing policy fixture tests"
+          ],
+          "acceptanceCriteria": [
+            "Dashboard still renders non-style-guide status when style-guide context is missing.",
+            "The style-guide panel unavailable state names the missing selected locale branch or policy version id.",
+            "Unrecoverable dashboard status load failures still use the existing full-dashboard error path."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            }
+          ],
+          "auditFocus": ["Missing-context dashboard blanking", "Unclear panel diagnostics"]
+        }
+      }
+    }
+  ]
+}

@@ -38,4 +38,7 @@ The Hello World workflow remains the required integration guardrail until the
 alpha public fixture vertical command exists. After `ALPHA-007`, `ALPHA-009`
 promotes that command into an alpha proof CI workflow and retires the literal
 hello-world gate. The replacement proof must validate real cross-project
-artifact linkage instead of only a placeholder success line.
+artifact linkage instead of only a placeholder success line. Once that
+replacement is green, the old Hello World workflow must either disappear or
+become the same alpha proof under a compatibility alias; it should not remain as
+a second, weaker source of truth.

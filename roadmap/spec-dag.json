@@ -11373,7 +11373,7 @@
     {
       "id": "ITOTORI-065",
       "title": "Style-guide builder dashboard UI",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11410,10 +11410,7 @@
         "Style builder mutating policy without permission checks",
         "Locale branch context missing from dashboard state",
         "Consequence preview hidden from reviewers"
-      ],
-      "owner": "codex-orchestrator-wave10",
-      "branch": "spec/itotori-065",
-      "worktree": "/tmp/itotori-spec-itotori-065"
+      ]
     },
     {
       "id": "ITOTORI-066",
@@ -12267,6 +12264,7 @@
         "UTSUSHI-102",
         "UNIV-016",
         "SHARED-025",
+        "ITOTORI-026",
         "ALPHA-008",
         "UTSUSHI-119",
         "UTSUSHI-065",
@@ -12278,11 +12276,14 @@
       "deliverables": [
         "pnpm exec vp run alpha:public-fixture command contract",
         "Public fixture vertical manifest tying bridge, patch, runtime, provider, benchmark, and result artifact ids",
+        "Artifact-linkage validator that fails when bridge, patch, provider, benchmark, runtime, dashboard/read-model, or SHARED-025 manifest artifacts disagree on fixture id, source revision, locale branch, or content hash",
         "Regression fixtures for success, unsupported runtime, patch failure, provider fallback, and rerun repair paths"
       ],
       "acceptanceCriteria": [
         "The public fixture command composes Itotori fixture iteration, Kaifuu patch result, Utsushi runtime observation, provider proof, benchmark report, and SHARED-025 manifest artifacts.",
         "Every emitted artifact is schema-valid, hash-addressed, and linked to the same fixture id and source revision.",
+        "A validator command proves artifact linkage across bridge, patch, provider proof, benchmark, runtime observation, dashboard/read-model ingestion, and SHARED-025 manifest records instead of relying on success text.",
+        "The benchmark artifact is produced by ITOTORI-026 or a named successor, not a placeholder file, and is referenced by the SHARED-025 manifest.",
         "The SHARED-025 manifest includes a non-empty provider proof id from the sanitized ALPHA-008 proof bundle.",
         "Unsupported runtime, patch failure, provider fallback, benchmark failure, and rerun repair paths return semantic diagnostics instead of prose-only reports.",
         "The vertical can run as a durable CI proof command that is not branded or structured as a literal hello-world smoke.",
@@ -12300,6 +12301,10 @@
         {
           "type": "command",
           "value": "pnpm exec vp run alpha:public-fixture"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run alpha:validate-artifact-linkage"
         },
         {
           "type": "command",
@@ -12384,21 +12389,26 @@
         "ITOTORI-095",
         "KAIFUU-010",
         "UTSUSHI-119",
+        "ALPHA-008",
+        "ITOTORI-026",
         "UNIV-013",
         "UNIV-016"
       ],
       "summary": "Replace the permanent literal Hello World workflow with a durable alpha proof workflow that preserves end-to-end integration evidence while removing toy branding, stale scaffold assumptions, and placeholder success-string assertions.",
       "deliverables": [
         ".github/workflows/alpha-proof.yml and root `just alpha-proof` recipe for the public fixture alpha proof vertical",
-        "Deprecation or alias policy for the old hello recipe and GitHub Hello World workflow name",
+        "Removal or documented alias policy for the old hello recipe and GitHub Hello World workflow name after the alpha proof workflow is green",
         "Documentation update explaining that integration proof is preserved through alpha proof artifacts rather than literal hello-world tests",
-        "Regression tests or fixture assertions proving the alpha proof checks schema-valid artifact linkage instead of only a success string"
+        "Regression tests or fixture assertions proving the alpha proof checks schema-valid artifact linkage instead of only a success string",
+        "CI status documentation naming alpha proof as the required integration guardrail and forbidding a separate stale Hello World source of truth"
       ],
       "acceptanceCriteria": [
         "The primary CI integration workflow is named and documented as a suite alpha proof or public fixture vertical, not Hello World",
+        "`just alpha-proof` runs `pnpm exec vp run alpha:public-fixture` or a strict wrapper around it, and fails unless bridge, patch export, PatchResult, provider proof, benchmark report, runtime observation, dashboard/read-model ingestion, and SHARED-025 manifest records share the same public fixture id, source revision, locale branch, and content hashes.",
         "The replacement workflow runs the same or stronger e2e contract as ALPHA-007, including Itotori, Kaifuu, Utsushi, SHARED-025 artifacts, and semantic diagnostics",
         "CI no longer passes solely because `status=hello_world_passed` prints; it validates bridge, patch, provider proof, benchmark, runtime observation, dashboard/read-model ingestion, and SHARED-025 manifest linkage for the same public fixture id and source revision.",
-        "The old hello recipe is either removed after compatibility consumers are updated or retained only as a documented alias to the alpha proof command",
+        "The old Hello World workflow is removed or renamed into the alpha proof workflow; if `just hello` remains, it is only a compatibility alias that invokes `just alpha-proof` and cannot diverge.",
+        ".github/workflows/hello.yml is removed or changed to a compatibility alias that invokes `just alpha-proof`; there is no independent `status=hello_world_passed` CI gate.",
         "The alpha proof workflow remains public-fixture-only, deterministic, and free of private corpora, raw provider payloads, live credentials, or private local paths.",
         "README, docs/hello-world.md or its successor, docs/ci-cache-and-affected.md, and roadmap baseline language no longer imply literal hello-world tests are the long-term proof",
         "GitHub Actions remain green after the workflow rename or replacement"
@@ -12411,6 +12421,10 @@
         {
           "type": "command",
           "value": "just alpha-proof"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run alpha:validate-artifact-linkage"
         },
         {
           "type": "command",
@@ -12634,7 +12648,7 @@
     {
       "id": "CATALOG-013",
       "title": "IGDB and Wikidata platform language adapters",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -12670,10 +12684,7 @@
         "Continuous platform scope accidentally becoming alpha-blocking",
         "Auto-merged conflicting facts",
         "Live API credential coupling"
-      ],
-      "owner": "codex-orchestrator-wave10",
-      "branch": "spec/catalog-013",
-      "worktree": "/tmp/itotori-spec-catalog-013"
+      ]
     },
     {
       "id": "KAIFUU-081",
@@ -12826,7 +12837,7 @@
     {
       "id": "KAIFUU-085",
       "title": "Helper result schema and redacted validation",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12859,10 +12870,7 @@
         "Raw key leakage",
         "Unstructured helper diagnostics",
         "Fixture results diverging from local helper outputs"
-      ],
-      "owner": "codex-orchestrator-wave10",
-      "branch": "spec/kaifuu-085",
-      "worktree": "/tmp/itotori-spec-kaifuu-085"
+      ]
     },
     {
       "id": "KAIFUU-086",
@@ -18760,6 +18768,124 @@
         }
       ],
       "auditFocus": ["Fixture evidence hidden as raw cache", "Benchmark explanation ambiguity"]
+    },
+    {
+      "id": "KAIFUU-152",
+      "status": "planned",
+      "title": "Helper-result invalid fixture diagnostic noise",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-085"],
+      "summary": "Reduce redundant redaction diagnostics for helper-result invalid fixtures while preserving strict secretRef failures and redaction.",
+      "deliverables": [
+        "Focused invalid helper-result diagnostic fixture",
+        "CLI report assertion for primary secretRef failure without redundant message noise"
+      ],
+      "acceptanceCriteria": [
+        "Invalid base64url path-component helper-result fixtures fail on secretRefs.0.secretRef.",
+        "Reports avoid redundant diagnostic.message redaction failures when the message is synthetic and non-sensitive.",
+        "Raw secret-like material remains redacted from reports and CLI output."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli helper_result"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec node fixtures/validate-public-manifests.mjs"
+        }
+      ],
+      "auditFocus": ["Noisy helper-result diagnostics", "Raw secret material leakage"]
+    },
+    {
+      "id": "CATALOG-085",
+      "status": "planned",
+      "title": "Repository-derived platform-language conflict augmentation",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-013"],
+      "summary": "Derive official-English and platform-language conflict facts from current repository evidence rather than relying only on fixture-authored conflict payloads.",
+      "deliverables": [
+        "Repository-derived conflict augmentation service",
+        "VNDB, EGS, DLsite, local candidate comparison fixtures",
+        "Separate tests for fixture-authored and repository-derived conflict facts"
+      ],
+      "acceptanceCriteria": [
+        "Platform-language facts are compared against existing VNDB, EGS, DLsite, and local candidate rows to generate reviewable conflicts.",
+        "Generated conflicts preserve source provenance and never destructively merge or reassign external ids.",
+        "Opportunity or benchmark demotion explanations identify whether conflicts were fixture-authored or repository-derived."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": [
+        "Fixture-authored conflict drift",
+        "Auto-merged conflicting facts",
+        "Missing conflict provenance"
+      ]
+    },
+    {
+      "id": "ITOTORI-126",
+      "status": "planned",
+      "title": "Explicit standalone style-guide builder route context",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-065"],
+      "summary": "Require explicit locale branch and style-guide policy version context for standalone style-guide builder routes.",
+      "deliverables": [
+        "Standalone route missing-context diagnostic",
+        "Valid explicit route context tests",
+        "Invalid id route tests"
+      ],
+      "acceptanceCriteria": [
+        "Standalone style-guide builder routes without required locale branch and policy ids do not fall back to contract UUID defaults.",
+        "Valid standalone route requests preserve ids across route, branch, policy, transcript, validation, and consequences.",
+        "Route tests cover missing query params, invalid ids, and valid explicit ids."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        }
+      ],
+      "auditFocus": ["Implicit standalone route context", "Mixed branch and policy ids"]
+    },
+    {
+      "id": "ITOTORI-127",
+      "status": "planned",
+      "title": "Style-guide builder panel unavailable state",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "dashboard",
+      "dependsOn": ["ITOTORI-065"],
+      "summary": "Render a panel-scoped unavailable state when style-guide context is missing instead of failing the entire dashboard.",
+      "deliverables": [
+        "Style-guide panel unavailable UI state",
+        "Missing branch and missing policy fixture tests"
+      ],
+      "acceptanceCriteria": [
+        "Dashboard still renders non-style-guide status when style-guide context is missing.",
+        "The style-guide panel unavailable state names the missing selected locale branch or policy version id.",
+        "Unrecoverable dashboard status load failures still use the existing full-dashboard error path."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        }
+      ],
+      "auditFocus": ["Missing-context dashboard blanking", "Unclear panel diagnostics"]
     }
   ]
 }

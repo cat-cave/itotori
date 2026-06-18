@@ -1,0 +1,96 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-013-20260618T233500Z",
+  "generatedAt": "2026-06-18T23:35:00Z",
+  "spec": {
+    "id": "CATALOG-013",
+    "title": "IGDB and Wikidata platform language adapters",
+    "branch": "spec/catalog-013",
+    "worktree": "/tmp/itotori-spec-catalog-013",
+    "commit": "7e93bc876af5004fd6812a370339d5ebf3f726cc"
+  },
+  "auditor": {
+    "name": "catalog-013-platform-language-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers after adding the platform-language demotion read model. One P2 source-safety follow-up remains for repository-derived conflict augmentation.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["CATALOG-013-F001"]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-013-F001",
+      "severity": "P2",
+      "title": "Official-English conflicts are fixture-authored rather than repository-derived",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/services/catalog-recorded-importers.ts"
+        },
+        {
+          "path": "packages/itotori-db/src/repositories/catalog-repository.ts"
+        }
+      ],
+      "description": "Recorded IGDB/Wikidata adapters import conflict metadata from fixture payloads; broader repository-derived language conflict augmentation remains future work.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit accepted this as non-blocking because CATALOG-013 now visibly demotes false untranslated candidates, but conflict generation beyond fixture-provided metadata is still weak source-safety coverage."
+        }
+      ],
+      "impact": "Future source drift could rely on fixture-authored conflicts instead of deriving conflicts from current VNDB, EGS, DLsite, or local candidate rows.",
+      "actionableAcceptanceCriteria": [
+        "Repository-derived language conflict augmentation compares platform-language facts against existing VNDB, EGS, DLsite, and local candidate rows.",
+        "Generated conflicts preserve source provenance and do not destructively reassign external ids or language status.",
+        "Tests cover fixture-authored and repository-derived conflict paths separately."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Repository-derived platform-language conflict augmentation",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-013"],
+          "summary": "Derive official-English and platform-language conflict facts from current repository evidence rather than relying only on fixture-authored conflict payloads.",
+          "deliverables": [
+            "Repository-derived conflict augmentation service",
+            "VNDB, EGS, DLsite, local candidate comparison fixtures",
+            "Separate tests for fixture-authored and repository-derived conflict facts"
+          ],
+          "acceptanceCriteria": [
+            "Platform-language facts are compared against existing VNDB, EGS, DLsite, and local candidate rows to generate reviewable conflicts.",
+            "Generated conflicts preserve source provenance and never destructively merge or reassign external ids.",
+            "Opportunity or benchmark demotion explanations identify whether conflicts were fixture-authored or repository-derived."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "Fixture-authored conflict drift",
+            "Auto-merged conflicting facts",
+            "Missing conflict provenance"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,95 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-085-20260618T233450Z",
+  "generatedAt": "2026-06-18T23:34:50Z",
+  "spec": {
+    "id": "KAIFUU-085",
+    "title": "Helper result schema and redacted validation",
+    "branch": "spec/kaifuu-085",
+    "worktree": "/tmp/itotori-spec-kaifuu-085",
+    "commit": "21a3470a0a0879b3c5f1343a371cc10f092a35fd"
+  },
+  "auditor": {
+    "name": "kaifuu-085-helper-result-reaudit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers after helper-result schema and secretRef component validation repairs. One P3 diagnostic-noise item is recorded for later cleanup.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-085-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-085-F001",
+      "severity": "P3",
+      "title": "Invalid helper-result fixture reports extra redaction diagnostic",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "fixtures/public/kaifuu-helper-results/invalid/raw-base64url-path-component-secret-ref.json"
+        },
+        {
+          "path": "crates/kaifuu-core/src/lib.rs"
+        }
+      ],
+      "description": "The invalid base64url path-component fixture correctly reports secretRefs.0.secretRef, but also reports diagnostic.message:kaifuu.secret_redacted because the synthetic diagnostic message contains secretRef wording.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit confirmed the required fixtureId and secretRefs.0.secretRef failure are present and raw material is redacted; the extra redaction diagnostic is safe but noisy."
+        }
+      ],
+      "impact": "Invalid fixture reports are safe, but the extra redaction failure can distract from the primary helper-result validation error.",
+      "actionableAcceptanceCriteria": [
+        "The invalid base64url path-component helper-result fixture still fails on secretRefs.0.secretRef.",
+        "The fixture or validator avoids a redundant diagnostic.message redaction failure when the primary secretRef error is already emitted.",
+        "Raw secret-like material remains redacted from reports and CLI output."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Helper-result invalid fixture diagnostic noise",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-085"],
+          "summary": "Reduce redundant redaction diagnostics for helper-result invalid fixtures while preserving strict secretRef failures and redaction.",
+          "deliverables": [
+            "Focused invalid helper-result diagnostic fixture",
+            "CLI report assertion for primary secretRef failure without redundant message noise"
+          ],
+          "acceptanceCriteria": [
+            "Invalid base64url path-component helper-result fixtures fail on secretRefs.0.secretRef.",
+            "Reports avoid redundant diagnostic.message redaction failures when the message is synthetic and non-sensitive.",
+            "Raw secret-like material remains redacted from reports and CLI output."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli helper_result"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec node fixtures/validate-public-manifests.mjs"
+            }
+          ],
+          "auditFocus": ["Noisy helper-result diagnostics", "Raw secret material leakage"]
+        }
+      }
+    }
+  ]
+}

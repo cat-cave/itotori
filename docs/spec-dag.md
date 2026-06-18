@@ -110,6 +110,9 @@ node must name the exact artifact graph that becomes the new CI signal. For this
 suite, `ALPHA-009` is the handoff from the current DB-backed Hello World
 workflow to an alpha proof workflow that validates bridge, patch, provider,
 benchmark, runtime, dashboard/read-model, and SHARED-025 manifest linkage.
+After that handoff, the old Hello World workflow should be removed or collapsed
+into a compatibility alias for the alpha proof command so the suite has one
+required integration truth.
 
 Every node includes:
 
