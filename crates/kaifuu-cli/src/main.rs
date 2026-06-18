@@ -828,6 +828,56 @@ mod tests {
         assert!(codes.contains(&"kaifuu.out_of_range_source_range"));
     }
 
+    #[test]
+    fn offset_map_validate_command_rejects_detached_decoded_source_axes() {
+        let root = temp_dir("offset-map-detached");
+        let input = root.join("detached-offset-map.json");
+        let output = root.join("offset-map-report.json");
+        fs::write(
+            &input,
+            r#"{
+  "sourceFileId": "script.ks",
+  "sourceRevisionId": "rev-detached-001",
+  "encoding": "utf_8",
+  "sourceLength": 4,
+  "decodedTextLength": 4,
+  "patchedLength": 4,
+  "segments": [
+    {
+      "sourceBytes": { "start": 0, "end": 0 },
+      "decodedText": { "start": 0, "end": 4 },
+      "patchedBytes": { "start": 0, "end": 4 }
+    }
+  ]
+}
+"#,
+        )
+        .unwrap();
+
+        let error = run_cli_with_registry_result(
+            &[
+                "offset-map",
+                "validate",
+                input.to_str().unwrap(),
+                "--output",
+                output.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .expect_err("detached offset map should fail");
+        let error = error.to_string();
+        assert!(error.contains("kaifuu.detached_offset_segment"), "{error}");
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        let codes = report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|diagnostic| diagnostic["code"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert!(codes.contains(&"kaifuu.detached_offset_segment"));
+    }
+
     fn write_apply_delta(root: &Path) -> (PathBuf, PathBuf) {
         let game_dir = temp_game(root);
         let patched_dir = root.join("patched");

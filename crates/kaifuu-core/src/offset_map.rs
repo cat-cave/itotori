@@ -1,15 +1,15 @@
 use std::fmt;
 
+use serde::ser::SerializeStruct;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::OperationStatus;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ByteSpan {
-    pub start: u64,
-    pub end: u64,
+    start: u64,
+    end: u64,
 }
 
 impl ByteSpan {
@@ -40,6 +40,14 @@ impl ByteSpan {
         self.end - self.start
     }
 
+    pub fn start(self) -> u64 {
+        self.start
+    }
+
+    pub fn end(self) -> u64 {
+        self.end
+    }
+
     pub fn is_empty(self) -> bool {
         self.start == self.end
     }
@@ -57,8 +65,36 @@ impl ByteSpan {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+impl Serialize for ByteSpan {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut state = serializer.serialize_struct("ByteSpan", 2)?;
+        state.serialize_field("start", &self.start)?;
+        state.serialize_field("end", &self.end)?;
+        state.end()
+    }
+}
+
+impl<'de> Deserialize<'de> for ByteSpan {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawByteSpan {
+            start: u64,
+            end: u64,
+        }
+
+        let raw = RawByteSpan::deserialize(deserializer)?;
+        Self::new(raw.start, raw.end).map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SourceEncoding {
     Utf8,
     ShiftJis,
@@ -84,6 +120,26 @@ impl SourceEncoding {
             "binary" => Some(Self::Binary),
             _ => None,
         }
+    }
+}
+
+impl Serialize for SourceEncoding {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for SourceEncoding {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        Self::parse(&value)
+            .ok_or_else(|| serde::de::Error::custom(format!("encoding {value} is not supported")))
     }
 }
 
@@ -180,10 +236,10 @@ impl<'de> Deserialize<'de> for SourceRevisionId {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SourceRange {
-    pub source_file_id: SourceFileId,
-    pub source_revision_id: SourceRevisionId,
-    pub encoding: SourceEncoding,
-    pub bytes: ByteSpan,
+    source_file_id: SourceFileId,
+    source_revision_id: SourceRevisionId,
+    encoding: SourceEncoding,
+    bytes: ByteSpan,
 }
 
 impl SourceRange {
@@ -199,6 +255,22 @@ impl SourceRange {
             encoding,
             bytes,
         })
+    }
+
+    pub fn source_file_id(&self) -> &SourceFileId {
+        &self.source_file_id
+    }
+
+    pub fn source_revision_id(&self) -> &SourceRevisionId {
+        &self.source_revision_id
+    }
+
+    pub fn encoding(&self) -> SourceEncoding {
+        self.encoding
+    }
+
+    pub fn bytes(&self) -> ByteSpan {
+        self.bytes
     }
 
     pub fn validate_against(&self, offset_map: &OffsetMap) -> OffsetMapValidationResult {
@@ -238,34 +310,92 @@ impl SourceRange {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OffsetMapSegment {
-    pub source_bytes: ByteSpan,
-    pub decoded_text: ByteSpan,
-    pub patched_bytes: ByteSpan,
+    source_bytes: ByteSpan,
+    decoded_text: ByteSpan,
+    patched_bytes: ByteSpan,
 }
 
 impl OffsetMapSegment {
-    pub fn new(source_bytes: ByteSpan, decoded_text: ByteSpan, patched_bytes: ByteSpan) -> Self {
+    pub fn new(
+        source_bytes: ByteSpan,
+        decoded_text: ByteSpan,
+        patched_bytes: ByteSpan,
+    ) -> Result<Self, OffsetMapError> {
+        let mut diagnostics = Vec::new();
+        validate_segment_axes_attached(
+            &mut diagnostics,
+            "segment",
+            source_bytes,
+            decoded_text,
+            patched_bytes,
+        );
+        if !diagnostics.is_empty() {
+            return Err(OffsetMapError { diagnostics });
+        }
+        Ok(Self::new_unchecked(
+            source_bytes,
+            decoded_text,
+            patched_bytes,
+        ))
+    }
+
+    fn new_unchecked(
+        source_bytes: ByteSpan,
+        decoded_text: ByteSpan,
+        patched_bytes: ByteSpan,
+    ) -> Self {
         Self {
             source_bytes,
             decoded_text,
             patched_bytes,
         }
     }
+
+    pub fn source_bytes(&self) -> ByteSpan {
+        self.source_bytes
+    }
+
+    pub fn decoded_text(&self) -> ByteSpan {
+        self.decoded_text
+    }
+
+    pub fn patched_bytes(&self) -> ByteSpan {
+        self.patched_bytes
+    }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+impl<'de> Deserialize<'de> for OffsetMapSegment {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawOffsetMapSegment {
+            source_bytes: ByteSpan,
+            decoded_text: ByteSpan,
+            patched_bytes: ByteSpan,
+        }
+
+        let raw = RawOffsetMapSegment::deserialize(deserializer)?;
+        Self::new(raw.source_bytes, raw.decoded_text, raw.patched_bytes)
+            .map_err(serde::de::Error::custom)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct OffsetMap {
-    pub source_file_id: SourceFileId,
-    pub source_revision_id: SourceRevisionId,
-    pub encoding: SourceEncoding,
-    pub source_length: u64,
-    pub decoded_text_length: u64,
-    pub patched_length: u64,
-    pub segments: Vec<OffsetMapSegment>,
+    source_file_id: SourceFileId,
+    source_revision_id: SourceRevisionId,
+    encoding: SourceEncoding,
+    source_length: u64,
+    decoded_text_length: u64,
+    patched_length: u64,
+    segments: Vec<OffsetMapSegment>,
 }
 
 impl OffsetMap {
@@ -278,9 +408,29 @@ impl OffsetMap {
         patched_length: u64,
         segments: Vec<OffsetMapSegment>,
     ) -> Result<Self, OffsetMapError> {
+        Self::from_validated_parts(
+            SourceFileId::new(source_file_id)?,
+            SourceRevisionId::new(source_revision_id)?,
+            encoding,
+            source_length,
+            decoded_text_length,
+            patched_length,
+            segments,
+        )
+    }
+
+    fn from_validated_parts(
+        source_file_id: SourceFileId,
+        source_revision_id: SourceRevisionId,
+        encoding: SourceEncoding,
+        source_length: u64,
+        decoded_text_length: u64,
+        patched_length: u64,
+        segments: Vec<OffsetMapSegment>,
+    ) -> Result<Self, OffsetMapError> {
         let offset_map = Self {
-            source_file_id: SourceFileId::new(source_file_id)?,
-            source_revision_id: SourceRevisionId::new(source_revision_id)?,
+            source_file_id,
+            source_revision_id,
             encoding,
             source_length,
             decoded_text_length,
@@ -289,6 +439,34 @@ impl OffsetMap {
         };
         offset_map.validate().into_result()?;
         Ok(offset_map)
+    }
+
+    pub fn source_file_id(&self) -> &SourceFileId {
+        &self.source_file_id
+    }
+
+    pub fn source_revision_id(&self) -> &SourceRevisionId {
+        &self.source_revision_id
+    }
+
+    pub fn encoding(&self) -> SourceEncoding {
+        self.encoding
+    }
+
+    pub fn source_length(&self) -> u64 {
+        self.source_length
+    }
+
+    pub fn decoded_text_length(&self) -> u64 {
+        self.decoded_text_length
+    }
+
+    pub fn patched_length(&self) -> u64 {
+        self.patched_length
+    }
+
+    pub fn segments(&self) -> &[OffsetMapSegment] {
+        &self.segments
     }
 
     pub fn validate(&self) -> OffsetMapValidationResult {
@@ -302,6 +480,13 @@ impl OffsetMap {
         }
 
         for (index, segment) in self.segments.iter().enumerate() {
+            validate_segment_axes_attached(
+                &mut diagnostics,
+                format!("segments[{index}]"),
+                segment.source_bytes,
+                segment.decoded_text,
+                segment.patched_bytes,
+            );
             validate_segment_span(
                 &mut diagnostics,
                 index,
@@ -437,6 +622,37 @@ impl OffsetMap {
                 span.end
             ),
         )))
+    }
+}
+
+impl<'de> Deserialize<'de> for OffsetMap {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct RawOffsetMap {
+            source_file_id: SourceFileId,
+            source_revision_id: SourceRevisionId,
+            encoding: SourceEncoding,
+            source_length: u64,
+            decoded_text_length: u64,
+            patched_length: u64,
+            segments: Vec<OffsetMapSegment>,
+        }
+
+        let raw = RawOffsetMap::deserialize(deserializer)?;
+        Self::from_validated_parts(
+            raw.source_file_id,
+            raw.source_revision_id,
+            raw.encoding,
+            raw.source_length,
+            raw.decoded_text_length,
+            raw.patched_length,
+            raw.segments,
+        )
+        .map_err(serde::de::Error::custom)
     }
 }
 
@@ -604,7 +820,7 @@ pub fn validate_offset_map_value(value: &Value) -> OffsetMapValidationResult {
         if let (Some(source_bytes), Some(decoded_text), Some(patched_bytes)) =
             (source_bytes, decoded_text, patched_bytes)
         {
-            typed_segments.push(OffsetMapSegment::new(
+            typed_segments.push(OffsetMapSegment::new_unchecked(
                 source_bytes,
                 decoded_text,
                 patched_bytes,
@@ -712,6 +928,30 @@ fn validate_segment_span(
                 "span {}..{} exceeds declared length {}",
                 span.start, span.end, upper_bound
             ),
+        ));
+    }
+}
+
+fn validate_segment_axes_attached(
+    diagnostics: &mut Vec<OffsetMapDiagnostic>,
+    field: impl Into<String>,
+    source_bytes: ByteSpan,
+    decoded_text: ByteSpan,
+    patched_bytes: ByteSpan,
+) {
+    let empty_axes = [
+        source_bytes.is_empty(),
+        decoded_text.is_empty(),
+        patched_bytes.is_empty(),
+    ]
+    .into_iter()
+    .filter(|empty| *empty)
+    .count();
+    if empty_axes != 0 && empty_axes != 3 {
+        diagnostics.push(OffsetMapDiagnostic::new(
+            "kaifuu.detached_offset_segment",
+            field,
+            "offset map segment axes must all be empty or all non-empty",
         ));
     }
 }
@@ -874,6 +1114,16 @@ mod tests {
     }
 
     #[test]
+    fn byte_span_deserialization_rejects_inverted_offsets() {
+        let error = serde_json::from_value::<ByteSpan>(serde_json::json!({
+            "start": 10,
+            "end": 9
+        }))
+        .unwrap_err();
+        assert!(error.to_string().contains("kaifuu.invalid_offset"));
+    }
+
+    #[test]
     fn validates_utf8_shift_jis_binary_table_and_sliced_buffer_fixtures() {
         for name in ["utf8", "shift_jis", "binary_table", "sliced_buffer"] {
             let value = fixture(name);
@@ -963,5 +1213,46 @@ mod tests {
         assert!(codes.contains(&"kaifuu.missing_source_revision_id"));
         assert!(codes.contains(&"kaifuu.overlapping_spans"));
         assert!(codes.contains(&"kaifuu.out_of_range_source_range"));
+    }
+
+    #[test]
+    fn validator_rejects_detached_decoded_source_axes() {
+        let mut value = fixture("utf8");
+        value["segments"][0]["sourceBytes"] = serde_json::json!({ "start": 0, "end": 0 });
+
+        let validation = validate_offset_map_value(&value);
+        assert_eq!(validation.status, OperationStatus::Failed);
+        let codes = validation
+            .diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.code.as_str())
+            .collect::<Vec<_>>();
+        assert!(codes.contains(&"kaifuu.detached_offset_segment"));
+    }
+
+    #[test]
+    fn offset_map_deserialization_rejects_detached_decoded_source_axes() {
+        let mut value = fixture("utf8");
+        value["segments"][0]["sourceBytes"] = serde_json::json!({ "start": 0, "end": 0 });
+
+        let error = serde_json::from_value::<OffsetMap>(value).unwrap_err();
+        assert!(
+            error.to_string().contains("kaifuu.detached_offset_segment"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn offset_map_segment_constructor_rejects_detached_axes() {
+        let error = OffsetMapSegment::new(
+            ByteSpan::new(0, 0).unwrap(),
+            ByteSpan::new(0, 1).unwrap(),
+            ByteSpan::new(0, 1).unwrap(),
+        )
+        .unwrap_err();
+        assert_eq!(
+            error.diagnostics()[0].code,
+            "kaifuu.detached_offset_segment"
+        );
     }
 }
