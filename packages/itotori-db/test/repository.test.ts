@@ -385,11 +385,11 @@ describe("ItotoriProjectRepository", () => {
         validationFindingCount: 0,
         traceEvents: [
           {
-            runtimeEventId: "runtime-test:runtime-text-1",
+            runtimeEventId: "runtime-test:runtime-text-test",
             eventKind: "trace_event",
-            bridgeUnitId: "bridge-unit-1",
+            bridgeUnitId: "bridge-unit-test",
             sourceUnitKey: "hello.scene.001.line.001",
-            draftId: "locale-test:bridge-unit-1",
+            draftId: "locale-en-us:bridge-unit-test",
             runtimeTargetId: null,
             evidenceTier: null,
             frame: 1,
@@ -400,13 +400,13 @@ describe("ItotoriProjectRepository", () => {
         findings: [],
         artifacts: [
           {
-            artifactId: "runtime-test:frame-1",
+            artifactId: "runtime-test:frame-test",
             artifactKind: "frame_capture",
             uri: "fixture://frame/1",
             hash: null,
             mediaType: null,
             byteSize: null,
-            bridgeUnitId: "bridge-unit-1",
+            bridgeUnitId: "bridge-unit-test",
             sourceUnitKey: "hello.scene.001.line.001",
             diagnostic:
               "blocked unmanaged artifact link: runtime artifact uri must be a portable relative artifact path: fixture://frame/1",
@@ -1209,16 +1209,59 @@ describe("ItotoriProjectRepository", () => {
           {
             runtimeEventId:
               "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
+            eventKind: "text_observed",
             bridgeUnitId: "bridge-unit-test",
             sourceUnitKey: "hello.scene.001.line.001",
-            draftId: "locale-test:bridge-unit-test",
+            draftId: "locale-en-us:bridge-unit-test",
             runtimeTargetId: "hello.line.001",
             evidenceTier: null,
             frame: 1,
             textPreview: "Hello, {player}.",
+            artifactIds: [
+              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
+            ],
+          },
+          {
+            runtimeEventId:
+              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
+            eventKind: "branch_event",
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+            draftId: "locale-en-us:bridge-unit-test",
+            runtimeTargetId: "hello.choice.001",
+            evidenceTier: null,
+            frame: 2,
+            textPreview: null,
+            artifactIds: [
+              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
+            ],
           },
         ],
         artifacts: [
+          {
+            artifactId:
+              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
+            artifactKind: "runtime_trace_event",
+            uri: null,
+            hash: null,
+            mediaType: null,
+            byteSize: null,
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+            diagnostic: "artifact record has no managed artifact-store URI",
+          },
+          {
+            artifactId:
+              "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
+            artifactKind: "runtime_branch_event",
+            uri: null,
+            hash: null,
+            mediaType: null,
+            byteSize: null,
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+            diagnostic: "artifact record has no managed artifact-store URI",
+          },
           expect.objectContaining({
             artifactId:
               "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000401",
@@ -1226,6 +1269,9 @@ describe("ItotoriProjectRepository", () => {
             uri: "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000001/screenshots/019ed003-0000-7000-8000-000000000401.png",
             hash: null,
             mediaType: "image/png",
+            byteSize: null,
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
             diagnostic: null,
           }),
         ],
