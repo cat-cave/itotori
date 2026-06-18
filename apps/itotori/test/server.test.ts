@@ -152,6 +152,11 @@ describe("Itotori server API contracts", () => {
         await expect(deepLinkResponse.text()).resolves.toBe("runtime dashboard");
         expect(getRuntimeStatus).not.toHaveBeenCalled();
 
+        const styleGuideBuilderResponse = await fetch(`${origin}/style-guide-builder`);
+        expect(styleGuideBuilderResponse.status).toBe(200);
+        expect(styleGuideBuilderResponse.headers.get("content-type")).toBe("text/html");
+        await expect(styleGuideBuilderResponse.text()).resolves.toBe("itotori dashboard");
+
         const assetResponse = await fetch(`${origin}/assets/runtime.js`);
         expect(assetResponse.status).toBe(200);
         expect(assetResponse.headers.get("content-type")).toBe("text/javascript");
