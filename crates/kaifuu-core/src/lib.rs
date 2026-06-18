@@ -37,13 +37,19 @@ pub const SEMANTIC_MISSING_PATCH_BACK_CAPABILITY: &str = "kaifuu.missing_capabil
 pub const SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED: &str = "kaifuu.unsupported_variant.encrypted";
 pub const SEMANTIC_UNSUPPORTED_VARIANT_PACKED: &str = "kaifuu.unsupported_variant.packed";
 pub const SEMANTIC_UNKNOWN_ENGINE_VARIANT: &str = "kaifuu.unknown_engine_variant";
+pub const STRING_SLOT_OVERFLOW: &str = "kaifuu.string_slot.overflow";
+pub const STRING_SLOT_INVALID_ENCODING: &str = "kaifuu.string_slot.invalid_encoding";
+pub const STRING_SLOT_TERMINATOR_LOSS: &str = "kaifuu.string_slot.terminator_loss";
+pub const STRING_SLOT_PROTECTED_SPAN_MUTATION: &str = "kaifuu.string_slot.protected_span_mutation";
 
 pub mod contracts;
 mod offset_map;
 
 pub use offset_map::{
-    ByteSpan, OffsetMap, OffsetMapDiagnostic, OffsetMapError, OffsetMapSegment,
-    OffsetMapValidationResult, SourceEncoding, SourceFileId, SourceRange, SourceRevisionId,
+    ByteSpan, EncodedStringSlot, EncodedStringSlotDiagnostic, EncodedStringSlotLayout,
+    EncodedStringSlotPreflightReport, EncodedStringSlotProtectedSpan, OffsetMap,
+    OffsetMapDiagnostic, OffsetMapError, OffsetMapSegment, OffsetMapValidationResult,
+    SourceEncoding, SourceFileId, SourceRange, SourceRevisionId, parse_hex_bytes,
     validate_offset_map_value,
 };
 
@@ -7750,6 +7756,10 @@ impl AdapterFailure {
                 | SEMANTIC_MISSING_CRYPTO_CAPABILITY
                 | SEMANTIC_MISSING_CODEC_CAPABILITY
                 | SEMANTIC_MISSING_PATCH_BACK_CAPABILITY
+                | STRING_SLOT_OVERFLOW
+                | STRING_SLOT_INVALID_ENCODING
+                | STRING_SLOT_TERMINATOR_LOSS
+                | STRING_SLOT_PROTECTED_SPAN_MUTATION
         )
     }
 
@@ -7874,6 +7884,35 @@ impl AdapterFailure {
             .asset_ref(asset_ref)
             .remediation("inspect the redacted local-only evidence on the runner"),
         )
+    }
+
+    pub fn encoded_string_slot_preflight(
+        adapter: impl Into<String>,
+        engine: impl Into<String>,
+        detected_variant: impl Into<String>,
+        asset_ref: impl Into<String>,
+        diagnostic: EncodedStringSlotDiagnostic,
+    ) -> Self {
+        Self {
+            error_code: diagnostic.code,
+            adapter: adapter.into(),
+            engine: Some(engine.into()),
+            detected_variant: Some(detected_variant.into()),
+            asset_ref: Some(asset_ref.into()),
+            required_capability: Some(Capability::PatchBack),
+            support_boundary: format!(
+                "encoded string slot {} byte range {}..{} failed preflight: {}",
+                diagnostic.slot_id,
+                diagnostic.byte_range.start(),
+                diagnostic.byte_range.end(),
+                diagnostic.message
+            ),
+            remediation: Some(format!(
+                "{}: {}",
+                diagnostic.remediation_code, diagnostic.remediation
+            )),
+        }
+        .redacted_for_report()
     }
 }
 

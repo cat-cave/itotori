@@ -1,0 +1,11 @@
+{
+  "slot": {
+    "slotId": "sjis-null-line",
+    "encoding": "shift_jis",
+    "byteRange": { "start": 192, "end": 204 },
+    "layout": { "kind": "null_terminated", "terminatorHex": "00" },
+    "protectedSpans": []
+  },
+  "targetText": "ミラ",
+  "currentSlotBytesHex": "838983890000000000000000"
+}

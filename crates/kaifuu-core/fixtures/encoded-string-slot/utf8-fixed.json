@@ -1,0 +1,10 @@
+{
+  "slot": {
+    "slotId": "utf8-fixed-line",
+    "encoding": "utf_8",
+    "byteRange": { "start": 16, "end": 32 },
+    "layout": { "kind": "fixed_width" },
+    "protectedSpans": []
+  },
+  "targetText": "Cafe menu"
+}
