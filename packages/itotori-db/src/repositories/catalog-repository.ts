@@ -726,9 +726,14 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
         }
 
         for (const seedTarget of entry.seedTargets) {
+          const usesParentLocalScanEntry =
+            seedTarget.localScanEntryId === null ||
+            seedTarget.localScanEntryId === entry.localScanEntryId;
           await recordSeedTargetUnchecked(tx as ItotoriDatabase, {
             ...seedTarget,
-            localScanEntryId: seedTarget.localScanEntryId ?? persistedLocalScanEntryId,
+            localScanEntryId: usesParentLocalScanEntry
+              ? persistedLocalScanEntryId
+              : seedTarget.localScanEntryId,
           });
         }
       }

@@ -657,6 +657,93 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("links nested seed targets to the persisted local scan entry after entry re-upsert", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const localScanInput = {
+        localScanId: uuid(841),
+        scanRootLabel: "focused natural fixture library",
+        scanRootPathHash: hash("focused-natural-scan-root"),
+        scannerName: "focused-natural-scan-regression",
+        scannerVersion: "0.0.0",
+        startedAt: fetchedAt,
+        completedAt: "2026-06-17T12:02:00.000Z",
+        entries: [
+          {
+            pathHash: hash("focused-natural-scan-entry-path"),
+            seedTargets: [
+              {
+                catalogSource: catalogSourceValues.dlsite,
+                sourceId: "RJFOCUSED001",
+                seedOrigin: catalogSeedOriginValues.localScan,
+                status: catalogSeedStatusValues.pending,
+                priority: 1,
+                addedAt: fetchedAt,
+                metadata: { revision: 1 },
+              },
+            ],
+          },
+        ],
+      } satisfies Parameters<ItotoriCatalogRepository["recordLocalScan"]>[1];
+
+      const first = await repo.recordLocalScan(localActor, localScanInput);
+      const firstEntry = requiredTestRow(first.entries, "local scan entry");
+      const firstSeedTarget = requiredTestRow(firstEntry.seedTargets, "seed target");
+      const entryInput = requiredTestRow(localScanInput.entries, "local scan entry input");
+      const seedTargetInput = requiredTestRow(entryInput.seedTargets, "seed target input");
+
+      const second = await repo.recordLocalScan(localActor, {
+        ...localScanInput,
+        entries: [
+          {
+            ...entryInput,
+            seedTargets: [
+              {
+                ...seedTargetInput,
+                priority: 7,
+                metadata: { revision: 2 },
+              },
+            ],
+          },
+        ],
+      });
+
+      const secondEntry = requiredTestRow(second.entries, "local scan entry");
+      const secondSeedTarget = requiredTestRow(secondEntry.seedTargets, "seed target");
+      expect(secondEntry.localScanEntryId).toBe(firstEntry.localScanEntryId);
+      expect(secondSeedTarget).toMatchObject({
+        seedTargetId: firstSeedTarget.seedTargetId,
+        localScanEntryId: firstEntry.localScanEntryId,
+        priority: 7,
+        metadata: { revision: 2 },
+      });
+
+      const counts = await context.db.execute(sql`
+        select
+          (
+            select count(*)::int
+            from ${catalogLocalScanEntries}
+            where local_scan_id = ${localScanInput.localScanId}
+              and path_hash = ${entryInput.pathHash}
+          ) as local_scan_entry_count,
+          (
+            select count(*)::int
+            from ${catalogSeedTargets}
+            where catalog_source = ${catalogSourceValues.dlsite}
+              and source_id = ${"RJFOCUSED001"}
+              and seed_origin = ${catalogSeedOriginValues.localScan}
+          ) as seed_target_count
+      `);
+      expect(counts.rows[0]).toMatchObject({
+        local_scan_entry_count: 1,
+        seed_target_count: 1,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("upserts seed targets by coalesced natural origin and lists higher priority first", async () => {
     const context = await isolatedMigratedContext();
     try {
