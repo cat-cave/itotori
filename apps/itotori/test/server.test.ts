@@ -41,7 +41,7 @@ describe("Itotori server API contracts", () => {
       status: "runtime_ingested",
       localeBranches: [
         { localeBranchId: "locale-1", targetLocale: "en-US" },
-        { localeBranchId: "locale-fr-fr", targetLocale: "fr-FR" },
+        { localeBranchId: "019ed065-0000-7000-8000-000000000110", targetLocale: "fr-FR" },
       ],
     });
     expect(getDashboardStatus).toHaveBeenCalledTimes(1);
@@ -151,6 +151,11 @@ describe("Itotori server API contracts", () => {
         expect(deepLinkResponse.headers.get("content-type")).toBe("text/html");
         await expect(deepLinkResponse.text()).resolves.toBe("runtime dashboard");
         expect(getRuntimeStatus).not.toHaveBeenCalled();
+
+        const styleGuideBuilderResponse = await fetch(`${origin}/style-guide-builder`);
+        expect(styleGuideBuilderResponse.status).toBe(200);
+        expect(styleGuideBuilderResponse.headers.get("content-type")).toBe("text/html");
+        await expect(styleGuideBuilderResponse.text()).resolves.toBe("itotori dashboard");
 
         const assetResponse = await fetch(`${origin}/assets/runtime.js`);
         expect(assetResponse.status).toBe(200);

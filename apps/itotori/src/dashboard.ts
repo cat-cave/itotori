@@ -12,6 +12,12 @@ import {
   type ApiProjectsResponse,
   type ItotoriApiRouteId,
 } from "./api-schema.js";
+import {
+  loadStyleGuideContext,
+  renderStyleGuideBuilderPanel,
+  styleGuideBuilderStyles,
+  type StyleGuideBuilderContext,
+} from "./style-guide-builder.js";
 
 export type DashboardEndpoints = {
   projects: string;
@@ -46,6 +52,7 @@ type DashboardData =
       decisions: DashboardDecisionReadModel;
       cost: ProjectCostReport;
       runtime: RuntimeDashboardStatus;
+      styleGuide: StyleGuideBuilderContext;
     }
   | {
       state: "empty";
@@ -93,6 +100,7 @@ export async function fetchDashboardData(
     fetchApi("runtime.status", endpoints.runtime),
   ]);
   assertDecisionReadMatchesStatus(status, decisions);
+  const styleGuide = await loadStyleGuideContext(styleGuideInputFromStatus(status));
 
   return {
     state: "ready",
@@ -101,6 +109,7 @@ export async function fetchDashboardData(
     decisions,
     cost,
     runtime,
+    styleGuide,
   };
 }
 
@@ -195,9 +204,10 @@ function renderWorkbench(
   data: Extract<DashboardData, { state: "ready" }>,
 ): void {
   const { status, cost, runtime, projects } = data;
-  const { decisions } = data;
+  const { decisions, styleGuide } = data;
   root.innerHTML = `
     ${dashboardStyles()}
+    ${styleGuideBuilderStyles()}
     <main class="itotori-shell" data-state="ready">
       <header class="shell-header">
         <div>
@@ -239,7 +249,7 @@ function renderWorkbench(
         ${renderProjects(projects)}
         ${renderImportStatus(status)}
         ${renderLocaleBranches(status)}
-        ${renderStyleGuide()}
+        ${renderStyleGuide(styleGuide)}
         ${renderGlossary()}
         ${renderJobs(cost)}
         ${renderQaFindings(decisions)}
@@ -346,12 +356,8 @@ function renderLocaleBranches(status: ProjectDashboardStatus): string {
   );
 }
 
-function renderStyleGuide(): string {
-  return panel(
-    "style-guide",
-    "Style guide",
-    emptyText("No style guide records were returned by the API."),
-  );
+function renderStyleGuide(context: StyleGuideBuilderContext): string {
+  return panel("style-guide", "Style guide", renderStyleGuideBuilderPanel(context));
 }
 
 function renderGlossary(): string {
@@ -717,6 +723,20 @@ function resolveDashboardEndpoints(config: DashboardEndpointConfig): DashboardEn
     };
   }
   return { ...defaultDashboardEndpoints, ...config };
+}
+
+function styleGuideInputFromStatus(status: ProjectDashboardStatus) {
+  const localeBranchId = status.selectedLocaleBranchId;
+  const policyVersionId = status.currentStyleGuidePolicyVersionId;
+  if (localeBranchId === null || policyVersionId === null) {
+    throw new Error("dashboard status is missing style-guide builder route context");
+  }
+  return {
+    localeBranchId,
+    policyVersionId,
+    fixtureState: "empty_policy" as const,
+    permissionProfile: "reviewer" as const,
+  };
 }
 
 function endpointOrigin(endpoint: string): string | null {

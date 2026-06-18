@@ -88,6 +88,15 @@ export function createItotoriServer(options: DashboardServerOptions = {}) {
       }
     }
 
+    if (isItotoriDashboardRoute(url.pathname)) {
+      const itotoriIndex = await readFirstExistingStaticFile("index.html", [webRoot]);
+      if (itotoriIndex !== null) {
+        response.writeHead(200, { "content-type": "text/html" });
+        response.end(itotoriIndex);
+        return;
+      }
+    }
+
     response.writeHead(404, { "content-type": "text/plain" });
     response.end("not found");
   });
@@ -254,6 +263,10 @@ function isOutsideRoot(relativePath: string): boolean {
 
 function isRuntimeDashboardRoute(pathname: string): boolean {
   return pathname === "/runtime" || pathname.startsWith("/runtime/");
+}
+
+function isItotoriDashboardRoute(pathname: string): boolean {
+  return pathname === "/style-guide-builder";
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

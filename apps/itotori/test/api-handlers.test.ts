@@ -154,11 +154,17 @@ describe("Itotori API handlers", () => {
     expect(projectStatus).toEqual({ statusCode: 200, body: dashboardStatusFixture });
     expect(projects.body.projects[0]?.localeBranches).toEqual([
       expect.objectContaining({ localeBranchId: "locale-1", targetLocale: "en-US" }),
-      expect.objectContaining({ localeBranchId: "locale-fr-fr", targetLocale: "fr-FR" }),
+      expect.objectContaining({
+        localeBranchId: "019ed065-0000-7000-8000-000000000110",
+        targetLocale: "fr-FR",
+      }),
     ]);
     expect(projectStatus.body.localeBranches).toEqual([
       expect.objectContaining({ localeBranchId: "locale-1", targetLocale: "en-US" }),
-      expect.objectContaining({ localeBranchId: "locale-fr-fr", targetLocale: "fr-FR" }),
+      expect.objectContaining({
+        localeBranchId: "019ed065-0000-7000-8000-000000000110",
+        targetLocale: "fr-FR",
+      }),
     ]);
     expect(runtimeStatus).toEqual({ statusCode: 200, body: runtimeStatusFixture });
     expect(runtimeV02Status).toEqual({ statusCode: 200, body: runtimeStatusFixture });

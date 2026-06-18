@@ -35,6 +35,15 @@ describe("Itotori dashboard", () => {
     expect(root.textContent).toContain("Import status");
     expect(root.textContent).toContain("Locale branches");
     expect(root.textContent).toContain("Style guide");
+    expect(dashboardStatusFixture.selectedLocaleBranchId).toBe(
+      "019ed065-0000-7000-8000-000000000110",
+    );
+    expect(dashboardStatusFixture.currentStyleGuidePolicyVersionId).toBe(
+      "019ed065-0000-7000-8000-000000000120",
+    );
+    expect(root.textContent).toContain("019ed065-0000-7000-8000-000000000110");
+    expect(root.textContent).toContain("019ed065-0000-7000-8000-000000000120");
+    expect(root.textContent).not.toContain("019ed065-0000-7000-8000-000000000020");
     expect(root.textContent).toContain("Glossary");
     expect(root.textContent).toContain("Jobs");
     expect(root.textContent).toContain("QA findings");

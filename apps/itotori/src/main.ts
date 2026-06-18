@@ -1,3 +1,10 @@
 import { renderDashboard } from "./dashboard.js";
+import { renderStyleGuideBuilderRoute } from "./style-guide-builder.js";
 
-await renderDashboard(document.querySelector<HTMLDivElement>("#app")!);
+const root = document.querySelector<HTMLDivElement>("#app")!;
+
+if (window.location.pathname === "/style-guide-builder") {
+  await renderStyleGuideBuilderRoute(root);
+} else {
+  await renderDashboard(root);
+}

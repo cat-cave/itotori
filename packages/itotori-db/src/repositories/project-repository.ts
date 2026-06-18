@@ -156,6 +156,7 @@ export type LocaleBranchStatus = {
   localeBranchId: string;
   targetLocale: string;
   status: string;
+  currentStyleGuidePolicyVersionId: string | null;
   unitCount: number;
   translatedUnitCount: number;
   openFindingCount: number;
@@ -188,6 +189,8 @@ export type ProjectDashboardStatus = {
   artifactCount: number;
   latestEventKind: string | null;
   latestEventAt: string | null;
+  selectedLocaleBranchId: string | null;
+  currentStyleGuidePolicyVersionId: string | null;
   importStatus: BridgeImportStatus;
   cost: ProjectCostReport;
   localeBranches: LocaleBranchStatus[];
@@ -1440,6 +1443,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         b.locale_branch_id,
         b.target_locale,
         b.status as branch_status,
+        sg.latest_version_id as current_style_guide_policy_version_id,
         count(distinct su.bridge_unit_id)::int as unit_count,
         count(distinct lbu.bridge_unit_id) filter (where lbu.target_text is not null)::int as translated_unit_count,
         totals.finding_count::int as finding_count,
@@ -1459,6 +1463,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       left join ${localeBranchUnits} lbu
         on lbu.locale_branch_id = b.locale_branch_id
         and lbu.bridge_unit_id = su.bridge_unit_id
+      left join ${styleGuides} sg
+        on sg.locale_branch_id = b.locale_branch_id
       left join itotori_findings f_branch
         on f_branch.project_id = p.project_id
         and f_branch.locale_branch_id = b.locale_branch_id
@@ -1527,6 +1533,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         b.locale_branch_id,
         b.target_locale,
         b.status,
+        sg.latest_version_id,
         totals.finding_count,
         totals.artifact_count,
         latest_event.event_kind,
@@ -1547,6 +1554,9 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           localeBranchId: String(row.locale_branch_id),
           targetLocale: String(row.target_locale),
           status: String(row.branch_status),
+          currentStyleGuidePolicyVersionId: nullableString(
+            row.current_style_guide_policy_version_id,
+          ),
           unitCount: Number(row.unit_count),
           translatedUnitCount: Number(row.translated_unit_count),
           openFindingCount: Number(row.open_finding_count),
@@ -1556,6 +1566,10 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
 
     const projectId = String(first.project_id);
     const cost = await new ItotoriModelLedgerRepository(this.db).getProjectCostReport(projectId);
+    const selectedStyleGuideBranch =
+      branches.find((branch) => branch.currentStyleGuidePolicyVersionId !== null) ??
+      branches[0] ??
+      null;
 
     return {
       projectId,
@@ -1573,6 +1587,9 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       latestEventKind: nullableString(first.latest_event_kind),
       latestEventAt:
         first.latest_event_at instanceof Date ? first.latest_event_at.toISOString() : null,
+      selectedLocaleBranchId: selectedStyleGuideBranch?.localeBranchId ?? null,
+      currentStyleGuidePolicyVersionId:
+        selectedStyleGuideBranch?.currentStyleGuidePolicyVersionId ?? null,
       importStatus: bridgeImportStatusFromRow(first),
       cost,
       localeBranches: branches,
