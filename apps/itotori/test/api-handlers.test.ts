@@ -46,12 +46,25 @@ type ApiMutationPermissionCase = {
   gateId: ApiMutationPermissionGateId;
   name: string;
   request: ItotoriApiRequest;
+  route: string;
   permissionKey: ApiMutationPermissionGate["permissionKey"];
   permission: Permission;
   service: MutatingProjectWorkflowService;
   successFixture: string;
   denialFixture: string;
 };
+
+type ApiMutationRoute = {
+  route: string;
+  service: MutatingProjectWorkflowService;
+};
+
+const readOnlyProjectWorkflowServices = new Set<keyof ItotoriApiServices["projectWorkflow"]>([
+  "getDashboardStatus",
+  "getDashboardDecisions",
+  "getRuntimeStatus",
+  "getCostReport",
+]);
 
 const apiMutationPermissionMatrix = [
   apiGate("bridgeImport", post("/api/imports/bridge", { bridge: bridgeFixture }), "importBridge"),
@@ -275,6 +288,7 @@ describe("Itotori API handlers", () => {
 
   it("keeps the API mutation permission matrix aligned with handler gates", () => {
     const sourcePermissionGateIds = sourceApiPermissionGateIds();
+    const sourceMutationRoutes = sourceApiMutationRoutes();
     assertNoUndeclaredAppPermissionCalls();
 
     expect(apiMutationPermissionMatrix.map(({ gateId }) => gateId).sort()).toEqual(
@@ -283,49 +297,59 @@ describe("Itotori API handlers", () => {
     expect(apiMutationPermissionMatrix.map(({ gateId }) => gateId).sort()).toEqual(
       Object.keys(apiMutationPermissionGates).sort(),
     );
+    expect(matrixMutationRoutes()).toEqual(sourceMutationRoutes);
     expect(
-      apiMutationPermissionMatrix.map(({ name, permission, successFixture, denialFixture }) => ({
-        mutation: name,
-        requiredPermission: permission,
-        successFixture,
-        denialFixture,
-      })),
+      apiMutationPermissionMatrix.map(
+        ({ name, route, permission, successFixture, denialFixture }) => ({
+          mutation: name,
+          route,
+          requiredPermission: permission,
+          successFixture,
+          denialFixture,
+        }),
+      ),
     ).toMatchInlineSnapshot(`
       [
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "bridge import",
           "requiredPermission": "project.import",
+          "route": "POST /api/imports/bridge",
           "successFixture": "api-handlers.test.ts bridge import success fixture",
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "branch draft",
           "requiredPermission": "draft.write",
+          "route": "POST /api/projects/:projectId/branches",
           "successFixture": "api-handlers.test.ts branch draft success fixture",
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "finding record",
           "requiredPermission": "runtime.ingest",
+          "route": "POST /api/projects/:projectId/findings",
           "successFixture": "api-handlers.test.ts finding record success fixture",
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "decision record",
           "requiredPermission": "runtime.ingest",
+          "route": "POST /api/projects/:projectId/decisions",
           "successFixture": "api-handlers.test.ts decision record success fixture",
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "benchmark record",
           "requiredPermission": "runtime.ingest",
+          "route": "POST /api/projects/:projectId/benchmarks",
           "successFixture": "api-handlers.test.ts benchmark record success fixture",
         },
         {
           "denialFixture": "permission middleware rejects as api-user-without-required-permission",
           "mutation": "runtime evidence ingest",
           "requiredPermission": "runtime.ingest",
+          "route": "POST /api/projects/:projectId/runtime-evidence",
           "successFixture": "api-handlers.test.ts runtime evidence ingest success fixture",
         },
       ]
@@ -486,12 +510,32 @@ function apiGate(
     gateId,
     name: gate.mutation,
     request,
+    route: apiMutationRouteId(request),
     permissionKey: gate.permissionKey,
     permission: gate.permission,
     service,
     successFixture: `api-handlers.test.ts ${gate.mutation} success fixture`,
     denialFixture: `permission middleware rejects as ${deniedActor.userId}`,
   };
+}
+
+function matrixMutationRoutes(): ApiMutationRoute[] {
+  return apiMutationPermissionMatrix
+    .map(({ route, service }) => ({ route, service }))
+    .sort(compareApiMutationRoutes);
+}
+
+function apiMutationRouteId(request: ItotoriApiRequest): string {
+  if (request.method !== "POST") {
+    throw new Error(
+      `API mutation matrix entry must use POST: ${request.method} ${request.pathname}`,
+    );
+  }
+  const projectRoute = /^\/api\/projects\/[^/]+\/([^/]+)$/u.exec(request.pathname);
+  if (projectRoute?.[1]) {
+    return `POST /api/projects/:projectId/${projectRoute[1]}`;
+  }
+  return `POST ${request.pathname}`;
 }
 
 function sourceApiPermissionGateIds(): ApiMutationPermissionGateId[] {
@@ -517,6 +561,154 @@ function sourceApiPermissionGateIds(): ApiMutationPermissionGateId[] {
 
   visit(sourceFile);
   return gateIds;
+}
+
+function sourceApiMutationRoutes(): ApiMutationRoute[] {
+  const sourceUrl = new URL("../src/api-handlers.ts", import.meta.url);
+  const source = readFileSync(sourceUrl, "utf8");
+  const sourceFile = ts.createSourceFile(sourceUrl.pathname, source, ts.ScriptTarget.Latest, true);
+  const routeFunction = sourceFile.statements.find(
+    (node): node is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(node) && node.name?.text === "routeItotoriApiRequest",
+  );
+  if (!routeFunction?.body) {
+    throw new Error("routeItotoriApiRequest must exist for API mutation route coverage");
+  }
+
+  const routes: ApiMutationRoute[] = [];
+  for (const statement of routeFunction.body.statements) {
+    if (ts.isIfStatement(statement)) {
+      const pathname = postRoutePathname(statement.expression);
+      if (pathname !== undefined) {
+        routes.push(
+          ...mutationRoutesForNode(sourceFile, `POST ${pathname}`, statement.thenStatement),
+        );
+      }
+      continue;
+    }
+    if (
+      ts.isSwitchStatement(statement) &&
+      statement.expression.getText(sourceFile) === "projectRoute.resource"
+    ) {
+      for (const clause of statement.caseBlock.clauses) {
+        if (!ts.isCaseClause(clause) || !ts.isStringLiteral(clause.expression)) {
+          continue;
+        }
+        routes.push(
+          ...mutationRoutesForNode(
+            sourceFile,
+            `POST /api/projects/:projectId/${clause.expression.text}`,
+            clause,
+          ),
+        );
+      }
+    }
+  }
+
+  return routes.sort(compareApiMutationRoutes);
+}
+
+function postRoutePathname(expression: ts.Expression): string | undefined {
+  if (ts.isParenthesizedExpression(expression)) {
+    return postRoutePathname(expression.expression);
+  }
+  if (
+    !ts.isBinaryExpression(expression) ||
+    expression.operatorToken.kind !== ts.SyntaxKind.AmpersandAmpersandToken
+  ) {
+    return undefined;
+  }
+  const left = equalityText(expression.left);
+  const right = equalityText(expression.right);
+  if (left?.property === "method" && left.value === "POST" && right?.property === "pathname") {
+    return right.value;
+  }
+  if (right?.property === "method" && right.value === "POST" && left?.property === "pathname") {
+    return left.value;
+  }
+  return undefined;
+}
+
+function equalityText(
+  expression: ts.Expression,
+): { property: "method" | "pathname"; value: string } | undefined {
+  if (
+    !ts.isBinaryExpression(expression) ||
+    expression.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken
+  ) {
+    return undefined;
+  }
+  const left = requestPropertyName(expression.left);
+  const right = requestPropertyName(expression.right);
+  if (left !== undefined && ts.isStringLiteral(expression.right)) {
+    return { property: left, value: expression.right.text };
+  }
+  if (right !== undefined && ts.isStringLiteral(expression.left)) {
+    return { property: right, value: expression.left.text };
+  }
+  return undefined;
+}
+
+function requestPropertyName(expression: ts.Expression): "method" | "pathname" | undefined {
+  if (
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isIdentifier(expression.expression) &&
+    expression.expression.text === "request" &&
+    (expression.name.text === "method" || expression.name.text === "pathname")
+  ) {
+    return expression.name.text;
+  }
+  return undefined;
+}
+
+function mutationRoutesForNode(
+  sourceFile: ts.SourceFile,
+  route: string,
+  node: ts.Node,
+): ApiMutationRoute[] {
+  const services = mutatingProjectWorkflowCalls(node);
+  if (services.length === 0) {
+    throw new Error(
+      `POST API route ${route} has no mutating projectWorkflow call at ${sourceLocation(sourceFile, node)}; add an explicit readonly exception if this route is intentionally non-mutating`,
+    );
+  }
+  return services.map((service) => ({ route, service }));
+}
+
+function mutatingProjectWorkflowCalls(node: ts.Node): MutatingProjectWorkflowService[] {
+  const services: MutatingProjectWorkflowService[] = [];
+
+  function visit(current: ts.Node): void {
+    if (ts.isCallExpression(current)) {
+      const service = projectWorkflowServiceName(current.expression);
+      if (service !== undefined && !readOnlyProjectWorkflowServices.has(service)) {
+        services.push(service as MutatingProjectWorkflowService);
+      }
+    }
+    ts.forEachChild(current, visit);
+  }
+
+  visit(node);
+  return services;
+}
+
+function projectWorkflowServiceName(
+  expression: ts.Expression,
+): keyof ItotoriApiServices["projectWorkflow"] | undefined {
+  if (
+    ts.isPropertyAccessExpression(expression) &&
+    ts.isPropertyAccessExpression(expression.expression) &&
+    expression.expression.name.text === "projectWorkflow" &&
+    ts.isIdentifier(expression.expression.expression) &&
+    expression.expression.expression.text === "services"
+  ) {
+    return expression.name.text as keyof ItotoriApiServices["projectWorkflow"];
+  }
+  return undefined;
+}
+
+function compareApiMutationRoutes(left: ApiMutationRoute, right: ApiMutationRoute): number {
+  return `${left.route} ${left.service}`.localeCompare(`${right.route} ${right.service}`);
 }
 
 function apiGateIdFromCall(node: ts.CallExpression): ApiMutationPermissionGateId {
