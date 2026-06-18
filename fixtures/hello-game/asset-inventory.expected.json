@@ -286,6 +286,21 @@
       "limitation": "image, audio, video, and external asset text are outside the fixture format"
     },
     {
+      "capability": "codec_access",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "container_access",
+      "status": "supported",
+      "limitation": null
+    },
+    {
+      "capability": "crypto_access",
+      "status": "supported",
+      "limitation": null
+    },
+    {
       "capability": "delta_patching",
       "status": "unsupported",
       "limitation": ".kaifuu delta packages are handled by kaifuu-delta, not this engine adapter"
@@ -319,6 +334,11 @@
       "capability": "non_text_surface_extraction",
       "status": "limited",
       "limitation": "reports explicit fixture asset metadata only; does not perform OCR, audio analysis, font inspection, or video frame analysis"
+    },
+    {
+      "capability": "patch_back",
+      "status": "limited",
+      "limitation": "rewrites plaintext source.json; archive rebuild and binary patch-back are not supported"
     },
     {
       "capability": "patching",

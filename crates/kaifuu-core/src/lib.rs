@@ -236,6 +236,8 @@ impl CapabilityReport {
 pub struct AdapterCapabilities {
     pub adapter_id: String,
     pub reports: Vec<CapabilityReport>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_contract: Option<LayeredAccessCapabilityContract>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub key_requirements: Vec<AdapterKeyRequirementDeclaration>,
 }
@@ -245,10 +247,20 @@ impl AdapterCapabilities {
         let mut capabilities = Self {
             adapter_id: adapter_id.into(),
             reports,
+            access_contract: None,
             key_requirements: vec![],
         };
         capabilities.normalize();
         capabilities
+    }
+
+    pub fn with_access_contract(
+        mut self,
+        access_contract: LayeredAccessCapabilityContract,
+    ) -> Self {
+        self.access_contract = Some(access_contract);
+        self.normalize();
+        self
     }
 
     pub fn with_key_requirements(
@@ -270,6 +282,9 @@ impl AdapterCapabilities {
         });
         self.key_requirements
             .sort_by_key(AdapterKeyRequirementDeclaration::sort_key);
+        if let Some(access_contract) = &mut self.access_contract {
+            access_contract.normalize();
+        }
     }
 
     pub fn redacted_for_report(&self) -> Self {
@@ -285,8 +300,307 @@ impl AdapterCapabilities {
             .iter()
             .map(AdapterKeyRequirementDeclaration::redacted_for_report)
             .collect();
+        capabilities.access_contract = capabilities
+            .access_contract
+            .as_ref()
+            .map(LayeredAccessCapabilityContract::redacted_for_report);
         capabilities.normalize();
         capabilities
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContainerTransform {
+    Identity,
+    Directory,
+    LooseFile,
+    Archive,
+    Xp3,
+    SiglusPck,
+    Rgssad,
+    WolfArchive,
+    AssetBundle,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CryptoTransform {
+    NullKey,
+    Xor,
+    FixedKey,
+    KeyProfile,
+    RpgMakerAssetKey,
+    HelperGated,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CodecTransform {
+    Identity,
+    Utf8Text,
+    Utf16Text,
+    ShiftJisText,
+    JsonText,
+    RpgMakerMvMzJson,
+    RubyMarshal,
+    BytecodeDecompile,
+    BinaryTable,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SurfaceTransform {
+    Identity,
+    JsonPointer,
+    ArchiveEntry,
+    BinaryOffset,
+    TableRecord,
+    RuntimeTrace,
+    OcrRegion,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PatchBackTransform {
+    Identity,
+    ReplaceFile,
+    RewriteJson,
+    RepackArchive,
+    RecompileBytecode,
+    ReplaceAsset,
+    Unsupported,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LayeredAccessKeyMaterialStatus {
+    NotRequired,
+    Resolved,
+    Missing,
+    HelperGated,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LayeredAccessHelperStatus {
+    NotRequired,
+    Available,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayeredTextSurfaceAccess {
+    pub surface_id: String,
+    pub asset_id: String,
+    pub path: String,
+    pub text_surface: TextSurface,
+    pub surface_transform: SurfaceTransform,
+    pub surface_selector: String,
+    pub container: ContainerTransform,
+    pub crypto: CryptoTransform,
+    pub codec: CodecTransform,
+    pub patch_back: PatchBackTransform,
+    pub key_material_status: LayeredAccessKeyMaterialStatus,
+    pub helper_status: LayeredAccessHelperStatus,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub key_requirement_refs: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub notes: Vec<String>,
+}
+
+impl LayeredTextSurfaceAccess {
+    pub fn plaintext_identity(
+        asset_id: impl Into<String>,
+        path: impl Into<String>,
+        text_surface: TextSurface,
+        surface_selector: impl Into<String>,
+    ) -> Self {
+        let asset_id = asset_id.into();
+        let path = path.into();
+        let surface_name = serde_json::to_string(&text_surface)
+            .unwrap_or_else(|_| "\"unknown\"".to_string())
+            .trim_matches('"')
+            .to_string();
+        Self {
+            surface_id: format!("{asset_id}#{surface_name}"),
+            asset_id,
+            path,
+            text_surface,
+            surface_transform: SurfaceTransform::Identity,
+            surface_selector: surface_selector.into(),
+            container: ContainerTransform::Identity,
+            crypto: CryptoTransform::NullKey,
+            codec: CodecTransform::Identity,
+            patch_back: PatchBackTransform::RewriteJson,
+            key_material_status: LayeredAccessKeyMaterialStatus::NotRequired,
+            helper_status: LayeredAccessHelperStatus::NotRequired,
+            key_requirement_refs: vec![],
+            notes: vec!["plaintext identity access path; no container unpack, key material, or codec conversion required".to_string()],
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayeredAccessProfile {
+    pub schema_version: String,
+    pub surfaces: Vec<LayeredTextSurfaceAccess>,
+}
+
+impl LayeredAccessProfile {
+    pub fn plaintext_identity_for_asset(
+        asset_id: impl Into<String>,
+        path: impl Into<String>,
+        text_surfaces: &[TextSurface],
+        surface_selector: impl Into<String>,
+    ) -> Self {
+        let asset_id = asset_id.into();
+        let path = path.into();
+        let surface_selector = surface_selector.into();
+        let mut profile = Self {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            surfaces: text_surfaces
+                .iter()
+                .cloned()
+                .map(|surface| {
+                    LayeredTextSurfaceAccess::plaintext_identity(
+                        asset_id.clone(),
+                        path.clone(),
+                        surface,
+                        surface_selector.clone(),
+                    )
+                })
+                .collect(),
+        };
+        profile.normalize();
+        profile
+    }
+
+    pub fn normalize(&mut self) {
+        for surface in &mut self.surfaces {
+            surface.key_requirement_refs.sort();
+            surface.key_requirement_refs.dedup();
+            surface.notes.sort();
+            surface.notes.dedup();
+        }
+        self.surfaces
+            .sort_by_key(|surface| (surface.asset_id.clone(), surface.surface_id.clone()));
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayeredAccessCapabilityContract {
+    pub identify: LayeredAccessOperationContract,
+    pub inventory: LayeredAccessOperationContract,
+    pub extract: LayeredAccessOperationContract,
+    pub patch: LayeredAccessOperationContract,
+}
+
+impl LayeredAccessCapabilityContract {
+    pub fn plaintext_identity() -> Self {
+        let identify = LayeredAccessOperationContract::supported_identity(vec![
+            Capability::Detection,
+            Capability::ProfileGeneration,
+        ]);
+        let inventory = LayeredAccessOperationContract::supported_identity(vec![
+            Capability::AssetListing,
+            Capability::AssetInventory,
+        ]);
+        let extract =
+            LayeredAccessOperationContract::supported_identity(vec![Capability::Extraction]);
+        let patch = LayeredAccessOperationContract::supported_identity(vec![
+            Capability::Patching,
+            Capability::LineParityPatching,
+        ]);
+        Self {
+            identify,
+            inventory,
+            extract,
+            patch,
+        }
+    }
+
+    pub fn normalize(&mut self) {
+        self.identify.normalize();
+        self.inventory.normalize();
+        self.extract.normalize();
+        self.patch.normalize();
+    }
+
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            identify: self.identify.redacted_for_report(),
+            inventory: self.inventory.redacted_for_report(),
+            extract: self.extract.redacted_for_report(),
+            patch: self.patch.redacted_for_report(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LayeredAccessOperationContract {
+    pub status: CapabilityStatus,
+    pub required_capabilities: Vec<Capability>,
+    pub supported_surfaces: Vec<SurfaceTransform>,
+    pub supported_containers: Vec<ContainerTransform>,
+    pub supported_crypto: Vec<CryptoTransform>,
+    pub supported_codecs: Vec<CodecTransform>,
+    pub supported_patch_back: Vec<PatchBackTransform>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub support_boundary: Option<String>,
+}
+
+impl LayeredAccessOperationContract {
+    pub fn supported_identity(required_capabilities: Vec<Capability>) -> Self {
+        let mut contract = Self {
+            status: CapabilityStatus::Supported,
+            required_capabilities,
+            supported_surfaces: vec![SurfaceTransform::Identity, SurfaceTransform::JsonPointer],
+            supported_containers: vec![ContainerTransform::Identity, ContainerTransform::LooseFile],
+            supported_crypto: vec![CryptoTransform::NullKey],
+            supported_codecs: vec![CodecTransform::Identity, CodecTransform::JsonText],
+            supported_patch_back: vec![PatchBackTransform::Identity, PatchBackTransform::RewriteJson],
+            support_boundary: Some(
+                "plaintext identity pipeline only; no archive rebuild, encrypted input, helper, or decompile support claimed"
+                    .to_string(),
+            ),
+        };
+        contract.normalize();
+        contract
+    }
+
+    pub fn normalize(&mut self) {
+        self.required_capabilities
+            .sort_by_key(|capability| serde_json::to_string(capability).unwrap_or_default());
+        self.required_capabilities.dedup();
+        self.supported_surfaces.sort();
+        self.supported_surfaces.dedup();
+        self.supported_containers.sort();
+        self.supported_containers.dedup();
+        self.supported_crypto.sort();
+        self.supported_crypto.dedup();
+        self.supported_codecs.sort();
+        self.supported_codecs.dedup();
+        self.supported_patch_back.sort();
+        self.supported_patch_back.dedup();
+    }
+
+    pub fn redacted_for_report(&self) -> Self {
+        let mut contract = self.clone();
+        contract.support_boundary = contract
+            .support_boundary
+            .as_deref()
+            .map(redact_for_log_or_report);
+        contract
     }
 }
 
@@ -1375,6 +1689,8 @@ pub struct GameProfile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub helper_evidence: Option<HelperEvidence>,
     pub assets: Vec<AssetProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layered_access: Option<LayeredAccessProfile>,
     pub capabilities: Vec<CapabilityReport>,
     pub requirements: Vec<ProfileRequirement>,
     pub metadata: BTreeMap<String, String>,
@@ -1389,6 +1705,9 @@ impl GameProfile {
             asset.text_surfaces.dedup();
         }
         self.assets.sort_by_key(|asset| asset.asset_id.clone());
+        if let Some(layered_access) = &mut self.layered_access {
+            layered_access.normalize();
+        }
         self.capabilities.sort_by_key(|report| {
             (
                 serde_json::to_string(&report.capability).unwrap_or_default(),
@@ -1455,10 +1774,16 @@ pub fn validate_profile_value(value: &Value) -> ProfileValidationResult {
     let key_requirements = validate_key_requirements(&mut failures, value.get("keyRequirements"));
     validate_archive_parameters(&mut failures, value.get("archiveParameters"));
     validate_helper_evidence(&mut failures, value.get("helperEvidence"));
-    let asset_patching_capabilities = validate_assets(&mut failures, value.get("assets"));
+    let validated_assets = validate_assets(&mut failures, value.get("assets"));
+    validate_layered_access_profile(
+        &mut failures,
+        value.get("layeredAccess"),
+        &validated_assets.asset_ids,
+        &key_requirements,
+    );
     let profile_capabilities =
         validate_capabilities(&mut failures, value.get("capabilities"), "capabilities");
-    for (field, capability) in asset_patching_capabilities {
+    for (field, capability) in validated_assets.patching_capabilities {
         if !profile_capabilities.contains(&capability) {
             failures.push(ProfileValidationFailure {
                 code: "inconsistent_capability".to_string(),
@@ -2042,6 +2367,11 @@ fn validate_optional_positive_u32(
     Some(value as u32)
 }
 
+struct ValidatedAssets {
+    patching_capabilities: Vec<(String, String)>,
+    asset_ids: std::collections::BTreeSet<String>,
+}
+
 fn validate_identifier(failures: &mut Vec<ProfileValidationFailure>, field: &str, value: &str) {
     if value.chars().any(char::is_whitespace) || value.contains('\0') {
         failures.push(ProfileValidationFailure {
@@ -2055,15 +2385,19 @@ fn validate_identifier(failures: &mut Vec<ProfileValidationFailure>, field: &str
 fn validate_assets(
     failures: &mut Vec<ProfileValidationFailure>,
     assets: Option<&Value>,
-) -> Vec<(String, String)> {
+) -> ValidatedAssets {
     let mut patching_capabilities = Vec::new();
+    let mut asset_ids = std::collections::BTreeSet::new();
     let Some(assets) = assets else {
         failures.push(ProfileValidationFailure {
             code: "missing_assets".to_string(),
             field: "assets".to_string(),
             message: "profile must identify at least one asset or manifest surface".to_string(),
         });
-        return patching_capabilities;
+        return ValidatedAssets {
+            patching_capabilities,
+            asset_ids,
+        };
     };
     let Some(assets) = assets.as_array() else {
         failures.push(ProfileValidationFailure {
@@ -2071,7 +2405,10 @@ fn validate_assets(
             field: "assets".to_string(),
             message: "assets must be an array".to_string(),
         });
-        return patching_capabilities;
+        return ValidatedAssets {
+            patching_capabilities,
+            asset_ids,
+        };
     };
     if assets.is_empty() {
         failures.push(ProfileValidationFailure {
@@ -2099,6 +2436,15 @@ fn validate_assets(
                 code: "invalid_asset_id".to_string(),
                 field: format!("assets.{index}.assetId"),
                 message: "assetId must not contain whitespace or null bytes".to_string(),
+            });
+        }
+        if let Some(asset_id) = asset_id
+            && !asset_ids.insert(asset_id.clone())
+        {
+            failures.push(ProfileValidationFailure {
+                code: "duplicate_asset_id".to_string(),
+                field: format!("assets.{index}.assetId"),
+                message: format!("assetId {asset_id} is duplicated"),
             });
         }
         if let Some(path) = required_string_value(failures, asset, &format!("assets.{index}.path"))
@@ -2135,7 +2481,266 @@ fn validate_assets(
             });
         }
     }
-    patching_capabilities
+    ValidatedAssets {
+        patching_capabilities,
+        asset_ids,
+    }
+}
+
+fn validate_layered_access_profile(
+    failures: &mut Vec<ProfileValidationFailure>,
+    layered_access: Option<&Value>,
+    asset_ids: &std::collections::BTreeSet<String>,
+    key_requirements: &[KeyRequirement],
+) {
+    let Some(layered_access) = layered_access else {
+        return;
+    };
+    if !layered_access.is_object() {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: "layeredAccess".to_string(),
+            message: "layeredAccess must be a JSON object".to_string(),
+        });
+        return;
+    }
+    match layered_access.get("schemaVersion").and_then(Value::as_str) {
+        Some(PROFILE_SCHEMA_VERSION) => {}
+        Some(version) if version.trim().is_empty() => failures.push(ProfileValidationFailure {
+            code: "missing_required_field".to_string(),
+            field: "layeredAccess.schemaVersion".to_string(),
+            message: "layeredAccess.schemaVersion must not be empty".to_string(),
+        }),
+        Some(version) => failures.push(ProfileValidationFailure {
+            code: "unsupported_schema_version".to_string(),
+            field: "layeredAccess.schemaVersion".to_string(),
+            message: format!(
+                "layeredAccess.schemaVersion must be {PROFILE_SCHEMA_VERSION}, got {version}"
+            ),
+        }),
+        None => failures.push(ProfileValidationFailure {
+            code: "missing_required_field".to_string(),
+            field: "layeredAccess.schemaVersion".to_string(),
+            message: "layeredAccess.schemaVersion must not be empty".to_string(),
+        }),
+    }
+    let Some(surfaces) = layered_access.get("surfaces").and_then(Value::as_array) else {
+        failures.push(ProfileValidationFailure {
+            code: "missing_layered_access_surfaces".to_string(),
+            field: "layeredAccess.surfaces".to_string(),
+            message: "layeredAccess.surfaces must list per-surface access paths".to_string(),
+        });
+        return;
+    };
+    if surfaces.is_empty() {
+        failures.push(ProfileValidationFailure {
+            code: "missing_layered_access_surfaces".to_string(),
+            field: "layeredAccess.surfaces".to_string(),
+            message: "layeredAccess.surfaces must list per-surface access paths".to_string(),
+        });
+    }
+    let key_requirement_ids = key_requirements
+        .iter()
+        .map(|requirement| requirement.requirement_id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let mut seen_surface_ids = std::collections::BTreeSet::new();
+    for (index, surface) in surfaces.iter().enumerate() {
+        let field = format!("layeredAccess.surfaces.{index}");
+        if !surface.is_object() {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_field_type".to_string(),
+                field,
+                message: "layered access surface must be a JSON object".to_string(),
+            });
+            continue;
+        }
+        if let Some(surface_id) =
+            required_string_value(failures, surface, &format!("{field}.surfaceId"))
+            && !seen_surface_ids.insert(surface_id.clone())
+        {
+            failures.push(ProfileValidationFailure {
+                code: "duplicate_layered_access_surface".to_string(),
+                field: format!("{field}.surfaceId"),
+                message: format!("layered access surfaceId {surface_id} is duplicated"),
+            });
+        }
+        if let Some(asset_id) =
+            required_string_value(failures, surface, &format!("{field}.assetId"))
+            && !asset_ids.contains(&asset_id)
+        {
+            failures.push(ProfileValidationFailure {
+                code: "unknown_layered_access_asset".to_string(),
+                field: format!("{field}.assetId"),
+                message: format!(
+                    "layered access assetId {asset_id} does not reference profile assets"
+                ),
+            });
+        }
+        if let Some(path) = required_string_value(failures, surface, &format!("{field}.path")) {
+            validate_profile_relative_path(failures, &format!("{field}.path"), &path);
+        }
+        validate_enum_string(
+            failures,
+            surface,
+            &format!("{field}.textSurface"),
+            &[
+                "dialogue",
+                "narration",
+                "speaker_name",
+                "choice_label",
+                "ui_label",
+                "tutorial_text",
+                "database_entry",
+                "song_title",
+                "image_text",
+                "metadata_text",
+            ],
+        );
+        validate_enum_string(
+            failures,
+            surface,
+            &format!("{field}.surfaceTransform"),
+            &[
+                "identity",
+                "json_pointer",
+                "archive_entry",
+                "binary_offset",
+                "table_record",
+                "runtime_trace",
+                "ocr_region",
+                "unknown",
+            ],
+        );
+        required_string_value(failures, surface, &format!("{field}.surfaceSelector"));
+        validate_enum_string(
+            failures,
+            surface,
+            &format!("{field}.container"),
+            &[
+                "identity",
+                "directory",
+                "loose_file",
+                "archive",
+                "xp3",
+                "siglus_pck",
+                "rgssad",
+                "wolf_archive",
+                "asset_bundle",
+                "unknown",
+            ],
+        );
+        validate_enum_string(
+            failures,
+            surface,
+            &format!("{field}.crypto"),
+            &[
+                "null_key",
+                "xor",
+                "fixed_key",
+                "key_profile",
+                "rpg_maker_asset_key",
+                "helper_gated",
+                "unknown",
+            ],
+        );
+        validate_enum_string(
+            failures,
+            surface,
+            &format!("{field}.codec"),
+            &[
+                "identity",
+                "utf8_text",
+                "utf16_text",
+                "shift_jis_text",
+                "json_text",
+                "rpg_maker_mv_mz_json",
+                "ruby_marshal",
+                "bytecode_decompile",
+                "binary_table",
+                "unknown",
+            ],
+        );
+        validate_enum_string(
+            failures,
+            surface,
+            &format!("{field}.patchBack"),
+            &[
+                "identity",
+                "replace_file",
+                "rewrite_json",
+                "repack_archive",
+                "recompile_bytecode",
+                "replace_asset",
+                "unsupported",
+                "unknown",
+            ],
+        );
+        validate_enum_string(
+            failures,
+            surface,
+            &format!("{field}.keyMaterialStatus"),
+            &["not_required", "resolved", "missing", "helper_gated"],
+        );
+        validate_enum_string(
+            failures,
+            surface,
+            &format!("{field}.helperStatus"),
+            &["not_required", "available", "unavailable"],
+        );
+        validate_layered_access_key_refs(failures, surface, &field, &key_requirement_ids);
+    }
+}
+
+fn validate_layered_access_key_refs(
+    failures: &mut Vec<ProfileValidationFailure>,
+    surface: &Value,
+    field: &str,
+    key_requirement_ids: &std::collections::BTreeSet<&str>,
+) {
+    let Some(refs) = surface.get("keyRequirementRefs") else {
+        return;
+    };
+    let Some(refs) = refs.as_array() else {
+        failures.push(ProfileValidationFailure {
+            code: "invalid_field_type".to_string(),
+            field: format!("{field}.keyRequirementRefs"),
+            message: "keyRequirementRefs must be an array".to_string(),
+        });
+        return;
+    };
+    let mut seen = std::collections::BTreeSet::new();
+    for (index, requirement_ref) in refs.iter().enumerate() {
+        let requirement_field = format!("{field}.keyRequirementRefs.{index}");
+        let Some(requirement_ref) = requirement_ref.as_str() else {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_key_requirement_ref".to_string(),
+                field: requirement_field.clone(),
+                message: "keyRequirementRefs entries must be strings".to_string(),
+            });
+            continue;
+        };
+        if requirement_ref.trim().is_empty() {
+            failures.push(ProfileValidationFailure {
+                code: "invalid_key_requirement_ref".to_string(),
+                field: requirement_field.clone(),
+                message: "keyRequirementRefs entries must not be empty".to_string(),
+            });
+        }
+        if !key_requirement_ids.contains(requirement_ref) {
+            failures.push(ProfileValidationFailure {
+                code: "unknown_key_requirement_ref".to_string(),
+                field: requirement_field.clone(),
+                message: format!("key requirement ref {requirement_ref} does not reference profile keyRequirements"),
+            });
+        }
+        if !seen.insert(requirement_ref.to_string()) {
+            failures.push(ProfileValidationFailure {
+                code: "duplicate_key_requirement_ref".to_string(),
+                field: requirement_field,
+                message: format!("key requirement ref {requirement_ref} is duplicated"),
+            });
+        }
+    }
 }
 
 fn validate_text_surfaces(
@@ -5651,6 +6256,194 @@ impl LayeredAccessPreflightReport {
     pub fn stable_json(&self) -> KaifuuResult<String> {
         stable_json(&self.redacted_for_report())
     }
+
+    pub fn from_access_profile(
+        adapter_id: impl Into<String>,
+        engine: impl Into<String>,
+        detected_variant: impl Into<String>,
+        capabilities: &AdapterCapabilities,
+        access_profile: &LayeredAccessProfile,
+    ) -> Self {
+        let adapter_id = adapter_id.into();
+        let engine = engine.into();
+        let detected_variant = detected_variant.into();
+        let supported_capabilities = capabilities
+            .reports
+            .iter()
+            .filter(|report| {
+                matches!(
+                    report.status,
+                    CapabilityStatus::Supported | CapabilityStatus::Limited
+                )
+            })
+            .map(|report| report.capability.clone())
+            .collect::<Vec<_>>();
+        let patch_contract = capabilities
+            .access_contract
+            .as_ref()
+            .map(|contract| &contract.patch);
+        let mut failures = Vec::new();
+
+        for surface in &access_profile.surfaces {
+            for stage in [
+                LayeredAccessStage::Container,
+                LayeredAccessStage::Crypto,
+                LayeredAccessStage::Codec,
+                LayeredAccessStage::PatchBack,
+            ] {
+                if !supported_capabilities.contains(&stage.required_capability()) {
+                    failures.push(
+                        LayeredAccessPreflightRequirement::missing_capability(
+                            stage,
+                            &surface.surface_id,
+                            format!(
+                                "adapter capability report does not support {:?} for layered surface {}",
+                                stage, surface.surface_id
+                            ),
+                        )
+                        .to_adapter_failure(&adapter_id, &engine, &detected_variant),
+                    );
+                }
+            }
+
+            if let Some(contract) = patch_contract {
+                surface.add_unsupported_transform_failures(
+                    contract,
+                    &adapter_id,
+                    &engine,
+                    &detected_variant,
+                    &mut failures,
+                );
+            }
+
+            if surface.key_material_status == LayeredAccessKeyMaterialStatus::Missing {
+                failures.push(AdapterFailure::missing_key_material(
+                    &adapter_id,
+                    &engine,
+                    &detected_variant,
+                    surface
+                        .key_requirement_refs
+                        .first()
+                        .map(String::as_str)
+                        .unwrap_or(surface.surface_id.as_str()),
+                    format!(
+                        "layered surface {} requires crypto key material before patching",
+                        surface.surface_id
+                    ),
+                ));
+            }
+            if surface.key_material_status == LayeredAccessKeyMaterialStatus::HelperGated
+                || surface.helper_status == LayeredAccessHelperStatus::Unavailable
+            {
+                failures.push(AdapterFailure::helper_unavailable(
+                    &adapter_id,
+                    &engine,
+                    &detected_variant,
+                    format!(
+                        "layered surface {} is helper-gated before patching",
+                        surface.surface_id
+                    ),
+                ));
+            }
+        }
+
+        Self {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            adapter_id,
+            engine,
+            detected_variant,
+            status: if failures.is_empty() {
+                OperationStatus::Passed
+            } else {
+                OperationStatus::Failed
+            },
+            failures,
+        }
+        .redacted_for_report()
+    }
+}
+
+impl LayeredTextSurfaceAccess {
+    fn add_unsupported_transform_failures(
+        &self,
+        contract: &LayeredAccessOperationContract,
+        adapter_id: &str,
+        engine: &str,
+        detected_variant: &str,
+        failures: &mut Vec<AdapterFailure>,
+    ) {
+        if !contract
+            .supported_surfaces
+            .contains(&self.surface_transform)
+        {
+            failures.push(self.unsupported_transform_failure(
+                LayeredAccessStage::Container,
+                format!("{:?}", self.surface_transform),
+                "surface transform is not supported by the patch access contract",
+                adapter_id,
+                engine,
+                detected_variant,
+            ));
+        }
+        if !contract.supported_containers.contains(&self.container) {
+            failures.push(self.unsupported_transform_failure(
+                LayeredAccessStage::Container,
+                format!("{:?}", self.container),
+                "container transform is not supported by the patch access contract",
+                adapter_id,
+                engine,
+                detected_variant,
+            ));
+        }
+        if !contract.supported_crypto.contains(&self.crypto) {
+            failures.push(self.unsupported_transform_failure(
+                LayeredAccessStage::Crypto,
+                format!("{:?}", self.crypto),
+                "crypto transform is not supported by the patch access contract",
+                adapter_id,
+                engine,
+                detected_variant,
+            ));
+        }
+        if !contract.supported_codecs.contains(&self.codec) {
+            failures.push(self.unsupported_transform_failure(
+                LayeredAccessStage::Codec,
+                format!("{:?}", self.codec),
+                "codec transform is not supported by the patch access contract",
+                adapter_id,
+                engine,
+                detected_variant,
+            ));
+        }
+        if !contract.supported_patch_back.contains(&self.patch_back) {
+            failures.push(self.unsupported_transform_failure(
+                LayeredAccessStage::PatchBack,
+                format!("{:?}", self.patch_back),
+                "patch-back transform is not supported by the patch access contract",
+                adapter_id,
+                engine,
+                detected_variant,
+            ));
+        }
+    }
+
+    fn unsupported_transform_failure(
+        &self,
+        stage: LayeredAccessStage,
+        transform_id: String,
+        support_boundary: impl Into<String>,
+        adapter_id: &str,
+        engine: &str,
+        detected_variant: &str,
+    ) -> AdapterFailure {
+        LayeredAccessPreflightRequirement::unsupported_transform(
+            stage,
+            transform_id,
+            &self.surface_id,
+            support_boundary,
+        )
+        .to_adapter_failure(adapter_id, engine, detected_variant)
+    }
 }
 
 impl LayeredAccessPreflightRequirement {
@@ -8098,6 +8891,7 @@ mod tests {
                 source_hash: Some(content_hash("こんにちは")),
                 patching: CapabilityReport::supported(Capability::Patching),
             }],
+            layered_access: None,
             capabilities: vec![
                 CapabilityReport::supported(Capability::Detection),
                 CapabilityReport::supported(Capability::Extraction),
@@ -9639,6 +10433,195 @@ mod tests {
     }
 
     #[test]
+    fn layered_access_profile_represents_plaintext_and_encrypted_surfaces() {
+        let mut profile = GameProfile {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            profile_id: deterministic_id("profile", 520),
+            game_id: "mv-mz-layered-fixture".to_string(),
+            title: "MV MZ Layered Fixture".to_string(),
+            source_locale: "ja-JP".to_string(),
+            engine: EngineProfile {
+                adapter_id: "kaifuu.rpg-maker-mv-mz".to_string(),
+                engine_family: "rpg-maker-mv-mz".to_string(),
+                engine_version: None,
+                detected_variant: "json-text-encrypted-media".to_string(),
+            },
+            source_fingerprint: None,
+            key_requirements: vec![],
+            archive_parameters: vec![],
+            helper_evidence: None,
+            assets: vec![
+                AssetProfile {
+                    asset_id: "data/map001.json".to_string(),
+                    path: "data/Map001.json".to_string(),
+                    asset_kind: AssetKind::Script,
+                    text_surfaces: vec![TextSurface::Dialogue],
+                    source_hash: Some(content_hash("json text")),
+                    patching: CapabilityReport::supported(Capability::Patching),
+                },
+                AssetProfile {
+                    asset_id: "img/pictures/title.rpgmvp".to_string(),
+                    path: "img/pictures/title.rpgmvp".to_string(),
+                    asset_kind: AssetKind::Image,
+                    text_surfaces: vec![TextSurface::ImageText],
+                    source_hash: Some(content_hash("encrypted image asset")),
+                    patching: CapabilityReport::unsupported(
+                        Capability::AssetTextPatching,
+                        "encrypted media text restoration is not supported by this profile",
+                    ),
+                },
+            ],
+            layered_access: Some(LayeredAccessProfile {
+                schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+                surfaces: vec![
+                    LayeredTextSurfaceAccess {
+                        surface_id: "map001-dialogue".to_string(),
+                        asset_id: "data/map001.json".to_string(),
+                        path: "data/Map001.json".to_string(),
+                        text_surface: TextSurface::Dialogue,
+                        surface_transform: SurfaceTransform::JsonPointer,
+                        surface_selector: "$.events[*].pages[*].list[*].parameters[*]".to_string(),
+                        container: ContainerTransform::LooseFile,
+                        crypto: CryptoTransform::NullKey,
+                        codec: CodecTransform::RpgMakerMvMzJson,
+                        patch_back: PatchBackTransform::RewriteJson,
+                        key_material_status: LayeredAccessKeyMaterialStatus::NotRequired,
+                        helper_status: LayeredAccessHelperStatus::NotRequired,
+                        key_requirement_refs: vec![],
+                        notes: vec![],
+                    },
+                    LayeredTextSurfaceAccess {
+                        surface_id: "title-image-text".to_string(),
+                        asset_id: "img/pictures/title.rpgmvp".to_string(),
+                        path: "img/pictures/title.rpgmvp".to_string(),
+                        text_surface: TextSurface::ImageText,
+                        surface_transform: SurfaceTransform::OcrRegion,
+                        surface_selector: "image:full-frame".to_string(),
+                        container: ContainerTransform::LooseFile,
+                        crypto: CryptoTransform::RpgMakerAssetKey,
+                        codec: CodecTransform::Identity,
+                        patch_back: PatchBackTransform::ReplaceAsset,
+                        key_material_status: LayeredAccessKeyMaterialStatus::Missing,
+                        helper_status: LayeredAccessHelperStatus::NotRequired,
+                        key_requirement_refs: vec![],
+                        notes: vec![
+                            "MV/MZ media can be encrypted while JSON text remains plaintext"
+                                .to_string(),
+                        ],
+                    },
+                ],
+            }),
+            capabilities: vec![
+                CapabilityReport::supported(Capability::Detection),
+                CapabilityReport::supported(Capability::ProfileGeneration),
+                CapabilityReport::supported(Capability::Patching),
+                CapabilityReport::supported(Capability::ContainerAccess),
+                CapabilityReport::supported(Capability::CryptoAccess),
+                CapabilityReport::supported(Capability::CodecAccess),
+                CapabilityReport::supported(Capability::PatchBack),
+                CapabilityReport::unsupported(
+                    Capability::AssetTextPatching,
+                    "encrypted media asset text is inventoried but not patched",
+                ),
+            ],
+            requirements: vec![],
+            metadata: BTreeMap::new(),
+        };
+
+        profile.normalize();
+
+        assert_eq!(profile.validate().status, OperationStatus::Passed);
+        let serialized = profile.stable_json().unwrap();
+        assert!(serialized.contains("\"crypto\": \"null_key\""));
+        assert!(serialized.contains("\"crypto\": \"rpg_maker_asset_key\""));
+        assert!(serialized.contains("\"codec\": \"rpg_maker_mv_mz_json\""));
+        assert!(serialized.contains("\"surfaceTransform\": \"ocr_region\""));
+    }
+
+    #[test]
+    fn layered_access_preflight_blocks_transform_key_and_helper_gates() {
+        let capabilities = AdapterCapabilities::new(
+            "kaifuu.layered-test",
+            vec![
+                CapabilityReport::supported(Capability::ContainerAccess),
+                CapabilityReport::supported(Capability::CryptoAccess),
+                CapabilityReport::supported(Capability::CodecAccess),
+                CapabilityReport::supported(Capability::PatchBack),
+            ],
+        )
+        .with_access_contract(LayeredAccessCapabilityContract::plaintext_identity());
+        let access_profile = LayeredAccessProfile {
+            schema_version: PROFILE_SCHEMA_VERSION.to_string(),
+            surfaces: vec![
+                LayeredTextSurfaceAccess {
+                    surface_id: "scene-pck-dialogue".to_string(),
+                    asset_id: "Scene.pck".to_string(),
+                    path: "Scene.pck".to_string(),
+                    text_surface: TextSurface::Dialogue,
+                    surface_transform: SurfaceTransform::ArchiveEntry,
+                    surface_selector: "scripts/scene001.bin".to_string(),
+                    container: ContainerTransform::SiglusPck,
+                    crypto: CryptoTransform::KeyProfile,
+                    codec: CodecTransform::BytecodeDecompile,
+                    patch_back: PatchBackTransform::RepackArchive,
+                    key_material_status: LayeredAccessKeyMaterialStatus::Missing,
+                    helper_status: LayeredAccessHelperStatus::NotRequired,
+                    key_requirement_refs: vec!["siglus-secondary-key".to_string()],
+                    notes: vec![],
+                },
+                LayeredTextSurfaceAccess {
+                    surface_id: "protected-helper-route".to_string(),
+                    asset_id: "data.xp3".to_string(),
+                    path: "data.xp3".to_string(),
+                    text_surface: TextSurface::Dialogue,
+                    surface_transform: SurfaceTransform::ArchiveEntry,
+                    surface_selector: "scenario/ending.ks".to_string(),
+                    container: ContainerTransform::Xp3,
+                    crypto: CryptoTransform::HelperGated,
+                    codec: CodecTransform::Utf8Text,
+                    patch_back: PatchBackTransform::RepackArchive,
+                    key_material_status: LayeredAccessKeyMaterialStatus::HelperGated,
+                    helper_status: LayeredAccessHelperStatus::Unavailable,
+                    key_requirement_refs: vec![],
+                    notes: vec![],
+                },
+            ],
+        };
+
+        let report = LayeredAccessPreflightReport::from_access_profile(
+            "kaifuu.layered-test",
+            "fixture",
+            "layered-transform-test",
+            &capabilities,
+            &access_profile,
+        );
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.failures.iter().any(|failure| {
+            failure.error_code == SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM
+                && failure.required_capability == Some(Capability::PatchBack)
+        }));
+        assert!(
+            report
+                .failures
+                .iter()
+                .any(|failure| failure.error_code == SEMANTIC_MISSING_KEY_MATERIAL)
+        );
+        assert!(
+            report
+                .failures
+                .iter()
+                .any(|failure| failure.error_code == SEMANTIC_HELPER_UNAVAILABLE)
+        );
+        assert!(
+            report
+                .failures
+                .iter()
+                .all(AdapterFailure::is_preflight_blocking)
+        );
+    }
+
+    #[test]
     fn asset_inventory_rejects_engine_specific_source_location_fields() {
         let manifest = AssetInventoryManifest {
             schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
@@ -10108,6 +11091,7 @@ mod tests {
                     "fixture rewrites source.json with pretty JSON",
                 ),
             }],
+            layered_access: None,
             capabilities: vec![
                 CapabilityReport::unsupported(
                     Capability::DeltaPatching,

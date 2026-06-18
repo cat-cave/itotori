@@ -9,11 +9,12 @@ use kaifuu_core::{
     AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind, AssetList,
     AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability, CapabilityReport,
     DetectRequest, DetectionEvidence, DetectionResult, EngineAdapter, EngineProfile,
-    EvidenceStatus, ExtractRequest, ExtractionResult, GameProfile, KaifuuResult, OperationStatus,
-    PatchRef, PatchRequest, PatchResult, ProfileRequest, ProfileRequirement, ProtectedSpan,
-    RequirementCategory, RequirementStatus, TextSurface, VerificationResult, VerifyRequest,
-    atomic_write_text, content_hash, deterministic_id, normalize_protected_spans, require_str,
-    require_u64, safe_join_relative,
+    EvidenceStatus, ExtractRequest, ExtractionResult, GameProfile, KaifuuResult,
+    LayeredAccessCapabilityContract, LayeredAccessProfile, OperationStatus, PatchRef, PatchRequest,
+    PatchResult, ProfileRequest, ProfileRequirement, ProtectedSpan, RequirementCategory,
+    RequirementStatus, TextSurface, VerificationResult, VerifyRequest, atomic_write_text,
+    content_hash, deterministic_id, normalize_protected_spans, require_str, require_u64,
+    safe_join_relative,
 };
 use serde_json::{Value, json};
 
@@ -181,6 +182,13 @@ impl FixtureAdapter {
             "Synthetic plain JSON fixture with text units in source.json".to_string(),
         );
 
+        let asset = self.asset_from_source(source_text, source)?;
+        let layered_access = LayeredAccessProfile::plaintext_identity_for_asset(
+            asset.asset_id.clone(),
+            asset.path.clone(),
+            &asset.text_surfaces,
+            "/units/*/sourceText",
+        );
         let mut profile = GameProfile {
             schema_version: "0.1.0".to_string(),
             profile_id: deterministic_id("profile", 1),
@@ -203,7 +211,8 @@ impl FixtureAdapter {
             key_requirements: vec![],
             archive_parameters: vec![],
             helper_evidence: None,
-            assets: vec![self.asset_from_source(source_text, source)?],
+            assets: vec![asset],
+            layered_access: Some(layered_access),
             capabilities: self.capabilities().reports,
             requirements: Self::requirements(true),
             metadata,
@@ -858,6 +867,13 @@ impl EngineAdapter for FixtureAdapter {
                     Capability::LineParityPatching,
                     "requires patch entries to match existing sourceUnitKey values",
                 ),
+                CapabilityReport::supported(Capability::ContainerAccess),
+                CapabilityReport::supported(Capability::CryptoAccess),
+                CapabilityReport::supported(Capability::CodecAccess),
+                CapabilityReport::limited(
+                    Capability::PatchBack,
+                    "rewrites plaintext source.json; archive rebuild and binary patch-back are not supported",
+                ),
                 CapabilityReport::unsupported(
                     Capability::AssetTextPatching,
                     "image, audio, video, and external asset text are outside the fixture format",
@@ -880,6 +896,7 @@ impl EngineAdapter for FixtureAdapter {
                 ),
             ],
         )
+        .with_access_contract(LayeredAccessCapabilityContract::plaintext_identity())
     }
 
     fn detect(&self, request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
@@ -2318,6 +2335,23 @@ mod tests {
                     .contains("sourceUnitKey")
         }));
         assert!(capabilities.reports.iter().any(|report| {
+            report.capability == Capability::ContainerAccess
+                && report.status == kaifuu_core::CapabilityStatus::Supported
+        }));
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == Capability::CryptoAccess
+                && report.status == kaifuu_core::CapabilityStatus::Supported
+        }));
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == Capability::CodecAccess
+                && report.status == kaifuu_core::CapabilityStatus::Supported
+        }));
+        assert!(capabilities.reports.iter().any(|report| {
+            report.capability == Capability::PatchBack
+                && report.status == kaifuu_core::CapabilityStatus::Limited
+        }));
+        assert!(capabilities.access_contract.is_some());
+        assert!(capabilities.reports.iter().any(|report| {
             report.capability == Capability::AssetTextPatching
                 && report.status == kaifuu_core::CapabilityStatus::Unsupported
         }));
@@ -2448,6 +2482,9 @@ mod tests {
             .unwrap();
         assert_eq!(first, second);
         assert!(first.contains("\"capability\": \"line_parity_patching\""));
+        assert!(first.contains("\"container\": \"identity\""));
+        assert!(first.contains("\"crypto\": \"null_key\""));
+        assert!(first.contains("\"codec\": \"identity\""));
         let _ = fs::remove_dir_all(game_dir);
     }
 }

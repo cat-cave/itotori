@@ -774,6 +774,7 @@ mod tests {
                     source_hash: Some("registry-source-hash".to_string()),
                     patching: CapabilityReport::supported(Capability::Patching),
                 }],
+                layered_access: None,
                 capabilities: test_capabilities().reports,
                 requirements: vec![],
                 metadata: Default::default(),
@@ -1371,6 +1372,7 @@ mod tests {
                         "helper input lives at %USERPROFILE%\\Games\\SecretRoute\\key.bin",
                     ),
                 }],
+                layered_access: None,
                 capabilities: self.capabilities().reports,
                 requirements: vec![ProfileRequirement {
                     category: RequirementCategory::SecretKey,
@@ -1476,6 +1478,7 @@ mod tests {
                     source_hash: Some(content_hash("invalid profile source")),
                     patching: CapabilityReport::supported(Capability::Patching),
                 }],
+                layered_access: None,
                 capabilities: self.capabilities().reports,
                 requirements: vec![],
                 metadata: BTreeMap::new(),
@@ -1824,6 +1827,7 @@ mod tests {
                 source_hash: Some(content_hash("redacted persist source")),
                 patching: CapabilityReport::supported(Capability::Patching),
             }],
+            layered_access: None,
             capabilities: vec![
                 CapabilityReport::supported(Capability::ProfileGeneration),
                 CapabilityReport::supported(Capability::Patching),
@@ -1891,6 +1895,7 @@ mod tests {
             report.capability == Capability::LineParityPatching
                 && report.status == CapabilityStatus::Limited
         }));
+        assert!(capabilities[0].access_contract.is_some());
 
         let detect_path = root.join("detect.json");
         run_cli(&[
@@ -1924,6 +1929,12 @@ mod tests {
             profile.engine.adapter_id,
             kaifuu_engine_fixture::FIXTURE_ADAPTER_ID
         );
+        let layered_access = profile.layered_access.as_ref().unwrap();
+        assert!(layered_access.surfaces.iter().any(|surface| {
+            surface.container == kaifuu_core::ContainerTransform::Identity
+                && surface.crypto == kaifuu_core::CryptoTransform::NullKey
+                && surface.codec == kaifuu_core::CodecTransform::Identity
+        }));
         assert!(profile.requirements.iter().any(|requirement| {
             requirement.category == RequirementCategory::SecretKey
                 && requirement.status == RequirementStatus::NotRequired
