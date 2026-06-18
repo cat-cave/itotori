@@ -11254,7 +11254,7 @@
     {
       "id": "ITOTORI-062",
       "title": "Style guide persistence and version events",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11291,10 +11291,7 @@
         "Style policy leaking across locale branches",
         "Version events missing source revision context",
         "Stale style guide approvals accepted"
-      ],
-      "owner": "orchestrator-20260618-wave8",
-      "branch": "spec/itotori-062",
-      "worktree": "/tmp/itotori-spec-itotori-062"
+      ]
     },
     {
       "id": "ITOTORI-063",
@@ -12549,7 +12546,7 @@
     {
       "id": "CATALOG-011",
       "title": "VNDB and EGS recorded importers",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -12588,10 +12585,7 @@
         "Importer idempotency",
         "Live-network coupling",
         "External-id provenance loss"
-      ],
-      "owner": "orchestrator-20260618-wave8",
-      "branch": "spec/catalog-011",
-      "worktree": "/tmp/itotori-spec-catalog-011"
+      ]
     },
     {
       "id": "CATALOG-012",
@@ -12715,7 +12709,7 @@
     {
       "id": "KAIFUU-082",
       "title": "Encoded string-slot byte-budget preflight",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12747,10 +12741,7 @@
         "String slots patched before byte-budget validation",
         "Encoding failures reported without slot ids",
         "Protected tokens corrupted during preflight"
-      ],
-      "owner": "orchestrator-20260618-wave8",
-      "branch": "spec/kaifuu-082",
-      "worktree": "/tmp/itotori-spec-kaifuu-082"
+      ]
     },
     {
       "id": "KAIFUU-083",
@@ -18372,6 +18363,212 @@
         }
       ],
       "auditFocus": ["Dangling polymorphic subject ids", "Cross-work conflict evidence accepted"]
+    },
+    {
+      "id": "KAIFUU-148",
+      "status": "planned",
+      "title": "Full Shift-JIS string-slot codec contract",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-082"],
+      "summary": "Replace or explicitly scope the KAIFUU-082 hand-coded Shift-JIS subset so encoded string-slot preflight handles real game text predictably.",
+      "deliverables": [
+        "Shift-JIS codec contract",
+        "Accepted kanji/fullwidth fixtures",
+        "Rejected unmappable fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Valid common Shift-JIS kanji and fullwidth strings are accepted when they fit the slot budget.",
+        "Unmappable Unicode text fails with slot id, byte range, and remediation code.",
+        "The documented encoding name matches the actual codec behavior."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        }
+      ],
+      "auditFocus": [
+        "False invalid_encoding diagnostics for valid Shift-JIS",
+        "Encoding contract overclaims"
+      ]
+    },
+    {
+      "id": "KAIFUU-149",
+      "status": "planned",
+      "title": "Encoded slot CLI diagnostic detail",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-082"],
+      "summary": "Expose redacted encoded string-slot preflight slot id, byte range, and remediation details through Kaifuu CLI patch failure reporting.",
+      "deliverables": [
+        "CLI preflight diagnostic detail output",
+        "No-output-mutation diagnostic regression"
+      ],
+      "acceptanceCriteria": [
+        "CLI patch preflight failures include slot id, byte range, semantic code, and remediation code.",
+        "Sensitive paths or raw private payloads remain redacted in diagnostic output.",
+        "Patch output directories remain unmodified on preflight failure."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Actionable slot context lost in CLI errors",
+        "Diagnostic redaction regressions"
+      ]
+    },
+    {
+      "id": "KAIFUU-150",
+      "status": "planned",
+      "title": "Encoded slot duplicate protected-token validation",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-082"],
+      "summary": "Make core encoded string-slot protected-span validation enforce multiplicity for repeated identical protected tokens.",
+      "deliverables": ["Multiset protected-token validation", "Duplicate raw-token fixtures"],
+      "acceptanceCriteria": [
+        "Two identical source protected tokens require two valid target mappings or occurrences.",
+        "Missing or collapsed duplicate protected tokens fail with slot id and protected span diagnostics.",
+        "Existing distinct-token protected span fixtures continue to pass."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        }
+      ],
+      "auditFocus": ["Dropped repeated placeholders", "Fixture adapter masking core validator gaps"]
+    },
+    {
+      "id": "CATALOG-080",
+      "status": "planned",
+      "title": "Recorded importer seed hint gating",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-011", "CATALOG-004"],
+      "summary": "Prevent CATALOG-011 recorded importer seed hints from becoming benchmark-selectable before readiness-aware CATALOG-004 filtering and explanations run.",
+      "deliverables": [
+        "Non-selectable importer seed hint state",
+        "Benchmark selection regression for importer hints"
+      ],
+      "acceptanceCriteria": [
+        "Importer-authored seedTarget hints are stored as inert evidence or omitted until CATALOG-004 consumes them.",
+        "Benchmark candidate queries exclude importer seed hints that lack CATALOG-004 readiness explanation records.",
+        "Source fact provenance remains available for later seed explanation generation."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        }
+      ],
+      "auditFocus": [
+        "Alpha benchmark evidence bypass",
+        "Importer fixture hints treated as final selection decisions"
+      ]
+    },
+    {
+      "id": "CATALOG-081",
+      "status": "planned",
+      "title": "Recorded fixture provenance kind clarity",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-011"],
+      "summary": "Clarify recorded importer fixture provenance so fixture-backed catalog facts cannot be mistaken for live raw cache evidence.",
+      "deliverables": [
+        "Recorded fixture provenance marker",
+        "Explanation fixture distinguishing raw cache and recorded fixture evidence"
+      ],
+      "acceptanceCriteria": [
+        "Recorded fixture imports expose recorded_fixture provenance or an equivalent fixture mode marker.",
+        "Public explanations can distinguish fixture replay evidence from live/raw cache evidence."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": ["Fixture provenance hidden as raw cache", "Benchmark explanation ambiguity"]
+    },
+    {
+      "id": "ITOTORI-122",
+      "status": "planned",
+      "title": "Style guide version DB consistency constraints",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-062"],
+      "summary": "Add migration-level consistency constraints or equivalent checks for style-guide latest, approved, previous, project, and locale-branch version relationships.",
+      "deliverables": [
+        "Style-guide version consistency constraints",
+        "Migration contract rejection tests"
+      ],
+      "acceptanceCriteria": [
+        "Dangling latest, approved, and previous version references are rejected.",
+        "Cross-project or cross-locale-branch style-guide version references are rejected.",
+        "Valid repository-created style-guide versions and approvals continue to migrate and test successfully."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": [
+        "Cross-branch style policy leakage through direct DB writes",
+        "Constraint drift around version pointers"
+      ]
+    },
+    {
+      "id": "ITOTORI-123",
+      "status": "planned",
+      "title": "Style guide event payload DB contract",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-062"],
+      "summary": "Enforce or durably validate the StyleGuideVersionChanged outbox payload schema at the event persistence boundary.",
+      "deliverables": [
+        "Style-guide event payload DB or validator contract",
+        "Malformed payload rejection tests"
+      ],
+      "acceptanceCriteria": [
+        "StyleGuideVersionChanged payloads require schemaVersion, project id, locale branch id, previous/new version ids, and source revision reference.",
+        "Malformed style-guide event payloads fail before consumers can process them.",
+        "Existing valid style-guide event fixtures continue to pass."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": ["Malformed event payload accepted", "TypeScript-only payload guarantees"]
     }
   ]
 }

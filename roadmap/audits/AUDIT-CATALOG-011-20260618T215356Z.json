@@ -1,0 +1,163 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-011-20260618T215356Z",
+  "generatedAt": "2026-06-18T21:53:56Z",
+  "spec": {
+    "id": "CATALOG-011",
+    "title": "VNDB and EGS recorded importers",
+    "branch": "spec/catalog-011",
+    "worktree": "/tmp/itotori-spec-catalog-011",
+    "commit": "a9af211"
+  },
+  "auditor": {
+    "name": "catalog-011-recorded-importer-audit",
+    "kind": "architecture"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Audit found no P0/P1 blockers. CATALOG-011 satisfies alpha blocking criteria; one P2 and one P3 hardening finding were converted into follow-up DAG nodes.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["CATALOG-011-F001", "CATALOG-011-F002"]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-011-F001",
+      "severity": "P2",
+      "title": "Recorded importer seed hints can bypass readiness-aware selection",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/services/catalog-recorded-importers.ts",
+          "line": 203
+        },
+        {
+          "path": "fixtures/catalog-recorded-importers/vndb-dump-replay.json",
+          "line": 110
+        },
+        {
+          "path": "fixtures/catalog-recorded-importers/egs-recorded-replay.json",
+          "line": 98
+        }
+      ],
+      "description": "The recorded importer converts fixture-authored seedTarget hints into pending importer seed targets for every fact by default.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found fixture priority and benchmark hints can become importer seed targets before CATALOG-004's readiness-aware seed finder exists."
+        }
+      ],
+      "impact": "Alpha benchmark selection could treat importer-authored hints as selectable evidence before ownership, completeness, demand, engine readiness, and usefulness filters run.",
+      "actionableAcceptanceCriteria": [
+        "CATALOG-011 importer seed hints are inert/non-selectable until CATALOG-004 consumes them through readiness filters and explanation output, or CATALOG-011 imports facts/provenance only.",
+        "Regression coverage proves importer fixture hints cannot become benchmark-selectable without CATALOG-004 criteria."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Recorded importer seed hint gating",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-011", "CATALOG-004"],
+          "summary": "Prevent CATALOG-011 recorded importer seed hints from becoming benchmark-selectable before readiness-aware CATALOG-004 filtering and explanations run.",
+          "deliverables": [
+            "Non-selectable importer seed hint state",
+            "Benchmark selection regression for importer hints"
+          ],
+          "acceptanceCriteria": [
+            "Importer-authored seedTarget hints are stored as inert evidence or omitted until CATALOG-004 consumes them.",
+            "Benchmark candidate queries exclude importer seed hints that lack CATALOG-004 readiness explanation records.",
+            "Source fact provenance remains available for later seed explanation generation."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            },
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            }
+          ],
+          "auditFocus": [
+            "Alpha benchmark evidence bypass",
+            "Importer fixture hints treated as final selection decisions"
+          ]
+        }
+      }
+    },
+    {
+      "id": "CATALOG-011-F002",
+      "severity": "P3",
+      "title": "Recorded fixture fetches use raw cache provenance kind",
+      "category": "documentation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/catalog-crawler-repository.ts",
+          "line": 327
+        },
+        {
+          "path": "packages/itotori-db/test/catalog-recorded-importers.test.ts",
+          "line": 122
+        }
+      ],
+      "description": "Recorded fixture fetches are stored as raw_cache despite the registry having a recorded_fixture kind.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found this does not duplicate records or lose source ids, but it weakens fixture-vs-live provenance clarity for future explanations."
+        }
+      ],
+      "impact": "Future benchmark explanations could present recorded fixture payloads as generic raw cache unless provenance consumers expose fixture mode clearly.",
+      "actionableAcceptanceCriteria": [
+        "Recorded importer fixture runs are persisted with recorded_fixture, or provenance consumers expose a clear fixture id/mode marker.",
+        "Benchmark explanation fixtures distinguish recorded fixture payloads from live/raw cache payloads."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Recorded fixture provenance kind clarity",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-011"],
+          "summary": "Clarify recorded importer fixture provenance so fixture-backed catalog facts cannot be mistaken for live raw cache evidence.",
+          "deliverables": [
+            "Recorded fixture provenance marker",
+            "Explanation fixture distinguishing raw cache and recorded fixture evidence"
+          ],
+          "acceptanceCriteria": [
+            "Recorded fixture imports expose recorded_fixture provenance or an equivalent fixture mode marker.",
+            "Public explanations can distinguish fixture replay evidence from live/raw cache evidence."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "Fixture provenance hidden as raw cache",
+            "Benchmark explanation ambiguity"
+          ]
+        }
+      }
+    }
+  ]
+}

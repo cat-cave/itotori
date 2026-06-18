@@ -1,0 +1,153 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-062-20260618T215356Z",
+  "generatedAt": "2026-06-18T21:53:56Z",
+  "spec": {
+    "id": "ITOTORI-062",
+    "title": "Style guide persistence and version events",
+    "branch": "spec/itotori-062",
+    "worktree": "/tmp/itotori-spec-itotori-062",
+    "commit": "552b3ad"
+  },
+  "auditor": {
+    "name": "itotori-062-focused-reaudit",
+    "kind": "architecture"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audit found P1 blockers in style-guide event durability and stale approval enforcement. Repair commits d2e07a2 and 552b3ad fixed both blockers. Focused re-audit found no remaining P0/P1 findings; two P2 hardening findings were converted into follow-up DAG nodes.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 2,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-062-F001", "ITOTORI-062-F002"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-062-F001",
+      "severity": "P2",
+      "title": "Style-guide version pointers lack same-branch DB constraints",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/migrations/0015_style_guide_versions.sql",
+          "line": 1
+        }
+      ],
+      "description": "latest_version_id, approved_version_id, and previous_version_id remain plain text, while version rows independently carry style guide, project, and locale branch identifiers.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Focused re-audit verified repository/service guards but found no DB-level constraints preventing dangling or cross-branch/project pointers outside repository writes."
+        }
+      ],
+      "impact": "Direct SQL or future repository bugs could create style-guide version pointers that cross locale branches or projects.",
+      "actionableAcceptanceCriteria": [
+        "Style-guide guide/version/project/locale branch consistency is enforced by deferrable foreign keys, composite constraints, triggers, or equivalent migration-level checks.",
+        "Migration contract tests reject dangling latest/approved/previous version references and cross-branch/project version rows."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Style guide version DB consistency constraints",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "policy",
+          "dependsOn": ["ITOTORI-062"],
+          "summary": "Add migration-level consistency constraints or equivalent checks for style-guide latest, approved, previous, project, and locale-branch version relationships.",
+          "deliverables": [
+            "Style-guide version consistency constraints",
+            "Migration contract rejection tests"
+          ],
+          "acceptanceCriteria": [
+            "Dangling latest, approved, and previous version references are rejected.",
+            "Cross-project or cross-locale-branch style-guide version references are rejected.",
+            "Valid repository-created style-guide versions and approvals continue to migrate and test successfully."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "Cross-branch style policy leakage through direct DB writes",
+            "Constraint drift around version pointers"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-062-F002",
+      "severity": "P2",
+      "title": "Style-guide event payload shape is not DB-enforced",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/migrations/0005_event_queue_foundation.sql",
+          "line": 17
+        },
+        {
+          "path": "packages/itotori-db/migrations/0015_style_guide_versions.sql",
+          "line": 53
+        }
+      ],
+      "description": "The outbox payload column accepts generic JSONB; migration 0015 adds the style-guide event type but does not enforce the event payload schema at the DB boundary.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Focused re-audit found TypeScript payload typing but no event-type-specific JSONB constraint or typed event table."
+        }
+      ],
+      "impact": "Future producers could enqueue malformed style guide events without source revision or version ids, weakening event-driven consumers.",
+      "actionableAcceptanceCriteria": [
+        "StyleGuideVersionChanged outbox payloads are validated by a DB JSONB check, typed event table, or durable validator contract.",
+        "Invalid payloads missing schemaVersion, project id, locale branch id, previous/new version ids, or source revision reference are rejected in tests."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Style guide event payload DB contract",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "policy",
+          "dependsOn": ["ITOTORI-062"],
+          "summary": "Enforce or durably validate the StyleGuideVersionChanged outbox payload schema at the event persistence boundary.",
+          "deliverables": [
+            "Style-guide event payload DB or validator contract",
+            "Malformed payload rejection tests"
+          ],
+          "acceptanceCriteria": [
+            "StyleGuideVersionChanged payloads require schemaVersion, project id, locale branch id, previous/new version ids, and source revision reference.",
+            "Malformed style-guide event payloads fail before consumers can process them.",
+            "Existing valid style-guide event fixtures continue to pass."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec vp run ts:test"
+            }
+          ],
+          "auditFocus": ["Malformed event payload accepted", "TypeScript-only payload guarantees"]
+        }
+      }
+    }
+  ]
+}

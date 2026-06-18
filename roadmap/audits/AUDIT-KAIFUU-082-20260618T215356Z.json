@@ -1,0 +1,207 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-082-20260618T215356Z",
+  "generatedAt": "2026-06-18T21:53:56Z",
+  "spec": {
+    "id": "KAIFUU-082",
+    "title": "Encoded string-slot byte-budget preflight",
+    "branch": "spec/kaifuu-082",
+    "worktree": "/tmp/itotori-spec-kaifuu-082",
+    "commit": "b536889"
+  },
+  "auditor": {
+    "name": "kaifuu-082-preflight-audit",
+    "kind": "architecture"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Audit found no P0/P1 blockers. KAIFUU-082 satisfies alpha blocking criteria; three P2 hardening findings were converted into follow-up DAG nodes.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 3,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-082-F001", "KAIFUU-082-F002", "KAIFUU-082-F003"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-082-F001",
+      "severity": "P2",
+      "title": "Shift-JIS slot preflight uses a narrow hand-coded subset",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-core/src/offset_map.rs",
+          "line": 1331
+        }
+      ],
+      "description": "The Shift-JIS encoder accepts ASCII, halfwidth kana, and a small kana/punctuation table instead of full Shift-JIS compatibility.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found common kanji/fullwidth text can be reported as invalid despite the slot encoding being named shift_jis."
+        }
+      ],
+      "impact": "Valid real game text may be rejected by byte-budget preflight until a real codec or clearly scoped subset exists.",
+      "actionableAcceptanceCriteria": [
+        "Shift-JIS slot preflight uses a real documented codec or is renamed/scoped as a documented subset.",
+        "Fixtures cover accepted common kanji/fullwidth cases and rejected unmappable cases for the chosen encoding contract."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Full Shift-JIS string-slot codec contract",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-082"],
+          "summary": "Replace or explicitly scope the KAIFUU-082 hand-coded Shift-JIS subset so encoded string-slot preflight handles real game text predictably.",
+          "deliverables": [
+            "Shift-JIS codec contract",
+            "Accepted kanji/fullwidth fixtures",
+            "Rejected unmappable fixtures"
+          ],
+          "acceptanceCriteria": [
+            "Valid common Shift-JIS kanji and fullwidth strings are accepted when they fit the slot budget.",
+            "Unmappable Unicode text fails with slot id, byte range, and remediation code.",
+            "The documented encoding name matches the actual codec behavior."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core"
+            }
+          ],
+          "auditFocus": [
+            "False invalid_encoding diagnostics for valid Shift-JIS",
+            "Encoding contract overclaims"
+          ]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-082-F002",
+      "severity": "P2",
+      "title": "CLI preflight failure output drops slot context",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "line": 93
+        },
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "line": 223
+        }
+      ],
+      "description": "The CLI reports only failure codes for encoded string-slot preflight failures, dropping slot id, byte range, and remediation details produced by the adapter failure.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit compared detailed AdapterFailure construction with the CLI patch error path."
+        }
+      ],
+      "impact": "Users can see a safe preflight failure without enough context to fix the offending slot.",
+      "actionableAcceptanceCriteria": [
+        "CLI patch failure output includes redacted slot id, byte range, and remediation for encoded string-slot preflight failures.",
+        "No-output-mutation preflight failures remain covered by regression tests."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Encoded slot CLI diagnostic detail",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-082"],
+          "summary": "Expose redacted encoded string-slot preflight slot id, byte range, and remediation details through Kaifuu CLI patch failure reporting.",
+          "deliverables": [
+            "CLI preflight diagnostic detail output",
+            "No-output-mutation diagnostic regression"
+          ],
+          "acceptanceCriteria": [
+            "CLI patch preflight failures include slot id, byte range, semantic code, and remediation code.",
+            "Sensitive paths or raw private payloads remain redacted in diagnostic output.",
+            "Patch output directories remain unmodified on preflight failure."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli"
+            }
+          ],
+          "auditFocus": [
+            "Actionable slot context lost in CLI errors",
+            "Diagnostic redaction regressions"
+          ]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-082-F003",
+      "severity": "P2",
+      "title": "Duplicate protected token multiplicity is not enforced in core slot validation",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-core/src/offset_map.rs",
+          "line": 373
+        }
+      ],
+      "description": "Core EncodedStringSlot protected-span validation checks by raw text and can pass repeated identical protected tokens with only one target occurrence.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found fixture-adapter count checks do not protect direct users of the public EncodedStringSlot validator."
+        }
+      ],
+      "impact": "Adapters using the core validator directly can miss dropped duplicate placeholders.",
+      "actionableAcceptanceCriteria": [
+        "Core EncodedStringSlot validates protected spans as a multiset of required raw tokens and target ranges.",
+        "A fixture with duplicate same-raw protected tokens fails when one occurrence is missing or mapped incorrectly."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Encoded slot duplicate protected-token validation",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-082"],
+          "summary": "Make core encoded string-slot protected-span validation enforce multiplicity for repeated identical protected tokens.",
+          "deliverables": ["Multiset protected-token validation", "Duplicate raw-token fixtures"],
+          "acceptanceCriteria": [
+            "Two identical source protected tokens require two valid target mappings or occurrences.",
+            "Missing or collapsed duplicate protected tokens fail with slot id and protected span diagnostics.",
+            "Existing distinct-token protected span fixtures continue to pass."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core"
+            }
+          ],
+          "auditFocus": [
+            "Dropped repeated placeholders",
+            "Fixture adapter masking core validator gaps"
+          ]
+        }
+      }
+    }
+  ]
+}
