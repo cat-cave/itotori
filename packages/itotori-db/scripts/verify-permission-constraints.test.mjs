@@ -89,7 +89,10 @@ test("requires the named permission constraint on the grants table", async () =>
 
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /missing from 0001_permissions\.sql permission constraint/);
-    assert.doesNotMatch(result.stderr, /0002_unrelated_permission_check\.sql permission constraint/);
+    assert.doesNotMatch(
+      result.stderr,
+      /0002_unrelated_permission_check\.sql permission constraint/,
+    );
   } finally {
     await rm(fixture.root, { recursive: true, force: true });
   }
@@ -159,12 +162,8 @@ function runVerifier(fixture) {
 }
 
 function authorizationSource() {
-  const valueLines = permissions
-    .map(([key, value]) => `  ${key}: "${value}",`)
-    .join("\n");
-  const permissionLines = permissions
-    .map(([key]) => `  permissionValues.${key},`)
-    .join("\n");
+  const valueLines = permissions.map(([key, value]) => `  ${key}: "${value}",`).join("\n");
+  const permissionLines = permissions.map(([key]) => `  permissionValues.${key},`).join("\n");
 
   return `
     export const permissionValues = {
