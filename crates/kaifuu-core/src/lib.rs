@@ -47,6 +47,8 @@ pub const STRING_RELOCATION_OVERLAPPING_WRITES: &str =
     "kaifuu.string_relocation.overlapping_writes";
 pub const STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT: &str =
     "kaifuu.string_relocation.unsupported_pointer_format";
+pub const STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH: &str =
+    "kaifuu.string_relocation.pointer_provenance_mismatch";
 
 pub mod contracts;
 mod offset_map;
@@ -7772,6 +7774,7 @@ impl AdapterFailure {
                 | STRING_RELOCATION_UNRESOLVED_REFERENCE
                 | STRING_RELOCATION_OVERLAPPING_WRITES
                 | STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT
+                | STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH
         )
     }
 

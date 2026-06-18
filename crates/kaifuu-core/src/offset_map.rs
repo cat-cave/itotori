@@ -7,9 +7,10 @@ use serde_json::Value;
 
 use crate::{
     OperationStatus, ProtectedSpanMapping, STRING_RELOCATION_OVERLAPPING_WRITES,
-    STRING_RELOCATION_UNRESOLVED_REFERENCE, STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
-    STRING_SLOT_INVALID_ENCODING, STRING_SLOT_OVERFLOW, STRING_SLOT_PROTECTED_SPAN_MUTATION,
-    STRING_SLOT_TERMINATOR_LOSS, content_hash,
+    STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH, STRING_RELOCATION_UNRESOLVED_REFERENCE,
+    STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT, STRING_SLOT_INVALID_ENCODING,
+    STRING_SLOT_OVERFLOW, STRING_SLOT_PROTECTED_SPAN_MUTATION, STRING_SLOT_TERMINATOR_LOSS,
+    content_hash,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -1907,6 +1908,22 @@ pub fn plan_string_table_rebuild(
             ));
             continue;
         };
+        match decode_reference_old_target(reference, &source_bytes) {
+            Ok(decoded_old_target)
+                if decoded_old_target == rebuilt_slot.slot.old_byte_range.start() => {}
+            Ok(decoded_old_target) => {
+                relocation_diagnostics.push(reference_provenance_mismatch_diagnostic(
+                    reference,
+                    decoded_old_target,
+                    rebuilt_slot.slot.old_byte_range.start(),
+                ));
+                continue;
+            }
+            Err(diagnostic) => {
+                relocation_diagnostics.push(diagnostic);
+                continue;
+            }
+        }
         let Some(new_reference_range) = translate_old_range(reference.byte_range, &mappings) else {
             relocation_diagnostics.push(relocation_diagnostic(
                 STRING_RELOCATION_UNRESOLVED_REFERENCE,
@@ -2365,6 +2382,129 @@ fn encode_reference_value(
     }
 }
 
+fn decode_reference_old_target(
+    reference: &StringRelocationReference,
+    source_bytes: &[u8],
+) -> Result<u64, StringRelocationDiagnostic> {
+    let start = usize::try_from(reference.byte_range.start()).map_err(|_| {
+        relocation_diagnostic(
+            STRING_RELOCATION_UNRESOLVED_REFERENCE,
+            Some(&reference.reference_id),
+            Some(&reference.slot_id),
+            Some(reference.byte_range),
+            "reference byte range start is not addressable on this platform",
+            "repair_reference_range",
+            "declare reference ranges within the fixture source bytes",
+        )
+    })?;
+    let end = usize::try_from(reference.byte_range.end()).map_err(|_| {
+        relocation_diagnostic(
+            STRING_RELOCATION_UNRESOLVED_REFERENCE,
+            Some(&reference.reference_id),
+            Some(&reference.slot_id),
+            Some(reference.byte_range),
+            "reference byte range end is not addressable on this platform",
+            "repair_reference_range",
+            "declare reference ranges within the fixture source bytes",
+        )
+    })?;
+    let bytes = source_bytes.get(start..end).ok_or_else(|| {
+        relocation_diagnostic(
+            STRING_RELOCATION_UNRESOLVED_REFERENCE,
+            Some(&reference.reference_id),
+            Some(&reference.slot_id),
+            Some(reference.byte_range),
+            "reference byte range exceeds source bytes",
+            "repair_reference_range",
+            "declare reference ranges within the fixture source bytes",
+        )
+    })?;
+
+    match &reference.format {
+        StringReferenceFormat::PointerLeU32 { base_address } => {
+            let bytes: [u8; 4] = bytes.try_into().map_err(|_| {
+                relocation_diagnostic(
+                    STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+                    Some(&reference.reference_id),
+                    Some(&reference.slot_id),
+                    Some(reference.byte_range),
+                    "reference byte range width does not match u32 little-endian pointer format",
+                    "repair_reference_width",
+                    "declare a byte range matching the supported reference format width",
+                )
+            })?;
+            let pointer = u32::from_le_bytes(bytes) as u64;
+            pointer.checked_sub(*base_address).ok_or_else(|| {
+                relocation_diagnostic(
+                    STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH,
+                    Some(&reference.reference_id),
+                    Some(&reference.slot_id),
+                    Some(reference.byte_range),
+                    format!(
+                        "source pointer decodes to absolute address {pointer}, before base address {base_address}"
+                    ),
+                    "repair_reference_provenance",
+                    "re-extract the pointer table or bind this reference to the slot currently targeted by the source bytes",
+                )
+            })
+        }
+        StringReferenceFormat::IndexLeU16 => {
+            let bytes: [u8; 2] = bytes.try_into().map_err(|_| {
+                relocation_diagnostic(
+                    STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+                    Some(&reference.reference_id),
+                    Some(&reference.slot_id),
+                    Some(reference.byte_range),
+                    "reference byte range width does not match u16 little-endian index format",
+                    "repair_reference_width",
+                    "declare a byte range matching the supported reference format width",
+                )
+            })?;
+            Ok(u16::from_le_bytes(bytes) as u64)
+        }
+        StringReferenceFormat::Unsupported { .. } => Err(relocation_diagnostic(
+            STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT,
+            Some(&reference.reference_id),
+            Some(&reference.slot_id),
+            Some(reference.byte_range),
+            "reference uses an unsupported pointer format",
+            "add_pointer_format_support",
+            "add an explicit supported relocation encoder before patching this reference",
+        )),
+    }
+}
+
+fn reference_provenance_mismatch_diagnostic(
+    reference: &StringRelocationReference,
+    decoded_old_target: u64,
+    expected_old_target: u64,
+) -> StringRelocationDiagnostic {
+    let table_semantic = match reference.format {
+        StringReferenceFormat::PointerLeU32 { base_address } => format!(
+            "pointer_le_u32 entries encode baseAddress + slot oldByteRange.start; baseAddress={base_address}"
+        ),
+        StringReferenceFormat::IndexLeU16 => {
+            "index_le_u16 table entries encode slot oldByteRange.start as a source byte offset"
+                .to_string()
+        }
+        StringReferenceFormat::Unsupported { .. } => {
+            "unsupported relocation formats have no validated source table semantic".to_string()
+        }
+    };
+    relocation_diagnostic(
+        STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH,
+        Some(&reference.reference_id),
+        Some(&reference.slot_id),
+        Some(reference.byte_range),
+        format!(
+            "source reference decodes to old target {decoded_old_target}, but slot {} starts at {expected_old_target}; {table_semantic}",
+            reference.slot_id
+        ),
+        "repair_reference_provenance",
+        "re-extract the pointer or index table, or bind this reference to the slot currently targeted by the source bytes",
+    )
+}
+
 fn validate_reference_write_overlaps(
     diagnostics: &mut Vec<StringRelocationDiagnostic>,
     writes: &[ReferenceWrite<'_>],
@@ -2478,6 +2618,12 @@ mod tests {
         serde_json::from_str(match name {
             "pointer_table" => include_str!("../fixtures/string-relocation/pointer-table.json"),
             "index_table" => include_str!("../fixtures/string-relocation/index-table.json"),
+            "pointer_table_wrong_target" => {
+                include_str!("../fixtures/string-relocation/pointer-table-wrong-target.json")
+            }
+            "index_table_wrong_target" => {
+                include_str!("../fixtures/string-relocation/index-table-wrong-target.json")
+            }
             _ => unreachable!(),
         })
         .unwrap()
@@ -2494,6 +2640,10 @@ mod tests {
             .unwrap()
             .to_string();
         (serde_json::from_value(value).unwrap(), expected)
+    }
+
+    fn invalid_string_relocation_fixture(name: &str) -> StringTableRebuildRequest {
+        serde_json::from_value(string_relocation_fixture(name)).unwrap()
     }
 
     fn run_string_slot_fixture(name: &str) -> EncodedStringSlotPreflightReport {
@@ -2895,6 +3045,52 @@ mod tests {
                 .iter()
                 .any(|diagnostic| diagnostic.code == STRING_RELOCATION_OVERLAPPING_WRITES)
         );
+    }
+
+    #[test]
+    fn string_relocation_pointer_table_wrong_source_target_fails_before_output_materialization() {
+        let request = invalid_string_relocation_fixture("pointer_table_wrong_target");
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.output_bytes_hex.is_none());
+        assert!(report.output_hash.is_none());
+        assert!(
+            report.relocation_diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH
+                    && diagnostic.reference_id.as_deref() == Some("ptr.line.001")
+                    && diagnostic.slot_id.as_deref() == Some("line.001")
+                    && diagnostic
+                        .message
+                        .contains("source reference decodes to old target 20")
+            }),
+            "{report:?}"
+        );
+        assert!(report.relocated_references.is_empty());
+    }
+
+    #[test]
+    fn string_relocation_index_table_wrong_source_target_fails_before_output_materialization() {
+        let request = invalid_string_relocation_fixture("index_table_wrong_target");
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.output_bytes_hex.is_none());
+        assert!(report.output_hash.is_none());
+        assert!(
+            report.relocation_diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH
+                    && diagnostic.reference_id.as_deref() == Some("idx.menu.001")
+                    && diagnostic.slot_id.as_deref() == Some("menu.001")
+                    && diagnostic
+                        .message
+                        .contains("index_le_u16 table entries encode")
+            }),
+            "{report:?}"
+        );
+        assert!(report.relocated_references.is_empty());
     }
 
     #[test]
