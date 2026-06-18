@@ -1077,11 +1077,11 @@ mod tests {
                 vec![
                     CapabilityReport::requires_user_input(
                         Capability::KeyProfile,
-                        "register dump at path=/home/dev/game contained raw key 00112233445566778899aabbccddeeff",
+                        "path=~/games/private/key.bin",
                     ),
                     CapabilityReport::unsupported(
                         Capability::PatchBack,
-                        "story file private-route-ending.ks requires file=C:\\Games\\SecretRoute\\patcher.exe",
+                        "requires file=%USERPROFILE%\\Games\\SecretRoute\\patcher.exe",
                     ),
                 ],
             )
@@ -1100,15 +1100,18 @@ mod tests {
                         category: RequirementCategory::SecretKey,
                         key: "route-key".to_string(),
                         status: RequirementStatus::Missing,
-                        description: "read register dump source:/home/dev/game/private-route-ending.ks with raw key 00112233445566778899aabbccddeeff".to_string(),
-                        placeholder: Some("file=C:\\Games\\SecretRoute\\key.bin".to_string()),
+                        description: "read key from $HOME/games/private/key.bin".to_string(),
+                        placeholder: Some(
+                            "file=%USERPROFILE%\\Games\\SecretRoute\\key.bin".to_string(),
+                        ),
                         secret: true,
                     },
                     ProfileRequirement {
                         category: RequirementCategory::File,
                         key: "script".to_string(),
                         status: RequirementStatus::Unsupported,
-                        description: "story-ish filename private-route-ending.ks must stay local".to_string(),
+                        description: "story-ish filename private-route-ending.ks must stay local"
+                            .to_string(),
                         placeholder: None,
                         secret: false,
                     },
@@ -1121,7 +1124,7 @@ mod tests {
             let mut metadata = BTreeMap::new();
             metadata.insert(
                 "diagnostic".to_string(),
-                "helper dump source:/home/dev/game/private-route-ending.ks raw key 00112233445566778899aabbccddeeff".to_string(),
+                "source=$HOME/games/private/key.bin".to_string(),
             );
             Ok(GameProfile {
                 schema_version: "0.1.0".to_string(),
@@ -1141,13 +1144,13 @@ mod tests {
                 helper_evidence: None,
                 assets: vec![AssetProfile {
                     asset_id: deterministic_id("asset", 1301),
-                    path: "/home/dev/game/private-route-ending.ks".to_string(),
+                    path: "~/games/private/source.ks".to_string(),
                     asset_kind: AssetKind::Script,
                     text_surfaces: vec![TextSurface::Dialogue],
                     source_hash: Some(content_hash("sensitive profile asset")),
                     patching: CapabilityReport::limited(
                         Capability::Patching,
-                        "decrypted text from private-route-ending.ks requires local helper",
+                        "helper input lives at %USERPROFILE%\\Games\\SecretRoute\\key.bin",
                     ),
                 }],
                 capabilities: self.capabilities().reports,
@@ -1366,13 +1369,7 @@ mod tests {
         );
         let capabilities_serialized = fs::read_to_string(&capabilities_path).unwrap();
         assert!(capabilities_serialized.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED));
-        for forbidden in [
-            "/home/dev/game",
-            "C:\\Games",
-            "register dump",
-            "00112233445566778899aabbccddeeff",
-            "private-route-ending.ks",
-        ] {
+        for forbidden in ["~/games", "%USERPROFILE%", "private/key.bin", "SecretRoute"] {
             assert!(
                 !capabilities_serialized.contains(forbidden),
                 "capabilities leaked {forbidden}"
@@ -1392,11 +1389,9 @@ mod tests {
         let detection_serialized = fs::read_to_string(&detect_path).unwrap();
         assert!(detection_serialized.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED));
         for forbidden in [
-            "/home/dev/game",
-            "C:\\Games",
-            "register dump",
-            "00112233445566778899aabbccddeeff",
-            "private-route-ending.ks",
+            "$HOME/games",
+            "%USERPROFILE%",
+            "private/key.bin",
             "SecretRoute",
         ] {
             assert!(
@@ -1430,11 +1425,11 @@ mod tests {
         assert!(serialized.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED));
         assert!(serialized.contains("sensitive-report-test"));
         for forbidden in [
-            "/home/dev/game",
-            "helper dump",
-            "decrypted text",
-            "00112233445566778899aabbccddeeff",
-            "private-route-ending.ks",
+            "~/games",
+            "$HOME/games",
+            "%USERPROFILE%",
+            "private/key.bin",
+            "SecretRoute",
         ] {
             assert!(
                 !serialized.contains(forbidden),

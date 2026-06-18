@@ -2960,7 +2960,7 @@ fn secret_redaction_reason<'a>(key: &str, field: &str, value: &'a Value) -> Opti
         );
     }
     if is_path_like_field(&normalized) && is_local_absolute_path(text) {
-        return Some("local absolute paths must be redacted from profiles and reports");
+        return Some("local paths must be redacted from profiles and reports");
     }
     if is_key_like_context(&normalized, field) && looks_like_raw_key_material(text) {
         return Some("raw key-like material must be referenced through secretRef, not persisted");
@@ -3038,7 +3038,10 @@ fn is_archive_parameter_value_field(field: &str) -> bool {
 }
 
 fn is_local_absolute_path(text: &str) -> bool {
-    text.starts_with('/') || text.starts_with('\\') || path_has_windows_drive_prefix_component(text)
+    text.starts_with('/')
+        || text.starts_with('\\')
+        || path_has_windows_drive_prefix_component(text)
+        || path_starts_with_home_or_local_env_var(text)
 }
 
 fn is_valid_secret_ref(value: &str) -> bool {
@@ -3285,6 +3288,38 @@ fn token_contains_local_absolute_path(token: &str) -> bool {
         !candidate.is_empty()
             && (is_local_absolute_path(candidate)
                 || path_has_windows_drive_prefix_component(candidate))
+    })
+}
+
+fn path_starts_with_home_or_local_env_var(path: &str) -> bool {
+    let path = path.trim_start();
+    if path.starts_with("~/") || path.starts_with("~\\") {
+        return true;
+    }
+
+    let local_env_prefixes = [
+        "$HOME",
+        "${HOME}",
+        "$USERPROFILE",
+        "${USERPROFILE}",
+        "$HOMEPATH",
+        "${HOMEPATH}",
+        "$APPDATA",
+        "${APPDATA}",
+        "$LOCALAPPDATA",
+        "${LOCALAPPDATA}",
+        "%HOME%",
+        "%USERPROFILE%",
+        "%HOMEPATH%",
+        "%APPDATA%",
+        "%LOCALAPPDATA%",
+        "%TEMP%",
+        "%TMP%",
+    ];
+    local_env_prefixes.iter().any(|prefix| {
+        path.get(..prefix.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+            && path[prefix.len()..].starts_with(['/', '\\'])
     })
 }
 
@@ -7903,20 +7938,21 @@ mod tests {
                     LayeredAccessPreflightRequirement::missing_capability(
                         LayeredAccessStage::Container,
                         "private-route-name/ending.ks",
-                        "container helper unavailable for /home/dev/Private Route Spoiler Game/data.xp3",
+                        "container helper unavailable for $HOME/Private Route Spoiler Game/data.xp3",
                     ),
                     LayeredAccessPreflightRequirement::missing_capability(
                         LayeredAccessStage::Crypto,
-                        "Scene.pck",
-                        format!("helper dump included unresolved raw key {raw_key}"),
+                        "%USERPROFILE%\\Games\\Scene.pck",
+                        format!(
+                            "helper dump at ~/games/private/key.bin included unresolved raw key {raw_key}"
+                        ),
                     ),
                 ],
             );
             PatchResult {
                 schema_version: PROFILE_SCHEMA_VERSION.to_string(),
-                patch_result_id:
-                    "patch-result=/home/dev/Private Route Spoiler Game/patch-result.json"
-                        .to_string(),
+                patch_result_id: "patch-result=~/Private Route Spoiler Game/patch-result.json"
+                    .to_string(),
                 patch_export_id: patch_export.patch_export_id.clone(),
                 status: OperationStatus::Failed,
                 output_hash: format!("helper dump output hash {raw_key}"),
@@ -8647,6 +8683,9 @@ mod tests {
             "helper failed path=/home/dev/game",
             "helper failed source:/home/dev/game",
             "helper failed file=C:\\Games\\SecretRoute\\game.exe",
+            "helper failed path=~/games/private/key.bin",
+            "helper failed path=$HOME/games/key.bin",
+            "helper failed path=%USERPROFILE%\\Games\\key.bin",
         ] {
             let redacted = redact_for_log_or_report(text);
             assert_eq!(
@@ -8663,14 +8702,14 @@ mod tests {
             "adapterId": "kaifuu.fixture",
             "rawKey": "actual-secret",
             "metadata": {
-                "localPath": "/home/dev/Private Route Spoiler Game",
+                "localPath": "~/Private Route Spoiler Game",
                 "safeRelativePath": "scripts/common.ks",
-                "diagnostic": "helper dump source:/home/dev/game/private-route-ending.ks"
+                "diagnostic": "source=$HOME/games/private-key.bin"
             },
             "failures": [
                 {
                     "message": "decrypted text included 00112233445566778899aabbccddeeff",
-                    "assetRef": "scripts/common.ks"
+                    "assetRef": "%USERPROFILE%\\Games\\private-key.bin"
                 }
             ]
         });
@@ -8686,12 +8725,13 @@ mod tests {
         assert!(serialized.contains(SEMANTIC_SECRET_REDACTED));
         for forbidden in [
             "actual-secret",
-            "/home/dev",
+            "~/Private Route Spoiler Game",
+            "$HOME/games",
+            "%USERPROFILE%",
             "Private Route Spoiler Game",
-            "helper dump",
+            "private-key.bin",
             "decrypted text",
             "00112233445566778899aabbccddeeff",
-            "private-route-ending.ks",
         ] {
             assert!(
                 !serialized.contains(forbidden),
@@ -8777,7 +8817,7 @@ mod tests {
     }
 
     #[test]
-    fn golden_unchanged_patch_preflight_blocks_before_work_dir_prepare() {
+    fn golden_unchanged_patch_preflight_redaction_blocks_before_work_dir_prepare() {
         let game_dir = temp_dir("golden-unchanged-preflight-game");
         let work_dir = temp_dir("golden-unchanged-preflight-work");
         let sentinel = work_dir.join("unchanged-patch").join("sentinel.txt");
@@ -8821,9 +8861,12 @@ mod tests {
         }));
         let serialized = report.stable_json().unwrap();
         for forbidden in [
-            "/home/dev",
+            "$HOME",
+            "%USERPROFILE%",
+            "~/",
             "Private Route Spoiler Game",
             "private-route-name",
+            "Scene.pck",
             "helper dump",
             "00112233445566778899aabbccddeeff",
         ] {
