@@ -1,0 +1,123 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-043-20260618T021150Z",
+  "generatedAt": "2026-06-18T02:11:50Z",
+  "spec": {
+    "id": "KAIFUU-043",
+    "title": "Report-wide redaction hardening",
+    "branch": "spec/kaifuu-043",
+    "worktree": "/tmp/itotori-spec-kaifuu-043",
+    "commit": "88e7940cbac1d90cf0c259449f84c0b3424cae12"
+  },
+  "auditor": {
+    "name": "orchestrator-synthesis-after-galileo-fermat-darwin",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audits found a P1 home/env path redaction gap plus P2/P3 serialization and profile-init coverage follow-ups. The P1 was repaired and re-audited clean; remaining findings are non-blocking DAG follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-043-F001", "KAIFUU-043-F002"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-043-F001",
+      "severity": "P2",
+      "title": "Public stable report serialization can bypass report redaction",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-core/src/lib.rs",
+          "symbol": "GameProfile::stable_json"
+        },
+        {
+          "path": "crates/kaifuu-core/src/lib.rs",
+          "symbol": "AssetInventoryManifest::stable_json"
+        }
+      ],
+      "description": "CLI report writers use redacting wrappers, but public stable_json APIs for profile and inventory structs still serialize normalized raw structs directly. Library callers can accidentally use those APIs for report output and bypass the centralized redaction helper.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Architecture audit observed GameProfile::stable_json and AssetInventoryManifest::stable_json serializing raw normalized structs while CLI report code uses private redacting wrappers."
+        }
+      ],
+      "impact": "Future report writers or library consumers could leak paths, keys, helper dumps, or private text despite KAIFUU-043 hardening CLI report paths.",
+      "actionableAcceptanceCriteria": [
+        "GameProfile and AssetInventoryManifest library serialization cannot leak sensitive report fields through report-intended APIs.",
+        "Raw deterministic serialization remains clearly separated from report-safe serialization if both are needed.",
+        "Tests cover library-call serialization and CLI report serialization for sensitive fields."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-132",
+          "acceptanceCriteria": [
+            "GameProfile and AssetInventoryManifest report-intended APIs apply the centralized redaction policy or expose an explicit raw/report-safe split."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core redaction"
+            }
+          ],
+          "auditFocus": ["Library serialization bypassing report redaction"],
+          "notes": "Follow-up node KAIFUU-132 records this non-blocking audit finding."
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-043-F002",
+      "severity": "P3",
+      "title": "profile init redaction path lacks focused regression coverage",
+      "category": "test",
+      "locations": [
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "symbol": "profile init"
+        }
+      ],
+      "description": "The added CLI redaction tests cover generated profile report paths, but profile init has a distinct validate-then-write flow and should get focused regression coverage.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Architecture audit noted profile init writes through a separate flow from the generated profile report test path."
+        }
+      ],
+      "impact": "A future profile init refactor could bypass redaction while generated profile report tests continue passing.",
+      "actionableAcceptanceCriteria": [
+        "profile init has a regression test with sensitive adapter payloads.",
+        "The test proves profile init output redacts paths, key material, helper dumps, and private text markers."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-133",
+          "acceptanceCriteria": [
+            "profile init output redaction is covered by a command-specific regression test."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli profile_init"
+            }
+          ],
+          "auditFocus": ["profile init path bypassing generated report redaction tests"],
+          "notes": "Follow-up node KAIFUU-133 records this non-blocking audit finding."
+        }
+      }
+    }
+  ]
+}

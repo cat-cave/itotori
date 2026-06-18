@@ -5395,7 +5395,7 @@
     {
       "id": "KAIFUU-043",
       "title": "Report-wide redaction hardening",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -5427,10 +5427,7 @@
         "Absolute path leakage in structured reports",
         "Raw diagnostic echoes bypassing report redaction",
         "Golden fixtures normalizing host-specific output"
-      ],
-      "owner": "orchestrator-kaifuu-043",
-      "branch": "spec/kaifuu-043",
-      "worktree": "/tmp/itotori-spec-kaifuu-043"
+      ]
     },
     {
       "id": "KAIFUU-044",
@@ -14561,6 +14558,82 @@
         "Dependency bypass of prerequisite slices"
       ],
       "statusReason": "Replaced by concrete engine-specific specs and UNIV-016 validator rules."
+    },
+    {
+      "id": "KAIFUU-132",
+      "title": "Public stable report serialization redaction",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-043"],
+      "summary": "Align public stable_json report serializers with the centralized report redaction policy so library callers cannot bypass report-safe output accidentally.",
+      "deliverables": [
+        "Redaction policy decision for public stable_json APIs",
+        "Report-safe serialization path for GameProfile and AssetInventoryManifest or explicit raw/stable split",
+        "Regression tests for library-call serialization of sensitive path, key, and payload fields"
+      ],
+      "acceptanceCriteria": [
+        "GameProfile and AssetInventoryManifest library serialization cannot leak absolute paths, key material, helper dumps, or private text through report-intended APIs",
+        "If raw stable serialization remains available, its API name and docs clearly distinguish raw deterministic serialization from report-safe serialization",
+        "Existing CLI report writers continue using report-safe serialization and tests cover both CLI and library-call paths"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core redaction"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Public library serialization bypassing report redaction",
+        "Accidental API breakage for deterministic raw serialization",
+        "CLI and library report paths drifting apart"
+      ]
+    },
+    {
+      "id": "KAIFUU-133",
+      "title": "Profile init redaction regression coverage",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-043"],
+      "summary": "Add focused coverage proving the profile init command path applies the same report redaction as generated profile report writes.",
+      "deliverables": [
+        "profile init redaction fixture",
+        "CLI regression test for sensitive adapter payloads on profile init",
+        "Golden assertion for redacted profile init output"
+      ],
+      "acceptanceCriteria": [
+        "profile init output redacts absolute paths, home/env path fragments, key material, helper dumps, and private text markers",
+        "The test exercises the profile init flow rather than only the profile generation shortcut path",
+        "The regression does not weaken existing generated profile report redaction coverage"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli profile_init"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "CLI command path not covered by generated report tests",
+        "Golden output accidentally becoming host-specific",
+        "Profile validation errors bypassing redaction"
+      ]
     },
     {
       "id": "ITOTORI-112",
