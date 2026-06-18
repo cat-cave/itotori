@@ -15655,7 +15655,7 @@
     },
     {
       "id": "UTSUSHI-109",
-      "status": "in_progress",
+      "status": "complete",
       "title": "Reference capture corpus validator",
       "priority": "P1",
       "target": "alpha",
@@ -15687,10 +15687,7 @@
         "Reference captures that cannot be reproduced or traced",
         "Screenshot evidence tier overclaim",
         "Private path leakage in public captures"
-      ],
-      "owner": "orchestrator-20260618-wave6",
-      "branch": "spec/utsushi-109",
-      "worktree": "/tmp/itotori-spec-utsushi-109"
+      ]
     },
     {
       "id": "UTSUSHI-110",
@@ -17276,6 +17273,47 @@
         "URL parser normalization hiding unsafe path behavior",
         "Encoded traversal coverage gaps",
         "Server route refactors changing artifact-store safety semantics silently"
+      ]
+    },
+    {
+      "id": "UTSUSHI-142",
+      "title": "Reference capture direct-corpus redaction fixtures",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-109"],
+      "summary": "Add on-disk invalid corpus fixtures where embedded UNC, unlisted Unix absolute, and Windows-drive local paths appear directly in corpus metadata instead of only in referenced runtime reports.",
+      "deliverables": [
+        "Invalid direct-corpus fixture for embedded UNC path text",
+        "Invalid direct-corpus fixture for unlisted Unix absolute path text",
+        "Invalid direct-corpus fixture for Windows-drive path text",
+        "Public manifest updates for the new invalid fixtures"
+      ],
+      "acceptanceCriteria": [
+        "The corpus validator rejects embedded UNC, unlisted Unix absolute, and Windows-drive local paths when they appear directly in corpus JSON.",
+        "Existing report-level invalid fixtures remain covered.",
+        "Managed artifact-store URIs, redaction markers, and normal prose with slashes remain accepted."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture reference_capture"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec node fixtures/validate-public-manifests.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Corpus-level redaction coverage only indirectly exercised through reports",
+        "False positives on artifact-store URIs or redaction markers",
+        "Public manifest drift for invalid fixture additions"
       ]
     },
     {

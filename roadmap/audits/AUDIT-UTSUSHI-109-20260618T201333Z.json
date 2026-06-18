@@ -1,0 +1,73 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-109-20260618T201333Z",
+  "generatedAt": "2026-06-18T20:13:33Z",
+  "spec": {
+    "id": "UTSUSHI-109",
+    "title": "Reference capture corpus validator",
+    "branch": "spec/utsushi-109",
+    "worktree": "/tmp/itotori-spec-utsushi-109",
+    "commit": "a63e346"
+  },
+  "auditor": {
+    "name": "utsushi-109-reference-capture-reaudit-wave",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audits found P1 blockers in runtime report contract validation, whole-report redaction, screenshot provenance, UUID7 parity, and local path detection. Repair commits 5a65cf9, 724ed74, and a63e346 fixed those blockers. The final focused re-audit found no remaining P0/P1/P2 findings; one direct-corpus fixture coverage polish item was recorded as UTSUSHI-142.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UTSUSHI-109-F001"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-109-F001",
+      "severity": "P3",
+      "title": "Direct corpus local-path invalid fixtures are indirect",
+      "category": "test",
+      "locations": [
+        {
+          "path": "fixtures/public/utsushi-reference-captures/invalid/windows-drive-corpus.json",
+          "line": 7
+        },
+        {
+          "path": "fixtures/public/utsushi-reference-captures/invalid/windows-drive-report.json",
+          "line": 2
+        }
+      ],
+      "description": "The validator scans corpus JSON directly, but the new on-disk invalid corpus fixtures exercise embedded UNC, unlisted Unix, and Windows-drive cases through referenced report files rather than placing those sensitive strings directly in corpus metadata.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final focused re-audit confirmed the P1 redaction bug was fixed and noted direct-corpus invalid fixture coverage as polish."
+        }
+      ],
+      "impact": "Future refactors could weaken direct corpus metadata scanning while report-level invalid fixtures still pass.",
+      "actionableAcceptanceCriteria": [
+        "The corpus validator rejects embedded UNC, unlisted Unix absolute, and Windows-drive local paths when they appear directly in corpus JSON.",
+        "Managed artifact-store URIs, redaction markers, and normal prose with slashes remain accepted."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-142",
+          "acceptanceCriteria": [
+            "The corpus validator rejects embedded UNC, unlisted Unix absolute, and Windows-drive local paths when they appear directly in corpus JSON."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    }
+  ]
+}
