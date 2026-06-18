@@ -719,6 +719,12 @@ pub fn validate_runtime_evidence_report_v02(value: &Value) -> BridgeContractResu
         "RuntimeEvidenceReportV02.evidenceTier",
     )?;
     assert_runtime_evidence_tier_within_fidelity(evidence_tier, fidelity_tier)?;
+    let report_status = assert_required_one_of(
+        report,
+        "status",
+        &["passed", "failed"],
+        "RuntimeEvidenceReportV02.status",
+    )?;
     if let Some(runtime_capabilities) = report.get("runtimeCapabilities") {
         validate_runtime_capability_contract(
             runtime_capabilities,
@@ -734,14 +740,9 @@ pub fn validate_runtime_evidence_report_v02(value: &Value) -> BridgeContractResu
             report,
             fidelity_tier,
             evidence_tier,
+            report_status,
         )?;
     }
-    assert_required_one_of(
-        report,
-        "status",
-        &["passed", "failed"],
-        "RuntimeEvidenceReportV02.status",
-    )?;
     assert_required_rfc3339(report, "createdAt", "RuntimeEvidenceReportV02.createdAt")?;
 
     let trace_events = required_array(
@@ -824,6 +825,21 @@ pub fn validate_runtime_evidence_report_v02(value: &Value) -> BridgeContractResu
         )?,
         "RuntimeEvidenceReportV02.limitations",
     )?;
+
+    if let Some(controlled_playback_session) = report.get("controlledPlaybackSession") {
+        let session = as_record(
+            controlled_playback_session,
+            "RuntimeEvidenceReportV02.controlledPlaybackSession",
+        )?;
+        validate_controlled_playback_session_evidence_surface(
+            string_field(session, "requestedOperation")?,
+            !branch_events.is_empty(),
+            !captures.is_empty(),
+            !recordings.is_empty(),
+            !reference_comparisons.is_empty(),
+            "RuntimeEvidenceReportV02.controlledPlaybackSession.requestedOperation",
+        )?;
+    }
 
     if trace_events.is_empty() && captures.is_empty() && recordings.is_empty() {
         return error(
@@ -4152,6 +4168,7 @@ fn validate_controlled_playback_session(
     report: &Map<String, Value>,
     report_fidelity_tier: &str,
     report_evidence_tier: &str,
+    report_status: &str,
 ) -> BridgeContractResult<()> {
     let session = as_record(value, label)?;
     assert_required_uuid7(session, "sessionId", &format!("{label}.sessionId"))?;
@@ -4184,12 +4201,17 @@ fn validate_controlled_playback_session(
         RUNTIME_REQUESTED_OPERATIONS,
         &format!("{label}.requestedOperation"),
     )?;
-    assert_required_one_of(
+    let status = assert_required_one_of(
         session,
         "status",
         &["passed", "failed"],
         &format!("{label}.status"),
     )?;
+    if status != report_status {
+        return error(format!(
+            "{label}.status must match RuntimeEvidenceReportV02.status"
+        ));
+    }
     let fidelity_tier = assert_required_one_of(
         session,
         "fidelityTier",
@@ -4245,6 +4267,101 @@ fn validate_controlled_playback_session(
         required(session, "limitations", &format!("{label}.limitations"))?,
         &format!("{label}.limitations"),
     )?;
+    Ok(())
+}
+
+fn validate_controlled_playback_session_evidence_surface(
+    requested_operation: &str,
+    has_branch_events: bool,
+    has_captures: bool,
+    has_recordings: bool,
+    has_reference_comparisons: bool,
+    label: &str,
+) -> BridgeContractResult<()> {
+    match requested_operation {
+        "trace" => {
+            reject_controlled_playback_operation_evidence(
+                requested_operation,
+                has_branch_events,
+                "branch event",
+                label,
+            )?;
+            reject_controlled_playback_operation_evidence(
+                requested_operation,
+                has_captures,
+                "capture",
+                label,
+            )?;
+            reject_controlled_playback_operation_evidence(
+                requested_operation,
+                has_recordings,
+                "recording",
+                label,
+            )?;
+            reject_controlled_playback_operation_evidence(
+                requested_operation,
+                has_reference_comparisons,
+                "reference comparison",
+                label,
+            )?;
+        }
+        "branch_discovery" => {
+            reject_controlled_playback_operation_evidence(
+                requested_operation,
+                has_captures,
+                "capture",
+                label,
+            )?;
+            reject_controlled_playback_operation_evidence(
+                requested_operation,
+                has_recordings,
+                "recording",
+                label,
+            )?;
+            reject_controlled_playback_operation_evidence(
+                requested_operation,
+                has_reference_comparisons,
+                "reference comparison",
+                label,
+            )?;
+        }
+        "capture" => {
+            reject_controlled_playback_operation_evidence(
+                requested_operation,
+                has_branch_events,
+                "branch event",
+                label,
+            )?;
+            reject_controlled_playback_operation_evidence(
+                requested_operation,
+                has_recordings,
+                "recording",
+                label,
+            )?;
+            reject_controlled_playback_operation_evidence(
+                requested_operation,
+                has_reference_comparisons,
+                "reference comparison",
+                label,
+            )?;
+        }
+        "smoke_validation" => {}
+        _ => unreachable!("controlled playback requestedOperation was already validated"),
+    }
+    Ok(())
+}
+
+fn reject_controlled_playback_operation_evidence(
+    requested_operation: &str,
+    has_evidence: bool,
+    evidence_label: &str,
+    label: &str,
+) -> BridgeContractResult<()> {
+    if has_evidence {
+        return error(format!(
+            "{label} {requested_operation} must not carry {evidence_label} evidence"
+        ));
+    }
     Ok(())
 }
 

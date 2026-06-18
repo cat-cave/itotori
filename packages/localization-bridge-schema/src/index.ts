@@ -2617,6 +2617,8 @@ export function assertRuntimeEvidenceReportV02(
     report.fidelityTier,
     "RuntimeEvidenceReportV02",
   );
+  const reportStatus = report.status;
+  assertEnum(reportStatus, ["passed", "failed"] as const, "RuntimeEvidenceReportV02.status");
   if (report.runtimeCapabilities !== undefined) {
     assertRuntimeCapabilityContractV02(
       report.runtimeCapabilities,
@@ -2630,9 +2632,9 @@ export function assertRuntimeEvidenceReportV02(
       report.controlledPlaybackSession,
       "RuntimeEvidenceReportV02.controlledPlaybackSession",
       report,
+      reportStatus,
     );
   }
-  assertEnum(report.status, ["passed", "failed"] as const, "RuntimeEvidenceReportV02.status");
   assertRfc3339Instant(report.createdAt, "RuntimeEvidenceReportV02.createdAt");
 
   const traceEvents = asArray(report.traceEvents, "RuntimeEvidenceReportV02.traceEvents");
@@ -2687,6 +2689,18 @@ export function assertRuntimeEvidenceReportV02(
   const validatedReferenceComparisons = referenceComparisons as RuntimeReferenceComparisonV02[];
 
   assertStringArray(report.limitations, "RuntimeEvidenceReportV02.limitations");
+  if (report.controlledPlaybackSession !== undefined) {
+    assertControlledPlaybackSessionEvidenceSurfaceV02(
+      (report.controlledPlaybackSession as ControlledPlaybackSessionV02).requestedOperation,
+      {
+        branchEvents,
+        captures,
+        recordings,
+        referenceComparisons,
+      },
+      "RuntimeEvidenceReportV02.controlledPlaybackSession.requestedOperation",
+    );
+  }
   if (traceEvents.length === 0 && captures.length === 0 && recordings.length === 0) {
     throw new Error("RuntimeEvidenceReportV02 must contain trace, capture, or recording evidence");
   }
@@ -3061,6 +3075,7 @@ function assertControlledPlaybackSessionV02(
   value: unknown,
   label: string,
   report: Record<string, unknown>,
+  reportStatus: "passed" | "failed",
 ): asserts value is ControlledPlaybackSessionV02 {
   const session = asRecord(value, label);
   assertUuid7(session.sessionId, `${label}.sessionId`);
@@ -3075,6 +3090,9 @@ function assertControlledPlaybackSessionV02(
   assertEnum(session.capabilityClass, RUNTIME_CAPABILITY_CLASSES_V02, `${label}.capabilityClass`);
   assertEnum(session.requestedOperation, RUNTIME_REQUESTED_OPERATIONS_V02, `${label}.requestedOperation`);
   assertEnum(session.status, ["passed", "failed"] as const, `${label}.status`);
+  if (session.status !== reportStatus) {
+    throw new Error(`${label}.status must match RuntimeEvidenceReportV02.status`);
+  }
   assertEnum(session.fidelityTier, RUNTIME_FIDELITY_TIERS_V02, `${label}.fidelityTier`);
   assertEnum(session.evidenceTier, RUNTIME_EVIDENCE_TIERS_V02, `${label}.evidenceTier`);
   assertRuntimeEvidenceTierWithinFidelityV02(session.evidenceTier, session.fidelityTier, label);
@@ -3107,6 +3125,42 @@ function assertControlledPlaybackSessionV02(
     throw new Error(`${label}.capabilityClass must match runtimeCapabilities.capabilityClass`);
   }
   assertStringArray(session.limitations, `${label}.limitations`);
+}
+
+type RuntimeControlledPlaybackEvidenceSurfaceV02 =
+  | "branchEvents"
+  | "captures"
+  | "recordings"
+  | "referenceComparisons";
+
+function assertControlledPlaybackSessionEvidenceSurfaceV02(
+  requestedOperation: RuntimeRequestedOperationV02,
+  evidence: Record<RuntimeControlledPlaybackEvidenceSurfaceV02, readonly unknown[]>,
+  label: string,
+): void {
+  const forbiddenEvidenceByOperation: Record<
+    RuntimeRequestedOperationV02,
+    readonly RuntimeControlledPlaybackEvidenceSurfaceV02[]
+  > = {
+    trace: ["branchEvents", "captures", "recordings", "referenceComparisons"],
+    branch_discovery: ["captures", "recordings", "referenceComparisons"],
+    capture: ["branchEvents", "recordings", "referenceComparisons"],
+    smoke_validation: [],
+  };
+  const evidenceLabelBySurface: Record<RuntimeControlledPlaybackEvidenceSurfaceV02, string> = {
+    branchEvents: "branch event",
+    captures: "capture",
+    recordings: "recording",
+    referenceComparisons: "reference comparison",
+  };
+
+  for (const surface of forbiddenEvidenceByOperation[requestedOperation]) {
+    if (evidence[surface].length > 0) {
+      throw new Error(
+        `${label} ${requestedOperation} must not carry ${evidenceLabelBySurface[surface]} evidence`,
+      );
+    }
+  }
 }
 
 function assertRuntimeCapabilitySupportsFeatureV02(

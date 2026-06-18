@@ -100,7 +100,11 @@
       "typescriptValidator": "assertRuntimeEvidenceReportV02",
       "rustValidator": "validate_runtime_evidence_report_v02",
       "validFixtures": ["./runtime-evidence-v0.2.json"],
-      "invalidFixtures": ["./invalid/runtime-evidence-v0.2-overclaimed-fidelity.json"],
+      "invalidFixtures": [
+        "./invalid/runtime-evidence-v0.2-overclaimed-fidelity.json",
+        "./invalid/runtime-evidence-v0.2-session-status-mismatch.json",
+        "./invalid/runtime-evidence-v0.2-trace-operation-capture-evidence.json"
+      ],
       "status": "compatible"
     },
     {

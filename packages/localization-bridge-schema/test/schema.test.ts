@@ -1774,6 +1774,30 @@ describe("localization bridge schema guards", () => {
     expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
   });
 
+  it("rejects controlled playback sessions whose status diverges from report status", () => {
+    const report = runtimeEvidenceV02Example();
+    report.status = "failed";
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(
+      /controlledPlaybackSession\.status must match RuntimeEvidenceReportV02\.status/,
+    );
+  });
+
+  it("rejects trace-requested controlled playback sessions with capture evidence", () => {
+    const report = runtimeEvidenceV02Example();
+    const session = asTestRecord(
+      report.controlledPlaybackSession,
+      "controlled playback session",
+    );
+    session.requestedOperation = "trace";
+    report.branchEvents = [];
+    report.recordings = [];
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(
+      /requestedOperation trace must not carry capture evidence/,
+    );
+  });
+
   it("rejects runtime capability contracts that overclaim their class ceiling", () => {
     const report = runtimeEvidenceV02Example();
     const capabilities = asTestRecord(

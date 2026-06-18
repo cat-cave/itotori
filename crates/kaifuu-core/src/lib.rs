@@ -9217,6 +9217,39 @@ mod tests {
     }
 
     #[test]
+    fn rust_runtime_evidence_rejects_controlled_playback_status_mismatch() {
+        let mut report = contract_example_fixture_value("./runtime-evidence-v0.2.json");
+        report["status"] = Value::String("failed".to_string());
+
+        let error = contracts::validate_runtime_evidence_report_v02(&report)
+            .expect_err("controlled playback status mismatch should fail Rust validation")
+            .to_string();
+
+        assert!(
+            error.contains("controlledPlaybackSession.status must match"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn rust_runtime_evidence_rejects_trace_operation_with_capture_evidence() {
+        let mut report = contract_example_fixture_value("./runtime-evidence-v0.2.json");
+        report["controlledPlaybackSession"]["requestedOperation"] =
+            Value::String("trace".to_string());
+        report["branchEvents"] = Value::Array(vec![]);
+        report["recordings"] = Value::Array(vec![]);
+
+        let error = contracts::validate_runtime_evidence_report_v02(&report)
+            .expect_err("trace-requested session with capture evidence should fail Rust validation")
+            .to_string();
+
+        assert!(
+            error.contains("requestedOperation trace must not carry capture evidence"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
     fn shared_contract_fixture_suite_rejects_all_manifest_invalid_fixtures() {
         let manifest = contract_fixture_manifest_v02_value();
         let invalid_fixtures = manifest["invalidFixtures"]

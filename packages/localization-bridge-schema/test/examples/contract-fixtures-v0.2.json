@@ -137,6 +137,18 @@
       "description": "Runtime evidence tier cannot exceed the declared fidelity tier."
     },
     {
+      "kind": "runtime-evidence-v0.2",
+      "path": "./invalid/runtime-evidence-v0.2-session-status-mismatch.json",
+      "expectedSemanticError": "controlledPlaybackSession\\.status must match RuntimeEvidenceReportV02\\.status",
+      "description": "Controlled playback session status must match the persisted runtime report status."
+    },
+    {
+      "kind": "runtime-evidence-v0.2",
+      "path": "./invalid/runtime-evidence-v0.2-trace-operation-capture-evidence.json",
+      "expectedSemanticError": "requestedOperation trace must not carry capture evidence",
+      "description": "Trace-requested controlled playback sessions cannot carry capture evidence."
+    },
+    {
       "kind": "triage-v0.2",
       "path": "./invalid/triage-v0.2-dangling-provenance.json",
       "expectedSemanticError": "provenanceIds\\[0\\] must reference provenance in TriageBundleV02",

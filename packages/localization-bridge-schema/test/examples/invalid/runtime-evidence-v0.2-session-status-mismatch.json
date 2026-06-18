@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "0.2.0",
+  "runtimeReportId": "019ed003-0000-7000-8000-00000000f201",
+  "adapterName": "utsushi-contract-example",
+  "adapterVersion": "0.2.0",
+  "fidelityTier": "trace_only",
+  "evidenceTier": "E1",
+  "controlledPlaybackSession": {
+    "sessionId": "019ed003-0000-7000-8000-00000000f211",
+    "adapterName": "utsushi-contract-example",
+    "adapterVersion": "0.2.0",
+    "capabilityClass": "static_trace",
+    "requestedOperation": "trace",
+    "status": "passed",
+    "fidelityTier": "trace_only",
+    "evidenceTier": "E1",
+    "featuresUsed": ["text_trace"],
+    "limitations": []
+  },
+  "status": "failed",
+  "createdAt": "2026-06-17T00:00:00.000Z",
+  "traceEvents": [
+    {
+      "traceEventId": "019ed003-0000-7000-8000-00000000f221",
+      "eventKind": "text_observed",
+      "bridgeUnitRef": {
+        "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+        "sourceUnitKey": "script/prologue#line-001"
+      },
+      "frame": 12,
+      "traceKey": "prologue.line.001",
+      "observedText": "Bonjour, {player}."
+    }
+  ],
+  "branchEvents": [],
+  "captures": [],
+  "recordings": [],
+  "approximations": [
+    {
+      "approximationId": "019ed003-0000-7000-8000-00000000f231",
+      "approximationTier": "deterministic_fixture",
+      "scope": "fixture trace",
+      "description": "Invalid fixture deliberately diverges the controlled playback session status from the report status.",
+      "affectedBridgeUnitRefs": [
+        {
+          "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+          "sourceUnitKey": "script/prologue#line-001"
+        }
+      ],
+      "evidenceTierCeiling": "E1"
+    }
+  ],
+  "validationFindings": [],
+  "limitations": []
+}
