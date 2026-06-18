@@ -52,9 +52,11 @@ Reports are written to deterministic gitignored paths:
 - Smoke: `.tmp/itotori-scale-harness/smoke/summary.json`
 - Large: `.tmp/itotori-scale-harness/large/summary.json`
 
-The report includes corpus size, import target IDs, batch counts, queue counts, dashboard status,
-runtime status, cost summary, per-operation timings, and budget pass/fail details. The `database`
-section records the schema name and whether it was kept for inspection.
+The report includes top-level `profile`, `outputPath`, `budgetPassed`, `unitCount`, `batchCount`,
+`scheduledJobCount`, and `schemaKept` fields for audit tooling, plus corpus size, import target IDs,
+batch counts, queue counts, dashboard status, runtime status, cost summary, per-operation timings,
+and budget pass/fail details. The `database` section records the schema name and whether it was kept
+for inspection.
 
 ## Disposable Postgres
 
@@ -67,9 +69,10 @@ COMPOSE_PROJECT_NAME=itotori
 
 These are no-secret public CI defaults. `just db-up` writes
 `.tmp/itotori-db/compose.env` from `DATABASE_URL`, then starts the `postgres` service with the
-matching host port, database name, user, and password. Set `COMPOSE_PROJECT_NAME` when running
-parallel worktrees so Docker resources do not collide. If `COMPOSE_PROJECT_NAME` is unset locally,
-the generated compose env derives a disposable project name from the worktree directory.
+matching host port, database name, user, and password. Set a unique `DATABASE_URL` host port and
+`COMPOSE_PROJECT_NAME` when running parallel worktrees so both port bindings and Docker resource
+names do not collide. If `COMPOSE_PROJECT_NAME` is unset locally, the generated compose env derives
+a disposable project name from the worktree directory.
 
 The database recipes are:
 

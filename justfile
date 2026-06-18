@@ -49,7 +49,10 @@ ci: check build db-migrate test
     cargo deny check
 
 ci-itotori:
+    #!/usr/bin/env bash
+    set -euo pipefail
     just db-up
+    trap 'just db-down' EXIT
     just db-wait
     just db-reset
     pnpm --filter @itotori/db typecheck
@@ -90,7 +93,8 @@ db-down:
     docker compose --env-file .tmp/itotori-db/compose.env down
 
 db-wait:
-    for i in {1..60}; do pg_isready -d "$DATABASE_URL" && exit 0; sleep 1; done; exit 1
+    node scripts/itotori-db-compose-env.mjs
+    for i in {1..60}; do docker compose --env-file .tmp/itotori-db/compose.env exec -T postgres sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"' && exit 0; sleep 1; done; exit 1
 
 db-cli-build:
     pnpm --filter @itotori/localization-bridge-schema build

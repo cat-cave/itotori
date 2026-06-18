@@ -176,9 +176,19 @@ async function main(argv = process.argv.slice(2)) {
     );
 
     const budget = modules.scale.evaluateScaleBudgets(measurements, config.budgetsMs);
+    const topLevelSummary = {
+      profile: args.profile,
+      outputPath,
+      budgetPassed: budget.passed,
+      unitCount: corpus.unitCount,
+      batchCount: plan.batches.length,
+      scheduledJobCount: scheduled.jobs.length,
+      schemaKept: args.keepSchema,
+    };
     summary = {
       schemaVersion: "itotori.scale-harness.v1",
       specId,
+      ...topLevelSummary,
       profile: args.profile,
       generatedAt: new Date().toISOString(),
       database: {
@@ -251,12 +261,12 @@ async function main(argv = process.argv.slice(2)) {
     console.log(
       JSON.stringify({
         profile: summary.profile,
-        outputPath,
-        budgetPassed: summary.budget.passed,
-        unitCount: summary.corpus.unitCount,
+        outputPath: summary.outputPath,
+        budgetPassed: summary.budgetPassed,
+        unitCount: summary.unitCount,
         sourceJapaneseCharacterCount: summary.corpus.sourceJapaneseCharacterCount,
-        batchCount: summary.batchPlan.batchCount,
-        scheduledJobCount: summary.queue.scheduledJobCount,
+        batchCount: summary.batchCount,
+        scheduledJobCount: summary.scheduledJobCount,
         schemaKept,
       }),
     );

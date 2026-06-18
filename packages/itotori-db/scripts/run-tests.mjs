@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
@@ -27,6 +27,8 @@ if (!process.env.DATABASE_URL) {
   console.log("itotori db tests skipped: DATABASE_URL unset");
   process.exit(0);
 }
+
+await rm(skipReportPath, { force: true });
 
 const child = spawn("vitest", ["run"], {
   stdio: "inherit",

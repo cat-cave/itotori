@@ -31,5 +31,5 @@ await writeFile(
 console.log(`wrote ${outputPath} for ${values.COMPOSE_PROJECT_NAME}`);
 
 function escapeEnvFileValue(value) {
-  return String(value).replace(/\n/g, "");
+  return JSON.stringify(String(value).replace(/\r?\n/gu, ""));
 }

@@ -27,8 +27,9 @@ opaque retrieval store.
 Itotori DB-backed checks use `DATABASE_URL`. The local disposable Postgres
 default is `postgres://itotori:itotori@127.0.0.1:55433/itotori`, with
 `COMPOSE_PROJECT_NAME=itotori` as the no-secret public CI default. Use a unique
-`COMPOSE_PROJECT_NAME` for parallel worktrees; when it is unset locally,
-`just db-up` derives one from the worktree directory.
+`DATABASE_URL` host port and `COMPOSE_PROJECT_NAME` for parallel worktrees; when
+`COMPOSE_PROJECT_NAME` is unset locally, `just db-up` derives one from the
+worktree directory.
 
 ```sh
 just db-up
