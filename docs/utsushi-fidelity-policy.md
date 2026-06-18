@@ -211,13 +211,16 @@ as an adequate substitute just because it is simpler.
 
 ## Alpha Bar
 
-For alpha readiness, Utsushi must support synthetic fixture evidence through E2:
+For alpha readiness, Utsushi must support synthetic fixture evidence through E2
+and the MV/MZ vertical must include `UTSUSHI-119` patched-output runtime proof:
 
 1. Produce an E1 runtime trace for the patched fixture.
 2. Produce an E2 frame capture artifact for the patched fixture.
 3. Include evidence tier, adapter, environment, hashes, and limitations in each
    report.
 4. Allow Itotori to ingest the report without weakening the tier language.
+5. Consume Kaifuu `PatchResult` and `SHARED-025` manifest ids when claiming
+   that a localized line was observed after patching.
 
 Engine-specific VM/playback work can start before E4 fidelity is possible, but
 must label itself as E1, E2, or E3 until reference comparison exists. A partial VM

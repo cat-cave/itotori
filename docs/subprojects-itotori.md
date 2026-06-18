@@ -4,7 +4,11 @@ Itotori owns localization state: catalog identity, local corpus inventory,
 translation-completeness intelligence, locale branches, drafts, policy, QA
 findings, feedback, runtime evidence ingestion, and patch-ready exports.
 
-The scaffold uses deterministic fake translation. Live model routing is intentionally out of scope for the hello world.
+The scaffold uses deterministic fake translation. Live model routing is
+intentionally out of scope for the hello world, but not out of alpha readiness:
+`ITOTORI-116` proves structured draft and QA paths with recorded or opted-in
+live providers, and `ITOTORI-117` proves the deliberately naive raw MTL
+baseline through the same provider, retry, ledger, and quality-report machinery.
 
 The product entrypoint is no longer assumed to be a bridge bundle. Real
 workflows start with catalog/work identity, local corpus scan evidence,

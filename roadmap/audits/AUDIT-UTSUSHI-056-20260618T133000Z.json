@@ -1,0 +1,166 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-056-20260618T133000Z",
+  "generatedAt": "2026-06-18T13:30:00Z",
+  "spec": {
+    "id": "UTSUSHI-056",
+    "title": "Runtime observation hook protocol",
+    "branch": "spec/utsushi-056",
+    "worktree": "/tmp/itotori-spec-utsushi-056",
+    "commit": "313dfbf9515ed405423d9130f2c4119a019e9e3b"
+  },
+  "auditor": {
+    "name": "wave-runtime-hook-capability-audit",
+    "kind": "architecture"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Post-repair audit found no P0/P1 blockers after Utsushi producers began advertising instrumentation hook capability. Two non-blocking parity hardening gaps remain for reports that omit runtimeCapabilities and reports whose controlledPlaybackSession.featuresUsed omits instrumentation_hooks while hook events are present.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UTSUSHI-056-F001", "UTSUSHI-056-F002"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-056-F001",
+      "severity": "P2",
+      "title": "Runtime hook capability requirement can be bypassed without runtimeCapabilities",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/localization-bridge-schema/src/index.ts",
+          "line": 3159
+        }
+      ],
+      "description": "The TypeScript runtime evidence validator rejects observationHookEvents without an instrumentation_hooks capability only when runtimeCapabilities exists. A report with hook events and no runtimeCapabilities object can still be accepted.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit inspected the post-repair TypeScript validator and found the instrumentation_hooks capability guard is nested under the runtimeCapabilities-present branch."
+        },
+        {
+          "kind": "test",
+          "detail": "Remote CI and Hello World are green at 313dfbf, so this is tracked as a non-blocking hardening follow-up rather than a completion blocker."
+        }
+      ],
+      "impact": "A producer can emit hook events without advertising hook support, weakening evidence comparability for Utsushi runtime reviews.",
+      "actionableAcceptanceCriteria": [
+        "RuntimeEvidenceReportV02 validation rejects observationHookEvents when runtimeCapabilities is absent.",
+        "RuntimeEvidenceReportV02 validation rejects observationHookEvents when runtimeCapabilities omits instrumentation_hooks or marks it unsupported.",
+        "TypeScript and Rust schema tests cover missing runtimeCapabilities, unsupported instrumentation_hooks, and valid supported or partial instrumentation_hooks cases."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Runtime hook capability missing-report guard",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi", "shared"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-056"],
+          "summary": "Harden RuntimeEvidenceReportV02 validation so observationHookEvents require runtimeCapabilities with supported or partial instrumentation_hooks capability even when runtimeCapabilities would otherwise be omitted.",
+          "deliverables": [
+            "TypeScript runtime evidence validator guard for missing runtimeCapabilities",
+            "Rust schema parity check for hook events and instrumentation_hooks capability",
+            "Regression fixtures for missing, unsupported, partial, and supported hook capability cases"
+          ],
+          "acceptanceCriteria": [
+            "Reports with observationHookEvents and missing runtimeCapabilities fail validation.",
+            "Reports with observationHookEvents and missing or unsupported instrumentation_hooks fail validation.",
+            "Reports with observationHookEvents and supported or partial instrumentation_hooks continue to pass."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm exec vitest run packages/localization-bridge-schema/test/schema.test.ts"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core runtime_evidence"
+            }
+          ],
+          "auditFocus": [
+            "TypeScript and Rust runtime evidence validation parity",
+            "Hook events accepted without capability disclosure",
+            "Fixture producers masking validator gaps"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-056-F002",
+      "severity": "P3",
+      "title": "Runtime hook evidence does not require matching controlled playback feature usage",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/localization-bridge-schema/src/index.ts",
+          "line": 3717
+        }
+      ],
+      "description": "RuntimeEvidenceReportV02 can include observationHookEvents while controlledPlaybackSession.featuresUsed does not include instrumentation_hooks.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit inspected controlledPlaybackSession validation and found no consistency rule tying hook events to instrumentation_hooks in featuresUsed."
+        }
+      ],
+      "impact": "Runtime evidence can under-report which replay features were used, making review dashboards and audit trails less precise.",
+      "actionableAcceptanceCriteria": [
+        "Reports with observationHookEvents and controlledPlaybackSession.featuresUsed must include instrumentation_hooks.",
+        "Reports without observationHookEvents are unaffected by the new consistency guard.",
+        "Utsushi fixture and browser producers emit instrumentation_hooks in featuresUsed when hook events are present."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Runtime hook featuresUsed consistency guard",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi", "shared"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-056"],
+          "summary": "Require controlled playback reports with observationHookEvents to declare instrumentation_hooks in featuresUsed and keep Utsushi fixture producers aligned with that contract.",
+          "deliverables": [
+            "RuntimeEvidenceReportV02 validation rule for hook events and featuresUsed",
+            "Fixture and browser producer updates if needed",
+            "Regression tests for hook and non-hook controlled playback reports"
+          ],
+          "acceptanceCriteria": [
+            "Reports with observationHookEvents and controlledPlaybackSession.featuresUsed lacking instrumentation_hooks fail validation.",
+            "Reports without observationHookEvents are not required to declare instrumentation_hooks.",
+            "Utsushi generated fixture evidence remains schema-valid under the stricter rule."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm exec vitest run packages/localization-bridge-schema/test/schema.test.ts"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            }
+          ],
+          "auditFocus": [
+            "Feature usage under-reporting",
+            "Fixture/schema contract drift",
+            "False positives for reports without hook events"
+          ]
+        }
+      }
+    }
+  ]
+}

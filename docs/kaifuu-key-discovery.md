@@ -65,11 +65,14 @@ delta apply on public-safe fixture data:
 6. **Private-local corpus triage**: required in `KAIFUU-036`. Owned encrypted
    corpora get first-class local readiness reports while staying absent from
    public CI.
-7. **Platform-assisted helper harness**: required in `KAIFUU-037`. Static,
-   known-key import, Wine/local Windows, and manual-entry helpers use one
-   structured result contract and never live inside pure adapters. Remote
-   Windows helper hosts are optional continuous expansion; they must fit the
-   same contract, but they are not an alpha readiness blocker.
+7. **Platform-assisted helper harness**: required first as the shared result
+   contract in `KAIFUU-037`, then expanded through the execution and platform
+   slices `KAIFUU-064`, `KAIFUU-066`, `KAIFUU-088`, `KAIFUU-089`,
+   `KAIFUU-090`, and `KAIFUU-129`. Static, known-key import, Wine/local
+   Windows, and manual-entry helpers use one structured result contract and
+   never live inside pure adapters. Remote Windows helper hosts are optional
+   continuous expansion; they must fit the same contract, but they are not an
+   alpha readiness blocker.
 8. **Helper execution and allowlist policy**: required in `KAIFUU-064` and
    `KAIFUU-066`. Wine/Windows helper execution must be bounded, redacted,
    versioned, hash-pinned, and unable to run arbitrary commands.
