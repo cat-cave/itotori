@@ -1,0 +1,207 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-012-20260618T224320Z",
+  "generatedAt": "2026-06-18T22:43:20Z",
+  "spec": {
+    "id": "CATALOG-012",
+    "title": "DLsite and Steam recorded storefront adapters",
+    "branch": "spec/catalog-012",
+    "worktree": "/tmp/itotori-spec-catalog-012",
+    "commit": "f83e61bef2e40efa17a3d246bc1fc10931e00bb9"
+  },
+  "auditor": {
+    "name": "catalog-012-storefront-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Re-audit found no remaining P0/P1 blockers after recorded-shape parser, seed-target gating, and drift diagnostic repairs. Three non-blocking hardening findings were converted into follow-up DAG nodes.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["CATALOG-012-F001", "CATALOG-012-F002", "CATALOG-012-F003"]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-012-F001",
+      "severity": "P2",
+      "title": "Unsupported storefront shape diagnostics are only representative",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/test/catalog-recorded-importers.test.ts"
+        }
+      ],
+      "description": "Repair tests prove semantic diagnostics for representative unsupported shapes, but not every unsupported-shape case asserts full stepKey, sourceId, and sourceField metadata.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit found unsupported-shape handling passes, but some cases rely on representative diagnostic metadata assertions."
+        }
+      ],
+      "impact": "A future parser drift branch could lose full diagnostic metadata for a less-common unsupported response shape without failing tests.",
+      "actionableAcceptanceCriteria": [
+        "Every unsupported DLsite and Steam recorded-response shape covered by tests asserts fixtureId, sourceRevision, stepKey, sourceId, and sourceField.",
+        "Diagnostics remain CATALOG-012 semantic diagnostics rather than generic repository or validation errors.",
+        "Parser-only tests stay runnable without live network access."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Storefront unsupported-shape diagnostic coverage",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-012"],
+          "summary": "Tighten recorded DLsite and Steam unsupported-shape tests so every parse-drift case asserts full semantic diagnostic metadata.",
+          "deliverables": [
+            "DLsite unsupported-shape diagnostic matrix",
+            "Steam unsupported-shape diagnostic matrix",
+            "Fixture id, source revision, step key, source id, and source field assertions"
+          ],
+          "acceptanceCriteria": [
+            "Every unsupported DLsite and Steam recorded-response shape test asserts fixtureId, sourceRevision, stepKey, sourceId, and sourceField.",
+            "Unsupported storefront responses fail as CATALOG-012 semantic diagnostics, not generic repository or enum errors.",
+            "Parser-only diagnostic tests run without DATABASE_URL, live storefront access, or credentials."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test -- catalog-recorded-importers"
+            }
+          ],
+          "auditFocus": [
+            "Incomplete parse-drift diagnostic metadata",
+            "Representative tests hiding unsupported-shape gaps"
+          ]
+        }
+      }
+    },
+    {
+      "id": "CATALOG-012-F002",
+      "severity": "P3",
+      "title": "DLsite missing demand warning source fields use normalized paths",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/services/catalog-recorded-importers.ts"
+        }
+      ],
+      "description": "DLsite missing demand warnings still report sourceField values such as demand.<field> even though the recorded-shaped fixture uses top-level source fields like wishlist_count.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit found the warning is safe and non-blocking, but the sourceField path is not aligned with the recorded source response shape."
+        }
+      ],
+      "impact": "Reviewer-facing diagnostics are slightly less direct when comparing warnings to recorded DLsite responses.",
+      "actionableAcceptanceCriteria": [
+        "DLsite missing demand warnings use sourceField paths matching the recorded source response shape.",
+        "Tests assert warning sourceField values for missing dl_count, wishlist_count, rank, rating, and rating histogram fields.",
+        "Existing demand facts and parse-drift diagnostics remain unchanged except for clearer sourceField paths."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "DLsite demand warning source-field alignment",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-012"],
+          "summary": "Align DLsite missing-demand warning sourceField paths with recorded source response fields rather than normalized demand paths.",
+          "deliverables": [
+            "Recorded-shape DLsite warning field map",
+            "Missing-demand warning sourceField tests"
+          ],
+          "acceptanceCriteria": [
+            "Missing dl_count, wishlist_count, rank, rating, and rating histogram warnings cite recorded source response field paths.",
+            "Warning diagnostics still include fixtureId, sourceRevision, stepKey, and sourceId.",
+            "Demand fact persistence remains idempotent."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test -- catalog-recorded-importers"
+            }
+          ],
+          "auditFocus": [
+            "Diagnostics pointing at normalized fields instead of source fields",
+            "Warning path drift"
+          ]
+        }
+      }
+    },
+    {
+      "id": "CATALOG-012-F003",
+      "severity": "P3",
+      "title": "Recorded storefront provenance kind clarity",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/catalog-crawler-repository.ts"
+        },
+        {
+          "path": "packages/itotori-db/src/schema.ts"
+        }
+      ],
+      "description": "Recorded storefront imports still rely on generic crawler provenance behavior where fixture-mode evidence can be hard to distinguish from live raw-cache evidence.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Initial audit found sourceRecordKind=recorded_fixture exists, while crawler provenance behavior can still present recorded fixture imports as raw cache provenance."
+        }
+      ],
+      "impact": "Benchmark and catalog explanations may be less clear about whether storefront facts came from public recorded fixtures or live raw cache captures.",
+      "actionableAcceptanceCriteria": [
+        "Recorded storefront imports persist sourceRecordKind=recorded_fixture or expose an equivalent fixture-mode marker.",
+        "Fixture tests distinguish recorded fixture evidence from live/raw cache evidence.",
+        "Benchmark and opportunity explanations can identify recorded storefront evidence without implying live capture."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Recorded storefront provenance kind clarity",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-012"],
+          "summary": "Clarify recorded storefront importer provenance so fixture-backed catalog facts cannot be mistaken for live raw-cache evidence.",
+          "deliverables": [
+            "Recorded storefront sourceRecordKind handling",
+            "Fixture provenance tests",
+            "Explanation fixture showing recorded storefront evidence"
+          ],
+          "acceptanceCriteria": [
+            "Recorded storefront imports persist sourceRecordKind=recorded_fixture or an equivalent fixture-mode provenance marker.",
+            "Tests distinguish recorded fixture provenance from live/raw cache provenance.",
+            "Catalog explanation output can identify recorded storefront evidence without claiming live collection."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": ["Fixture evidence hidden as raw cache", "Benchmark explanation ambiguity"]
+        }
+      }
+    }
+  ]
+}

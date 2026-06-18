@@ -1,0 +1,91 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-083-20260618T224300Z",
+  "generatedAt": "2026-06-18T22:43:00Z",
+  "spec": {
+    "id": "KAIFUU-083",
+    "title": "String-reference relocation and rebuild fixtures",
+    "branch": "spec/kaifuu-083",
+    "worktree": "/tmp/itotori-spec-kaifuu-083",
+    "commit": "83fd8daea2fae22383f2dc9c7afdc26c4df5663a"
+  },
+  "auditor": {
+    "name": "kaifuu-083-relocation-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Re-audit found no remaining P0/P1 blockers after pointer provenance repair. KAIFUU-083 satisfies completion criteria; one P3 diagnostic naming polish item is recorded for future cleanup.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-083-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-083-F001",
+      "severity": "P3",
+      "title": "Relocation provenance mismatch diagnostic naming is pointer-specific",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "crates/kaifuu-core/src/offset_map.rs"
+        }
+      ],
+      "description": "The typed diagnostic code kaifuu.string_relocation.pointer_provenance_mismatch is also used for index-table reference provenance mismatches.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit confirmed index-table wrong-target fixtures fail closed, but share the pointer_provenance_mismatch diagnostic name."
+        }
+      ],
+      "impact": "The diagnostic is safe and typed, but future users may read an index-table mismatch as pointer-table specific.",
+      "actionableAcceptanceCriteria": [
+        "String relocation provenance mismatch diagnostics use a reference-neutral code or document pointer/index applicability.",
+        "Pointer-table and index-table wrong-target fixtures continue to fail before output materialization.",
+        "Diagnostic naming remains stable or includes a migration note if the code changes."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Reference-neutral relocation provenance diagnostic",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-083"],
+          "summary": "Clarify KAIFUU-083 relocation provenance mismatch diagnostics so pointer-table and index-table failures are described without misleading pointer-only wording.",
+          "deliverables": [
+            "Reference-neutral relocation diagnostic code or documented compatibility alias",
+            "Pointer-table and index-table diagnostic regression fixtures"
+          ],
+          "acceptanceCriteria": [
+            "Index-table provenance mismatches do not surface pointer-only wording unless documented as a compatibility alias.",
+            "Pointer-table and index-table wrong-target fixtures keep failing before output bytes or output hashes are emitted.",
+            "Diagnostic docs or tests state the stable semantic code expected by downstream consumers."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core string_relocation"
+            }
+          ],
+          "auditFocus": [
+            "Misleading relocation diagnostic names",
+            "Breaking diagnostic compatibility without tests"
+          ]
+        }
+      }
+    }
+  ]
+}

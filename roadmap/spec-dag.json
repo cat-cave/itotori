@@ -11296,7 +11296,7 @@
     {
       "id": "ITOTORI-063",
       "title": "Style-guide conversation contract and validators",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11329,10 +11329,7 @@
         "Conversation text accepted without structured policy projection",
         "Private examples leaking through transcript fixtures",
         "Provider-specific transcripts encoded as the only valid path"
-      ],
-      "owner": "codex-orchestrator-wave9",
-      "branch": "spec/itotori-063",
-      "worktree": "/tmp/itotori-spec-itotori-063"
+      ]
     },
     {
       "id": "ITOTORI-064",
@@ -12593,7 +12590,7 @@
     {
       "id": "CATALOG-012",
       "title": "DLsite and Steam recorded storefront adapters",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -12629,10 +12626,7 @@
         "Storefront demand scope bypassed by alpha selection",
         "Rate-limit metadata loss",
         "Live-network CI coupling"
-      ],
-      "owner": "codex-orchestrator-wave9",
-      "branch": "spec/catalog-012",
-      "worktree": "/tmp/itotori-spec-catalog-012"
+      ]
     },
     {
       "id": "CATALOG-013",
@@ -12752,7 +12746,7 @@
     {
       "id": "KAIFUU-083",
       "title": "String-reference relocation and rebuild fixtures",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12784,10 +12778,7 @@
         "Relocation writes without pointer provenance",
         "Shared strings duplicated silently",
         "Unsupported pointer formats treated as patchable"
-      ],
-      "owner": "codex-orchestrator-wave9",
-      "branch": "spec/kaifuu-083",
-      "worktree": "/tmp/itotori-spec-kaifuu-083"
+      ]
     },
     {
       "id": "KAIFUU-084",
@@ -18578,6 +18569,188 @@
         }
       ],
       "auditFocus": ["Malformed event payload accepted", "TypeScript-only payload guarantees"]
+    },
+    {
+      "id": "KAIFUU-151",
+      "status": "planned",
+      "title": "Reference-neutral relocation provenance diagnostic",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-083"],
+      "summary": "Clarify KAIFUU-083 relocation provenance mismatch diagnostics so pointer-table and index-table failures are described without misleading pointer-only wording.",
+      "deliverables": [
+        "Reference-neutral relocation diagnostic code or documented compatibility alias",
+        "Pointer-table and index-table diagnostic regression fixtures"
+      ],
+      "acceptanceCriteria": [
+        "Index-table provenance mismatches do not surface pointer-only wording unless documented as a compatibility alias.",
+        "Pointer-table and index-table wrong-target fixtures keep failing before output bytes or output hashes are emitted.",
+        "Diagnostic docs or tests state the stable semantic code expected by downstream consumers."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core string_relocation"
+        }
+      ],
+      "auditFocus": [
+        "Misleading relocation diagnostic names",
+        "Breaking diagnostic compatibility without tests"
+      ]
+    },
+    {
+      "id": "ITOTORI-124",
+      "status": "planned",
+      "title": "Style-guide proposal UUID7 validation",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-063"],
+      "summary": "Tighten style-guide conversation proposal id validation so proposal references use UUID7-shaped identifiers with precise diagnostics.",
+      "deliverables": [
+        "UUID7 proposal id validator",
+        "Malformed proposal id fixture mutations",
+        "Diagnostic assertions for proposal id fields"
+      ],
+      "acceptanceCriteria": [
+        "proposal.proposalId and turns[].proposalIds[] reject non-UUID7 identifiers unless explicitly documented as transitional fixture ids.",
+        "Diagnostics name the turn id, field, proposal id, and validator rule for malformed proposal identifiers.",
+        "Existing style-guide conversation fixtures continue to validate or are migrated to the documented id contract."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/localization-bridge-schema test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:typecheck"
+        }
+      ],
+      "auditFocus": ["Loose proposal id routing", "Diagnostics without field-level id context"]
+    },
+    {
+      "id": "ITOTORI-125",
+      "status": "planned",
+      "title": "Style-guide raw-private-field privacy regressions",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-063"],
+      "summary": "Add explicit privacy regression coverage for raw provider text, raw response bodies, and private-local paths in style-guide conversation fixtures.",
+      "deliverables": [
+        "Raw private key mutation tests",
+        "Private-local path mutation tests",
+        "Privacy diagnostic field-path assertions"
+      ],
+      "acceptanceCriteria": [
+        "Transcripts containing promptText, completionText, rawText, responseBody, or fixtures/private-local references fail validation.",
+        "Privacy diagnostics include turn id, exact field path, and privacy rule.",
+        "Accepted redacted public style-guide transcript fixtures remain valid."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/localization-bridge-schema test"
+        }
+      ],
+      "auditFocus": [
+        "Raw private payload leakage",
+        "Privacy validators without focused regressions"
+      ]
+    },
+    {
+      "id": "CATALOG-082",
+      "status": "planned",
+      "title": "Storefront unsupported-shape diagnostic coverage",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-012"],
+      "summary": "Tighten recorded DLsite and Steam unsupported-shape tests so every parse-drift case asserts full semantic diagnostic metadata.",
+      "deliverables": [
+        "DLsite unsupported-shape diagnostic matrix",
+        "Steam unsupported-shape diagnostic matrix",
+        "Fixture id, source revision, step key, source id, and source field assertions"
+      ],
+      "acceptanceCriteria": [
+        "Every unsupported DLsite and Steam recorded-response shape test asserts fixtureId, sourceRevision, stepKey, sourceId, and sourceField.",
+        "Unsupported storefront responses fail as CATALOG-012 semantic diagnostics, not generic repository or enum errors.",
+        "Parser-only diagnostic tests run without DATABASE_URL, live storefront access, or credentials."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- catalog-recorded-importers"
+        }
+      ],
+      "auditFocus": [
+        "Incomplete parse-drift diagnostic metadata",
+        "Representative tests hiding unsupported-shape gaps"
+      ]
+    },
+    {
+      "id": "CATALOG-083",
+      "status": "planned",
+      "title": "DLsite demand warning source-field alignment",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-012"],
+      "summary": "Align DLsite missing-demand warning sourceField paths with recorded source response fields rather than normalized demand paths.",
+      "deliverables": [
+        "Recorded-shape DLsite warning field map",
+        "Missing-demand warning sourceField tests"
+      ],
+      "acceptanceCriteria": [
+        "Missing dl_count, wishlist_count, rank, rating, and rating histogram warnings cite recorded source response field paths.",
+        "Warning diagnostics still include fixtureId, sourceRevision, stepKey, and sourceId.",
+        "Demand fact persistence remains idempotent."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- catalog-recorded-importers"
+        }
+      ],
+      "auditFocus": [
+        "Diagnostics pointing at normalized fields instead of source fields",
+        "Warning path drift"
+      ]
+    },
+    {
+      "id": "CATALOG-084",
+      "status": "planned",
+      "title": "Recorded storefront provenance kind clarity",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-012"],
+      "summary": "Clarify recorded storefront importer provenance so fixture-backed catalog facts cannot be mistaken for live raw-cache evidence.",
+      "deliverables": [
+        "Recorded storefront sourceRecordKind handling",
+        "Fixture provenance tests",
+        "Explanation fixture showing recorded storefront evidence"
+      ],
+      "acceptanceCriteria": [
+        "Recorded storefront imports persist sourceRecordKind=recorded_fixture or an equivalent fixture-mode provenance marker.",
+        "Tests distinguish recorded fixture provenance from live/raw cache provenance.",
+        "Catalog explanation output can identify recorded storefront evidence without claiming live collection."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": ["Fixture evidence hidden as raw cache", "Benchmark explanation ambiguity"]
     }
   ]
 }

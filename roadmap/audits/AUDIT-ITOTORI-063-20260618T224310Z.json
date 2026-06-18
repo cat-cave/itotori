@@ -1,0 +1,151 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-063-20260618T224310Z",
+  "generatedAt": "2026-06-18T22:43:10Z",
+  "spec": {
+    "id": "ITOTORI-063",
+    "title": "Style-guide conversation contract and validators",
+    "branch": "spec/itotori-063",
+    "worktree": "/tmp/itotori-spec-itotori-063",
+    "commit": "d201204ddf3dd858eb7f434433e9b12976203d6e"
+  },
+  "auditor": {
+    "name": "itotori-063-conversation-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Re-audit found no remaining P0/P1 blockers after bidirectional proposal-link repair. Two non-blocking hardening findings from the audit pass are recorded as future DAG work.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-063-F001", "ITOTORI-063-F002"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-063-F001",
+      "severity": "P2",
+      "title": "Proposal id format validation is too loose",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/localization-bridge-schema/src/style-guide-conversation.ts"
+        }
+      ],
+      "description": "Style-guide proposal identifiers and turn proposal references are validated as non-blank strings rather than UUID7 identifiers.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Initial audit found proposal.proposalId and turns[].proposalIds[] use generic string validation despite fixture conventions using UUID-shaped ids."
+        }
+      ],
+      "impact": "Malformed proposal identifiers can enter transcript fixtures and diagnostics, weakening later DB/repository linkage and machine routing.",
+      "actionableAcceptanceCriteria": [
+        "proposal.proposalId and turns[].proposalIds[] must validate as UUID7 identifiers or explicitly documented transitional ids.",
+        "Malformed proposal id diagnostics identify the exact turn id, field, proposal id, and validator rule.",
+        "Accepted, rejected, malformed, and conflicting transcript fixtures remain deterministic after id validation is tightened."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Style-guide proposal UUID7 validation",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "policy",
+          "dependsOn": ["ITOTORI-063"],
+          "summary": "Tighten style-guide conversation proposal id validation so proposal references use UUID7-shaped identifiers with precise diagnostics.",
+          "deliverables": [
+            "UUID7 proposal id validator",
+            "Malformed proposal id fixture mutations",
+            "Diagnostic assertions for proposal id fields"
+          ],
+          "acceptanceCriteria": [
+            "proposal.proposalId and turns[].proposalIds[] reject non-UUID7 identifiers unless explicitly documented as transitional fixture ids.",
+            "Diagnostics name the turn id, field, proposal id, and validator rule for malformed proposal identifiers.",
+            "Existing style-guide conversation fixtures continue to validate or are migrated to the documented id contract."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/localization-bridge-schema test"
+            },
+            {
+              "type": "command",
+              "value": "pnpm exec vp run ts:typecheck"
+            }
+          ],
+          "auditFocus": ["Loose proposal id routing", "Diagnostics without field-level id context"]
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-063-F002",
+      "severity": "P3",
+      "title": "Raw-private-field privacy regressions need explicit tests",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/localization-bridge-schema/test/schema.test.ts"
+        }
+      ],
+      "description": "The recursive private-field/path guard exists, but tests emphasize unredacted examples rather than direct raw prompt, response, raw text, and private-local path keys.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found privacy validation implementation, but no explicit regression mutations for promptText, completionText, rawText, responseBody, or fixtures/private-local references."
+        }
+      ],
+      "impact": "Future refactors could weaken the raw private payload guard without a focused regression catching it.",
+      "actionableAcceptanceCriteria": [
+        "Style-guide conversation tests reject promptText, completionText, rawText, responseBody, and fixtures/private-local references.",
+        "Privacy diagnostics name the turn id, field path, and privacy validator rule.",
+        "Valid redacted public fixtures continue to pass."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Style-guide raw-private-field privacy regressions",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "policy",
+          "dependsOn": ["ITOTORI-063"],
+          "summary": "Add explicit privacy regression coverage for raw provider text, raw response bodies, and private-local paths in style-guide conversation fixtures.",
+          "deliverables": [
+            "Raw private key mutation tests",
+            "Private-local path mutation tests",
+            "Privacy diagnostic field-path assertions"
+          ],
+          "acceptanceCriteria": [
+            "Transcripts containing promptText, completionText, rawText, responseBody, or fixtures/private-local references fail validation.",
+            "Privacy diagnostics include turn id, exact field path, and privacy rule.",
+            "Accepted redacted public style-guide transcript fixtures remain valid."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/localization-bridge-schema test"
+            }
+          ],
+          "auditFocus": [
+            "Raw private payload leakage",
+            "Privacy validators without focused regressions"
+          ]
+        }
+      }
+    }
+  ]
+}
