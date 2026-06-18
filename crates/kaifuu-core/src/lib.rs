@@ -3181,6 +3181,43 @@ pub fn redact_for_log_or_report(text: &str) -> String {
     }
 }
 
+pub fn redact_report_value(value: &Value) -> Value {
+    redact_report_value_at(value, "$")
+}
+
+fn redact_report_value_at(value: &Value, field: &str) -> Value {
+    match value {
+        Value::Object(object) => {
+            let mut redacted = serde_json::Map::new();
+            for (key, child) in object {
+                let child_field = if field == "$" {
+                    key.to_string()
+                } else {
+                    format!("{field}.{key}")
+                };
+                if secret_redaction_reason(key, &child_field, child).is_some() {
+                    redacted.insert(
+                        key.clone(),
+                        Value::String(format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)),
+                    );
+                } else {
+                    redacted.insert(key.clone(), redact_report_value_at(child, &child_field));
+                }
+            }
+            Value::Object(redacted)
+        }
+        Value::Array(items) => Value::Array(
+            items
+                .iter()
+                .enumerate()
+                .map(|(index, item)| redact_report_value_at(item, &format!("{field}.{index}")))
+                .collect(),
+        ),
+        Value::String(text) => Value::String(redact_for_log_or_report(text)),
+        _ => value.clone(),
+    }
+}
+
 fn redact_asset_ref_for_report(asset_ref: &str) -> String {
     if asset_ref_requires_redaction(asset_ref) {
         format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED)
@@ -8616,6 +8653,49 @@ mod tests {
                 redacted,
                 format!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED),
                 "{text} should be redacted"
+            );
+        }
+    }
+
+    #[test]
+    fn report_value_redaction_covers_secret_keys_paths_and_nested_payload_text() {
+        let value = serde_json::json!({
+            "adapterId": "kaifuu.fixture",
+            "rawKey": "actual-secret",
+            "metadata": {
+                "localPath": "/home/dev/Private Route Spoiler Game",
+                "safeRelativePath": "scripts/common.ks",
+                "diagnostic": "helper dump source:/home/dev/game/private-route-ending.ks"
+            },
+            "failures": [
+                {
+                    "message": "decrypted text included 00112233445566778899aabbccddeeff",
+                    "assetRef": "scripts/common.ks"
+                }
+            ]
+        });
+
+        let redacted = redact_report_value(&value);
+        let serialized = serde_json::to_string(&redacted).unwrap();
+
+        assert_eq!(redacted["adapterId"], "kaifuu.fixture");
+        assert_eq!(
+            redacted["metadata"]["safeRelativePath"],
+            "scripts/common.ks"
+        );
+        assert!(serialized.contains(SEMANTIC_SECRET_REDACTED));
+        for forbidden in [
+            "actual-secret",
+            "/home/dev",
+            "Private Route Spoiler Game",
+            "helper dump",
+            "decrypted text",
+            "00112233445566778899aabbccddeeff",
+            "private-route-ending.ks",
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "redacted report value leaked {forbidden}: {serialized}"
             );
         }
     }

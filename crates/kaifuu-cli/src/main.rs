@@ -6,7 +6,8 @@ use kaifuu_core::{
     DetectionResult, EngineAdapter, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
     GoldenHarnessRequest, KaifuuResult, PatchExport, PatchPreflightRequest, PatchRequest,
     PatchResult, ProfileRequest, VerifyRequest, atomic_write_text, read_json,
-    redact_for_log_or_report, run_round_trip_golden, validate_profile_value, write_json,
+    redact_for_log_or_report, redact_report_value, run_round_trip_golden, validate_profile_value,
+    write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -122,7 +123,10 @@ fn run_with_args_and_registry(
                 &PathBuf::from(patch),
                 &PathBuf::from(output),
             )?;
-            write_json(&PathBuf::from(output).join("patch-result.json"), &result)?;
+            write_json(
+                &PathBuf::from(output).join("patch-result.json"),
+                &redact_report_value(&result),
+            )?;
         }
         Some("verify") => {
             let game_dir = PathBuf::from(positional(&args, 1)?);
@@ -329,14 +333,26 @@ fn registered_adapter_for_game<'a>(
 }
 
 fn write_stable_profile(output: &Path, profile: &GameProfile) -> KaifuuResult<()> {
-    atomic_write_text(output, &profile.stable_json()?)
+    let mut normalized = profile.clone();
+    normalized.normalize();
+    let value = serde_json::to_value(&normalized)?;
+    atomic_write_text(
+        output,
+        &kaifuu_core::stable_json(&redact_report_value(&value))?,
+    )
 }
 
 fn write_stable_asset_inventory(
     output: &Path,
     manifest: &AssetInventoryManifest,
 ) -> KaifuuResult<()> {
-    atomic_write_text(output, &manifest.stable_json()?)
+    let mut normalized = manifest.clone();
+    normalized.normalize();
+    let value = serde_json::to_value(&normalized)?;
+    atomic_write_text(
+        output,
+        &kaifuu_core::stable_json(&redact_report_value(&value))?,
+    )
 }
 
 fn allocate_patch_staging_dir(output: &Path) -> KaifuuResult<PathBuf> {
@@ -1102,7 +1118,42 @@ mod tests {
         }
 
         fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
-            Err("profile is not used by the sensitive report test".into())
+            let mut metadata = BTreeMap::new();
+            metadata.insert(
+                "diagnostic".to_string(),
+                "helper dump source:/home/dev/game/private-route-ending.ks raw key 00112233445566778899aabbccddeeff".to_string(),
+            );
+            Ok(GameProfile {
+                schema_version: "0.1.0".to_string(),
+                profile_id: deterministic_id("profile", 1301),
+                game_id: "sensitive-report-game".to_string(),
+                title: "Sensitive Report Game".to_string(),
+                source_locale: "ja-JP".to_string(),
+                engine: EngineProfile {
+                    adapter_id: self.id().to_string(),
+                    engine_family: "sensitive-report-test".to_string(),
+                    engine_version: None,
+                    detected_variant: "private-route".to_string(),
+                },
+                source_fingerprint: None,
+                key_requirements: vec![],
+                archive_parameters: vec![],
+                helper_evidence: None,
+                assets: vec![AssetProfile {
+                    asset_id: deterministic_id("asset", 1301),
+                    path: "/home/dev/game/private-route-ending.ks".to_string(),
+                    asset_kind: AssetKind::Script,
+                    text_surfaces: vec![TextSurface::Dialogue],
+                    source_hash: Some(content_hash("sensitive profile asset")),
+                    patching: CapabilityReport::limited(
+                        Capability::Patching,
+                        "decrypted text from private-route-ending.ks requires local helper",
+                    ),
+                }],
+                capabilities: self.capabilities().reports,
+                requirements: vec![],
+                metadata,
+            })
         }
 
         fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
@@ -1351,6 +1402,43 @@ mod tests {
             assert!(
                 !detection_serialized.contains(forbidden),
                 "detection leaked {forbidden}"
+            );
+        }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn generated_profile_report_redacts_adapter_payloads_before_write() {
+        let root = temp_dir("sensitive-profile-report-redaction");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let registry = sensitive_report_registry();
+        let profile_path = root.join("profile.json");
+
+        run_cli_with_registry(
+            &[
+                "profile",
+                game_dir.to_str().unwrap(),
+                "--output",
+                profile_path.to_str().unwrap(),
+            ],
+            &registry,
+        );
+
+        let serialized = fs::read_to_string(&profile_path).unwrap();
+        assert!(serialized.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED));
+        assert!(serialized.contains("sensitive-report-test"));
+        for forbidden in [
+            "/home/dev/game",
+            "helper dump",
+            "decrypted text",
+            "00112233445566778899aabbccddeeff",
+            "private-route-ending.ks",
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "profile leaked {forbidden}"
             );
         }
 
