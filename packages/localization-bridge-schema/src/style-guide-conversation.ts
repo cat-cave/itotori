@@ -2,12 +2,7 @@ export const STYLE_GUIDE_CONVERSATION_SCHEMA_VERSION =
   "itotori.style-guide-conversation.v0" as const;
 export const STYLE_GUIDE_POLICY_SCHEMA_VERSION = "style-guide-policy.v0" as const;
 
-export const STYLE_GUIDE_CONVERSATION_ROLES = [
-  "system",
-  "human",
-  "assistant",
-  "reviewer",
-] as const;
+export const STYLE_GUIDE_CONVERSATION_ROLES = ["system", "human", "assistant", "reviewer"] as const;
 export type StyleGuideConversationRole = (typeof STYLE_GUIDE_CONVERSATION_ROLES)[number];
 
 export const STYLE_GUIDE_REDACTION_STATUSES = ["not_required", "redacted"] as const;
@@ -22,11 +17,7 @@ export const STYLE_GUIDE_POLICY_SECTIONS = [
 ] as const;
 export type StyleGuidePolicySection = (typeof STYLE_GUIDE_POLICY_SECTIONS)[number];
 
-export const STYLE_GUIDE_PROPOSAL_OPERATIONS = [
-  "add_rule",
-  "replace_rule",
-  "remove_rule",
-] as const;
+export const STYLE_GUIDE_PROPOSAL_OPERATIONS = ["add_rule", "replace_rule", "remove_rule"] as const;
 export type StyleGuideProposalOperation = (typeof STYLE_GUIDE_PROPOSAL_OPERATIONS)[number];
 
 export const STYLE_GUIDE_PROPOSAL_DECISIONS = ["accepted", "rejected", "deferred"] as const;
@@ -488,7 +479,13 @@ function validateTurn(
       field: `$.turns[${index}].proposalIds`,
     });
   }
-  validateCitations(value.citations, turnId, `$.turns[${index}].citations`, citationIds, diagnostics);
+  validateCitations(
+    value.citations,
+    turnId,
+    `$.turns[${index}].citations`,
+    citationIds,
+    diagnostics,
+  );
   checkNonBlankString(
     value.publicSummary,
     turnId,
@@ -633,7 +630,13 @@ function validateProposal(
     diagnostics,
     proposalId,
   );
-  validateExamples(value.examples, turnId, `$.proposals[${index}].examples`, diagnostics, proposalId);
+  validateExamples(
+    value.examples,
+    turnId,
+    `$.proposals[${index}].examples`,
+    diagnostics,
+    proposalId,
+  );
   validateEdits(value.edits, turnId, `$.proposals[${index}].edits`, diagnostics, proposalId);
   validateDecision(
     value.decision,
@@ -653,7 +656,12 @@ function validateRedaction(
 ): void {
   if (!isRecord(value)) {
     diagnostics.push(
-      diagnostic(turnId, field, "style_guide_conversation.redaction.object", "redaction must be an object"),
+      diagnostic(
+        turnId,
+        field,
+        "style_guide_conversation.redaction.object",
+        "redaction must be an object",
+      ),
     );
     return;
   }
@@ -702,7 +710,12 @@ function validateCitations(
 ): void {
   if (!Array.isArray(value)) {
     diagnostics.push(
-      diagnostic(turnId, field, "style_guide_conversation.citations.array", "citations must be an array"),
+      diagnostic(
+        turnId,
+        field,
+        "style_guide_conversation.citations.array",
+        "citations must be an array",
+      ),
     );
     return;
   }
@@ -885,7 +898,10 @@ function validateExamples(
           ),
         );
       }
-      if (typeof exampleValue.publicText === "string" && !exampleValue.publicText.includes("[redacted]")) {
+      if (
+        typeof exampleValue.publicText === "string" &&
+        !exampleValue.publicText.includes("[redacted]")
+      ) {
         diagnostics.push(
           diagnostic(
             turnId,
@@ -1172,7 +1188,10 @@ function projectionConflictDiagnostics(
     return [];
   }
   const diagnostics: StyleGuideConversationDiagnostic[] = [];
-  const acceptedEdits = new Map<string, { signature: string; proposalId: string; turnId: string }>();
+  const acceptedEdits = new Map<
+    string,
+    { signature: string; proposalId: string; turnId: string }
+  >();
   for (const proposalValue of value.proposals) {
     if (!isRecord(proposalValue) || !isRecord(proposalValue.decision)) {
       continue;
@@ -1180,7 +1199,10 @@ function projectionConflictDiagnostics(
     if (proposalValue.decision.status !== "accepted") {
       continue;
     }
-    if (typeof proposalValue.proposalId !== "string" || !proposalIds.has(proposalValue.proposalId)) {
+    if (
+      typeof proposalValue.proposalId !== "string" ||
+      !proposalIds.has(proposalValue.proposalId)
+    ) {
       continue;
     }
     const turnId = typeof proposalValue.turnId === "string" ? proposalValue.turnId : "unknown";
@@ -1261,13 +1283,25 @@ function validateStringArray(
     const entryField = `${field}[${index}]`;
     if (typeof entry !== "string" || entry.trim().length === 0) {
       diagnostics.push(
-        diagnostic(turnId, entryField, rule, `${entryField} must be a non-empty string`, proposalId),
+        diagnostic(
+          turnId,
+          entryField,
+          rule,
+          `${entryField} must be a non-empty string`,
+          proposalId,
+        ),
       );
       continue;
     }
     if (seen.has(entry)) {
       diagnostics.push(
-        diagnostic(turnId, entryField, rule, `${entryField} must not duplicate ${entry}`, proposalId),
+        diagnostic(
+          turnId,
+          entryField,
+          rule,
+          `${entryField} must not duplicate ${entry}`,
+          proposalId,
+        ),
       );
       continue;
     }
@@ -1287,7 +1321,9 @@ function checkNonBlankString(
   proposalId?: string,
 ): void {
   if (typeof value !== "string" || value.trim().length === 0) {
-    diagnostics.push(diagnostic(turnId, field, rule, `${field} must be a non-empty string`, proposalId));
+    diagnostics.push(
+      diagnostic(turnId, field, rule, `${field} must be a non-empty string`, proposalId),
+    );
   }
 }
 
@@ -1300,7 +1336,9 @@ function checkUuid7(
   proposalId?: string,
 ): void {
   if (typeof value !== "string" || !isUuid7(value)) {
-    diagnostics.push(diagnostic(turnId, field, rule, `${field} must be a UUID7 string`, proposalId));
+    diagnostics.push(
+      diagnostic(turnId, field, rule, `${field} must be a UUID7 string`, proposalId),
+    );
   }
 }
 
@@ -1314,7 +1352,13 @@ function checkHash(
 ): void {
   if (typeof value !== "string" || !/^sha256:[0-9a-f]{64}$/.test(value)) {
     diagnostics.push(
-      diagnostic(turnId, field, rule, `${field} must be a canonical sha256 hash string`, proposalId),
+      diagnostic(
+        turnId,
+        field,
+        rule,
+        `${field} must be a canonical sha256 hash string`,
+        proposalId,
+      ),
     );
   }
 }

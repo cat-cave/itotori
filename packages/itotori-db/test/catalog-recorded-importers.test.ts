@@ -613,7 +613,9 @@ describe("catalog recorded source importers", () => {
 
     const appIdMismatch = structuredClone(steamFixture);
     const appIdMismatchResponse = required(appIdMismatch.responses[0], "Steam response");
-    appIdMismatchResponse.payload = { "2100011": { success: true, data: { steam_appid: 2100011 } } };
+    appIdMismatchResponse.payload = {
+      "2100011": { success: true, data: { steam_appid: 2100011 } },
+    };
     expect(() => createSteamRecordedStorefrontAdapter(appIdMismatch)).toThrow(
       /CATALOG-012 semantic diagnostic parse_drift fixtureId=catalog-recorded-importer-steam-storefront-v0\.1 sourceRevision=steam-storefront-synthetic-2026-06-18 stepKey=steam-2100010 sourceId=2100010 sourceField=2100011/u,
     );
@@ -788,7 +790,9 @@ async function catalogCounts(pool: {
 }
 
 async function rateLimitByAdapter(
-  pool: { query<T extends object = object>(sql: string, values?: unknown[]): Promise<{ rows: T[] }> },
+  pool: {
+    query<T extends object = object>(sql: string, values?: unknown[]): Promise<{ rows: T[] }>;
+  },
   adapterName: string,
 ) {
   const result = await pool.query<{

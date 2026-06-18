@@ -404,7 +404,8 @@ function parseSteamStorefrontResponse(
   const releaseYear = releaseDate === undefined ? undefined : yearFromDate(releaseDate);
   const languageParse = steamLanguageStatuses(data, appId, fixture, response);
   const languages = languageParse.statuses;
-  const originalLanguage = languages.find((status) => status.language === "ja-JP")?.language ?? languages[0]?.language;
+  const originalLanguage =
+    languages.find((status) => status.language === "ja-JP")?.language ?? languages[0]?.language;
   const packages = optionalArray(data, "packages") ?? [];
   const packageStatus = packages.length === 0 ? "no_packages_recorded" : "packages_recorded";
   const developers = stringArray(data, "developers");
@@ -478,7 +479,11 @@ function validateStorefrontFixture(fixture: CatalogRecordedStorefrontFixture): v
     requiredString(response.sourceId, `fixture.responses[${index}].sourceId`);
     requiredString(response.requestIdentity, `fixture.responses[${index}].requestIdentity`);
     requiredString(response.fetchedAt, `fixture.responses[${index}].fetchedAt`);
-    if (response.payload === null || typeof response.payload !== "object" || Array.isArray(response.payload)) {
+    if (
+      response.payload === null ||
+      typeof response.payload !== "object" ||
+      Array.isArray(response.payload)
+    ) {
       throw new Error(`fixture.responses[${index}].payload must be a JSON object`);
     }
   }
@@ -877,7 +882,10 @@ function steamReleaseDate(releaseDate: CatalogJsonRecord | undefined): string | 
 }
 
 function steamLocaleFromLabel(label: string): string | null {
-  const normalized = label.toLowerCase().replace(/\s*\*+\s*$/u, "").trim();
+  const normalized = label
+    .toLowerCase()
+    .replace(/\s*\*+\s*$/u, "")
+    .trim();
   const map: Record<string, string> = {
     english: "en-US",
     japanese: "ja-JP",
