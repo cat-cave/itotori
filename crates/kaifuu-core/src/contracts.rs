@@ -94,6 +94,10 @@ const RUNTIME_PLAYBACK_FEATURES: &[&str] = &[
     "reference_comparison",
 ];
 const RUNTIME_FEATURE_STATUSES: &[&str] = &["supported", "partial", "unsupported"];
+const OBSERVATION_HOOK_SCHEMA_VERSION: &str = "0.1.0-alpha";
+const OBSERVATION_HOOK_EVENT_KINDS: &[&str] =
+    &["text", "choice", "branch", "scene", "frame", "error"];
+const OBSERVATION_REDACTION_STATUSES: &[&str] = &["not_required", "redacted"];
 const RUNTIME_REQUESTED_OPERATIONS: &[&str] =
     &["trace", "branch_discovery", "capture", "smoke_validation"];
 
@@ -1200,6 +1204,18 @@ pub fn validate_runtime_evidence_report_v02(value: &Value) -> BridgeContractResu
             &format!("RuntimeEvidenceReportV02.branchEvents[{index}]"),
         )?;
     }
+    let observation_hook_events = optional_array(
+        report,
+        "observationHookEvents",
+        "RuntimeEvidenceReportV02.observationHookEvents",
+    )?;
+    for (index, event) in observation_hook_events.iter().enumerate() {
+        validate_observation_hook_event(
+            event,
+            &format!("RuntimeEvidenceReportV02.observationHookEvents[{index}]"),
+            evidence_tier,
+        )?;
+    }
     let captures = required_array(report, "captures", "RuntimeEvidenceReportV02.captures")?;
     for (index, capture) in captures.iter().enumerate() {
         validate_runtime_capture(
@@ -1274,9 +1290,13 @@ pub fn validate_runtime_evidence_report_v02(value: &Value) -> BridgeContractResu
         )?;
     }
 
-    if trace_events.is_empty() && captures.is_empty() && recordings.is_empty() {
+    if trace_events.is_empty()
+        && observation_hook_events.is_empty()
+        && captures.is_empty()
+        && recordings.is_empty()
+    {
         return error(
-            "RuntimeEvidenceReportV02 must contain trace, capture, or recording evidence",
+            "RuntimeEvidenceReportV02 must contain trace, observation hook, capture, or recording evidence",
         );
     }
     if !captures.is_empty() {
@@ -1322,6 +1342,15 @@ pub fn validate_runtime_evidence_report_v02(value: &Value) -> BridgeContractResu
         validate_runtime_capability_supports_feature(
             runtime_capabilities,
             "branch_discovery",
+            "RuntimeEvidenceReportV02.runtimeCapabilities",
+        )?;
+    }
+    if !observation_hook_events.is_empty()
+        && let Some(runtime_capabilities) = report.get("runtimeCapabilities")
+    {
+        validate_runtime_capability_supports_feature(
+            runtime_capabilities,
+            "instrumentation_hooks",
             "RuntimeEvidenceReportV02.runtimeCapabilities",
         )?;
     }
@@ -2826,6 +2855,268 @@ fn validate_runtime_artifact_ref(
     }
     if let Some(byte_size) = artifact_ref.get("byteSize") {
         positive_integer_value(byte_size, &format!("{label}.byteSize"))?;
+    }
+    Ok(())
+}
+
+fn validate_observation_hook_event(
+    value: &Value,
+    label: &str,
+    report_evidence_tier: &str,
+) -> BridgeContractResult<()> {
+    let event = as_record(value, label)?;
+    assert_literal(
+        event,
+        "schemaVersion",
+        OBSERVATION_HOOK_SCHEMA_VERSION,
+        &format!("{label}.schemaVersion"),
+    )?;
+    assert_required_string(event, "eventId", &format!("{label}.eventId"))?;
+    assert_required_rfc3339(event, "observedAt", &format!("{label}.observedAt"))?;
+    let event_kind = assert_required_one_of(
+        event,
+        "eventKind",
+        OBSERVATION_HOOK_EVENT_KINDS,
+        &format!("{label}.eventKind"),
+    )?;
+    assert_required_string(
+        event,
+        "runtimeTargetId",
+        &format!("{label}.runtimeTargetId"),
+    )?;
+    validate_observation_adapter_id(
+        required(event, "adapterId", &format!("{label}.adapterId"))?,
+        &format!("{label}.adapterId"),
+    )?;
+    let evidence_tier = assert_required_one_of(
+        event,
+        "evidenceTier",
+        RUNTIME_EVIDENCE_TIERS,
+        &format!("{label}.evidenceTier"),
+    )?;
+    assert_maximum_runtime_evidence_tier(
+        evidence_tier,
+        report_evidence_tier,
+        &format!("{label}.evidenceTier"),
+    )?;
+    validate_observation_environment(
+        required(event, "environment", &format!("{label}.environment"))?,
+        &format!("{label}.environment"),
+    )?;
+    if let Some(source_revision) = event.get("sourceRevision") {
+        validate_observation_source_revision(source_revision, &format!("{label}.sourceRevision"))?;
+    }
+    let bridge_refs = optional_array(event, "bridgeRefs", &format!("{label}.bridgeRefs"))?;
+    for (index, bridge_ref) in bridge_refs.iter().enumerate() {
+        validate_observation_bridge_ref(bridge_ref, &format!("{label}.bridgeRefs[{index}]"))?;
+    }
+    validate_observation_redaction_metadata(
+        required(event, "redaction", &format!("{label}.redaction"))?,
+        &format!("{label}.redaction"),
+    )?;
+    let payload_kind = validate_observation_hook_payload(
+        required(event, "payload", &format!("{label}.payload"))?,
+        &format!("{label}.payload"),
+    )?;
+    if event_kind != payload_kind {
+        return error(format!(
+            "{label}.eventKind must match {label}.payload.payloadKind"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_observation_adapter_id(value: &Value, label: &str) -> BridgeContractResult<()> {
+    let adapter_id = as_record(value, label)?;
+    assert_required_string(adapter_id, "name", &format!("{label}.name"))?;
+    assert_required_string(adapter_id, "version", &format!("{label}.version"))?;
+    Ok(())
+}
+
+fn validate_observation_environment(value: &Value, label: &str) -> BridgeContractResult<()> {
+    let environment = as_record(value, label)?;
+    assert_required_string(environment, "runtime", &format!("{label}.runtime"))?;
+    for key in ["engine", "platform", "display", "locale"] {
+        if let Some(value) = environment.get(key) {
+            string_value(value, &format!("{label}.{key}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_observation_source_revision(value: &Value, label: &str) -> BridgeContractResult<()> {
+    let source_revision = as_record(value, label)?;
+    assert_required_string(source_revision, "sourceId", &format!("{label}.sourceId"))?;
+    for key in ["revisionId", "contentHash"] {
+        if let Some(value) = source_revision.get(key) {
+            string_value(value, &format!("{label}.{key}"))?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_observation_bridge_ref(value: &Value, label: &str) -> BridgeContractResult<()> {
+    let bridge_ref = as_record(value, label)?;
+    let bridge_unit_id =
+        optional_string(bridge_ref, "bridgeUnitId", &format!("{label}.bridgeUnitId"))?;
+    let source_unit_key = optional_string(
+        bridge_ref,
+        "sourceUnitKey",
+        &format!("{label}.sourceUnitKey"),
+    )?;
+    let runtime_object_id = optional_string(
+        bridge_ref,
+        "runtimeObjectId",
+        &format!("{label}.runtimeObjectId"),
+    )?;
+    if is_blank_string(bridge_unit_id)
+        && is_blank_string(source_unit_key)
+        && is_blank_string(runtime_object_id)
+    {
+        return error(format!(
+            "{label} must identify a bridge unit, source unit, or runtime object"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_observation_redaction_metadata(value: &Value, label: &str) -> BridgeContractResult<()> {
+    let redaction = as_record(value, label)?;
+    let status = assert_required_one_of(
+        redaction,
+        "status",
+        OBSERVATION_REDACTION_STATUSES,
+        &format!("{label}.status"),
+    )?;
+    let rules = optional_array(redaction, "rules", &format!("{label}.rules"))?;
+    let redacted_fields = optional_array(
+        redaction,
+        "redactedFields",
+        &format!("{label}.redactedFields"),
+    )?;
+    for (index, rule) in rules.iter().enumerate() {
+        non_blank_string_value(rule, &format!("{label}.rules[{index}]"))?;
+    }
+    for (index, field) in redacted_fields.iter().enumerate() {
+        non_blank_string_value(field, &format!("{label}.redactedFields[{index}]"))?;
+    }
+    if status == "not_required" && (!rules.is_empty() || !redacted_fields.is_empty()) {
+        return error(format!(
+            "{label} with status not_required must not declare redaction rules or fields"
+        ));
+    }
+    if status == "redacted" && (rules.is_empty() || redacted_fields.is_empty()) {
+        return error(format!(
+            "{label} with status redacted must declare rules and redactedFields"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_observation_hook_payload<'a>(
+    value: &'a Value,
+    label: &str,
+) -> BridgeContractResult<&'a str> {
+    let payload = as_record(value, label)?;
+    let payload_kind = assert_required_one_of(
+        payload,
+        "payloadKind",
+        OBSERVATION_HOOK_EVENT_KINDS,
+        &format!("{label}.payloadKind"),
+    )?;
+    match payload_kind {
+        "text" => {
+            assert_required_string(payload, "text", &format!("{label}.text"))?;
+            for key in ["speaker", "textSurface"] {
+                if let Some(value) = payload.get(key) {
+                    string_value(value, &format!("{label}.{key}"))?;
+                }
+            }
+        }
+        "choice" => {
+            if let Some(prompt) = payload.get("prompt") {
+                string_value(prompt, &format!("{label}.prompt"))?;
+            }
+            let options = required_array(payload, "options", &format!("{label}.options"))?;
+            if options.is_empty() {
+                return error(format!("{label}.options must include at least one option"));
+            }
+            for (index, option) in options.iter().enumerate() {
+                validate_observation_choice_option(option, &format!("{label}.options[{index}]"))?;
+            }
+        }
+        "branch" => {
+            assert_required_string(payload, "branchId", &format!("{label}.branchId"))?;
+            for key in ["label", "destination"] {
+                if let Some(value) = payload.get(key) {
+                    string_value(value, &format!("{label}.{key}"))?;
+                }
+            }
+            if let Some(taken) = payload.get("taken")
+                && taken.as_bool().is_none()
+            {
+                return error(format!("{label}.taken must be a boolean"));
+            }
+        }
+        "scene" => {
+            assert_required_string(payload, "sceneId", &format!("{label}.sceneId"))?;
+            if let Some(scene_name) = payload.get("sceneName") {
+                string_value(scene_name, &format!("{label}.sceneName"))?;
+            }
+        }
+        "frame" => {
+            assert_required_non_negative_integer(payload, "frame", &format!("{label}.frame"))?;
+            if let Some(width) = payload.get("width") {
+                positive_integer_value(width, &format!("{label}.width"))?;
+            }
+            if let Some(height) = payload.get("height") {
+                positive_integer_value(height, &format!("{label}.height"))?;
+            }
+            if let Some(artifact_ref) = payload.get("artifactRef") {
+                validate_observation_artifact_ref(artifact_ref, &format!("{label}.artifactRef"))?;
+            }
+        }
+        "error" => {
+            assert_required_string(payload, "errorType", &format!("{label}.errorType"))?;
+            assert_required_string(payload, "message", &format!("{label}.message"))?;
+            required(payload, "fatal", &format!("{label}.fatal"))?
+                .as_bool()
+                .ok_or_else(|| {
+                    BridgeContractValidationError::new(format!("{label}.fatal must be a boolean"))
+                })?;
+            if let Some(stack) = payload.get("stack") {
+                string_value(stack, &format!("{label}.stack"))?;
+            }
+        }
+        _ => unreachable!("payload kind was validated above"),
+    }
+    Ok(payload_kind)
+}
+
+fn validate_observation_choice_option(value: &Value, label: &str) -> BridgeContractResult<()> {
+    let option = as_record(value, label)?;
+    assert_required_string(option, "optionId", &format!("{label}.optionId"))?;
+    assert_required_string(option, "label", &format!("{label}.label"))?;
+    if let Some(bridge_ref) = option.get("bridgeRef") {
+        validate_observation_bridge_ref(bridge_ref, &format!("{label}.bridgeRef"))?;
+    }
+    Ok(())
+}
+
+fn validate_observation_artifact_ref(value: &Value, label: &str) -> BridgeContractResult<()> {
+    let artifact_ref = as_record(value, label)?;
+    assert_required_string(artifact_ref, "artifactId", &format!("{label}.artifactId"))?;
+    assert_required_string(
+        artifact_ref,
+        "artifactKind",
+        &format!("{label}.artifactKind"),
+    )?;
+    assert_portable_uri(
+        required(artifact_ref, "uri", &format!("{label}.uri"))?,
+        &format!("{label}.uri"),
+    )?;
+    if let Some(media_type) = artifact_ref.get("mediaType") {
+        string_value(media_type, &format!("{label}.mediaType"))?;
     }
     Ok(())
 }
@@ -4995,6 +5286,30 @@ fn string_value<'a>(value: &'a Value, label: &str) -> BridgeContractResult<&'a s
     }
 }
 
+fn non_blank_string_value<'a>(value: &'a Value, label: &str) -> BridgeContractResult<&'a str> {
+    let value = string_value(value, label)?;
+    if value.trim().is_empty() {
+        error(format!("{label} must be a non-empty string"))
+    } else {
+        Ok(value)
+    }
+}
+
+fn optional_string<'a>(
+    record: &'a Map<String, Value>,
+    key: &str,
+    label: &str,
+) -> BridgeContractResult<Option<&'a str>> {
+    match record.get(key) {
+        Some(value) => string_value(value, label).map(Some),
+        None => Ok(None),
+    }
+}
+
+fn is_blank_string(value: Option<&str>) -> bool {
+    value.is_none_or(|value| value.trim().is_empty())
+}
+
 fn string_field<'a>(record: &'a Map<String, Value>, key: &str) -> BridgeContractResult<&'a str> {
     string_value(
         record
@@ -5136,11 +5451,125 @@ fn assert_required_rfc3339<'a>(
 
 fn assert_rfc3339_value<'a>(value: &'a Value, label: &str) -> BridgeContractResult<&'a str> {
     let value = string_value(value, label)?;
-    if value.len() >= 20 && value.contains('T') && (value.ends_with('Z') || value.contains('+')) {
+    if is_valid_rfc3339_instant(value) {
         Ok(value)
     } else {
         error(format!("{label} must be a valid RFC3339 timestamp instant"))
     }
+}
+
+fn is_valid_rfc3339_instant(value: &str) -> bool {
+    let Some((date, time_and_offset)) = value.split_once('T') else {
+        return false;
+    };
+    if date.len() != 10
+        || date.as_bytes().get(4) != Some(&b'-')
+        || date.as_bytes().get(7) != Some(&b'-')
+    {
+        return false;
+    }
+    let Some(year) = parse_u32_digits(&date[0..4]) else {
+        return false;
+    };
+    let Some(month) = parse_u32_digits(&date[5..7]) else {
+        return false;
+    };
+    let Some(day) = parse_u32_digits(&date[8..10]) else {
+        return false;
+    };
+
+    let (time, offset) = if let Some(time) = time_and_offset.strip_suffix('Z') {
+        (time, "Z")
+    } else if let Some((offset_index, _)) = time_and_offset
+        .char_indices()
+        .rev()
+        .find(|(_, c)| *c == '+' || *c == '-')
+    {
+        if offset_index == 0 {
+            return false;
+        }
+        (
+            &time_and_offset[..offset_index],
+            &time_and_offset[offset_index..],
+        )
+    } else {
+        return false;
+    };
+
+    if time.len() < 8
+        || time.as_bytes().get(2) != Some(&b':')
+        || time.as_bytes().get(5) != Some(&b':')
+    {
+        return false;
+    }
+    let Some(hour) = parse_u32_digits(&time[0..2]) else {
+        return false;
+    };
+    let Some(minute) = parse_u32_digits(&time[3..5]) else {
+        return false;
+    };
+    let second_text = &time[6..];
+    let (second_text, fraction) = second_text
+        .split_once('.')
+        .map_or((second_text, None), |(second, fraction)| {
+            (second, Some(fraction))
+        });
+    let Some(second) = parse_u32_digits(second_text) else {
+        return false;
+    };
+    if second_text.len() != 2
+        || fraction.is_some_and(|fraction| {
+            fraction.is_empty() || !fraction.as_bytes().iter().all(u8::is_ascii_digit)
+        })
+    {
+        return false;
+    }
+
+    if month == 0
+        || month > 12
+        || day == 0
+        || day > days_in_month(year, month)
+        || hour > 23
+        || minute > 59
+        || second > 59
+    {
+        return false;
+    }
+
+    if offset == "Z" {
+        return true;
+    }
+    if offset.len() != 6 || offset.as_bytes().get(3) != Some(&b':') {
+        return false;
+    }
+    let Some(offset_hour) = parse_u32_digits(&offset[1..3]) else {
+        return false;
+    };
+    let Some(offset_minute) = parse_u32_digits(&offset[4..6]) else {
+        return false;
+    };
+    offset_hour <= 23 && offset_minute <= 59
+}
+
+fn parse_u32_digits(value: &str) -> Option<u32> {
+    if value.is_empty() || !value.as_bytes().iter().all(u8::is_ascii_digit) {
+        return None;
+    }
+    value.parse().ok()
+}
+
+fn days_in_month(year: u32, month: u32) -> u32 {
+    match month {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 if is_leap_year(year) => 29,
+        2 => 28,
+        _ => 0,
+    }
+}
+
+fn is_leap_year(year: u32) -> bool {
+    year.is_multiple_of(4) && (!year.is_multiple_of(100) || year.is_multiple_of(400))
 }
 
 fn assert_required_bool(
@@ -5630,4 +6059,119 @@ fn assert_no_mutable_event_bucket_fields(value: &Value, label: &str) -> BridgeCo
 
 fn error<T>(message: impl Into<String>) -> BridgeContractResult<T> {
     Err(BridgeContractValidationError::new(message))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::{Value, json};
+
+    use super::validate_runtime_evidence_report_v02;
+
+    fn runtime_evidence_with_observation_hook() -> Value {
+        json!({
+            "schemaVersion": "0.2.0",
+            "runtimeReportId": "019ed003-0000-7000-8000-000000000901",
+            "adapterName": "utsushi-contract-test",
+            "adapterVersion": "0.2.0",
+            "fidelityTier": "trace_only",
+            "evidenceTier": "E1",
+            "status": "passed",
+            "createdAt": "2026-06-17T00:00:00.000Z",
+            "traceEvents": [],
+            "branchEvents": [],
+            "observationHookEvents": [
+                {
+                    "schemaVersion": "0.1.0-alpha",
+                    "eventId": "obs-0001",
+                    "observedAt": "2026-06-17T00:00:00.000Z",
+                    "eventKind": "text",
+                    "runtimeTargetId": "fixture:runtime-target",
+                    "adapterId": {
+                        "name": "utsushi-contract-test",
+                        "version": "0.2.0"
+                    },
+                    "evidenceTier": "E1",
+                    "environment": {
+                        "runtime": "browser"
+                    },
+                    "bridgeRefs": [
+                        {
+                            "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+                            "sourceUnitKey": "script/prologue#line-001"
+                        }
+                    ],
+                    "redaction": {
+                        "status": "not_required"
+                    },
+                    "payload": {
+                        "payloadKind": "text",
+                        "text": "Bonjour, {player}."
+                    }
+                }
+            ],
+            "captures": [],
+            "recordings": [],
+            "approximations": [
+                {
+                    "approximationId": "019ed003-0000-7000-8000-000000000902",
+                    "approximationTier": "deterministic_fixture",
+                    "scope": "fixture runtime hook",
+                    "description": "Observation hook evidence comes from a deterministic fixture route.",
+                    "affectedBridgeUnitRefs": [
+                        {
+                            "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+                            "sourceUnitKey": "script/prologue#line-001"
+                        }
+                    ],
+                    "evidenceTierCeiling": "E1"
+                }
+            ],
+            "validationFindings": [],
+            "limitations": []
+        })
+    }
+
+    #[test]
+    fn runtime_evidence_accepts_observation_hook_events() {
+        let report = runtime_evidence_with_observation_hook();
+
+        validate_runtime_evidence_report_v02(&report).unwrap();
+    }
+
+    #[test]
+    fn runtime_evidence_rejects_invalid_observation_observed_at() {
+        let mut report = runtime_evidence_with_observation_hook();
+        report["observationHookEvents"][0]["observedAt"] = json!("2026-02-30T00:00:00.000Z");
+
+        let error = validate_runtime_evidence_report_v02(&report)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("observationHookEvents[0].observedAt"));
+    }
+
+    #[test]
+    fn runtime_evidence_rejects_blank_observation_redaction_rules() {
+        let mut report = runtime_evidence_with_observation_hook();
+        report["observationHookEvents"][0]["redaction"] = json!({
+            "status": "redacted",
+            "rules": [" "],
+            "redactedFields": ["payload.text"]
+        });
+
+        let error = validate_runtime_evidence_report_v02(&report)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("observationHookEvents[0].redaction.rules[0]"));
+    }
+
+    #[test]
+    fn runtime_evidence_rejects_observation_payload_kind_mismatch() {
+        let mut report = runtime_evidence_with_observation_hook();
+        report["observationHookEvents"][0]["eventKind"] = json!("error");
+
+        let error = validate_runtime_evidence_report_v02(&report)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("eventKind must match"));
+    }
 }

@@ -154,6 +154,19 @@ export type RuntimePlaybackFeatureV02 = (typeof RUNTIME_PLAYBACK_FEATURES_V02)[n
 export const RUNTIME_FEATURE_STATUSES_V02 = ["supported", "partial", "unsupported"] as const;
 export type RuntimeFeatureStatusV02 = (typeof RUNTIME_FEATURE_STATUSES_V02)[number];
 
+export const OBSERVATION_HOOK_SCHEMA_VERSION = "0.1.0-alpha" as const;
+export const OBSERVATION_HOOK_EVENT_KINDS = [
+  "text",
+  "choice",
+  "branch",
+  "scene",
+  "frame",
+  "error",
+] as const;
+export type ObservationHookEventKind = (typeof OBSERVATION_HOOK_EVENT_KINDS)[number];
+export const OBSERVATION_REDACTION_STATUSES = ["not_required", "redacted"] as const;
+export type ObservationRedactionStatus = (typeof OBSERVATION_REDACTION_STATUSES)[number];
+
 export const RUNTIME_REQUESTED_OPERATIONS_V02 = [
   "trace",
   "branch_discovery",
@@ -1585,6 +1598,116 @@ export type ControlledPlaybackSessionV02 = {
   limitations: string[];
 };
 
+export type ObservationAdapterId = {
+  name: string;
+  version: string;
+};
+
+export type ObservationEnvironment = {
+  runtime: string;
+  engine?: string;
+  platform?: string;
+  display?: string;
+  locale?: string;
+};
+
+export type ObservationSourceRevision = {
+  sourceId: string;
+  revisionId?: string;
+  contentHash?: string;
+};
+
+export type ObservationBridgeRef = {
+  bridgeUnitId?: string;
+  sourceUnitKey?: string;
+  runtimeObjectId?: string;
+};
+
+export type ObservationRedactionMetadata = {
+  status: ObservationRedactionStatus;
+  rules?: string[];
+  redactedFields?: string[];
+};
+
+export type ObservationArtifactRef = {
+  artifactId: string;
+  artifactKind: string;
+  uri: string;
+  mediaType?: string;
+};
+
+export type ObservationChoiceOption = {
+  optionId: string;
+  label: string;
+  bridgeRef?: ObservationBridgeRef;
+};
+
+export type ObservationTextPayload = {
+  payloadKind: "text";
+  text: string;
+  speaker?: string;
+  textSurface?: string;
+};
+
+export type ObservationChoicePayload = {
+  payloadKind: "choice";
+  prompt?: string;
+  options: ObservationChoiceOption[];
+};
+
+export type ObservationBranchPayload = {
+  payloadKind: "branch";
+  branchId: string;
+  label?: string;
+  destination?: string;
+  taken?: boolean;
+};
+
+export type ObservationScenePayload = {
+  payloadKind: "scene";
+  sceneId: string;
+  sceneName?: string;
+};
+
+export type ObservationFramePayload = {
+  payloadKind: "frame";
+  frame: number;
+  width?: number;
+  height?: number;
+  artifactRef?: ObservationArtifactRef;
+};
+
+export type ObservationErrorPayload = {
+  payloadKind: "error";
+  errorType: string;
+  message: string;
+  fatal: boolean;
+  stack?: string;
+};
+
+export type ObservationHookPayload =
+  | ObservationTextPayload
+  | ObservationChoicePayload
+  | ObservationBranchPayload
+  | ObservationScenePayload
+  | ObservationFramePayload
+  | ObservationErrorPayload;
+
+export type ObservationHookEvent = {
+  schemaVersion: typeof OBSERVATION_HOOK_SCHEMA_VERSION;
+  eventId: string;
+  observedAt: string;
+  eventKind: ObservationHookEventKind;
+  runtimeTargetId: string;
+  adapterId: ObservationAdapterId;
+  evidenceTier: RuntimeEvidenceTierV02;
+  environment: ObservationEnvironment;
+  sourceRevision?: ObservationSourceRevision;
+  bridgeRefs?: ObservationBridgeRef[];
+  redaction: ObservationRedactionMetadata;
+  payload: ObservationHookPayload;
+};
+
 export type RuntimeEvidenceReportV02 = {
   schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
   runtimeReportId: Uuid7;
@@ -1602,6 +1725,7 @@ export type RuntimeEvidenceReportV02 = {
   createdAt: string;
   traceEvents: RuntimeTraceEventV02[];
   branchEvents: RuntimeBranchPointEventV02[];
+  observationHookEvents?: ObservationHookEvent[];
   captures: RuntimeCaptureV02[];
   recordings: RuntimeRecordingV02[];
   approximations: RuntimeApproximationV02[];
@@ -2912,6 +3036,20 @@ export function assertRuntimeEvidenceReportV02(
     assertRuntimeBranchPointEventV02(event, `RuntimeEvidenceReportV02.branchEvents[${index}]`);
   }
 
+  const observationHookEvents =
+    report.observationHookEvents === undefined
+      ? []
+      : asArray(report.observationHookEvents, "RuntimeEvidenceReportV02.observationHookEvents");
+  for (const [index, event] of observationHookEvents.entries()) {
+    const label = `RuntimeEvidenceReportV02.observationHookEvents[${index}]`;
+    assertObservationHookEvent(event, label);
+    assertMaximumRuntimeEvidenceTierV02(
+      (event as ObservationHookEvent).evidenceTier,
+      report.evidenceTier,
+      `${label}.evidenceTier`,
+    );
+  }
+
   const captures = asArray(report.captures, "RuntimeEvidenceReportV02.captures");
   for (const [index, capture] of captures.entries()) {
     assertRuntimeCaptureV02(capture, `RuntimeEvidenceReportV02.captures[${index}]`);
@@ -2966,8 +3104,15 @@ export function assertRuntimeEvidenceReportV02(
       "RuntimeEvidenceReportV02.controlledPlaybackSession.requestedOperation",
     );
   }
-  if (traceEvents.length === 0 && captures.length === 0 && recordings.length === 0) {
-    throw new Error("RuntimeEvidenceReportV02 must contain trace, capture, or recording evidence");
+  if (
+    traceEvents.length === 0 &&
+    observationHookEvents.length === 0 &&
+    captures.length === 0 &&
+    recordings.length === 0
+  ) {
+    throw new Error(
+      "RuntimeEvidenceReportV02 must contain trace, observation hook, capture, or recording evidence",
+    );
   }
   if (captures.length > 0) {
     assertMinimumRuntimeEvidenceTierV02(
@@ -3008,6 +3153,13 @@ export function assertRuntimeEvidenceReportV02(
     assertRuntimeCapabilitySupportsFeatureV02(
       report.runtimeCapabilities as RuntimeCapabilityContractV02,
       "branch_discovery",
+      "RuntimeEvidenceReportV02.runtimeCapabilities",
+    );
+  }
+  if (observationHookEvents.length > 0 && report.runtimeCapabilities !== undefined) {
+    assertRuntimeCapabilitySupportsFeatureV02(
+      report.runtimeCapabilities as RuntimeCapabilityContractV02,
+      "instrumentation_hooks",
       "RuntimeEvidenceReportV02.runtimeCapabilities",
     );
   }
@@ -3253,6 +3405,184 @@ function assertRuntimeArtifactRefV02(
   if (ref.byteSize !== undefined) {
     assertPositiveInteger(ref.byteSize, `${label}.byteSize`);
   }
+}
+
+function assertObservationHookEvent(
+  value: unknown,
+  label: string,
+): asserts value is ObservationHookEvent {
+  const event = asRecord(value, label);
+  assertEqual(event.schemaVersion, OBSERVATION_HOOK_SCHEMA_VERSION, `${label}.schemaVersion`);
+  assertString(event.eventId, `${label}.eventId`);
+  assertRfc3339Instant(event.observedAt, `${label}.observedAt`);
+  assertEnum(event.eventKind, OBSERVATION_HOOK_EVENT_KINDS, `${label}.eventKind`);
+  assertString(event.runtimeTargetId, `${label}.runtimeTargetId`);
+  assertObservationAdapterId(event.adapterId, `${label}.adapterId`);
+  assertEnum(event.evidenceTier, RUNTIME_EVIDENCE_TIERS_V02, `${label}.evidenceTier`);
+  assertObservationEnvironment(event.environment, `${label}.environment`);
+  if (event.sourceRevision !== undefined) {
+    assertObservationSourceRevision(event.sourceRevision, `${label}.sourceRevision`);
+  }
+  if (event.bridgeRefs !== undefined) {
+    const bridgeRefs = asArray(event.bridgeRefs, `${label}.bridgeRefs`);
+    for (const [index, bridgeRef] of bridgeRefs.entries()) {
+      assertObservationBridgeRef(bridgeRef, `${label}.bridgeRefs[${index}]`);
+    }
+  }
+  assertObservationRedactionMetadata(event.redaction, `${label}.redaction`);
+  const payloadKind = assertObservationHookPayload(event.payload, `${label}.payload`);
+  if (event.eventKind !== payloadKind) {
+    throw new Error(`${label}.eventKind must match ${label}.payload.payloadKind`);
+  }
+}
+
+function assertObservationAdapterId(
+  value: unknown,
+  label: string,
+): asserts value is ObservationAdapterId {
+  const adapterId = asRecord(value, label);
+  assertString(adapterId.name, `${label}.name`);
+  assertString(adapterId.version, `${label}.version`);
+}
+
+function assertObservationEnvironment(
+  value: unknown,
+  label: string,
+): asserts value is ObservationEnvironment {
+  const environment = asRecord(value, label);
+  assertString(environment.runtime, `${label}.runtime`);
+  assertOptionalString(environment.engine, `${label}.engine`);
+  assertOptionalString(environment.platform, `${label}.platform`);
+  assertOptionalString(environment.display, `${label}.display`);
+  assertOptionalString(environment.locale, `${label}.locale`);
+}
+
+function assertObservationSourceRevision(
+  value: unknown,
+  label: string,
+): asserts value is ObservationSourceRevision {
+  const sourceRevision = asRecord(value, label);
+  assertString(sourceRevision.sourceId, `${label}.sourceId`);
+  assertOptionalString(sourceRevision.revisionId, `${label}.revisionId`);
+  assertOptionalString(sourceRevision.contentHash, `${label}.contentHash`);
+}
+
+function assertObservationBridgeRef(
+  value: unknown,
+  label: string,
+): asserts value is ObservationBridgeRef {
+  const bridgeRef = asRecord(value, label);
+  assertOptionalString(bridgeRef.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertOptionalString(bridgeRef.sourceUnitKey, `${label}.sourceUnitKey`);
+  assertOptionalString(bridgeRef.runtimeObjectId, `${label}.runtimeObjectId`);
+  if (
+    isBlankString(bridgeRef.bridgeUnitId) &&
+    isBlankString(bridgeRef.sourceUnitKey) &&
+    isBlankString(bridgeRef.runtimeObjectId)
+  ) {
+    throw new Error(`${label} must identify a bridge unit, source unit, or runtime object`);
+  }
+}
+
+function assertObservationRedactionMetadata(
+  value: unknown,
+  label: string,
+): asserts value is ObservationRedactionMetadata {
+  const redaction = asRecord(value, label);
+  assertEnum(redaction.status, OBSERVATION_REDACTION_STATUSES, `${label}.status`);
+  const rules = redaction.rules === undefined ? [] : asArray(redaction.rules, `${label}.rules`);
+  const redactedFields =
+    redaction.redactedFields === undefined
+      ? []
+      : asArray(redaction.redactedFields, `${label}.redactedFields`);
+  for (const [index, rule] of rules.entries()) {
+    assertNonBlankString(rule, `${label}.rules[${index}]`);
+  }
+  for (const [index, field] of redactedFields.entries()) {
+    assertNonBlankString(field, `${label}.redactedFields[${index}]`);
+  }
+  if (redaction.status === "not_required" && (rules.length > 0 || redactedFields.length > 0)) {
+    throw new Error(`${label} with status not_required must not declare redaction rules or fields`);
+  }
+  if (redaction.status === "redacted" && (rules.length === 0 || redactedFields.length === 0)) {
+    throw new Error(`${label} with status redacted must declare rules and redactedFields`);
+  }
+}
+
+function assertObservationHookPayload(value: unknown, label: string): ObservationHookEventKind {
+  const payload = asRecord(value, label);
+  assertEnum(payload.payloadKind, OBSERVATION_HOOK_EVENT_KINDS, `${label}.payloadKind`);
+  switch (payload.payloadKind) {
+    case "text":
+      assertString(payload.text, `${label}.text`);
+      assertOptionalString(payload.speaker, `${label}.speaker`);
+      assertOptionalString(payload.textSurface, `${label}.textSurface`);
+      return "text";
+    case "choice": {
+      assertOptionalString(payload.prompt, `${label}.prompt`);
+      const options = asArray(payload.options, `${label}.options`);
+      if (options.length === 0) {
+        throw new Error(`${label}.options must include at least one option`);
+      }
+      for (const [index, option] of options.entries()) {
+        assertObservationChoiceOption(option, `${label}.options[${index}]`);
+      }
+      return "choice";
+    }
+    case "branch":
+      assertString(payload.branchId, `${label}.branchId`);
+      assertOptionalString(payload.label, `${label}.label`);
+      assertOptionalString(payload.destination, `${label}.destination`);
+      if (payload.taken !== undefined) {
+        assertBoolean(payload.taken, `${label}.taken`);
+      }
+      return "branch";
+    case "scene":
+      assertString(payload.sceneId, `${label}.sceneId`);
+      assertOptionalString(payload.sceneName, `${label}.sceneName`);
+      return "scene";
+    case "frame":
+      assertNonNegativeInteger(payload.frame, `${label}.frame`);
+      if (payload.width !== undefined) {
+        assertPositiveInteger(payload.width, `${label}.width`);
+      }
+      if (payload.height !== undefined) {
+        assertPositiveInteger(payload.height, `${label}.height`);
+      }
+      if (payload.artifactRef !== undefined) {
+        assertObservationArtifactRef(payload.artifactRef, `${label}.artifactRef`);
+      }
+      return "frame";
+    case "error":
+      assertString(payload.errorType, `${label}.errorType`);
+      assertString(payload.message, `${label}.message`);
+      assertBoolean(payload.fatal, `${label}.fatal`);
+      assertOptionalString(payload.stack, `${label}.stack`);
+      return "error";
+  }
+}
+
+function assertObservationChoiceOption(
+  value: unknown,
+  label: string,
+): asserts value is ObservationChoiceOption {
+  const option = asRecord(value, label);
+  assertString(option.optionId, `${label}.optionId`);
+  assertString(option.label, `${label}.label`);
+  if (option.bridgeRef !== undefined) {
+    assertObservationBridgeRef(option.bridgeRef, `${label}.bridgeRef`);
+  }
+}
+
+function assertObservationArtifactRef(
+  value: unknown,
+  label: string,
+): asserts value is ObservationArtifactRef {
+  const artifactRef = asRecord(value, label);
+  assertString(artifactRef.artifactId, `${label}.artifactId`);
+  assertString(artifactRef.artifactKind, `${label}.artifactKind`);
+  assertPortableArtifactUriV02(artifactRef.uri, `${label}.uri`);
+  assertOptionalString(artifactRef.mediaType, `${label}.mediaType`);
 }
 
 function assertRuntimeCapabilityContractV02(
@@ -5755,6 +6085,17 @@ function assertPublicFixtureIdV02(value: unknown, label: string): asserts value 
   if (!/^[a-z0-9][a-z0-9._-]*$/.test(value)) {
     throw new Error(`${label} must be a public fixture id`);
   }
+}
+
+function assertNonBlankString(value: unknown, label: string): asserts value is string {
+  assertString(value, label);
+  if (value.trim().length === 0) {
+    throw new Error(`${label} must be a non-empty string`);
+  }
+}
+
+function isBlankString(value: unknown): boolean {
+  return typeof value !== "string" || value.trim().length === 0;
 }
 
 function assertHashStringV02(value: unknown, label: string): asserts value is string {

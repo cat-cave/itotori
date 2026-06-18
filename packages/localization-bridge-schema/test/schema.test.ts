@@ -172,6 +172,46 @@ function passedReferenceComparison(): Record<string, unknown> {
   };
 }
 
+function observationHookEventExample(): Record<string, unknown> {
+  return {
+    schemaVersion: "0.1.0-alpha",
+    eventId: "obs-0001",
+    observedAt: "2026-06-17T00:00:00.000Z",
+    eventKind: "text",
+    runtimeTargetId: "fixture:runtime-target",
+    adapterId: {
+      name: "utsushi-contract-example",
+      version: "0.2.0",
+    },
+    evidenceTier: "E1",
+    environment: {
+      runtime: "browser",
+      engine: "fixture-engine",
+      platform: "linux",
+      locale: "fr-FR",
+    },
+    sourceRevision: {
+      sourceId: "fixture-source",
+      revisionId: "rev-1",
+    },
+    bridgeRefs: [
+      {
+        bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+        sourceUnitKey: "script/prologue#line-001",
+      },
+    ],
+    redaction: {
+      status: "not_required",
+    },
+    payload: {
+      payloadKind: "text",
+      text: "Bonjour, {player}.",
+      speaker: "Narrator",
+      textSurface: "dialogue",
+    },
+  };
+}
+
 function exampleFixture(path: string): Record<string, unknown> {
   return JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as Record<
     string,
@@ -1819,6 +1859,44 @@ describe("localization bridge schema guards", () => {
     expect(artifactRef.uri).toBe("artifacts/utsushi/hello/frame-0001.png");
     expect(firstCapture).not.toHaveProperty("bytes");
     expect(firstCapture).not.toHaveProperty("data");
+  });
+
+  it("accepts typed observation hook events on v0.2 runtime evidence", () => {
+    const report = runtimeEvidenceV02Example();
+    report.observationHookEvents = [observationHookEventExample()];
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
+  });
+
+  it("rejects observation hook events with invalid observedAt timestamps", () => {
+    const report = runtimeEvidenceV02Example();
+    const event = observationHookEventExample();
+    event.observedAt = "2026-02-30T00:00:00.000Z";
+    report.observationHookEvents = [event];
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/observedAt/);
+  });
+
+  it("rejects observation hook events with blank redaction rules", () => {
+    const report = runtimeEvidenceV02Example();
+    const event = observationHookEventExample();
+    event.redaction = {
+      status: "redacted",
+      rules: [" "],
+      redactedFields: ["payload.text"],
+    };
+    report.observationHookEvents = [event];
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/redaction\.rules\[0\]/);
+  });
+
+  it("rejects observation hook events whose payload kind does not match eventKind", () => {
+    const report = runtimeEvidenceV02Example();
+    const event = observationHookEventExample();
+    event.eventKind = "error";
+    report.observationHookEvents = [event];
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/eventKind must match/);
   });
 
   it("accepts base controlled playback contracts without jump, snapshot, screenshot, or recording support", () => {
