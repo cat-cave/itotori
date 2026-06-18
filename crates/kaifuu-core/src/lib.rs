@@ -674,6 +674,13 @@ impl ArchiveDetectionScan {
             .count() as u64
     }
 
+    fn wolf_rpg_editor_header_count(&self) -> u64 {
+        self.headers
+            .iter()
+            .filter(|header| has_wolf_rpg_editor_primary_evidence(None, header))
+            .count() as u64
+    }
+
     fn xp3_header_count(&self) -> u64 {
         self.headers
             .iter()
@@ -704,6 +711,10 @@ fn header_contains_ascii(header: &[u8], needle: &str) -> bool {
         .contains(&needle.to_ascii_lowercase())
 }
 
+fn has_wolf_rpg_editor_primary_evidence(extension: Option<&str>, header: &[u8]) -> bool {
+    extension == Some("wolf") || header_contains_ascii(header, "WOLF RPG Editor")
+}
+
 fn has_orphaned_archive_subtype_marker(extension: Option<&str>, header: &[u8]) -> bool {
     let xp3_marker = header_contains_ascii(header, "kaifuu-xp3-encrypted")
         || header_contains_ascii(header, "xp3-encrypted")
@@ -716,8 +727,7 @@ fn has_orphaned_archive_subtype_marker(extension: Option<&str>, header: &[u8]) -
 
     let wolf_marker = header_contains_ascii(header, "wolf-protected")
         || header_contains_ascii(header, "protection-key");
-    let wolf_primary =
-        extension == Some("wolf") || header_contains_ascii(header, "WOLF RPG Editor");
+    let wolf_primary = has_wolf_rpg_editor_primary_evidence(extension, header);
 
     (xp3_marker && !xp3_primary) || (bgi_marker && !bgi_primary) || (wolf_marker && !wolf_primary)
 }
@@ -941,7 +951,7 @@ const RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN: &str =
 
 fn detect_wolf_rpg_editor(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     let wolf_archive_count = scan.extension_count("wolf");
-    let wolf_magic_count = scan.header_count("wolf");
+    let wolf_magic_count = scan.wolf_rpg_editor_header_count();
     let protected_marker_count =
         scan.header_count("wolf-protected") + scan.header_count("protection-key");
     let detected = wolf_archive_count > 0 || wolf_magic_count > 0;
@@ -8274,9 +8284,24 @@ mod tests {
     #[test]
     fn archive_detection_normalizes_marker_only_subtypes_to_unknown_variant_diagnostics() {
         let root = temp_dir("archive-marker-only");
-        write_fixture_file(&root, "notes/xp3-marker.txt", b"synthetic xp3-crypt marker");
-        write_fixture_file(&root, "notes/bgi-marker.txt", b"BGI-ENCRYPTED");
-        write_fixture_file(&root, "notes/wolf-marker.txt", b"protection-key");
+        let marker_only_fixtures: &[(&str, &[u8])] = &[
+            (
+                "notes/kaifuu-xp3-encrypted-marker.txt",
+                b"synthetic kaifuu-xp3-encrypted marker",
+            ),
+            (
+                "notes/xp3-encrypted-marker.txt",
+                b"synthetic xp3-encrypted marker",
+            ),
+            ("notes/xp3-crypt-marker.txt", b"synthetic xp3-crypt marker"),
+            ("notes/bgi-marker.txt", b"BGI-ENCRYPTED"),
+            ("notes/ethornell-marker.txt", b"ethornell-encrypted"),
+            ("notes/wolf-protected-marker.txt", b"wolf-protected"),
+            ("notes/wolf-protection-key-marker.txt", b"protection-key"),
+        ];
+        for (relative_path, bytes) in marker_only_fixtures {
+            write_fixture_file(&root, relative_path, bytes);
+        }
 
         let report = ArchiveDetectionReport::scan(&root);
 
@@ -8318,11 +8343,66 @@ mod tests {
         assert!(unknown.evidence.iter().any(|evidence| {
             evidence.pattern == "orphaned encrypted/protected subtype marker"
                 && evidence.status == EvidenceStatus::Matched
-                && evidence.count == 3
+                && evidence.count == marker_only_fixtures.len() as u64
         }));
         assert!(unknown.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == SemanticErrorCode::UnknownEngineVariant
                 && diagnostic.required_capability == Some(Capability::Detection)
+        }));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_detection_preserves_wolf_match_with_primary_evidence() {
+        let root = temp_dir("wolf-primary-evidence");
+        write_fixture_file(
+            &root,
+            "notes/wolf-header.txt",
+            b"WOLF RPG Editor synthetic wolf-protected protection-key marker",
+        );
+        write_fixture_file(
+            &root,
+            "Data.wolf",
+            b"synthetic protected archive marker without textual header",
+        );
+
+        let report = ArchiveDetectionReport::scan(&root);
+
+        assert_eq!(report.status, ArchiveDetectionStatus::Matched);
+        let wolf = detected_archive_row(&report, "wolf-rpg-editor-archives");
+        assert_eq!(wolf.detected_variant, "wolf-protected-archive");
+        assert!(wolf.signals.contains(&ArchiveDetectionSignal::Packed));
+        assert!(wolf.signals.contains(&ArchiveDetectionSignal::Encrypted));
+        assert!(wolf.signals.contains(&ArchiveDetectionSignal::Protected));
+        assert!(wolf.evidence.iter().any(|evidence| {
+            evidence.pattern == "*.wolf"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(wolf.evidence.iter().any(|evidence| {
+            evidence.pattern == "WOLF header"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(wolf.evidence.iter().any(|evidence| {
+            evidence.pattern == "Wolf protection marker"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 2
+        }));
+        assert_eq!(wolf.requirements.len(), 1);
+        assert_eq!(wolf.requirements[0].key, "wolf-rpg-editor-archive-key");
+
+        let unknown = report
+            .rows
+            .iter()
+            .find(|row| row.row_id == "unknown-archive-variant")
+            .unwrap();
+        assert!(!unknown.detected);
+        assert!(unknown.evidence.iter().any(|evidence| {
+            evidence.pattern == "orphaned encrypted/protected subtype marker"
+                && evidence.status == EvidenceStatus::Missing
+                && evidence.count == 0
         }));
 
         let _ = fs::remove_dir_all(root);
