@@ -5,7 +5,6 @@ import {
   catalogCrawlerStepStatusValues,
   type CatalogCrawlerJobStatus,
   type CatalogCrawlerStepStatus,
-  type CatalogSource,
 } from "../schema.js";
 import {
   type CatalogCrawlerCheckpointInput,
@@ -119,7 +118,9 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
       ok: input.ok ?? true,
       payloadHash,
       sourceProvenanceId: stableId("crawler-provenance", stepKey),
-      status: alreadyImported ? catalogCrawlerStepStatusValues.imported : catalogCrawlerStepStatusValues.fetched,
+      status: alreadyImported
+        ? catalogCrawlerStepStatusValues.imported
+        : catalogCrawlerStepStatusValues.fetched,
       importedAt: previous?.importedAt ?? (alreadyImported ? now : null),
       error: null,
       metadata: jsonRecord(input.metadata ?? {}, "metadata"),
@@ -163,7 +164,13 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     crawlerJobStepId: string,
     workerId: string,
   ): Promise<CatalogCrawlerStepRecord> {
-    return this.updateStep(crawlerJobStepId, catalogCrawlerStepStatusValues.imported, null, undefined, workerId);
+    return this.updateStep(
+      crawlerJobStepId,
+      catalogCrawlerStepStatusValues.imported,
+      null,
+      undefined,
+      workerId,
+    );
   }
 
   async markStepFailed(
@@ -219,7 +226,8 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
       catalogSource: key.catalogSource,
       adapterName: key.adapterName,
       partitionKey: key.partitionKey,
-      nextAvailableAt: input.nextAvailableAt === undefined ? null : dateInput(input.nextAvailableAt),
+      nextAvailableAt:
+        input.nextAvailableAt === undefined ? null : dateInput(input.nextAvailableAt),
       resetAt: input.resetAt === undefined ? null : dateInput(input.resetAt),
       remaining: input.remaining ?? null,
       limit: input.limit ?? null,
@@ -268,13 +276,17 @@ export class InMemoryCatalogCrawlerRepository implements ItotoriCatalogCrawlerRe
     expectedCrawlerJobId: string | undefined,
     workerId: string,
   ): CatalogCrawlerStepRecord {
-    const entry = [...this.steps.entries()].find(([, step]) => step.crawlerJobStepId === crawlerJobStepId);
+    const entry = [...this.steps.entries()].find(
+      ([, step]) => step.crawlerJobStepId === crawlerJobStepId,
+    );
     if (entry === undefined) {
       throw new Error(`missing crawler step ${crawlerJobStepId}`);
     }
     const [key, step] = entry;
     if (expectedCrawlerJobId !== undefined && step.crawlerJobId !== expectedCrawlerJobId) {
-      throw new Error(`crawler step ${crawlerJobStepId} does not belong to job ${expectedCrawlerJobId}`);
+      throw new Error(
+        `crawler step ${crawlerJobStepId} does not belong to job ${expectedCrawlerJobId}`,
+      );
     }
     this.assertActiveJob(step.crawlerJobId, workerId);
     const updated: CatalogCrawlerStepRecord = {

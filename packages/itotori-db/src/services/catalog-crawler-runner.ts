@@ -150,7 +150,9 @@ export class ItotoriCatalogCrawlerRunner {
           ...stepInput,
           ...(adapterStep.httpStatus === undefined ? {} : { httpStatus: adapterStep.httpStatus }),
           ...(adapterStep.ok === undefined ? {} : { ok: adapterStep.ok }),
-          ...(adapterStep.payloadHash === undefined ? {} : { payloadHash: adapterStep.payloadHash }),
+          ...(adapterStep.payloadHash === undefined
+            ? {}
+            : { payloadHash: adapterStep.payloadHash }),
           ...(adapterStep.metadata === undefined ? {} : { metadata: adapterStep.metadata }),
         });
 
@@ -220,7 +222,12 @@ export class ItotoriCatalogCrawlerRunner {
       return { job, checkpoint: currentCheckpoint, fetchedSteps, importedSteps, skippedSteps };
     } catch (error) {
       try {
-        await options.repository.failCrawlerJob(options.actor, job.crawlerJobId, options.workerId, error);
+        await options.repository.failCrawlerJob(
+          options.actor,
+          job.crawlerJobId,
+          options.workerId,
+          error,
+        );
       } catch {
         // Stale workers should not mask the write that proved they no longer own the job.
       }
@@ -293,7 +300,9 @@ function validateRecordedCatalogCrawlerFixture<TFact>(
   }
   requiredFixtureString(fixture.fixtureName, "fixtureName");
   if (!catalogCrawlerPublicSources.includes(fixture.catalogSource)) {
-    throw new Error(`recorded crawler fixture has unsupported catalogSource ${String(fixture.catalogSource)}`);
+    throw new Error(
+      `recorded crawler fixture has unsupported catalogSource ${String(fixture.catalogSource)}`,
+    );
   }
   requiredFixtureString(fixture.adapterName, "adapterName");
   requiredFixtureString(fixture.adapterVersion, "adapterVersion");
@@ -344,7 +353,10 @@ function validateRecordedCatalogCrawlerStep<TFact>(
   }
 }
 
-function validateRecordedRateLimit(rateLimit: CatalogCrawlerRateLimitMetadata, label: string): void {
+function validateRecordedRateLimit(
+  rateLimit: CatalogCrawlerRateLimitMetadata,
+  label: string,
+): void {
   if (rateLimit === null || typeof rateLimit !== "object") {
     throw new Error(`${label} must be a JSON object`);
   }

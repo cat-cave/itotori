@@ -6,6 +6,7 @@ import {
   type AuthorizationActor,
   type Permission,
 } from "../src/authorization.js";
+import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
@@ -193,6 +194,66 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "catalog-repository.test.ts candidate match read coverage",
     (repo) => repo.listCatalogCandidateMatches(deniedActor),
+  ),
+  catalogCrawlerGate(
+    "getCheckpoint",
+    "catalogRead",
+    "catalog-crawler-repository.test.ts checkpoint read coverage",
+    (repo) => repo.getCheckpoint(deniedActor, undefined as never),
+  ),
+  catalogCrawlerGate(
+    "startCrawlerJob",
+    "catalogWrite",
+    "catalog-crawler-repository.test.ts crawler job start coverage",
+    (repo) => repo.startCrawlerJob(deniedActor, "worker", undefined as never),
+  ),
+  catalogCrawlerGate(
+    "recordFetchedStep",
+    "catalogWrite",
+    "catalog-crawler-repository.test.ts fetched step coverage",
+    (repo) => repo.recordFetchedStep(deniedActor, undefined as never),
+  ),
+  catalogCrawlerGate(
+    "commitStepImport",
+    "catalogWrite",
+    "catalog-crawler-repository.test.ts atomic step commit coverage",
+    (repo) => repo.commitStepImport(deniedActor, undefined as never),
+  ),
+  catalogCrawlerGate(
+    "markStepImported",
+    "catalogWrite",
+    "catalog-crawler-repository.test.ts imported marker coverage",
+    (repo) => repo.markStepImported(deniedActor, "step", "worker"),
+  ),
+  catalogCrawlerGate(
+    "markStepFailed",
+    "catalogWrite",
+    "catalog-crawler-repository.test.ts failed marker coverage",
+    (repo) => repo.markStepFailed(deniedActor, "step", new Error("failed"), "worker"),
+  ),
+  catalogCrawlerGate(
+    "saveCheckpoint",
+    "catalogWrite",
+    "catalog-crawler-repository.test.ts checkpoint write coverage",
+    (repo) => repo.saveCheckpoint(deniedActor, undefined as never),
+  ),
+  catalogCrawlerGate(
+    "saveRateLimit",
+    "catalogWrite",
+    "catalog-crawler-repository.test.ts rate-limit write coverage",
+    (repo) => repo.saveRateLimit(deniedActor, undefined as never),
+  ),
+  catalogCrawlerGate(
+    "completeCrawlerJob",
+    "catalogWrite",
+    "catalog-crawler-repository.test.ts crawler job completion coverage",
+    (repo) => repo.completeCrawlerJob(deniedActor, "job", "worker", null),
+  ),
+  catalogCrawlerGate(
+    "failCrawlerJob",
+    "catalogWrite",
+    "catalog-crawler-repository.test.ts crawler job failure coverage",
+    (repo) => repo.failCrawlerJob(deniedActor, "job", "worker", new Error("failed")),
   ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
@@ -395,6 +456,66 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "catalog-repository.test.ts candidate match read coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogCrawlerRepository.getCheckpoint",
+          "requiredPermission": "catalog.read",
+          "successFixture": "catalog-crawler-repository.test.ts checkpoint read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogCrawlerRepository.startCrawlerJob",
+          "requiredPermission": "catalog.write",
+          "successFixture": "catalog-crawler-repository.test.ts crawler job start coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogCrawlerRepository.recordFetchedStep",
+          "requiredPermission": "catalog.write",
+          "successFixture": "catalog-crawler-repository.test.ts fetched step coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogCrawlerRepository.commitStepImport",
+          "requiredPermission": "catalog.write",
+          "successFixture": "catalog-crawler-repository.test.ts atomic step commit coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogCrawlerRepository.markStepImported",
+          "requiredPermission": "catalog.write",
+          "successFixture": "catalog-crawler-repository.test.ts imported marker coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogCrawlerRepository.markStepFailed",
+          "requiredPermission": "catalog.write",
+          "successFixture": "catalog-crawler-repository.test.ts failed marker coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogCrawlerRepository.saveCheckpoint",
+          "requiredPermission": "catalog.write",
+          "successFixture": "catalog-crawler-repository.test.ts checkpoint write coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogCrawlerRepository.saveRateLimit",
+          "requiredPermission": "catalog.write",
+          "successFixture": "catalog-crawler-repository.test.ts rate-limit write coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogCrawlerRepository.completeCrawlerJob",
+          "requiredPermission": "catalog.write",
+          "successFixture": "catalog-crawler-repository.test.ts crawler job completion coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCatalogCrawlerRepository.failCrawlerJob",
+          "requiredPermission": "catalog.write",
+          "successFixture": "catalog-crawler-repository.test.ts crawler job failure coverage",
+        },
       ]
     `);
   });
@@ -506,6 +627,22 @@ function catalogGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriCatalogRepository(db)),
+  });
+}
+
+function catalogCrawlerGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriCatalogCrawlerRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriCatalogCrawlerRepository",
+    sourceFile: "catalog-crawler-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriCatalogCrawlerRepository(db)),
   });
 }
 

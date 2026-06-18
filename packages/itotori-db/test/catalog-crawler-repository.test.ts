@@ -1,10 +1,7 @@
 import { readFileSync } from "node:fs";
 import { eq, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import {
-  localUserId,
-  type AuthorizationActor,
-} from "../src/authorization.js";
+import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import {
   createRecordedCatalogCrawlerAdapter,
@@ -26,7 +23,10 @@ type FixtureFact = {
 };
 
 const fixture = JSON.parse(
-  readFileSync(new URL("../../../fixtures/catalog-crawler-vndb/replay.json", import.meta.url), "utf8"),
+  readFileSync(
+    new URL("../../../fixtures/catalog-crawler-vndb/replay.json", import.meta.url),
+    "utf8",
+  ),
 ) as RecordedCatalogCrawlerFixture<FixtureFact>;
 
 describe("ItotoriCatalogCrawlerRepository", () => {
@@ -65,7 +65,12 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         repository.markStepImported(actor, step.step.crawlerJobStepId, "worker-stale"),
       ).rejects.toThrow(/expected row/u);
       await expect(
-        repository.failCrawlerJob(actor, job.crawlerJobId, "worker-stale", new Error("late failure")),
+        repository.failCrawlerJob(
+          actor,
+          job.crawlerJobId,
+          "worker-stale",
+          new Error("late failure"),
+        ),
       ).rejects.toThrow(/expected row/u);
       await expect(
         repository.completeCrawlerJob(actor, job.crawlerJobId, "worker-stale", {

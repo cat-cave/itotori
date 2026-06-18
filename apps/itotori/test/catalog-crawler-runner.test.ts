@@ -18,7 +18,10 @@ type FixtureFact = {
 };
 
 const fixture = JSON.parse(
-  readFileSync(new URL("../../../fixtures/catalog-crawler-vndb/replay.json", import.meta.url), "utf8"),
+  readFileSync(
+    new URL("../../../fixtures/catalog-crawler-vndb/replay.json", import.meta.url),
+    "utf8",
+  ),
 ) as RecordedCatalogCrawlerFixture<FixtureFact>;
 
 describe("Itotori catalog crawler runner", () => {
@@ -45,7 +48,9 @@ describe("Itotori catalog crawler runner", () => {
 
     expect(importedFacts.map((fact) => fact.sourceId)).toEqual(["v1"]);
     expect([...repository.jobs.values()].at(-1)?.status).toBe(catalogCrawlerJobStatusValues.failed);
-    expect(repository.checkpoints.get("vndb:vndb-recorded-public-fixture:public-fixture")).toMatchObject({
+    expect(
+      repository.checkpoints.get("vndb:vndb-recorded-public-fixture:public-fixture"),
+    ).toMatchObject({
       lastStepKey: "step-001",
       checkpointCursor: { afterStepKey: "step-001", cursor: "page-1" },
     });
@@ -89,7 +94,8 @@ describe("Itotori catalog crawler runner", () => {
     expect(importedFacts.map((fact) => fact.sourceId)).toEqual(["v1", "v2"]);
 
     const importedStep = [...repository.steps.values()].find(
-      (step) => step.stepKey === "step-002" && step.status === catalogCrawlerStepStatusValues.imported,
+      (step) =>
+        step.stepKey === "step-002" && step.status === catalogCrawlerStepStatusValues.imported,
     );
     expect(importedStep).toMatchObject({
       catalogSource: "vndb",
@@ -104,7 +110,9 @@ describe("Itotori catalog crawler runner", () => {
       status: catalogCrawlerStepStatusValues.imported,
     });
     expect(importedStep?.sourceProvenanceId).toMatch(/^crawler-provenance:/u);
-    expect(repository.rateLimits.get("vndb:vndb-recorded-public-fixture:public-fixture")).toMatchObject({
+    expect(
+      repository.rateLimits.get("vndb:vndb-recorded-public-fixture:public-fixture"),
+    ).toMatchObject({
       remaining: 42,
       limit: 60,
       requestIdentity: "GET /kana/v1",
@@ -170,7 +178,9 @@ describe("Itotori catalog crawler runner", () => {
       skippedSteps: 1,
     });
     expect(importedFacts.map((fact) => fact.sourceId)).toEqual(["v2"]);
-    expect(repository.checkpoints.get("vndb:vndb-recorded-public-fixture:public-fixture")).toMatchObject({
+    expect(
+      repository.checkpoints.get("vndb:vndb-recorded-public-fixture:public-fixture"),
+    ).toMatchObject({
       lastStepKey: "step-002",
       checkpointCursor: { afterStepKey: "step-002", cursor: "page-2" },
     });

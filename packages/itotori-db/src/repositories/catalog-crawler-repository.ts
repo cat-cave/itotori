@@ -545,7 +545,10 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
       })
       .where(
         and(
-          eq(catalogCrawlerJobSteps.crawlerJobStepId, requiredString(crawlerJobStepId, "crawlerJobStepId")),
+          eq(
+            catalogCrawlerJobSteps.crawlerJobStepId,
+            requiredString(crawlerJobStepId, "crawlerJobStepId"),
+          ),
           sql`exists (
                 select 1 from ${catalogCrawlerJobs}
                 where ${catalogCrawlerJobs.crawlerJobId} = ${catalogCrawlerJobSteps.crawlerJobId}
@@ -576,7 +579,10 @@ export class ItotoriCatalogCrawlerRepository implements ItotoriCatalogCrawlerRep
       })
       .where(
         and(
-          eq(catalogCrawlerJobSteps.crawlerJobStepId, requiredString(crawlerJobStepId, "crawlerJobStepId")),
+          eq(
+            catalogCrawlerJobSteps.crawlerJobStepId,
+            requiredString(crawlerJobStepId, "crawlerJobStepId"),
+          ),
           sql`exists (
                 select 1 from ${catalogCrawlerJobs}
                 where ${catalogCrawlerJobs.crawlerJobId} = ${catalogCrawlerJobSteps.crawlerJobId}
@@ -794,7 +800,9 @@ function normalizeCrawlerRateLimitInput(
     limit: optionalNonnegativeInteger(input.limit, "limit"),
     retryAfterSeconds: optionalNonnegativeInteger(input.retryAfterSeconds, "retryAfterSeconds"),
     requestIdentity:
-      input.requestIdentity === undefined ? null : requiredString(input.requestIdentity, "requestIdentity"),
+      input.requestIdentity === undefined
+        ? null
+        : requiredString(input.requestIdentity, "requestIdentity"),
     metadata: jsonRecord(input.metadata ?? {}, "metadata"),
   };
 }
