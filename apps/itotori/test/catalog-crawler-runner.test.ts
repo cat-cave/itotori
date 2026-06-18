@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import {
   catalogCrawlerJobStatusValues,
   catalogCrawlerStepStatusValues,
+  catalogCrawlerIdempotentFactImportContractId,
   createRecordedCatalogCrawlerAdapter,
   InMemoryCatalogCrawlerRepository,
   ItotoriCatalogCrawlerRunner,
@@ -69,7 +70,19 @@ describe("Itotori catalog crawler runner", () => {
       fetchedSteps: 1,
       importedSteps: 1,
       skippedSteps: 0,
+      replayValidation: [
+        {
+          contractId: catalogCrawlerIdempotentFactImportContractId,
+          catalogSource: "vndb",
+          sourceId: "v2",
+          fixtureId: "catalog-crawler-vndb-replay-v0.1",
+          stepKey: "step-002",
+          factCount: 1,
+          alreadyImported: false,
+        },
+      ],
     });
+    expect(resumed.replayValidation[0]?.importTransactionId).toMatch(/^crawler-step:/u);
     expect(importedFacts.map((fact) => fact.sourceId)).toEqual(["v1", "v2"]);
     expect(resumed.checkpoint).toMatchObject({
       lastStepKey: "step-002",
@@ -90,6 +103,7 @@ describe("Itotori catalog crawler runner", () => {
       fetchedSteps: 0,
       importedSteps: 0,
       skippedSteps: 0,
+      replayValidation: [],
     });
     expect(importedFacts.map((fact) => fact.sourceId)).toEqual(["v1", "v2"]);
 
@@ -176,7 +190,31 @@ describe("Itotori catalog crawler runner", () => {
       fetchedSteps: 2,
       importedSteps: 1,
       skippedSteps: 1,
+      replayValidation: [
+        {
+          contractId: catalogCrawlerIdempotentFactImportContractId,
+          catalogSource: "vndb",
+          sourceId: "v1",
+          fixtureId: "catalog-crawler-vndb-replay-v0.1",
+          stepKey: "step-001",
+          factCount: 1,
+          alreadyImported: true,
+        },
+        {
+          contractId: catalogCrawlerIdempotentFactImportContractId,
+          catalogSource: "vndb",
+          sourceId: "v2",
+          fixtureId: "catalog-crawler-vndb-replay-v0.1",
+          stepKey: "step-002",
+          factCount: 1,
+          alreadyImported: false,
+        },
+      ],
     });
+    expect(resumed.replayValidation.map((record) => record.importTransactionId)).toEqual([
+      expect.stringMatching(/^crawler-step:/u),
+      expect.stringMatching(/^crawler-step:/u),
+    ]);
     expect(importedFacts.map((fact) => fact.sourceId)).toEqual(["v2"]);
     expect(
       repository.checkpoints.get("vndb:vndb-recorded-public-fixture:public-fixture"),
@@ -207,6 +245,41 @@ describe("Itotori catalog crawler runner", () => {
         partitionKey: "default",
       }),
     ).rejects.toThrow(/already running/u);
+  });
+
+  it("requires alpha-ready adapters to cite an idempotent fact import strategy", async () => {
+    const repository = new InMemoryCatalogCrawlerRepository();
+    const runner = new ItotoriCatalogCrawlerRunner();
+
+    await expect(
+      runner.run(
+        {
+          catalogSource: "steam",
+          adapterName: "steam-alpha-without-contract",
+          adapterVersion: "adapter-fixture-v1",
+          sourceVersion: "steam-public-fixture",
+          parserVersion: "parser-contract-v1",
+          readiness: "alpha_ready",
+          *steps() {
+            yield {
+              stepKey: "step-001",
+              sourceId: "steam-1",
+              requestIdentity: "GET /api/appdetails?appids=1",
+              fetchedAt: "2026-06-18T12:00:00.000Z",
+              checkpointCursor: { afterStepKey: "step-001" },
+              payload: { steam_appid: 1 },
+              facts: [],
+            };
+          },
+        },
+        {
+          repository,
+          actor,
+          workerId: "worker-alpha-contract",
+          mode: "recorded_fixture",
+        },
+      ),
+    ).rejects.toThrow(/CATALOG-065 idempotent fact import contract/u);
   });
 
   it("refuses recorded fixtures in live mode so public CI never needs network credentials", async () => {

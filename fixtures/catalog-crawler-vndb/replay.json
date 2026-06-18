@@ -1,10 +1,18 @@
 {
+  "fixtureId": "catalog-crawler-vndb-replay-v0.1",
   "fixtureName": "catalog-crawler-public-vndb-replay",
   "catalogSource": "vndb",
   "adapterName": "vndb-recorded-public-fixture",
   "adapterVersion": "adapter-fixture-v1",
   "sourceVersion": "vndb-public-snapshot-2026-06-18",
   "parserVersion": "parser-contract-v1",
+  "readiness": "alpha_ready",
+  "factImportContract": {
+    "contractId": "CATALOG-065",
+    "strategy": "upsert",
+    "factIdentity": ["catalogSource", "sourceId"],
+    "replayValidation": ["sourceId", "fixtureId", "importTransactionId", "factCount"]
+  },
   "partitionKey": "public-fixture",
   "steps": [
     {

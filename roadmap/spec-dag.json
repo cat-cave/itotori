@@ -12551,7 +12551,7 @@
       "target": "alpha",
       "projects": ["itotori", "shared"],
       "parallelGroup": "catalog",
-      "dependsOn": ["CATALOG-005", "CATALOG-000", "UNIV-013", "CATALOG-002"],
+      "dependsOn": ["CATALOG-005", "CATALOG-000", "UNIV-013", "CATALOG-002", "CATALOG-065"],
       "summary": "Implement the alpha external-source importer slice with VNDB dump and Epic Games Store recorded-response fixtures on the crawler framework without requiring live network access in CI.",
       "deliverables": [
         "VNDB recorded importer",
@@ -12563,7 +12563,7 @@
         "VNDB dump fixtures import external ids, titles, releases, language facts, and source-version provenance",
         "EGS recorded fixtures import product ids, store metadata, locale facts, and fetched-at/request identity provenance",
         "Imported facts conform to the CATALOG-002 recorded-source registry and preserve source ids for CATALOG-004 benchmark seed explanations",
-        "Importer reruns update changed facts idempotently without duplicating records",
+        "VNDB and EGS importer reruns update changed facts idempotently without duplicating records under the CATALOG-065 contract",
         "Public CI uses recorded fixtures only and never requires network credentials"
       ],
       "verification": [

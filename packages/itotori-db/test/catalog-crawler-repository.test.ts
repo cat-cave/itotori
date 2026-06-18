@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import {
+  catalogCrawlerIdempotentFactImportContractId,
   createRecordedCatalogCrawlerAdapter,
   ItotoriCatalogCrawlerRunner,
   type RecordedCatalogCrawlerFixture,
@@ -173,7 +174,15 @@ describe("ItotoriCatalogCrawlerRepository", () => {
   it("replays a fetched-only row when a crash happens before fact ingest", async () => {
     const context = await isolatedMigratedContext();
     try {
-      await context.pool.query("create table catalog_fact_imports (source_id text primary key)");
+      await context.pool.query(`
+        create table catalog_fact_imports (
+          source_id text primary key,
+          fixture_id text not null,
+          first_import_transaction_id text not null,
+          deterministic_fact_count integer not null,
+          normalized_title text not null
+        )
+      `);
       const repository = new ItotoriCatalogCrawlerRepository(context.db);
       const partitionKey = fixture.partitionKey ?? "default";
       const firstStep = fixture.steps[0];
@@ -222,9 +231,22 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         ingestStep: async ({ facts }) => {
           for (const fact of facts) {
             importedFacts.push(fact.sourceId);
-            await context.pool.query("insert into catalog_fact_imports (source_id) values ($1)", [
-              fact.sourceId,
-            ]);
+            await context.pool.query(
+              `insert into catalog_fact_imports (
+                source_id,
+                fixture_id,
+                first_import_transaction_id,
+                deterministic_fact_count,
+                normalized_title
+              ) values ($1, $2, $3, $4, $5)`,
+              [
+                fact.sourceId,
+                fixture.fixtureId,
+                "fetch-only-replay-import",
+                facts.length,
+                fact.normalizedTitle,
+              ],
+            );
           }
         },
       });
@@ -239,10 +261,47 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         lastStepKey: "step-002",
         checkpointCursor: { afterStepKey: "step-002", cursor: "page-2" },
       });
-      const factRows = await context.pool.query<{ source_id: string }>(
-        "select source_id from catalog_fact_imports order by source_id",
+      expect(resumed.replayValidation).toEqual([
+        {
+          contractId: catalogCrawlerIdempotentFactImportContractId,
+          catalogSource: "vndb",
+          sourceId: "v1",
+          fixtureId: "catalog-crawler-vndb-replay-v0.1",
+          importTransactionId: expect.any(String),
+          stepKey: "step-001",
+          factCount: 1,
+          alreadyImported: false,
+        },
+        {
+          contractId: catalogCrawlerIdempotentFactImportContractId,
+          catalogSource: "vndb",
+          sourceId: "v2",
+          fixtureId: "catalog-crawler-vndb-replay-v0.1",
+          importTransactionId: expect.any(String),
+          stepKey: "step-002",
+          factCount: 1,
+          alreadyImported: false,
+        },
+      ]);
+      const factRows = await context.pool.query<{
+        source_id: string;
+        fixture_id: string;
+        deterministic_fact_count: number;
+      }>(
+        "select source_id, fixture_id, deterministic_fact_count from catalog_fact_imports order by source_id",
       );
-      expect(factRows.rows.map((row) => row.source_id)).toEqual(["v1", "v2"]);
+      expect(factRows.rows).toEqual([
+        {
+          source_id: "v1",
+          fixture_id: "catalog-crawler-vndb-replay-v0.1",
+          deterministic_fact_count: 1,
+        },
+        {
+          source_id: "v2",
+          fixture_id: "catalog-crawler-vndb-replay-v0.1",
+          deterministic_fact_count: 1,
+        },
+      ]);
     } finally {
       await context.close();
     }
@@ -251,7 +310,15 @@ describe("ItotoriCatalogCrawlerRepository", () => {
   it("resumes idempotently when a crash happens after fact ingest but before the imported marker", async () => {
     const context = await isolatedMigratedContext();
     try {
-      await context.pool.query("create table catalog_fact_imports (source_id text primary key)");
+      await context.pool.query(`
+        create table catalog_fact_imports (
+          source_id text primary key,
+          fixture_id text not null,
+          first_import_transaction_id text not null,
+          deterministic_fact_count integer not null,
+          normalized_title text not null
+        )
+      `);
       const repository = new ItotoriCatalogCrawlerRepository(context.db);
       const partitionKey = fixture.partitionKey ?? "default";
       const firstStep = fixture.steps[0];
@@ -283,9 +350,22 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         fetchedAt: firstStep.fetchedAt,
         payload: firstStep.payload,
       });
-      await context.pool.query("insert into catalog_fact_imports (source_id) values ($1)", [
-        firstStep.sourceId,
-      ]);
+      await context.pool.query(
+        `insert into catalog_fact_imports (
+          source_id,
+          fixture_id,
+          first_import_transaction_id,
+          deterministic_fact_count,
+          normalized_title
+        ) values ($1, $2, $3, $4, $5)`,
+        [
+          firstStep.sourceId,
+          fixture.fixtureId,
+          "interrupted-before-step-commit",
+          firstStep.facts.length,
+          firstStep.facts[0]?.normalizedTitle ?? "unknown",
+        ],
+      );
       await repository.failCrawlerJob(
         actor,
         interrupted.crawlerJobId,
@@ -299,11 +379,26 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         actor,
         workerId: "worker-resumed",
         mode: "recorded_fixture",
-        ingestStep: async ({ facts }) => {
+        ingestStep: async ({ facts, importTransactionId }) => {
           for (const fact of facts) {
             await context.pool.query(
-              "insert into catalog_fact_imports (source_id) values ($1) on conflict do nothing",
-              [fact.sourceId],
+              `insert into catalog_fact_imports (
+                source_id,
+                fixture_id,
+                first_import_transaction_id,
+                deterministic_fact_count,
+                normalized_title
+              ) values ($1, $2, $3, $4, $5)
+              on conflict (source_id) do update set
+                deterministic_fact_count = excluded.deterministic_fact_count,
+                normalized_title = excluded.normalized_title`,
+              [
+                fact.sourceId,
+                fixture.fixtureId,
+                importTransactionId,
+                facts.length,
+                fact.normalizedTitle,
+              ],
             );
           }
         },
@@ -318,10 +413,50 @@ describe("ItotoriCatalogCrawlerRepository", () => {
         lastStepKey: "step-002",
         checkpointCursor: { afterStepKey: "step-002", cursor: "page-2" },
       });
-      const factRows = await context.pool.query<{ source_id: string }>(
-        "select source_id from catalog_fact_imports order by source_id",
+      expect(resumed.replayValidation).toEqual([
+        {
+          contractId: catalogCrawlerIdempotentFactImportContractId,
+          catalogSource: "vndb",
+          sourceId: "v1",
+          fixtureId: "catalog-crawler-vndb-replay-v0.1",
+          importTransactionId: expect.any(String),
+          stepKey: "step-001",
+          factCount: 1,
+          alreadyImported: false,
+        },
+        {
+          contractId: catalogCrawlerIdempotentFactImportContractId,
+          catalogSource: "vndb",
+          sourceId: "v2",
+          fixtureId: "catalog-crawler-vndb-replay-v0.1",
+          importTransactionId: expect.any(String),
+          stepKey: "step-002",
+          factCount: 1,
+          alreadyImported: false,
+        },
+      ]);
+      const factRows = await context.pool.query<{
+        source_id: string;
+        fixture_id: string;
+        first_import_transaction_id: string;
+        deterministic_fact_count: number;
+      }>(
+        "select source_id, fixture_id, first_import_transaction_id, deterministic_fact_count from catalog_fact_imports order by source_id",
       );
-      expect(factRows.rows.map((row) => row.source_id)).toEqual(["v1", "v2"]);
+      expect(factRows.rows).toEqual([
+        {
+          source_id: "v1",
+          fixture_id: "catalog-crawler-vndb-replay-v0.1",
+          first_import_transaction_id: "interrupted-before-step-commit",
+          deterministic_fact_count: 1,
+        },
+        {
+          source_id: "v2",
+          fixture_id: "catalog-crawler-vndb-replay-v0.1",
+          first_import_transaction_id: expect.any(String),
+          deterministic_fact_count: 1,
+        },
+      ]);
     } finally {
       await context.close();
     }

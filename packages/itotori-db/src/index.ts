@@ -207,17 +207,23 @@ export type {
   ItotoriCatalogCrawlerRepositoryPort,
 } from "./repositories/catalog-crawler-repository.js";
 export {
+  catalogCrawlerFactImportStrategyValues,
+  catalogCrawlerIdempotentFactImportContractId,
   catalogCrawlerPublicSources,
   createRecordedCatalogCrawlerAdapter,
   ItotoriCatalogCrawlerRunner,
 } from "./services/catalog-crawler-runner.js";
 export type {
+  CatalogCrawlerAdapterReadiness,
   CatalogCrawlerAdapterContext,
   CatalogCrawlerAdapterStep,
+  CatalogCrawlerFactImportContract,
+  CatalogCrawlerFactImportStrategy,
   CatalogCrawlerIngestContext,
   CatalogCrawlerIngestStep,
   CatalogCrawlerPublicSource,
   CatalogCrawlerRateLimitMetadata,
+  CatalogCrawlerReplayValidationRecord,
   CatalogCrawlerRunnerOptions,
   CatalogCrawlerRunResult,
   CatalogCrawlerSourceAdapter,

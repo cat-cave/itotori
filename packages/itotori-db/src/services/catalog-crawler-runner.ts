@@ -22,6 +22,30 @@ export const catalogCrawlerPublicSources = [
 
 export type CatalogCrawlerPublicSource = (typeof catalogCrawlerPublicSources)[number];
 
+export const catalogCrawlerIdempotentFactImportContractId = "CATALOG-065" as const;
+
+export const catalogCrawlerFactImportStrategyValues = {
+  upsert: "upsert",
+  durableImportMarker: "durable_import_marker",
+} as const;
+
+export type CatalogCrawlerFactImportStrategy =
+  (typeof catalogCrawlerFactImportStrategyValues)[keyof typeof catalogCrawlerFactImportStrategyValues];
+
+export type CatalogCrawlerAdapterReadiness = "prototype" | "alpha_ready" | "production_ready";
+
+export type CatalogCrawlerFactImportContract = {
+  contractId: typeof catalogCrawlerIdempotentFactImportContractId;
+  strategy: CatalogCrawlerFactImportStrategy;
+  factIdentity: readonly string[];
+  replayValidation: readonly (
+    | "sourceId"
+    | "fixtureId"
+    | "importTransactionId"
+    | "factCount"
+  )[];
+};
+
 export type CatalogCrawlerAdapterContext = {
   checkpointCursor: CatalogCrawlerCursor;
   mode: "live" | "recorded_fixture";
@@ -53,6 +77,9 @@ export interface CatalogCrawlerSourceAdapter<TFact = unknown> {
   adapterVersion: string;
   sourceVersion: string;
   parserVersion: string;
+  readiness?: CatalogCrawlerAdapterReadiness;
+  factImportContract?: CatalogCrawlerFactImportContract;
+  fixtureId?: string;
   partitionKey?: string;
   initialCheckpointCursor?: CatalogCrawlerCursor;
   steps(
@@ -64,6 +91,7 @@ export type CatalogCrawlerIngestContext<TFact = unknown> = {
   adapter: CatalogCrawlerSourceAdapter<TFact>;
   job: CatalogCrawlerJobRecord;
   step: CatalogCrawlerStepRecord;
+  importTransactionId: string;
   facts: readonly TFact[];
 };
 
@@ -87,6 +115,18 @@ export type CatalogCrawlerRunResult = {
   fetchedSteps: number;
   importedSteps: number;
   skippedSteps: number;
+  replayValidation: CatalogCrawlerReplayValidationRecord[];
+};
+
+export type CatalogCrawlerReplayValidationRecord = {
+  contractId: typeof catalogCrawlerIdempotentFactImportContractId;
+  catalogSource: CatalogCrawlerPublicSource;
+  sourceId: string;
+  fixtureId: string;
+  importTransactionId: string;
+  stepKey: string;
+  factCount: number;
+  alreadyImported: boolean;
 };
 
 export class ItotoriCatalogCrawlerRunner {
@@ -94,6 +134,7 @@ export class ItotoriCatalogCrawlerRunner {
     adapter: CatalogCrawlerSourceAdapter<TFact>,
     options: CatalogCrawlerRunnerOptions<TFact>,
   ): Promise<CatalogCrawlerRunResult> {
+    validateAdapterReadinessContract(adapter);
     const partitionKey = adapter.partitionKey ?? "default";
     const checkpoint = await options.repository.getCheckpoint(options.actor, {
       catalogSource: adapter.catalogSource,
@@ -121,6 +162,7 @@ export class ItotoriCatalogCrawlerRunner {
     let fetchedSteps = 0;
     let importedSteps = 0;
     let skippedSteps = 0;
+    const replayValidation: CatalogCrawlerReplayValidationRecord[] = [];
     let currentCheckpoint = checkpoint;
     let lastCursor: CatalogCrawlerCursor = startingCursor;
 
@@ -164,6 +206,7 @@ export class ItotoriCatalogCrawlerRunner {
               adapter,
               job,
               step: recorded.step,
+              importTransactionId: recorded.step.crawlerJobStepId,
               facts: adapterStep.facts,
             });
             importedSteps += 1;
@@ -176,6 +219,10 @@ export class ItotoriCatalogCrawlerRunner {
             );
             throw error;
           }
+        }
+        const validationRecord = createReplayValidationRecord(adapter, recorded, adapterStep);
+        if (validationRecord !== null) {
+          replayValidation.push(validationRecord);
         }
 
         lastCursor = adapterStep.checkpointCursor;
@@ -219,7 +266,14 @@ export class ItotoriCatalogCrawlerRunner {
         options.workerId,
         lastCursor,
       );
-      return { job, checkpoint: currentCheckpoint, fetchedSteps, importedSteps, skippedSteps };
+      return {
+        job,
+        checkpoint: currentCheckpoint,
+        fetchedSteps,
+        importedSteps,
+        skippedSteps,
+        replayValidation,
+      };
     } catch (error) {
       try {
         await options.repository.failCrawlerJob(
@@ -237,12 +291,15 @@ export class ItotoriCatalogCrawlerRunner {
 }
 
 export type RecordedCatalogCrawlerFixture<TFact = unknown> = {
+  fixtureId: string;
   fixtureName: string;
   catalogSource: CatalogCrawlerPublicSource;
   adapterName: string;
   adapterVersion: string;
   sourceVersion: string;
   parserVersion: string;
+  readiness?: CatalogCrawlerAdapterReadiness;
+  factImportContract?: CatalogCrawlerFactImportContract;
   partitionKey?: string;
   initialCheckpointCursor?: CatalogCrawlerCursor;
   steps: readonly CatalogCrawlerAdapterStep<TFact>[];
@@ -258,6 +315,7 @@ export function createRecordedCatalogCrawlerAdapter<TFact>(
     adapterVersion: fixture.adapterVersion,
     sourceVersion: fixture.sourceVersion,
     parserVersion: fixture.parserVersion,
+    fixtureId: fixture.fixtureId,
     *steps(context) {
       if (context.mode !== "recorded_fixture") {
         throw new Error("recorded crawler fixtures must run in recorded_fixture mode");
@@ -281,6 +339,12 @@ export function createRecordedCatalogCrawlerAdapter<TFact>(
   if (fixture.initialCheckpointCursor !== undefined) {
     adapter.initialCheckpointCursor = fixture.initialCheckpointCursor;
   }
+  if (fixture.readiness !== undefined) {
+    adapter.readiness = fixture.readiness;
+  }
+  if (fixture.factImportContract !== undefined) {
+    adapter.factImportContract = fixture.factImportContract;
+  }
   return adapter;
 }
 
@@ -298,6 +362,7 @@ function validateRecordedCatalogCrawlerFixture<TFact>(
   if (fixture === null || typeof fixture !== "object") {
     throw new Error("recorded crawler fixture must be a JSON object");
   }
+  requiredFixtureString(fixture.fixtureId, "fixtureId");
   requiredFixtureString(fixture.fixtureName, "fixtureName");
   if (!catalogCrawlerPublicSources.includes(fixture.catalogSource)) {
     throw new Error(
@@ -311,11 +376,82 @@ function validateRecordedCatalogCrawlerFixture<TFact>(
   if (fixture.partitionKey !== undefined) {
     requiredFixtureString(fixture.partitionKey, "partitionKey");
   }
+  validateAdapterReadinessContract(fixture);
   if (!Array.isArray(fixture.steps)) {
     throw new Error("recorded crawler fixture steps must be an array");
   }
   for (const [index, step] of fixture.steps.entries()) {
     validateRecordedCatalogCrawlerStep(step, `steps[${index}]`);
+  }
+}
+
+function createReplayValidationRecord<TFact>(
+  adapter: CatalogCrawlerSourceAdapter<TFact>,
+  recorded: { step: CatalogCrawlerStepRecord; alreadyImported: boolean },
+  adapterStep: CatalogCrawlerAdapterStep<TFact>,
+): CatalogCrawlerReplayValidationRecord | null {
+  if (adapter.fixtureId === undefined || adapter.factImportContract === undefined) {
+    return null;
+  }
+  return {
+    contractId: catalogCrawlerIdempotentFactImportContractId,
+    catalogSource: adapter.catalogSource,
+    sourceId: adapterStep.sourceId,
+    fixtureId: adapter.fixtureId,
+    importTransactionId: recorded.step.crawlerJobStepId,
+    stepKey: adapterStep.stepKey,
+    factCount: adapterStep.facts.length,
+    alreadyImported: recorded.alreadyImported,
+  };
+}
+
+function validateAdapterReadinessContract<TFact>(
+  adapter: Pick<
+    CatalogCrawlerSourceAdapter<TFact>,
+    "adapterName" | "readiness" | "factImportContract"
+  >,
+): void {
+  if (adapter.readiness !== "alpha_ready" && adapter.readiness !== "production_ready") {
+    return;
+  }
+  const contract = adapter.factImportContract;
+  if (contract === undefined) {
+    throw new Error(
+      `${adapter.adapterName} ${adapter.readiness} adapters must declare the CATALOG-065 idempotent fact import contract`,
+    );
+  }
+  if (contract.contractId !== catalogCrawlerIdempotentFactImportContractId) {
+    throw new Error(`${adapter.adapterName} fact import contract must cite CATALOG-065`);
+  }
+  if (
+    contract.strategy !== catalogCrawlerFactImportStrategyValues.upsert &&
+    contract.strategy !== catalogCrawlerFactImportStrategyValues.durableImportMarker
+  ) {
+    throw new Error(
+      `${adapter.adapterName} fact import contract must use upsert or durable_import_marker`,
+    );
+  }
+  if (!Array.isArray(contract.factIdentity) || contract.factIdentity.length === 0) {
+    throw new Error(`${adapter.adapterName} fact import contract must define factIdentity`);
+  }
+  for (const field of contract.factIdentity) {
+    requiredFixtureString(field, "factImportContract.factIdentity[]");
+  }
+  const requiredReplayFields = [
+    "sourceId",
+    "fixtureId",
+    "importTransactionId",
+    "factCount",
+  ] as const;
+  if (!Array.isArray(contract.replayValidation)) {
+    throw new Error(`${adapter.adapterName} fact import contract must define replayValidation`);
+  }
+  for (const field of requiredReplayFields) {
+    if (!contract.replayValidation.includes(field)) {
+      throw new Error(
+        `${adapter.adapterName} fact import contract replayValidation must include ${field}`,
+      );
+    }
   }
 }
 
