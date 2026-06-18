@@ -1,0 +1,106 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-048-20260618T142000Z",
+  "generatedAt": "2026-06-18T14:20:00Z",
+  "spec": {
+    "id": "KAIFUU-048",
+    "title": "Delta apply report collision safety",
+    "branch": "spec/kaifuu-048",
+    "worktree": "/tmp/itotori-spec-kaifuu-048",
+    "commit": "565b9179fc0fcc32b4d70a8a263b5de3785d5adc"
+  },
+  "auditor": {
+    "name": "kaifuu-048-final-reaudit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers. Default and explicit apply report paths now reject pre-existing source/output aliases, symlinked sidecars, and canonical bypasses. A residual same-user concurrent path-swap risk remains for future fd-relative/no-follow hardening.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-048-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-048-F001",
+      "severity": "P3",
+      "title": "Apply report writer remains path-based after validation",
+      "category": "security",
+      "locations": [
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "line": 468
+        },
+        {
+          "path": "crates/kaifuu-core/src/lib.rs",
+          "line": 6440
+        }
+      ],
+      "description": "The repaired apply command validates source/output aliases and symlinked parents before writing, but the final report write still delegates to path-based create/write/rename behavior. A same-user concurrent process with write access could theoretically swap the sidecar parent between validation and rename.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit found pre-existing symlink and canonical bypass cases are covered, but fd-relative no-follow writes are not used for the final report write."
+        },
+        {
+          "kind": "test",
+          "detail": "cargo test -p kaifuu-delta and cargo test -p kaifuu-cli passed after repair."
+        }
+      ],
+      "impact": "The normal and pre-existing collision cases required by KAIFUU-048 are fixed, but hardened local adversarial writes would benefit from fd-relative no-follow report creation.",
+      "actionableAcceptanceCriteria": [
+        "Apply report writes use fd-relative or equivalent no-follow semantics for the managed sidecar parent.",
+        "A concurrent or pre-created sidecar parent symlink cannot redirect report writes into source or output after validation.",
+        "Regression tests cover parent replacement, destination symlink, and normal apply report output."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Apply report fd-relative no-follow writer",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-048"],
+          "summary": "Harden Kaifuu apply report output so the final report write uses fd-relative or equivalent no-follow semantics instead of relying only on path validation before a path-based write.",
+          "deliverables": [
+            "No-follow report parent and destination open/write path",
+            "Concurrent or swapped sidecar parent regression tests",
+            "Documentation of the residual local filesystem trust model"
+          ],
+          "acceptanceCriteria": [
+            "Apply report writes cannot follow a sidecar parent symlink introduced after validation.",
+            "Destination symlinks and parent replacement attempts fail with semantic diagnostics before writing into source or output.",
+            "Normal default and explicit report-output cases keep passing."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-delta"
+            }
+          ],
+          "auditFocus": [
+            "TOCTOU path-swap writes",
+            "Symlink following during atomic report writes",
+            "Over-broad platform-specific filesystem assumptions"
+          ]
+        }
+      }
+    }
+  ]
+}

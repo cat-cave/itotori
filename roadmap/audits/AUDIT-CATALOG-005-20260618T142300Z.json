@@ -1,0 +1,162 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-005-20260618T142300Z",
+  "generatedAt": "2026-06-18T14:23:00Z",
+  "spec": {
+    "id": "CATALOG-005",
+    "title": "Crawler job and checkpoint framework",
+    "branch": "spec/catalog-005",
+    "worktree": "/tmp/itotori-spec-catalog-005",
+    "commit": "80b0cb71bc5938aa013eca0ef85a2537363387b4"
+  },
+  "auditor": {
+    "name": "catalog-005-final-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers. Fetched-only rows replay through ingest, exported durable writes require active lease context, and DB tests cover crash-after-fetch-before-ingest plus missing-worker write bypass. External fact-table idempotency and in-memory transaction fidelity remain follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["CATALOG-005-F001", "CATALOG-005-F002"]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-005-F001",
+      "severity": "P2",
+      "title": "Source importer fact idempotency remains adapter-owned",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/test/catalog-crawler-repository.test.ts",
+          "line": 246
+        }
+      ],
+      "description": "The generic crawler cannot detect arbitrary external fact-table writes if a source-specific ingestStep writes facts and crashes before commitStepImport. The repair correctly treats this as an importer contract, with tests modeling idempotent upserts.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit found the generic crawler has no source-specific knowledge of external fact tables; adapter importers must provide idempotent writes or durable import markers."
+        }
+      ],
+      "impact": "Future source adapters could duplicate facts if they do not implement upsert/idempotency behavior around crawler step commits.",
+      "actionableAcceptanceCriteria": [
+        "Source adapter contract requires idempotent fact writes or source-specific durable import markers.",
+        "Adapter test harness includes crash-after-fact-write-before-commitStepImport fixtures.",
+        "VNDB, EGS, DLsite, Steam, IGDB, and Wikidata adapter specs depend on the idempotency contract."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Source adapter idempotent fact import contract",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-005"],
+          "summary": "Define and test the source-adapter contract for idempotent catalog fact writes around crawler commitStepImport so future source-specific importers cannot duplicate facts after crashes.",
+          "deliverables": [
+            "Source adapter idempotency contract",
+            "Crash-after-fact-write-before-commit fixture harness",
+            "Adapter spec dependency notes for VNDB, EGS, DLsite, Steam, IGDB, and Wikidata"
+          ],
+          "acceptanceCriteria": [
+            "Adapter imports must use upserts or durable import markers before they can be marked production-ready.",
+            "A crash after fact writes but before crawler step commit can be replayed without duplicating facts.",
+            "Future source adapter DAG nodes cite this contract in acceptance criteria."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            },
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            }
+          ],
+          "auditFocus": [
+            "Adapter fact duplication",
+            "Generic crawler absorbing source-specific behavior",
+            "Crash-window idempotency"
+          ]
+        }
+      }
+    },
+    {
+      "id": "CATALOG-005-F002",
+      "severity": "P3",
+      "title": "In-memory crawler repository is not transactionally equivalent",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/catalog-crawler-memory-repository.ts",
+          "line": 133
+        }
+      ],
+      "description": "The in-memory test repository matches lease and fetched/imported semantics, but commitStepImport still updates step state before saving rate limit and checkpoint. It does not provide DB-equivalent transaction rollback.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit classified this as test-double fidelity rather than an acceptance blocker because DB-backed repository tests cover the durable semantics."
+        }
+      ],
+      "impact": "App/in-memory tests can miss ordering bugs that only DB-backed transaction tests catch.",
+      "actionableAcceptanceCriteria": [
+        "In-memory commitStepImport either mirrors DB atomic behavior or is documented as non-transactional.",
+        "App tests that rely on transaction semantics use a DB-backed repository or an explicit failure-injection test double.",
+        "Failure injection covers rate-limit/checkpoint persistence errors."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Crawler in-memory repository transaction fidelity",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-005"],
+          "summary": "Align the in-memory catalog crawler repository with DB commitStepImport transaction semantics or make its non-transactional test-double boundary explicit with failure-injection coverage.",
+          "deliverables": [
+            "Transaction-equivalent in-memory commitStepImport or documented limitation",
+            "Failure-injection tests for rate-limit and checkpoint persistence errors",
+            "App test guidance for DB-backed crawler semantics"
+          ],
+          "acceptanceCriteria": [
+            "In-memory tests cannot falsely pass when DB transaction ordering would fail.",
+            "Failure injection covers imported marker, rate-limit, and checkpoint ordering.",
+            "Documentation states when DB-backed tests are required."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            },
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "In-memory/DB semantic drift",
+            "False confidence from app-only tests",
+            "Failure-injection coverage"
+          ]
+        }
+      }
+    }
+  ]
+}

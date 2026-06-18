@@ -1,0 +1,98 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UNIV-013-20260618T142100Z",
+  "generatedAt": "2026-06-18T14:21:00Z",
+  "spec": {
+    "id": "UNIV-013",
+    "title": "Self-contained DB test and scale smoke recipe",
+    "branch": "spec/univ-013",
+    "worktree": "/tmp/itotori-spec-univ-013",
+    "commit": "09f6ffec53ec05732425d355d48c220360a0b6a8"
+  },
+  "auditor": {
+    "name": "univ-013-final-reaudit",
+    "kind": "test"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers. Scale smoke summary fields are persisted, db-wait uses Docker Compose pg_isready, ci-itotori tears down Compose, and stale no-DB reports are cleared. Dollar-sign credential escaping in generated Compose env files remains a P2 hardening follow-up.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UNIV-013-F001"]
+  },
+  "findings": [
+    {
+      "id": "UNIV-013-F001",
+      "severity": "P2",
+      "title": "Compose env generation is not dollar-safe for credentials",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "scripts/itotori-db-compose-env.mjs",
+          "line": 33
+        }
+      ],
+      "description": "The Compose env writer uses double-quoted JSON string output for decoded DATABASE_URL values. Docker Compose interpolates dollar expressions inside double quotes, so credentials such as pa$word can be changed when Compose reads the env file.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit verified a temporary Compose env file with a dollar sign credential was interpolated by docker compose config."
+        }
+      ],
+      "impact": "Public defaults are unaffected, but developers using non-default Postgres credentials with dollar signs can get a silently wrong disposable database password.",
+      "actionableAcceptanceCriteria": [
+        "Generated Compose env files preserve dollar signs and other env-file metacharacters in decoded DATABASE_URL components.",
+        "Tests cover passwords containing dollar signs, quotes, spaces, and backslashes.",
+        "Docs describe any remaining credential-character limitations."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UNIV",
+          "title": "Dollar-safe Compose DB env generation",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["universal", "itotori", "shared"],
+          "parallelGroup": "tooling",
+          "dependsOn": ["UNIV-013"],
+          "summary": "Harden disposable Itotori DB Compose env generation so decoded DATABASE_URL credentials with dollar signs or env-file metacharacters survive docker compose parsing unchanged.",
+          "deliverables": [
+            "Dollar-safe env-file encoder for Compose variables",
+            "Fixture tests for dollar signs, quotes, spaces, and backslashes in credentials",
+            "Docs for supported DATABASE_URL credential characters"
+          ],
+          "acceptanceCriteria": [
+            "docker compose config preserves generated DB credentials containing dollar signs.",
+            "Credential values with quotes, spaces, and backslashes are either preserved or rejected with semantic diagnostics.",
+            "Existing public no-secret defaults keep working."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "node --test scripts"
+            },
+            {
+              "type": "command",
+              "value": "just ci-itotori"
+            }
+          ],
+          "auditFocus": [
+            "Compose interpolation drift",
+            "Credential leakage into logs",
+            "Breaking public no-secret defaults"
+          ]
+        }
+      }
+    }
+  ]
+}

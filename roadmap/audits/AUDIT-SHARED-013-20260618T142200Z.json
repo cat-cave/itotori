@@ -1,0 +1,299 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-SHARED-013-20260618T142200Z",
+  "generatedAt": "2026-06-18T14:22:00Z",
+  "spec": {
+    "id": "SHARED-013",
+    "title": "Permission-gate negative test matrix",
+    "branch": "spec/shared-013",
+    "worktree": "/tmp/itotori-spec-shared-013",
+    "commit": "7c535e54d324ff0cec17f5ef3bf3d6915be7b403"
+  },
+  "auditor": {
+    "name": "shared-013-final-reaudit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers. Current API mutating routes and workflow calls are matrix-guarded, repository gates are covered, and branch draft permission divergence is resolved. Route-shape, skipped DB fixture visibility, aliasing, and repository identity hardening remain non-blocking follow-ups.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 3
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "SHARED-013-F001",
+      "SHARED-013-F002",
+      "SHARED-013-F003",
+      "SHARED-013-F004"
+    ]
+  },
+  "findings": [
+    {
+      "id": "SHARED-013-F001",
+      "severity": "P2",
+      "title": "API permission route discovery is tied to current routing shape",
+      "category": "test",
+      "locations": [
+        {
+          "path": "apps/itotori/test/api-handlers.test.ts",
+          "line": 578
+        },
+        {
+          "path": "apps/itotori/test/api-handlers.test.ts",
+          "line": 611
+        }
+      ],
+      "description": "The API mutation discovery guard recognizes the current top-level POST and projectRoute.resource switch style. Future nested control flow, route tables, helper predicates, or pathname switches could evade the matrix unless the routing style remains fixed.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit confirmed current mutating routes are covered, but the collector is intentionally pattern-limited."
+        }
+      ],
+      "impact": "A future API routing refactor could weaken permission-denial coverage without immediately failing the matrix.",
+      "actionableAcceptanceCriteria": [
+        "API mutating route discovery is generated from a typed route registry or AST pattern that covers route tables, helpers, and switches.",
+        "Adding any mutating route without a permission matrix entry fails a targeted test.",
+        "The allowed routing patterns are documented and enforced."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "SHARED",
+          "title": "API mutation route registry permission guard",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["shared", "itotori"],
+          "parallelGroup": "contracts",
+          "dependsOn": ["SHARED-013"],
+          "summary": "Move API mutation permission discovery from current-shape source scanning toward a typed route registry or broader AST guard that catches route-table and helper-based mutations.",
+          "deliverables": [
+            "Typed API mutation route registry or broader AST discovery",
+            "Negative fixture for an unregistered mutating route",
+            "Docs for allowed API mutation routing patterns"
+          ],
+          "acceptanceCriteria": [
+            "A new mutating API route without matrix coverage fails a targeted test regardless of current routing helper shape.",
+            "Route-table, switch, and helper-predicate mutation forms are either discovered or explicitly rejected.",
+            "Existing registered routes keep their denial coverage."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            }
+          ],
+          "auditFocus": [
+            "Permission matrix bypass through route refactor",
+            "Route registry drift",
+            "False positives for read-only routes"
+          ]
+        }
+      }
+    },
+    {
+      "id": "SHARED-013-F002",
+      "severity": "P3",
+      "title": "DB-backed denial fixtures can skip without database context",
+      "category": "test",
+      "locations": [
+        {
+          "path": "apps/itotori/test/api-handlers.test.ts",
+          "line": 383
+        },
+        {
+          "path": "packages/itotori-db/test/authorization-matrix.test.ts",
+          "line": 409
+        }
+      ],
+      "description": "Permission denial fixtures still skip when DATABASE_URL is unset. That is acceptable for this spec because DB-backed verification was run with a database, but skip visibility should be improved as the CI DB recipes mature.",
+      "evidence": [
+        {
+          "kind": "test",
+          "detail": "Focused audit run passed with skipped DB cases when DATABASE_URL was unset; worker verification passed DB-backed tests with DATABASE_URL."
+        }
+      ],
+      "impact": "A local developer can misread a partial permission matrix run as full coverage if skipped DB cases are not surfaced strongly.",
+      "actionableAcceptanceCriteria": [
+        "Permission matrix test output emits a machine-readable skip artifact or strong diagnostic when DB-backed denial cases are skipped.",
+        "CI path for permission matrix runs DB-backed denial cases through the disposable DB recipe.",
+        "Docs identify how to run the full permission matrix."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "SHARED",
+          "title": "Permission matrix DB skip visibility",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["shared", "itotori"],
+          "parallelGroup": "contracts",
+          "dependsOn": ["SHARED-013", "UNIV-013"],
+          "summary": "Make DB-backed permission denial fixture skips visible and wire the full permission matrix through the disposable DB recipe where appropriate.",
+          "deliverables": [
+            "Machine-readable skip artifact or explicit diagnostic for skipped DB denial fixtures",
+            "Docs for full permission matrix execution",
+            "CI or recipe linkage to disposable DB-backed permission checks"
+          ],
+          "acceptanceCriteria": [
+            "Runs without DATABASE_URL clearly report that DB-backed denial coverage was skipped.",
+            "The documented full command runs DB-backed permission matrix cases.",
+            "No skipped DB matrix run can be confused with full authorization coverage."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "just ci-itotori"
+            },
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "False sense of permission coverage",
+            "DB recipe drift",
+            "Noisy local developer failures"
+          ]
+        }
+      }
+    },
+    {
+      "id": "SHARED-013-F003",
+      "severity": "P3",
+      "title": "Permission-call aliasing can evade static discovery",
+      "category": "test",
+      "locations": [
+        {
+          "path": "apps/itotori/test/api-handlers.test.ts",
+          "line": 695
+        }
+      ],
+      "description": "The workflow-call and permission-call detectors recognize direct call expressions. Exotic aliasing such as assigning a permission helper to a local variable would not be discovered.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Current code does not use aliasing, so this is a future hardening gap rather than an active acceptance blocker."
+        }
+      ],
+      "impact": "A future developer could accidentally bypass static permission discovery by introducing helper aliases.",
+      "actionableAcceptanceCriteria": [
+        "Permission helper aliasing is either detected by AST analysis or banned by a targeted test.",
+        "Negative fixtures prove aliased requirePermission and requireApiPermission calls fail the guard.",
+        "Allowed helper wrappers require explicit annotations and matrix entries."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "SHARED",
+          "title": "Permission helper aliasing guard",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["shared", "itotori"],
+          "parallelGroup": "contracts",
+          "dependsOn": ["SHARED-013"],
+          "summary": "Harden permission matrix source discovery so aliased permission helpers cannot bypass repository or API mutation denial coverage.",
+          "deliverables": [
+            "AST guard or lint test for aliased permission helper calls",
+            "Negative fixtures for aliased repository and API permission calls",
+            "Annotation policy for approved permission wrapper helpers"
+          ],
+          "acceptanceCriteria": [
+            "Aliased requirePermission or requireApiPermission calls fail a targeted test unless explicitly annotated.",
+            "Approved wrappers require mutation identity and matrix coverage.",
+            "Existing direct permission calls continue to pass."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            },
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "Static analysis bypass through aliasing",
+            "Over-permissive wrapper annotations",
+            "False positives on unrelated helpers"
+          ]
+        }
+      }
+    },
+    {
+      "id": "SHARED-013-F004",
+      "severity": "P3",
+      "title": "Repository identity is dropped from permission matrix comparison keys",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/test/authorization-matrix.test.ts",
+          "line": 637
+        },
+        {
+          "path": "packages/itotori-db/test/authorization-matrix.test.ts",
+          "line": 677
+        }
+      ],
+      "description": "Repository source alignment parses repository and method context but compares only sourceFile, mutation, and permission key. Current one-repository-per-file layout keeps this low risk, but future shared files could collapse distinct repository identities.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit found no active incorrect matrix entries, only a future robustness issue."
+        }
+      ],
+      "impact": "Future multi-repository files could hide a missing denial fixture or produce confusing matrix diagnostics.",
+      "actionableAcceptanceCriteria": [
+        "Repository identity is part of the authorization matrix comparison key.",
+        "Tests cover two repositories with the same method name and permission key in one file or fixture.",
+        "Diagnostics include repository identity for missing or extra permission gates."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "SHARED",
+          "title": "Repository identity in permission matrix keys",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["shared", "itotori"],
+          "parallelGroup": "contracts",
+          "dependsOn": ["SHARED-013"],
+          "summary": "Include repository identity in repository authorization matrix source-alignment keys and diagnostics so future shared repository files cannot collapse distinct gated mutations.",
+          "deliverables": [
+            "Repository-aware matrix key",
+            "Regression fixture for same method and permission across repositories",
+            "Improved diagnostics naming repository identity"
+          ],
+          "acceptanceCriteria": [
+            "Two repositories with the same method name and permission key require distinct matrix entries.",
+            "Missing or extra repository permission gates report repository identity.",
+            "Current one-repository-per-file matrix keeps passing."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "Matrix key collisions",
+            "Confusing permission diagnostics",
+            "Overfitting to current repository layout"
+          ]
+        }
+      }
+    }
+  ]
+}
