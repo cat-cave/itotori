@@ -264,20 +264,7 @@ fn run_profile_command(
             let profile = adapter.profile(ProfileRequest {
                 game_dir: &game_dir,
             })?;
-            let validation = profile.validate();
-            if validation.status == kaifuu_core::OperationStatus::Failed {
-                return Err(format!(
-                    "generated profile failed validation: {}",
-                    validation
-                        .failures
-                        .iter()
-                        .map(|failure| failure.code.as_str())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                )
-                .into());
-            }
-            write_stable_profile(&output, &profile)?;
+            write_validated_stable_profile(&output, &profile)?;
         }
         "validate" => {
             let profile_path = PathBuf::from(positional(args, 2)?);
@@ -295,7 +282,7 @@ fn run_profile_command(
             let profile = adapter.profile(ProfileRequest {
                 game_dir: &game_dir,
             })?;
-            write_stable_profile(&output, &profile)?;
+            write_validated_stable_profile(&output, &profile)?;
         }
     }
     Ok(())
@@ -332,10 +319,24 @@ fn registered_adapter_for_game<'a>(
     })
 }
 
-fn write_stable_profile(output: &Path, profile: &GameProfile) -> KaifuuResult<()> {
+fn write_validated_stable_profile(output: &Path, profile: &GameProfile) -> KaifuuResult<()> {
     let mut normalized = profile.clone();
     normalized.normalize();
     let value = serde_json::to_value(&normalized)?;
+    let validation = validate_profile_value(&value);
+    if validation.status == kaifuu_core::OperationStatus::Failed {
+        let validation = validation.redacted_for_report();
+        return Err(format!(
+            "generated profile failed validation: {}",
+            validation
+                .failures
+                .iter()
+                .map(|failure| failure.code.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .into());
+    }
     atomic_write_text(
         output,
         &kaifuu_core::stable_json(&redact_report_value(&value))?,
@@ -503,8 +504,14 @@ mod tests {
     }
 
     fn run_cli_with_registry(args: &[&str], registry: &AdapterRegistry) {
+        run_cli_with_registry_result(args, registry).unwrap();
+    }
+
+    fn run_cli_with_registry_result(
+        args: &[&str],
+        registry: &AdapterRegistry,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         run_with_args_and_registry(args.iter().map(|arg| arg.to_string()).collect(), registry)
-            .unwrap();
     }
 
     fn test_capabilities() -> AdapterCapabilities {
@@ -1154,7 +1161,16 @@ mod tests {
                     ),
                 }],
                 capabilities: self.capabilities().reports,
-                requirements: vec![],
+                requirements: vec![ProfileRequirement {
+                    category: RequirementCategory::SecretKey,
+                    key: "route-key".to_string(),
+                    status: RequirementStatus::Missing,
+                    description:
+                        "helper dump source:/home/dev/game/private-route-ending.ks exposed raw key 00112233445566778899aabbccddeeff"
+                            .to_string(),
+                    placeholder: Some("file=C:\\Games\\SecretRoute\\key.bin".to_string()),
+                    secret: true,
+                }],
                 metadata,
             })
         }
@@ -1187,6 +1203,123 @@ mod tests {
         let mut registry = AdapterRegistry::new();
         registry.register(SensitiveReportAdapter);
         registry
+    }
+
+    struct InvalidProfileAdapter;
+
+    impl EngineAdapter for InvalidProfileAdapter {
+        fn id(&self) -> &'static str {
+            "kaifuu.test.invalid-profile"
+        }
+
+        fn name(&self) -> &'static str {
+            "Kaifuu invalid profile test adapter"
+        }
+
+        fn capabilities(&self) -> AdapterCapabilities {
+            AdapterCapabilities::new(
+                self.id(),
+                vec![
+                    CapabilityReport::supported(Capability::Detection),
+                    CapabilityReport::supported(Capability::ProfileGeneration),
+                    CapabilityReport::supported(Capability::Patching),
+                ],
+            )
+        }
+
+        fn detect(&self, _request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+            Ok(DetectionResult {
+                adapter_id: self.id().to_string(),
+                detected: true,
+                engine_family: Some("invalid-profile-test".to_string()),
+                engine_version: None,
+                detected_variant: Some("missing-profile-id".to_string()),
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: self.capabilities().reports,
+            })
+        }
+
+        fn profile(&self, _request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+            Ok(GameProfile {
+                schema_version: "0.1.0".to_string(),
+                profile_id: String::new(),
+                game_id: "invalid-profile-game".to_string(),
+                title: "Invalid Profile Game".to_string(),
+                source_locale: "ja-JP".to_string(),
+                engine: EngineProfile {
+                    adapter_id: self.id().to_string(),
+                    engine_family: "invalid-profile-test".to_string(),
+                    engine_version: None,
+                    detected_variant: "missing-profile-id".to_string(),
+                },
+                source_fingerprint: None,
+                key_requirements: vec![],
+                archive_parameters: vec![],
+                helper_evidence: None,
+                assets: vec![AssetProfile {
+                    asset_id: deterministic_id("asset", 1401),
+                    path: "source.ks".to_string(),
+                    asset_kind: AssetKind::Script,
+                    text_surfaces: vec![TextSurface::Dialogue],
+                    source_hash: Some(content_hash("invalid profile source")),
+                    patching: CapabilityReport::supported(Capability::Patching),
+                }],
+                capabilities: self.capabilities().reports,
+                requirements: vec![],
+                metadata: BTreeMap::new(),
+            })
+        }
+
+        fn list_assets(&self, _request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+            Err("list_assets is not used by the invalid profile test".into())
+        }
+
+        fn asset_inventory(
+            &self,
+            _request: AssetInventoryRequest<'_>,
+        ) -> KaifuuResult<AssetInventoryManifest> {
+            Err("asset_inventory is not used by the invalid profile test".into())
+        }
+
+        fn extract(&self, _request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+            Err("extract is not used by the invalid profile test".into())
+        }
+
+        fn patch(&self, _request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+            Err("patch is not used by the invalid profile test".into())
+        }
+
+        fn verify(&self, _request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+            Err("verify is not used by the invalid profile test".into())
+        }
+    }
+
+    fn invalid_profile_registry() -> AdapterRegistry {
+        let mut registry = AdapterRegistry::new();
+        registry.register(InvalidProfileAdapter);
+        registry
+    }
+
+    fn assert_no_sensitive_profile_material(surface: &str) {
+        for forbidden in [
+            "~/games",
+            "$HOME/games",
+            "%USERPROFILE%",
+            "/home/dev/game",
+            "C:\\Games",
+            "private/key.bin",
+            "helper dump",
+            "decrypted text",
+            "00112233445566778899aabbccddeeff",
+            "private-route-ending.ks",
+            "SecretRoute",
+        ] {
+            assert!(
+                !surface.contains(forbidden),
+                "profile write surface leaked {forbidden}: {surface}"
+            );
+        }
     }
 
     fn assert_calls(calls: &Rc<RefCell<Vec<&'static str>>>, expected: &[&'static str]) {
@@ -1404,38 +1537,124 @@ mod tests {
     }
 
     #[test]
-    fn generated_profile_report_redacts_adapter_payloads_before_write() {
-        let root = temp_dir("sensitive-profile-report-redaction");
+    fn profile_write_gate_rejects_unredacted_adapter_payloads_on_init_and_legacy_paths() {
+        let root = temp_dir("sensitive-profile-write-gate");
         let game_dir = root.join("game");
         fs::create_dir_all(&game_dir).unwrap();
         let registry = sensitive_report_registry();
-        let profile_path = root.join("profile.json");
 
-        run_cli_with_registry(
+        for legacy in [false, true] {
+            let label = if legacy { "legacy" } else { "init" };
+            let output = root.join(format!("profile-{label}.json"));
+            let args = if legacy {
+                vec![
+                    "profile",
+                    game_dir.to_str().unwrap(),
+                    "--output",
+                    output.to_str().unwrap(),
+                ]
+            } else {
+                vec![
+                    "profile",
+                    "init",
+                    game_dir.to_str().unwrap(),
+                    "--output",
+                    output.to_str().unwrap(),
+                ]
+            };
+            let error = run_cli_with_registry_result(&args, &registry)
+                .expect_err("sensitive profile payload should be rejected")
+                .to_string();
+
+            assert!(
+                error.contains("generated profile failed validation"),
+                "{label} path returned unexpected error: {error}"
+            );
+            assert!(
+                error.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED),
+                "{label} path did not report the redaction boundary: {error}"
+            );
+            assert!(
+                !output.exists(),
+                "{label} path persisted an invalid profile to {}",
+                output.display()
+            );
+            assert_no_sensitive_profile_material(&error);
+        }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn profile_write_gate_redacts_raw_key_material_before_persisting_valid_profile() {
+        let root = temp_dir("profile-write-gate-redacted-persist");
+        let output = root.join("profile.json");
+        let profile = GameProfile {
+            schema_version: "0.1.0".to_string(),
+            profile_id: deterministic_id("profile", 1402),
+            game_id: "valid-redaction-profile-game".to_string(),
+            title: "Valid Profile 00112233445566778899aabbccddeeff".to_string(),
+            source_locale: "ja-JP".to_string(),
+            engine: EngineProfile {
+                adapter_id: "kaifuu.test.redacted-persist".to_string(),
+                engine_family: "redacted-persist-test".to_string(),
+                engine_version: None,
+                detected_variant: "valid-title-redaction".to_string(),
+            },
+            source_fingerprint: None,
+            key_requirements: vec![],
+            archive_parameters: vec![],
+            helper_evidence: None,
+            assets: vec![AssetProfile {
+                asset_id: deterministic_id("asset", 1402),
+                path: "source.ks".to_string(),
+                asset_kind: AssetKind::Script,
+                text_surfaces: vec![TextSurface::Dialogue],
+                source_hash: Some(content_hash("redacted persist source")),
+                patching: CapabilityReport::supported(Capability::Patching),
+            }],
+            capabilities: vec![
+                CapabilityReport::supported(Capability::ProfileGeneration),
+                CapabilityReport::supported(Capability::Patching),
+            ],
+            requirements: vec![],
+            metadata: BTreeMap::new(),
+        };
+
+        assert_eq!(profile.validate().status, OperationStatus::Passed);
+        write_validated_stable_profile(&output, &profile).unwrap();
+
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(serialized.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED));
+        assert_no_sensitive_profile_material(&serialized);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn legacy_profile_command_rejects_structurally_invalid_profiles_before_write() {
+        let root = temp_dir("legacy-profile-invalid-write-gate");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let output = root.join("profile.json");
+        let registry = invalid_profile_registry();
+
+        let error = run_cli_with_registry_result(
             &[
                 "profile",
                 game_dir.to_str().unwrap(),
                 "--output",
-                profile_path.to_str().unwrap(),
+                output.to_str().unwrap(),
             ],
             &registry,
-        );
+        )
+        .expect_err("legacy profile command should reject invalid generated profiles")
+        .to_string();
 
-        let serialized = fs::read_to_string(&profile_path).unwrap();
-        assert!(serialized.contains(kaifuu_core::SEMANTIC_SECRET_REDACTED));
-        assert!(serialized.contains("sensitive-report-test"));
-        for forbidden in [
-            "~/games",
-            "$HOME/games",
-            "%USERPROFILE%",
-            "private/key.bin",
-            "SecretRoute",
-        ] {
-            assert!(
-                !serialized.contains(forbidden),
-                "profile leaked {forbidden}"
-            );
-        }
+        assert!(error.contains("generated profile failed validation"));
+        assert!(error.contains("missing_required_field"));
+        assert!(!output.exists());
+        assert_no_sensitive_profile_material(&error);
 
         let _ = fs::remove_dir_all(root);
     }

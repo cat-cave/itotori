@@ -73,7 +73,13 @@ Detection output does not include LLM-style confidence, local absolute
 counts both MV-style `.rpgmvp`/`.rpgmvm`/`.rpgmvo` files and MZ-style
 `.png_`/`.m4a_`/`.ogg_` files.
 
-`profile init` writes stable JSON profiles. Profiles include assets, capability reports, and explicit requirements for files, platform constraints, and secret keys. Secret requirements use placeholders only; actual secret values must stay out of profile files. The fixture engine marks decryption keys as `not_required`, so missing-key handling does not block unencrypted games.
+`profile init` writes stable JSON profiles. The legacy `profile <game-dir>` form
+is compatibility-only and delegates to the same validation, redaction, and atomic
+write gate. Profiles include assets, capability reports, and explicit
+requirements for files, platform constraints, and secret keys. Secret
+requirements use placeholders only; actual secret values must stay out of
+profile files. The fixture engine marks decryption keys as `not_required`, so
+missing-key handling does not block unencrypted games.
 Key-bearing profiles use top-level `sourceFingerprint`, `keyRequirements`, `archiveParameters`, and `helperEvidence` fields. Required keys are referenced only through local `secretRef` ids, while adapter capability output may declare `keyRequirements` for encrypted variants without coupling pure extraction or patching to helper execution.
 Encrypted game support is not deferred wholesale: local-only key profiles,
 helper boundaries, detector diagnostics, redaction policy, and the first
