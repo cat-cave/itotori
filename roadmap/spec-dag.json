@@ -1460,7 +1460,7 @@
     {
       "id": "SHARED-014",
       "title": "Permission constant and migration drift guard",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["shared", "itotori"],
@@ -1497,10 +1497,7 @@
         "Permission value drift between code and migrations",
         "Manual SQL check constraints missing new permissions",
         "Hardening that rewrites historical migrations unsafely"
-      ],
-      "owner": "codex-orchestrator",
-      "branch": "spec/shared-014",
-      "worktree": "/tmp/itotori-spec-shared-014"
+      ]
     },
     {
       "id": "SHARED-015",
@@ -3631,7 +3628,7 @@
     {
       "id": "KAIFUU-074",
       "title": "Delta staging atomic no-clobber promotion",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -3672,10 +3669,7 @@
         "Partial apply cleanup",
         "Patch staging promotion races",
         "Delta apply and patch command parity"
-      ],
-      "owner": "codex-orchestrator",
-      "branch": "spec/kaifuu-074",
-      "worktree": "/tmp/itotori-spec-kaifuu-074"
+      ]
     },
     {
       "id": "KAIFUU-075",
@@ -9903,7 +9897,7 @@
     {
       "id": "UTSUSHI-018",
       "title": "Runtime evidence re-ingest cleanup",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "itotori"],
@@ -9934,10 +9928,7 @@
         "Stale normalized runtime rows",
         "Re-ingest idempotency",
         "Dashboard state after corrected reports"
-      ],
-      "owner": "codex-orchestrator",
-      "branch": "spec/utsushi-018",
-      "worktree": "/tmp/itotori-spec-utsushi-018"
+      ]
     },
     {
       "id": "UTSUSHI-019",
@@ -14986,7 +14977,7 @@
     {
       "id": "ITOTORI-113",
       "title": "Atomic benchmark ledger ingestion",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -15021,10 +15012,7 @@
         "Partial benchmark artifact writes before ledger validation",
         "Shared benchmark contract drift for optional provider-run fields",
         "Dashboard falling back to raw prompt or report-side cost state"
-      ],
-      "owner": "codex-orchestrator",
-      "branch": "spec/itotori-113",
-      "worktree": "/tmp/itotori-spec-itotori-113"
+      ]
     },
     {
       "id": "ITOTORI-116",
