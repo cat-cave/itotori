@@ -40,16 +40,16 @@
       "path": "fixtures/catalog-recorded-importers/dlsite-storefront-replay.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "e1c8779eba3ce491b057b66562a0a2ab3de4dab1e0464873c277271da3402c55",
-      "bytes": 4147,
+      "sha256": "dae88b396a61309e99f0c738776cd48f122678eaeed95817f78f61e7ec186e6f",
+      "bytes": 4507,
       "redistributable": true
     },
     {
       "path": "fixtures/catalog-recorded-importers/steam-storefront-replay.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "4f475e1b9748f4b0f6d649084233cb05b7290ed55546d3cc2b6eef524482092a",
-      "bytes": 2426,
+      "sha256": "64d60db9a310fffcb2936ffdca74f24a92960a36bcab7211ba31233f34cf54ff",
+      "bytes": 2522,
       "redistributable": true
     }
   ],
@@ -61,7 +61,7 @@
     "sourceLocales": ["ja-JP"],
     "targetLocales": ["en-US"],
     "engineKinds": ["catalog-recorded-importer-synthetic"],
-    "notes": "Covers VNDB external ids, titles, releases, language facts, source-version provenance, EGS product ids, DLsite product identity, work_type, release metadata, language indicators, translation trees, demand facts, Steam app identity, supported-language metadata, package/delisting status, fetched-at/request identity provenance, importer seed targets, rate-limit metadata, semantic diagnostics, and CATALOG-065 idempotent reruns."
+    "notes": "Covers VNDB external ids, titles, releases, language facts, source-version provenance, EGS product ids, DLsite product identity, work_type, release metadata, translation_info trees, demand facts, Steam appdetails envelopes, supported-language metadata, package/delisting status, fetched-at/request identity provenance, rate-limit metadata, semantic diagnostics, and CATALOG-065 idempotent reruns."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

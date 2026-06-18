@@ -7,6 +7,7 @@ import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository
 import {
   createRecordedCatalogCrawlerAdapter,
   ItotoriCatalogCrawlerRunner,
+  type CatalogCrawlerAdapterStep,
   type CatalogCrawlerSourceAdapter,
   type RecordedCatalogCrawlerFixture,
 } from "../src/services/catalog-crawler-runner.js";
@@ -286,6 +287,10 @@ describe("catalog recorded source importers", () => {
         storefront: "dlsite",
         workno: "RJ01111111",
         workType: "ADV",
+        translationInfo: {
+          original_workno: "RJ00001001",
+          child_worknos: ["RJ01111111"],
+        },
         demand: {
           dlCount: 18420,
           ratingSummary: { average: 4.72, count: 512 },
@@ -374,6 +379,7 @@ describe("catalog recorded source importers", () => {
         request_identity: "GET /maniax/work/=/product_id/RJ01111111.html?locale=en_US",
         metadata: { policy: "recorded-fixture", source: "dlsite" },
       });
+      await expect(services.catalogRepository.listSeedTargets(actor)).resolves.toEqual([]);
     } finally {
       await context.close();
     }
@@ -460,6 +466,7 @@ describe("catalog recorded source importers", () => {
         sourceId: "2100010",
         requestId: "GET /api/appdetails?appids=2100010&cc=us&l=english",
       });
+      await expect(services.catalogRepository.listSeedTargets(actor)).resolves.toEqual([]);
     } finally {
       await context.close();
     }
@@ -568,7 +575,7 @@ describe("catalog recorded source importers", () => {
     }
   });
 
-  it("reports parser drift and unsupported Steam response shapes as semantic diagnostics", () => {
+  it("reports parser drift and unsupported storefront response shapes as semantic diagnostics", () => {
     const badDlsite = structuredClone(dlsiteFixture);
     const dlsiteResponse = required(badDlsite.responses[0], "DLsite response");
     dlsiteResponse.payload = { ...dlsiteResponse.payload };
@@ -577,12 +584,108 @@ describe("catalog recorded source importers", () => {
       /CATALOG-012 semantic diagnostic parse_drift fixtureId=catalog-recorded-importer-dlsite-storefront-v0\.1 sourceRevision=dlsite-storefront-synthetic-2026-06-18/u,
     );
 
+    const missingTranslationInfo = structuredClone(dlsiteFixture);
+    const missingTranslationInfoResponse = required(
+      missingTranslationInfo.responses[0],
+      "DLsite response",
+    );
+    missingTranslationInfoResponse.payload = { ...missingTranslationInfoResponse.payload };
+    delete missingTranslationInfoResponse.payload.translation_info;
+    expect(() => createDlsiteRecordedStorefrontAdapter(missingTranslationInfo)).toThrow(
+      /CATALOG-012 semantic diagnostic unsupported_response_shape fixtureId=catalog-recorded-importer-dlsite-storefront-v0\.1 sourceRevision=dlsite-storefront-synthetic-2026-06-18 stepKey=dlsite-rj01111111 sourceId=RJ01111111 sourceField=translation_info/u,
+    );
+
     const badSteam = structuredClone(steamFixture);
     const steamResponse = required(badSteam.responses[1], "Steam response");
-    steamResponse.payload = { success: false, steam_appid: "2100099" };
+    steamResponse.payload = {
+      "2100099": { success: false, steam_appid: "2100099" },
+    };
     expect(() => createSteamRecordedStorefrontAdapter(badSteam)).toThrow(
       /CATALOG-012 semantic diagnostic unsupported_response_shape fixtureId=catalog-recorded-importer-steam-storefront-v0\.1 sourceRevision=steam-storefront-synthetic-2026-06-18/u,
     );
+
+    const missingData = structuredClone(steamFixture);
+    const missingDataResponse = required(missingData.responses[0], "Steam response");
+    missingDataResponse.payload = { "2100010": { success: true } };
+    expect(() => createSteamRecordedStorefrontAdapter(missingData)).toThrow(
+      /CATALOG-012 semantic diagnostic unsupported_response_shape fixtureId=catalog-recorded-importer-steam-storefront-v0\.1 sourceRevision=steam-storefront-synthetic-2026-06-18 stepKey=steam-2100010 sourceId=2100010 sourceField=2100010\.data/u,
+    );
+
+    const appIdMismatch = structuredClone(steamFixture);
+    const appIdMismatchResponse = required(appIdMismatch.responses[0], "Steam response");
+    appIdMismatchResponse.payload = { "2100011": { success: true, data: { steam_appid: 2100011 } } };
+    expect(() => createSteamRecordedStorefrontAdapter(appIdMismatch)).toThrow(
+      /CATALOG-012 semantic diagnostic parse_drift fixtureId=catalog-recorded-importer-steam-storefront-v0\.1 sourceRevision=steam-storefront-synthetic-2026-06-18 stepKey=steam-2100010 sourceId=2100010 sourceField=2100011/u,
+    );
+
+    const unexpectedEnvelope = structuredClone(steamFixture);
+    const unexpectedEnvelopeResponse = required(unexpectedEnvelope.responses[0], "Steam response");
+    unexpectedEnvelopeResponse.payload = {
+      "2100010": { success: true, data: { steam_appid: 2100010 } },
+      "2100011": { success: false, delisting_status: "delisted" },
+    };
+    expect(() => createSteamRecordedStorefrontAdapter(unexpectedEnvelope)).toThrow(
+      /CATALOG-012 semantic diagnostic unsupported_response_shape fixtureId=catalog-recorded-importer-steam-storefront-v0\.1 sourceRevision=steam-storefront-synthetic-2026-06-18 stepKey=steam-2100010 sourceId=2100010 sourceField=appdetails/u,
+    );
+  });
+
+  it("validates DLsite enum drift and preserves unmapped Steam locale diagnostics", async () => {
+    const badStatus = structuredClone(dlsiteFixture);
+    const badStatusResponse = required(badStatus.responses[0], "DLsite response");
+    const badStatusTranslationInfo = record(
+      badStatusResponse.payload.translation_info,
+      "translation_info",
+    );
+    const badStatusEditions = requiredArray(
+      badStatusTranslationInfo.language_editions,
+      "language_editions",
+    );
+    record(badStatusEditions[0], "language edition").status = "official-ish";
+    expect(() => createDlsiteRecordedStorefrontAdapter(badStatus)).toThrow(
+      /CATALOG-012 semantic diagnostic parse_drift fixtureId=catalog-recorded-importer-dlsite-storefront-v0\.1 sourceRevision=dlsite-storefront-synthetic-2026-06-18 stepKey=dlsite-rj01111111 sourceId=RJ01111111 sourceField=translation_info\.language_editions\[0\]\.status/u,
+    );
+
+    const badConfidence = structuredClone(dlsiteFixture);
+    const badConfidenceResponse = required(badConfidence.responses[1], "DLsite response");
+    const badConfidenceTranslationInfo = record(
+      badConfidenceResponse.payload.translation_info,
+      "translation_info",
+    );
+    const badConfidenceEditions = requiredArray(
+      badConfidenceTranslationInfo.language_editions,
+      "language_editions",
+    );
+    record(badConfidenceEditions[1], "language edition").confidence = "pretty_sure";
+    expect(() => createDlsiteRecordedStorefrontAdapter(badConfidence)).toThrow(
+      /CATALOG-012 semantic diagnostic parse_drift fixtureId=catalog-recorded-importer-dlsite-storefront-v0\.1 sourceRevision=dlsite-storefront-synthetic-2026-06-18 stepKey=dlsite-rj02222222 sourceId=RJ02222222 sourceField=translation_info\.language_editions\[1\]\.confidence/u,
+    );
+
+    const unknownSteamLocale = structuredClone(steamFixture);
+    const unknownSteamLocaleResponse = required(unknownSteamLocale.responses[0], "Steam response");
+    const appdetails = record(
+      unknownSteamLocaleResponse.payload["2100010"],
+      "Steam appdetails envelope",
+    );
+    const data = record(appdetails.data, "Steam appdetails data");
+    data.supported_languages = "English<strong>*</strong>, Martian";
+    const steps = await storefrontSteps(createSteamRecordedStorefrontAdapter(unknownSteamLocale));
+    const step = required(steps[0], "Steam step");
+    expect(step.metadata).toMatchObject({
+      diagnostics: [
+        expect.objectContaining({
+          code: "parse_drift",
+          fixtureId: "catalog-recorded-importer-steam-storefront-v0.1",
+          sourceRevision: "steam-storefront-synthetic-2026-06-18",
+          sourceField: "data.supported_languages",
+        }),
+      ],
+    });
+    expect(step.facts[0]?.metadata).toMatchObject({
+      localeMetadata: {
+        parsedLocales: ["en-US"],
+        unknownLocaleLabels: ["Martian"],
+      },
+    });
   });
 });
 
@@ -640,6 +743,16 @@ async function runStorefrontFixture(
       actor,
     }),
   });
+}
+
+async function storefrontSteps(
+  adapter: CatalogCrawlerSourceAdapter<CatalogRecordedImporterFact>,
+): Promise<CatalogCrawlerAdapterStep<CatalogRecordedImporterFact>[]> {
+  const steps: CatalogCrawlerAdapterStep<CatalogRecordedImporterFact>[] = [];
+  for await (const step of adapter.steps({ checkpointCursor: null, mode: "recorded_fixture" })) {
+    steps.push(step);
+  }
+  return steps;
 }
 
 async function sourceProvenanceById(
@@ -738,6 +851,20 @@ function withUpdatedFact(
     release.releaseTitle = update.releaseTitle;
   }
   return copy;
+}
+
+function record(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a record`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function requiredArray(value: unknown, label: string): unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array`);
+  }
+  return value;
 }
 
 function required<T>(value: T | null | undefined, label: string): T {

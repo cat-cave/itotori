@@ -26,35 +26,38 @@
           { "lang": "ja-JP", "title": "星影の約束" },
           { "lang": "en-US", "title": "Promise Under Starlight" }
         ],
-        "language_indicators": [
-          {
-            "locale": "ja-JP",
-            "label": "Japanese",
-            "status": "official_full",
-            "translation_role": "original"
-          },
-          {
-            "locale": "en-US",
-            "label": "English",
-            "status": "official_full",
-            "translation_role": "official_translation"
-          }
-        ],
-        "translation_tree": {
+        "translation_info": {
           "original": { "workno": "RJ00001001", "locale": "ja-JP" },
+          "original_workno": "RJ00001001",
+          "parent_workno": "RJ00001001",
+          "child_worknos": ["RJ01111111"],
           "translations": [
             { "workno": "RJ01111111", "locale": "en-US", "relationship": "official_translation" }
+          ],
+          "language_editions": [
+            {
+              "workno": "RJ00001001",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            },
+            {
+              "workno": "RJ01111111",
+              "locale": "en-US",
+              "label": "English",
+              "status": "official_full",
+              "translation_role": "official_translation"
+            }
           ]
         },
-        "demand": {
-          "dl_count": 18420,
-          "rating_summary": { "average": 4.72, "count": 512 },
-          "rating_histogram": { "5": 401, "4": 82, "3": 23, "2": 4, "1": 2 },
-          "wishlist_count": 9321,
-          "rank_facts": [
-            { "scope": "daily", "category": "ADV", "rank": 8, "observed_at": "2026-06-18" }
-          ]
-        }
+        "dl_count": 18420,
+        "rating_summary": { "average": 4.72, "count": 512 },
+        "rating_histogram": { "5": 401, "4": 82, "3": 23, "2": 4, "1": 2 },
+        "wishlist_count": 9321,
+        "rank_facts": [
+          { "scope": "daily", "category": "ADV", "rank": 8, "observed_at": "2026-06-18" }
+        ]
       },
       "metadata": {
         "fixturePath": "fixtures/catalog-recorded-importers/dlsite-storefront-replay.json",
@@ -82,30 +85,33 @@
         "age_category": "all_ages",
         "work_type": "RPG",
         "titles": [{ "lang": "ja-JP", "title": "硝子の旅路" }],
-        "language_indicators": [
-          {
-            "locale": "ja-JP",
-            "label": "Japanese",
-            "status": "official_full",
-            "translation_role": "original"
-          },
-          {
-            "locale": "en-US",
-            "label": "English",
-            "status": "unknown",
-            "translation_role": "missing_storefront_indicator",
-            "confidence": "low"
-          }
-        ],
-        "translation_tree": {
+        "translation_info": {
           "original": { "workno": "RJ02222222", "locale": "ja-JP" },
-          "translations": []
+          "original_workno": "RJ02222222",
+          "parent_workno": null,
+          "child_worknos": [],
+          "translations": [],
+          "language_editions": [
+            {
+              "workno": "RJ02222222",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            },
+            {
+              "workno": "RJ02222222",
+              "locale": "en-US",
+              "label": "English",
+              "status": "unknown",
+              "translation_role": "missing_storefront_indicator",
+              "confidence": "low"
+            }
+          ]
         },
-        "demand": {
-          "dl_count": 640,
-          "rating_summary": { "average": 4.1, "count": 27 },
-          "rating_histogram": { "5": 13, "4": 8, "3": 5, "2": 1, "1": 0 }
-        }
+        "dl_count": 640,
+        "rating_summary": { "average": 4.1, "count": 27 },
+        "rating_histogram": { "5": 13, "4": 8, "3": 5, "2": 1, "1": 0 }
       },
       "metadata": {
         "fixturePath": "fixtures/catalog-recorded-importers/dlsite-storefront-replay.json",
