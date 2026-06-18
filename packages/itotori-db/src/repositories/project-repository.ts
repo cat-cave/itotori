@@ -182,6 +182,41 @@ export type RuntimeDashboardStatus = {
   validationFindingCount: number;
 };
 
+export type DashboardPendingDecisionKind =
+  | "project_finding"
+  | "locale_branch_finding"
+  | "runtime_validation";
+
+export type DashboardPendingDecision = {
+  decisionId: string;
+  decisionKind: DashboardPendingDecisionKind;
+  projectId: string;
+  findingId: string;
+  findingKind: string;
+  severity: string;
+  qualityCategory: string | null;
+  title: string;
+  localeBranchId: string | null;
+  targetLocale: string | null;
+  branchStatus: string | null;
+  runtimeRunId: string | null;
+  runtimeStatus: string | null;
+  createdAt: string;
+};
+
+export type DashboardDecisionCounts = {
+  pendingDecisionCount: number;
+  projectFindingDecisionCount: number;
+  localeBranchFindingDecisionCount: number;
+  runtimeValidationDecisionCount: number;
+};
+
+export type DashboardDecisionReadModel = {
+  projectId: string;
+  counts: DashboardDecisionCounts;
+  pendingDecisions: DashboardPendingDecision[];
+};
+
 export interface ItotoriProjectRepositoryPort {
   reset(actor: AuthorizationActor): Promise<void>;
   importSourceBundle(
@@ -205,6 +240,7 @@ export interface ItotoriProjectRepositoryPort {
   linkArtifact(actor: AuthorizationActor, input: ArtifactInput): Promise<void>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
   getRuntimeStatus(): Promise<RuntimeDashboardStatus>;
+  getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
 }
 
 export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
@@ -1253,7 +1289,10 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         count(distinct su.bridge_unit_id)::int as unit_count,
         count(distinct lbu.bridge_unit_id) filter (where lbu.target_text is not null)::int as translated_unit_count,
         totals.finding_count::int as finding_count,
-        count(distinct f_branch.finding_id) filter (where f_branch.status = 'open')::int as open_finding_count,
+        count(distinct f_branch.finding_id) filter (
+          where f_branch.status = 'open'
+            and rvf_branch.finding_id is null
+        )::int as open_finding_count,
         totals.artifact_count::int as artifact_count,
         count(distinct a_branch.artifact_id)::int as branch_artifact_count,
         latest_event.event_kind as latest_event_kind,
@@ -1269,6 +1308,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       left join itotori_findings f_branch
         on f_branch.project_id = p.project_id
         and f_branch.locale_branch_id = b.locale_branch_id
+      left join ${runtimeValidationFindings} rvf_branch
+        on rvf_branch.finding_id = f_branch.finding_id
       left join itotori_artifacts a_branch
         on a_branch.project_id = p.project_id
         and a_branch.locale_branch_id = b.locale_branch_id
@@ -1382,6 +1423,67 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
       cost,
       localeBranches: branches,
     };
+  }
+
+  async getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel> {
+    const selectedProjectId = await this.resolveDashboardProjectId(projectId);
+    const result = await this.db.execute(sql`
+      select
+        f.finding_id,
+        f.project_id,
+        f.locale_branch_id,
+        f.finding_kind,
+        f.severity,
+        f.quality_category,
+        f.title,
+        f.created_at,
+        b.target_locale,
+        b.status as branch_status,
+        rvf.runtime_run_id,
+        rr.status as runtime_status,
+        case
+          when rvf.finding_id is not null then 'runtime_validation'
+          when f.locale_branch_id is null then 'project_finding'
+          else 'locale_branch_finding'
+        end as decision_kind
+      from ${findings} f
+      left join ${localeBranches} b on b.locale_branch_id = f.locale_branch_id
+      left join ${runtimeValidationFindings} rvf on rvf.finding_id = f.finding_id
+      left join ${runtimeEvidenceRuns} rr on rr.runtime_run_id = rvf.runtime_run_id
+      where f.project_id = ${selectedProjectId}
+        and f.status = 'open'
+      order by f.created_at asc, f.finding_id asc
+    `);
+
+    const pendingDecisions = (result.rows as Array<Record<string, unknown>>).map(
+      dashboardPendingDecisionFromRow,
+    );
+
+    return {
+      projectId: selectedProjectId,
+      counts: dashboardDecisionCounts(pendingDecisions),
+      pendingDecisions,
+    };
+  }
+
+  private async resolveDashboardProjectId(projectId?: string): Promise<string> {
+    const rows =
+      projectId === undefined
+        ? await this.db
+            .select({ projectId: projects.projectId })
+            .from(projects)
+            .orderBy(sql`${projects.updatedAt} desc`)
+            .limit(1)
+        : await this.db
+            .select({ projectId: projects.projectId })
+            .from(projects)
+            .where(eq(projects.projectId, projectId))
+            .limit(1);
+    const project = rows[0];
+    if (project === undefined) {
+      throw new Error("no Itotori project state found");
+    }
+    return project.projectId;
   }
 
   async getRuntimeStatus(): Promise<RuntimeDashboardStatus> {
@@ -2016,6 +2118,63 @@ function timestampString(value: unknown): string {
     return Number.isNaN(date.getTime()) ? value : date.toISOString();
   }
   return "";
+}
+
+function dashboardPendingDecisionFromRow(row: Record<string, unknown>): DashboardPendingDecision {
+  const decisionKind = dashboardDecisionKind(row.decision_kind);
+  const findingId = String(row.finding_id);
+  return {
+    decisionId: `${decisionKind}:${findingId}`,
+    decisionKind,
+    projectId: String(row.project_id),
+    findingId,
+    findingKind: String(row.finding_kind),
+    severity: String(row.severity),
+    qualityCategory: nullableString(row.quality_category),
+    title: String(row.title),
+    localeBranchId: nullableString(row.locale_branch_id),
+    targetLocale: nullableString(row.target_locale),
+    branchStatus: nullableString(row.branch_status),
+    runtimeRunId: nullableString(row.runtime_run_id),
+    runtimeStatus: nullableString(row.runtime_status),
+    createdAt: timestampString(row.created_at),
+  };
+}
+
+function dashboardDecisionKind(value: unknown): DashboardPendingDecisionKind {
+  if (
+    value === "project_finding" ||
+    value === "locale_branch_finding" ||
+    value === "runtime_validation"
+  ) {
+    return value;
+  }
+  throw new Error(`unknown dashboard decision kind: ${String(value)}`);
+}
+
+function dashboardDecisionCounts(
+  pendingDecisions: DashboardPendingDecision[],
+): DashboardDecisionCounts {
+  const counts: DashboardDecisionCounts = {
+    pendingDecisionCount: pendingDecisions.length,
+    projectFindingDecisionCount: 0,
+    localeBranchFindingDecisionCount: 0,
+    runtimeValidationDecisionCount: 0,
+  };
+  for (const decision of pendingDecisions) {
+    switch (decision.decisionKind) {
+      case "project_finding":
+        counts.projectFindingDecisionCount += 1;
+        break;
+      case "locale_branch_finding":
+        counts.localeBranchFindingDecisionCount += 1;
+        break;
+      case "runtime_validation":
+        counts.runtimeValidationDecisionCount += 1;
+        break;
+    }
+  }
+  return counts;
 }
 
 function assertImportableBridgeBundle(bridge: BridgeBundle | BridgeBundleV02): void {

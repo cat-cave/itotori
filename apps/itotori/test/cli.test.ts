@@ -5,6 +5,7 @@ import {
   type CatalogExactExternalIdLinkResult,
   catalogExactExternalIdLinkStatusValues,
   catalogExactExternalIdLinkSchemaVersion,
+  type DashboardDecisionReadModel,
   feedbackTypeValues,
   type ManualFeedbackImportInput,
   type ManualFeedbackImportResult,
@@ -181,6 +182,7 @@ function servicesFixture(): ItotoriCliServices {
     projectWorkflow: {
       reset: vi.fn(async () => {}),
       getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
+      getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
       getCostReport: vi.fn(async () => costReportFixture),
       getRuntimeStatus: vi.fn(async () => ({
         finalStatus: "hello_world_passed",
@@ -337,6 +339,17 @@ const dashboardStatusFixture: ProjectDashboardStatus = {
   },
   cost: costReportFixture,
   localeBranches: [],
+};
+
+const dashboardDecisionsFixture: DashboardDecisionReadModel = {
+  projectId: "project-1",
+  counts: {
+    pendingDecisionCount: 0,
+    projectFindingDecisionCount: 0,
+    localeBranchFindingDecisionCount: 0,
+    runtimeValidationDecisionCount: 0,
+  },
+  pendingDecisions: [],
 };
 
 const manualFeedbackResultFixture: ManualFeedbackImportResult = {

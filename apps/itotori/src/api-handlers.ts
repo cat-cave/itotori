@@ -1,6 +1,7 @@
 import {
   AuthorizationError,
   permissionValues,
+  type DashboardDecisionReadModel,
   type Permission,
   type ProjectCostReport,
   type ProjectDashboardStatus,
@@ -47,6 +48,7 @@ export type ItotoriApiServices = {
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
     | "getDashboardStatus"
+    | "getDashboardDecisions"
     | "getRuntimeStatus"
     | "getCostReport"
     | "importBridge"
@@ -86,6 +88,10 @@ async function routeItotoriApiRequest(
     return ok("projects.status", await services.projectWorkflow.getDashboardStatus());
   }
 
+  if (request.method === "GET" && request.pathname === "/api/projects/decisions") {
+    return ok("projects.decisions", await services.projectWorkflow.getDashboardDecisions());
+  }
+
   if (request.method === "GET" && request.pathname === "/api/projects/cost") {
     return ok("projects.cost", await services.projectWorkflow.getCostReport());
   }
@@ -99,6 +105,7 @@ async function routeItotoriApiRequest(
 
   if (
     request.pathname === "/api/projects/status" ||
+    request.pathname === "/api/projects/decisions" ||
     request.pathname === "/api/projects/cost" ||
     request.pathname === "/api/hello/status"
   ) {
@@ -174,6 +181,7 @@ async function requireApiPermission(
 
 function ok(routeId: "projects.list", body: ApiProjectsResponse): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
+function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;
 function ok(routeId: "runtime.status", body: RuntimeDashboardStatus): ApiJsonResponse;
 function ok(routeId: "imports.bridge", body: ApiProjectImportResponse): ApiJsonResponse;

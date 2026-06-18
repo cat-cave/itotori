@@ -19,6 +19,7 @@ import {
   benchmarkReportFixture,
   bridgeFixture,
   costReportFixture,
+  dashboardDecisionsFixture,
   dashboardStatusFixture,
   decisionEventFixture,
   findingRecordFixture,
@@ -48,14 +49,20 @@ describe("Itotori API handlers", () => {
       { method: "GET", pathname: "/api/projects/cost" },
       services,
     );
+    const decisions = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/projects/decisions" },
+      services,
+    );
 
     expect(projects).toEqual({ statusCode: 200, body: { projects: [dashboardStatusFixture] } });
     expect(projectStatus).toEqual({ statusCode: 200, body: dashboardStatusFixture });
     expect(runtimeStatus).toEqual({ statusCode: 200, body: runtimeStatusFixture });
     expect(costStatus).toEqual({ statusCode: 200, body: costReportFixture });
+    expect(decisions).toEqual({ statusCode: 200, body: dashboardDecisionsFixture });
     expect(services.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(1);
     expect(services.projectWorkflow.getCostReport).toHaveBeenCalledTimes(1);
+    expect(services.projectWorkflow.getDashboardDecisions).toHaveBeenCalledTimes(1);
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
   });
 
@@ -387,6 +394,7 @@ function serviceFixture(): ItotoriApiServices {
     projectWorkflow: {
       getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
       getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
+      getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
       getCostReport: vi.fn(async () => costReportFixture),
       importBridge: vi.fn(async () => projectFixture),
       draftProject: vi.fn(async () => projectFixture),

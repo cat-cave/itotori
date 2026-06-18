@@ -6,6 +6,7 @@ import {
   benchmarkReportFixture,
   bridgeFixture,
   costReportFixture,
+  dashboardDecisionsFixture,
   dashboardStatusFixture,
   decisionEventFixture,
   findingRecordFixture,
@@ -18,6 +19,7 @@ const requirePermission = vi.fn<[Permission], Promise<void>>(async () => {});
 const getDashboardStatus = vi.fn(async () => dashboardStatusFixture);
 const getRuntimeStatus = vi.fn(async () => runtimeStatusFixture);
 const getCostReport = vi.fn(async () => costReportFixture);
+const getDashboardDecisions = vi.fn(async () => dashboardDecisionsFixture);
 const importBridge = vi.fn(async () => projectFixture);
 
 const { createItotoriServer, startItotoriServer } = await import("../src/server.js");
@@ -168,6 +170,7 @@ async function serviceFactory<T>(
       reset: vi.fn(async () => {}),
       getDashboardStatus,
       getRuntimeStatus,
+      getDashboardDecisions,
       getCostReport,
       importBridge,
       draftProject: vi.fn(async () => projectFixture),

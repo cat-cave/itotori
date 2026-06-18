@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import type {
   AuthorizationActor,
+  DashboardDecisionReadModel,
   ItotoriModelLedgerRepositoryPort,
   ItotoriProjectRecord,
   ItotoriProjectRepositoryPort,
@@ -404,6 +405,7 @@ function repositoryFixture(): ItotoriProjectRepositoryPort {
     linkArtifact: vi.fn(async () => {}),
     getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
     getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
+    getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),
   };
 }
 
@@ -781,4 +783,15 @@ const runtimeStatusFixture: RuntimeDashboardStatus = {
   screenshotArtifactCount: 0,
   recordingArtifactCount: 0,
   validationFindingCount: 0,
+};
+
+const dashboardDecisionsFixture: DashboardDecisionReadModel = {
+  projectId: "project-test",
+  counts: {
+    pendingDecisionCount: 0,
+    projectFindingDecisionCount: 0,
+    localeBranchFindingDecisionCount: 0,
+    runtimeValidationDecisionCount: 0,
+  },
+  pendingDecisions: [],
 };

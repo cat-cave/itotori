@@ -1916,6 +1916,117 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("reads dashboard pending decisions without inferring across finding sources", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      await repo.importSourceBundle(localActor, project);
+
+      await repo.recordFinding(localActor, {
+        projectId: "project-test",
+        finding: {
+          findingId: "finding-project-level",
+          findingKind: "terminology_consistency",
+          severity: "P2",
+          qualityCategory: "terminology",
+          title: "Project terminology review",
+          description: "A glossary-level term needs human confirmation.",
+          impact: "All locale branches could drift on a named term.",
+          createdAt: "2026-06-17T00:00:00.000Z",
+          affectedRefs: [{ subjectKind: "project", subjectId: "project-test" }],
+          evidence: [],
+          provenance: [],
+          causalLinks: [],
+        },
+      });
+
+      await repo.recordFinding(localActor, {
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        finding: {
+          findingId: "finding-locale-branch",
+          findingKind: "protected_span_issue",
+          severity: "P1",
+          qualityCategory: "protected_content",
+          title: "Protected span moved",
+          description: "A placeholder was not preserved.",
+          impact: "Patch output could break runtime substitution.",
+          createdAt: "2026-06-17T00:01:00.000Z",
+          affectedRefs: [{ subjectKind: "bridge_unit", subjectId: "bridge-unit-test" }],
+          evidence: [],
+          provenance: [],
+          causalLinks: [],
+        },
+      });
+
+      await repo.saveRuntimeReport(
+        localActor,
+        project,
+        runtimeEvidenceReportFixture({
+          runtimeReportId: "019ed003-0000-7000-8000-000000000999",
+          status: "failed",
+          createdAt: "2026-06-17T00:02:00.000Z",
+          validationFindings: [
+            {
+              findingId: "finding-runtime-validation",
+              findingKind: "text_mismatch",
+              severity: "P2",
+              bridgeUnitRef: {
+                bridgeUnitId: "bridge-unit-test",
+                sourceUnitKey: "hello.scene.001.line.001",
+              },
+              message: "Observed runtime text differed from the drafted locale branch text.",
+              evidenceTier: "E1",
+            },
+          ],
+        }),
+        "019ed003-0000-7000-8000-000000000998",
+      );
+
+      await expect(repo.getDashboardDecisions()).resolves.toMatchObject({
+        projectId: "project-test",
+        counts: {
+          pendingDecisionCount: 3,
+          projectFindingDecisionCount: 1,
+          localeBranchFindingDecisionCount: 1,
+          runtimeValidationDecisionCount: 1,
+        },
+        pendingDecisions: [
+          {
+            decisionKind: "project_finding",
+            findingId: "finding-project-level",
+            localeBranchId: null,
+            targetLocale: null,
+            runtimeRunId: null,
+          },
+          {
+            decisionKind: "locale_branch_finding",
+            findingId: "finding-locale-branch",
+            localeBranchId: "locale-en-us",
+            targetLocale: "en-US",
+            runtimeRunId: null,
+          },
+          {
+            decisionKind: "runtime_validation",
+            findingId: "finding-runtime-validation",
+            localeBranchId: "locale-en-us",
+            targetLocale: "en-US",
+            runtimeRunId: "019ed003-0000-7000-8000-000000000999",
+            runtimeStatus: "failed",
+          },
+        ],
+      });
+
+      const status = await repo.getDashboardStatus();
+      expect(status.findingCount).toBe(3);
+      expect(status.localeBranches[0]?.openFindingCount).toBe(1);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("imports contextual manual feedback with line, screenshot, save context, and note", async () => {
     const context = await migratedContext();
     try {

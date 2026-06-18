@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type {
   AuthorizationActor,
+  DashboardDecisionReadModel,
   ItotoriModelLedgerRepositoryPort,
   ItotoriProjectRecord,
   ItotoriProjectRepositoryPort,
@@ -69,6 +70,7 @@ export interface ItotoriProjectWorkflowPort {
   reset(): Promise<void>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
   getRuntimeStatus(): Promise<RuntimeDashboardStatus>;
+  getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
   getCostReport(projectId?: string): Promise<ProjectCostReport>;
   importBridge(bridge: BridgeBundle | BridgeBundleV02): Promise<ProjectState>;
   draftProject(project: ProjectState, locale: string): Promise<ProjectState>;
@@ -119,6 +121,10 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
 
   async getRuntimeStatus(): Promise<RuntimeDashboardStatus> {
     return await this.repository.getRuntimeStatus();
+  }
+
+  async getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel> {
+    return await this.repository.getDashboardDecisions(projectId);
   }
 
   async getCostReport(projectId?: string): Promise<ProjectCostReport> {

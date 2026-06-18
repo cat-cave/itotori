@@ -3,7 +3,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { HttpResponse, http } from "msw";
 import { setupServer } from "msw/node";
 import { renderDashboard, type DashboardEndpoints } from "../src/dashboard.js";
-import { dashboardStatusFixture } from "./api-fixtures.js";
+import { dashboardDecisionsFixture, dashboardStatusFixture } from "./api-fixtures.js";
 import { apiJson, itotoriApiMswHandlers } from "./msw-handlers.js";
 
 const server = setupServer(...itotoriApiMswHandlers);
@@ -11,6 +11,7 @@ const server = setupServer(...itotoriApiMswHandlers);
 const dashboardEndpoints: DashboardEndpoints = {
   projects: "http://itotori.test/api/projects",
   status: "http://itotori.test/api/projects/status",
+  decisions: "http://itotori.test/api/projects/decisions",
   cost: "http://itotori.test/api/projects/cost",
   runtime: "http://itotori.test/api/runtime/v0.2/status",
 };
@@ -41,9 +42,27 @@ describe("Itotori dashboard", () => {
     expect(root.textContent).toContain("Benchmarks");
 
     const pendingDecisions = root.querySelector('[aria-label="Pending decisions"]');
-    expect(pendingDecisions?.textContent).toContain("2 pending decisions");
-    expect(pendingDecisions?.textContent).toContain("2 QA finding decisions pending");
+    expect(pendingDecisions?.textContent).toContain("3 pending decisions");
+    expect(pendingDecisions?.textContent).toContain("1 project-level finding decision pending");
+    expect(pendingDecisions?.textContent).toContain("1 locale branch finding decision pending");
+    expect(pendingDecisions?.textContent).toContain("1 runtime validation decision pending");
+    expect(pendingDecisions?.textContent).toContain("Project");
     expect(pendingDecisions?.textContent).toContain("en-US");
+    expect(pendingDecisions?.textContent).toContain("Runtime evidence");
+
+    const qaFindings = root.querySelector('[aria-label="QA findings"]');
+    expect(qaFindings?.textContent).toContain("Project-level findings");
+    expect(qaFindings?.textContent).toContain("Runtime validation");
+
+    const projectFindingCell = root
+      .querySelector('[aria-label="Projects"] tbody tr')
+      ?.children.item(5);
+    expect(projectFindingCell?.textContent).toBe(
+      String(dashboardDecisionsFixture.counts.pendingDecisionCount),
+    );
+    expect(dashboardDecisionsFixture.counts.pendingDecisionCount).toBe(
+      dashboardStatusFixture.findingCount,
+    );
 
     expect(root.textContent).toContain("runtime_ingested");
     expect(root.textContent).toContain("revision-1");
@@ -57,7 +76,7 @@ describe("Itotori dashboard", () => {
     expect(root.textContent).toContain("benchmark_qa");
     expect(root.textContent).toContain("itotori-fake-qa-v0 -> itotori-fake-qa-v1");
     expect(root.textContent).toContain("collection:deny training:unknown io:disabled");
-    expect(root.textContent).toContain("hello_world_passed");
+    expect(root.textContent).toContain("hello_world_failed");
   });
 
   it("renders a loading state before API reads settle", async () => {
@@ -108,6 +127,16 @@ describe("Itotori dashboard", () => {
 
   it("checks MSW project fixtures against the real API response schema", () => {
     expect(() => apiJson("projects.status", dashboardStatusFixture)).not.toThrow();
+    expect(() => apiJson("projects.decisions", dashboardDecisionsFixture)).not.toThrow();
+    expect(() =>
+      apiJson("projects.decisions", {
+        ...dashboardDecisionsFixture,
+        counts: {
+          ...dashboardDecisionsFixture.counts,
+          pendingDecisionCount: 2,
+        },
+      }),
+    ).toThrow("pendingDecisionCount");
     expect(() =>
       apiJson("projects.list", {
         projects: [

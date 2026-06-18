@@ -1,4 +1,5 @@
 import type {
+  DashboardDecisionReadModel,
   ProjectCostReport,
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
@@ -36,6 +37,7 @@ import type {
 export type ItotoriApiRouteId =
   | "projects.list"
   | "projects.status"
+  | "projects.decisions"
   | "projects.cost"
   | "runtime.status"
   | "imports.bridge"
@@ -55,6 +57,8 @@ export type ApiProjectsResponse = {
 };
 
 export type ApiProjectCostResponse = ProjectCostReport;
+
+export type ApiDashboardDecisionsResponse = DashboardDecisionReadModel;
 
 export type ApiProjectImportRequest = {
   bridge: BridgeBundle | BridgeBundleV02;
@@ -107,6 +111,7 @@ export type ApiRuntimeEvidenceResponse = RuntimeIngestResult;
 export type ItotoriApiResponseBody =
   | ApiProjectsResponse
   | ProjectDashboardStatus
+  | ApiDashboardDecisionsResponse
   | ApiProjectCostResponse
   | RuntimeDashboardStatus
   | ApiProjectImportResponse
@@ -213,6 +218,9 @@ export function assertItotoriApiResponse(
       return;
     case "projects.status":
       assertProjectDashboardStatus(value);
+      return;
+    case "projects.decisions":
+      assertDashboardDecisionReadModel(value);
       return;
     case "projects.cost":
       assertProjectCostReport(value);
@@ -342,6 +350,12 @@ function assertCountTotal(value: unknown, total: unknown, label: string, totalLa
   }
 }
 
+function assertDecisionCount(value: unknown, expected: number, label: string): void {
+  if (Number(value) !== expected) {
+    throw new Error(`${label} must match pendingDecisions`);
+  }
+}
+
 export function assertProjectCostReport(
   value: unknown,
   label = "ProjectCostReport",
@@ -455,6 +469,97 @@ export function assertProjectCostReport(
       asRecord(run.accountPrivacy, `${label}.recentRuns[${index}].accountPrivacy`);
     }
   }
+}
+
+export function assertDashboardDecisionReadModel(
+  value: unknown,
+  label = "DashboardDecisionReadModel",
+): asserts value is DashboardDecisionReadModel {
+  const model = asRecord(value, label);
+  assertString(model.projectId, `${label}.projectId`);
+  const counts = asRecord(model.counts, `${label}.counts`);
+  assertNonNegativeInteger(counts.pendingDecisionCount, `${label}.counts.pendingDecisionCount`);
+  assertNonNegativeInteger(
+    counts.projectFindingDecisionCount,
+    `${label}.counts.projectFindingDecisionCount`,
+  );
+  assertNonNegativeInteger(
+    counts.localeBranchFindingDecisionCount,
+    `${label}.counts.localeBranchFindingDecisionCount`,
+  );
+  assertNonNegativeInteger(
+    counts.runtimeValidationDecisionCount,
+    `${label}.counts.runtimeValidationDecisionCount`,
+  );
+  const pendingDecisions = asArray(model.pendingDecisions, `${label}.pendingDecisions`);
+  for (const [index, decisionValue] of pendingDecisions.entries()) {
+    const decision = asRecord(decisionValue, `${label}.pendingDecisions[${index}]`);
+    assertString(decision.decisionId, `${label}.pendingDecisions[${index}].decisionId`);
+    assertEnum(
+      decision.decisionKind,
+      ["project_finding", "locale_branch_finding", "runtime_validation"] as const,
+      `${label}.pendingDecisions[${index}].decisionKind`,
+    );
+    assertString(decision.projectId, `${label}.pendingDecisions[${index}].projectId`);
+    assertString(decision.findingId, `${label}.pendingDecisions[${index}].findingId`);
+    assertString(decision.findingKind, `${label}.pendingDecisions[${index}].findingKind`);
+    assertString(decision.severity, `${label}.pendingDecisions[${index}].severity`);
+    assertNullableString(
+      decision.qualityCategory,
+      `${label}.pendingDecisions[${index}].qualityCategory`,
+    );
+    assertString(decision.title, `${label}.pendingDecisions[${index}].title`);
+    assertNullableString(
+      decision.localeBranchId,
+      `${label}.pendingDecisions[${index}].localeBranchId`,
+    );
+    assertNullableString(
+      decision.targetLocale,
+      `${label}.pendingDecisions[${index}].targetLocale`,
+    );
+    assertNullableString(
+      decision.branchStatus,
+      `${label}.pendingDecisions[${index}].branchStatus`,
+    );
+    assertNullableString(
+      decision.runtimeRunId,
+      `${label}.pendingDecisions[${index}].runtimeRunId`,
+    );
+    assertNullableString(
+      decision.runtimeStatus,
+      `${label}.pendingDecisions[${index}].runtimeStatus`,
+    );
+    assertString(decision.createdAt, `${label}.pendingDecisions[${index}].createdAt`);
+  }
+  assertDecisionCount(
+    counts.pendingDecisionCount,
+    pendingDecisions.length,
+    `${label}.counts.pendingDecisionCount`,
+  );
+  assertDecisionCount(
+    counts.projectFindingDecisionCount,
+    pendingDecisions.filter((decision) => {
+      const record = asRecord(decision, `${label}.pendingDecisions[]`);
+      return record.decisionKind === "project_finding";
+    }).length,
+    `${label}.counts.projectFindingDecisionCount`,
+  );
+  assertDecisionCount(
+    counts.localeBranchFindingDecisionCount,
+    pendingDecisions.filter((decision) => {
+      const record = asRecord(decision, `${label}.pendingDecisions[]`);
+      return record.decisionKind === "locale_branch_finding";
+    }).length,
+    `${label}.counts.localeBranchFindingDecisionCount`,
+  );
+  assertDecisionCount(
+    counts.runtimeValidationDecisionCount,
+    pendingDecisions.filter((decision) => {
+      const record = asRecord(decision, `${label}.pendingDecisions[]`);
+      return record.decisionKind === "runtime_validation";
+    }).length,
+    `${label}.counts.runtimeValidationDecisionCount`,
+  );
 }
 
 export function assertRuntimeDashboardStatus(

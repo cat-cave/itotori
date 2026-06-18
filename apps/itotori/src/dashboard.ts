@@ -1,9 +1,12 @@
 import type {
+  DashboardDecisionReadModel,
+  DashboardPendingDecision,
   ProjectCostReport,
   ProjectDashboardStatus,
   RuntimeDashboardStatus,
 } from "@itotori/db";
 import {
+  assertDashboardDecisionReadModel,
   assertItotoriApiResponse,
   assertProjectDashboardStatus,
   type ApiProjectsResponse,
@@ -13,6 +16,7 @@ import {
 export type DashboardEndpoints = {
   projects: string;
   status: string;
+  decisions: string;
   cost: string;
   runtime: string;
 };
@@ -22,12 +26,14 @@ export type DashboardEndpointConfig = Partial<DashboardEndpoints> | string;
 type DashboardReadRouteId =
   | "projects.list"
   | "projects.status"
+  | "projects.decisions"
   | "projects.cost"
   | "runtime.status";
 
 type DashboardReadResponses = {
   "projects.list": ApiProjectsResponse;
   "projects.status": ProjectDashboardStatus;
+  "projects.decisions": DashboardDecisionReadModel;
   "projects.cost": ProjectCostReport;
   "runtime.status": RuntimeDashboardStatus;
 };
@@ -37,6 +43,7 @@ type DashboardData =
       state: "ready";
       projects: ProjectDashboardStatus[];
       status: ProjectDashboardStatus;
+      decisions: DashboardDecisionReadModel;
       cost: ProjectCostReport;
       runtime: RuntimeDashboardStatus;
     }
@@ -48,6 +55,7 @@ type DashboardData =
 const defaultDashboardEndpoints: DashboardEndpoints = {
   projects: "/api/projects",
   status: "/api/projects/status",
+  decisions: "/api/projects/decisions",
   cost: "/api/projects/cost",
   runtime: "/api/runtime/v0.2/status",
 };
@@ -60,6 +68,14 @@ export async function fetchProjectStatus(
   return status;
 }
 
+export async function fetchDashboardDecisions(
+  endpoint = defaultDashboardEndpoints.decisions,
+): Promise<DashboardDecisionReadModel> {
+  const decisions = await fetchApi("projects.decisions", endpoint);
+  assertDashboardDecisionReadModel(decisions);
+  return decisions;
+}
+
 export async function fetchDashboardData(
   endpointConfig: DashboardEndpointConfig = {},
 ): Promise<DashboardData> {
@@ -70,16 +86,19 @@ export async function fetchDashboardData(
     return { state: "empty", projects: [] };
   }
 
-  const [status, cost, runtime] = await Promise.all([
+  const [status, decisions, cost, runtime] = await Promise.all([
     fetchApi("projects.status", endpoints.status),
+    fetchApi("projects.decisions", endpoints.decisions),
     fetchApi("projects.cost", endpoints.cost),
     fetchApi("runtime.status", endpoints.runtime),
   ]);
+  assertDecisionReadMatchesStatus(status, decisions);
 
   return {
     state: "ready",
     projects: projectsResponse.projects,
     status,
+    decisions,
     cost,
     runtime,
   };
@@ -176,6 +195,7 @@ function renderWorkbench(
   data: Extract<DashboardData, { state: "ready" }>,
 ): void {
   const { status, cost, runtime, projects } = data;
+  const { decisions } = data;
   root.innerHTML = `
     ${dashboardStyles()}
     <main class="itotori-shell" data-state="ready">
@@ -189,7 +209,7 @@ function renderWorkbench(
           <div><dt>Status</dt><dd>${statusBadge(status.status)}</dd></div>
           <div><dt>Source</dt><dd>${escapeHtml(status.sourceLocale)}</dd></div>
           <div><dt>Branches</dt><dd>${status.branchCount}</dd></div>
-          <div><dt>Open QA</dt><dd>${openFindingTotal(status)}</dd></div>
+          <div><dt>Open QA</dt><dd>${decisions.counts.pendingDecisionCount}</dd></div>
           <div><dt>Latest event</dt><dd>${escapeHtml(status.latestEventKind ?? "none")}</dd></div>
         </dl>
       </header>
@@ -210,9 +230,9 @@ function renderWorkbench(
       <section class="decision-band" aria-label="Pending decisions" id="pending-decisions">
         <div>
           <p class="eyebrow">Pending decisions</p>
-          <h2>${decisionHeadline(status, runtime)}</h2>
+          <h2>${decisionHeadline(decisions)}</h2>
         </div>
-        ${renderPendingDecisionList(status, runtime)}
+        ${renderPendingDecisionList(decisions)}
       </section>
 
       <section class="section-grid" aria-label="Dashboard sections">
@@ -222,7 +242,7 @@ function renderWorkbench(
         ${renderStyleGuide()}
         ${renderGlossary()}
         ${renderJobs(cost)}
-        ${renderQaFindings(status, runtime)}
+        ${renderQaFindings(decisions)}
         ${renderRuntimeEvidence(runtime)}
         ${renderBenchmarks(cost, status)}
         ${renderCost(cost)}
@@ -385,31 +405,11 @@ function renderJobs(cost: ProjectCostReport): string {
   );
 }
 
-function renderQaFindings(status: ProjectDashboardStatus, runtime: RuntimeDashboardStatus): string {
-  const branchRows = status.localeBranches
-    .filter((branch) => branch.openFindingCount > 0)
-    .map(
-      (branch) => `
-        <tr>
-          <td>${escapeHtml(branch.targetLocale)}</td>
-          <td>${branch.openFindingCount}</td>
-          <td>${escapeHtml(branch.status)}</td>
-        </tr>
-      `,
-    );
-  if (branchRows.length === 0 && runtime.validationFindingCount === 0) {
+function renderQaFindings(decisions: DashboardDecisionReadModel): string {
+  const rows = qaFindingRows(decisions);
+  if (rows.length === 0) {
     return panel("qa-findings", "QA findings", emptyText("No open QA findings returned."));
   }
-  const runtimeRow =
-    runtime.validationFindingCount === 0
-      ? ""
-      : `
-        <tr>
-          <td>Runtime evidence</td>
-          <td>${runtime.validationFindingCount}</td>
-          <td>${escapeHtml(runtime.runtimeStatus ?? runtime.finalStatus)}</td>
-        </tr>
-      `;
   return panel(
     "qa-findings",
     "QA findings",
@@ -422,7 +422,7 @@ function renderQaFindings(status: ProjectDashboardStatus, runtime: RuntimeDashbo
             <th>Status</th>
           </tr>
         </thead>
-        <tbody>${branchRows.join("")}${runtimeRow}</tbody>
+        <tbody>${rows.join("")}</tbody>
       </table>
     `,
   );
@@ -536,11 +536,8 @@ function renderCost(cost: ProjectCostReport): string {
   );
 }
 
-function renderPendingDecisionList(
-  status: ProjectDashboardStatus,
-  runtime: RuntimeDashboardStatus,
-): string {
-  const rows = pendingDecisionRows(status, runtime);
+function renderPendingDecisionList(decisions: DashboardDecisionReadModel): string {
+  const rows = pendingDecisionRows(decisions);
   if (rows.length === 0) {
     return `<p class="empty-copy">No pending decisions returned.</p>`;
   }
@@ -558,46 +555,118 @@ function renderPendingDecisionList(
   `;
 }
 
-function pendingDecisionRows(
-  status: ProjectDashboardStatus,
-  runtime: RuntimeDashboardStatus,
-): string[] {
-  const rows = status.localeBranches
-    .filter((branch) => branch.openFindingCount > 0)
-    .map(
-      (branch) => `
-        <tr>
-          <td>${branch.openFindingCount} QA finding ${plural(branch.openFindingCount, "decision")} pending</td>
-          <td>${escapeHtml(branch.targetLocale)}</td>
-          <td>${escapeHtml(branch.status)}</td>
-        </tr>
-      `,
-    );
-  if (runtime.validationFindingCount > 0) {
+function pendingDecisionRows(decisions: DashboardDecisionReadModel): string[] {
+  const rows: string[] = [];
+  const projectCount = decisions.counts.projectFindingDecisionCount;
+  if (projectCount > 0) {
     rows.push(`
       <tr>
-        <td>${runtime.validationFindingCount} runtime ${plural(
-          runtime.validationFindingCount,
-          "decision",
-        )} pending</td>
+        <td>${projectCount} project-level finding ${plural(projectCount, "decision")} pending</td>
+        <td>Project</td>
+        <td>${escapeHtml(decisionGroupSignal(decisions.pendingDecisions, "project_finding"))}</td>
+      </tr>
+    `);
+  }
+  for (const branch of groupedBranchDecisions(decisions.pendingDecisions)) {
+    rows.push(`
+      <tr>
+        <td>${branch.count} locale branch finding ${plural(branch.count, "decision")} pending</td>
+        <td>${escapeHtml(branch.area)}</td>
+        <td>${escapeHtml(branch.signal)}</td>
+      </tr>
+    `);
+  }
+  const runtimeCount = decisions.counts.runtimeValidationDecisionCount;
+  if (runtimeCount > 0) {
+    rows.push(`
+      <tr>
+        <td>${runtimeCount} runtime validation ${plural(runtimeCount, "decision")} pending</td>
         <td>Runtime evidence</td>
-        <td>${escapeHtml(runtime.runtimeStatus ?? runtime.finalStatus)}</td>
+        <td>${escapeHtml(decisionGroupSignal(decisions.pendingDecisions, "runtime_validation"))}</td>
       </tr>
     `);
   }
   return rows;
 }
 
-function decisionHeadline(status: ProjectDashboardStatus, runtime: RuntimeDashboardStatus): string {
-  const count = openFindingTotal(status) + runtime.validationFindingCount;
+function decisionHeadline(decisions: DashboardDecisionReadModel): string {
+  const count = decisions.counts.pendingDecisionCount;
   if (count === 0) {
     return "No pending decisions";
   }
   return `${count} pending ${plural(count, "decision")}`;
 }
 
-function openFindingTotal(status: ProjectDashboardStatus): number {
-  return status.localeBranches.reduce((total, branch) => total + branch.openFindingCount, 0);
+function qaFindingRows(decisions: DashboardDecisionReadModel): string[] {
+  const rows: string[] = [];
+  const projectCount = decisions.counts.projectFindingDecisionCount;
+  if (projectCount > 0) {
+    rows.push(`
+      <tr>
+        <td>Project-level findings</td>
+        <td>${projectCount}</td>
+        <td>${escapeHtml(decisionGroupSignal(decisions.pendingDecisions, "project_finding"))}</td>
+      </tr>
+    `);
+  }
+  for (const branch of groupedBranchDecisions(decisions.pendingDecisions)) {
+    rows.push(`
+      <tr>
+        <td>${escapeHtml(branch.area)}</td>
+        <td>${branch.count}</td>
+        <td>${escapeHtml(branch.signal)}</td>
+      </tr>
+    `);
+  }
+  const runtimeCount = decisions.counts.runtimeValidationDecisionCount;
+  if (runtimeCount > 0) {
+    rows.push(`
+      <tr>
+        <td>Runtime validation</td>
+        <td>${runtimeCount}</td>
+        <td>${escapeHtml(decisionGroupSignal(decisions.pendingDecisions, "runtime_validation"))}</td>
+      </tr>
+    `);
+  }
+  return rows;
+}
+
+function groupedBranchDecisions(
+  pendingDecisions: DashboardPendingDecision[],
+): Array<{ area: string; count: number; signal: string }> {
+  const groups = new Map<string, { area: string; count: number; signal: string }>();
+  for (const decision of pendingDecisions) {
+    if (decision.decisionKind !== "locale_branch_finding") {
+      continue;
+    }
+    const area = decision.targetLocale ?? decision.localeBranchId ?? "Locale branch";
+    const existing = groups.get(area);
+    if (existing === undefined) {
+      groups.set(area, {
+        area,
+        count: 1,
+        signal: decision.branchStatus ?? decisionSignal(decision),
+      });
+      continue;
+    }
+    existing.count += 1;
+  }
+  return [...groups.values()];
+}
+
+function decisionGroupSignal(
+  pendingDecisions: DashboardPendingDecision[],
+  decisionKind: DashboardPendingDecision["decisionKind"],
+): string {
+  const decision = pendingDecisions.find((candidate) => candidate.decisionKind === decisionKind);
+  return decision === undefined ? "pending" : decisionSignal(decision);
+}
+
+function decisionSignal(decision: DashboardPendingDecision): string {
+  if (decision.decisionKind === "runtime_validation") {
+    return decision.runtimeStatus ?? decision.branchStatus ?? "pending";
+  }
+  return decision.qualityCategory ?? decision.severity;
 }
 
 function panel(id: string, title: string, body: string): string {
@@ -642,6 +711,7 @@ function resolveDashboardEndpoints(config: DashboardEndpointConfig): DashboardEn
     return {
       projects: `${origin}/api/projects`,
       status: `${origin}/api/projects/status`,
+      decisions: `${origin}/api/projects/decisions`,
       cost: `${origin}/api/projects/cost`,
       runtime: `${origin}/api/runtime/v0.2/status`,
     };
@@ -658,6 +728,20 @@ function endpointOrigin(endpoint: string): string | null {
     return new URL(endpoint, base).origin;
   } catch {
     return null;
+  }
+}
+
+function assertDecisionReadMatchesStatus(
+  status: ProjectDashboardStatus,
+  decisions: DashboardDecisionReadModel,
+): void {
+  if (decisions.projectId !== status.projectId) {
+    throw new Error(
+      `decision read project ${decisions.projectId} does not match status project ${status.projectId}`,
+    );
+  }
+  if (decisions.counts.pendingDecisionCount > status.findingCount) {
+    throw new Error("pending decision count exceeds project finding count");
   }
 }
 
