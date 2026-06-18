@@ -1,0 +1,55 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "catalog-recorded-importers",
+    "title": "Catalog Recorded Importer Fixtures",
+    "kind": "synthetic",
+    "summary": "Synthetic VNDB dump and Epic Games Store recorded-response fixtures for deterministic external-source importer verification without live network access.",
+    "sourceLocale": "ja-JP",
+    "targetLocales": ["en-US"],
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Hand-authored synthetic VNDB-shaped dump rows and EGS-shaped recorded responses; no third-party raw assets, private catalog payloads, or credentials."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic public metadata fixtures for CATALOG-011 recorded importer provenance and idempotency tests.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/catalog-recorded-importers/vndb-dump-replay.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "2b9b8dcedc67066901d37db7fffa76665d22a019c3b7ed8af175596fe01132a1",
+      "bytes": 6294,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-recorded-importers/egs-recorded-replay.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "ddb8bb1eea4f77b26040b7c48b212759eeb72dff090468c2cdbd9ab67165718e",
+      "bytes": 7357,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 2,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "targetLocales": ["en-US"],
+    "engineKinds": ["catalog-recorded-importer-synthetic"],
+    "notes": "Covers VNDB external ids, titles, releases, language facts, source-version provenance, EGS product ids, store metadata, locale facts, fetched-at/request identity provenance, importer seed targets, and CATALOG-065 idempotent reruns."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:catalog-recorded-importers"
+  }
+}

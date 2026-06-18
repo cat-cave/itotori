@@ -249,6 +249,19 @@ export type {
   RecordedCatalogCrawlerFixture,
 } from "./services/catalog-crawler-runner.js";
 export {
+  catalogRecordedImporterVersion,
+  createCatalogRecordedImporterIngestStep,
+  createCatalogRecordedImporterVerifier,
+} from "./services/catalog-recorded-importers.js";
+export type {
+  CatalogRecordedExternalIdFact,
+  CatalogRecordedImporterFact,
+  CatalogRecordedImporterOptions,
+  CatalogRecordedLanguageStatusFact,
+  CatalogRecordedReleaseFact,
+  CatalogRecordedSeedTargetFact,
+} from "./services/catalog-recorded-importers.js";
+export {
   ItotoriJobWorkerService,
   ItotoriOutboxPublisherService,
 } from "./services/event-queue-service.js";
