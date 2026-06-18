@@ -11373,7 +11373,7 @@
     {
       "id": "ITOTORI-065",
       "title": "Style-guide builder dashboard UI",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11410,7 +11410,10 @@
         "Style builder mutating policy without permission checks",
         "Locale branch context missing from dashboard state",
         "Consequence preview hidden from reviewers"
-      ]
+      ],
+      "owner": "codex-orchestrator-wave10",
+      "branch": "spec/itotori-065",
+      "worktree": "/tmp/itotori-spec-itotori-065"
     },
     {
       "id": "ITOTORI-066",
@@ -12631,7 +12634,7 @@
     {
       "id": "CATALOG-013",
       "title": "IGDB and Wikidata platform language adapters",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -12667,7 +12670,10 @@
         "Continuous platform scope accidentally becoming alpha-blocking",
         "Auto-merged conflicting facts",
         "Live API credential coupling"
-      ]
+      ],
+      "owner": "codex-orchestrator-wave10",
+      "branch": "spec/catalog-013",
+      "worktree": "/tmp/itotori-spec-catalog-013"
     },
     {
       "id": "KAIFUU-081",
@@ -12820,7 +12826,7 @@
     {
       "id": "KAIFUU-085",
       "title": "Helper result schema and redacted validation",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12853,7 +12859,10 @@
         "Raw key leakage",
         "Unstructured helper diagnostics",
         "Fixture results diverging from local helper outputs"
-      ]
+      ],
+      "owner": "codex-orchestrator-wave10",
+      "branch": "spec/kaifuu-085",
+      "worktree": "/tmp/itotori-spec-kaifuu-085"
     },
     {
       "id": "KAIFUU-086",
