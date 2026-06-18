@@ -1,4 +1,5 @@
 use std::fs;
+use std::io::{self, Write};
 use std::path::{Component, Path, PathBuf};
 
 use serde_json::Value;
@@ -7,6 +8,16 @@ pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 pub const RUNTIME_ARTIFACT_URI_ROOT: &str = "artifacts/utsushi/runtime";
 pub const RUNTIME_ARTIFACT_ROOT_MARKER: &str = ".utsushi-runtime-artifacts";
+
+const OBVIOUS_UNMANAGED_ROOT_SENTINELS: &[&str] = &[
+    ".git",
+    "Cargo.toml",
+    "package.json",
+    "pyproject.toml",
+    "go.mod",
+    "project.godot",
+    "Assets",
+];
 
 #[derive(Clone, Copy, Debug)]
 pub struct RuntimeRequest<'a> {
@@ -129,11 +140,50 @@ impl RuntimeArtifactRoot {
     }
 
     pub fn prepare(&self) -> UtsushiResult<()> {
-        fs::create_dir_all(&self.root)?;
-        fs::write(
-            self.root.join(RUNTIME_ARTIFACT_ROOT_MARKER),
-            "managed-by=utsushi-runtime\n",
-        )?;
+        let root_existed = match fs::symlink_metadata(&self.root) {
+            Ok(metadata) => {
+                ensure_directory_metadata(&self.root, &metadata)?;
+                ensure_existing_directory_path_without_symlinks(&self.root)?;
+                true
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                create_directory_path_without_symlinks(&self.root)?;
+                false
+            }
+            Err(error) => return Err(error.into()),
+        };
+
+        let marker = self.root.join(RUNTIME_ARTIFACT_ROOT_MARKER);
+        let marker_exists = match fs::symlink_metadata(&marker) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_file() {
+                    return Err(format!(
+                        "runtime artifact root marker must be a regular file: {}",
+                        marker.display()
+                    )
+                    .into());
+                }
+                true
+            }
+            Err(error) if error.kind() == io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error.into()),
+        };
+
+        if marker_exists {
+            self.assert_not_obvious_unmanaged_root()?;
+            return Ok(());
+        }
+
+        self.assert_not_obvious_unmanaged_root()?;
+        if root_existed && directory_has_entries(&self.root)? {
+            return Err(format!(
+                "refusing to adopt non-empty unmarked runtime artifact root {}",
+                self.root.display()
+            )
+            .into());
+        }
+
+        write_new_marker(&marker)?;
         Ok(())
     }
 
@@ -143,11 +193,18 @@ impl RuntimeArtifactRoot {
     }
 
     pub fn write_bytes(&self, uri: &str, contents: &[u8]) -> UtsushiResult<PathBuf> {
-        let path = self.artifact_path(uri)?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&path, contents)?;
+        self.assert_managed_root()?;
+        let relative = validate_runtime_artifact_uri(uri)?;
+        let path = self.root.join(&relative);
+        let Some(parent) = relative.parent() else {
+            return Err(
+                format!("runtime artifact uri is missing parent directories: {uri}").into(),
+            );
+        };
+        create_artifact_directory_path_without_symlinks(&self.root, parent)?;
+        reject_symlink_destination(&path)?;
+        write_file_atomically(&path, contents)?;
+        reject_symlink_destination(&path)?;
         Ok(path)
     }
 
@@ -164,18 +221,46 @@ impl RuntimeArtifactRoot {
     }
 
     fn assert_managed_root(&self) -> UtsushiResult<()> {
+        ensure_existing_directory_path_without_symlinks(&self.root)?;
         let canonical = fs::canonicalize(&self.root)?;
         if canonical.parent().is_none() {
             return Err("refusing to clean filesystem root as a runtime artifact root".into());
         }
         let marker = canonical.join(RUNTIME_ARTIFACT_ROOT_MARKER);
-        if !marker.is_file() {
+        let marker_metadata = match fs::symlink_metadata(&marker) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                return Err(format!(
+                    "runtime artifact cleanup requires managed root marker {} under {}",
+                    RUNTIME_ARTIFACT_ROOT_MARKER,
+                    canonical.display()
+                )
+                .into());
+            }
+            Err(error) => return Err(error.into()),
+        };
+        if marker_metadata.file_type().is_symlink() || !marker_metadata.is_file() {
             return Err(format!(
-                "runtime artifact cleanup requires managed root marker {} under {}",
+                "runtime artifact cleanup requires regular managed root marker {} under {}",
                 RUNTIME_ARTIFACT_ROOT_MARKER,
                 canonical.display()
             )
             .into());
+        }
+        self.assert_not_obvious_unmanaged_root()?;
+        Ok(())
+    }
+
+    fn assert_not_obvious_unmanaged_root(&self) -> UtsushiResult<()> {
+        for sentinel in OBVIOUS_UNMANAGED_ROOT_SENTINELS {
+            if fs::symlink_metadata(self.root.join(sentinel)).is_ok() {
+                return Err(format!(
+                    "refusing to use obvious source or project root as runtime artifact root: {} contains {}",
+                    self.root.display(),
+                    sentinel
+                )
+                .into());
+            }
         }
         Ok(())
     }
@@ -886,6 +971,187 @@ fn validate_artifact_extension(extension: &str) -> UtsushiResult<()> {
     Ok(())
 }
 
+fn ensure_directory_metadata(path: &Path, metadata: &fs::Metadata) -> UtsushiResult<()> {
+    if metadata.file_type().is_symlink() {
+        return Err(format!(
+            "runtime artifact path component must not be a symlink: {}",
+            path.display()
+        )
+        .into());
+    }
+    if !metadata.is_dir() {
+        return Err(format!(
+            "runtime artifact path component must be a directory: {}",
+            path.display()
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn ensure_existing_directory_path_without_symlinks(path: &Path) -> UtsushiResult<()> {
+    if path.as_os_str().is_empty() {
+        return Err("runtime artifact root must not be empty".into());
+    }
+
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => current.push(prefix.as_os_str()),
+            Component::RootDir => current.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir | Component::Normal(_) => {
+                current.push(component.as_os_str());
+                let metadata = fs::symlink_metadata(&current)?;
+                ensure_directory_metadata(&current, &metadata)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn create_directory_path_without_symlinks(path: &Path) -> UtsushiResult<()> {
+    if path.as_os_str().is_empty() {
+        return Err("runtime artifact root must not be empty".into());
+    }
+
+    let mut current = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => current.push(prefix.as_os_str()),
+            Component::RootDir => current.push(component.as_os_str()),
+            Component::CurDir => {}
+            Component::ParentDir | Component::Normal(_) => {
+                current.push(component.as_os_str());
+                match fs::symlink_metadata(&current) {
+                    Ok(metadata) => ensure_directory_metadata(&current, &metadata)?,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                        fs::create_dir(&current)?;
+                        let metadata = fs::symlink_metadata(&current)?;
+                        ensure_directory_metadata(&current, &metadata)?;
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn create_artifact_directory_path_without_symlinks(
+    root: &Path,
+    relative: &Path,
+) -> UtsushiResult<()> {
+    ensure_existing_directory_path_without_symlinks(root)?;
+    let mut current = root.to_path_buf();
+    for component in relative.components() {
+        match component {
+            Component::Normal(segment) => {
+                current.push(segment);
+                match fs::symlink_metadata(&current) {
+                    Ok(metadata) => ensure_directory_metadata(&current, &metadata)?,
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                        fs::create_dir(&current)?;
+                        let metadata = fs::symlink_metadata(&current)?;
+                        ensure_directory_metadata(&current, &metadata)?;
+                    }
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            _ => {
+                return Err(format!(
+                    "runtime artifact relative path must contain only normal segments: {}",
+                    relative.display()
+                )
+                .into());
+            }
+        }
+    }
+    Ok(())
+}
+
+fn directory_has_entries(path: &Path) -> UtsushiResult<bool> {
+    Ok(fs::read_dir(path)?.next().transpose()?.is_some())
+}
+
+fn write_new_marker(path: &Path) -> UtsushiResult<()> {
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)?;
+    file.write_all(b"managed-by=utsushi-runtime\n")?;
+    file.sync_all()?;
+    Ok(())
+}
+
+fn reject_symlink_destination(path: &Path) -> UtsushiResult<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(format!(
+                    "runtime artifact destination must not be a symlink: {}",
+                    path.display()
+                )
+                .into());
+            }
+            if metadata.is_dir() {
+                return Err(format!(
+                    "runtime artifact destination must not be a directory: {}",
+                    path.display()
+                )
+                .into());
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+fn write_file_atomically(path: &Path, contents: &[u8]) -> UtsushiResult<()> {
+    let parent = path.parent().ok_or_else(|| {
+        format!(
+            "runtime artifact destination has no parent: {}",
+            path.display()
+        )
+    })?;
+    let filename = path.file_name().ok_or_else(|| {
+        format!(
+            "runtime artifact destination has no filename: {}",
+            path.display()
+        )
+    })?;
+    let mut last_error = None;
+    for attempt in 0..16 {
+        let temporary = parent.join(format!(
+            ".{}.tmp-{}-{attempt}",
+            filename.to_string_lossy(),
+            std::process::id()
+        ));
+        match fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+        {
+            Ok(mut file) => {
+                if let Err(error) = file.write_all(contents).and_then(|()| file.sync_all()) {
+                    let _ = fs::remove_file(&temporary);
+                    return Err(error.into());
+                }
+                fs::rename(&temporary, path)?;
+                return Ok(());
+            }
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                last_error = Some(error);
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    Err(last_error
+        .unwrap_or_else(|| io::Error::new(io::ErrorKind::AlreadyExists, "temporary file exists"))
+        .into())
+}
+
 fn remove_artifact_entry(path: &Path) -> UtsushiResult<()> {
     let metadata = fs::symlink_metadata(path)?;
     if metadata.is_dir() {
@@ -1237,6 +1503,94 @@ mod tests {
         for dir in [&source_game, &local_corpus, &benchmark, &patch_output] {
             assert!(dir.join("keep.txt").is_file());
         }
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn runtime_artifact_prepare_refuses_non_empty_unmarked_roots() {
+        let temp = temp_root("adoption");
+        let source_game = temp.join("game");
+        fs::create_dir_all(&source_game).unwrap();
+        fs::write(source_game.join("keep.txt"), "source content\n").unwrap();
+
+        let root = RuntimeArtifactRoot::new(&source_game);
+        let error = root.prepare().unwrap_err().to_string();
+
+        assert!(error.contains("non-empty unmarked"));
+        assert!(source_game.join("keep.txt").is_file());
+        assert!(!source_game.join(RUNTIME_ARTIFACT_ROOT_MARKER).exists());
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn runtime_artifact_cleanup_refuses_marked_source_roots() {
+        let temp = temp_root("marked-source");
+        let source_root = temp.join("repo");
+        fs::create_dir_all(&source_root).unwrap();
+        fs::write(
+            source_root.join("Cargo.toml"),
+            "[package]\nname = \"source\"\n",
+        )
+        .unwrap();
+        fs::write(
+            source_root.join(RUNTIME_ARTIFACT_ROOT_MARKER),
+            "managed-by=utsushi-runtime\n",
+        )
+        .unwrap();
+        fs::write(source_root.join("keep.txt"), "source content\n").unwrap();
+
+        let root = RuntimeArtifactRoot::new(&source_root);
+        let error = root.cleanup_contents().unwrap_err().to_string();
+
+        assert!(error.contains("obvious source or project root"));
+        assert!(source_root.join("Cargo.toml").is_file());
+        assert!(source_root.join("keep.txt").is_file());
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_artifact_write_rejects_symlink_parent_components() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp = temp_root("symlink-parent");
+        let managed_path = temp.join("runtime-artifacts");
+        let outside = temp.join("outside");
+        fs::create_dir_all(&outside).unwrap();
+        let root = RuntimeArtifactRoot::new(&managed_path);
+        root.prepare().unwrap();
+        unix_fs::symlink(&outside, managed_path.join("run-link")).unwrap();
+        let uri =
+            runtime_artifact_uri("run-link", RuntimeArtifactKind::TraceLog, "trace-1").unwrap();
+
+        let error = root.write_bytes(&uri, b"trace").unwrap_err().to_string();
+
+        assert!(error.contains("symlink"));
+        assert!(!outside.join("traces").exists());
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn runtime_artifact_write_rejects_symlink_destinations() {
+        use std::os::unix::fs as unix_fs;
+
+        let temp = temp_root("symlink-destination");
+        let managed_path = temp.join("runtime-artifacts");
+        let outside = temp.join("outside.txt");
+        fs::write(&outside, "outside content\n").unwrap();
+        let root = RuntimeArtifactRoot::new(&managed_path);
+        root.prepare().unwrap();
+        let uri =
+            runtime_artifact_uri("run-dest", RuntimeArtifactKind::TraceLog, "trace-1").unwrap();
+        let artifact_path = root.artifact_path(&uri).unwrap();
+        fs::create_dir_all(artifact_path.parent().unwrap()).unwrap();
+        unix_fs::symlink(&outside, &artifact_path).unwrap();
+
+        let error = root.write_bytes(&uri, b"trace").unwrap_err().to_string();
+
+        assert!(error.contains("symlink"));
+        assert_eq!(fs::read_to_string(&outside).unwrap(), "outside content\n");
         let _ = fs::remove_dir_all(temp);
     }
 }

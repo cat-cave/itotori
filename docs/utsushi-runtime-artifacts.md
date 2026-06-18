@@ -9,12 +9,17 @@ JSON metadata.
 
 The local filesystem root is caller-selected, but it must be prepared by
 `RuntimeArtifactRoot::prepare`. Preparation creates the root and writes the
-`.utsushi-runtime-artifacts` marker file.
+`.utsushi-runtime-artifacts` marker file. Preparation only adopts roots that are
+new, empty, or already marked. Non-empty unmarked directories and obvious
+source or project roots are refused instead of being silently converted into
+runtime-managed cleanup roots.
 
 Cleanup is marker-gated. `RuntimeArtifactRoot::cleanup_contents` refuses to run
 without that marker and removes only entries inside the managed root, preserving
 the marker itself. Source game directories, local corpus roots, benchmark
 outputs, and patch outputs must never be passed as runtime artifact roots.
+Cleanup and writes reject symlinks in the managed root path, artifact parent
+components, and artifact destinations.
 
 ## Portable URI Naming
 
