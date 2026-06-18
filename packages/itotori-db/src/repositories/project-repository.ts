@@ -25,7 +25,12 @@ import {
   permissionValues,
   requirePermission,
 } from "../authorization.js";
-import { ItotoriModelLedgerRepository, type ProjectCostReport } from "./model-ledger-repository.js";
+import {
+  ItotoriModelLedgerRepository,
+  insertProviderRunLedgerRows,
+  type ProjectCostReport,
+  type ProviderRunLedgerInput,
+} from "./model-ledger-repository.js";
 import {
   artifacts,
   assets,
@@ -139,6 +144,11 @@ export type EventInput = {
   event: TriageEventV02;
 };
 
+export type BenchmarkArtifactLedgerInput = {
+  artifact: ArtifactInput;
+  providerRuns: ProviderRunLedgerInput[];
+};
+
 export type LocaleBranchStatus = {
   localeBranchId: string;
   targetLocale: string;
@@ -238,6 +248,10 @@ export interface ItotoriProjectRepositoryPort {
   appendEvent(actor: AuthorizationActor, input: EventInput): Promise<void>;
   recordFinding(actor: AuthorizationActor, input: FindingInput): Promise<void>;
   linkArtifact(actor: AuthorizationActor, input: ArtifactInput): Promise<void>;
+  recordBenchmarkArtifactWithProviderLedger(
+    actor: AuthorizationActor,
+    input: BenchmarkArtifactLedgerInput,
+  ): Promise<void>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
   getRuntimeStatus(): Promise<RuntimeDashboardStatus>;
   getDashboardDecisions(projectId?: string): Promise<DashboardDecisionReadModel>;
@@ -1142,6 +1156,46 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           metadata: input.metadata ?? {},
         },
       });
+  }
+
+  async recordBenchmarkArtifactWithProviderLedger(
+    actor: AuthorizationActor,
+    input: BenchmarkArtifactLedgerInput,
+  ): Promise<void> {
+    await requirePermission(this.db, actor, permissionValues.runtimeIngest);
+    await this.db.transaction(async (tx) => {
+      await tx
+        .insert(artifacts)
+        .values({
+          artifactId: input.artifact.artifactId,
+          projectId: input.artifact.projectId,
+          localeBranchId: input.artifact.localeBranchId ?? null,
+          sourceBundleId: input.artifact.sourceBundleId ?? null,
+          bridgeUnitId: input.artifact.bridgeUnitId ?? null,
+          findingId: input.artifact.findingId ?? null,
+          artifactKind: input.artifact.artifactKind,
+          uri: input.artifact.uri ?? null,
+          hash: input.artifact.hash ?? null,
+          metadata: input.artifact.metadata ?? {},
+        })
+        .onConflictDoUpdate({
+          target: artifacts.artifactId,
+          set: {
+            localeBranchId: input.artifact.localeBranchId ?? null,
+            sourceBundleId: input.artifact.sourceBundleId ?? null,
+            bridgeUnitId: input.artifact.bridgeUnitId ?? null,
+            findingId: input.artifact.findingId ?? null,
+            artifactKind: input.artifact.artifactKind,
+            uri: input.artifact.uri ?? null,
+            hash: input.artifact.hash ?? null,
+            metadata: input.artifact.metadata ?? {},
+          },
+        });
+
+      for (const providerRun of input.providerRuns) {
+        await insertProviderRunLedgerRows(tx, providerRun);
+      }
+    });
   }
 
   async getDashboardStatus(): Promise<ProjectDashboardStatus> {

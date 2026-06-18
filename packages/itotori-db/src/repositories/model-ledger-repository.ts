@@ -36,8 +36,8 @@ export type ProviderRunLedgerInput = {
   systemId?: string;
   taskKind: string;
   startedAt: string | Date;
-  completedAt: string | Date;
-  latencyMs: number;
+  completedAt?: string | Date;
+  latencyMs?: number;
   status: ProviderRunStatus;
   provider: {
     providerFamily: string;
@@ -138,6 +138,7 @@ export interface ItotoriModelLedgerRepositoryPort {
 
 const costKinds = Object.values(providerCostKindValues) as ProviderCostKind[];
 const tokenCountSources = [...BENCHMARK_TOKEN_COUNT_SOURCES];
+export type ItotoriLedgerTransaction = Parameters<Parameters<ItotoriDatabase["transaction"]>[0]>[0];
 
 export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
@@ -148,143 +149,8 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
   ): Promise<ProviderRunCostSummary> {
     await requirePermission(this.db, actor, permissionValues.runtimeIngest);
     assertProviderRunLedgerInput(input);
-
-    const providerId = modelProviderId(input.provider);
-    const requestedModelRegistryId = modelRegistryId(providerId, input.provider.requestedModelId);
-    const actualModelRegistryId = modelRegistryId(providerId, input.provider.actualModelId);
-    const costLedgerEntryId = `${input.providerRunId}:cost`;
-    const amountMicrosUsd = amountForCost(input.cost);
-    const pricing = input.cost.pricingSnapshotId
-      ? { pricingSnapshotId: input.cost.pricingSnapshotId }
-      : {};
-    const presetSchemaVersion = input.prompt.presetSchemaVersion ?? "itotori.prompt-preset.v0";
-    const presetConfigSnapshot = input.prompt.configSnapshot ?? {};
-
     await this.db.transaction(async (tx) => {
-      await tx
-        .insert(modelProviders)
-        .values({
-          providerId,
-          providerFamily: input.provider.providerFamily,
-          endpointFamily: input.provider.endpointFamily,
-          providerName: input.provider.providerName,
-          dataHandling: input.dataHandling,
-          accountPrivacy: input.accountPrivacy ?? null,
-          metadata: {},
-        })
-        .onConflictDoUpdate({
-          target: modelProviders.providerId,
-          set: {
-            providerFamily: input.provider.providerFamily,
-            endpointFamily: input.provider.endpointFamily,
-            providerName: input.provider.providerName,
-            dataHandling: input.dataHandling,
-            accountPrivacy: input.accountPrivacy ?? null,
-            updatedAt: sql`now()`,
-          },
-        });
-
-      for (const [registryId, modelId] of [
-        [requestedModelRegistryId, input.provider.requestedModelId],
-        [actualModelRegistryId, input.provider.actualModelId],
-      ] as const) {
-        await tx
-          .insert(modelRegistry)
-          .values({
-            modelRegistryId: registryId,
-            providerId,
-            modelId,
-            capabilities: {},
-            pricing,
-          })
-          .onConflictDoUpdate({
-            target: modelRegistry.modelRegistryId,
-            set: {
-              modelId,
-              pricing,
-              updatedAt: sql`now()`,
-            },
-          });
-      }
-
-      const existingPresetResult = await tx.execute(sql`
-        select preset_schema_version, prompt_hash, config_snapshot
-        from ${promptPresets}
-        where prompt_preset_id = ${input.prompt.promptPresetId}
-          and prompt_template_version = ${input.prompt.promptTemplateVersion}
-        limit 1
-      `);
-      const existingPreset = existingPresetResult.rows[0] as Record<string, unknown> | undefined;
-      if (existingPreset) {
-        assertPromptPresetMatches(input.prompt, presetSchemaVersion, presetConfigSnapshot, {
-          presetSchemaVersion: String(existingPreset.preset_schema_version),
-          promptHash: String(existingPreset.prompt_hash),
-          configSnapshot: existingPreset.config_snapshot,
-        });
-      } else {
-        await tx.insert(promptPresets).values({
-          promptPresetId: input.prompt.promptPresetId,
-          promptTemplateVersion: input.prompt.promptTemplateVersion,
-          presetSchemaVersion,
-          promptHash: input.prompt.promptHash,
-          configSnapshot: presetConfigSnapshot,
-        });
-      }
-
-      await tx.insert(providerRuns).values({
-        providerRunId: input.providerRunId,
-        projectId: input.projectId,
-        localeBranchId: input.localeBranchId ?? null,
-        jobId: input.jobId ?? null,
-        systemId: input.systemId ?? null,
-        taskKind: input.taskKind,
-        status: input.status,
-        startedAt: new Date(input.startedAt),
-        completedAt: new Date(input.completedAt),
-        latencyMs: input.latencyMs,
-        providerId,
-        requestedModelRegistryId,
-        actualModelRegistryId,
-        requestedModelId: input.provider.requestedModelId,
-        actualModelId: input.provider.actualModelId,
-        upstreamProvider: input.provider.upstreamProvider ?? null,
-        routeSettingsHash: input.provider.routeSettingsHash ?? null,
-        promptPresetId: input.prompt.promptPresetId,
-        promptTemplateVersion: input.prompt.promptTemplateVersion,
-        promptHash: input.prompt.promptHash,
-        providerPreset: input.providerPreset ?? null,
-        structuredOutputMode: input.structuredOutputMode,
-        retryCount: input.retryCount,
-        errorClasses: input.errorClasses,
-        fallbackUsed: input.fallbackUsed,
-        fallbackPlan: input.fallbackPlan,
-        tokenCountSource: input.tokenUsage.tokenCountSource,
-        promptTokens: input.tokenUsage.promptTokens ?? null,
-        completionTokens: input.tokenUsage.completionTokens ?? null,
-        reasoningTokens: input.tokenUsage.reasoningTokens ?? null,
-        cachedInputTokens: input.tokenUsage.cachedInputTokens ?? null,
-        totalTokens: input.tokenUsage.totalTokens ?? null,
-        dataHandling: input.dataHandling,
-        accountPrivacy: input.accountPrivacy ?? null,
-        adapterMetadata: input.adapterMetadata ?? {},
-      });
-
-      await tx.insert(costLedgerEntries).values({
-        costLedgerEntryId,
-        providerRunId: input.providerRunId,
-        projectId: input.projectId,
-        localeBranchId: input.localeBranchId ?? null,
-        costKind: input.cost.costKind,
-        currency: input.cost.currency,
-        amountMicrosUsd,
-        pricingSnapshotId: input.cost.pricingSnapshotId ?? null,
-        tokenCountSource: input.tokenUsage.tokenCountSource,
-        promptTokens: input.tokenUsage.promptTokens ?? null,
-        completionTokens: input.tokenUsage.completionTokens ?? null,
-        reasoningTokens: input.tokenUsage.reasoningTokens ?? null,
-        cachedInputTokens: input.tokenUsage.cachedInputTokens ?? null,
-        totalTokens: input.tokenUsage.totalTokens ?? null,
-      });
+      await insertProviderRunLedgerRows(tx, input);
     });
 
     const run = await this.getProviderRunCostSummary(input.projectId, input.providerRunId);
@@ -455,6 +321,149 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
   }
 }
 
+export async function insertProviderRunLedgerRows(
+  tx: ItotoriLedgerTransaction,
+  input: ProviderRunLedgerInput,
+): Promise<void> {
+  assertProviderRunLedgerInput(input);
+
+  const providerId = modelProviderId(input.provider);
+  const requestedModelRegistryId = modelRegistryId(providerId, input.provider.requestedModelId);
+  const actualModelRegistryId = modelRegistryId(providerId, input.provider.actualModelId);
+  const costLedgerEntryId = `${input.providerRunId}:cost`;
+  const amountMicrosUsd = amountForCost(input.cost);
+  const pricing = input.cost.pricingSnapshotId
+    ? { pricingSnapshotId: input.cost.pricingSnapshotId }
+    : {};
+  const presetSchemaVersion = input.prompt.presetSchemaVersion ?? "itotori.prompt-preset.v0";
+  const presetConfigSnapshot = input.prompt.configSnapshot ?? {};
+
+  await tx
+    .insert(modelProviders)
+    .values({
+      providerId,
+      providerFamily: input.provider.providerFamily,
+      endpointFamily: input.provider.endpointFamily,
+      providerName: input.provider.providerName,
+      dataHandling: input.dataHandling,
+      accountPrivacy: input.accountPrivacy ?? null,
+      metadata: {},
+    })
+    .onConflictDoUpdate({
+      target: modelProviders.providerId,
+      set: {
+        providerFamily: input.provider.providerFamily,
+        endpointFamily: input.provider.endpointFamily,
+        providerName: input.provider.providerName,
+        dataHandling: input.dataHandling,
+        accountPrivacy: input.accountPrivacy ?? null,
+        updatedAt: sql`now()`,
+      },
+    });
+
+  for (const [registryId, modelId] of [
+    [requestedModelRegistryId, input.provider.requestedModelId],
+    [actualModelRegistryId, input.provider.actualModelId],
+  ] as const) {
+    await tx
+      .insert(modelRegistry)
+      .values({
+        modelRegistryId: registryId,
+        providerId,
+        modelId,
+        capabilities: {},
+        pricing,
+      })
+      .onConflictDoUpdate({
+        target: modelRegistry.modelRegistryId,
+        set: {
+          modelId,
+          pricing,
+          updatedAt: sql`now()`,
+        },
+      });
+  }
+
+  const existingPresetResult = await tx.execute(sql`
+    select preset_schema_version, prompt_hash, config_snapshot
+    from ${promptPresets}
+    where prompt_preset_id = ${input.prompt.promptPresetId}
+      and prompt_template_version = ${input.prompt.promptTemplateVersion}
+    limit 1
+  `);
+  const existingPreset = existingPresetResult.rows[0] as Record<string, unknown> | undefined;
+  if (existingPreset) {
+    assertPromptPresetMatches(input.prompt, presetSchemaVersion, presetConfigSnapshot, {
+      presetSchemaVersion: String(existingPreset.preset_schema_version),
+      promptHash: String(existingPreset.prompt_hash),
+      configSnapshot: existingPreset.config_snapshot,
+    });
+  } else {
+    await tx.insert(promptPresets).values({
+      promptPresetId: input.prompt.promptPresetId,
+      promptTemplateVersion: input.prompt.promptTemplateVersion,
+      presetSchemaVersion,
+      promptHash: input.prompt.promptHash,
+      configSnapshot: presetConfigSnapshot,
+    });
+  }
+
+  await tx.insert(providerRuns).values({
+    providerRunId: input.providerRunId,
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId ?? null,
+    jobId: input.jobId ?? null,
+    systemId: input.systemId ?? null,
+    taskKind: input.taskKind,
+    status: input.status,
+    startedAt: new Date(input.startedAt),
+    completedAt: input.completedAt === undefined ? null : new Date(input.completedAt),
+    latencyMs: input.latencyMs ?? null,
+    providerId,
+    requestedModelRegistryId,
+    actualModelRegistryId,
+    requestedModelId: input.provider.requestedModelId,
+    actualModelId: input.provider.actualModelId,
+    upstreamProvider: input.provider.upstreamProvider ?? null,
+    routeSettingsHash: input.provider.routeSettingsHash ?? null,
+    promptPresetId: input.prompt.promptPresetId,
+    promptTemplateVersion: input.prompt.promptTemplateVersion,
+    promptHash: input.prompt.promptHash,
+    providerPreset: input.providerPreset ?? null,
+    structuredOutputMode: input.structuredOutputMode,
+    retryCount: input.retryCount,
+    errorClasses: input.errorClasses,
+    fallbackUsed: input.fallbackUsed,
+    fallbackPlan: input.fallbackPlan,
+    tokenCountSource: input.tokenUsage.tokenCountSource,
+    promptTokens: input.tokenUsage.promptTokens ?? null,
+    completionTokens: input.tokenUsage.completionTokens ?? null,
+    reasoningTokens: input.tokenUsage.reasoningTokens ?? null,
+    cachedInputTokens: input.tokenUsage.cachedInputTokens ?? null,
+    totalTokens: input.tokenUsage.totalTokens ?? null,
+    dataHandling: input.dataHandling,
+    accountPrivacy: input.accountPrivacy ?? null,
+    adapterMetadata: input.adapterMetadata ?? {},
+  });
+
+  await tx.insert(costLedgerEntries).values({
+    costLedgerEntryId,
+    providerRunId: input.providerRunId,
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId ?? null,
+    costKind: input.cost.costKind,
+    currency: input.cost.currency,
+    amountMicrosUsd,
+    pricingSnapshotId: input.cost.pricingSnapshotId ?? null,
+    tokenCountSource: input.tokenUsage.tokenCountSource,
+    promptTokens: input.tokenUsage.promptTokens ?? null,
+    completionTokens: input.tokenUsage.completionTokens ?? null,
+    reasoningTokens: input.tokenUsage.reasoningTokens ?? null,
+    cachedInputTokens: input.tokenUsage.cachedInputTokens ?? null,
+    totalTokens: input.tokenUsage.totalTokens ?? null,
+  });
+}
+
 function assertPromptPresetMatches(
   input: PromptPresetLedgerInput,
   presetSchemaVersion: string,
@@ -510,7 +519,15 @@ function assertProviderRunLedgerInput(input: ProviderRunLedgerInput): void {
   assertNonEmpty(input.prompt.promptPresetId, "prompt.promptPresetId");
   assertNonEmpty(input.prompt.promptTemplateVersion, "prompt.promptTemplateVersion");
   assertHash(input.prompt.promptHash, "prompt.promptHash");
-  assertNonNegativeInteger(input.latencyMs, "latencyMs");
+  if (
+    input.completedAt !== undefined &&
+    Date.parse(String(input.completedAt)) < Date.parse(String(input.startedAt))
+  ) {
+    throw new Error("completedAt must not be before startedAt");
+  }
+  if (input.latencyMs !== undefined) {
+    assertNonNegativeInteger(input.latencyMs, "latencyMs");
+  }
   assertNonNegativeInteger(input.retryCount, "retryCount");
   assertStringArray(input.errorClasses, "errorClasses");
   assertFallbackPlan(input);

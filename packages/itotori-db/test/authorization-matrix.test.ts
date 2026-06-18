@@ -63,6 +63,12 @@ const repositoryPermissionGateMatrix = [
   projectGate("linkArtifact", "runtimeIngest", "repository.test.ts artifact coverage", (repo) =>
     repo.linkArtifact(deniedActor, undefined as never),
   ),
+  projectGate(
+    "recordBenchmarkArtifactWithProviderLedger",
+    "runtimeIngest",
+    "model-ledger-repository.test.ts atomic benchmark artifact coverage",
+    (repo) => repo.recordBenchmarkArtifactWithProviderLedger(deniedActor, undefined as never),
+  ),
   feedbackGate(
     "importManualFeedback",
     "feedbackImport",
@@ -317,6 +323,12 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriProjectRepository.linkArtifact",
           "requiredPermission": "runtime.ingest",
           "successFixture": "repository.test.ts artifact coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriProjectRepository.recordBenchmarkArtifactWithProviderLedger",
+          "requiredPermission": "runtime.ingest",
+          "successFixture": "model-ledger-repository.test.ts atomic benchmark artifact coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

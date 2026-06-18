@@ -364,30 +364,83 @@ describe("ItotoriProjectWorkflowService", () => {
       benchmarkReport,
     });
 
-    expect(ledger.recordProviderRun).toHaveBeenCalledWith(
+    expect(repository.recordBenchmarkArtifactWithProviderLedger).toHaveBeenCalledWith(
       actor,
       expect.objectContaining({
-        providerRunId: benchmarkReport.providerModelCostRecords[1]!.providerRunId,
-        fallbackPlan: expect.arrayContaining([
-          benchmarkReport.providerModelCostRecords[1]!.provider.requestedModelId,
-          benchmarkReport.providerModelCostRecords[1]!.provider.actualModelId,
-        ]),
-        dataHandling: expect.objectContaining({
-          costTier: "unknown",
-          dataCollection: "unknown",
-          trainingUse: "unknown",
+        artifact: expect.objectContaining({
+          artifactId: benchmarkReport.benchmarkRunId,
+          artifactKind: "benchmark_report",
         }),
-        providerPreset: expect.objectContaining({
-          slug: "openrouter/itotori-draft",
-          version: "2026-06-17",
-          configHash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-          configSnapshot: expect.objectContaining({
-            source: "benchmark_report",
-            remotePresetSlug: "openrouter/itotori-draft",
+        providerRuns: expect.arrayContaining([
+          expect.objectContaining({
+            providerRunId: benchmarkReport.providerModelCostRecords[1]!.providerRunId,
+            fallbackPlan: expect.arrayContaining([
+              benchmarkReport.providerModelCostRecords[1]!.provider.requestedModelId,
+              benchmarkReport.providerModelCostRecords[1]!.provider.actualModelId,
+            ]),
+            dataHandling: expect.objectContaining({
+              costTier: "unknown",
+              dataCollection: "unknown",
+              trainingUse: "unknown",
+            }),
+            providerPreset: expect.objectContaining({
+              slug: "openrouter/itotori-draft",
+              version: "2026-06-17",
+              configHash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              configSnapshot: expect.objectContaining({
+                source: "benchmark_report",
+                remotePresetSlug: "openrouter/itotori-draft",
+              }),
+            }),
           }),
-        }),
+        ]),
       }),
     );
+    expect(ledger.recordProviderRun).not.toHaveBeenCalled();
+  });
+
+  it("passes skipped benchmark runs with omitted timing to atomic repository ingestion", async () => {
+    const repository = repositoryFixture();
+    const service = new ItotoriProjectWorkflowService(
+      repository,
+      actor,
+      undefined,
+      ledgerFixture(),
+    );
+    const benchmarkReport = benchmarkReportFixture();
+    const [firstRun] = benchmarkReport.providerModelCostRecords;
+    if (firstRun === undefined) {
+      throw new Error("benchmark fixture must contain provider runs");
+    }
+    delete firstRun.completedAt;
+    delete firstRun.latencyMs;
+    firstRun.status = "skipped";
+    firstRun.tokenUsage = { tokenCountSource: "unknown" };
+    firstRun.cost = { costKind: "unknown", currency: "USD" };
+
+    await service.recordBenchmarkReport("project-test", {
+      localeBranchId: "locale-en-us",
+      benchmarkReport,
+    });
+
+    expect(repository.recordBenchmarkArtifactWithProviderLedger).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        providerRuns: expect.arrayContaining([
+          expect.objectContaining({
+            providerRunId: firstRun.providerRunId,
+            status: "skipped",
+            tokenUsage: { tokenCountSource: "unknown" },
+            cost: { costKind: "unknown", currency: "USD" },
+          }),
+        ]),
+      }),
+    );
+    const providerRuns = vi.mocked(repository.recordBenchmarkArtifactWithProviderLedger).mock
+      .calls[0]?.[1].providerRuns;
+    const mappedRun = providerRuns?.find((run) => run.providerRunId === firstRun.providerRunId);
+    expect(mappedRun).not.toHaveProperty("completedAt");
+    expect(mappedRun).not.toHaveProperty("latencyMs");
   });
 });
 
@@ -403,6 +456,7 @@ function repositoryFixture(): ItotoriProjectRepositoryPort {
     appendEvent: vi.fn(async () => {}),
     recordFinding: vi.fn(async () => {}),
     linkArtifact: vi.fn(async () => {}),
+    recordBenchmarkArtifactWithProviderLedger: vi.fn(async () => {}),
     getDashboardStatus: vi.fn(async () => dashboardStatusFixture),
     getRuntimeStatus: vi.fn(async () => runtimeStatusFixture),
     getDashboardDecisions: vi.fn(async () => dashboardDecisionsFixture),

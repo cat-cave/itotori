@@ -1031,6 +1031,31 @@ describe("localization bridge schema guards", () => {
     expect(() => assertBenchmarkReportV02(report)).toThrow(/completedAt.*startedAt/);
   });
 
+  it("accepts skipped benchmark provider records with omitted completion timing", () => {
+    const report = benchmarkReportV02Example();
+    const providerRecords = report.providerModelCostRecords as Array<Record<string, unknown>>;
+    const firstProviderRecord = asTestRecord(providerRecords[0], "first provider record");
+    delete firstProviderRecord.completedAt;
+    delete firstProviderRecord.latencyMs;
+    firstProviderRecord.status = "skipped";
+    firstProviderRecord.tokenUsage = { tokenCountSource: "unknown" };
+    firstProviderRecord.cost = { costKind: "unknown", currency: "USD" };
+    const costLedger = asTestRecord(report.costLedger, "benchmark cost ledger");
+    costLedger.includesUnknownCost = true;
+
+    expect(() => assertBenchmarkReportV02(report)).not.toThrow();
+  });
+
+  it("accepts benchmark provider records that omit completedAt and latencyMs", () => {
+    const report = benchmarkReportV02Example();
+    const providerRecords = report.providerModelCostRecords as Array<Record<string, unknown>>;
+    const firstProviderRecord = asTestRecord(providerRecords[0], "first provider record");
+    delete firstProviderRecord.completedAt;
+    delete firstProviderRecord.latencyMs;
+
+    expect(() => assertBenchmarkReportV02(report)).not.toThrow();
+  });
+
   it("rejects v0.2 bridge ids that are not UUID7", () => {
     const bridge = bridgeV02Example();
     bridge.bridgeId = "not-a-uuid";

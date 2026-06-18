@@ -320,33 +320,32 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     input: { localeBranchId?: string; benchmarkReport: BenchmarkReportV02 },
   ): Promise<BenchmarkRecordResult> {
     const report = input.benchmarkReport;
-    await this.repository.linkArtifact(this.actor, {
-      artifactId: report.benchmarkRunId,
-      projectId,
-      artifactKind: "benchmark_report",
-      metadata: {
-        schemaVersion: report.schemaVersion,
-        benchmarkName: report.benchmarkName,
-        status: report.status,
-        sourceLocale: report.sourceLocale,
-        targetLocale: report.targetLocale,
-        systemCount: report.systemsCompared.length,
-        findingCount: report.findingRecords.length,
-        penaltyTotal: report.penaltySummary.penaltyTotal,
+    await this.repository.recordBenchmarkArtifactWithProviderLedger(this.actor, {
+      artifact: {
+        artifactId: report.benchmarkRunId,
+        projectId,
+        artifactKind: "benchmark_report",
+        metadata: {
+          schemaVersion: report.schemaVersion,
+          benchmarkName: report.benchmarkName,
+          status: report.status,
+          sourceLocale: report.sourceLocale,
+          targetLocale: report.targetLocale,
+          systemCount: report.systemsCompared.length,
+          findingCount: report.findingRecords.length,
+          penaltyTotal: report.penaltySummary.penaltyTotal,
+        },
+        ...(input.localeBranchId === undefined ? {} : { localeBranchId: input.localeBranchId }),
       },
-      ...(input.localeBranchId === undefined ? {} : { localeBranchId: input.localeBranchId }),
-    });
-    for (const providerRun of report.providerModelCostRecords) {
-      await this.modelLedger?.recordProviderRun(
-        this.actor,
+      providerRuns: report.providerModelCostRecords.map((providerRun) =>
         providerRunLedgerInputFromBenchmark(
           projectId,
           input.localeBranchId,
           report.benchmarkRunId,
           providerRun,
         ),
-      );
-    }
+      ),
+    });
     return {
       benchmarkRunId: report.benchmarkRunId,
       artifactId: report.benchmarkRunId,
@@ -544,11 +543,6 @@ function providerRunLedgerInputFromBenchmark(
   benchmarkRunId: string,
   providerRun: BenchmarkReportV02["providerModelCostRecords"][number],
 ): ProviderRunLedgerInput {
-  const completedAt = requiredString(
-    providerRun.completedAt,
-    "providerModelCostRecords.completedAt",
-  );
-  const latencyMs = requiredNumber(providerRun.latencyMs, "providerModelCostRecords.latencyMs");
   const promptHash =
     providerRun.prompt.promptHash ??
     hashJson({
@@ -565,8 +559,8 @@ function providerRunLedgerInputFromBenchmark(
     systemId: providerRun.systemId,
     taskKind: providerRun.taskKind,
     startedAt: providerRun.startedAt,
-    completedAt,
-    latencyMs,
+    ...(providerRun.completedAt === undefined ? {} : { completedAt: providerRun.completedAt }),
+    ...(providerRun.latencyMs === undefined ? {} : { latencyMs: providerRun.latencyMs }),
     status: providerRun.status,
     provider: providerRun.provider,
     prompt: {
@@ -644,20 +638,6 @@ function providerPresetFromBenchmarkPrompt(
 
 function hashJson(value: JsonObject): string {
   return `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
-}
-
-function requiredString(value: string | undefined, label: string): string {
-  if (value === undefined) {
-    throw new Error(`${label} is required`);
-  }
-  return value;
-}
-
-function requiredNumber(value: number | undefined, label: string): number {
-  if (value === undefined) {
-    throw new Error(`${label} is required`);
-  }
-  return value;
 }
 
 function emptyCostReport(projectId: string): ProjectCostReport {

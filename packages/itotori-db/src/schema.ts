@@ -1341,8 +1341,8 @@ export const providerRuns = pgTable(
     taskKind: text("task_kind").notNull(),
     status: text("status").notNull(),
     startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
-    completedAt: timestamp("completed_at", { withTimezone: true }).notNull(),
-    latencyMs: integer("latency_ms").notNull(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    latencyMs: integer("latency_ms"),
     providerId: text("provider_id")
       .notNull()
       .references(() => modelProviders.providerId, { onDelete: "restrict" }),

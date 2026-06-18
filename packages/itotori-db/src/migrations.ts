@@ -104,6 +104,10 @@ const migrations = [
     id: "0011_catalog_crawler_jobs",
     file: "0011_catalog_crawler_jobs.sql",
   },
+  {
+    id: "0012_optional_provider_run_timing",
+    file: "0012_optional_provider_run_timing.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

@@ -10,6 +10,7 @@ import {
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
 import {
+  artifacts,
   costLedgerEntries,
   modelProviders,
   modelRegistry,
@@ -297,6 +298,120 @@ describe("ItotoriModelLedgerRepository", () => {
         reasoningTokens: 3,
         cachedInputTokens: 2,
         totalTokens: null,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("atomically records benchmark artifacts with skipped partial-timing provider runs", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+
+      await projectRepository.recordBenchmarkArtifactWithProviderLedger(localActor, {
+        artifact: {
+          artifactId: "benchmark-artifact-skipped",
+          projectId: "project-test",
+          localeBranchId: "locale-en-us",
+          artifactKind: "benchmark_report",
+          metadata: {
+            schemaVersion: "0.2.0",
+            benchmarkName: "skipped provider timing fixture",
+          },
+        },
+        providerRuns: [
+          runInput("run-skipped-partial-timing", "unknown", undefined, {
+            status: "skipped",
+            completedAt: undefined,
+            latencyMs: undefined,
+            tokenUsage: { tokenCountSource: "unknown" },
+            cost: { costKind: "unknown", currency: "USD" },
+          }),
+        ],
+      });
+
+      const report = await new ItotoriModelLedgerRepository(context.db).getProjectCostReport(
+        "project-test",
+      );
+      expect(report).toMatchObject({
+        runCount: 1,
+        unknownRunCount: 1,
+        includesUnknownCost: true,
+      });
+      expect(report.recentRuns[0]).toMatchObject({
+        providerRunId: "run-skipped-partial-timing",
+        status: "skipped",
+        costKind: "unknown",
+        tokenCountSource: "unknown",
+      });
+
+      const rows = await context.db.execute(sql`
+        select
+          (select count(*)::int from ${artifacts} where artifact_id = 'benchmark-artifact-skipped')
+            as artifact_count,
+          (select completed_at from ${providerRuns} where provider_run_id = 'run-skipped-partial-timing')
+            as completed_at,
+          (select latency_ms from ${providerRuns} where provider_run_id = 'run-skipped-partial-timing')
+            as latency_ms
+      `);
+      expect(rows.rows[0]).toMatchObject({
+        artifact_count: 1,
+        completed_at: null,
+        latency_ms: null,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rolls back benchmark artifacts and ledger rows when provider ledger ingestion conflicts", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      const ledger = new ItotoriModelLedgerRepository(context.db);
+      await ledger.recordProviderRun(localActor, runInput("run-conflict-existing", "zero", 0));
+
+      await expect(
+        projectRepository.recordBenchmarkArtifactWithProviderLedger(localActor, {
+          artifact: {
+            artifactId: "benchmark-artifact-rollback",
+            projectId: "project-test",
+            localeBranchId: "locale-en-us",
+            artifactKind: "benchmark_report",
+            metadata: {
+              schemaVersion: "0.2.0",
+              benchmarkName: "rollback fixture",
+            },
+          },
+          providerRuns: [
+            runInput("run-before-conflict", "zero", 0),
+            runInput("run-conflict-existing", "zero", 0),
+          ],
+        }),
+      ).rejects.toThrow();
+
+      const rows = await context.db.execute(sql`
+        select
+          (select count(*)::int from ${artifacts} where artifact_id = 'benchmark-artifact-rollback')
+            as artifact_count,
+          (select count(*)::int from ${providerRuns} where provider_run_id = 'run-before-conflict')
+            as rolled_back_provider_count,
+          (select count(*)::int from ${providerRuns} where provider_run_id = 'run-conflict-existing')
+            as existing_provider_count
+      `);
+      expect(rows.rows[0]).toMatchObject({
+        artifact_count: 0,
+        rolled_back_provider_count: 0,
+        existing_provider_count: 1,
+      });
+
+      const report = await ledger.getProjectCostReport("project-test");
+      expect(report).toMatchObject({
+        runCount: 1,
+        zeroRunCount: 1,
       });
     } finally {
       await context.close();
