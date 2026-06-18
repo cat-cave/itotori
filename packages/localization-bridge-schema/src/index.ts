@@ -2999,8 +2999,16 @@ function assertRuntimeCapabilityContractV02(
   const contract = asRecord(value, label);
   assertEqual(contract.contractVersion, BRIDGE_SCHEMA_VERSION_V02, `${label}.contractVersion`);
   assertEnum(contract.capabilityClass, RUNTIME_CAPABILITY_CLASSES_V02, `${label}.capabilityClass`);
-  assertEnum(contract.fidelityTierCeiling, RUNTIME_FIDELITY_TIERS_V02, `${label}.fidelityTierCeiling`);
-  assertEnum(contract.evidenceTierCeiling, RUNTIME_EVIDENCE_TIERS_V02, `${label}.evidenceTierCeiling`);
+  assertEnum(
+    contract.fidelityTierCeiling,
+    RUNTIME_FIDELITY_TIERS_V02,
+    `${label}.fidelityTierCeiling`,
+  );
+  assertEnum(
+    contract.evidenceTierCeiling,
+    RUNTIME_EVIDENCE_TIERS_V02,
+    `${label}.evidenceTierCeiling`,
+  );
   assertRuntimeCapabilityClassCeilingV02(
     contract.capabilityClass,
     contract.fidelityTierCeiling,
@@ -3040,16 +3048,15 @@ function assertRuntimeCapabilityContractV02(
       runtimeEvidenceTierRankV02(featureRecord.evidenceTierCeiling) >
         runtimeEvidenceTierRankV02(contract.evidenceTierCeiling)
     ) {
-      throw new Error(`${featureLabel}.evidenceTierCeiling must not exceed contract evidenceTierCeiling`);
+      throw new Error(
+        `${featureLabel}.evidenceTierCeiling must not exceed contract evidenceTierCeiling`,
+      );
     }
   }
   assertStringArray(contract.limitations, `${label}.limitations`);
 }
 
-function assertRuntimeFeatureSupportV02(
-  value: unknown,
-  label: string,
-): RuntimeFeatureSupportV02 {
+function assertRuntimeFeatureSupportV02(value: unknown, label: string): RuntimeFeatureSupportV02 {
   const feature = asRecord(value, label);
   assertEnum(feature.feature, RUNTIME_PLAYBACK_FEATURES_V02, `${label}.feature`);
   assertEnum(feature.status, RUNTIME_FEATURE_STATUSES_V02, `${label}.status`);
@@ -3061,7 +3068,9 @@ function assertRuntimeFeatureSupportV02(
     );
   }
   if (feature.status === "unsupported" && feature.evidenceTierCeiling !== undefined) {
-    throw new Error(`${label}.evidenceTierCeiling must be omitted for unsupported runtime features`);
+    throw new Error(
+      `${label}.evidenceTierCeiling must be omitted for unsupported runtime features`,
+    );
   }
   if (feature.status !== "unsupported" && feature.evidenceTierCeiling === undefined) {
     throw new Error(`${label}.evidenceTierCeiling is required for supported runtime features`);
@@ -3088,7 +3097,11 @@ function assertControlledPlaybackSessionV02(
     throw new Error(`${label}.adapterVersion must match RuntimeEvidenceReportV02.adapterVersion`);
   }
   assertEnum(session.capabilityClass, RUNTIME_CAPABILITY_CLASSES_V02, `${label}.capabilityClass`);
-  assertEnum(session.requestedOperation, RUNTIME_REQUESTED_OPERATIONS_V02, `${label}.requestedOperation`);
+  assertEnum(
+    session.requestedOperation,
+    RUNTIME_REQUESTED_OPERATIONS_V02,
+    `${label}.requestedOperation`,
+  );
   assertEnum(session.status, ["passed", "failed"] as const, `${label}.status`);
   if (session.status !== reportStatus) {
     throw new Error(`${label}.status must match RuntimeEvidenceReportV02.status`);

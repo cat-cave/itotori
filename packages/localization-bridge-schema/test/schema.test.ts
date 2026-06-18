@@ -1785,10 +1785,7 @@ describe("localization bridge schema guards", () => {
 
   it("rejects trace-requested controlled playback sessions with capture evidence", () => {
     const report = runtimeEvidenceV02Example();
-    const session = asTestRecord(
-      report.controlledPlaybackSession,
-      "controlled playback session",
-    );
+    const session = asTestRecord(report.controlledPlaybackSession, "controlled playback session");
     session.requestedOperation = "trace";
     report.branchEvents = [];
     report.recordings = [];
@@ -1800,10 +1797,7 @@ describe("localization bridge schema guards", () => {
 
   it("rejects runtime capability contracts that overclaim their class ceiling", () => {
     const report = runtimeEvidenceV02Example();
-    const capabilities = asTestRecord(
-      report.runtimeCapabilities,
-      "runtime capability contract",
-    );
+    const capabilities = asTestRecord(report.runtimeCapabilities, "runtime capability contract");
     capabilities.capabilityClass = "launch_capture";
     capabilities.evidenceTierCeiling = "E3";
 
@@ -1814,10 +1808,7 @@ describe("localization bridge schema guards", () => {
 
   it("rejects runtime evidence that uses a feature advertised as unsupported", () => {
     const report = runtimeEvidenceV02Example();
-    const capabilities = asTestRecord(
-      report.runtimeCapabilities,
-      "runtime capability contract",
-    );
+    const capabilities = asTestRecord(report.runtimeCapabilities, "runtime capability contract");
     const features = capabilities.features as Array<Record<string, unknown>>;
     const branchFeature = features.find((feature) => feature.feature === "branch_discovery");
     if (branchFeature === undefined) {
