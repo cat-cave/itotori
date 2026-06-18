@@ -139,6 +139,13 @@ const QUALITY_DETECTOR_KINDS: &[&str] = &[
     "schema_guard",
 ];
 
+type SystemScopedUuidRefs = HashMap<String, HashSet<String>>;
+
+struct QaAgentEvaluationRefs {
+    provider_run_ids: SystemScopedUuidRefs,
+    finding_ids: SystemScopedUuidRefs,
+}
+
 const LOCALIZATION_ADJUDICATION_STATES: &[&str] = &[
     "unreviewed",
     "confirmed",
@@ -1905,7 +1912,7 @@ pub fn validate_benchmark_report_v02(value: &Value) -> BridgeContractResult<()> 
     )?;
 
     validate_deterministic_qa_results(report, &system_ids, &finding_ids)?;
-    let (qa_agent_provider_ids, qa_agent_finding_ids) = validate_qa_agent_evaluations(
+    let qa_agent_refs = validate_qa_agent_evaluations(
         report,
         &system_ids,
         &provider_run_ids,
@@ -1915,7 +1922,8 @@ pub fn validate_benchmark_report_v02(value: &Value) -> BridgeContractResult<()> 
     )?;
     validate_human_evaluations(report, &system_ids, &finding_ids)?;
     for (provider_run_id, system_id) in &llm_qa_provider_run_system_ids {
-        if !qa_agent_provider_ids
+        if !qa_agent_refs
+            .provider_run_ids
             .get(system_id)
             .is_some_and(|ids| ids.contains(provider_run_id))
         {
@@ -1925,7 +1933,8 @@ pub fn validate_benchmark_report_v02(value: &Value) -> BridgeContractResult<()> 
         }
     }
     for (finding_id, system_id) in &llm_qa_finding_system_ids {
-        if !qa_agent_finding_ids
+        if !qa_agent_refs
+            .finding_ids
             .get(system_id)
             .is_some_and(|ids| ids.contains(finding_id))
         {
@@ -4502,10 +4511,7 @@ fn validate_qa_agent_evaluations(
     provider_run_system_ids: &HashMap<String, String>,
     finding_ids: &HashSet<String>,
     finding_system_ids: &HashMap<String, String>,
-) -> BridgeContractResult<(
-    HashMap<String, HashSet<String>>,
-    HashMap<String, HashSet<String>>,
-)> {
+) -> BridgeContractResult<QaAgentEvaluationRefs> {
     let evaluations = required_array(
         report,
         "qaAgentEvaluations",
@@ -4583,7 +4589,10 @@ fn validate_qa_agent_evaluations(
             &format!("{label}.limitations"),
         )?;
     }
-    Ok((qa_agent_provider_ids, qa_agent_finding_ids))
+    Ok(QaAgentEvaluationRefs {
+        provider_run_ids: qa_agent_provider_ids,
+        finding_ids: qa_agent_finding_ids,
+    })
 }
 
 fn validate_qa_agent_metrics(value: &Value, label: &str) -> BridgeContractResult<()> {
