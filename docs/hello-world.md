@@ -1,6 +1,8 @@
 # Hello World
 
-The hello world is a full fixture localization loop.
+The hello world is the current baseline integration guardrail. It is a full
+fixture localization loop that proves the monorepo wiring is real before the
+alpha proof workflow exists.
 
 ```sh
 just install
@@ -28,3 +30,16 @@ tutorial text, database/glossary-like terms, image text, and metadata text. The
 first dialogue unit remains `こんにちは、{player}。`; the fake provider outputs
 `Hello, {player}.`, and deterministic checks preserve protected placeholders and
 inline control markup across the expanded fixture.
+
+## Graduation Path
+
+The literal Hello World workflow is intentionally temporary. It should stay in
+CI until `ALPHA-007` implements the suite public fixture vertical command and
+`ALPHA-009` replaces the workflow with an alpha proof gate.
+
+The replacement must preserve the useful signal from this loop while removing
+placeholder-specific assertions. In particular, CI should stop proving only that
+`status=hello_world_passed` printed and should instead validate that bridge,
+patch, provider proof, benchmark, runtime observation, dashboard/read-model
+ingestion, and the SHARED-025 alpha proof manifest all refer to the same public
+fixture id and source revision.

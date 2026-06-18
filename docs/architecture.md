@@ -33,3 +33,9 @@ Vite+ and Vite Task provide the TypeScript/web workspace command surface and cac
 ## Current Hello World
 
 The first fixture loop intentionally avoids copyrighted game files. It proves the contract between the projects without claiming real-engine support or translation quality.
+
+The Hello World workflow remains the required integration guardrail until the
+alpha public fixture vertical command exists. After `ALPHA-007`, `ALPHA-009`
+promotes that command into an alpha proof CI workflow and retires the literal
+hello-world gate. The replacement proof must validate real cross-project
+artifact linkage instead of only a placeholder success line.

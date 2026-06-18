@@ -104,6 +104,13 @@ like "has concrete executable behavior" or "has schema validation." The node
 must say which behavior runs, which schemas or artifacts are produced, and which
 command or manual review proves the composed path.
 
+Baseline placeholder checks may exist only as temporary scaffolding. They should
+not be removed until a stronger integration proof exists, and their replacement
+node must name the exact artifact graph that becomes the new CI signal. For this
+suite, `ALPHA-009` is the handoff from the current DB-backed Hello World
+workflow to an alpha proof workflow that validates bridge, patch, provider,
+benchmark, runtime, dashboard/read-model, and SHARED-025 manifest linkage.
+
 Every node includes:
 
 - `id`: stable id such as `KAIFUU-007`.

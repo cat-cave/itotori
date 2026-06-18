@@ -12376,26 +12376,37 @@
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
-      "projects": ["suite", "itotori", "kaifuu", "utsushi", "shared"],
+      "projects": ["suite", "universal", "itotori", "kaifuu", "utsushi", "shared"],
       "parallelGroup": "alpha-integration",
-      "dependsOn": ["ALPHA-007", "SHARED-025", "ITOTORI-095", "KAIFUU-010", "UTSUSHI-119"],
-      "summary": "Replace the permanent literal Hello World workflow with a durable alpha proof workflow that preserves end-to-end integration evidence while removing toy branding and stale scaffold assumptions.",
+      "dependsOn": ["ALPHA-007", "SHARED-025", "ITOTORI-095", "KAIFUU-010", "UTSUSHI-119", "UNIV-013", "UNIV-016"],
+      "summary": "Replace the permanent literal Hello World workflow with a durable alpha proof workflow that preserves end-to-end integration evidence while removing toy branding, stale scaffold assumptions, and placeholder success-string assertions.",
       "deliverables": [
-        "CI workflow and just recipe for the public fixture alpha proof vertical",
+        ".github/workflows/alpha-proof.yml and root `just alpha-proof` recipe for the public fixture alpha proof vertical",
         "Deprecation or alias policy for the old hello recipe and GitHub Hello World workflow name",
-        "Documentation update explaining that integration proof is preserved through alpha proof artifacts rather than literal hello-world tests"
+        "Documentation update explaining that integration proof is preserved through alpha proof artifacts rather than literal hello-world tests",
+        "Regression tests or fixture assertions proving the alpha proof checks schema-valid artifact linkage instead of only a success string"
       ],
       "acceptanceCriteria": [
         "The primary CI integration workflow is named and documented as a suite alpha proof or public fixture vertical, not Hello World",
         "The replacement workflow runs the same or stronger e2e contract as ALPHA-007, including Itotori, Kaifuu, Utsushi, SHARED-025 artifacts, and semantic diagnostics",
+        "CI no longer passes solely because `status=hello_world_passed` prints; it validates bridge, patch, provider proof, benchmark, runtime observation, dashboard/read-model ingestion, and SHARED-025 manifest linkage for the same public fixture id and source revision.",
         "The old hello recipe is either removed after compatibility consumers are updated or retained only as a documented alias to the alpha proof command",
+        "The alpha proof workflow remains public-fixture-only, deterministic, and free of private corpora, raw provider payloads, live credentials, or private local paths.",
         "README, docs/hello-world.md or its successor, docs/ci-cache-and-affected.md, and roadmap baseline language no longer imply literal hello-world tests are the long-term proof",
         "GitHub Actions remain green after the workflow rename or replacement"
       ],
       "verification": [
         {
           "type": "command",
+          "value": "pnpm exec vp run alpha:public-fixture"
+        },
+        {
+          "type": "command",
           "value": "just alpha-proof"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
         },
         {
           "type": "command",
@@ -12409,6 +12420,8 @@
       "auditFocus": [
         "Integration proof weakened during hello-world retirement",
         "CI workflow renamed without artifact contract coverage",
+        "Alpha proof command skipping dashboard, provider, benchmark, runtime, or manifest linkage artifacts",
+        "Public CI accidentally requiring live providers or private local corpora",
         "Stale documentation still directing agents to literal hello-world scaffolding",
         "Compatibility alias hiding divergent behavior from the alpha proof command"
       ]
