@@ -1627,7 +1627,7 @@
     {
       "id": "SHARED-025",
       "title": "Alpha vertical proof manifest contract",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["shared", "itotori", "kaifuu", "utsushi", "suite"],
@@ -8770,7 +8770,7 @@
     {
       "id": "UTSUSHI-056",
       "title": "Runtime observation hook protocol",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "shared"],
@@ -11176,7 +11176,7 @@
     {
       "id": "UNIV-021",
       "title": "Spec-DAG implementability lint",
-      "status": "planned",
+      "status": "complete",
       "priority": "P0",
       "target": "alpha",
       "projects": ["universal"],
@@ -12354,7 +12354,7 @@
     {
       "id": "CATALOG-009",
       "title": "Fuzzy candidate generator with no auto-merge",
-      "status": "planned",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],

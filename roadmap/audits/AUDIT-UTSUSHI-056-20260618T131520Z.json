@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-056-20260618T131520Z",
+  "generatedAt": "2026-06-18T13:15:20Z",
+  "spec": {
+    "id": "UTSUSHI-056",
+    "title": "Runtime observation hook protocol",
+    "branch": "spec/utsushi-056",
+    "worktree": "/tmp/itotori-spec-utsushi-056",
+    "commit": "834c9b3e49262c249cfc6397669bf338a255f9d4"
+  },
+  "auditor": {
+    "name": "orchestrated-subagent-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final re-audit found no P0/P1/P2/P3 findings. RuntimeEvidenceReportV02 now includes typed observationHookEvents, TS and Rust validation reject invalid observation envelopes, observedAt requires a valid timestamp, and redaction rules reject blank entries.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}

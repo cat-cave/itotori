@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-009-20260618T131530Z",
+  "generatedAt": "2026-06-18T13:15:30Z",
+  "spec": {
+    "id": "CATALOG-009",
+    "title": "Fuzzy candidate generator with no auto-merge",
+    "branch": "spec/catalog-009",
+    "worktree": "/tmp/itotori-spec-catalog-009",
+    "commit": "672f9d3812c1c0f9ab361bcaaa9c0f84c42d649f"
+  },
+  "auditor": {
+    "name": "orchestrated-subagent-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Final re-audit found no P0/P1/P2/P3 findings. Exact-link parity includes source-record identifiers, local-detection ids do not suppress fuzzy review, malformed externalIds payloads return structured invalid diagnostics, and provenance mismatch has fixture coverage.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
