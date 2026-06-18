@@ -158,23 +158,31 @@ when the generated archive and key are both safe to redistribute.
 contract accepts local-only references using `local-secret:`, `os-keychain:`,
 `secret-manager:`, or `prompt:` schemes. Secret refs must be stable ids, not
 absolute paths, raw hex/base64/base64url keys, helper dump offsets, account ids,
-or machine-specific filenames.
+provider/account handles, or machine-specific filenames. Persisted ids use
+portable path-like labels and intentionally reject `:` and `@` inside the id
+body.
 
 `kaifuu-core` resolves key refs through `LocalKeyResolver` only after profile
 validation succeeds. The built-in resolver reads `local-secret:` ids from a
 caller-provided `LocalSecretStore` and returns adapter-facing bytes in
 `ResolvedKeyMaterial`; the byte wrapper is not serializable, redacts `Debug`
 output, and zeroes its buffer on drop. `os-keychain:`, `secret-manager:`, and
-`prompt:` refs remain typed helper-required results until an explicit external
-resolver is wired in. Missing refs, malformed refs, resolver-policy denials,
-invalid byte shapes, and helper-required schemes produce semantic diagnostics
-without echoing secret ids, paths, or key bytes.
+`prompt:` refs go through an explicit external resolver interface. The default
+implementation does not pretend to access an OS keychain, secret manager, or
+interactive prompt; it reports stable unavailable diagnostics, while injected
+prompt resolvers can report prompt-cancelled diagnostics. Missing refs,
+malformed refs, resolver-policy denials, invalid byte shapes, external-store
+unavailable refs, and prompt-cancelled refs produce semantic diagnostics without
+echoing secret ids, paths, or key bytes.
 
 The read-only directory store is intended for ignored local paths such as
 `.kaifuu/secrets.local/` or `fixtures/private-local/.../secrets.local/`. It
-rejects traversal, symlinks, non-files, and oversized material before reading.
-Public CI should use the fixture in-memory store (`fixture/...` refs) or other
-synthetic keys authored for the repository, never private local material.
+rejects traversal, symlink components, non-files, oversized material, and paths
+that canonicalize outside the configured root before reading. On Unix it also
+compares device/inode metadata after open; on platforms where `std` does not
+expose that metadata, the support boundary is reported explicitly. Public CI
+should use the fixture in-memory store (`fixture/...` refs) or other synthetic
+keys authored for the repository, never private local material.
 
 Adapters declare required key material through capability output
 `keyRequirements`, including the requirement id, material kind, byte length when

@@ -25,6 +25,8 @@ pub const SEMANTIC_KEY_VALIDATION_FAILED: &str = "kaifuu.key_validation_failed";
 pub const SEMANTIC_SECRET_REDACTED: &str = "kaifuu.secret_redacted";
 pub const SEMANTIC_MALFORMED_SECRET_REF: &str = "kaifuu.malformed_secret_ref";
 pub const SEMANTIC_SECRET_REF_OUT_OF_POLICY: &str = "kaifuu.secret_ref_out_of_policy";
+pub const SEMANTIC_EXTERNAL_SECRET_UNAVAILABLE: &str = "kaifuu.external_secret_unavailable";
+pub const SEMANTIC_PROMPT_CANCELLED: &str = "kaifuu.prompt_cancelled";
 pub const SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED: &str =
     "kaifuu.protected_executable_unsupported";
 pub const SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM: &str = "kaifuu.unsupported_layered_transform";
@@ -3277,6 +3279,8 @@ pub enum KeyResolutionStatus {
     Resolved,
     Missing,
     HelperRequired,
+    ExternalStoreUnavailable,
+    PromptCancelled,
     OutOfPolicy,
     Malformed,
     ValidationFailed,
@@ -3603,6 +3607,8 @@ pub enum KeyResolverErrorKind {
     MalformedRef,
     MissingSecret,
     HelperRequired,
+    ExternalStoreUnavailable,
+    PromptCancelled,
     OutOfPolicy,
     InvalidMaterial,
     ValidationFailed,
@@ -3687,6 +3693,26 @@ impl KeyResolverError {
         )
     }
 
+    pub fn external_store_unavailable(requirement_id: &str, scheme: SecretRefScheme) -> Self {
+        Self::new(
+            KeyResolverErrorKind::ExternalStoreUnavailable,
+            SemanticErrorCode::ExternalSecretUnavailable,
+            Some(requirement_id),
+            Some(scheme),
+            "external secret resolver interface is unavailable for this ref scheme",
+        )
+    }
+
+    pub fn prompt_cancelled(requirement_id: &str) -> Self {
+        Self::new(
+            KeyResolverErrorKind::PromptCancelled,
+            SemanticErrorCode::PromptCancelled,
+            Some(requirement_id),
+            Some(SecretRefScheme::Prompt),
+            "prompt secret resolver was cancelled before material was supplied",
+        )
+    }
+
     pub fn out_of_policy(
         requirement_id: Option<&str>,
         scheme: Option<SecretRefScheme>,
@@ -3739,8 +3765,8 @@ impl KeyResolverError {
         self.diagnostic.code
     }
 
-    pub fn diagnostic(&self) -> &KeyResolverDiagnostic {
-        &self.diagnostic
+    pub fn diagnostic(&self) -> KeyResolverDiagnostic {
+        self.redacted_diagnostic()
     }
 
     pub fn redacted_diagnostic(&self) -> KeyResolverDiagnostic {
@@ -3783,6 +3809,58 @@ impl std::error::Error for KeyResolverError {}
 
 pub trait LocalSecretStore {
     fn read_secret(&self, local_secret_id: &str) -> Result<Option<Vec<u8>>, KeyResolverError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalSecretRequest<'a> {
+    pub requirement_id: &'a str,
+    pub scheme: SecretRefScheme,
+    pub secret_ref_name: &'a str,
+    pub material_kind: KeyMaterialKind,
+    pub bytes: Option<u32>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum ExternalSecretResolution {
+    Material(Vec<u8>),
+    Unavailable,
+    PromptCancelled,
+}
+
+impl fmt::Debug for ExternalSecretResolution {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Material(material) => formatter
+                .debug_tuple("Material")
+                .field(&format_args!(
+                    "[REDACTED:{}; byte_len={}]",
+                    SEMANTIC_SECRET_REDACTED,
+                    material.len()
+                ))
+                .finish(),
+            Self::Unavailable => formatter.write_str("Unavailable"),
+            Self::PromptCancelled => formatter.write_str("PromptCancelled"),
+        }
+    }
+}
+
+pub trait ExternalSecretResolver {
+    fn resolve_external_secret(
+        &self,
+        request: ExternalSecretRequest<'_>,
+    ) -> Result<ExternalSecretResolution, KeyResolverError>;
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoExternalSecretResolver;
+
+impl ExternalSecretResolver for NoExternalSecretResolver {
+    fn resolve_external_secret(
+        &self,
+        _request: ExternalSecretRequest<'_>,
+    ) -> Result<ExternalSecretResolution, KeyResolverError> {
+        Ok(ExternalSecretResolution::Unavailable)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -3846,50 +3924,135 @@ impl LocalSecretDirectoryStore {
         self.max_secret_bytes = max_secret_bytes;
         self
     }
+
+    pub fn support_boundary(&self) -> &'static str {
+        local_secret_directory_support_boundary()
+    }
+
+    fn checked_secret_path(
+        &self,
+        local_secret_id: &str,
+    ) -> Result<Option<(PathBuf, fs::Metadata)>, KeyResolverError> {
+        let parts = safe_relative_path_parts(local_secret_id).map_err(|_| {
+            KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret ids must map to safe relative store paths",
+            )
+        })?;
+        let root_metadata = fs::symlink_metadata(&self.root).map_err(|_| {
+            KeyResolverError::store_unavailable(
+                "local secret store root metadata could not be read",
+            )
+        })?;
+        if root_metadata.file_type().is_symlink() || !root_metadata.file_type().is_dir() {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local secret store root must be a real directory",
+            ));
+        }
+        let root = fs::canonicalize(&self.root).map_err(|_| {
+            KeyResolverError::store_unavailable(
+                "local secret store root could not be canonicalized",
+            )
+        })?;
+        let mut candidate = self.root.clone();
+        for (index, part) in parts.iter().enumerate() {
+            candidate.push(part);
+            let metadata = match fs::symlink_metadata(&candidate) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+                Err(_) => {
+                    return Err(KeyResolverError::store_unavailable(
+                        "local secret store could not read secret metadata",
+                    ));
+                }
+            };
+            if metadata.file_type().is_symlink() {
+                return Err(KeyResolverError::out_of_policy(
+                    None,
+                    Some(SecretRefScheme::LocalSecret),
+                    "local-secret paths must not contain symlink components",
+                ));
+            }
+            let is_final = index + 1 == parts.len();
+            if is_final {
+                if !metadata.file_type().is_file() {
+                    return Err(KeyResolverError::out_of_policy(
+                        None,
+                        Some(SecretRefScheme::LocalSecret),
+                        "local-secret material must be stored in regular files",
+                    ));
+                }
+                if metadata.len() > self.max_secret_bytes as u64 {
+                    return Err(KeyResolverError::out_of_policy(
+                        None,
+                        Some(SecretRefScheme::LocalSecret),
+                        "local-secret material exceeds the configured byte limit",
+                    ));
+                }
+            } else if !metadata.file_type().is_dir() {
+                return Err(KeyResolverError::out_of_policy(
+                    None,
+                    Some(SecretRefScheme::LocalSecret),
+                    "local-secret parent components must be real directories",
+                ));
+            }
+        }
+        let canonical_candidate = fs::canonicalize(&candidate).map_err(|_| {
+            KeyResolverError::store_unavailable("local secret material could not be canonicalized")
+        })?;
+        if !canonical_candidate.starts_with(&root) {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret material must remain under the configured store root",
+            ));
+        }
+        let metadata = fs::metadata(&canonical_candidate).map_err(|_| {
+            KeyResolverError::store_unavailable("local secret material metadata could not be read")
+        })?;
+        Ok(Some((canonical_candidate, metadata)))
+    }
 }
 
 impl LocalSecretStore for LocalSecretDirectoryStore {
     fn read_secret(&self, local_secret_id: &str) -> Result<Option<Vec<u8>>, KeyResolverError> {
-        validate_safe_relative_path(local_secret_id).map_err(|_| {
-            KeyResolverError::out_of_policy(
-                None,
-                Some(SecretRefScheme::LocalSecret),
-                "local-secret ids must map to safe relative store paths",
-            )
-        })?;
-        let path = safe_join_relative(&self.root, local_secret_id).map_err(|_| {
-            KeyResolverError::out_of_policy(
-                None,
-                Some(SecretRefScheme::LocalSecret),
-                "local-secret ids must map to safe relative store paths",
-            )
-        })?;
-        let metadata = match fs::symlink_metadata(&path) {
-            Ok(metadata) => metadata,
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
-            Err(_) => {
-                return Err(KeyResolverError::store_unavailable(
-                    "local secret store could not read secret metadata",
-                ));
-            }
+        let Some((path, preopen_metadata)) = self.checked_secret_path(local_secret_id)? else {
+            return Ok(None);
         };
-        if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
-            return Err(KeyResolverError::out_of_policy(
-                None,
-                Some(SecretRefScheme::LocalSecret),
-                "local-secret material must be stored in regular files",
-            ));
-        }
-        if metadata.len() > self.max_secret_bytes as u64 {
+        let mut file = File::open(&path).map_err(|_| {
+            KeyResolverError::store_unavailable("local secret store could not open secret material")
+        })?;
+        let open_metadata = file.metadata().map_err(|_| {
+            KeyResolverError::store_unavailable("local secret store could not inspect open secret")
+        })?;
+        verify_opened_secret_matches_preopen_metadata(&preopen_metadata, &open_metadata)?;
+        if open_metadata.len() > self.max_secret_bytes as u64 {
             return Err(KeyResolverError::out_of_policy(
                 None,
                 Some(SecretRefScheme::LocalSecret),
                 "local-secret material exceeds the configured byte limit",
             ));
         }
-        fs::read(&path).map(Some).map_err(|_| {
-            KeyResolverError::store_unavailable("local secret store could not read secret material")
-        })
+        let mut material = Vec::new();
+        std::io::Read::by_ref(&mut file)
+            .take(self.max_secret_bytes as u64 + 1)
+            .read_to_end(&mut material)
+            .map_err(|_| {
+                KeyResolverError::store_unavailable(
+                    "local secret store could not read secret material",
+                )
+            })?;
+        if material.len() > self.max_secret_bytes {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret material exceeds the configured byte limit",
+            ));
+        }
+        Ok(Some(material))
     }
 }
 
@@ -3906,7 +4069,53 @@ impl fmt::Debug for LocalSecretDirectoryStore {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg(unix)]
+fn verify_opened_secret_matches_preopen_metadata(
+    preopen_metadata: &fs::Metadata,
+    open_metadata: &fs::Metadata,
+) -> Result<(), KeyResolverError> {
+    use std::os::unix::fs::MetadataExt;
+
+    if preopen_metadata.dev() == open_metadata.dev()
+        && preopen_metadata.ino() == open_metadata.ino()
+    {
+        Ok(())
+    } else {
+        Err(KeyResolverError::out_of_policy(
+            None,
+            Some(SecretRefScheme::LocalSecret),
+            "local-secret file changed while being opened",
+        ))
+    }
+}
+
+#[cfg(not(unix))]
+fn verify_opened_secret_matches_preopen_metadata(
+    _preopen_metadata: &fs::Metadata,
+    open_metadata: &fs::Metadata,
+) -> Result<(), KeyResolverError> {
+    if open_metadata.file_type().is_file() {
+        Ok(())
+    } else {
+        Err(KeyResolverError::out_of_policy(
+            None,
+            Some(SecretRefScheme::LocalSecret),
+            "local-secret opened material is not a regular file",
+        ))
+    }
+}
+
+#[cfg(unix)]
+fn local_secret_directory_support_boundary() -> &'static str {
+    "component symlink rejection, canonical root containment, regular-file checks, and Unix device/inode recheck after open; no real keychain or prompt backend"
+}
+
+#[cfg(not(unix))]
+fn local_secret_directory_support_boundary() -> &'static str {
+    "component symlink rejection, canonical root containment, and regular-file checks; final device/inode recheck is unavailable on this platform in std"
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct KeyResolverPolicy {
     pub allowed_local_secret_prefixes: Vec<String>,
 }
@@ -3939,32 +4148,72 @@ impl Default for KeyResolverPolicy {
     }
 }
 
-pub struct LocalKeyResolver<S> {
+impl fmt::Debug for KeyResolverPolicy {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("KeyResolverPolicy")
+            .field(
+                "allowed_local_secret_prefixes",
+                &format_args!("[REDACTED:{}]", SEMANTIC_SECRET_REDACTED),
+            )
+            .field(
+                "allowed_local_secret_prefix_count",
+                &self.allowed_local_secret_prefixes.len(),
+            )
+            .finish()
+    }
+}
+
+pub struct LocalKeyResolver<S, E = NoExternalSecretResolver> {
     store: S,
+    external_resolver: E,
     policy: KeyResolverPolicy,
 }
 
-impl<S> fmt::Debug for LocalKeyResolver<S>
+impl<S, E> fmt::Debug for LocalKeyResolver<S, E>
 where
     S: fmt::Debug,
+    E: fmt::Debug,
 {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_struct("LocalKeyResolver")
             .field("store", &self.store)
+            .field("external_resolver", &self.external_resolver)
             .field("policy", &self.policy)
             .finish()
     }
 }
 
-impl<S> LocalKeyResolver<S>
+impl<S> LocalKeyResolver<S, NoExternalSecretResolver>
 where
     S: LocalSecretStore,
 {
     pub fn new(store: S) -> Self {
         Self {
             store,
+            external_resolver: NoExternalSecretResolver,
             policy: KeyResolverPolicy::default(),
+        }
+    }
+}
+
+impl<S, E> LocalKeyResolver<S, E>
+where
+    S: LocalSecretStore,
+    E: ExternalSecretResolver,
+{
+    pub fn with_external_resolver<NextExternalResolver>(
+        self,
+        external_resolver: NextExternalResolver,
+    ) -> LocalKeyResolver<S, NextExternalResolver>
+    where
+        NextExternalResolver: ExternalSecretResolver,
+    {
+        LocalKeyResolver {
+            store: self.store,
+            external_resolver,
+            policy: self.policy,
         }
     }
 
@@ -4019,10 +4268,28 @@ where
                 SecretRefScheme::OsKeychain
                 | SecretRefScheme::SecretManager
                 | SecretRefScheme::Prompt => {
-                    return Err(KeyResolverError::helper_required(
-                        &requirement.requirement_id,
-                        scheme,
-                    ));
+                    match self
+                        .external_resolver
+                        .resolve_external_secret(ExternalSecretRequest {
+                            requirement_id: &requirement.requirement_id,
+                            scheme,
+                            secret_ref_name: requirement.secret_ref.name(),
+                            material_kind: requirement.kind,
+                            bytes: requirement.bytes,
+                        })? {
+                        ExternalSecretResolution::Material(material) => material,
+                        ExternalSecretResolution::Unavailable => {
+                            return Err(KeyResolverError::external_store_unavailable(
+                                &requirement.requirement_id,
+                                scheme,
+                            ));
+                        }
+                        ExternalSecretResolution::PromptCancelled => {
+                            return Err(KeyResolverError::prompt_cancelled(
+                                &requirement.requirement_id,
+                            ));
+                        }
+                    }
                 }
             };
             let material = normalize_key_material(requirement, scheme, raw_material)?;
@@ -4200,6 +4467,10 @@ pub enum SemanticErrorCode {
     MalformedSecretRef,
     #[serde(rename = "kaifuu.secret_ref_out_of_policy")]
     SecretRefOutOfPolicy,
+    #[serde(rename = "kaifuu.external_secret_unavailable")]
+    ExternalSecretUnavailable,
+    #[serde(rename = "kaifuu.prompt_cancelled")]
+    PromptCancelled,
     #[serde(rename = "kaifuu.protected_executable_unsupported")]
     ProtectedExecutableUnsupported,
     #[serde(rename = "kaifuu.unsupported_layered_transform")]
@@ -4230,6 +4501,8 @@ impl SemanticErrorCode {
             Self::SecretRedacted => SEMANTIC_SECRET_REDACTED,
             Self::MalformedSecretRef => SEMANTIC_MALFORMED_SECRET_REF,
             Self::SecretRefOutOfPolicy => SEMANTIC_SECRET_REF_OUT_OF_POLICY,
+            Self::ExternalSecretUnavailable => SEMANTIC_EXTERNAL_SECRET_UNAVAILABLE,
+            Self::PromptCancelled => SEMANTIC_PROMPT_CANCELLED,
             Self::ProtectedExecutableUnsupported => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
             Self::UnsupportedLayeredTransform => SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM,
             Self::MissingContainerCapability => SEMANTIC_MISSING_CONTAINER_CAPABILITY,
@@ -4451,7 +4724,7 @@ fn is_valid_secret_ref(value: &str) -> bool {
         return false;
     }
     name.chars().all(|character| {
-        character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | '/' | ':' | '@')
+        character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.' | '/')
     })
 }
 
@@ -10530,6 +10803,42 @@ mod tests {
         })
     }
 
+    #[derive(Debug, Clone)]
+    struct StubExternalSecretResolver {
+        resolution: ExternalSecretResolution,
+    }
+
+    impl ExternalSecretResolver for StubExternalSecretResolver {
+        fn resolve_external_secret(
+            &self,
+            _request: ExternalSecretRequest<'_>,
+        ) -> Result<ExternalSecretResolution, KeyResolverError> {
+            Ok(self.resolution.clone())
+        }
+    }
+
+    fn key_profile_with_secret_ref(secret_ref: &str) -> GameProfile {
+        let mut profile = valid_key_profile_value();
+        profile["keyRequirements"][0]["secretRef"] = serde_json::json!(secret_ref);
+        serde_json::from_value(profile).unwrap()
+    }
+
+    fn assert_key_resolver_error(
+        result: Result<Option<Vec<u8>>, KeyResolverError>,
+        expected_kind: KeyResolverErrorKind,
+        expected_code: SemanticErrorCode,
+    ) {
+        let error = result.unwrap_err();
+        assert_eq!(error.kind(), expected_kind);
+        assert_eq!(error.semantic_code(), expected_code);
+        let diagnostic = error.diagnostic();
+        assert_eq!(diagnostic.kind, expected_kind);
+        assert_eq!(diagnostic.code, expected_code);
+        let serialized = serde_json::to_string(&diagnostic).unwrap();
+        assert!(!serialized.contains("/tmp"));
+        assert!(!serialized.contains("private"));
+    }
+
     #[test]
     fn profile_validation_accepts_key_profile_secret_refs_and_proofs() {
         let profile = valid_key_profile_value();
@@ -10636,6 +10945,9 @@ mod tests {
         let store = InMemoryLocalSecretStore::new()
             .with_secret("fixture/password", raw_secret.as_bytes().to_vec());
         assert!(!format!("{store:?}").contains(raw_secret));
+        let policy = KeyResolverPolicy::allow_prefixes(["private/customer/account"]);
+        assert!(!format!("{policy:?}").contains("customer"));
+        assert!(!format!("{resolver:?}").contains(raw_secret));
         assert!(
             !format!(
                 "{:?}",
@@ -10694,15 +11006,31 @@ mod tests {
         );
         assert!(!format!("{policy_error:?}").contains("private/siglus/secondary-key"));
 
-        let mut prompt_profile = valid_key_profile_value();
-        prompt_profile["keyRequirements"][0]["secretRef"] =
-            serde_json::json!("prompt:fixture/manual-key");
-        let prompt_profile: GameProfile = serde_json::from_value(prompt_profile).unwrap();
-        let helper_error = empty_resolver.resolve_profile(&prompt_profile).unwrap_err();
-        assert_eq!(helper_error.kind(), KeyResolverErrorKind::HelperRequired);
+        let os_keychain_profile = key_profile_with_secret_ref("os-keychain:fixture/manual-key");
+        let external_error = empty_resolver
+            .resolve_profile(&os_keychain_profile)
+            .unwrap_err();
         assert_eq!(
-            helper_error.semantic_code(),
-            SemanticErrorCode::HelperUnavailable
+            external_error.kind(),
+            KeyResolverErrorKind::ExternalStoreUnavailable
+        );
+        assert_eq!(
+            external_error.semantic_code(),
+            SemanticErrorCode::ExternalSecretUnavailable
+        );
+
+        let prompt_profile = key_profile_with_secret_ref("prompt:fixture/manual-key");
+        let prompt_resolver = LocalKeyResolver::new(InMemoryLocalSecretStore::new())
+            .with_external_resolver(StubExternalSecretResolver {
+                resolution: ExternalSecretResolution::PromptCancelled,
+            });
+        let prompt_error = prompt_resolver
+            .resolve_profile(&prompt_profile)
+            .unwrap_err();
+        assert_eq!(prompt_error.kind(), KeyResolverErrorKind::PromptCancelled);
+        assert_eq!(
+            prompt_error.semantic_code(),
+            SemanticErrorCode::PromptCancelled
         );
 
         let invalid_resolver = LocalKeyResolver::new(
@@ -10717,6 +11045,26 @@ mod tests {
         assert_eq!(
             invalid_error.semantic_code(),
             SemanticErrorCode::KeyValidationFailed
+        );
+    }
+
+    #[test]
+    fn external_secret_resolver_interface_can_supply_adapter_bytes_without_local_store() {
+        let profile = key_profile_with_secret_ref("secret-manager:fixture/siglus/secondary-key");
+        let resolver = LocalKeyResolver::new(InMemoryLocalSecretStore::new())
+            .with_external_resolver(StubExternalSecretResolver {
+                resolution: ExternalSecretResolution::Material((0_u8..16).collect()),
+            });
+
+        let resolved = resolver.resolve_profile(&profile).unwrap();
+
+        assert_eq!(
+            resolved.get_bytes("siglus-secondary-key").unwrap(),
+            (0_u8..16).collect::<Vec<_>>().as_slice()
+        );
+        assert_eq!(
+            resolved.proof_records()[0].secret_ref_scheme,
+            SecretRefScheme::SecretManager
         );
     }
 
@@ -10746,6 +11094,110 @@ mod tests {
             (0_u8..16).collect::<Vec<_>>().as_slice()
         );
         assert!(!format!("{resolver:?}").contains(&root.display().to_string()));
+    }
+
+    #[test]
+    fn local_secret_directory_store_rejects_non_file_oversized_and_traversal_refs() {
+        let root = temp_dir("local-secret-store-negative");
+        fs::create_dir_all(root.join("fixture").join("dir-secret")).unwrap();
+        fs::write(root.join("fixture").join("too-large"), b"abc").unwrap();
+        let store = LocalSecretDirectoryStore::new(&root).with_max_secret_bytes(2);
+
+        assert_key_resolver_error(
+            store.read_secret("fixture/dir-secret"),
+            KeyResolverErrorKind::OutOfPolicy,
+            SemanticErrorCode::SecretRefOutOfPolicy,
+        );
+        assert_key_resolver_error(
+            store.read_secret("fixture/too-large"),
+            KeyResolverErrorKind::OutOfPolicy,
+            SemanticErrorCode::SecretRefOutOfPolicy,
+        );
+        assert_key_resolver_error(
+            store.read_secret("../outside"),
+            KeyResolverErrorKind::OutOfPolicy,
+            SemanticErrorCode::SecretRefOutOfPolicy,
+        );
+
+        assert!(store.read_secret("fixture/missing").unwrap().is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn local_secret_directory_store_rejects_final_and_intermediate_symlinks() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir("local-secret-store-symlink");
+        let outside = temp_dir("local-secret-store-symlink-outside");
+        fs::create_dir_all(root.join("fixture")).unwrap();
+        fs::create_dir_all(outside.join("escape")).unwrap();
+        fs::write(
+            outside.join("escape").join("secondary-key"),
+            (0_u8..16).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        fs::write(
+            root.join("fixture").join("real-key"),
+            (0_u8..16).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        symlink(
+            outside.join("escape"),
+            root.join("fixture").join("linked-dir"),
+        )
+        .unwrap();
+        symlink(
+            root.join("fixture").join("real-key"),
+            root.join("fixture").join("linked-key"),
+        )
+        .unwrap();
+
+        let store = LocalSecretDirectoryStore::new(&root);
+        assert_key_resolver_error(
+            store.read_secret("fixture/linked-dir/secondary-key"),
+            KeyResolverErrorKind::OutOfPolicy,
+            SemanticErrorCode::SecretRefOutOfPolicy,
+        );
+        assert_key_resolver_error(
+            store.read_secret("fixture/linked-key"),
+            KeyResolverErrorKind::OutOfPolicy,
+            SemanticErrorCode::SecretRefOutOfPolicy,
+        );
+        assert!(store.support_boundary().contains("device/inode"));
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn local_secret_directory_store_documents_non_unix_final_open_boundary() {
+        let store = LocalSecretDirectoryStore::new("ignored");
+
+        assert!(
+            store
+                .support_boundary()
+                .contains("unavailable on this platform")
+        );
+    }
+
+    #[test]
+    fn profile_validation_rejects_account_shaped_secret_ref_names() {
+        for secret_ref in [
+            "local-secret:provider:customer/key",
+            "local-secret:customer@example/key",
+        ] {
+            let mut profile = valid_key_profile_value();
+            profile["keyRequirements"][0]["secretRef"] = serde_json::json!(secret_ref);
+            let validation = validate_profile_value(&profile);
+
+            assert_eq!(validation.status, OperationStatus::Failed);
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.code == "invalid_secret_ref"
+                        && failure.field == "keyRequirements.0.secretRef"
+                }),
+                "missing account-shaped secretRef failure for {secret_ref}: {:#?}",
+                validation.failures
+            );
+        }
     }
 
     #[test]
