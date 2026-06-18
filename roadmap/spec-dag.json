@@ -17488,7 +17488,7 @@
     },
     {
       "id": "CATALOG-065",
-      "status": "in_progress",
+      "status": "complete",
       "title": "Source adapter idempotent fact import contract",
       "priority": "P1",
       "target": "alpha",
@@ -17521,10 +17521,7 @@
         "Adapter fact duplication",
         "Generic crawler absorbing source-specific behavior",
         "Crash-window idempotency"
-      ],
-      "owner": "orchestrator-20260618-wave6",
-      "branch": "spec/catalog-065",
-      "worktree": "/tmp/itotori-spec-catalog-065"
+      ]
     },
     {
       "id": "CATALOG-066",
@@ -17800,6 +17797,182 @@
         "Temporary scripts retained after durable equivalents exist",
         "Lossy conversion from market research records to typed facts",
         "Private or credential-bearing artifacts committed as fixtures"
+      ]
+    },
+    {
+      "id": "CATALOG-072",
+      "title": "Catalog replay DB-backed local gate",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-065", "UNIV-013"],
+      "summary": "Add an explicit DB-backed verification target for catalog source-adapter replay and idempotency tests so local runs cannot confuse skipped DB tests with full replay coverage.",
+      "deliverables": [
+        "Catalog replay DB-backed just recipe or package script",
+        "Skip artifact when DATABASE_URL is unavailable",
+        "Docs linking CATALOG-065 verification to the DB-backed command"
+      ],
+      "acceptanceCriteria": [
+        "The documented CATALOG-065 local gate runs catalog replay repository tests against a disposable database.",
+        "Runs without DATABASE_URL emit a machine-readable skipped artifact and cannot be mistaken for full persisted replay verification.",
+        "CI or a documented local recipe proves the DB-backed replay path with no private data."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci-itotori"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": [
+        "Skipped DB tests reported as replay proof",
+        "Disposable database recipe drift",
+        "Catalog replay tests coupled to private data"
+      ]
+    },
+    {
+      "id": "CATALOG-073",
+      "title": "Multi-fact catalog replay identity coverage",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-065"],
+      "summary": "Extend catalog replay fixtures beyond one fact per step so deterministic fact counts, duplicate identities, and per-fact identity drift are covered.",
+      "deliverables": [
+        "Multi-fact replay fixture",
+        "Duplicate fact identity negative fixture",
+        "Persisted fact-count drift regression"
+      ],
+      "acceptanceCriteria": [
+        "A single crawler step with multiple facts persists every expected fact identity exactly once.",
+        "Duplicate source fact identities inside one step fail with semantic diagnostics.",
+        "Replay validation compares persisted fact identities and counts against expected deterministic identities rather than only adapter-declared counts."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- catalog-crawler-runner.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": [
+        "One-fact fixture masking duplicate behavior",
+        "Fact-count drift between replay records and persistence",
+        "Per-fact identity loss across catalog sources"
+      ]
+    },
+    {
+      "id": "CATALOG-074",
+      "title": "Catalog ingest failure-injection harness",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-065"],
+      "summary": "Add a real failure-injection harness for the crash window after source fact ingestion and before crawler step commit.",
+      "deliverables": [
+        "Runner-level failure injection after ingest proof and before commitStepImport",
+        "DB-backed replay regression using the injected crash point",
+        "Durable marker and upsert strategy coverage through the same crash window"
+      ],
+      "acceptanceCriteria": [
+        "A forced crash between fact ingestion and commitStepImport can be replayed without duplicate facts.",
+        "The test uses runner hooks rather than manually seeding rows outside the ingest path.",
+        "Both upsert and durable-marker strategies are exercised through the failure injection point."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- catalog-crawler-runner.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": [
+        "Manual row seeding mistaken for crash-window proof",
+        "Crash hook placed after checkpoint commit",
+        "Replay duplicating durable source facts"
+      ]
+    },
+    {
+      "id": "CATALOG-075",
+      "title": "Catalog adapter idempotency docs precision",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-065"],
+      "summary": "Clarify catalog source-adapter idempotency docs so the generic crawler contract is described as safe only when importers implement and verify the declared persistence strategy.",
+      "deliverables": [
+        "Updated source adapter contract docs",
+        "Examples for upsert and durable-marker strategies",
+        "Explicit warning against self-attested import proofs"
+      ],
+      "acceptanceCriteria": [
+        "Docs do not imply the generic crawler alone makes crash replay safe.",
+        "Each strategy example names the persisted evidence required before checkpoint advance.",
+        "Future adapter specs can cite the docs without inheriting ambiguous idempotency language."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Docs overstating generic crawler guarantees",
+        "Strategy examples omitting persisted evidence",
+        "Adapter specs citing ambiguous language"
+      ]
+    },
+    {
+      "id": "CATALOG-076",
+      "title": "Catalog replay validation artifact",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-065"],
+      "summary": "Persist or emit catalog replay validation records so source-adapter acceptance can be audited outside the in-memory test process.",
+      "deliverables": [
+        "Replay validation JSON artifact or DB table",
+        "Schema for source id, fixture id, stable import key, fact count, and fact identities",
+        "Tests for redaction and deterministic output"
+      ],
+      "acceptanceCriteria": [
+        "A replay run emits durable validation evidence with source id, fixture id, stable import key, fact count, and fact identities.",
+        "The artifact or table is deterministic and contains no private local paths or raw source payloads.",
+        "Adapter acceptance can cite the replay artifact instead of only test logs."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- catalog-crawler-runner.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Replay proof available only inside test memory",
+        "Private source data leakage in artifacts",
+        "Nondeterministic replay evidence"
       ]
     },
     {

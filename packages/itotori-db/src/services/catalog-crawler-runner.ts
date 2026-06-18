@@ -632,7 +632,9 @@ function validatePersistedFactImportEvidence<TFact>(
   }
   const expectedFactIdentities = createExpectedFactIdentities(adapter, step);
   if (!Array.isArray(evidence.factIdentities)) {
-    throw new Error(`${adapter.adapterName} persisted import evidence factIdentities must be an array`);
+    throw new Error(
+      `${adapter.adapterName} persisted import evidence factIdentities must be an array`,
+    );
   }
   if (!sameStringList(evidence.factIdentities, expectedFactIdentities)) {
     throw new Error(`${adapter.adapterName} persisted import evidence factIdentities mismatch`);

@@ -1,0 +1,222 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-065-20260618T200305Z",
+  "generatedAt": "2026-06-18T20:03:05Z",
+  "spec": {
+    "id": "CATALOG-065",
+    "title": "Source adapter idempotent fact import contract",
+    "branch": "spec/catalog-065",
+    "worktree": "/tmp/itotori-spec-catalog-065",
+    "commit": "60247ca"
+  },
+  "auditor": {
+    "name": "catalog-065-idempotency-reaudit-wave",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audits found P1 blockers around self-attested import proofs, unstable durable marker identity, and already-imported checkpoint skips. Repair commits 2b27fc7, 6dabb16, and 60247ca fixed those blockers. The final focused re-audit found no remaining P0/P1/P2/P3 findings; earlier non-blocking audit findings were recorded as CATALOG-072 through CATALOG-076.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 3,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "CATALOG-065-F001",
+      "CATALOG-065-F002",
+      "CATALOG-065-F003",
+      "CATALOG-065-F004",
+      "CATALOG-065-F005"
+    ]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-065-F001",
+      "severity": "P2",
+      "title": "Catalog replay verification can pass locally without DB-backed tests",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "packages/itotori-db/scripts/run-tests.mjs",
+          "line": 24
+        },
+        {
+          "path": "roadmap/spec-dag.json",
+          "line": 17490
+        }
+      ],
+      "description": "The DB package test command exits successfully with a skip artifact when DATABASE_URL is absent, while CATALOG-065 relies on DB-backed replay/idempotency behavior for its strongest proof.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Independent audit noted that GitHub CI sets DATABASE_URL, but the public DAG command alone can be run locally without persisted replay tests executing."
+        }
+      ],
+      "impact": "Local verification can be mistaken for full persisted replay coverage when DB tests were skipped.",
+      "actionableAcceptanceCriteria": [
+        "A documented CATALOG-065 local gate runs replay repository tests against a disposable database.",
+        "Runs without DATABASE_URL emit an explicit machine-readable skipped artifact."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "CATALOG-072",
+          "acceptanceCriteria": [
+            "The documented CATALOG-065 local gate runs catalog replay repository tests against a disposable database."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "CATALOG-065-F002",
+      "severity": "P2",
+      "title": "Replay identity coverage is narrow for multi-fact steps",
+      "category": "test",
+      "locations": [
+        {
+          "path": "fixtures/catalog-crawler-vndb/replay.json",
+          "line": 26
+        },
+        {
+          "path": "apps/itotori/test/catalog-crawler-runner.test.ts",
+          "line": 192
+        }
+      ],
+      "description": "Current fixtures and tests focus on one-fact-per-step behavior, leaving multi-fact, duplicate identity, and count drift cases for later hardening.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit compared replay fixture shape and fact-count assertions against future DLsite, Steam, IGDB, and Wikidata importer needs."
+        }
+      ],
+      "impact": "Future source adapters with several facts per crawler step could drift without targeted coverage.",
+      "actionableAcceptanceCriteria": [
+        "A multi-fact replay fixture persists each expected fact identity exactly once.",
+        "Duplicate source fact identities inside one step fail with semantic diagnostics."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "CATALOG-073",
+          "acceptanceCriteria": [
+            "Duplicate source fact identities inside one step fail with semantic diagnostics."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "CATALOG-065-F003",
+      "severity": "P2",
+      "title": "Crash-window replay should use runner failure injection",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/test/catalog-crawler-repository.test.ts",
+          "line": 568
+        }
+      ],
+      "description": "CATALOG-065 now verifies persisted evidence before checkpoint advance, but a future hardening node should exercise a real runner failure injection between ingest and commit instead of relying only on seeded state.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Earlier audit flagged manually seeded pre-crash rows as weaker than a runner-level crash hook."
+        }
+      ],
+      "impact": "The exact crash window can regress if only manually arranged state is tested.",
+      "actionableAcceptanceCriteria": [
+        "A forced crash between fact ingestion and commitStepImport can be replayed without duplicate facts.",
+        "The test uses runner hooks rather than manually seeding rows outside the ingest path."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "CATALOG-074",
+          "acceptanceCriteria": [
+            "A forced crash between fact ingestion and commitStepImport can be replayed without duplicate facts."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "CATALOG-065-F004",
+      "severity": "P3",
+      "title": "Catalog idempotency docs should avoid overclaiming generic crawler safety",
+      "category": "documentation",
+      "locations": [
+        {
+          "path": "docs/itotori-catalog-source-adapter-contract.md",
+          "line": 13
+        }
+      ],
+      "description": "Docs should state that crash replay is safe when importers implement and verify the declared persisted evidence strategy, not because the generic crawler alone provides safety.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit found wording that could be read as a generic guarantee rather than a strategy-specific contract."
+        }
+      ],
+      "impact": "Future adapter specs may cite ambiguous docs and omit strategy-specific persisted evidence.",
+      "actionableAcceptanceCriteria": [
+        "Docs do not imply the generic crawler alone makes crash replay safe.",
+        "Each strategy example names the persisted evidence required before checkpoint advance."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "CATALOG-075",
+          "acceptanceCriteria": [
+            "Each strategy example names the persisted evidence required before checkpoint advance."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "CATALOG-065-F005",
+      "severity": "P3",
+      "title": "Replay validation is not yet a durable artifact",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/services/catalog-crawler-runner.ts",
+          "line": 556
+        }
+      ],
+      "description": "Replay validation exists in runner/test behavior but does not yet emit a durable artifact or table that adapter acceptance can audit outside the process.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit requested source id, fixture id, stable import key, fact count, and fact identities as durable replay evidence."
+        }
+      ],
+      "impact": "Adapter acceptance depends on test logs rather than reusable validation evidence.",
+      "actionableAcceptanceCriteria": [
+        "A replay run emits durable validation evidence with source id, fixture id, stable import key, fact count, and fact identities."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "CATALOG-076",
+          "acceptanceCriteria": [
+            "A replay run emits durable validation evidence with source id, fixture id, stable import key, fact count, and fact identities."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    }
+  ]
+}

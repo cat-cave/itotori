@@ -694,7 +694,11 @@ describe("ItotoriCatalogCrawlerRepository", () => {
           workerId: "worker-durable-wrong",
           mode: "recorded_fixture",
           ingestStep: async (ingestContext) => {
-            await persistDurableMarker(context, ingestContext, `${ingestContext.stableImportKey}:wrong`);
+            await persistDurableMarker(
+              context,
+              ingestContext,
+              `${ingestContext.stableImportKey}:wrong`,
+            );
             return importProof(ingestContext);
           },
           verifyFactImport: verifyPersistedDurableMarkers(context),
@@ -755,7 +759,9 @@ describe("ItotoriCatalogCrawlerRepository", () => {
   });
 });
 
-async function createCatalogFactImportsTable(context: Awaited<ReturnType<typeof isolatedMigratedContext>>) {
+async function createCatalogFactImportsTable(
+  context: Awaited<ReturnType<typeof isolatedMigratedContext>>,
+) {
   await context.pool.query(`
     create table catalog_fact_imports (
       source_id text primary key,
@@ -822,7 +828,10 @@ function verifyPersistedFactImports(
     if (rows.rowCount === 0) {
       return null;
     }
-    return persistedEvidence(proof, rows.rows.map((row) => row.fact_identity));
+    return persistedEvidence(
+      proof,
+      rows.rows.map((row) => row.fact_identity),
+    );
   };
 }
 
