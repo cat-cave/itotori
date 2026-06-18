@@ -16,6 +16,8 @@ import {
   type ItotoriCatalogCrawlerRepositoryPort,
   type CatalogConflictReviewFilter,
   type CatalogConflictReviewReadModel,
+  type CatalogCompletenessBenchmarkPools,
+  type CatalogCompletenessPoolFilter,
 } from "@itotori/db";
 import {
   ItotoriAuthorizationService,
@@ -36,6 +38,9 @@ export type ItotoriApplicationServices = {
     catalogConflictReview(
       filter?: CatalogConflictReviewFilter,
     ): Promise<CatalogConflictReviewReadModel>;
+    catalogCompletenessBenchmarkPools(
+      filter?: CatalogCompletenessPoolFilter,
+    ): Promise<CatalogCompletenessBenchmarkPools>;
   };
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
@@ -82,6 +87,8 @@ export async function withDatabaseItotoriServices<T>(
       catalogRepository: {
         catalogConflictReview: (filter) =>
           catalogRepository.catalogConflictReview(localUserActor, filter),
+        catalogCompletenessBenchmarkPools: (filter) =>
+          catalogRepository.catalogCompletenessBenchmarkPools(localUserActor, filter),
       },
       catalogExactExternalIdLinker: new ItotoriCatalogExactExternalIdLinkerService(
         catalogRepository,

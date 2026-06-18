@@ -23,6 +23,7 @@ import { ItotoriProjectWorkflowService } from "../src/services/project-workflow.
 import {
   benchmarkReportFixture,
   bridgeFixture,
+  catalogCompletenessFixture,
   catalogConflictReviewFixture,
   costReportFixture,
   dashboardDecisionsFixture,
@@ -143,6 +144,10 @@ describe("Itotori API handlers", () => {
       { method: "GET", pathname: "/api/catalog/conflicts" },
       services,
     );
+    const catalogCompleteness = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/completeness" },
+      services,
+    );
 
     expect(projects).toEqual({ statusCode: 200, body: { projects: [dashboardStatusFixture] } });
     expect(projectStatus).toEqual({ statusCode: 200, body: dashboardStatusFixture });
@@ -169,6 +174,7 @@ describe("Itotori API handlers", () => {
     expect(costStatus).toEqual({ statusCode: 200, body: costReportFixture });
     expect(decisions).toEqual({ statusCode: 200, body: dashboardDecisionsFixture });
     expect(catalogConflicts).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
+    expect(catalogCompleteness).toEqual({ statusCode: 200, body: catalogCompletenessFixture });
     expect(services.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenNthCalledWith(1, undefined);
@@ -176,6 +182,7 @@ describe("Itotori API handlers", () => {
     expect(services.projectWorkflow.getCostReport).toHaveBeenCalledTimes(1);
     expect(services.projectWorkflow.getDashboardDecisions).toHaveBeenCalledTimes(1);
     expect(services.catalogRepository.catalogConflictReview).toHaveBeenCalledWith({});
+    expect(services.catalogRepository.catalogCompletenessBenchmarkPools).toHaveBeenCalledWith({});
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
   });
 
@@ -227,6 +234,34 @@ describe("Itotori API handlers", () => {
       expect(services.authorization.requirePermission).not.toHaveBeenCalled();
     },
   );
+
+  it.each([
+    {
+      query: "?targetLanguage=en-US",
+      filter: { targetLanguage: "en-US" },
+    },
+    {
+      query: "?pool=mtl_only",
+      filter: { pool: "mtl_only" },
+    },
+    {
+      query: "?targetLanguage=en-US&pool=conflict",
+      filter: { targetLanguage: "en-US", pool: "conflict" },
+    },
+  ])("passes catalog completeness filter $query to the read model", async ({ query, filter }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/catalog/completeness", search: query },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: catalogCompletenessFixture });
+    expect(services.catalogRepository.catalogCompletenessBenchmarkPools).toHaveBeenCalledWith(
+      filter,
+    );
+    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
 
   it("serves project cost reports with unknown token source component counters", async () => {
     const services = serviceFixture();
@@ -991,6 +1026,7 @@ function serviceFixture(): ItotoriApiServices {
     },
     catalogRepository: {
       catalogConflictReview: vi.fn(async () => catalogConflictReviewFixture),
+      catalogCompletenessBenchmarkPools: vi.fn(async () => catalogCompletenessFixture),
     },
   };
 }

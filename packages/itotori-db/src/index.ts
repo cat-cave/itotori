@@ -34,6 +34,7 @@ export {
   catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
   catalogPathRedactionClassValues,
+  catalogRawContentRedactionClassValues,
   catalogReleaseKindValues,
   catalogSeedOriginValues,
   catalogSeedStatusValues,
@@ -52,6 +53,7 @@ export type {
   CatalogLanguageStatus,
   CatalogLanguageStatusScope,
   CatalogPathRedactionClass,
+  CatalogRawContentRedactionClass,
   CatalogReleaseKind,
   CatalogSeedOrigin,
   CatalogSeedStatus,
@@ -147,8 +149,21 @@ export type {
   QueueFailureInput,
   QueueJsonRecord,
 } from "./repositories/event-queue-repository.js";
-export { ItotoriCatalogRepository } from "./repositories/catalog-repository.js";
+export {
+  catalogCompletenessPoolValues,
+  ItotoriCatalogRepository,
+} from "./repositories/catalog-repository.js";
 export type {
+  CatalogCompletenessBenchmarkPools,
+  CatalogCompletenessConflictSummary,
+  CatalogCompletenessPool,
+  CatalogCompletenessPoolFilter,
+  CatalogCompletenessPoolWork,
+  CatalogCompletenessPublicPoolReport,
+  CatalogCompletenessPublicReport,
+  CatalogCompletenessPublicStatusReport,
+  CatalogCompletenessSourceSummary,
+  CatalogCompletenessStatusFact,
   CatalogDateInput,
   CatalogCandidateMatchInput,
   CatalogCandidateMatchRecord,

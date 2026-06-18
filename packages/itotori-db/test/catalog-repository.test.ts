@@ -20,6 +20,7 @@ import {
   catalogLocalScanEntries,
   catalogLocalScanExternalIds,
   catalogPathRedactionClassValues,
+  catalogRawContentRedactionClassValues,
   catalogReleaseKindValues,
   catalogSeedOriginValues,
   catalogSeedStatusValues,
@@ -878,6 +879,219 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("selects completeness benchmark pools with conflict-safe source evidence and public aggregates", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const provenanceRecords = {
+        egs: await provenance(repo, 901, catalogSourceValues.egs, "egs-complete-002", {
+          payload: { catalogSource: "egs", sourceId: "egs-complete-002", rawNote: "public fact" },
+          rawContentRedactionClass: catalogRawContentRedactionClassValues.publicRaw,
+        }),
+        vndb: await provenance(repo, 902, catalogSourceValues.vndb, "v-complete-002"),
+        steam: await provenance(repo, 903, catalogSourceValues.steam, "steam-complete-002"),
+        local: await provenance(repo, 904, catalogSourceValues.localCorpus, "local-complete-002", {
+          sourceRecordKind: catalogSourceRecordKindValues.localScan,
+          payload: { privateCorpusLine: "PRIVATE_CORPUS_TEXT_SHOULD_NOT_APPEAR" },
+          rawContentRedactionClass: catalogRawContentRedactionClassValues.privateCorpus,
+        }),
+      };
+
+      await repo.upsertWork(localActor, {
+        workId: uuid(911),
+        canonicalTitle: "Completeness MTL-only fixture",
+        originalLanguage: "ja-JP",
+        languageStatuses: [
+          completenessStatus(
+            921,
+            catalogLanguageStatusValues.mtl,
+            provenanceRecords.egs.sourceProvenanceId,
+          ),
+        ],
+      });
+      await repo.upsertWork(localActor, {
+        workId: uuid(912),
+        canonicalTitle: "Completeness fan partial fixture",
+        originalLanguage: "ja-JP",
+        languageStatuses: [
+          completenessStatus(
+            922,
+            catalogLanguageStatusValues.fanPartial,
+            provenanceRecords.vndb.sourceProvenanceId,
+          ),
+        ],
+      });
+      await repo.upsertWork(localActor, {
+        workId: uuid(913),
+        canonicalTitle: "Completeness no English fixture",
+        originalLanguage: "ja-JP",
+        languageStatuses: [
+          completenessStatus(
+            923,
+            catalogLanguageStatusValues.none,
+            provenanceRecords.vndb.sourceProvenanceId,
+          ),
+        ],
+      });
+      await repo.upsertWork(localActor, {
+        workId: uuid(914),
+        canonicalTitle: "Completeness unknown fixture",
+        originalLanguage: "ja-JP",
+        languageStatuses: [
+          completenessStatus(
+            924,
+            catalogLanguageStatusValues.unknown,
+            provenanceRecords.egs.sourceProvenanceId,
+          ),
+        ],
+      });
+
+      const noEnglishStatusId = uuid(925);
+      const officialStatusId = uuid(926);
+      const localSidecarStatusId = uuid(927);
+      await repo.upsertWork(localActor, {
+        workId: uuid(915),
+        canonicalTitle: "Completeness conflict fixture",
+        originalLanguage: "ja-JP",
+        languageStatuses: [
+          {
+            ...completenessStatus(
+              925,
+              catalogLanguageStatusValues.none,
+              provenanceRecords.vndb.sourceProvenanceId,
+            ),
+            confidence: catalogConfidenceValues.medium,
+          },
+          {
+            ...completenessStatus(
+              926,
+              catalogLanguageStatusValues.officialFull,
+              provenanceRecords.steam.sourceProvenanceId,
+            ),
+            platform: "steam",
+            statusScope: catalogLanguageStatusScopeValues.platform,
+          },
+          {
+            ...completenessStatus(
+              927,
+              catalogLanguageStatusValues.fanFull,
+              provenanceRecords.local.sourceProvenanceId,
+            ),
+            rawContentRedactionClass: catalogRawContentRedactionClassValues.privateCorpus,
+            parserVersion: "local-sidecar-completeness.v0.1",
+          },
+        ],
+        conflicts: [
+          {
+            conflictId: uuid(931),
+            conflictKind: catalogConflictKindValues.languageStatus,
+            summary: "VNDB, Steam, and local sidecar disagree on English completeness.",
+            metadata: { reasonCode: "source_disagreement", severity: "warning" },
+            evidence: [
+              {
+                conflictEvidenceId: uuid(941),
+                subjectKind: catalogConflictSubjectKindValues.languageStatus,
+                subjectId: noEnglishStatusId,
+                sourceProvenanceId: provenanceRecords.vndb.sourceProvenanceId,
+              },
+              {
+                conflictEvidenceId: uuid(942),
+                subjectKind: catalogConflictSubjectKindValues.languageStatus,
+                subjectId: officialStatusId,
+                sourceProvenanceId: provenanceRecords.steam.sourceProvenanceId,
+                evidencePosition: 1,
+              },
+              {
+                conflictEvidenceId: uuid(943),
+                subjectKind: catalogConflictSubjectKindValues.languageStatus,
+                subjectId: localSidecarStatusId,
+                sourceProvenanceId: provenanceRecords.local.sourceProvenanceId,
+                evidencePosition: 2,
+              },
+            ],
+          },
+        ],
+      });
+
+      expect(Object.values(catalogLanguageStatusValues).sort()).toEqual([
+        "fan_full",
+        "fan_partial",
+        "interface_only",
+        "mtl",
+        "none",
+        "official_full",
+        "unknown",
+        "unverified_console",
+      ]);
+
+      const pools = await repo.catalogCompletenessBenchmarkPools(localActor, {
+        targetLanguage: "en-US",
+      });
+
+      expect(pools.pools.mtl_only.map((work) => work.workId)).toEqual([uuid(911)]);
+      expect(pools.pools.fan_partial.map((work) => work.workId)).toEqual([uuid(912)]);
+      expect(pools.pools.no_english.map((work) => work.workId)).toEqual([uuid(913)]);
+      expect(pools.pools.unknown.map((work) => work.workId)).toEqual([uuid(914)]);
+      expect(pools.pools.conflict.map((work) => work.workId)).toEqual([uuid(915)]);
+
+      const conflictWork = pools.pools.conflict[0];
+      expect(conflictWork?.statuses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            languageStatusId: noEnglishStatusId,
+            source: expect.objectContaining({
+              sourceId: "v-complete-002",
+              sourceRecordKind: catalogSourceRecordKindValues.recordedFixture,
+              sourceVersion: "fixture-2026-06-17",
+              fetchedAt: new Date(fetchedAt),
+            }),
+            importedAt: new Date("2026-06-17T12:05:00.000Z"),
+            parserVersion: "catalog-completeness-fixture.v0.1",
+          }),
+          expect.objectContaining({
+            languageStatusId: localSidecarStatusId,
+            rawContentRedactionClass: catalogRawContentRedactionClassValues.privateCorpus,
+            source: expect.objectContaining({
+              rawContentRedactionClass: catalogRawContentRedactionClassValues.privateCorpus,
+            }),
+          }),
+        ]),
+      );
+      expect(conflictWork?.conflicts).toEqual([
+        expect.objectContaining({
+          conflictId: uuid(931),
+          reasonCode: "source_disagreement",
+          sourceIds: expect.arrayContaining([
+            { catalogSource: catalogSourceValues.vndb, sourceId: "v-complete-002" },
+            { catalogSource: catalogSourceValues.steam, sourceId: "steam-complete-002" },
+            { catalogSource: catalogSourceValues.localCorpus, sourceId: "local-complete-002" },
+          ]),
+        }),
+      ]);
+
+      const publicReportJson = JSON.stringify(pools.publicReport);
+      expect(publicReportJson).not.toContain("PRIVATE_CORPUS_TEXT_SHOULD_NOT_APPEAR");
+      expect(pools.publicReport.pools).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ pool: "mtl_only", workCount: 1 }),
+          expect.objectContaining({ pool: "fan_partial", workCount: 1 }),
+          expect.objectContaining({ pool: "no_english", workCount: 1 }),
+          expect.objectContaining({ pool: "unknown", workCount: 1 }),
+          expect.objectContaining({ pool: "conflict", workCount: 1 }),
+        ]),
+      );
+
+      const mtlOnly = await repo.catalogCompletenessBenchmarkPools(localActor, {
+        targetLanguage: "en-US",
+        pool: "mtl_only",
+      });
+      expect(mtlOnly.pools.mtl_only).toHaveLength(1);
+      expect(mtlOnly.pools.conflict).toHaveLength(0);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("bootstraps catalog permissions and creates catalog lookup indexes", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -995,6 +1209,24 @@ async function provenance(
     metadata: { fixture: true },
     ...overrides,
   });
+}
+
+function completenessStatus(
+  id: number,
+  status: (typeof catalogLanguageStatusValues)[keyof typeof catalogLanguageStatusValues],
+  sourceProvenanceId: string,
+): NonNullable<Parameters<ItotoriCatalogRepository["upsertWork"]>[1]["languageStatuses"]>[number] {
+  return {
+    languageStatusId: uuid(id),
+    language: "en-US",
+    status,
+    sourceProvenanceId,
+    confidence: catalogConfidenceValues.high,
+    observedAt: fetchedAt,
+    importedAt: "2026-06-17T12:05:00.000Z",
+    parserVersion: "catalog-completeness-fixture.v0.1",
+    rawContentRedactionClass: catalogRawContentRedactionClassValues.publicMetadata,
+  };
 }
 
 function uuid(id: number): string {
