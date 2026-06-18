@@ -134,22 +134,24 @@ function latestMigrationPermissionConstraint() {
 
 function registeredMigrationFiles() {
   const source = readFileSync(migrationsSourcePath, "utf8");
-  const migrationListPattern = /\bconst\s+migrations\s*=\s*\[([\s\S]*?)\]\s*as\s+const\s*;/u;
-  const match = migrationListPattern.exec(source);
-  const body = match?.[1];
-  if (body === undefined) {
+  const body = requiredConstArrayBody(source, "migrations");
+  const entries = migrationEntryBodies(body);
+
+  if (entries.length === 0) {
     throw new Error(
-      `permission constraint drift: missing migrations registry in ${relativePath(migrationsSourcePath)}`,
+      `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} contains no SQL files`,
     );
   }
 
-  const files = [];
-  for (const fileMatch of body.matchAll(/\bfile:\s*"([^"]+\.sql)"/gu)) {
-    const file = fileMatch[1];
-    if (file !== undefined) {
-      files.push(file);
+  const files = entries.map((entry) => {
+    const file = migrationEntryFile(entry);
+    if (file === undefined) {
+      throw new Error(
+        `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} contains an entry without a string file property`,
+      );
     }
-  }
+    return file;
+  });
 
   if (files.length === 0) {
     throw new Error(
@@ -172,6 +174,250 @@ function registeredMigrationFiles() {
   }
 
   return files;
+}
+
+function requiredConstArrayBody(source, variableName) {
+  const declarationPattern = new RegExp(
+    `\\bconst\\s+${escapeRegExp(variableName)}\\s*=\\s*\\[`,
+    "gu",
+  );
+  let match;
+  while ((match = declarationPattern.exec(source)) !== null) {
+    if (!isIgnoredJavaScriptPosition(source, match.index)) {
+      break;
+    }
+  }
+  if (match === null) {
+    throw new Error(
+      `permission constraint drift: missing migrations registry in ${relativePath(migrationsSourcePath)}`,
+    );
+  }
+
+  const bodyStart = match.index + match[0].length;
+  const openIndex = bodyStart - 1;
+  const closeIndex = findMatchingDelimiter(source, openIndex, "[", "]");
+  if (closeIndex === -1) {
+    throw new Error(
+      `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} is not closed`,
+    );
+  }
+
+  const afterArray = source.slice(closeIndex + 1);
+  if (!/^\s*as\s+const\s*;/u.test(afterArray)) {
+    throw new Error(
+      `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} must be a const assertion`,
+    );
+  }
+
+  return source.slice(bodyStart, closeIndex);
+}
+
+function isIgnoredJavaScriptPosition(source, position) {
+  let index = 0;
+
+  while (index < position) {
+    const nextIndex = skipIgnoredJavaScript(source, index);
+    if (nextIndex !== index) {
+      if (nextIndex > position) {
+        return true;
+      }
+      index = nextIndex;
+    } else {
+      index += 1;
+    }
+  }
+
+  return false;
+}
+
+function migrationEntryBodies(body) {
+  const entries = [];
+  let index = 0;
+
+  while (index < body.length) {
+    index = skipWhitespaceAndComments(body, index);
+    if (index >= body.length) {
+      break;
+    }
+    if (body[index] === ",") {
+      index += 1;
+      continue;
+    }
+    if (body[index] !== "{") {
+      throw new Error(
+        `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} must contain only object entries`,
+      );
+    }
+
+    const closeIndex = findMatchingDelimiter(body, index, "{", "}");
+    if (closeIndex === -1) {
+      throw new Error(
+        `permission constraint drift: migrations registry in ${relativePath(migrationsSourcePath)} contains an unclosed object entry`,
+      );
+    }
+
+    entries.push(body.slice(index + 1, closeIndex));
+    index = closeIndex + 1;
+  }
+
+  return entries;
+}
+
+function migrationEntryFile(entry) {
+  for (const property of splitTopLevel(entry, ",")) {
+    const source = stripJavaScriptComments(property).trim();
+    const match = /^(?:file|"file"|'file')\s*:\s*(["'])([^"'\\]+\.sql)\1\s*$/u.exec(source);
+    if (match?.[2] !== undefined) {
+      return match[2];
+    }
+  }
+  return undefined;
+}
+
+function splitTopLevel(source, separator) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  let index = 0;
+
+  while (index < source.length) {
+    const nextIndex = skipIgnoredJavaScript(source, index);
+    if (nextIndex !== index) {
+      index = nextIndex;
+      continue;
+    }
+
+    const char = source[index];
+    if (char === "{" || char === "[" || char === "(") {
+      depth += 1;
+    } else if (char === "}" || char === "]" || char === ")") {
+      depth -= 1;
+    } else if (char === separator && depth === 0) {
+      parts.push(source.slice(start, index));
+      start = index + 1;
+    }
+    index += 1;
+  }
+
+  parts.push(source.slice(start));
+  return parts;
+}
+
+function findMatchingDelimiter(source, openIndex, open, close) {
+  let depth = 0;
+  let index = openIndex;
+
+  while (index < source.length) {
+    const nextIndex = skipIgnoredJavaScript(source, index);
+    if (nextIndex !== index) {
+      index = nextIndex;
+      continue;
+    }
+
+    const char = source[index];
+    if (char === open) {
+      depth += 1;
+    } else if (char === close) {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+    index += 1;
+  }
+
+  return -1;
+}
+
+function skipWhitespaceAndComments(source, index) {
+  let current = index;
+
+  while (current < source.length) {
+    const char = source[current];
+    const next = source[current + 1];
+    if (/\s/u.test(char ?? "")) {
+      current += 1;
+    } else if (char === "/" && next === "/") {
+      current = skipLineComment(source, current);
+    } else if (char === "/" && next === "*") {
+      current = skipBlockComment(source, current);
+    } else {
+      break;
+    }
+  }
+
+  return current;
+}
+
+function skipIgnoredJavaScript(source, index) {
+  const char = source[index];
+  const next = source[index + 1];
+
+  if (char === "/" && next === "/") {
+    return skipLineComment(source, index);
+  }
+  if (char === "/" && next === "*") {
+    return skipBlockComment(source, index);
+  }
+  if (char === '"' || char === "'" || char === "`") {
+    return skipStringLiteral(source, index, char);
+  }
+  return index;
+}
+
+function skipLineComment(source, index) {
+  const lineEnd = source.indexOf("\n", index + 2);
+  return lineEnd === -1 ? source.length : lineEnd + 1;
+}
+
+function skipBlockComment(source, index) {
+  const commentEnd = source.indexOf("*/", index + 2);
+  return commentEnd === -1 ? source.length : commentEnd + 2;
+}
+
+function skipStringLiteral(source, index, quote) {
+  let current = index + 1;
+
+  while (current < source.length) {
+    const char = source[current];
+    if (char === "\\") {
+      current += 2;
+    } else if (char === quote) {
+      return current + 1;
+    } else {
+      current += 1;
+    }
+  }
+
+  return source.length;
+}
+
+function stripJavaScriptComments(source) {
+  let stripped = "";
+  let index = 0;
+
+  while (index < source.length) {
+    const char = source[index];
+    const next = source[index + 1];
+    if (char === "/" && next === "/") {
+      const commentEnd = skipLineComment(source, index);
+      stripped += " ".repeat(commentEnd - index);
+      index = commentEnd;
+    } else if (char === "/" && next === "*") {
+      const commentEnd = skipBlockComment(source, index);
+      stripped += " ".repeat(commentEnd - index);
+      index = commentEnd;
+    } else if (char === '"' || char === "'" || char === "`") {
+      const literalEnd = skipStringLiteral(source, index, char);
+      stripped += source.slice(index, literalEnd);
+      index = literalEnd;
+    } else {
+      stripped += char;
+      index += 1;
+    }
+  }
+
+  return stripped;
 }
 
 function extractPermissionConstraintLists(sql) {

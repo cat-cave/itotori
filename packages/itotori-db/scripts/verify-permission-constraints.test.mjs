@@ -44,6 +44,27 @@ test("ignores unregistered migration files", async () => {
   }
 });
 
+test("ignores commented-out migration registry entries", async () => {
+  const fixture = await createFixture({
+    registeredMigrations: {
+      "0001_permissions.sql": namedGrantsConstraintSql(stalePermissionValues),
+    },
+    commentedOutMigrations: {
+      "9999_unregistered_permissions.sql": namedGrantsConstraintSql(allPermissionValues),
+    },
+  });
+
+  try {
+    const result = runVerifier(fixture);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /missing from 0001_permissions\.sql permission constraint/);
+    assert.doesNotMatch(result.stderr, /9999_unregistered_permissions\.sql permission constraint/);
+  } finally {
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
+
 test("requires the named permission constraint on the grants table", async () => {
   const fixture = await createFixture({
     registeredMigrations: {
@@ -91,7 +112,11 @@ test("accepts the registered named grants-table constraint", async () => {
   }
 });
 
-async function createFixture({ registeredMigrations, unregisteredMigrations = {} }) {
+async function createFixture({
+  registeredMigrations,
+  unregisteredMigrations = {},
+  commentedOutMigrations = {},
+}) {
   const root = await mkdtemp(path.join(tmpdir(), "itotori-permission-constraint-"));
   const srcDir = path.join(root, "src");
   const migrationsDir = path.join(root, "migrations");
@@ -104,11 +129,15 @@ async function createFixture({ registeredMigrations, unregisteredMigrations = {}
   await writeFile(authorizationPath, authorizationSource(), "utf8");
   await writeFile(
     migrationsSourcePath,
-    migrationRegistrySource(Object.keys(registeredMigrations)),
+    migrationRegistrySource(Object.keys(registeredMigrations), Object.keys(commentedOutMigrations)),
     "utf8",
   );
 
-  for (const [file, sql] of Object.entries({ ...registeredMigrations, ...unregisteredMigrations })) {
+  for (const [file, sql] of Object.entries({
+    ...registeredMigrations,
+    ...unregisteredMigrations,
+    ...commentedOutMigrations,
+  })) {
     await writeFile(path.join(migrationsDir, file), sql, "utf8");
   }
 
@@ -148,17 +177,24 @@ ${permissionLines}
   `;
 }
 
-function migrationRegistrySource(files) {
+function migrationRegistrySource(files, commentedOutFiles = []) {
   const entries = files
     .map((file) => {
       const id = file.replace(/\.sql$/u, "");
       return `  { id: "${id}", file: "${file}" },`;
     })
     .join("\n");
+  const commentedOutEntries = commentedOutFiles
+    .map((file) => {
+      const id = file.replace(/\.sql$/u, "");
+      return `  // { id: "${id}", file: "${file}" },`;
+    })
+    .join("\n");
 
   return `
     const migrations = [
 ${entries}
+${commentedOutEntries}
     ] as const;
   `;
 }
