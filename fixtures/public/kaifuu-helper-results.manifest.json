@@ -1,0 +1,101 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "kaifuu-helper-results",
+    "title": "Kaifuu Helper Result Fixtures",
+    "kind": "synthetic",
+    "summary": "Public synthetic helper result schema and diagnostic fixtures with redacted secret refs and proof hashes.",
+    "sourceLocale": "ja-JP",
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Synthetic fixture data authored for public CI."
+    },
+    "provenance": {
+      "author": "Kaifuu fixture authors",
+      "creationMethod": "Generated synthetic helper outputs with no private game data or raw key material.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-result.schema.json",
+      "role": "metadata",
+      "mediaType": "application/schema+json",
+      "sha256": "db88cc58bc6ceaa492a289364fbe1dcdb173d868272448f406b97c323a6e5206",
+      "bytes": 3964,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/success.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "5776c286a69d9696198b7eaf812d9d5dfa71879407b8a889af9a1299998f3afa",
+      "bytes": 1116,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/missing-key.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "d91c347a84b0556712504daf7a9560391f869ac31083469c9aaa5a27ad97a535",
+      "bytes": 818,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-required.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "1f9c84b552b5522f640a00c91e869b80165aabf6a19f73414854d30f302559e5",
+      "bytes": 828,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-unavailable.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "eaf47a28b37c3e15af61ea1c73f6d1f8080ef1621225ab73c36f4418c2e992e9",
+      "bytes": 830,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/validation-failed.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "9d54cde6bd9a2e359b6dd35578d21fbb657c9db98980abed161bfd173e3353d4",
+      "bytes": 1148,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/unsupported-protected-executable.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "acd1985d0d76d91d127bfc09ce8147d3e1604bf1b4be908b337ba6731047a5d7",
+      "bytes": 705,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/redaction-failure.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "ab69c85e0096ad4d27b9a2bea80dfe670ddae282e68bbc6b8a24b8a0647927af",
+      "bytes": 641,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 8,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "engineKinds": ["kaifuu-helper-result"],
+    "notes": "Covers success, missing_key, helper_required, helper_unavailable, validation_failed, unsupported_protected_executable, and redaction_failure diagnostics."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:kaifuu-helper-results"
+  }
+}

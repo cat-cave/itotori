@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-redaction-failure",
+  "helperResultId": "helper-result-redaction-failure",
+  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "helper": {
+    "helperId": "kaifuu.fixture.static-parser",
+    "helperVersion": "0.1.0",
+    "helperKind": "staticParser"
+  },
+  "diagnostic": {
+    "code": "redaction_failure",
+    "message": "synthetic helper output failed redaction and must remain local"
+  },
+  "redaction": {
+    "status": "failed",
+    "redactedLogHash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+  },
+  "secretRefs": [],
+  "proofHashes": []
+}

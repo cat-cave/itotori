@@ -216,6 +216,60 @@ contract:
 All helper outputs must be schema-validated, redacted before persistence, and
 safe to include in aggregate readiness reports.
 
+Helper results use the shared `0.1.0` result schema before a profile consumes
+their evidence. Public synthetic fixtures and optional local helper outputs use
+the same shape:
+
+```json
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-success",
+  "helperResultId": "helper-result-success",
+  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "helper": {
+    "helperId": "kaifuu.fixture.static-parser",
+    "helperVersion": "0.1.0",
+    "helperKind": "staticParser"
+  },
+  "diagnostic": {
+    "code": "success",
+    "message": "synthetic fixture helper produced secret references and validation proofs"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:..."
+  },
+  "secretRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/secondary-key",
+      "materialKind": "fixedBytes",
+      "bytes": 16,
+      "validation": {
+        "method": "decryptHeaderProof",
+        "proofHash": "sha256:..."
+      }
+    }
+  ],
+  "proofHashes": [
+    {
+      "method": "decryptHeaderProof",
+      "proofHash": "sha256:..."
+    }
+  ]
+}
+```
+
+The diagnostic enum is intentionally closed: `success`, `missing_key`,
+`helper_required`, `helper_unavailable`, `validation_failed`,
+`unsupported_protected_executable`, and `redaction_failure`. Validation errors
+name both the helper-result field and the `fixtureId`, so aggregate fixture
+checks can point to the exact unsafe or malformed output. Helper results may
+persist `secretRef` ids, proof hashes, helper id/version/kind, profile id,
+diagnostic code, and redaction status. They must not persist raw keys, raw
+helper logs, dumps, decrypted private text, local paths, or key-looking
+material outside a validated `secretRef`.
+
 Known-key database imports are allowed only as local helper inputs. Kaifuu may
 import an entry into local secret storage and record provenance such as source
 label, import time, engine family, validation proof hash, and tool version, but

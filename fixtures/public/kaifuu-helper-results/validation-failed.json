@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-validation-failed",
+  "helperResultId": "helper-result-validation-failed",
+  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "helper": {
+    "helperId": "kaifuu.fixture.static-parser",
+    "helperVersion": "0.1.0",
+    "helperKind": "staticParser"
+  },
+  "diagnostic": {
+    "code": "validation_failed",
+    "message": "synthetic key candidate did not match the public validation proof"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "rpg-maker-asset-key",
+      "secretRef": "local-secret:fixture/rpg-maker/asset-key",
+      "materialKind": "rpgMakerAssetKey",
+      "bytes": 16,
+      "validation": {
+        "method": "fixtureRoundTripProof",
+        "proofHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      }
+    }
+  ],
+  "proofHashes": [
+    {
+      "method": "fixtureRoundTripProof",
+      "proofHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    }
+  ]
+}

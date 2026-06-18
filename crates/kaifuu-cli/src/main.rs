@@ -8,7 +8,8 @@ use kaifuu_core::{
     GoldenHarnessRequest, KaifuuResult, PatchExport, PatchPreflightRequest, PatchRequest,
     PatchResult, ProfileRequest, VerifyRequest, atomic_write_text,
     promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
-    run_round_trip_golden, validate_offset_map_value, validate_profile_value, write_json,
+    run_round_trip_golden, validate_helper_result_value, validate_offset_map_value,
+    validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -146,6 +147,9 @@ fn run_with_args_and_registry(
         Some("offset-map" | "offsets") => {
             run_offset_map_command(&args)?;
         }
+        Some("helper-result") => {
+            run_helper_result_command(&args)?;
+        }
         Some("profile") => {
             run_profile_command(&args, registry)?;
         }
@@ -160,7 +164,40 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|profile|capabilities> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|profile|capabilities> ..."
+                    .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run_helper_result_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    match positional(args, 1)? {
+        "validate" => {
+            let helper_result_path = PathBuf::from(positional(args, 2)?);
+            let output = PathBuf::from(flag(args, "--output")?);
+            let value: serde_json::Value = read_json(&helper_result_path)?;
+            let validation = validate_helper_result_value(&value).redacted_for_report();
+            let failed = validation.status == kaifuu_core::OperationStatus::Failed;
+            write_json(&output, &validation)?;
+            if failed {
+                return Err(format!(
+                    "helper result validation failed for fixture {}: {}",
+                    validation.fixture_id.as_deref().unwrap_or("<unknown>"),
+                    validation
+                        .failures
+                        .iter()
+                        .map(|failure| format!("{}:{}", failure.field, failure.code))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+                .into());
+            }
+        }
+        _ => {
+            return Err(
+                "usage: kaifuu helper-result validate <helper-result.json> --output <report.json>"
                     .into(),
             );
         }
@@ -743,6 +780,92 @@ mod tests {
         registry: &AdapterRegistry,
     ) -> Result<(), Box<dyn std::error::Error>> {
         run_with_args_and_registry(args.iter().map(|arg| arg.to_string()).collect(), registry)
+    }
+
+    #[test]
+    fn helper_result_validate_command_accepts_public_fixture() {
+        let root = temp_dir("helper-result-valid");
+        let output = root.join("helper-result-report.json");
+        let fixture = public_fixture_path("fixtures/public/kaifuu-helper-results/success.json");
+
+        run_cli(&[
+            "helper-result",
+            "validate",
+            fixture.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["fixtureId"], "kaifuu-helper-success");
+        assert_eq!(report["failures"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn helper_result_validate_command_reports_redacted_field_and_fixture_id() {
+        let root = temp_dir("helper-result-invalid");
+        let helper_result_path = root.join("helper-result.json");
+        let output = root.join("helper-result-report.json");
+        fs::write(
+            &helper_result_path,
+            r#"{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-invalid-redaction",
+  "helperResultId": "helper-result-invalid-redaction",
+  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "helper": {
+    "helperId": "kaifuu.fixture.static-parser",
+    "helperVersion": "0.1.0",
+    "helperKind": "staticParser"
+  },
+  "diagnostic": {
+    "code": "success",
+    "message": "helper output referenced path=/home/dev/private/key.bin"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/secondary-key",
+      "materialKind": "fixedBytes",
+      "bytes": 16
+    }
+  ],
+  "proofHashes": []
+}
+"#,
+        )
+        .unwrap();
+
+        let result = run_with_args(vec![
+            "helper-result".to_string(),
+            "validate".to_string(),
+            helper_result_path.to_str().unwrap().to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+
+        assert!(result.is_err());
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["fixtureId"], "kaifuu-helper-invalid-redaction");
+        assert!(
+            report["failures"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|failure| {
+                    failure["fixtureId"] == "kaifuu-helper-invalid-redaction"
+                        && failure["field"] == "diagnostic.message"
+                })
+        );
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("/home/dev"));
+        assert!(!serialized.contains("key.bin"));
     }
 
     #[test]

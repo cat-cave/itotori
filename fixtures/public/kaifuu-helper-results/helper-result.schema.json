@@ -1,0 +1,167 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/fixtures/public/kaifuu-helper-results/helper-result.schema.json",
+  "title": "Kaifuu Helper Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "fixtureId",
+    "helperResultId",
+    "profileId",
+    "helper",
+    "diagnostic",
+    "redaction",
+    "secretRefs",
+    "proofHashes"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "fixtureId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "helperResultId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "helper": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["helperId", "helperVersion", "helperKind"],
+      "properties": {
+        "helperId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "helperVersion": {
+          "type": "string",
+          "minLength": 1
+        },
+        "helperKind": {
+          "type": "string",
+          "enum": [
+            "staticParser",
+            "knownKeyDatabaseImport",
+            "wineLocalWindowsHelper",
+            "remoteWindowsHelper",
+            "manualKeyEntry"
+          ]
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "success",
+            "missing_key",
+            "helper_required",
+            "helper_unavailable",
+            "validation_failed",
+            "unsupported_protected_executable",
+            "redaction_failure"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "redactedLogHash"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["not_required", "redacted", "failed"]
+        },
+        "redactedLogHash": {
+          "$ref": "#/$defs/sha256Ref"
+        }
+      }
+    },
+    "secretRefs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/secretRefRecord"
+      }
+    },
+    "proofHashes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/proofHashRecord"
+      }
+    }
+  },
+  "$defs": {
+    "secretRefRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requirementId", "secretRef", "materialKind"],
+      "properties": {
+        "requirementId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "secretRef": {
+          "type": "string",
+          "pattern": "^(local-secret|os-keychain|secret-manager|prompt):[A-Za-z0-9._/-]+$"
+        },
+        "materialKind": {
+          "type": "string",
+          "enum": [
+            "fixedBytes",
+            "hexBytes",
+            "utf8String",
+            "archivePassword",
+            "rpgMakerAssetKey"
+          ]
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 4294967295
+        },
+        "validation": {
+          "$ref": "#/$defs/proofHashRecord"
+        }
+      }
+    },
+    "proofHashRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "proofHash"],
+      "properties": {
+        "method": {
+          "type": "string",
+          "enum": [
+            "decryptHeaderProof",
+            "archiveIndexProof",
+            "knownPlaintextProof",
+            "fixtureRoundTripProof"
+          ]
+        },
+        "proofHash": {
+          "$ref": "#/$defs/sha256Ref"
+        }
+      }
+    },
+    "sha256Ref": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    }
+  }
+}

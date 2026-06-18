@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-helper-required",
+  "helperResultId": "helper-result-helper-required",
+  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "helper": {
+    "helperId": "kaifuu.fixture.manual-entry",
+    "helperVersion": "0.1.0",
+    "helperKind": "manualKeyEntry"
+  },
+  "diagnostic": {
+    "code": "helper_required",
+    "message": "manual entry is required before this synthetic profile can resolve key material"
+  },
+  "redaction": {
+    "status": "not_required",
+    "redactedLogHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "xp3-archive-password",
+      "secretRef": "prompt:fixture/kirikiri/xp3-archive-password",
+      "materialKind": "archivePassword"
+    }
+  ],
+  "proofHashes": []
+}
