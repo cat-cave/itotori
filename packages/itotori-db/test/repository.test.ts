@@ -1223,8 +1223,7 @@ describe("ItotoriProjectRepository", () => {
         (row) => row.artifact_kind === "runtime_branch_event",
       );
       expect(branchArtifact).toMatchObject({
-        artifact_id:
-          "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
+        artifact_id: "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000201",
         bridge_unit_id: "bridge-unit-test",
       });
       expect(branchArtifact?.metadata).toMatchObject({
@@ -1261,8 +1260,7 @@ describe("ItotoriProjectRepository", () => {
         (row) => row.artifact_kind === "runtime_trace_event",
       );
       expect(traceArtifact).toMatchObject({
-        artifact_id:
-          "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
+        artifact_id: "019ed003-0000-7000-8000-000000000001:019ed003-0000-7000-8000-000000000101",
         bridge_unit_id: "bridge-unit-test",
       });
       expect(traceArtifact?.metadata).toMatchObject({
@@ -1466,8 +1464,7 @@ describe("ItotoriProjectRepository", () => {
             "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000922",
           evidence_kind: "capture",
           bridge_unit_id: "bridge-unit-test",
-          artifact_id:
-            "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000933",
+          artifact_id: "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000933",
           portable_artifact_uri:
             "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/screenshots/019ed003-0000-7000-8000-000000000933.png",
         },
@@ -1476,8 +1473,7 @@ describe("ItotoriProjectRepository", () => {
             "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000912",
           evidence_kind: "trace_event",
           bridge_unit_id: "bridge-unit-test",
-          artifact_id:
-            "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000932",
+          artifact_id: "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000932",
           portable_artifact_uri:
             "artifacts/utsushi/runtime/019ed003-0000-7000-8000-000000000902/traces/019ed003-0000-7000-8000-000000000932.json",
         },
@@ -1532,14 +1528,12 @@ describe("ItotoriProjectRepository", () => {
         ["019ed003-0000-7000-8000-000000000902"],
       );
       expect(validation.rows[0]).toEqual({
-        finding_id:
-          "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000951",
+        finding_id: "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000951",
         finding_kind: "text_mismatch",
         severity: "P2",
         message: "Observed runtime text differed from the drafted locale branch text.",
         bridge_unit_id: "bridge-unit-test",
-        artifact_id:
-          "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000961",
+        artifact_id: "019ed003-0000-7000-8000-000000000902:019ed003-0000-7000-8000-000000000961",
         finding_status: "open",
         quality_category: "runtime_validation",
         artifact_uri:

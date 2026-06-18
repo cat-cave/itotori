@@ -1018,9 +1018,7 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
   }
 }
 
-async function readCatalogConflictReview(
-  db: ItotoriDatabase,
-): Promise<CatalogConflictReviewRow[]> {
+async function readCatalogConflictReview(db: ItotoriDatabase): Promise<CatalogConflictReviewRow[]> {
   const [conflictRows, evidenceRows, candidateRows] = await Promise.all([
     db.select().from(catalogConflicts),
     db.select().from(catalogConflictEvidence),
@@ -1058,7 +1056,10 @@ async function readCatalogConflictReview(
           .where(inArray(catalogExternalIds.externalIdId, Array.from(externalIdIds))),
     workIds.size === 0
       ? []
-      : db.select().from(catalogExternalIds).where(inArray(catalogExternalIds.workId, Array.from(workIds))),
+      : db
+          .select()
+          .from(catalogExternalIds)
+          .where(inArray(catalogExternalIds.workId, Array.from(workIds))),
   ]);
   for (const externalId of [...externalIdRows, ...workExternalIdRows]) {
     if (externalId.sourceProvenanceId !== null) {
@@ -1137,7 +1138,9 @@ function catalogConflictReviewRowFromConflict(
   const provenance = [
     ...evidenceRows
       .map((evidence) =>
-        evidence.sourceProvenanceId === null ? undefined : provenanceById.get(evidence.sourceProvenanceId),
+        evidence.sourceProvenanceId === null
+          ? undefined
+          : provenanceById.get(evidence.sourceProvenanceId),
       )
       .filter((record): record is CatalogSourceProvenanceRecord => record !== undefined),
     ...exactLinkRefs
@@ -1193,7 +1196,9 @@ function catalogConflictReviewRowFromCandidate(
 ): CatalogConflictReviewRow {
   const candidateRecord = candidateMatchFromRow(candidate);
   const provenanceRecord =
-    candidate.sourceProvenanceId === null ? undefined : provenanceById.get(candidate.sourceProvenanceId);
+    candidate.sourceProvenanceId === null
+      ? undefined
+      : provenanceById.get(candidate.sourceProvenanceId);
   const provenance = [
     provenanceRecord,
     ...targetExactLinkRefs.map((ref) =>
@@ -1246,7 +1251,11 @@ function assertCatalogConflictReviewFilter(
     assertEnumValue(filter.severity, ["error", "warning", "info"], "severity");
   }
   if (filter.status !== undefined) {
-    assertEnumValue(filter.status, [...catalogConflictStatuses, ...catalogCandidateMatchStatuses], "status");
+    assertEnumValue(
+      filter.status,
+      [...catalogConflictStatuses, ...catalogCandidateMatchStatuses],
+      "status",
+    );
   }
   return {
     ...(filter.source === undefined ? {} : { source: filter.source }),
@@ -1296,7 +1305,11 @@ function conflictSeverity(
   exactLinkRefs: CatalogConflictReviewExactLinkRef[],
 ): CatalogConflictReviewSeverity {
   const metadataSeverity = stringMetadata(conflict.metadata, "severity");
-  if (metadataSeverity === "error" || metadataSeverity === "warning" || metadataSeverity === "info") {
+  if (
+    metadataSeverity === "error" ||
+    metadataSeverity === "warning" ||
+    metadataSeverity === "info"
+  ) {
     return metadataSeverity;
   }
   if (
@@ -1333,7 +1346,11 @@ function candidateSeverity(
   sourcePeerRows: (typeof catalogCandidateMatches.$inferSelect)[],
 ): CatalogConflictReviewSeverity {
   const metadataSeverity = stringMetadata(candidate.metadata, "severity");
-  if (metadataSeverity === "error" || metadataSeverity === "warning" || metadataSeverity === "info") {
+  if (
+    metadataSeverity === "error" ||
+    metadataSeverity === "warning" ||
+    metadataSeverity === "info"
+  ) {
     return metadataSeverity;
   }
   if (candidate.status === catalogCandidateMatchStatusValues.duplicateSource) {
@@ -1430,7 +1447,9 @@ function uniqueSourceIds(
     byKey.set(`${sourceId.catalogSource}:${sourceId.sourceId}`, sourceId);
   }
   return Array.from(byKey.values()).sort((left, right) =>
-    `${left.catalogSource}:${left.sourceId}`.localeCompare(`${right.catalogSource}:${right.sourceId}`),
+    `${left.catalogSource}:${left.sourceId}`.localeCompare(
+      `${right.catalogSource}:${right.sourceId}`,
+    ),
   );
 }
 

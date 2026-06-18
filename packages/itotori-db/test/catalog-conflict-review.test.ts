@@ -135,9 +135,13 @@ describe("catalogConflictReview read model", () => {
         expect(reasonCodes).toContain(expected);
       }
 
-      await expect(repo.catalogConflictReview(localActor, { source: catalogSourceValues.steam })).resolves.toEqual({
+      await expect(
+        repo.catalogConflictReview(localActor, { source: catalogSourceValues.steam }),
+      ).resolves.toEqual({
         rows: expect.arrayContaining([
-          expect.objectContaining({ reviewId: `catalog-conflict:${seeded.conflicts.sourceDisagreement}` }),
+          expect.objectContaining({
+            reviewId: `catalog-conflict:${seeded.conflicts.sourceDisagreement}`,
+          }),
         ]),
       });
       await expect(repo.catalogConflictReview(localActor, { severity: "error" })).resolves.toEqual({
@@ -146,7 +150,9 @@ describe("catalogConflictReview read model", () => {
       await expect(
         repo.catalogConflictReview(localActor, { status: catalogConflictStatusValues.resolved }),
       ).resolves.toEqual({
-        rows: [expect.objectContaining({ reviewId: `catalog-conflict:${seeded.conflicts.resolved}` })],
+        rows: [
+          expect.objectContaining({ reviewId: `catalog-conflict:${seeded.conflicts.resolved}` }),
+        ],
       });
       await expect(
         repo.catalogConflictReview(localActor, { catalogRecordId: seeded.works.fuzzyB }),
@@ -156,7 +162,9 @@ describe("catalogConflictReview read model", () => {
         ]),
       });
       await expect(
-        repo.catalogConflictReview(localActor, { catalogRecordId: seeded.works.duplicateCompeting }),
+        repo.catalogConflictReview(localActor, {
+          catalogRecordId: seeded.works.duplicateCompeting,
+        }),
       ).resolves.toEqual({
         rows: [
           expect.objectContaining({
@@ -177,7 +185,13 @@ describe("catalogConflictReview read model", () => {
 async function seedConflictReviewFixture(repo: ItotoriCatalogRepository): Promise<{
   provenance: Record<"dlsite" | "egs" | "steam" | "vndb", string>;
   works: Record<
-    "duplicate" | "duplicateCompeting" | "fuzzyA" | "fuzzyB" | "sourceDisagreement" | "resolved" | "stale",
+    | "duplicate"
+    | "duplicateCompeting"
+    | "fuzzyA"
+    | "fuzzyB"
+    | "sourceDisagreement"
+    | "resolved"
+    | "stale",
     string
   >;
   externalIds: Record<"duplicateDlsite", string>;

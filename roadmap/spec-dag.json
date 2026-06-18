@@ -1585,7 +1585,7 @@
     {
       "id": "SHARED-017",
       "title": "Benchmark QA evaluated-system validation",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["shared", "itotori"],
@@ -1622,10 +1622,7 @@
         "Global QA coverage masking per-system gaps",
         "Mismatched evaluatedSystemId values",
         "Benchmark quality overclaiming"
-      ],
-      "owner": "codex-orchestrator",
-      "branch": "spec/shared-017",
-      "worktree": "/tmp/itotori-spec-shared-017"
+      ]
     },
     {
       "id": "SHARED-025",
@@ -9864,7 +9861,7 @@
     {
       "id": "KAIFUU-049",
       "title": "Delta package path normalization hardening",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared"],
@@ -9895,10 +9892,7 @@
         "Ambiguous cross-platform path semantics",
         "Path collision regressions",
         "Lossy package path serialization"
-      ],
-      "owner": "codex-orchestrator",
-      "branch": "spec/kaifuu-049",
-      "worktree": "/tmp/itotori-spec-kaifuu-049"
+      ]
     },
     {
       "id": "UTSUSHI-018",
@@ -9939,7 +9933,7 @@
     {
       "id": "UTSUSHI-019",
       "title": "Runtime evidence nested id namespacing",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "itotori"],
@@ -9970,10 +9964,7 @@
         "Nested id collisions across runs",
         "Evidence rows moving between reports",
         "Adapter-local ids treated as global ids"
-      ],
-      "owner": "codex-orchestrator",
-      "branch": "spec/utsushi-019",
-      "worktree": "/tmp/itotori-spec-utsushi-019"
+      ]
     },
     {
       "id": "UTSUSHI-020",
@@ -12411,7 +12402,7 @@
     {
       "id": "CATALOG-010",
       "title": "Catalog conflict review read model",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -12443,10 +12434,7 @@
         "Conflict review losing source provenance",
         "Read model mutating canonical catalog state",
         "Fuzzy and exact conflicts collapsed into one opaque status"
-      ],
-      "owner": "codex-orchestrator",
-      "branch": "spec/catalog-010",
-      "worktree": "/tmp/itotori-spec-catalog-010"
+      ]
     },
     {
       "id": "CATALOG-011",

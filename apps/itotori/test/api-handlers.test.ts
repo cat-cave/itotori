@@ -171,18 +171,21 @@ describe("Itotori API handlers", () => {
       query: "?catalogRecordId=work-duplicate",
       filter: { catalogRecordId: "work-duplicate" },
     },
-  ])("passes catalog conflict review filter $query to the read model", async ({ query, filter }) => {
-    const services = serviceFixture();
+  ])(
+    "passes catalog conflict review filter $query to the read model",
+    async ({ query, filter }) => {
+      const services = serviceFixture();
 
-    const response = await handleItotoriApiRequest(
-      { method: "GET", pathname: "/api/catalog/conflicts", search: query },
-      services,
-    );
+      const response = await handleItotoriApiRequest(
+        { method: "GET", pathname: "/api/catalog/conflicts", search: query },
+        services,
+      );
 
-    expect(response).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
-    expect(services.catalogRepository.catalogConflictReview).toHaveBeenCalledWith(filter);
-    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
-  });
+      expect(response).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
+      expect(services.catalogRepository.catalogConflictReview).toHaveBeenCalledWith(filter);
+      expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+    },
+  );
 
   it("serves project cost reports with unknown token source component counters", async () => {
     const services = serviceFixture();
