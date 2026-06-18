@@ -121,7 +121,8 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
     use utsushi_core::{
         ApproximationTier, EvidenceTier, FidelityTier, RuntimeAdapter, RuntimeCapability,
-        UtsushiResult,
+        RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
+        RuntimePlaybackFeature, UtsushiResult,
     };
 
     const TEST_ADAPTER_NAME: &str = "test-runtime";
@@ -156,6 +157,7 @@ mod tests {
                 version: "0.0.0-test".to_string(),
                 fidelity_tier: FidelityTier::LayoutProbe,
                 evidence_tier_ceiling: EvidenceTier::E2,
+                capability_contract: test_capability_contract(),
                 capabilities: vec![
                     RuntimeCapability::Trace,
                     RuntimeCapability::FrameCapture,
@@ -177,6 +179,68 @@ mod tests {
         fn smoke_validate(&self, request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
             self.report("smoke", request)
         }
+    }
+
+    fn test_capability_contract() -> RuntimeCapabilityContract {
+        RuntimeCapabilityContract::new(
+            RuntimeCapabilityClass::LaunchCapture,
+            FidelityTier::LayoutProbe,
+            EvidenceTier::E2,
+            vec![
+                RuntimeFeatureSupport::supported(
+                    RuntimePlaybackFeature::StaticTrace,
+                    EvidenceTier::E1,
+                    "Records test runtime trace dispatches.",
+                ),
+                RuntimeFeatureSupport::supported(
+                    RuntimePlaybackFeature::TextTrace,
+                    EvidenceTier::E1,
+                    "Records test runtime smoke validation dispatches.",
+                ),
+                RuntimeFeatureSupport::partial(
+                    RuntimePlaybackFeature::FrameCapture,
+                    EvidenceTier::E2,
+                    "Records test runtime capture dispatches without producing live engine frames.",
+                    vec![
+                        "Frame capture is a CLI dispatch test report, not a screenshot."
+                            .to_string(),
+                    ],
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::BranchDiscovery,
+                    "Branch discovery is outside the CLI dispatch test adapter contract.",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::Jump,
+                    "Controlled jumps are outside the CLI dispatch test adapter contract.",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::Snapshot,
+                    "Snapshot save and restore are outside the CLI dispatch test adapter contract.",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::Screenshot,
+                    "Live screenshots are outside the CLI dispatch test adapter contract.",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::Recording,
+                    "Playback recording is outside the CLI dispatch test adapter contract.",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::InstrumentationHooks,
+                    "Instrumentation hooks are outside the CLI dispatch test adapter contract.",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::VmStateInspection,
+                    "VM state inspection is outside the CLI dispatch test adapter contract.",
+                ),
+                RuntimeFeatureSupport::unsupported(
+                    RuntimePlaybackFeature::ReferenceComparison,
+                    "Reference comparison is outside the CLI dispatch test adapter contract.",
+                ),
+            ],
+            vec!["Test runtime adapter for CLI dispatch coverage only.".to_string()],
+        )
     }
 
     fn temp_dir(name: &str) -> PathBuf {
