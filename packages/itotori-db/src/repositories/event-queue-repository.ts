@@ -199,8 +199,11 @@ export interface ItotoriEventQueueRepositoryPort {
     input: QueueFailureInput,
   ): Promise<JobQueueRecord>;
   recoverExpiredJobLeases(actor: AuthorizationActor): Promise<JobQueueRecord[]>;
-  getOutboxEvent(outboxEventId: string): Promise<OutboxEventRecord | null>;
-  getJob(jobId: string): Promise<JobQueueRecord | null>;
+  getOutboxEvent(
+    actor: AuthorizationActor,
+    outboxEventId: string,
+  ): Promise<OutboxEventRecord | null>;
+  getJob(actor: AuthorizationActor, jobId: string): Promise<JobQueueRecord | null>;
 }
 
 export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryPort {
@@ -540,7 +543,11 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
     return rows.map(jobFromRow);
   }
 
-  async getOutboxEvent(outboxEventId: string): Promise<OutboxEventRecord | null> {
+  async getOutboxEvent(
+    actor: AuthorizationActor,
+    outboxEventId: string,
+  ): Promise<OutboxEventRecord | null> {
+    await requirePermission(this.db, actor, permissionValues.queueRead);
     const rows = await executeRows(
       this.db as unknown as QueueSqlExecutor,
       sql`select * from ${eventOutbox} where outbox_event_id = ${outboxEventId} limit 1`,
@@ -548,7 +555,8 @@ export class ItotoriEventQueueRepository implements ItotoriEventQueueRepositoryP
     return rows[0] === undefined ? null : outboxEventFromRow(rows[0]);
   }
 
-  async getJob(jobId: string): Promise<JobQueueRecord | null> {
+  async getJob(actor: AuthorizationActor, jobId: string): Promise<JobQueueRecord | null> {
+    await requirePermission(this.db, actor, permissionValues.queueRead);
     const rows = await executeRows(
       this.db as unknown as QueueSqlExecutor,
       sql`select * from ${jobQueue} where job_id = ${jobId} limit 1`,

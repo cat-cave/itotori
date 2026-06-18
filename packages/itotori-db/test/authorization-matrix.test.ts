@@ -144,6 +144,18 @@ const repositoryPermissionGateMatrix = [
     "event-queue-repository.test.ts job lease recovery coverage",
     (repo) => repo.recoverExpiredJobLeases(deniedActor),
   ),
+  queueGate(
+    "getOutboxEvent",
+    "queueRead",
+    "event-queue-repository.test.ts authorized outbox read coverage",
+    (repo) => repo.getOutboxEvent(deniedActor, "outbox"),
+  ),
+  queueGate(
+    "getJob",
+    "queueRead",
+    "event-queue-repository.test.ts authorized job read coverage",
+    (repo) => repo.getJob(deniedActor, "job"),
+  ),
   catalogGate(
     "recordSourceProvenance",
     "catalogWrite",
@@ -413,6 +425,18 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriEventQueueRepository.recoverExpiredJobLeases",
           "requiredPermission": "queue.manage",
           "successFixture": "event-queue-repository.test.ts job lease recovery coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriEventQueueRepository.getOutboxEvent",
+          "requiredPermission": "queue.read",
+          "successFixture": "event-queue-repository.test.ts authorized outbox read coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriEventQueueRepository.getJob",
+          "requiredPermission": "queue.read",
+          "successFixture": "event-queue-repository.test.ts authorized job read coverage",
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",

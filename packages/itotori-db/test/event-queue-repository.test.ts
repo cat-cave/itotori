@@ -178,8 +178,10 @@ describe("ItotoriEventQueueRepository", () => {
 
       expect(duplicate.outboxEvent.outboxEventId).toBe("outbox-rerun-requested");
       expect(duplicate.jobs).toEqual([]);
-      await expect(queue.getJob("job-rerun-drafts-changed-idempotency")).resolves.toBeNull();
-      await expect(queue.getJob("job-rerun-drafts-non-idempotent")).resolves.toBeNull();
+      await expect(
+        queue.getJob(localActor, "job-rerun-drafts-changed-idempotency"),
+      ).resolves.toBeNull();
+      await expect(queue.getJob(localActor, "job-rerun-drafts-non-idempotent")).resolves.toBeNull();
 
       const counts = await context.db.execute(sql`
         select
@@ -224,7 +226,7 @@ describe("ItotoriEventQueueRepository", () => {
         publisher.publishAvailable({ limit: 1, leaseSeconds: 60, retryAfterSeconds: 0 }),
       ).resolves.toEqual({ claimed: 1, published: 0, failed: 1 });
 
-      const afterFailure = await queue.getOutboxEvent("outbox-agent-task");
+      const afterFailure = await queue.getOutboxEvent(localActor, "outbox-agent-task");
       expect(afterFailure).toMatchObject({
         status: outboxStatusValues.retryWaiting,
         attemptCount: 1,
@@ -241,7 +243,7 @@ describe("ItotoriEventQueueRepository", () => {
         publisher.publishAvailable({ limit: 1, leaseSeconds: 60, retryAfterSeconds: 0 }),
       ).resolves.toEqual({ claimed: 1, published: 1, failed: 0 });
 
-      const published = await queue.getOutboxEvent("outbox-agent-task");
+      const published = await queue.getOutboxEvent(localActor, "outbox-agent-task");
       expect(published).toMatchObject({
         status: outboxStatusValues.published,
         attemptCount: 2,
@@ -450,7 +452,7 @@ describe("ItotoriEventQueueRepository", () => {
         failed: 0,
       });
 
-      const succeeded = await queue.getJob("job-deterministic-success");
+      const succeeded = await queue.getJob(localActor, "job-deterministic-success");
       expect(succeeded).toMatchObject({
         status: jobStatusValues.succeeded,
         result: { checked: true, jobName: "tool.protected-span-check" },
@@ -478,7 +480,7 @@ describe("ItotoriEventQueueRepository", () => {
         },
       );
 
-      const failed = await queue.getJob("job-triage-fails");
+      const failed = await queue.getJob(localActor, "job-triage-fails");
       expect(failed).toMatchObject({
         status: jobStatusValues.deadLetter,
         attemptCount: 2,
@@ -504,6 +506,12 @@ describe("ItotoriEventQueueRepository", () => {
         .where(eq(userPermissionGrants.permission, permissionValues.queueManage))
         .limit(1);
       expect(grant[0]?.permission).toBe(permissionValues.queueManage);
+      const readGrant = await context.db
+        .select({ permission: userPermissionGrants.permission })
+        .from(userPermissionGrants)
+        .where(eq(userPermissionGrants.permission, permissionValues.queueRead))
+        .limit(1);
+      expect(readGrant[0]?.permission).toBe(permissionValues.queueRead);
 
       const result = await context.db.execute(sql`
         select indexname

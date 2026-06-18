@@ -570,6 +570,10 @@ export const ITOTORI_PERMISSION_VALUES_V02 = [
   "patch.export",
   "runtime.ingest",
   "feedback.import",
+  "queue.manage",
+  "queue.read",
+  "catalog.read",
+  "catalog.write",
   "system.reset",
 ] as const;
 export type ItotoriPermissionV02 = (typeof ITOTORI_PERMISSION_VALUES_V02)[number];

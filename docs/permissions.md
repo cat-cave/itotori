@@ -51,6 +51,7 @@ after the database has been migrated.
 | `runtime.ingest`  | Persist runtime verification evidence and status  |
 | `feedback.import` | Import manual feedback and playtest notes         |
 | `queue.manage`    | Append, claim, retry, and complete durable jobs   |
+| `queue.read`      | Read durable queue event and job internals        |
 | `catalog.read`    | Read catalog work identity and provenance records |
 | `catalog.write`   | Persist catalog work identity and provenance      |
 | `system.reset`    | Reset local hello-world persisted state           |

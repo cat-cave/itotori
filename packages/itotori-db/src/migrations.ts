@@ -108,6 +108,10 @@ const migrations = [
     id: "0012_optional_provider_run_timing",
     file: "0012_optional_provider_run_timing.sql",
   },
+  {
+    id: "0013_queue_read_permission",
+    file: "0013_queue_read_permission.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

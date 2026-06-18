@@ -6,5 +6,5 @@
     "displayName": "Local user"
   },
   "grants": ["project.import", "draft.write", "patch.export", "runtime.ingest", "system.reset"],
-  "compatibilityNotes": ["feedback.import is intentionally missing."]
+  "compatibilityNotes": ["Required local-user grants are intentionally missing."]
 }

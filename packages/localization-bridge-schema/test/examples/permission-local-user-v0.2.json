@@ -11,6 +11,10 @@
     "patch.export",
     "runtime.ingest",
     "feedback.import",
+    "queue.manage",
+    "queue.read",
+    "catalog.read",
+    "catalog.write",
     "system.reset"
   ],
   "compatibilityNotes": [

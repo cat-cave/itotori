@@ -16,6 +16,7 @@ const permissions = [
   ["runtimeIngest", "runtime.ingest"],
   ["feedbackImport", "feedback.import"],
   ["queueManage", "queue.manage"],
+  ["queueRead", "queue.read"],
   ["catalogRead", "catalog.read"],
   ["catalogWrite", "catalog.write"],
   ["systemReset", "system.reset"],
