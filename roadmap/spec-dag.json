@@ -4162,7 +4162,7 @@
     {
       "id": "KAIFUU-050",
       "title": "Local key resolver and secret store",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared"],
@@ -4208,10 +4208,7 @@
         "Raw secret leakage",
         "Machine-specific secret refs in committed artifacts",
         "Adapters bypassing the resolver"
-      ],
-      "owner": "orchestrator-20260618-wave6",
-      "branch": "spec/kaifuu-050",
-      "worktree": "/tmp/itotori-spec-kaifuu-050"
+      ]
     },
     {
       "id": "KAIFUU-051",
@@ -17992,6 +17989,78 @@
         "Manual key refs or helper requirements logged unsafely",
         "Binary patch constraints hidden until broad adapter work",
         "Broad Wolf claims made without smoke evidence"
+      ]
+    },
+    {
+      "id": "KAIFUU-146",
+      "title": "Local secret prefix boundary guard",
+      "status": "planned",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-050"],
+      "summary": "Harden local-secret policy matching so allowed prefixes authorize exact path segments rather than raw string prefixes that can over-match sibling ids.",
+      "deliverables": [
+        "Segment-aware local secret allow-prefix matcher",
+        "Regression tests for exact match, child id match, sibling id rejection, and normalized separator behavior",
+        "Diagnostic text that distinguishes policy denial from missing secret material"
+      ],
+      "acceptanceCriteria": [
+        "An allow prefix such as `private/customer/account` permits `private/customer/account/key` but rejects `private/customer/accounting/key`.",
+        "Exact allowed ids and child ids continue to resolve when other resolver policies allow the scheme.",
+        "Policy-denied secret ids emit the existing stable redacted diagnostic without exposing secret labels beyond the redacted id policy."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core local_key_resolver"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        }
+      ],
+      "auditFocus": [
+        "Sibling secret id over-authorization",
+        "Breaking existing exact-prefix policy fixtures",
+        "Secret id leakage in denial diagnostics"
+      ]
+    },
+    {
+      "id": "KAIFUU-147",
+      "title": "Key resolver semantic error docs sync",
+      "status": "planned",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-050"],
+      "summary": "Keep the key-discovery documentation's stable semantic error list aligned with key resolver diagnostics introduced by the local key resolver.",
+      "deliverables": [
+        "Updated `docs/kaifuu-key-discovery.md` stable semantic error table",
+        "Doc or snapshot check covering newly added resolver diagnostics",
+        "Guidance for prompt-cancelled and external-secret-unavailable reporting"
+      ],
+      "acceptanceCriteria": [
+        "`kaifuu.malformed_secret_ref`, `kaifuu.secret_ref_out_of_policy`, `kaifuu.external_secret_unavailable`, and `kaifuu.prompt_cancelled` are documented with redaction expectations.",
+        "Future resolver diagnostic additions fail a targeted docs-sync check or snapshot until documented.",
+        "The docs continue to state that external keychain, secret-manager, and prompt backends are interfaces until implemented by later specs."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": [
+        "Runtime diagnostics drifting from canonical docs",
+        "Docs implying unimplemented external backends exist",
+        "Missing redaction expectations for key resolver errors"
       ]
     }
   ]

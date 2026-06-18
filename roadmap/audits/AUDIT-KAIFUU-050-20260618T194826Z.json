@@ -1,0 +1,109 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-050-20260618T194826Z",
+  "generatedAt": "2026-06-18T19:48:26Z",
+  "spec": {
+    "id": "KAIFUU-050",
+    "title": "Local key resolver and secret store",
+    "branch": "spec/kaifuu-050",
+    "worktree": "/tmp/itotori-spec-kaifuu-050",
+    "commit": "72c4cca"
+  },
+  "auditor": {
+    "name": "kaifuu-050-security-and-focused-reaudit-wave",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Initial audits found P1 blockers in local secret filesystem boundaries and prompt/external resolver modeling. Repair commits 294e62f and 72c4cca fixed those blockers. The focused re-audit found no remaining P0/P1 findings; P2/P3 follow-ups were recorded as KAIFUU-146 and KAIFUU-147.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-050-F001", "KAIFUU-050-F002"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-050-F001",
+      "severity": "P2",
+      "title": "Local secret allow-prefix matching can over-authorize sibling ids",
+      "category": "security",
+      "locations": [
+        {
+          "path": "crates/kaifuu-core/src/lib.rs",
+          "line": 4136,
+          "symbol": "KeyResolverPolicy::permits_local_secret_id"
+        }
+      ],
+      "description": "The focused re-audit found that raw starts_with matching allows a prefix such as private/customer/account to also permit private/customer/accounting/key.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Focused KAIFUU-050 re-audit after repair commit 84035345 verified P0/P1 blockers were gone but identified the segment-boundary policy gap."
+        }
+      ],
+      "impact": "A configured local-secret allow prefix can authorize unintended sibling secret ids inside the same store.",
+      "actionableAcceptanceCriteria": [
+        "Allowed local-secret prefixes match exact ids or path-segment children only.",
+        "Sibling ids with the same raw string prefix are rejected with redacted policy diagnostics."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-146",
+          "acceptanceCriteria": [
+            "An allow prefix such as private/customer/account permits private/customer/account/key but rejects private/customer/accounting/key."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-050-F002",
+      "severity": "P3",
+      "title": "Key resolver semantic error docs are stale",
+      "category": "documentation",
+      "locations": [
+        {
+          "path": "docs/kaifuu-key-discovery.md",
+          "line": 320
+        },
+        {
+          "path": "crates/kaifuu-core/src/lib.rs",
+          "line": 4466
+        }
+      ],
+      "description": "The stable semantic error list does not include newly added resolver diagnostics for malformed secret refs, out-of-policy refs, unavailable external secrets, and cancelled prompts.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Focused KAIFUU-050 re-audit compared runtime diagnostics against the key-discovery documentation."
+        }
+      ],
+      "impact": "Future adapter or helper work may miss the canonical reporting contract for key resolver errors.",
+      "actionableAcceptanceCriteria": [
+        "New key resolver diagnostics are documented with redaction expectations.",
+        "Docs continue to distinguish interface hooks from implemented external backends."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-147",
+          "acceptanceCriteria": [
+            "kaifuu.malformed_secret_ref, kaifuu.secret_ref_out_of_policy, kaifuu.external_secret_unavailable, and kaifuu.prompt_cancelled are documented with redaction expectations."
+          ],
+          "notes": "Follow-up node inserted in the same branch as audit finding ingestion."
+        }
+      }
+    }
+  ]
+}
