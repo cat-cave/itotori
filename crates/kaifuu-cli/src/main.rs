@@ -270,15 +270,50 @@ fn run_helper_registry_command(args: &[String]) -> Result<(), Box<dyn std::error
         }
         "invoke-fixture-stub" => {
             let output = PathBuf::from(flag(args, "--output")?);
+            let input = flag_optional(args, "--input")
+                .map(PathBuf::from)
+                .map(|path| read_json(&path))
+                .transpose()?
+                .unwrap_or_else(|| serde_json::json!({"fixture": true}));
             let registry = fixture_helper_registry()?;
             let helper_id = flag_optional(args, "--helper-id")
+                .or_else(|| input.get("helperId").and_then(serde_json::Value::as_str))
                 .unwrap_or(kaifuu_core::FIXTURE_HELPER_REGISTRY_ID);
+            let helper_version = flag_optional(args, "--helper-version")
+                .or_else(|| {
+                    input
+                        .get("helperVersion")
+                        .and_then(serde_json::Value::as_str)
+                })
+                .unwrap_or("0.1.0");
+            let allowlist_entry_id = flag_optional(args, "--allowlist-entry-id")
+                .or_else(|| {
+                    input
+                        .get("allowlistEntryId")
+                        .and_then(serde_json::Value::as_str)
+                })
+                .unwrap_or(kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID);
+            let capability = flag_optional(args, "--capability")
+                .or_else(|| {
+                    input
+                        .get("requestedCapability")
+                        .and_then(serde_json::Value::as_str)
+                })
+                .map(|capability| {
+                    parse_helper_capability(capability).ok_or_else(
+                        || -> Box<dyn std::error::Error> {
+                            format!("unsupported helper capability {capability}").into()
+                        },
+                    )
+                })
+                .transpose()?
+                .unwrap_or(HelperCapability::FixtureInvocation);
             let result = registry.invoke(HelperRegistryInvocationRequest {
                 helper_id,
-                helper_version: "0.1.0",
-                allowlist_entry_id: kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID,
-                capability: HelperCapability::FixtureInvocation,
-                input: &serde_json::json!({"fixture": true}),
+                helper_version,
+                allowlist_entry_id,
+                capability,
+                input: &input,
             })?;
             write_json(&output, &redact_report_value(&result))?;
         }
@@ -1952,6 +1987,47 @@ wait
             kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
         );
         assert_eq!(result["diagnostic"]["code"], "success");
+    }
+
+    #[test]
+    fn helper_registry_invoke_fixture_stub_accepts_siglus_key_validation_request() {
+        let root = temp_dir("helper-registry-invoke-siglus-request");
+        let output = root.join("helper-result.json");
+        let request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-request.json",
+        );
+
+        run_cli(&[
+            "helper-registry",
+            "invoke-fixture-stub",
+            "--input",
+            request.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let result: serde_json::Value = read_json(&output).unwrap();
+        let expected: serde_json::Value = read_json(&public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/siglus-secondary-key-helper-boundary-success.json",
+        ))
+        .unwrap();
+        assert_eq!(result, expected);
+        assert_eq!(
+            result["helper"]["helperId"],
+            kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
+        );
+        assert_eq!(result["diagnostic"]["code"], "success");
+        let serialized = fs::read_to_string(&output).unwrap();
+        for forbidden in [
+            "rawKey",
+            "keyMaterial",
+            "00112233445566778899aabbccddeeff",
+            "decrypted script",
+            "/home/",
+            "C:\\",
+        ] {
+            assert!(!serialized.contains(forbidden), "leaked {forbidden}");
+        }
     }
 
     #[test]

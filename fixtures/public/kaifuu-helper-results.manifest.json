@@ -95,8 +95,8 @@
       "path": "fixtures/public/kaifuu-helper-results/helper-registry/valid-helper.json",
       "role": "helper-registry",
       "mediaType": "application/json",
-      "sha256": "875bc6560cd1fab10a4589567b5ff7521330b9b6a765d7dc6a8f545ddd3995d3",
-      "bytes": 1189,
+      "sha256": "d21b57c9e8b24283f4255ffd0db74beb1efb51dad0795796152a737d74b22258",
+      "bytes": 1225,
       "redistributable": true
     },
     {
@@ -105,6 +105,54 @@
       "mediaType": "application/json",
       "sha256": "9e6969afd0b4d4db8b9463c2d3df74f4128c25a1ef66d770296cc70f28db65c2",
       "bytes": 1019,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-helper-rejection.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "9af686c7094e335fe0bcc3fc5c6330cdd9e7491c90a8d4f52d6410246162a3d6",
+      "bytes": 1360,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-missing-key-ref.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "bf30d7f12a2985d2c766f7e54b4a720fd2da4c2de275809c4bc1620ea9197813",
+      "bytes": 833,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-redacted-output-mismatch.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "e6a91d384aec868c4e17c84de83b2e6aebdb8bd7671a9bff84da49f555fe54ae",
+      "bytes": 1364,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-request.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "55cc5969337c7475b5927ee2051d905f613392d1033397368f0f8a5d89f3a6db",
+      "bytes": 1354,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-wrong-profile.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "37ddc925a72b25e508727683653dae4ee04160f4f5466fa8bd38287a6f996e5f",
+      "bytes": 1353,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-wrong-purpose.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "2ab6cddab51a0eab1f5aa10e1fd36f22556c10bd40d2337d8f5b0a7a0878eb9f",
+      "bytes": 1350,
       "redistributable": true
     },
     {
@@ -204,6 +252,14 @@
       "redistributable": true
     },
     {
+      "path": "fixtures/public/kaifuu-helper-results/siglus-secondary-key-helper-boundary-success.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "22554d0b13204b7c872995c5a1373a14cb668eb2cb98254c7f97b34522bc7dab",
+      "bytes": 1418,
+      "redistributable": true
+    },
+    {
       "path": "fixtures/public/kaifuu-helper-results/success.json",
       "role": "helper-result",
       "mediaType": "application/json",
@@ -229,18 +285,20 @@
     }
   ],
   "aggregateStats": {
-    "files": 26,
+    "files": 33,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
-    "sourceLocales": ["ja-JP"],
+    "sourceLocales": [
+      "ja-JP"
+    ],
     "engineKinds": [
       "kaifuu-helper-binary-allowlist",
       "kaifuu-helper-registry",
       "kaifuu-helper-request",
       "kaifuu-helper-result"
     ],
-    "notes": "Covers success, missing_key, helper_required, helper_unavailable, helper_authorization_denied, helper_timeout, validation_failed, unsupported_protected_executable, redaction_failure diagnostics, static parser, known-key import, manual-entry, Wine, Windows, helper registry validation, helper binary allowlist fixtures, and local key-ref helper request/import boundary fixtures."
+    "notes": "Covers success, missing_key, helper_required, helper_unavailable, helper_authorization_denied, helper_timeout, validation_failed, unsupported_protected_executable, redaction_failure diagnostics, static parser, known-key import, manual-entry, Wine, Windows, helper registry validation, helper binary allowlist fixtures, local key-ref helper request/import boundary fixtures, and Siglus secondary-key helper-boundary request fixtures."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,
