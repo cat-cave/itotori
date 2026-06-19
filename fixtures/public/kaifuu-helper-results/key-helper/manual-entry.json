@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-key-helper-manual-entry",
+  "helperResultId": "helper-result-key-helper-manual-entry",
+  "profileId": "019ed000-0000-7000-8000-profile00037",
+  "helper": {
+    "helperId": "kaifuu.fixture.manual-entry",
+    "helperVersion": "0.1.0",
+    "helperKind": "manualKeyEntry"
+  },
+  "capabilityLevel": "manualEntry",
+  "execution": {
+    "mode": "notExecuted",
+    "platform": "fixture-local",
+    "bounded": true,
+    "timeoutMs": 1000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "none"
+  },
+  "diagnostic": {
+    "code": "success",
+    "message": "synthetic manual entry validated a local-only key reference"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/manual-entry-secondary-key",
+      "materialKind": "fixedBytes",
+      "bytes": 16,
+      "validation": {
+        "method": "decryptHeaderProof",
+        "proofHash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+      }
+    }
+  ],
+  "proofHashes": [
+    {
+      "method": "decryptHeaderProof",
+      "proofHash": "sha256:8888888888888888888888888888888888888888888888888888888888888888"
+    }
+  ]
+}

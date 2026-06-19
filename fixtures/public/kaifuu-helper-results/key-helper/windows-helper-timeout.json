@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-key-helper-windows-timeout",
+  "helperResultId": "helper-result-key-helper-windows-timeout",
+  "profileId": "019ed000-0000-7000-8000-profile00037",
+  "helper": {
+    "helperId": "kaifuu.fixture.local-windows",
+    "helperVersion": "0.1.0",
+    "helperKind": "wineLocalWindowsHelper"
+  },
+  "capabilityLevel": "windowsLocal",
+  "execution": {
+    "mode": "platformHelper",
+    "platform": "windows-fixture",
+    "bounded": true,
+    "timeoutMs": 5000,
+    "durationMs": 5000,
+    "networkAccess": false,
+    "filesystemAccess": "localGameReadOnly"
+  },
+  "diagnostic": {
+    "code": "helper_timeout",
+    "message": "synthetic Windows helper reached the bounded timeout"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:1212121212121212121212121212121212121212121212121212121212121212"
+  },
+  "secretRefs": [],
+  "proofHashes": []
+}

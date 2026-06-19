@@ -111,88 +111,138 @@
       "path": "fixtures/public/kaifuu-helper-results/helper-required.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "1f9c84b552b5522f640a00c91e869b80165aabf6a19f73414854d30f302559e5",
-      "bytes": 828,
+      "sha256": "f418d2e03edcebdc1037c1ecc22427e9d49b1325770d068890ed8a53ac1e5930",
+      "bytes": 1070,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/helper-result.schema.json",
       "role": "metadata",
       "mediaType": "application/schema+json",
-      "sha256": "c17d880a57bb3a8b9e92b28a0a2a517b2f5926f9d96b391e24233bffd6c03552",
-      "bytes": 4747,
+      "sha256": "44f053b53fb67c9ccdce4757e69a8ca18be409781382d400e8284659a93300b4",
+      "bytes": 6490,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/helper-unavailable.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "eaf47a28b37c3e15af61ea1c73f6d1f8080ef1621225ab73c36f4418c2e992e9",
-      "bytes": 830,
+      "sha256": "bfad0c53cdfa044bae797202f6f5fbb12955d8c93e08b75eccfe60384656aec6",
+      "bytes": 1085,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/key-helper/authorization-denied.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "38acf5510d08bbf98c6d8d6e4974b2047949d99f609e09984958dc45b91b167a",
+      "bytes": 935,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/key-helper/known-key-import.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "cb0e37477aedfa34e97d12ace80ac23639bb8a1690c13cfb204ab723eda43b34",
+      "bytes": 1401,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/key-helper/manual-entry.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "7a6ba599673a1d64a2a588342a9e55af55baf9c091bf3b5030a3b4b0ffb16c3b",
+      "bytes": 1383,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/key-helper/static-parser.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "10c8134bcaabb210713df628777499648a92895283780b17033febf849dc28a2",
+      "bytes": 1391,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/key-helper/windows-helper-timeout.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "37584325a8a3a27dacba9e5bdc909f151973d8309a14e4765da7886bbe0b4115",
+      "bytes": 915,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/key-helper/wine-helper-unavailable.json",
+      "role": "helper-result",
+      "mediaType": "application/json",
+      "sha256": "9ab95fd73f2a514e2b7be036d4860d414b0ce4c965a277a083024c8ad760bf3a",
+      "bytes": 916,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/known-key-import-boundary.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "f50867d139b43d3fe4b7c1ffeed6aaa501cf6765c2f84b315fa93bb54fbac018",
-      "bytes": 1458,
+      "sha256": "79b571513dbd180c62710f6c706337f32df8fcdfca2ca412db0ecc73504b07ce",
+      "bytes": 1418,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/missing-key.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "d91c347a84b0556712504daf7a9560391f869ac31083469c9aaa5a27ad97a535",
-      "bytes": 818,
+      "sha256": "5966c5816c2109b2488e2c9db8ed25aa77d36e2b4c52645e5eec245afcdb0f4c",
+      "bytes": 1063,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/redaction-failure.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "ab69c85e0096ad4d27b9a2bea80dfe670ddae282e68bbc6b8a24b8a0647927af",
-      "bytes": 641,
+      "sha256": "8b60dfd5a548a22f8dc11e18189112f926d2ee2d78438a4372bbb95818de2f5a",
+      "bytes": 898,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/success.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "5776c286a69d9696198b7eaf812d9d5dfa71879407b8a889af9a1299998f3afa",
-      "bytes": 1116,
+      "sha256": "254c49e830fc526b20433d264575d87ef39d4458cb6c083137c25f051bcadbf7",
+      "bytes": 1373,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/unsupported-protected-executable.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "acd1985d0d76d91d127bfc09ce8147d3e1604bf1b4be908b337ba6731047a5d7",
-      "bytes": 705,
+      "sha256": "453b8a741b47401a27aac7a7aed93caa25b7cfa7c33220bb82c422ffb2cd108d",
+      "bytes": 965,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-helper-results/validation-failed.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "9d54cde6bd9a2e359b6dd35578d21fbb657c9db98980abed161bfd173e3353d4",
-      "bytes": 1148,
+      "sha256": "9aec874bdc75c85f9cc8cc517f95bc83fa60031504a8a870aeea4d8e312ad94f",
+      "bytes": 1405,
       "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 20,
+    "files": 26,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
-    "sourceLocales": ["ja-JP"],
+    "sourceLocales": [
+      "ja-JP"
+    ],
     "engineKinds": [
       "kaifuu-helper-binary-allowlist",
       "kaifuu-helper-registry",
       "kaifuu-helper-request",
       "kaifuu-helper-result"
     ],
-    "notes": "Covers success, missing_key, helper_required, helper_unavailable, validation_failed, unsupported_protected_executable, redaction_failure diagnostics, helper registry validation, helper binary allowlist fixtures, and local key-ref helper request/import boundary fixtures."
+    "notes": "Covers success, missing_key, helper_required, helper_unavailable, helper_authorization_denied, helper_timeout, validation_failed, unsupported_protected_executable, redaction_failure diagnostics, static parser, known-key import, manual-entry, Wine, Windows, helper registry validation, helper binary allowlist fixtures, and local key-ref helper request/import boundary fixtures."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

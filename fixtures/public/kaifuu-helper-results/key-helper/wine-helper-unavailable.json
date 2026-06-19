@@ -1,8 +1,8 @@
 {
   "schemaVersion": "0.1.0",
-  "fixtureId": "kaifuu-helper-helper-unavailable",
-  "helperResultId": "helper-result-helper-unavailable",
-  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "fixtureId": "kaifuu-key-helper-wine-unavailable",
+  "helperResultId": "helper-result-key-helper-wine-unavailable",
+  "profileId": "019ed000-0000-7000-8000-profile00037",
   "helper": {
     "helperId": "kaifuu.fixture.wine-local-windows",
     "helperVersion": "0.1.0",
@@ -24,15 +24,8 @@
   },
   "redaction": {
     "status": "redacted",
-    "redactedLogHash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    "redactedLogHash": "sha256:9999999999999999999999999999999999999999999999999999999999999999"
   },
-  "secretRefs": [
-    {
-      "requirementId": "siglus-secondary-key",
-      "secretRef": "local-secret:fixture/siglus/secondary-key",
-      "materialKind": "fixedBytes",
-      "bytes": 16
-    }
-  ],
+  "secretRefs": [],
   "proofHashes": []
 }

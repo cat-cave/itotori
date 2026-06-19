@@ -8,6 +8,16 @@
     "helperVersion": "0.1.0",
     "helperKind": "staticParser"
   },
+  "capabilityLevel": "staticAnalysis",
+  "execution": {
+    "mode": "inProcess",
+    "platform": "fixture-static",
+    "bounded": true,
+    "timeoutMs": 1000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "readOnlyWorkspace"
+  },
   "diagnostic": {
     "code": "validation_failed",
     "message": "synthetic key candidate did not match the public validation proof"

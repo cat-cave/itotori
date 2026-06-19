@@ -10,6 +10,8 @@
     "helperResultId",
     "profileId",
     "helper",
+    "capabilityLevel",
+    "execution",
     "diagnostic",
     "redaction",
     "secretRefs",
@@ -56,6 +58,72 @@
         }
       }
     },
+    "capabilityLevel": {
+      "type": "string",
+      "enum": [
+        "staticAnalysis",
+        "localKeyImport",
+        "manualEntry",
+        "wineLocal",
+        "windowsLocal",
+        "remoteWindows"
+      ]
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "platform",
+        "bounded",
+        "timeoutMs",
+        "durationMs",
+        "networkAccess",
+        "filesystemAccess"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["notExecuted", "inProcess", "localProcess", "platformHelper", "remoteHelper"]
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        },
+        "bounded": {
+          "const": true
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600000
+        },
+        "durationMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600000
+        },
+        "networkAccess": {
+          "type": "boolean"
+        },
+        "filesystemAccess": {
+          "type": "string",
+          "enum": ["none", "tempOnly", "readOnlyWorkspace", "localGameReadOnly"]
+        }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["command"] },
+          { "required": ["args"] },
+          { "required": ["argv"] },
+          { "required": ["shell"] },
+          { "required": ["env"] },
+          { "required": ["environment"] },
+          { "required": ["executablePath"] }
+        ]
+      }
+    },
     "diagnostic": {
       "type": "object",
       "additionalProperties": false,
@@ -68,6 +136,8 @@
             "missing_key",
             "helper_required",
             "helper_unavailable",
+            "helper_authorization_denied",
+            "helper_timeout",
             "validation_failed",
             "unsupported_protected_executable",
             "redaction_failure"

@@ -56,40 +56,40 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/helper-required.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "7af0fae01e501856e0618bfd0b550e00027a27abc3d52d64dbfe51e6d0f000b5",
-      "bytes": 834,
+      "sha256": "e31059524fa37e8539fdbd3141550a873ee0120151f47dbc58b1e2d61121a56e",
+      "bytes": 1076,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/helper-unavailable.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "a97e96b1f1aea92739233d8ca85ae151dc7cb635ebb441cea0156189427b5089",
-      "bytes": 861,
+      "sha256": "b99193c3a57624514c1060089f2652fa38ddac16e5f0aa02114531de07909844",
+      "bytes": 1116,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/missing-key.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "dd182c46f8ac8f94c906034ddd6c0e87c3e149b07713317fcfa8ea06771e4918",
-      "bytes": 843,
+      "sha256": "09ff16a5fd3cf41cf6a811eb2c830dbd66ba7dee58a3c8c79d713381a07d5805",
+      "bytes": 1088,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/redaction-path.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "0b5a5df53670d25371f533379f6b7d1b35efb48846ebcb91a407bb31f9e9cc8e",
-      "bytes": 666,
+      "sha256": "383fb42e3d14ba0f4c8e8480191983d277c3f7a8237541c1114e80ac3405ed4c",
+      "bytes": 923,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/validation-failed.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "5994a18f07ccd3060494b6ab7ac6c1e990110c16b957b2cfb792e0e9e6a8e99d",
-      "bytes": 1168,
+      "sha256": "2555ad0e8ce125b4a6daab9916b57488d92aa5f6b04de15a74648a87473717af",
+      "bytes": 1425,
       "redistributable": true
     },
     {
@@ -250,7 +250,9 @@
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
-    "sourceLocales": ["ja-JP"],
+    "sourceLocales": [
+      "ja-JP"
+    ],
     "targetLocales": [],
     "engineKinds": [
       "bgi-ethornell-synthetic-container",

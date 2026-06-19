@@ -8,6 +8,16 @@
     "helperVersion": "0.1.0",
     "helperKind": "manualKeyEntry"
   },
+  "capabilityLevel": "manualEntry",
+  "execution": {
+    "mode": "notExecuted",
+    "platform": "fixture-local",
+    "bounded": true,
+    "timeoutMs": 1000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "none"
+  },
   "diagnostic": {
     "code": "helper_required",
     "message": "manual entry is required before this synthetic profile can resolve key material"

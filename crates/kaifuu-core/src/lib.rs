@@ -25,6 +25,8 @@ pub const BRIDGE_SCHEMA_VERSION_V02: &str = "0.2.0";
 pub const SEMANTIC_MISSING_KEY_PROFILE: &str = "kaifuu.missing_capability.key_profile";
 pub const SEMANTIC_MISSING_KEY_MATERIAL: &str = "kaifuu.missing_key_material";
 pub const SEMANTIC_HELPER_UNAVAILABLE: &str = "kaifuu.helper_unavailable";
+pub const SEMANTIC_HELPER_AUTHORIZATION_DENIED: &str = "kaifuu.helper_authorization_denied";
+pub const SEMANTIC_HELPER_TIMEOUT: &str = "kaifuu.helper_timeout";
 pub const SEMANTIC_KEY_VALIDATION_FAILED: &str = "kaifuu.key_validation_failed";
 pub const SEMANTIC_SECRET_REDACTED: &str = "kaifuu.secret_redacted";
 pub const SEMANTIC_HELPER_REQUIRED: &str = "kaifuu.helper_required";
@@ -3301,7 +3303,7 @@ pub enum KeyMaterialKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct KeyValidationProof {
     pub method: KeyValidationMethod,
     pub proof_hash: ProofHash,
@@ -3535,13 +3537,15 @@ pub enum HelperKind {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HelperResult {
     pub schema_version: String,
     pub fixture_id: String,
     pub helper_result_id: String,
     pub profile_id: String,
     pub helper: HelperProvenance,
+    pub capability_level: HelperCapabilityLevel,
+    pub execution: HelperExecutionSummary,
     pub diagnostic: HelperDiagnostic,
     pub redaction: HelperRedaction,
     #[serde(default)]
@@ -3589,6 +3593,7 @@ impl HelperResult {
         result.helper_result_id = redact_for_log_or_report(&result.helper_result_id);
         result.profile_id = redact_for_log_or_report(&result.profile_id);
         result.helper = result.helper.redacted_for_report();
+        result.execution = result.execution.redacted_for_report();
         result.diagnostic = result.diagnostic.redacted_for_report();
         result.redaction = result.redaction.redacted_for_report();
         result.secret_refs = result
@@ -3607,7 +3612,7 @@ impl HelperResult {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HelperProvenance {
     pub helper_id: String,
     pub helper_version: String,
@@ -3624,8 +3629,65 @@ impl HelperProvenance {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub enum HelperCapabilityLevel {
+    StaticAnalysis,
+    LocalKeyImport,
+    ManualEntry,
+    WineLocal,
+    WindowsLocal,
+    RemoteWindows,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HelperResultExecutionMode {
+    NotExecuted,
+    InProcess,
+    LocalProcess,
+    PlatformHelper,
+    RemoteHelper,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum HelperExecutionFilesystemAccess {
+    None,
+    TempOnly,
+    ReadOnlyWorkspace,
+    LocalGameReadOnly,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HelperExecutionSummary {
+    pub mode: HelperResultExecutionMode,
+    pub platform: String,
+    pub bounded: bool,
+    pub timeout_ms: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u32>,
+    pub network_access: bool,
+    pub filesystem_access: HelperExecutionFilesystemAccess,
+}
+
+impl HelperExecutionSummary {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            mode: self.mode,
+            platform: redact_for_log_or_report(&self.platform),
+            bounded: self.bounded,
+            timeout_ms: self.timeout_ms,
+            duration_ms: self.duration_ms,
+            network_access: self.network_access,
+            filesystem_access: self.filesystem_access,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HelperDiagnostic {
     pub code: HelperDiagnosticCode,
     pub message: String,
@@ -3647,6 +3709,8 @@ pub enum HelperDiagnosticCode {
     MissingKey,
     HelperRequired,
     HelperUnavailable,
+    HelperAuthorizationDenied,
+    HelperTimeout,
     ValidationFailed,
     UnsupportedProtectedExecutable,
     RedactionFailure,
@@ -3659,6 +3723,8 @@ impl HelperDiagnosticCode {
             Self::MissingKey => SEMANTIC_MISSING_KEY_MATERIAL,
             Self::HelperRequired => SEMANTIC_HELPER_REQUIRED,
             Self::HelperUnavailable => SEMANTIC_HELPER_UNAVAILABLE,
+            Self::HelperAuthorizationDenied => SEMANTIC_HELPER_AUTHORIZATION_DENIED,
+            Self::HelperTimeout => SEMANTIC_HELPER_TIMEOUT,
             Self::ValidationFailed => SEMANTIC_KEY_VALIDATION_FAILED,
             Self::UnsupportedProtectedExecutable => SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED,
             Self::RedactionFailure => SEMANTIC_HELPER_REDACTION_FAILURE,
@@ -3667,7 +3733,7 @@ impl HelperDiagnosticCode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HelperRedaction {
     pub status: HelperRedactionStatus,
     pub redacted_log_hash: ProofHash,
@@ -3691,7 +3757,7 @@ pub enum HelperRedactionStatus {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HelperResultSecretRef {
     pub requirement_id: String,
     pub secret_ref: SecretRef,
@@ -3877,6 +3943,31 @@ pub fn validate_helper_result_value(value: &Value) -> HelperResultValidationResu
         return helper_result_validation_result(fixture_id, failures);
     }
 
+    validate_helper_result_allowed_object_keys(
+        &mut failures,
+        fixture_id.as_deref(),
+        value,
+        "$",
+        &[
+            "schemaVersion",
+            "fixtureId",
+            "helperResultId",
+            "profileId",
+            "helper",
+            "capabilityLevel",
+            "execution",
+            "diagnostic",
+            "redaction",
+            "secretRefs",
+            "proofHashes",
+        ],
+    );
+    validate_helper_result_forbidden_metadata_fields(
+        &mut failures,
+        fixture_id.as_deref(),
+        value,
+        "$",
+    );
     add_helper_result_redaction_failures(&mut failures, fixture_id.as_deref(), value);
     validate_helper_result_schema_version(&mut failures, fixture_id.as_deref(), value);
     let fixture_id_value =
@@ -3897,7 +3988,21 @@ pub fn validate_helper_result_value(value: &Value) -> HelperResultValidationResu
             validate_helper_result_safe_text(&mut failures, fixture_id.as_deref(), field, &text);
         }
     }
-    validate_helper_result_provenance(&mut failures, fixture_id.as_deref(), value.get("helper"));
+    let helper_kind = validate_helper_result_provenance(
+        &mut failures,
+        fixture_id.as_deref(),
+        value.get("helper"),
+    );
+    let capability_level = validate_helper_result_capability_level(
+        &mut failures,
+        fixture_id.as_deref(),
+        value.get("capabilityLevel"),
+    );
+    let execution_mode = validate_helper_result_execution(
+        &mut failures,
+        fixture_id.as_deref(),
+        value.get("execution"),
+    );
     let diagnostic = validate_helper_result_diagnostic(
         &mut failures,
         fixture_id.as_deref(),
@@ -3908,15 +4013,25 @@ pub fn validate_helper_result_value(value: &Value) -> HelperResultValidationResu
         fixture_id.as_deref(),
         value.get("redaction"),
     );
-    validate_helper_result_secret_refs(
+    let secret_ref_count = validate_helper_result_secret_refs(
         &mut failures,
         fixture_id.as_deref(),
         value.get("secretRefs"),
     );
-    validate_helper_result_proof_hashes(
+    let proof_hash_count = validate_helper_result_proof_hashes(
         &mut failures,
         fixture_id.as_deref(),
         value.get("proofHashes"),
+    );
+    validate_helper_result_semantic_matrix(
+        &mut failures,
+        fixture_id.as_deref(),
+        helper_kind,
+        capability_level,
+        execution_mode,
+        diagnostic,
+        secret_ref_count,
+        proof_hash_count,
     );
 
     if diagnostic == Some(HelperDiagnosticCode::Success)
@@ -3943,6 +4058,255 @@ pub fn validate_helper_result_value(value: &Value) -> HelperResultValidationResu
     }
 
     helper_result_validation_result(fixture_id, failures)
+}
+
+pub fn normalize_helper_result_value(
+    value: &Value,
+) -> Result<HelperResult, HelperResultValidationResult> {
+    let mut normalized = value.clone();
+    let helper_kind = normalized
+        .pointer("/helper/helperKind")
+        .and_then(Value::as_str)
+        .and_then(default_helper_capability_and_execution);
+    if let Some((capability_level, execution)) = helper_kind
+        && let Some(object) = normalized.as_object_mut()
+    {
+        object
+            .entry("capabilityLevel".to_string())
+            .or_insert_with(|| Value::String(capability_level.to_string()));
+        object
+            .entry("execution".to_string())
+            .or_insert_with(|| execution);
+    }
+
+    let validation = validate_helper_result_value(&normalized).redacted_for_report();
+    if validation.status == OperationStatus::Failed {
+        return Err(validation);
+    }
+
+    match serde_json::from_value::<HelperResult>(normalized) {
+        Ok(mut result) => {
+            result.normalize();
+            Ok(result.redacted_for_report())
+        }
+        Err(error) => {
+            let fixture_id = value
+                .get("fixtureId")
+                .and_then(Value::as_str)
+                .map(redact_for_log_or_report);
+            Err(helper_result_validation_result(
+                fixture_id.clone(),
+                vec![HelperResultValidationFailure {
+                    fixture_id,
+                    code: "helper_result_deserialization_failed".to_string(),
+                    field: "$".to_string(),
+                    message: redact_for_log_or_report(&error.to_string()),
+                }],
+            )
+            .redacted_for_report())
+        }
+    }
+}
+
+fn default_helper_capability_and_execution(helper_kind: &str) -> Option<(&'static str, Value)> {
+    let (capability_level, mode, platform, timeout_ms, filesystem_access) = match helper_kind {
+        "staticParser" => (
+            "staticAnalysis",
+            "inProcess",
+            "fixture-static",
+            1000_u32,
+            "readOnlyWorkspace",
+        ),
+        "knownKeyDatabaseImport" => (
+            "localKeyImport",
+            "notExecuted",
+            "fixture-local",
+            1000_u32,
+            "none",
+        ),
+        "manualKeyEntry" => (
+            "manualEntry",
+            "notExecuted",
+            "fixture-local",
+            1000_u32,
+            "none",
+        ),
+        "wineLocalWindowsHelper" => (
+            "wineLocal",
+            "platformHelper",
+            "wine-fixture",
+            5000_u32,
+            "localGameReadOnly",
+        ),
+        "remoteWindowsHelper" => (
+            "remoteWindows",
+            "remoteHelper",
+            "windows-fixture",
+            5000_u32,
+            "localGameReadOnly",
+        ),
+        _ => return None,
+    };
+    Some((
+        capability_level,
+        serde_json::json!({
+            "mode": mode,
+            "platform": platform,
+            "bounded": true,
+            "timeoutMs": timeout_ms,
+            "durationMs": 0,
+            "networkAccess": false,
+            "filesystemAccess": filesystem_access
+        }),
+    ))
+}
+
+fn validate_helper_result_allowed_object_keys(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    value: &Value,
+    field: &str,
+    allowed: &[&str],
+) {
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    for key in object.keys() {
+        if !allowed.contains(&key.as_str()) {
+            let child_field = if field == "$" {
+                key.to_string()
+            } else {
+                format!("{field}.{key}")
+            };
+            helper_result_failure(
+                failures,
+                fixture_id,
+                "unknown_helper_result_field",
+                &child_field,
+                "helper result field is not allowed by the public contract",
+            );
+        }
+    }
+}
+
+fn validate_helper_result_forbidden_metadata_fields(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    value: &Value,
+    field: &str,
+) {
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    for (key, child) in object {
+        let child_field = if field == "$" {
+            key.to_string()
+        } else {
+            format!("{field}.{key}")
+        };
+        let normalized = normalize_secret_field_name(key);
+        if matches!(
+            normalized.as_str(),
+            "command" | "args" | "argv" | "shell" | "env" | "environment" | "executablepath"
+        ) && !child_field.starts_with("execution.")
+        {
+            helper_result_failure(
+                failures,
+                fixture_id,
+                "forbidden_helper_metadata_field",
+                &child_field,
+                "helper result metadata must not serialize arbitrary commands, args, env, or executable paths",
+            );
+        }
+        if child.is_object() {
+            validate_helper_result_forbidden_metadata_fields(
+                failures,
+                fixture_id,
+                child,
+                &child_field,
+            );
+        } else if let Some(array) = child.as_array() {
+            for (index, item) in array.iter().enumerate() {
+                validate_helper_result_forbidden_metadata_fields(
+                    failures,
+                    fixture_id,
+                    item,
+                    &format!("{child_field}.{index}"),
+                );
+            }
+        }
+    }
+}
+
+fn validate_helper_result_semantic_matrix(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    helper_kind: Option<HelperKind>,
+    capability_level: Option<HelperCapabilityLevel>,
+    execution_mode: Option<HelperResultExecutionMode>,
+    diagnostic: Option<HelperDiagnosticCode>,
+    secret_ref_count: Option<usize>,
+    proof_hash_count: Option<usize>,
+) {
+    if let (Some(helper_kind), Some(capability_level), Some(execution_mode)) =
+        (helper_kind, capability_level, execution_mode)
+    {
+        let valid = match helper_kind {
+            HelperKind::StaticParser => {
+                capability_level == HelperCapabilityLevel::StaticAnalysis
+                    && execution_mode == HelperResultExecutionMode::InProcess
+            }
+            HelperKind::KnownKeyDatabaseImport => {
+                capability_level == HelperCapabilityLevel::LocalKeyImport
+                    && execution_mode == HelperResultExecutionMode::NotExecuted
+            }
+            HelperKind::ManualKeyEntry => {
+                capability_level == HelperCapabilityLevel::ManualEntry
+                    && execution_mode == HelperResultExecutionMode::NotExecuted
+            }
+            HelperKind::WineLocalWindowsHelper => {
+                matches!(
+                    capability_level,
+                    HelperCapabilityLevel::WineLocal | HelperCapabilityLevel::WindowsLocal
+                ) && execution_mode == HelperResultExecutionMode::PlatformHelper
+            }
+            HelperKind::RemoteWindowsHelper => {
+                capability_level == HelperCapabilityLevel::RemoteWindows
+                    && execution_mode == HelperResultExecutionMode::RemoteHelper
+            }
+        };
+
+        if !valid {
+            helper_result_failure(
+                failures,
+                fixture_id,
+                "invalid_helper_semantics",
+                "helper",
+                "helperKind, capabilityLevel, and execution.mode must describe the same bounded helper path",
+            );
+        }
+    }
+
+    if diagnostic == Some(HelperDiagnosticCode::Success) {
+        if secret_ref_count == Some(0) {
+            helper_result_failure(
+                failures,
+                fixture_id,
+                "missing_success_secret_ref",
+                "secretRefs",
+                "success diagnostics must include at least one redacted secretRef",
+            );
+        }
+        if proof_hash_count == Some(0) {
+            helper_result_failure(
+                failures,
+                fixture_id,
+                "missing_success_proof_hash",
+                "proofHashes",
+                "success diagnostics must include at least one validation proof hash",
+            );
+        }
+    }
 }
 
 fn helper_result_validation_result(
@@ -4012,7 +4376,7 @@ fn validate_helper_result_provenance(
     failures: &mut Vec<HelperResultValidationFailure>,
     fixture_id: Option<&str>,
     helper: Option<&Value>,
-) {
+) -> Option<HelperKind> {
     let Some(helper) = helper else {
         helper_result_failure(
             failures,
@@ -4021,7 +4385,7 @@ fn validate_helper_result_provenance(
             "helper",
             "helper must be a JSON object",
         );
-        return;
+        return None;
     };
     if !helper.is_object() {
         helper_result_failure(
@@ -4031,8 +4395,15 @@ fn validate_helper_result_provenance(
             "helper",
             "helper must be a JSON object",
         );
-        return;
+        return None;
     }
+    validate_helper_result_allowed_object_keys(
+        failures,
+        fixture_id,
+        helper,
+        "helper",
+        &["helperId", "helperVersion", "helperKind"],
+    );
     for field in ["helper.helperId", "helper.helperVersion"] {
         if let Some(text) = required_helper_result_string(failures, fixture_id, helper, field) {
             validate_helper_result_identifier(failures, fixture_id, field, &text);
@@ -4051,7 +4422,212 @@ fn validate_helper_result_provenance(
             "remoteWindowsHelper",
             "manualKeyEntry",
         ],
+    )
+    .and_then(|kind| serde_json::from_value::<HelperKind>(Value::String(kind)).ok())
+}
+
+fn validate_helper_result_capability_level(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    capability_level: Option<&Value>,
+) -> Option<HelperCapabilityLevel> {
+    let Some(capability_level) = capability_level else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "capabilityLevel",
+            "capabilityLevel must name the helper capability level",
+        );
+        return None;
+    };
+    validate_helper_result_enum_string(
+        failures,
+        fixture_id,
+        &serde_json::json!({ "capabilityLevel": capability_level }),
+        "capabilityLevel",
+        &[
+            "staticAnalysis",
+            "localKeyImport",
+            "manualEntry",
+            "wineLocal",
+            "windowsLocal",
+            "remoteWindows",
+        ],
+    )
+    .and_then(|level| serde_json::from_value::<HelperCapabilityLevel>(Value::String(level)).ok())
+}
+
+fn validate_helper_result_execution(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    execution: Option<&Value>,
+) -> Option<HelperResultExecutionMode> {
+    let Some(execution) = execution else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            "execution",
+            "execution must describe bounded helper execution metadata",
+        );
+        return None;
+    };
+    if !execution.is_object() {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            "execution",
+            "execution must be a JSON object",
+        );
+        return None;
+    }
+
+    validate_helper_result_allowed_object_keys(
+        failures,
+        fixture_id,
+        execution,
+        "execution",
+        &[
+            "mode",
+            "platform",
+            "bounded",
+            "timeoutMs",
+            "durationMs",
+            "networkAccess",
+            "filesystemAccess",
+        ],
     );
+    validate_helper_result_execution_forbidden_fields(failures, fixture_id, execution, "execution");
+    let mode = validate_helper_result_enum_string(
+        failures,
+        fixture_id,
+        execution,
+        "execution.mode",
+        &[
+            "notExecuted",
+            "inProcess",
+            "localProcess",
+            "platformHelper",
+            "remoteHelper",
+        ],
+    )
+    .and_then(|mode| serde_json::from_value::<HelperResultExecutionMode>(Value::String(mode)).ok());
+    if let Some(platform) =
+        required_helper_result_string(failures, fixture_id, execution, "execution.platform")
+    {
+        validate_helper_result_identifier(failures, fixture_id, "execution.platform", &platform);
+        validate_helper_result_safe_text(failures, fixture_id, "execution.platform", &platform);
+    }
+    match execution.get("bounded").and_then(Value::as_bool) {
+        Some(true) => {}
+        Some(false) => helper_result_failure(
+            failures,
+            fixture_id,
+            "unbounded_helper_execution",
+            "execution.bounded",
+            "helper result execution metadata must be explicitly bounded",
+        ),
+        None => helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            "execution.bounded",
+            "execution.bounded must be true",
+        ),
+    }
+    let timeout_ms = validate_helper_result_bounded_u32(
+        failures,
+        fixture_id,
+        execution.get("timeoutMs"),
+        "execution.timeoutMs",
+        1,
+        3_600_000,
+    );
+    let duration_ms = validate_helper_result_bounded_u32(
+        failures,
+        fixture_id,
+        execution.get("durationMs"),
+        "execution.durationMs",
+        0,
+        3_600_000,
+    );
+    if let (Some(timeout_ms), Some(duration_ms)) = (timeout_ms, duration_ms)
+        && duration_ms > timeout_ms
+    {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_value",
+            "execution.durationMs",
+            "execution.durationMs must not exceed execution.timeoutMs",
+        );
+    }
+    if !execution
+        .get("networkAccess")
+        .is_some_and(|network_access| network_access.is_boolean())
+    {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            "execution.networkAccess",
+            "execution.networkAccess must be a boolean",
+        );
+    }
+    validate_helper_result_enum_string(
+        failures,
+        fixture_id,
+        execution,
+        "execution.filesystemAccess",
+        &["none", "tempOnly", "readOnlyWorkspace", "localGameReadOnly"],
+    );
+    mode
+}
+
+fn validate_helper_result_execution_forbidden_fields(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    value: &Value,
+    field: &str,
+) {
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    for (key, child) in object {
+        let child_field = format!("{field}.{key}");
+        let normalized = normalize_secret_field_name(key);
+        if matches!(
+            normalized.as_str(),
+            "command" | "args" | "argv" | "shell" | "env" | "environment" | "executablepath"
+        ) {
+            helper_result_failure(
+                failures,
+                fixture_id,
+                "forbidden_helper_execution_field",
+                &child_field,
+                "helper result execution metadata must not serialize arbitrary commands, args, env, or executable paths",
+            );
+        }
+        if child.is_object() {
+            validate_helper_result_execution_forbidden_fields(
+                failures,
+                fixture_id,
+                child,
+                &child_field,
+            );
+        } else if let Some(array) = child.as_array() {
+            for (index, item) in array.iter().enumerate() {
+                validate_helper_result_execution_forbidden_fields(
+                    failures,
+                    fixture_id,
+                    item,
+                    &format!("{child_field}.{index}"),
+                );
+            }
+        }
+    }
 }
 
 fn validate_helper_result_diagnostic(
@@ -4079,6 +4655,13 @@ fn validate_helper_result_diagnostic(
         );
         return None;
     }
+    validate_helper_result_allowed_object_keys(
+        failures,
+        fixture_id,
+        diagnostic,
+        "diagnostic",
+        &["code", "message"],
+    );
     let code = validate_helper_result_enum_string(
         failures,
         fixture_id,
@@ -4089,6 +4672,8 @@ fn validate_helper_result_diagnostic(
             "missing_key",
             "helper_required",
             "helper_unavailable",
+            "helper_authorization_denied",
+            "helper_timeout",
             "validation_failed",
             "unsupported_protected_executable",
             "redaction_failure",
@@ -4128,6 +4713,13 @@ fn validate_helper_result_redaction(
         );
         return None;
     }
+    validate_helper_result_allowed_object_keys(
+        failures,
+        fixture_id,
+        redaction,
+        "redaction",
+        &["status", "redactedLogHash"],
+    );
     let status = validate_helper_result_enum_string(
         failures,
         fixture_id,
@@ -4152,7 +4744,7 @@ fn validate_helper_result_secret_refs(
     failures: &mut Vec<HelperResultValidationFailure>,
     fixture_id: Option<&str>,
     secret_refs: Option<&Value>,
-) {
+) -> Option<usize> {
     let Some(secret_refs) = secret_refs else {
         helper_result_failure(
             failures,
@@ -4161,7 +4753,7 @@ fn validate_helper_result_secret_refs(
             "secretRefs",
             "secretRefs must be an array",
         );
-        return;
+        return None;
     };
     let Some(secret_refs) = secret_refs.as_array() else {
         helper_result_failure(
@@ -4171,7 +4763,7 @@ fn validate_helper_result_secret_refs(
             "secretRefs",
             "secretRefs must be an array",
         );
-        return;
+        return None;
     };
     let mut seen = BTreeSet::new();
     for (index, secret_ref) in secret_refs.iter().enumerate() {
@@ -4186,6 +4778,19 @@ fn validate_helper_result_secret_refs(
             );
             continue;
         }
+        validate_helper_result_allowed_object_keys(
+            failures,
+            fixture_id,
+            secret_ref,
+            &field,
+            &[
+                "requirementId",
+                "secretRef",
+                "materialKind",
+                "bytes",
+                "validation",
+            ],
+        );
         if let Some(requirement_id) = required_helper_result_string(
             failures,
             fixture_id,
@@ -4251,13 +4856,14 @@ fn validate_helper_result_secret_refs(
             );
         }
     }
+    Some(secret_refs.len())
 }
 
 fn validate_helper_result_proof_hashes(
     failures: &mut Vec<HelperResultValidationFailure>,
     fixture_id: Option<&str>,
     proof_hashes: Option<&Value>,
-) {
+) -> Option<usize> {
     let Some(proof_hashes) = proof_hashes else {
         helper_result_failure(
             failures,
@@ -4266,7 +4872,7 @@ fn validate_helper_result_proof_hashes(
             "proofHashes",
             "proofHashes must be an array",
         );
-        return;
+        return None;
     };
     let Some(proof_hashes) = proof_hashes.as_array() else {
         helper_result_failure(
@@ -4276,7 +4882,7 @@ fn validate_helper_result_proof_hashes(
             "proofHashes",
             "proofHashes must be an array",
         );
-        return;
+        return None;
     };
     for (index, proof) in proof_hashes.iter().enumerate() {
         validate_helper_result_key_validation_proof(
@@ -4286,6 +4892,7 @@ fn validate_helper_result_proof_hashes(
             &format!("proofHashes.{index}"),
         );
     }
+    Some(proof_hashes.len())
 }
 
 fn validate_helper_result_key_validation_proof(
@@ -4304,6 +4911,13 @@ fn validate_helper_result_key_validation_proof(
         );
         return;
     }
+    validate_helper_result_allowed_object_keys(
+        failures,
+        fixture_id,
+        validation,
+        field,
+        &["method", "proofHash"],
+    );
     validate_helper_result_enum_string(
         failures,
         fixture_id,
@@ -4409,6 +5023,47 @@ fn validate_helper_result_optional_positive_u32(
             "invalid_field_value",
             field,
             &format!("{field} must be a positive 32-bit integer"),
+        );
+        return None;
+    }
+    Some(value as u32)
+}
+
+fn validate_helper_result_bounded_u32(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    value: Option<&Value>,
+    field: &str,
+    min: u64,
+    max: u64,
+) -> Option<u32> {
+    let Some(value) = value else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_required_field",
+            field,
+            &format!("{field} must be between {min} and {max}"),
+        );
+        return None;
+    };
+    let Some(value) = value.as_u64() else {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_type",
+            field,
+            &format!("{field} must be an integer"),
+        );
+        return None;
+    };
+    if value < min || value > max || value > u32::MAX as u64 {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "invalid_field_value",
+            field,
+            &format!("{field} must be between {min} and {max}"),
         );
         return None;
     }
@@ -5321,6 +5976,16 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                     "helperVersion": entry.helper_version,
                     "helperKind": "knownKeyDatabaseImport"
                 },
+                "capabilityLevel": "localKeyImport",
+                "execution": {
+                    "mode": "notExecuted",
+                    "platform": "fixture-local",
+                    "bounded": true,
+                    "timeoutMs": 1000,
+                    "durationMs": 0,
+                    "networkAccess": false,
+                    "filesystemAccess": "none"
+                },
                 "diagnostic": {
                     "code": diagnostic_code,
                     "message": code
@@ -5343,6 +6008,12 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                     .filter_map(|key_ref| {
                         let requirement_id = key_ref.get("requirementId")?.as_str()?;
                         let secret_ref = key_ref.get("secretRef")?.as_str()?;
+                        let proof_hash = key_ref
+                            .get("materialHash")
+                            .and_then(Value::as_str)
+                            .unwrap_or(
+                                "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+                            );
                         Some(serde_json::json!({
                             "requirementId": requirement_id,
                             "secretRef": secret_ref,
@@ -5353,13 +6024,27 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                             "bytes": key_ref
                                 .get("bytes")
                                 .and_then(Value::as_u64)
-                                .unwrap_or(16)
+                                .unwrap_or(16),
+                            "validation": {
+                                "method": "decryptHeaderProof",
+                                "proofHash": proof_hash
+                            }
                         }))
                     })
                     .collect::<Vec<_>>()
             })
             .unwrap_or_default();
         if !secret_refs.is_empty() {
+            let proof_hashes = secret_refs
+                .iter()
+                .filter_map(|secret_ref| secret_ref.pointer("/validation/proofHash"))
+                .map(|proof_hash| {
+                    serde_json::json!({
+                        "method": "decryptHeaderProof",
+                        "proofHash": proof_hash
+                    })
+                })
+                .collect::<Vec<_>>();
             return Ok(serde_json::json!({
                 "schemaVersion": HELPER_RESULT_SCHEMA_VERSION,
                 "fixtureId": "kaifuu-helper-registry-key-ref-request",
@@ -5373,6 +6058,16 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                     "helperVersion": entry.helper_version,
                     "helperKind": "knownKeyDatabaseImport"
                 },
+                "capabilityLevel": "localKeyImport",
+                "execution": {
+                    "mode": "notExecuted",
+                    "platform": "fixture-local",
+                    "bounded": true,
+                    "timeoutMs": 1000,
+                    "durationMs": 0,
+                    "networkAccess": false,
+                    "filesystemAccess": "none"
+                },
                 "diagnostic": {
                     "code": "success",
                     "message": "fixture helper received bounded key refs through registry boundary"
@@ -5382,7 +6077,7 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                     "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
                 },
                 "secretRefs": secret_refs,
-                "proofHashes": []
+                "proofHashes": proof_hashes
             }));
         }
 
@@ -5396,16 +6091,42 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                 "helperVersion": entry.helper_version,
                 "helperKind": "staticParser"
             },
+            "capabilityLevel": "staticAnalysis",
+            "execution": {
+                "mode": "inProcess",
+                "platform": "fixture-static",
+                "bounded": true,
+                "timeoutMs": 1000,
+                "durationMs": 0,
+                "networkAccess": false,
+                "filesystemAccess": "readOnlyWorkspace"
+            },
             "diagnostic": {
                 "code": "success",
                 "message": "fixture helper stub invoked through helper registry boundary"
             },
             "redaction": {
-                "status": "not_required",
+                "status": "redacted",
                 "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
             },
-            "secretRefs": [],
-            "proofHashes": []
+            "secretRefs": [
+                {
+                    "requirementId": "fixture-helper-stub-proof",
+                    "secretRef": "local-secret:fixture/helper/stub-proof",
+                    "materialKind": "fixedBytes",
+                    "bytes": 16,
+                    "validation": {
+                        "method": "fixtureRoundTripProof",
+                        "proofHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                    }
+                }
+            ],
+            "proofHashes": [
+                {
+                    "method": "fixtureRoundTripProof",
+                    "proofHash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+                }
+            ]
         }))
     }
 }
@@ -14459,6 +15180,14 @@ mod tests {
                 HelperDiagnosticCode::UnsupportedProtectedExecutable,
             ),
             ("redaction-failure", HelperDiagnosticCode::RedactionFailure),
+            (
+                "key-helper/windows-helper-timeout",
+                HelperDiagnosticCode::HelperTimeout,
+            ),
+            (
+                "key-helper/authorization-denied",
+                HelperDiagnosticCode::HelperAuthorizationDenied,
+            ),
         ];
         let mut covered = BTreeSet::new();
 
@@ -14494,6 +15223,8 @@ mod tests {
                 HelperDiagnosticCode::MissingKey,
                 HelperDiagnosticCode::HelperRequired,
                 HelperDiagnosticCode::HelperUnavailable,
+                HelperDiagnosticCode::HelperAuthorizationDenied,
+                HelperDiagnosticCode::HelperTimeout,
                 HelperDiagnosticCode::ValidationFailed,
                 HelperDiagnosticCode::UnsupportedProtectedExecutable,
                 HelperDiagnosticCode::RedactionFailure,
@@ -14712,13 +15443,20 @@ mod tests {
             value["secretRefs"][0]["secretRef"],
             "local-secret:fixture/siglus/manual-secondary-key"
         );
-        assert!(value["sourceHash"].as_str().unwrap().starts_with("sha256:"));
         assert!(
-            value["materialHash"]
+            value["secretRefs"][0]["validation"]["proofHash"]
                 .as_str()
                 .unwrap()
                 .starts_with("sha256:")
         );
+        assert!(
+            value["proofHashes"][0]["proofHash"]
+                .as_str()
+                .unwrap()
+                .starts_with("sha256:")
+        );
+        assert!(value.get("sourceHash").is_none());
+        assert!(value.get("materialHash").is_none());
         let serialized = serde_json::to_string(&value).unwrap();
         for forbidden in [
             "rawKey",
@@ -14728,6 +15466,210 @@ mod tests {
             "/home/dev",
         ] {
             assert!(!serialized.contains(forbidden));
+        }
+    }
+
+    #[test]
+    fn key_helper_fixture_matrix_normalizes_all_helper_methods() {
+        let cases = [
+            (
+                "key-helper/static-parser",
+                HelperKind::StaticParser,
+                HelperCapabilityLevel::StaticAnalysis,
+                HelperResultExecutionMode::InProcess,
+            ),
+            (
+                "key-helper/known-key-import",
+                HelperKind::KnownKeyDatabaseImport,
+                HelperCapabilityLevel::LocalKeyImport,
+                HelperResultExecutionMode::NotExecuted,
+            ),
+            (
+                "key-helper/manual-entry",
+                HelperKind::ManualKeyEntry,
+                HelperCapabilityLevel::ManualEntry,
+                HelperResultExecutionMode::NotExecuted,
+            ),
+            (
+                "key-helper/wine-helper-unavailable",
+                HelperKind::WineLocalWindowsHelper,
+                HelperCapabilityLevel::WineLocal,
+                HelperResultExecutionMode::PlatformHelper,
+            ),
+            (
+                "key-helper/windows-helper-timeout",
+                HelperKind::WineLocalWindowsHelper,
+                HelperCapabilityLevel::WindowsLocal,
+                HelperResultExecutionMode::PlatformHelper,
+            ),
+        ];
+
+        for (fixture, expected_kind, expected_level, expected_mode) in cases {
+            let value = public_helper_result_fixture_value(fixture);
+            let helper_result = normalize_helper_result_value(&value)
+                .unwrap_or_else(|validation| panic!("{fixture} failed: {validation:#?}"));
+            let serialized = helper_result.stable_json().unwrap();
+            let serialized_value: Value = serde_json::from_str(&serialized).unwrap();
+
+            assert_eq!(helper_result.helper.helper_kind, expected_kind);
+            assert_eq!(helper_result.capability_level, expected_level);
+            assert_eq!(helper_result.execution.mode, expected_mode);
+            assert!(helper_result.execution.bounded);
+            assert!(helper_result.execution.timeout_ms > 0);
+            assert_eq!(
+                validate_helper_result_value(&serialized_value).status,
+                OperationStatus::Passed
+            );
+            for forbidden in [
+                "rawKey",
+                "helperDump",
+                "command",
+                "00112233445566778899aabbccddeeff",
+                "/home/dev",
+            ] {
+                assert!(
+                    !serialized.contains(forbidden),
+                    "{fixture} normalized output leaked {forbidden}: {serialized}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn key_helper_contract_rejects_arbitrary_execution_command_metadata() {
+        let value = invalid_public_helper_result_fixture_value("execution-command-field");
+        let validation = validate_helper_result_value(&value).redacted_for_report();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(
+            validation.failures.iter().any(|failure| {
+                failure.fixture_id.as_deref() == Some("kaifuu-key-helper-invalid-command-field")
+                    && failure.field == "execution.command"
+                    && failure.code == "forbidden_helper_execution_field"
+            }),
+            "{:#?}",
+            validation.failures
+        );
+        let serialized = serde_json::to_string(&validation).unwrap();
+        assert!(!serialized.contains("fixture-helper --dump"));
+    }
+
+    #[test]
+    fn helper_result_contract_rejects_unknown_top_level_fields_before_deserialization() {
+        let mut value = public_helper_result_fixture_value("key-helper/static-parser");
+        value
+            .as_object_mut()
+            .unwrap()
+            .insert("unexpectedAuditField".to_string(), serde_json::json!(true));
+
+        let validation = validate_helper_result_value(&value).redacted_for_report();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(
+            validation.failures.iter().any(|failure| {
+                failure.fixture_id.as_deref() == Some("kaifuu-key-helper-static-parser")
+                    && failure.field == "unexpectedAuditField"
+                    && failure.code == "unknown_helper_result_field"
+            }),
+            "{:#?}",
+            validation.failures
+        );
+        assert!(serde_json::from_value::<HelperResult>(value).is_err());
+    }
+
+    #[test]
+    fn helper_result_contract_rejects_top_level_command_metadata() {
+        let mut value = public_helper_result_fixture_value("key-helper/static-parser");
+        value.as_object_mut().unwrap().insert(
+            "command".to_string(),
+            serde_json::json!("fixture-helper --dump-private-state"),
+        );
+
+        let validation = validate_helper_result_value(&value).redacted_for_report();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(
+            validation.failures.iter().any(|failure| {
+                failure.fixture_id.as_deref() == Some("kaifuu-key-helper-static-parser")
+                    && failure.field == "command"
+                    && failure.code == "forbidden_helper_metadata_field"
+            }),
+            "{:#?}",
+            validation.failures
+        );
+        let serialized = serde_json::to_string(&validation).unwrap();
+        assert!(!serialized.contains("dump-private-state"));
+        assert!(serde_json::from_value::<HelperResult>(value).is_err());
+    }
+
+    #[test]
+    fn helper_result_contract_rejects_unknown_nested_fields_outside_execution() {
+        let mut value = public_helper_result_fixture_value("key-helper/static-parser");
+        value["diagnostic"]["unexpected"] = serde_json::json!("extra diagnostic metadata");
+        value["secretRefs"][0]["validation"]["extraProofMetadata"] = serde_json::json!(true);
+
+        let validation = validate_helper_result_value(&value).redacted_for_report();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for field in [
+            "diagnostic.unexpected",
+            "secretRefs.0.validation.extraProofMetadata",
+        ] {
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.fixture_id.as_deref() == Some("kaifuu-key-helper-static-parser")
+                        && failure.field == field
+                        && failure.code == "unknown_helper_result_field"
+                }),
+                "missing unknown-field failure for {field}: {:#?}",
+                validation.failures
+            );
+        }
+        assert!(serde_json::from_value::<HelperResult>(value).is_err());
+    }
+
+    #[test]
+    fn key_helper_contract_rejects_static_parser_remote_overclaim() {
+        let mut value = public_helper_result_fixture_value("key-helper/static-parser");
+        value["capabilityLevel"] = serde_json::json!("remoteWindows");
+        value["execution"]["mode"] = serde_json::json!("remoteHelper");
+
+        let validation = validate_helper_result_value(&value).redacted_for_report();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(
+            validation.failures.iter().any(|failure| {
+                failure.fixture_id.as_deref() == Some("kaifuu-key-helper-static-parser")
+                    && failure.field == "helper"
+                    && failure.code == "invalid_helper_semantics"
+            }),
+            "{:#?}",
+            validation.failures
+        );
+    }
+
+    #[test]
+    fn helper_result_contract_rejects_success_without_secret_ref_and_proof_hash() {
+        let mut value = public_helper_result_fixture_value("success");
+        value["secretRefs"] = serde_json::json!([]);
+        value["proofHashes"] = serde_json::json!([]);
+
+        let validation = validate_helper_result_value(&value).redacted_for_report();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for (field, code) in [
+            ("secretRefs", "missing_success_secret_ref"),
+            ("proofHashes", "missing_success_proof_hash"),
+        ] {
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.fixture_id.as_deref() == Some("kaifuu-helper-success")
+                        && failure.field == field
+                        && failure.code == code
+                }),
+                "missing success-evidence failure for {field}: {:#?}",
+                validation.failures
+            );
         }
     }
 

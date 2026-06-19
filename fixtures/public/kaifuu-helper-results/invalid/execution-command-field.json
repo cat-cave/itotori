@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-key-helper-invalid-command-field",
+  "helperResultId": "helper-result-key-helper-invalid-command-field",
+  "profileId": "019ed000-0000-7000-8000-profile00037",
+  "helper": {
+    "helperId": "kaifuu.fixture.static-parser",
+    "helperVersion": "0.1.0",
+    "helperKind": "staticParser"
+  },
+  "capabilityLevel": "staticAnalysis",
+  "execution": {
+    "mode": "localProcess",
+    "platform": "fixture-static",
+    "bounded": true,
+    "timeoutMs": 1000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "readOnlyWorkspace",
+    "command": "fixture-helper --dump"
+  },
+  "diagnostic": {
+    "code": "success",
+    "message": "synthetic invalid execution metadata"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:5656565656565656565656565656565656565656565656565656565656565656"
+  },
+  "secretRefs": [],
+  "proofHashes": []
+}

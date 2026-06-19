@@ -233,6 +233,16 @@ the same shape:
     "helperVersion": "0.1.0",
     "helperKind": "staticParser"
   },
+  "capabilityLevel": "staticAnalysis",
+  "execution": {
+    "mode": "inProcess",
+    "platform": "fixture-static",
+    "bounded": true,
+    "timeoutMs": 1000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "readOnlyWorkspace"
+  },
   "diagnostic": {
     "code": "success",
     "message": "synthetic fixture helper produced secret references and validation proofs"
@@ -263,14 +273,25 @@ the same shape:
 ```
 
 The diagnostic enum is intentionally closed: `success`, `missing_key`,
-`helper_required`, `helper_unavailable`, `validation_failed`,
-`unsupported_protected_executable`, and `redaction_failure`. Validation errors
-name both the helper-result field and the `fixtureId`, so aggregate fixture
-checks can point to the exact unsafe or malformed output. Helper results may
-persist `secretRef` ids, proof hashes, helper id/version/kind, profile id,
-diagnostic code, and redaction status. They must not persist raw keys, raw
-helper logs, dumps, decrypted private text, local paths, or key-looking
-material outside a validated `secretRef`.
+`helper_required`, `helper_unavailable`, `helper_authorization_denied`,
+`helper_timeout`, `validation_failed`, `unsupported_protected_executable`, and
+`redaction_failure`. Validation errors name both the helper-result field and
+the `fixtureId`, so aggregate fixture checks can point to the exact unsafe or
+malformed output. Helper results may persist `secretRef` ids, proof hashes,
+helper id/version/kind, capability level, bounded execution metadata, profile
+id, diagnostic code, and redaction status. They must not persist raw keys, raw
+helper logs, dumps, decrypted private text, local paths, arbitrary command
+fields, environment payloads, or key-looking material outside a validated
+`secretRef`.
+
+The local contract command validates and normalizes fixture-shaped helper
+outputs into the shared result schema:
+
+```sh
+kaifuu key-helper validate \
+  --fixture fixtures/public/kaifuu-helper-results/key-helper/static-parser.json \
+  --output ./normalized-helper-result.json
+```
 
 Known-key database imports are allowed only as local helper inputs. Kaifuu may
 import an entry into local secret storage and record provenance such as source
