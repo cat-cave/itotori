@@ -19088,6 +19088,105 @@
       ]
     },
     {
+      "id": "ITOTORI-132",
+      "status": "planned",
+      "title": "Style-guide live smoke fallback coverage",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-064"],
+      "summary": "Exercise provider fallback-chain recording through the style-guide live smoke path instead of relying only on generic provider unit coverage.",
+      "deliverables": [
+        "Mocked style-guide live smoke fallback scenario",
+        "Ledger assertion for requested model, fallback model, actual routed model, and retry count",
+        "Documentation of fallback expectations for opted-in live style-guide smoke runs"
+      ],
+      "acceptanceCriteria": [
+        "The style-guide live smoke test suite includes a mocked successful fallback run.",
+        "The smoke ledger proves fallbackPlan, fallbackUsed, requestedModelId, actualModelId, and retryCount are coherent for the style-guide task.",
+        "Recorded-mode smoke remains deterministic and does not require live provider access."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vitest run apps/itotori/test/style-guide-provider-smoke.test.ts"
+        }
+      ],
+      "auditFocus": [
+        "Fallback behavior only covered by generic provider tests",
+        "Style-guide smoke accepting empty or misleading fallback plans"
+      ]
+    },
+    {
+      "id": "ITOTORI-133",
+      "status": "planned",
+      "title": "Style-guide structured-output schema tightening",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-064", "ITOTORI-063"],
+      "summary": "Replace the loose provider-facing style-guide smoke JSON schema with a closer canonical schema so malformed turns and proposals fail earlier at the structured-output boundary.",
+      "deliverables": [
+        "Provider-facing schema for style-guide conversation turns and proposals",
+        "Malformed provider response tests that fail at schema or parser boundary",
+        "Compatibility note for recorded smoke fixture schema evolution"
+      ],
+      "acceptanceCriteria": [
+        "The style-guide smoke structured-output schema gives typed requirements for turns and proposals rather than bare arrays.",
+        "Unexpected required-shape omissions fail with clear diagnostics before policy projection.",
+        "Post-response canonical validation remains in place as the final authority."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vitest run apps/itotori/test/style-guide-provider-smoke.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/localization-bridge-schema test"
+        }
+      ],
+      "auditFocus": [
+        "Provider schema diverging from canonical conversation validation",
+        "Overly strict schema blocking valid style-guide proposals",
+        "Malformed structured output reaching policy projection"
+      ]
+    },
+    {
+      "id": "ITOTORI-134",
+      "status": "planned",
+      "title": "OpenRouter cost fallback branch coverage",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-064"],
+      "summary": "Add focused provider tests for OpenRouter cost estimate fallback branches beyond direct usage.cost responses.",
+      "deliverables": [
+        "OpenRouter cost_details response fixture test",
+        "Endpoint-pricing plus token-usage estimate fixture test",
+        "Unknown-cost diagnostic or explicit fallback assertion when pricing inputs are unavailable"
+      ],
+      "acceptanceCriteria": [
+        "OpenRouter responses with cost_details produce provider_estimate ledger cost fields.",
+        "OpenRouter responses without usage.cost but with endpoint pricing and token usage produce deterministic estimates.",
+        "Responses without enough pricing data remain explicit instead of fabricating precision."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vitest run apps/itotori/test/provider-abstraction.test.ts"
+        }
+      ],
+      "auditFocus": [
+        "Cost estimate precision overclaimed",
+        "Untested provider response cost shapes",
+        "Unknown-cost fallback hidden from ledger consumers"
+      ]
+    },
+    {
       "id": "CATALOG-086",
       "status": "planned",
       "title": "Deterministic DLsite demand observedAt replay",
