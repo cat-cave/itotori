@@ -1,0 +1,105 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-031-20260619T234720Z",
+  "generatedAt": "2026-06-19T23:47:20Z",
+  "spec": {
+    "id": "KAIFUU-031",
+    "title": "Target span mapping edge cases",
+    "branch": "spec/kaifuu-031",
+    "worktree": "/tmp/itotori-spec-kaifuu-031",
+    "commit": "c5ab7f37cafebcad097952ff8c3d819014181951"
+  },
+  "auditor": {
+    "name": "codex-kaifuu-031-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "The repaired target span mapping work now aligns Rust encoded-slot, relocation, fixture compatibility, and TypeScript bridge validation for duplicate raw protected spans: duplicates require valid non-reused source identity, while reordered distinct mappings remain accepted. No P0/P1 findings remain. One non-blocking legacy PatchExport compatibility risk remains.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-031-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-031-F001",
+      "severity": "P2",
+      "title": "Legacy PatchExport duplicate-span compatibility check",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-engine-fixture/src/lib.rs",
+          "line": 177
+        },
+        {
+          "path": "crates/kaifuu-engine-fixture/src/lib.rs",
+          "line": 658
+        }
+      ],
+      "description": "The fixture adapter now enforces duplicate raw protected-span source identity in the legacy Rust PatchExport patch path as well as the v0.2 compatibility path. Generated paths include identity and v0.1 bridge serialization is unchanged, but externally-authored legacy patch exports that previously relied only on distinct target ranges may now fail unless they include the newly optional identity fields.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit confirmed the original P1 is fixed across Rust core, fixture compatibility, relocation, and TypeScript, then isolated this as a compatibility-scope risk for externally-authored legacy PatchExport inputs."
+        },
+        {
+          "kind": "command",
+          "detail": "cargo test -p kaifuu-core duplicate_raw_protected_spans; cargo test -p kaifuu-engine-fixture duplicate_raw_protected_spans_require; pnpm exec vitest run packages/localization-bridge-schema/test/schema.test.ts"
+        }
+      ],
+      "impact": "Legacy patch authors could see a stricter failure mode without a clear migration path if they duplicate raw protected spans and do not provide source identity.",
+      "actionableAcceptanceCriteria": [
+        "Document or test the intended compatibility behavior for legacy PatchExport duplicate raw protected spans.",
+        "If legacy distinct-target-range behavior must remain supported, add a compatibility path that preserves safety while avoiding false rejection.",
+        "If strict identity is intended for legacy inputs, provide an explicit diagnostic and migration guidance for adding source identity fields."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Legacy PatchExport duplicate-span compatibility",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu", "shared"],
+          "parallelGroup": "contracts",
+          "dependsOn": ["KAIFUU-031"],
+          "summary": "Clarify and harden legacy PatchExport behavior for duplicate raw protected spans after v0.2 source identity validation.",
+          "deliverables": [
+            "Documented legacy PatchExport duplicate-span compatibility policy",
+            "Regression coverage for externally-authored legacy duplicate raw protected-span mappings"
+          ],
+          "acceptanceCriteria": [
+            "Legacy PatchExport duplicate raw protected-span behavior is explicitly documented as either strict identity-required or compatibility-preserving.",
+            "Externally-authored legacy fixtures cover duplicate raw spans with and without source identity and assert the intended diagnostics.",
+            "The v0.2 bridge and Rust compatibility paths continue rejecting missing, wrong, or reused identity for duplicate raw spans."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-engine-fixture protected_span"
+            },
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/localization-bridge-schema test"
+            }
+          ],
+          "auditFocus": [
+            "Legacy compatibility policy is explicit",
+            "No regression in v0.2 source identity validation",
+            "Diagnostics guide patch authors toward safe source identity"
+          ]
+        }
+      }
+    }
+  ]
+}

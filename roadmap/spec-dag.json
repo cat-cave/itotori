@@ -5286,7 +5286,7 @@
     {
       "id": "KAIFUU-031",
       "title": "Target span mapping edge cases",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared", "itotori"],
@@ -5328,10 +5328,7 @@
         "Implicit source-order assumptions in target protected-span mapping",
         "preserveMode=map ambiguity",
         "Kaifuu and Itotori span identity drift"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/kaifuu-031",
-      "worktree": "/tmp/itotori-spec-kaifuu-031"
+      ]
     },
     {
       "id": "KAIFUU-032",
@@ -20584,6 +20581,41 @@
       "auditFocus": [
         "Deterministic ordering",
         "No ranking regression for normal semantic/exact fallback cases"
+      ]
+    },
+    {
+      "id": "KAIFUU-170",
+      "status": "planned",
+      "title": "Legacy PatchExport duplicate-span compatibility",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["KAIFUU-031"],
+      "summary": "Clarify and harden legacy PatchExport behavior for duplicate raw protected spans after v0.2 source identity validation.",
+      "deliverables": [
+        "Documented legacy PatchExport duplicate-span compatibility policy",
+        "Regression coverage for externally-authored legacy duplicate raw protected-span mappings"
+      ],
+      "acceptanceCriteria": [
+        "Legacy PatchExport duplicate raw protected-span behavior is explicitly documented as either strict identity-required or compatibility-preserving.",
+        "Externally-authored legacy fixtures cover duplicate raw spans with and without source identity and assert the intended diagnostics.",
+        "The v0.2 bridge and Rust compatibility paths continue rejecting missing, wrong, or reused identity for duplicate raw spans."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-engine-fixture protected_span"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/localization-bridge-schema test"
+        }
+      ],
+      "auditFocus": [
+        "Legacy compatibility policy is explicit",
+        "No regression in v0.2 source identity validation",
+        "Diagnostics guide patch authors toward safe source identity"
       ]
     }
   ]
