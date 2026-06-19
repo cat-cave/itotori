@@ -354,6 +354,22 @@ export type {
   ItotoriCatalogExactExternalIdLinkerPort,
 } from "./services/catalog-exact-external-id-linker.js";
 export {
+  augmentCatalogPlatformLanguageConflicts,
+  catalogPlatformLanguageConflictDiagnosticCodeValues,
+  catalogPlatformLanguageConflictReasonCode,
+  catalogPlatformLanguageConflictSchemaVersion,
+  catalogPlatformLanguageConflictStatusValues,
+} from "./services/catalog-platform-language-conflicts.js";
+export type {
+  CatalogPlatformLanguageConflictDiagnostic,
+  CatalogPlatformLanguageConflictDiagnosticCode,
+  CatalogPlatformLanguageConflictEvidence,
+  CatalogPlatformLanguageConflictFact,
+  CatalogPlatformLanguageConflictRequest,
+  CatalogPlatformLanguageConflictResult,
+  CatalogPlatformLanguageConflictStatus,
+} from "./services/catalog-platform-language-conflicts.js";
+export {
   assertCatalogResolverFixtureArtifact,
   catalogResolverFixtureDiagnosticCodeValues,
   catalogResolverFixtureReviewReadModel,

@@ -24,6 +24,7 @@ import {
   catalogReleaseKindValues,
   catalogSeedOriginValues,
   catalogSeedStatusValues,
+  catalogSourceValues,
   type CatalogConfidence,
   type CatalogConflictKind,
   type CatalogConflictStatus,
@@ -50,6 +51,12 @@ import {
   type CatalogCrawlerVerifyFactImportStep,
   type RecordedCatalogCrawlerFixture,
 } from "./catalog-crawler-runner.js";
+import {
+  augmentCatalogPlatformLanguageConflicts,
+  catalogPlatformLanguageConflictReasonCode,
+  type CatalogPlatformLanguageConflictEvidence,
+  type CatalogPlatformLanguageConflictRequest,
+} from "./catalog-platform-language-conflicts.js";
 
 export const catalogRecordedImporterVersion = "catalog-recorded-importers.v0.1" as const;
 
@@ -1743,6 +1750,9 @@ function conflictFactsFromPayload(payload: CatalogJsonRecord): CatalogRecordedCo
       }
       const reasonCode =
         optionalString(record, "reason_code") ?? optionalString(record, "reasonCode");
+      if (reasonCode === catalogPlatformLanguageConflictReasonCode) {
+        return platformLanguageConflictFactFromRecord(record);
+      }
       const conflict: CatalogRecordedConflictFact = {
         summary,
         severity: conflictSeverityValue(optionalString(record, "severity")),
@@ -1759,6 +1769,101 @@ function conflictFactsFromPayload(payload: CatalogJsonRecord): CatalogRecordedCo
       return conflict;
     })
     .filter((conflict): conflict is CatalogRecordedConflictFact => conflict !== null);
+}
+
+function platformLanguageConflictFactFromRecord(
+  record: CatalogJsonRecord,
+): CatalogRecordedConflictFact | null {
+  const summary = optionalString(record, "summary");
+  const targetLanguage = optionalString(record, "language") ?? "en-US";
+  const sourceField = optionalString(record, "source_field") ?? "conflicts";
+  const sources = platformArray(record, "sources")
+    .map((source, index) => platformLanguageEvidenceFromSource(source, targetLanguage, index))
+    .filter((source): source is CatalogPlatformLanguageConflictEvidence => source !== null);
+  const officialEvidence =
+    sources.find(
+      (source) =>
+        (source.catalogSource === "igdb" || source.catalogSource === "wikidata") &&
+        source.status === catalogLanguageStatusValues.officialFull,
+    ) ?? sources.find((source) => source.status === catalogLanguageStatusValues.officialFull);
+  if (officialEvidence === undefined) {
+    return null;
+  }
+  const request = compactJson({
+    targetLanguage,
+    officialEvidence,
+    candidateEvidence: sources.filter((source) => source !== officialEvidence),
+    summary,
+    sourceField,
+  }) as CatalogPlatformLanguageConflictRequest;
+  const result = augmentCatalogPlatformLanguageConflicts(request);
+  return result.conflicts[0] === undefined
+    ? null
+    : {
+        conflictKind: result.conflicts[0].conflictKind,
+        status: result.conflicts[0].status,
+        summary: result.conflicts[0].summary,
+        reasonCode: result.conflicts[0].reasonCode,
+        severity: result.conflicts[0].severity,
+        evidence: result.conflicts[0].evidence.map((evidence) =>
+          compactJson({
+            subjectKind: evidence.subjectKind,
+            subjectId: evidence.subjectId,
+            evidencePosition: evidence.evidencePosition,
+            metadata: evidence.metadata,
+          }) as CatalogRecordedConflictEvidenceFact,
+        ),
+        metadata: {
+          ...result.conflicts[0].metadata,
+          augmentationDiagnostics: result.diagnostics,
+        },
+      };
+}
+
+function platformLanguageEvidenceFromSource(
+  input: unknown,
+  targetLanguage: string,
+  index: number,
+): CatalogPlatformLanguageConflictEvidence | null {
+  if (input === null || typeof input !== "object" || Array.isArray(input)) {
+    return null;
+  }
+  const source = input as CatalogJsonRecord;
+  const catalogSource = optionalString(source, "catalogSource");
+  const sourceId = optionalString(source, "sourceId");
+  const status = optionalString(source, "status");
+  if (
+    catalogSource === undefined ||
+    sourceId === undefined ||
+    status === undefined ||
+    !(Object.values(catalogSourceValues) as string[]).includes(catalogSource) ||
+    !(Object.values(catalogLanguageStatusValues) as string[]).includes(status)
+  ) {
+    return null;
+  }
+  const externalIdKind = optionalString(source, "externalIdKind");
+  const statusScope = optionalString(source, "statusScope");
+  return compactJson({
+    catalogSource: catalogSource as CatalogSource,
+    sourceId,
+    externalIdKind:
+      externalIdKind !== undefined &&
+      (Object.values(catalogExternalIdKindValues) as string[]).includes(externalIdKind)
+        ? (externalIdKind as CatalogExternalIdKind)
+        : catalogExternalIdKindValues.sourceRecord,
+    language: optionalString(source, "language") ?? targetLanguage,
+    status: status as CatalogLanguageStatus,
+    statusScope:
+      statusScope !== undefined &&
+      (Object.values(catalogLanguageStatusScopeValues) as string[]).includes(statusScope)
+        ? (statusScope as CatalogLanguageStatusScope)
+        : catalogLanguageStatusScopeValues.platform,
+    platform: optionalString(source, "platform") ?? null,
+    sourceProvenanceId: optionalString(source, "sourceProvenanceId"),
+    languageStatusId: optionalString(source, "languageStatusId"),
+    evidenceRef: optionalString(source, "evidenceRef") ?? `conflicts.sources[${index}]`,
+    metadata: compactJson({ sourceField: `conflicts.sources[${index}]` }),
+  }) as CatalogPlatformLanguageConflictEvidence;
 }
 
 function conflictSeverityValue(value: string | undefined): "info" | "warning" | "critical" {

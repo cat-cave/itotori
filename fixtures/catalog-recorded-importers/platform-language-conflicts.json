@@ -1,0 +1,127 @@
+{
+  "schemaVersion": "catalog.platform_language_conflict.fixture.v0.1",
+  "fixtureId": "catalog-platform-language-conflicts-v0.1",
+  "cases": [
+    {
+      "caseId": "igdb-official-english-vs-vndb-dlsite-gaps",
+      "expectedStatus": "conflict",
+      "request": {
+        "targetLanguage": "en-US",
+        "sourceField": "conflicts[0]",
+        "officialEvidence": {
+          "catalogSource": "igdb",
+          "sourceId": "252001",
+          "externalIdKind": "source_record",
+          "language": "en-US",
+          "status": "official_full",
+          "statusScope": "platform",
+          "platform": "pc",
+          "evidenceRef": "igdb.language_supports[1]"
+        },
+        "candidateEvidence": [
+          {
+            "catalogSource": "vndb",
+            "sourceId": "v1002",
+            "externalIdKind": "source_record",
+            "language": "en-US",
+            "status": "none",
+            "statusScope": "work",
+            "evidenceRef": "vndb.releases"
+          },
+          {
+            "catalogSource": "dlsite",
+            "sourceId": "RJ02222222",
+            "externalIdKind": "store_product",
+            "language": "en-US",
+            "status": "none",
+            "statusScope": "platform",
+            "platform": "dlsite",
+            "evidenceRef": "dlsite.translation_info.language_editions"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "wikidata-official-english-vs-egs-gap",
+      "expectedStatus": "conflict",
+      "request": {
+        "targetLanguage": "en-US",
+        "sourceField": "claims.language_statements[1]",
+        "officialEvidence": {
+          "catalogSource": "wikidata",
+          "sourceId": "Q130099",
+          "externalIdKind": "source_record",
+          "language": "en-US",
+          "status": "official_full",
+          "statusScope": "platform",
+          "platform": "nintendo_switch",
+          "evidenceRef": "wikidata.Q130099$lang-en"
+        },
+        "candidateEvidence": [
+          {
+            "catalogSource": "egs",
+            "sourceId": "prod-moonlit-099",
+            "externalIdKind": "store_product",
+            "language": "en-US",
+            "status": "none",
+            "statusScope": "platform",
+            "platform": "egs",
+            "evidenceRef": "egs.product.locales"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "steam-already-official-false-positive",
+      "expectedStatus": "no_conflict",
+      "request": {
+        "targetLanguage": "en-US",
+        "officialEvidence": {
+          "catalogSource": "igdb",
+          "sourceId": "252777",
+          "language": "en-US",
+          "status": "official_full",
+          "statusScope": "platform",
+          "platform": "pc"
+        },
+        "candidateEvidence": [
+          {
+            "catalogSource": "steam",
+            "sourceId": "2100777",
+            "externalIdKind": "store_product",
+            "language": "en-US",
+            "status": "official_full",
+            "statusScope": "platform",
+            "platform": "steam"
+          }
+        ]
+      }
+    },
+    {
+      "caseId": "local-corpus-unknown-remains-unknown",
+      "expectedStatus": "unknown",
+      "request": {
+        "targetLanguage": "en-US",
+        "officialEvidence": {
+          "catalogSource": "wikidata",
+          "sourceId": "Q130888",
+          "language": "en-US",
+          "status": "official_full",
+          "statusScope": "platform",
+          "platform": "pc"
+        },
+        "candidateEvidence": [
+          {
+            "catalogSource": "local_corpus",
+            "sourceId": "sha256:fixture-local-install",
+            "externalIdKind": "local_detection",
+            "language": "en-US",
+            "status": "unknown",
+            "statusScope": "work",
+            "evidenceRef": "local.scan.language_detector"
+          }
+        ]
+      }
+    }
+  ]
+}
