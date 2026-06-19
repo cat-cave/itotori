@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cat-cave/itotori/fixtures/public/kaifuu-helper-results/helper-registry.schema.json",
+  "title": "Kaifuu Helper Registry Entry",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "helperId",
+    "helperVersion",
+    "capabilities",
+    "inputSchemaId",
+    "outputSchemaId",
+    "redactionClass",
+    "executionPolicy"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": "0.1.0"
+    },
+    "helperId": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\s\\u0000]+$"
+    },
+    "helperVersion": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^\\s\\u0000]+$"
+    },
+    "capabilities": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": [
+          "fixture_invocation",
+          "key_discovery",
+          "key_validation",
+          "protected_executable_probe"
+        ]
+      }
+    },
+    "inputSchemaId": {
+      "const": "kaifuu.helper.fixture-request.v0.1"
+    },
+    "outputSchemaId": {
+      "const": "kaifuu.helper-result.v0.1"
+    },
+    "redactionClass": {
+      "type": "string",
+      "enum": ["public_fixture", "secret_ref_only", "aggregate_only"]
+    },
+    "executionPolicy": {
+      "type": "object",
+      "required": [
+        "policyId",
+        "mode",
+        "allowlistRefId",
+        "filesystemAccess",
+        "networkAccess",
+        "maxRuntimeSeconds"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "policyId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\s\\u0000]+$"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["fixture_in_process", "local_process", "disallowed"]
+        },
+        "allowlistRefId": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\s\\u0000]+$"
+        },
+        "filesystemAccess": {
+          "type": "string",
+          "enum": ["none", "temp_only", "read_only_workspace"]
+        },
+        "networkAccess": {
+          "type": "boolean"
+        },
+        "maxRuntimeSeconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        }
+      }
+    }
+  }
+}

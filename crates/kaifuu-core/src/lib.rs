@@ -13,6 +13,9 @@ use serde_json::Value;
 pub type KaifuuResult<T> = Result<T, Box<dyn std::error::Error>>;
 pub const PROFILE_SCHEMA_VERSION: &str = "0.1.0";
 pub const HELPER_RESULT_SCHEMA_VERSION: &str = "0.1.0";
+pub const HELPER_REGISTRY_SCHEMA_VERSION: &str = "0.1.0";
+pub const HELPER_REGISTRY_INPUT_SCHEMA_FIXTURE_REQUEST: &str = "kaifuu.helper.fixture-request.v0.1";
+pub const HELPER_REGISTRY_OUTPUT_SCHEMA_HELPER_RESULT: &str = "kaifuu.helper-result.v0.1";
 pub const ASSET_INVENTORY_SCHEMA_VERSION: &str = "0.1.0";
 pub const ARCHIVE_DETECTION_SCHEMA_VERSION: &str = "0.1.0";
 pub const REDACTED_DETECTION_GAME_DIR: &str = "[redacted-local-game-dir]";
@@ -26,6 +29,14 @@ pub const SEMANTIC_KEY_VALIDATION_FAILED: &str = "kaifuu.key_validation_failed";
 pub const SEMANTIC_SECRET_REDACTED: &str = "kaifuu.secret_redacted";
 pub const SEMANTIC_HELPER_REQUIRED: &str = "kaifuu.helper_required";
 pub const SEMANTIC_HELPER_REDACTION_FAILURE: &str = "kaifuu.helper_redaction_failure";
+pub const SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY: &str =
+    "kaifuu.helper_registry.missing_capability";
+pub const SEMANTIC_HELPER_REGISTRY_UNSUPPORTED_SCHEMA_ID: &str =
+    "kaifuu.helper_registry.unsupported_schema_id";
+pub const SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA: &str =
+    "kaifuu.helper_registry.incompatible_output_schema";
+pub const SEMANTIC_HELPER_REGISTRY_INVALID_REDACTION_CLASS: &str =
+    "kaifuu.helper_registry.invalid_redaction_class";
 pub const SEMANTIC_MALFORMED_SECRET_REF: &str = "kaifuu.malformed_secret_ref";
 pub const SEMANTIC_SECRET_REF_OUT_OF_POLICY: &str = "kaifuu.secret_ref_out_of_policy";
 pub const SEMANTIC_EXTERNAL_SECRET_UNAVAILABLE: &str = "kaifuu.external_secret_unavailable";
@@ -271,6 +282,8 @@ pub struct AdapterCapabilities {
     pub access_contract: Option<LayeredAccessCapabilityContract>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub key_requirements: Vec<AdapterKeyRequirementDeclaration>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub helper_requirements: Vec<AdapterHelperRequirementDeclaration>,
 }
 
 impl AdapterCapabilities {
@@ -280,6 +293,7 @@ impl AdapterCapabilities {
             reports,
             access_contract: None,
             key_requirements: vec![],
+            helper_requirements: vec![],
         };
         capabilities.normalize();
         capabilities
@@ -303,6 +317,15 @@ impl AdapterCapabilities {
         self
     }
 
+    pub fn with_helper_requirements(
+        mut self,
+        helper_requirements: Vec<AdapterHelperRequirementDeclaration>,
+    ) -> Self {
+        self.helper_requirements = helper_requirements;
+        self.normalize();
+        self
+    }
+
     pub fn normalize(&mut self) {
         self.reports.sort_by_key(|report| {
             (
@@ -313,6 +336,8 @@ impl AdapterCapabilities {
         });
         self.key_requirements
             .sort_by_key(AdapterKeyRequirementDeclaration::sort_key);
+        self.helper_requirements
+            .sort_by_key(AdapterHelperRequirementDeclaration::sort_key);
         if let Some(access_contract) = &mut self.access_contract {
             access_contract.normalize();
         }
@@ -330,6 +355,11 @@ impl AdapterCapabilities {
             .key_requirements
             .iter()
             .map(AdapterKeyRequirementDeclaration::redacted_for_report)
+            .collect();
+        capabilities.helper_requirements = capabilities
+            .helper_requirements
+            .iter()
+            .map(AdapterHelperRequirementDeclaration::redacted_for_report)
             .collect();
         capabilities.access_contract = capabilities
             .access_contract
@@ -4358,6 +4388,761 @@ fn helper_result_failure(
         field: field.to_string(),
         message: redact_for_log_or_report(message),
     });
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperRegistryEntry {
+    pub schema_version: String,
+    pub helper_id: String,
+    pub helper_version: String,
+    pub capabilities: Vec<HelperCapability>,
+    pub input_schema_id: String,
+    pub output_schema_id: String,
+    pub redaction_class: HelperRedactionClass,
+    pub execution_policy: HelperExecutionPolicy,
+}
+
+impl HelperRegistryEntry {
+    pub fn normalize(&mut self) {
+        self.capabilities.sort();
+        self.capabilities.dedup();
+    }
+
+    pub fn supports(&self, capability: HelperCapability) -> bool {
+        self.capabilities.contains(&capability)
+    }
+
+    pub fn validate(&self) -> HelperRegistryValidationResult {
+        match serde_json::to_value(self) {
+            Ok(value) => validate_helper_registry_entry_value(&value),
+            Err(_) => HelperRegistryValidationResult {
+                schema_version: HELPER_REGISTRY_SCHEMA_VERSION.to_string(),
+                helper_id: Some(redact_for_log_or_report(&self.helper_id)),
+                status: OperationStatus::Failed,
+                diagnostics: vec![HelperRegistryDiagnostic {
+                    helper_id: Some(redact_for_log_or_report(&self.helper_id)),
+                    code: "helper_registry_serialization_failed".to_string(),
+                    field: "$".to_string(),
+                    message: "helper registry entry could not be serialized for validation"
+                        .to_string(),
+                }],
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HelperCapability {
+    FixtureInvocation,
+    KeyDiscovery,
+    KeyValidation,
+    ProtectedExecutableProbe,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HelperRedactionClass {
+    PublicFixture,
+    SecretRefOnly,
+    AggregateOnly,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HelperExecutionMode {
+    FixtureInProcess,
+    LocalProcess,
+    Disallowed,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HelperFilesystemAccess {
+    None,
+    TempOnly,
+    ReadOnlyWorkspace,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperExecutionPolicy {
+    pub policy_id: String,
+    pub mode: HelperExecutionMode,
+    pub allowlist_ref_id: String,
+    pub filesystem_access: HelperFilesystemAccess,
+    pub network_access: bool,
+    pub max_runtime_seconds: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperRegistryValidationResult {
+    pub schema_version: String,
+    pub helper_id: Option<String>,
+    pub status: OperationStatus,
+    pub diagnostics: Vec<HelperRegistryDiagnostic>,
+}
+
+impl HelperRegistryValidationResult {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            schema_version: self.schema_version.clone(),
+            helper_id: self.helper_id.as_deref().map(redact_for_log_or_report),
+            status: self.status.clone(),
+            diagnostics: self
+                .diagnostics
+                .iter()
+                .map(HelperRegistryDiagnostic::redacted_for_report)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperRegistryDiagnostic {
+    pub helper_id: Option<String>,
+    pub code: String,
+    pub field: String,
+    pub message: String,
+}
+
+impl HelperRegistryDiagnostic {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            helper_id: self.helper_id.as_deref().map(redact_for_log_or_report),
+            code: redact_for_log_or_report(&self.code),
+            field: redact_for_log_or_report(&self.field),
+            message: redact_for_log_or_report(&self.message),
+        }
+    }
+}
+
+pub trait HelperExecutableAdapter {
+    fn helper_id(&self) -> &'static str;
+    fn invoke(&self, entry: &HelperRegistryEntry, input: &Value) -> KaifuuResult<Value>;
+}
+
+#[derive(Default)]
+pub struct HelperRegistry {
+    entries: BTreeMap<String, HelperRegistryEntry>,
+    executables: BTreeMap<String, Box<dyn HelperExecutableAdapter>>,
+}
+
+impl HelperRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn register_entry(&mut self, mut entry: HelperRegistryEntry) -> KaifuuResult<()> {
+        entry.normalize();
+        let validation = entry.validate();
+        if validation.status == OperationStatus::Failed {
+            return Err(format!(
+                "helper registry entry {} failed validation: {}",
+                redact_for_log_or_report(&entry.helper_id),
+                validation
+                    .diagnostics
+                    .iter()
+                    .map(|diagnostic| diagnostic.code.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+            .into());
+        }
+        self.entries.insert(entry.helper_id.clone(), entry);
+        Ok(())
+    }
+
+    pub fn register_executable<A>(&mut self, adapter: A)
+    where
+        A: HelperExecutableAdapter + 'static,
+    {
+        self.executables
+            .insert(adapter.helper_id().to_string(), Box::new(adapter));
+    }
+
+    pub fn get(&self, helper_id: &str) -> Option<&HelperRegistryEntry> {
+        self.entries.get(helper_id)
+    }
+
+    pub fn entries_for_capability(
+        &self,
+        capability: HelperCapability,
+    ) -> Vec<&HelperRegistryEntry> {
+        self.entries
+            .values()
+            .filter(|entry| entry.supports(capability))
+            .collect()
+    }
+
+    pub fn invoke(
+        &self,
+        helper_id: &str,
+        capability: HelperCapability,
+        input: &Value,
+    ) -> KaifuuResult<Value> {
+        let entry = self.entries.get(helper_id).ok_or_else(|| {
+            format!(
+                "{}: helper registry id {} is not registered",
+                SEMANTIC_HELPER_UNAVAILABLE,
+                redact_for_log_or_report(helper_id)
+            )
+        })?;
+        if !entry.supports(capability) {
+            return Err(format!(
+                "{}: helper {} does not provide capability {}",
+                SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
+                redact_for_log_or_report(helper_id),
+                helper_capability_name(capability)
+            )
+            .into());
+        }
+        let executable = self.executables.get(helper_id).ok_or_else(|| {
+            format!(
+                "{}: helper registry id {} has no executable adapter",
+                SEMANTIC_HELPER_UNAVAILABLE,
+                redact_for_log_or_report(helper_id)
+            )
+        })?;
+        let output = executable.invoke(entry, input)?;
+        validate_helper_registry_output(entry, &output)?;
+        Ok(output)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdapterHelperRequirementDeclaration {
+    pub helper_registry_id: String,
+    pub capabilities: Vec<HelperCapability>,
+    pub allowlist_ref_id: String,
+}
+
+impl AdapterHelperRequirementDeclaration {
+    pub fn new(
+        helper_registry_id: impl Into<String>,
+        capabilities: Vec<HelperCapability>,
+        allowlist_ref_id: impl Into<String>,
+    ) -> Self {
+        let mut declaration = Self {
+            helper_registry_id: helper_registry_id.into(),
+            capabilities,
+            allowlist_ref_id: allowlist_ref_id.into(),
+        };
+        declaration.capabilities.sort();
+        declaration.capabilities.dedup();
+        declaration
+    }
+
+    fn sort_key(&self) -> (String, String) {
+        (
+            self.helper_registry_id.clone(),
+            self.allowlist_ref_id.clone(),
+        )
+    }
+
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            helper_registry_id: redact_for_log_or_report(&self.helper_registry_id),
+            capabilities: self.capabilities.clone(),
+            allowlist_ref_id: redact_for_log_or_report(&self.allowlist_ref_id),
+        }
+    }
+}
+
+pub const FIXTURE_HELPER_REGISTRY_ID: &str = "kaifuu.fixture.helper-stub";
+pub const FIXTURE_HELPER_ALLOWLIST_REF_ID: &str = "kaifuu-fixture-helper-stub-allowlist";
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct FixtureHelperStubAdapter;
+
+impl FixtureHelperStubAdapter {
+    pub fn registry_entry() -> HelperRegistryEntry {
+        HelperRegistryEntry {
+            schema_version: HELPER_REGISTRY_SCHEMA_VERSION.to_string(),
+            helper_id: FIXTURE_HELPER_REGISTRY_ID.to_string(),
+            helper_version: "0.1.0".to_string(),
+            capabilities: vec![HelperCapability::FixtureInvocation],
+            input_schema_id: HELPER_REGISTRY_INPUT_SCHEMA_FIXTURE_REQUEST.to_string(),
+            output_schema_id: HELPER_REGISTRY_OUTPUT_SCHEMA_HELPER_RESULT.to_string(),
+            redaction_class: HelperRedactionClass::PublicFixture,
+            execution_policy: HelperExecutionPolicy {
+                policy_id: "kaifuu-fixture-helper-stub-policy".to_string(),
+                mode: HelperExecutionMode::FixtureInProcess,
+                allowlist_ref_id: FIXTURE_HELPER_ALLOWLIST_REF_ID.to_string(),
+                filesystem_access: HelperFilesystemAccess::None,
+                network_access: false,
+                max_runtime_seconds: 1,
+            },
+        }
+    }
+}
+
+impl HelperExecutableAdapter for FixtureHelperStubAdapter {
+    fn helper_id(&self) -> &'static str {
+        FIXTURE_HELPER_REGISTRY_ID
+    }
+
+    fn invoke(&self, entry: &HelperRegistryEntry, _input: &Value) -> KaifuuResult<Value> {
+        Ok(serde_json::json!({
+            "schemaVersion": HELPER_RESULT_SCHEMA_VERSION,
+            "fixtureId": "kaifuu-helper-registry-stub",
+            "helperResultId": "helper-result-registry-stub",
+            "profileId": "019ed000-0000-7000-8000-profile00086",
+            "helper": {
+                "helperId": entry.helper_id,
+                "helperVersion": entry.helper_version,
+                "helperKind": "staticParser"
+            },
+            "diagnostic": {
+                "code": "success",
+                "message": "fixture helper stub invoked through helper registry boundary"
+            },
+            "redaction": {
+                "status": "not_required",
+                "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+            },
+            "secretRefs": [],
+            "proofHashes": []
+        }))
+    }
+}
+
+pub fn fixture_helper_registry() -> KaifuuResult<HelperRegistry> {
+    let mut registry = HelperRegistry::new();
+    registry.register_entry(FixtureHelperStubAdapter::registry_entry())?;
+    registry.register_executable(FixtureHelperStubAdapter);
+    Ok(registry)
+}
+
+pub fn validate_helper_registry_entry_value(value: &Value) -> HelperRegistryValidationResult {
+    let helper_id = value
+        .get("helperId")
+        .and_then(Value::as_str)
+        .map(redact_for_log_or_report);
+    let mut diagnostics = Vec::new();
+    if !value.is_object() {
+        helper_registry_failure(
+            &mut diagnostics,
+            helper_id.as_deref(),
+            "invalid_helper_registry_shape",
+            "$",
+            "helper registry entry must be a JSON object",
+        );
+        return helper_registry_validation_result(helper_id, diagnostics);
+    }
+
+    validate_helper_registry_schema_version(&mut diagnostics, helper_id.as_deref(), value);
+    for field in ["helperId", "helperVersion"] {
+        if let Some(text) =
+            required_helper_registry_string(&mut diagnostics, helper_id.as_deref(), value, field)
+        {
+            validate_helper_registry_identifier(
+                &mut diagnostics,
+                helper_id.as_deref(),
+                field,
+                &text,
+            );
+        }
+    }
+    validate_helper_registry_capabilities(&mut diagnostics, helper_id.as_deref(), value);
+    validate_helper_registry_schema_id(
+        &mut diagnostics,
+        helper_id.as_deref(),
+        value,
+        "inputSchemaId",
+        &[HELPER_REGISTRY_INPUT_SCHEMA_FIXTURE_REQUEST],
+    );
+    let output_schema = validate_helper_registry_schema_id(
+        &mut diagnostics,
+        helper_id.as_deref(),
+        value,
+        "outputSchemaId",
+        &[HELPER_REGISTRY_OUTPUT_SCHEMA_HELPER_RESULT],
+    );
+    if let Some(output_schema) = output_schema
+        && output_schema != HELPER_REGISTRY_OUTPUT_SCHEMA_HELPER_RESULT
+    {
+        helper_registry_failure(
+            &mut diagnostics,
+            helper_id.as_deref(),
+            SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA,
+            "outputSchemaId",
+            "helper registry outputSchemaId must be compatible with KAIFUU helper results",
+        );
+    }
+    validate_helper_registry_redaction_class(&mut diagnostics, helper_id.as_deref(), value);
+    validate_helper_registry_execution_policy(&mut diagnostics, helper_id.as_deref(), value);
+
+    helper_registry_validation_result(helper_id, diagnostics)
+}
+
+fn validate_helper_registry_schema_version(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: &Value,
+) {
+    match value.get("schemaVersion").and_then(Value::as_str) {
+        Some(HELPER_REGISTRY_SCHEMA_VERSION) => {}
+        Some(version) if version.trim().is_empty() => helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "missing_required_field",
+            "schemaVersion",
+            "schemaVersion must not be empty",
+        ),
+        Some(version) => helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "unsupported_schema_version",
+            "schemaVersion",
+            &format!("schemaVersion must be {HELPER_REGISTRY_SCHEMA_VERSION}, got {version}"),
+        ),
+        None => helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "missing_required_field",
+            "schemaVersion",
+            "schemaVersion must not be empty",
+        ),
+    }
+}
+
+fn validate_helper_registry_capabilities(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: &Value,
+) {
+    let Some(capabilities) = value.get("capabilities").and_then(Value::as_array) else {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
+            "capabilities",
+            "capabilities must be a non-empty array",
+        );
+        return;
+    };
+    if capabilities.is_empty() {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
+            "capabilities",
+            "capabilities must include at least one helper capability",
+        );
+        return;
+    }
+    let allowed = [
+        "fixture_invocation",
+        "key_discovery",
+        "key_validation",
+        "protected_executable_probe",
+    ];
+    let mut seen = BTreeSet::new();
+    for (index, capability) in capabilities.iter().enumerate() {
+        let field = format!("capabilities.{index}");
+        let Some(capability) = capability.as_str() else {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                "invalid_field_type",
+                &field,
+                "helper capability must be a string",
+            );
+            continue;
+        };
+        if !allowed.contains(&capability) {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
+                &field,
+                "helper capability is not supported by this registry schema",
+            );
+        }
+        if !seen.insert(capability.to_string()) {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                "duplicate_helper_capability",
+                "capabilities",
+                "capabilities must not contain duplicate values",
+            );
+        }
+    }
+}
+
+fn validate_helper_registry_schema_id(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: &Value,
+    field: &str,
+    allowed: &[&str],
+) -> Option<String> {
+    let schema_id = required_helper_registry_string(diagnostics, helper_id, value, field)?;
+    if !allowed.contains(&schema_id.as_str()) {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            SEMANTIC_HELPER_REGISTRY_UNSUPPORTED_SCHEMA_ID,
+            field,
+            &format!("{field} must be one of {}", allowed.join(", ")),
+        );
+    }
+    Some(schema_id)
+}
+
+fn validate_helper_registry_redaction_class(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: &Value,
+) {
+    validate_helper_registry_enum_string(
+        diagnostics,
+        helper_id,
+        value,
+        "redactionClass",
+        &["public_fixture", "secret_ref_only", "aggregate_only"],
+        SEMANTIC_HELPER_REGISTRY_INVALID_REDACTION_CLASS,
+    );
+}
+
+fn validate_helper_registry_execution_policy(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: &Value,
+) {
+    let Some(policy) = value.get("executionPolicy") else {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "missing_required_field",
+            "executionPolicy",
+            "executionPolicy must be a JSON object",
+        );
+        return;
+    };
+    if !policy.is_object() {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "invalid_field_type",
+            "executionPolicy",
+            "executionPolicy must be a JSON object",
+        );
+        return;
+    }
+    for field in ["executionPolicy.policyId", "executionPolicy.allowlistRefId"] {
+        if let Some(text) = required_helper_registry_string(diagnostics, helper_id, policy, field) {
+            validate_helper_registry_identifier(diagnostics, helper_id, field, &text);
+        }
+    }
+    validate_helper_registry_enum_string(
+        diagnostics,
+        helper_id,
+        policy,
+        "executionPolicy.mode",
+        &["fixture_in_process", "local_process", "disallowed"],
+        "invalid_enum_value",
+    );
+    validate_helper_registry_enum_string(
+        diagnostics,
+        helper_id,
+        policy,
+        "executionPolicy.filesystemAccess",
+        &["none", "temp_only", "read_only_workspace"],
+        "invalid_enum_value",
+    );
+    if !policy
+        .get("networkAccess")
+        .is_some_and(|network_access| network_access.is_boolean())
+    {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "invalid_field_type",
+            "executionPolicy.networkAccess",
+            "executionPolicy.networkAccess must be a boolean",
+        );
+    }
+    match policy.get("maxRuntimeSeconds").and_then(Value::as_u64) {
+        Some(1..=3600) => {}
+        _ => helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "invalid_field_value",
+            "executionPolicy.maxRuntimeSeconds",
+            "executionPolicy.maxRuntimeSeconds must be between 1 and 3600",
+        ),
+    }
+}
+
+fn validate_helper_registry_enum_string(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: &Value,
+    field: &str,
+    allowed: &[&str],
+    code: &str,
+) -> Option<String> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    let Some(text) = value.get(key).and_then(Value::as_str) else {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            code,
+            field,
+            &format!("{field} must be one of {}", allowed.join(", ")),
+        );
+        return None;
+    };
+    if !allowed.contains(&text) {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            code,
+            field,
+            &format!("{field} must be one of {}", allowed.join(", ")),
+        );
+        return None;
+    }
+    Some(text.to_string())
+}
+
+fn required_helper_registry_string(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: &Value,
+    field: &str,
+) -> Option<String> {
+    let key = field.rsplit('.').next().unwrap_or(field);
+    match value.get(key).and_then(Value::as_str) {
+        Some(text) if !text.trim().is_empty() => Some(text.to_string()),
+        Some(_) | None => {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                "missing_required_field",
+                field,
+                &format!("{field} must not be empty"),
+            );
+            None
+        }
+    }
+}
+
+fn validate_helper_registry_identifier(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    field: &str,
+    value: &str,
+) {
+    if value.chars().any(char::is_whitespace) || value.contains('\0') {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "invalid_identifier",
+            field,
+            &format!("{field} must not contain whitespace or null bytes"),
+        );
+    }
+    if redact_for_log_or_report(value) != value {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            SEMANTIC_SECRET_REDACTED,
+            field,
+            "helper registry text must be redacted before persistence",
+        );
+    }
+}
+
+fn validate_helper_registry_output(
+    entry: &HelperRegistryEntry,
+    output: &Value,
+) -> KaifuuResult<()> {
+    if entry.output_schema_id != HELPER_REGISTRY_OUTPUT_SCHEMA_HELPER_RESULT {
+        return Err(format!(
+            "{}: unsupported helper registry output schema {}",
+            SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA,
+            redact_for_log_or_report(&entry.output_schema_id)
+        )
+        .into());
+    }
+    let validation = validate_helper_result_value(output).redacted_for_report();
+    if validation.status == OperationStatus::Failed {
+        return Err(format!(
+            "{}: helper output failed helper result validation: {}",
+            SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA,
+            validation
+                .failures
+                .iter()
+                .map(|failure| failure.code.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+        .into());
+    }
+    let output_helper_id = output
+        .pointer("/helper/helperId")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let output_helper_version = output
+        .pointer("/helper/helperVersion")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if output_helper_id != entry.helper_id || output_helper_version != entry.helper_version {
+        return Err(format!(
+            "{}: helper output provenance does not match registry entry",
+            SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn helper_registry_validation_result(
+    helper_id: Option<String>,
+    diagnostics: Vec<HelperRegistryDiagnostic>,
+) -> HelperRegistryValidationResult {
+    HelperRegistryValidationResult {
+        schema_version: HELPER_REGISTRY_SCHEMA_VERSION.to_string(),
+        helper_id,
+        status: if diagnostics.is_empty() {
+            OperationStatus::Passed
+        } else {
+            OperationStatus::Failed
+        },
+        diagnostics,
+    }
+}
+
+fn helper_registry_failure(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    code: &str,
+    field: &str,
+    message: &str,
+) {
+    diagnostics.push(HelperRegistryDiagnostic {
+        helper_id: helper_id.map(redact_for_log_or_report),
+        code: code.to_string(),
+        field: field.to_string(),
+        message: redact_for_log_or_report(message),
+    });
+}
+
+fn helper_capability_name(capability: HelperCapability) -> &'static str {
+    match capability {
+        HelperCapability::FixtureInvocation => "fixture_invocation",
+        HelperCapability::KeyDiscovery => "key_discovery",
+        HelperCapability::KeyValidation => "key_validation",
+        HelperCapability::ProtectedExecutableProbe => "protected_executable_probe",
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -11816,6 +12601,138 @@ mod tests {
         bridge_fixture_value(&format!(
             "fixtures/public/kaifuu-helper-results/invalid/{name}.json"
         ))
+    }
+
+    fn public_helper_registry_fixture_value(name: &str) -> Value {
+        bridge_fixture_value(&format!(
+            "fixtures/public/kaifuu-helper-results/helper-registry/{name}.json"
+        ))
+    }
+
+    #[test]
+    fn public_helper_registry_fixtures_validate_semantic_diagnostics() {
+        let valid = public_helper_registry_fixture_value("valid-helper");
+        let validation = validate_helper_registry_entry_value(&valid);
+        assert_eq!(
+            validation.status,
+            OperationStatus::Passed,
+            "{:#?}",
+            validation.diagnostics
+        );
+        let entry: HelperRegistryEntry = serde_json::from_value(valid).unwrap();
+        assert_eq!(entry.helper_id, FIXTURE_HELPER_REGISTRY_ID);
+        assert_eq!(
+            entry.execution_policy.allowlist_ref_id,
+            FIXTURE_HELPER_ALLOWLIST_REF_ID
+        );
+
+        let invalid_cases = [
+            (
+                "missing-capability",
+                SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
+                "capabilities",
+            ),
+            (
+                "bad-schema-id",
+                SEMANTIC_HELPER_REGISTRY_UNSUPPORTED_SCHEMA_ID,
+                "inputSchemaId",
+            ),
+            (
+                "bad-schema-id",
+                SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA,
+                "outputSchemaId",
+            ),
+            (
+                "unsupported-redaction-class",
+                SEMANTIC_HELPER_REGISTRY_INVALID_REDACTION_CLASS,
+                "redactionClass",
+            ),
+        ];
+
+        for (fixture, expected_code, expected_field) in invalid_cases {
+            let validation = validate_helper_registry_entry_value(
+                &public_helper_registry_fixture_value(fixture),
+            )
+            .redacted_for_report();
+
+            assert_eq!(validation.status, OperationStatus::Failed);
+            assert!(
+                validation.diagnostics.iter().any(|diagnostic| {
+                    diagnostic.code == expected_code && diagnostic.field == expected_field
+                }),
+                "missing {expected_code} for {fixture}: {:#?}",
+                validation.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn fixture_helper_is_discovered_and_invoked_through_registry_boundary() {
+        let registry = fixture_helper_registry().unwrap();
+        let helpers = registry.entries_for_capability(HelperCapability::FixtureInvocation);
+        assert_eq!(helpers.len(), 1);
+        assert_eq!(helpers[0].helper_id, FIXTURE_HELPER_REGISTRY_ID);
+        assert!(registry.get(FIXTURE_HELPER_REGISTRY_ID).is_some());
+
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &serde_json::json!({"fixture": true}),
+            )
+            .unwrap();
+
+        assert_eq!(
+            validate_helper_result_value(&output).status,
+            OperationStatus::Passed
+        );
+        assert_eq!(output["helper"]["helperId"], FIXTURE_HELPER_REGISTRY_ID);
+        assert_eq!(output["diagnostic"]["code"], "success");
+    }
+
+    #[test]
+    fn fixture_helper_registry_rejects_missing_capability_and_bad_output() {
+        let registry = fixture_helper_registry().unwrap();
+        let missing_capability = registry.invoke(
+            FIXTURE_HELPER_REGISTRY_ID,
+            HelperCapability::KeyDiscovery,
+            &serde_json::json!({"fixture": true}),
+        );
+        assert!(missing_capability.is_err());
+        assert!(
+            missing_capability
+                .unwrap_err()
+                .to_string()
+                .contains(SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY)
+        );
+
+        struct BadOutputAdapter;
+
+        impl HelperExecutableAdapter for BadOutputAdapter {
+            fn helper_id(&self) -> &'static str {
+                FIXTURE_HELPER_REGISTRY_ID
+            }
+
+            fn invoke(&self, _entry: &HelperRegistryEntry, _input: &Value) -> KaifuuResult<Value> {
+                Ok(serde_json::json!({"not": "a helper result"}))
+            }
+        }
+
+        let mut bad_registry = HelperRegistry::new();
+        bad_registry
+            .register_entry(FixtureHelperStubAdapter::registry_entry())
+            .unwrap();
+        bad_registry.register_executable(BadOutputAdapter);
+
+        let error = bad_registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &serde_json::json!({"fixture": true}),
+            )
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains(SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA));
     }
 
     #[test]

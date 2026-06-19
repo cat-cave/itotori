@@ -3,18 +3,19 @@ use std::fs;
 use std::path::Path;
 
 use kaifuu_core::{
-    ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterFailure, AssetInventoryAsset,
-    AssetInventoryAssetKind, AssetInventoryAssetRef, AssetInventoryManifest,
-    AssetInventoryPatchMode, AssetInventoryRequest, AssetInventorySurface,
-    AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind, AssetList,
-    AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability, CapabilityReport,
-    DetectRequest, DetectionEvidence, DetectionResult, EncodedStringSlot,
+    ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterFailure,
+    AdapterHelperRequirementDeclaration, AssetInventoryAsset, AssetInventoryAssetKind,
+    AssetInventoryAssetRef, AssetInventoryManifest, AssetInventoryPatchMode, AssetInventoryRequest,
+    AssetInventorySurface, AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind,
+    AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
+    CapabilityReport, DetectRequest, DetectionEvidence, DetectionResult, EncodedStringSlot,
     EncodedStringSlotProtectedSpan, EngineAdapter, EngineProfile, EvidenceStatus, ExtractRequest,
-    ExtractionResult, GameProfile, KaifuuResult, LayeredAccessCapabilityContract,
-    LayeredAccessProfile, OperationStatus, PatchRef, PatchRequest, PatchResult, ProfileRequest,
-    ProfileRequirement, ProtectedSpan, RequirementCategory, RequirementStatus, TextSurface,
-    VerificationResult, VerifyRequest, atomic_write_text, content_hash, deterministic_id,
-    normalize_protected_spans, parse_hex_bytes, require_str, require_u64, safe_join_relative,
+    ExtractionResult, FIXTURE_HELPER_ALLOWLIST_REF_ID, FIXTURE_HELPER_REGISTRY_ID, GameProfile,
+    HelperCapability, KaifuuResult, LayeredAccessCapabilityContract, LayeredAccessProfile,
+    OperationStatus, PatchRef, PatchRequest, PatchResult, ProfileRequest, ProfileRequirement,
+    ProtectedSpan, RequirementCategory, RequirementStatus, TextSurface, VerificationResult,
+    VerifyRequest, atomic_write_text, content_hash, deterministic_id, normalize_protected_spans,
+    parse_hex_bytes, require_str, require_u64, safe_join_relative,
 };
 use serde_json::{Value, json};
 
@@ -1043,6 +1044,11 @@ impl EngineAdapter for FixtureAdapter {
             ],
         )
         .with_access_contract(LayeredAccessCapabilityContract::plaintext_identity())
+        .with_helper_requirements(vec![AdapterHelperRequirementDeclaration::new(
+            FIXTURE_HELPER_REGISTRY_ID,
+            vec![HelperCapability::FixtureInvocation],
+            FIXTURE_HELPER_ALLOWLIST_REF_ID,
+        )])
     }
 
     fn detect(&self, request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {

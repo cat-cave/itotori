@@ -28,6 +28,14 @@
       "redistributable": true
     },
     {
+      "path": "fixtures/public/kaifuu-helper-results/helper-registry.schema.json",
+      "role": "metadata",
+      "mediaType": "application/schema+json",
+      "sha256": "b9606e2ac6df8c0f6b4af498b3cf6e13f73aa14099fff07d1a51faf686d3fe9f",
+      "bytes": 2342,
+      "redistributable": true
+    },
+    {
       "path": "fixtures/public/kaifuu-helper-results/success.json",
       "role": "helper-result",
       "mediaType": "application/json",
@@ -82,16 +90,48 @@
       "sha256": "ab69c85e0096ad4d27b9a2bea80dfe670ddae282e68bbc6b8a24b8a0647927af",
       "bytes": 641,
       "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-registry/valid-helper.json",
+      "role": "helper-registry",
+      "mediaType": "application/json",
+      "sha256": "712667ba04734cf0b8e5ab0139803d1c8ec9a701c5416e65a4433979a7a41d64",
+      "bytes": 553,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-registry/missing-capability.json",
+      "role": "helper-registry",
+      "mediaType": "application/json",
+      "sha256": "393dbe8e9813e1681c2fcbfef8c6fc82980ea0f9c4044a0b8bf0cdbfef9e6096",
+      "bytes": 533,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-registry/bad-schema-id.json",
+      "role": "helper-registry",
+      "mediaType": "application/json",
+      "sha256": "d23452a23843f7ab198de563bc87cd39c49babef47286c543b7de190eb293360",
+      "bytes": 557,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-helper-results/helper-registry/unsupported-redaction-class.json",
+      "role": "helper-registry",
+      "mediaType": "application/json",
+      "sha256": "2dcbc6ea23ac5588d387eca1b78ef4d9988f978cf063b2e9c440dd020ce74a4b",
+      "bytes": 553,
+      "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 8,
+    "files": 13,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
     "sourceLocales": ["ja-JP"],
-    "engineKinds": ["kaifuu-helper-result"],
-    "notes": "Covers success, missing_key, helper_required, helper_unavailable, validation_failed, unsupported_protected_executable, and redaction_failure diagnostics."
+    "engineKinds": ["kaifuu-helper-result", "kaifuu-helper-registry"],
+    "notes": "Covers success, missing_key, helper_required, helper_unavailable, validation_failed, unsupported_protected_executable, redaction_failure diagnostics, and helper registry validation cases for valid helper, missing capability, bad schema id, and unsupported redaction class."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

@@ -5,10 +5,11 @@ use std::path::{Component, Path, PathBuf};
 use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
     DetectionResult, EngineAdapter, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
-    GoldenHarnessRequest, KaifuuResult, PatchExport, PatchPreflightRequest, PatchRequest,
-    PatchResult, ProfileRequest, VerifyRequest, atomic_write_text,
-    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
-    run_round_trip_golden, validate_helper_result_value, validate_offset_map_value,
+    GoldenHarnessRequest, HelperCapability, KaifuuResult, PatchExport, PatchPreflightRequest,
+    PatchRequest, PatchResult, ProfileRequest, VerifyRequest, atomic_write_text,
+    fixture_helper_registry, promote_staged_directory_no_clobber, read_json,
+    redact_for_log_or_report, redact_report_value, run_round_trip_golden,
+    validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
     validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
@@ -150,6 +151,9 @@ fn run_with_args_and_registry(
         Some("helper-result") => {
             run_helper_result_command(&args)?;
         }
+        Some("helper-registry") => {
+            run_helper_registry_command(&args)?;
+        }
         Some("profile") => {
             run_profile_command(&args, registry)?;
         }
@@ -164,7 +168,52 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|profile|capabilities> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|helper-registry|profile|capabilities> ..."
+                    .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run_helper_registry_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    match positional(args, 1)? {
+        "validate" => {
+            let registry_entry_path = PathBuf::from(positional(args, 2)?);
+            let output = PathBuf::from(flag(args, "--output")?);
+            let value: serde_json::Value = read_json(&registry_entry_path)?;
+            let validation = validate_helper_registry_entry_value(&value).redacted_for_report();
+            let failed = validation.status == kaifuu_core::OperationStatus::Failed;
+            write_json(&output, &validation)?;
+            if failed {
+                return Err(format!(
+                    "helper registry validation failed for {}: {}",
+                    validation.helper_id.as_deref().unwrap_or("<unknown>"),
+                    validation
+                        .diagnostics
+                        .iter()
+                        .map(|diagnostic| format!("{}:{}", diagnostic.field, diagnostic.code))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+                .into());
+            }
+        }
+        "invoke-fixture-stub" => {
+            let output = PathBuf::from(flag(args, "--output")?);
+            let registry = fixture_helper_registry()?;
+            let helper_id = flag_optional(args, "--helper-id")
+                .unwrap_or(kaifuu_core::FIXTURE_HELPER_REGISTRY_ID);
+            let result = registry.invoke(
+                helper_id,
+                HelperCapability::FixtureInvocation,
+                &serde_json::json!({"fixture": true}),
+            )?;
+            write_json(&output, &redact_report_value(&result))?;
+        }
+        _ => {
+            return Err(
+                "usage: kaifuu helper-registry <validate <entry.json>|invoke-fixture-stub> --output <report.json>"
                     .into(),
             );
         }
@@ -684,12 +733,13 @@ mod tests {
         AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
         CapabilityReport, CapabilityStatus, DetectRequest, DetectionEvidence,
         DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult,
-        GoldenAssertionStatus, GoldenRoundTripReport, LayeredAccessCapabilityContract,
-        LayeredAccessPreflightReport, LayeredAccessPreflightRequirement, LayeredAccessProfile,
-        LayeredAccessStage, OperationStatus, PatchExportEntry, PatchRef, PatchResult,
-        ProfileRequirement, ProtectedSpanMapping, REDACTED_DETECTION_GAME_DIR, RequirementCategory,
-        RequirementStatus, SemanticErrorCode, TextSurface, VerificationResult, content_hash,
-        deterministic_id, read_json,
+        GoldenAssertionStatus, GoldenRoundTripReport, HelperCapability,
+        LayeredAccessCapabilityContract, LayeredAccessPreflightReport,
+        LayeredAccessPreflightRequirement, LayeredAccessProfile, LayeredAccessStage,
+        OperationStatus, PatchExportEntry, PatchRef, PatchResult, ProfileRequirement,
+        ProtectedSpanMapping, REDACTED_DETECTION_GAME_DIR, RequirementCategory, RequirementStatus,
+        SemanticErrorCode, TextSurface, VerificationResult, content_hash, deterministic_id,
+        read_json,
     };
     use std::cell::RefCell;
     use std::collections::BTreeMap;
@@ -800,6 +850,94 @@ mod tests {
         assert_eq!(report["status"], "passed");
         assert_eq!(report["fixtureId"], "kaifuu-helper-success");
         assert_eq!(report["failures"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn helper_registry_validate_command_accepts_public_fixture() {
+        let root = temp_dir("helper-registry-valid");
+        let output = root.join("helper-registry-report.json");
+        let fixture = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/helper-registry/valid-helper.json",
+        );
+
+        run_cli(&[
+            "helper-registry",
+            "validate",
+            fixture.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["helperId"], kaifuu_core::FIXTURE_HELPER_REGISTRY_ID);
+        assert_eq!(report["diagnostics"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn helper_registry_validate_command_rejects_invalid_fixtures() {
+        let cases = [
+            (
+                "missing-capability",
+                kaifuu_core::SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
+            ),
+            (
+                "bad-schema-id",
+                kaifuu_core::SEMANTIC_HELPER_REGISTRY_UNSUPPORTED_SCHEMA_ID,
+            ),
+            (
+                "unsupported-redaction-class",
+                kaifuu_core::SEMANTIC_HELPER_REGISTRY_INVALID_REDACTION_CLASS,
+            ),
+        ];
+
+        for (fixture_name, expected_code) in cases {
+            let root = temp_dir(&format!("helper-registry-invalid-{fixture_name}"));
+            let output = root.join("helper-registry-report.json");
+            let fixture = public_fixture_path(&format!(
+                "fixtures/public/kaifuu-helper-results/helper-registry/{fixture_name}.json",
+            ));
+
+            let result = run_with_args(vec![
+                "helper-registry".to_string(),
+                "validate".to_string(),
+                fixture.to_str().unwrap().to_string(),
+                "--output".to_string(),
+                output.to_str().unwrap().to_string(),
+            ]);
+
+            assert!(result.is_err());
+            let report: serde_json::Value = read_json(&output).unwrap();
+            assert_eq!(report["status"], "failed");
+            assert!(
+                report["diagnostics"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|diagnostic| diagnostic["code"] == expected_code)
+            );
+        }
+    }
+
+    #[test]
+    fn helper_registry_invoke_fixture_stub_command_uses_registry_boundary() {
+        let root = temp_dir("helper-registry-invoke");
+        let output = root.join("helper-result.json");
+
+        run_cli(&[
+            "helper-registry",
+            "invoke-fixture-stub",
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let result: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(result["fixtureId"], "kaifuu-helper-registry-stub");
+        assert_eq!(
+            result["helper"]["helperId"],
+            kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
+        );
+        assert_eq!(result["diagnostic"]["code"], "success");
     }
 
     #[test]
@@ -2345,6 +2483,19 @@ mod tests {
                 && report.status == CapabilityStatus::Limited
         }));
         assert!(capabilities[0].access_contract.is_some());
+        assert!(
+            capabilities[0]
+                .helper_requirements
+                .iter()
+                .any(|requirement| {
+                    requirement.helper_registry_id == kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
+                        && requirement.allowlist_ref_id
+                            == kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID
+                        && requirement
+                            .capabilities
+                            .contains(&HelperCapability::FixtureInvocation)
+                })
+        );
 
         let detect_path = root.join("detect.json");
         run_cli(&[
