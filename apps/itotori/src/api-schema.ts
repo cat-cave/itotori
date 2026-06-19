@@ -813,6 +813,80 @@ export function assertProjectCostReport(
       asRecord(run.accountPrivacy, `${label}.recentRuns[${index}].accountPrivacy`);
     }
   }
+  const reuse = asRecord(report.translationMemoryReuse, `${label}.translationMemoryReuse`);
+  assertNonNegativeInteger(
+    reuse.reuseEventCount,
+    `${label}.translationMemoryReuse.reuseEventCount`,
+  );
+  assertNonNegativeInteger(reuse.appliedCount, `${label}.translationMemoryReuse.appliedCount`);
+  assertNonNegativeInteger(reuse.suggestedCount, `${label}.translationMemoryReuse.suggestedCount`);
+  assertNonNegativeInteger(
+    reuse.providerCallAvoidedCount,
+    `${label}.translationMemoryReuse.providerCallAvoidedCount`,
+  );
+  assertNonNegativeInteger(
+    reuse.estimatedPromptTokensSaved,
+    `${label}.translationMemoryReuse.estimatedPromptTokensSaved`,
+  );
+  assertNonNegativeInteger(
+    reuse.estimatedCompletionTokensSaved,
+    `${label}.translationMemoryReuse.estimatedCompletionTokensSaved`,
+  );
+  assertNonNegativeInteger(
+    reuse.estimatedTotalTokensSaved,
+    `${label}.translationMemoryReuse.estimatedTotalTokensSaved`,
+  );
+  if (reuse.estimatedCostUsdSaved !== null) {
+    assertNonNegativeNumber(
+      reuse.estimatedCostUsdSaved,
+      `${label}.translationMemoryReuse.estimatedCostUsdSaved`,
+    );
+  }
+  const recentEvents = asArray(reuse.recentEvents, `${label}.translationMemoryReuse.recentEvents`);
+  for (const [index, eventValue] of recentEvents.entries()) {
+    const event = asRecord(eventValue, `${label}.translationMemoryReuse.recentEvents[${index}]`);
+    assertString(event.reuseEventId, `${label}.translationMemoryReuse.recentEvents[${index}].reuseEventId`);
+    assertString(event.localeBranchId, `${label}.translationMemoryReuse.recentEvents[${index}].localeBranchId`);
+    assertString(
+      event.targetBridgeUnitId,
+      `${label}.translationMemoryReuse.recentEvents[${index}].targetBridgeUnitId`,
+    );
+    assertString(event.memorySegmentId, `${label}.translationMemoryReuse.recentEvents[${index}].memorySegmentId`);
+    assertString(event.matchKind, `${label}.translationMemoryReuse.recentEvents[${index}].matchKind`);
+    assertNonNegativeInteger(event.matchScore, `${label}.translationMemoryReuse.recentEvents[${index}].matchScore`);
+    assertString(event.reuseStatus, `${label}.translationMemoryReuse.recentEvents[${index}].reuseStatus`);
+    assertString(event.sourceHash, `${label}.translationMemoryReuse.recentEvents[${index}].sourceHash`);
+    assertString(
+      event.candidateSourceHash,
+      `${label}.translationMemoryReuse.recentEvents[${index}].candidateSourceHash`,
+    );
+    assertString(event.targetText, `${label}.translationMemoryReuse.recentEvents[${index}].targetText`);
+    assertBoolean(
+      event.providerCallAvoided,
+      `${label}.translationMemoryReuse.recentEvents[${index}].providerCallAvoided`,
+    );
+    assertNonNegativeInteger(
+      event.estimatedPromptTokensSaved,
+      `${label}.translationMemoryReuse.recentEvents[${index}].estimatedPromptTokensSaved`,
+    );
+    assertNonNegativeInteger(
+      event.estimatedCompletionTokensSaved,
+      `${label}.translationMemoryReuse.recentEvents[${index}].estimatedCompletionTokensSaved`,
+    );
+    assertNonNegativeInteger(
+      event.estimatedTotalTokensSaved,
+      `${label}.translationMemoryReuse.recentEvents[${index}].estimatedTotalTokensSaved`,
+    );
+    if (event.estimatedCostUsdSaved !== null) {
+      assertNonNegativeNumber(
+        event.estimatedCostUsdSaved,
+        `${label}.translationMemoryReuse.recentEvents[${index}].estimatedCostUsdSaved`,
+      );
+    }
+    assertString(event.calculation, `${label}.translationMemoryReuse.recentEvents[${index}].calculation`);
+    asRecord(event.provenance, `${label}.translationMemoryReuse.recentEvents[${index}].provenance`);
+    assertString(event.createdAt, `${label}.translationMemoryReuse.recentEvents[${index}].createdAt`);
+  }
 }
 
 export function assertDashboardDecisionReadModel(
@@ -1241,6 +1315,12 @@ function assertDateLike(value: unknown, label: string): void {
 function assertNonNegativeInteger(value: unknown, label: string): asserts value is number {
   if (!Number.isInteger(value) || (value as number) < 0) {
     throw new Error(`${label} must be a non-negative integer`);
+  }
+}
+
+function assertNonNegativeNumber(value: unknown, label: string): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative number`);
   }
 }
 

@@ -489,6 +489,30 @@ export const glossaryReviewItemStateValues = {
 export type GlossaryReviewItemState =
   (typeof glossaryReviewItemStateValues)[keyof typeof glossaryReviewItemStateValues];
 
+export const translationMemorySegmentStatusValues = {
+  reusable: "reusable",
+  blocked: "blocked",
+} as const;
+
+export type TranslationMemorySegmentStatus =
+  (typeof translationMemorySegmentStatusValues)[keyof typeof translationMemorySegmentStatusValues];
+
+export const translationMemoryMatchKindValues = {
+  exact: "exact",
+  fuzzy: "fuzzy",
+} as const;
+
+export type TranslationMemoryMatchKind =
+  (typeof translationMemoryMatchKindValues)[keyof typeof translationMemoryMatchKindValues];
+
+export const translationMemoryReuseStatusValues = {
+  suggested: "suggested",
+  applied: "applied",
+} as const;
+
+export type TranslationMemoryReuseStatus =
+  (typeof translationMemoryReuseStatusValues)[keyof typeof translationMemoryReuseStatusValues];
+
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -1584,6 +1608,111 @@ export const localeBranchUnits = pgTable(
     index("itotori_locale_branch_units_bridge_unit_idx").on(table.bridgeUnitId),
     index("itotori_locale_branch_units_style_guide_version_idx").on(table.styleGuideVersionId),
     index("itotori_locale_branch_units_glossary_reference_idx").on(table.glossaryReferenceId),
+  ],
+);
+
+export const translationMemorySegments = pgTable(
+  "itotori_translation_memory_segments",
+  {
+    memorySegmentId: text("memory_segment_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    sourceBridgeUnitId: text("source_bridge_unit_id").references(() => sourceUnits.bridgeUnitId, {
+      onDelete: "set null",
+    }),
+    sourceUnitKey: text("source_unit_key").notNull(),
+    sourceOccurrenceId: text("source_occurrence_id").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    sourceFingerprint: text("source_fingerprint").notNull(),
+    sourceText: text("source_text").notNull(),
+    targetLocale: text("target_locale").notNull(),
+    targetText: text("target_text").notNull(),
+    status: text("status").notNull(),
+    provenance: jsonb("provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: text("created_by_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_tm_segments_exact_lookup_idx").on(
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.sourceHash,
+      table.status,
+      table.sourceUnitKey,
+      table.sourceOccurrenceId,
+    ),
+    index("itotori_tm_segments_fingerprint_idx").on(
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.sourceFingerprint,
+      table.status,
+    ),
+    index("itotori_tm_segments_project_branch_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const translationMemoryReuseEvents = pgTable(
+  "itotori_translation_memory_reuse_events",
+  {
+    reuseEventId: text("reuse_event_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    targetBridgeUnitId: text("target_bridge_unit_id")
+      .notNull()
+      .references(() => sourceUnits.bridgeUnitId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    memorySegmentId: text("memory_segment_id")
+      .notNull()
+      .references(() => translationMemorySegments.memorySegmentId, { onDelete: "restrict" }),
+    matchKind: text("match_kind").notNull(),
+    matchScore: integer("match_score").notNull(),
+    reuseStatus: text("reuse_status").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    candidateSourceHash: text("candidate_source_hash").notNull(),
+    targetText: text("target_text").notNull(),
+    provenance: jsonb("provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    costImpact: jsonb("cost_impact")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: text("created_by_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_tm_reuse_events_target_idx").on(
+      table.localeBranchId,
+      table.targetBridgeUnitId,
+      table.createdAt,
+    ),
+    index("itotori_tm_reuse_events_segment_idx").on(table.memorySegmentId, table.createdAt),
   ],
 );
 

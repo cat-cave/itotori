@@ -5,6 +5,7 @@ import type {
   ItotoriModelLedgerRepositoryPort,
   ItotoriProjectRecord,
   ItotoriProjectRepositoryPort,
+  ItotoriTranslationMemoryService,
   ProjectCostReport,
   ProjectDashboardStatus,
   ProviderRunLedgerInput,
@@ -113,6 +114,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     private readonly actor: AuthorizationActor,
     private readonly draftModelProvider: ModelProvider = new FakeModelProvider(),
     private readonly modelLedger?: ItotoriModelLedgerRepositoryPort,
+    private readonly translationMemory?: Pick<ItotoriTranslationMemoryService, "prefillDrafts">,
   ) {}
 
   async reset(): Promise<void> {
@@ -156,7 +158,11 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       targetLocale: locale,
       drafts: { ...project.drafts },
     };
+    const reusedDraftUnitIds = await this.prefillTranslationMemoryDrafts(nextProject, locale);
     for (const unit of nextProject.bridge.units) {
+      if (reusedDraftUnitIds.has(unit.bridgeUnitId)) {
+        continue;
+      }
       const prompt = draftPromptPreset();
       const request: ModelInvocationRequest = {
         taskKind: "draft_translation",
@@ -382,6 +388,34 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
       this.actor,
       providerRunLedgerInputFromRun(project, result.providerRun, result.adapterMetadata),
     );
+  }
+
+  private async prefillTranslationMemoryDrafts(
+    project: ProjectState,
+    locale: string,
+  ): Promise<Set<string>> {
+    if (!this.translationMemory) {
+      return new Set();
+    }
+    const result = await this.translationMemory.prefillDrafts(this.actor, {
+      projectId: project.projectId,
+      localeBranchId: project.localeBranchId,
+      requestedTargetLocale: locale,
+      bridgeUnitIds: project.bridge.units.map((unit) => unit.bridgeUnitId),
+      applyDrafts: true,
+      includeFuzzy: false,
+      requestId: `draft:${project.projectId}:${project.localeBranchId}:${locale}`,
+    });
+    if (result.status !== "completed") {
+      return new Set();
+    }
+
+    const reusedDraftUnitIds = new Set<string>();
+    for (const reuse of result.reuses) {
+      project.drafts[reuse.target.bridgeUnitId] = reuse.event.targetText;
+      reusedDraftUnitIds.add(reuse.target.bridgeUnitId);
+    }
+    return reusedDraftUnitIds;
   }
 
   private async recordProviderFailure(
@@ -677,6 +711,21 @@ function emptyCostReport(projectId: string): ProjectCostReport {
       }),
     ),
     recentRuns: [],
+    translationMemoryReuse: emptyTranslationMemoryReuseCostReport(),
+  };
+}
+
+function emptyTranslationMemoryReuseCostReport(): ProjectCostReport["translationMemoryReuse"] {
+  return {
+    reuseEventCount: 0,
+    appliedCount: 0,
+    suggestedCount: 0,
+    providerCallAvoidedCount: 0,
+    estimatedPromptTokensSaved: 0,
+    estimatedCompletionTokensSaved: 0,
+    estimatedTotalTokensSaved: 0,
+    estimatedCostUsdSaved: null,
+    recentEvents: [],
   };
 }
 

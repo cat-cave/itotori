@@ -1,14 +1,22 @@
 import { readFileSync } from "node:fs";
-import type {
-  AuthorizationActor,
-  DashboardDecisionReadModel,
-  ItotoriModelLedgerRepositoryPort,
-  ItotoriProjectRecord,
-  ItotoriProjectRepositoryPort,
-  ProjectCostReport,
-  ProjectDashboardStatus,
-  RuntimeDashboardStatus,
+import {
+  ItotoriModelLedgerRepository,
+  ItotoriProjectRepository,
+  ItotoriTranslationMemoryRepository,
+  ItotoriTranslationMemoryService,
+  localUserId,
+  translationMemoryMatchKindValues,
+  translationMemoryReuseStatusValues,
+  type AuthorizationActor,
+  type DashboardDecisionReadModel,
+  type ItotoriModelLedgerRepositoryPort,
+  type ItotoriProjectRecord,
+  type ItotoriProjectRepositoryPort,
+  type ProjectCostReport,
+  type ProjectDashboardStatus,
+  type RuntimeDashboardStatus,
 } from "@itotori/db";
+import { isolatedMigratedContext } from "../../../packages/itotori-db/test/db-test-context.js";
 import type {
   BenchmarkReportV02,
   BridgeBundle,
@@ -29,7 +37,8 @@ import {
   type ProjectState,
 } from "../src/services/project-workflow.js";
 
-const actor: AuthorizationActor = { userId: "user-test" };
+const actor: AuthorizationActor = { userId: localUserId };
+const dbBackedIt = process.env.DATABASE_URL ? it : it.skip;
 
 describe("ItotoriProjectWorkflowService", () => {
   it("imports source bundles through the repository boundary", async () => {
@@ -86,6 +95,250 @@ describe("ItotoriProjectWorkflowService", () => {
       }),
     );
     expect(project.drafts).toEqual({});
+  });
+
+  it("uses translation memory prefill results to skip provider calls for reused units", async () => {
+    const repository = repositoryFixture();
+    const ledger = ledgerFixture();
+    const bridge = repeatedLineBridgeFixture();
+    const prefillDrafts = vi.fn(async () => ({
+      status: "completed" as const,
+      diagnostics: [],
+      appliedCount: 1,
+      suggestedCount: 0,
+      skippedCount: 1,
+      reuses: [
+        {
+          target: {
+            projectId: "project-test",
+            localeBranchId: "locale-en-us",
+            targetLocale: "en-US",
+            bridgeUnitId: "bridge-unit-repeat",
+            sourceRevisionId: "revision-test",
+            sourceUnitKey: "hello.scene.001.line.002",
+            sourceOccurrenceId: "occurrence-repeat",
+            sourceHash: "source-hash-repeat",
+            sourceText: "こんにちは、{player}。",
+            currentTargetText: null,
+          },
+          match: {} as never,
+          event: {
+            reuseEventId: "tm-reuse-test",
+            projectId: "project-test",
+            localeBranchId: "locale-en-us",
+            targetBridgeUnitId: "bridge-unit-repeat",
+            sourceRevisionId: "revision-test",
+            memorySegmentId: "tm-bridge-unit-memory",
+            matchKind: translationMemoryMatchKindValues.exact,
+            matchScore: 1000,
+            reuseStatus: translationMemoryReuseStatusValues.applied,
+            sourceHash: "source-hash-repeat",
+            candidateSourceHash: "source-hash-repeat",
+            targetText: "Hello, {player}.",
+            provenance: {
+              requestId: "draft:project-test:locale-en-us:en-US",
+              selectedMemorySegmentId: "tm-bridge-unit-memory",
+            },
+            costImpact: {
+              providerCallAvoided: true,
+              estimatedPromptTokensSaved: 5,
+              estimatedCompletionTokensSaved: 4,
+              estimatedTotalTokensSaved: 9,
+              estimatedCostUsdSaved: null,
+              calculation: "deterministic_character_estimate_v1",
+            },
+            createdAt: "2026-06-17T00:00:00.000Z",
+          },
+        },
+      ],
+      skipped: [],
+    }));
+    const generate = vi.fn(() => "Provider draft");
+    const service = new ItotoriProjectWorkflowService(
+      repository,
+      actor,
+      new FakeModelProvider({ generate }),
+      ledger,
+      { prefillDrafts } as Pick<ItotoriTranslationMemoryService, "prefillDrafts">,
+    );
+
+    const drafted = await service.draftProject(projectFixture({ bridge, drafts: {} }), "en-US");
+
+    expect(prefillDrafts).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        requestedTargetLocale: "en-US",
+        bridgeUnitIds: ["bridge-unit-memory", "bridge-unit-repeat"],
+        applyDrafts: true,
+        includeFuzzy: false,
+        requestId: "draft:project-test:locale-en-us:en-US",
+      }),
+    );
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(drafted.drafts).toEqual({
+      "bridge-unit-memory": "Provider draft",
+      "bridge-unit-repeat": "Hello, {player}.",
+    });
+    expect(repository.saveDrafts).toHaveBeenCalledWith(actor, drafted);
+    expect(ledger.recordProviderRun).toHaveBeenCalledTimes(1);
+  });
+
+  dbBackedIt("prefills repeated exact lines from translation memory before provider drafting", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      const modelLedger = new ItotoriModelLedgerRepository(context.db);
+      const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
+      const translationMemory = new ItotoriTranslationMemoryService(translationMemoryRepository);
+      const bridge = repeatedLineBridgeFixture();
+      const importedProject = projectFixture({
+        bridge,
+        drafts: {
+          "bridge-unit-memory": "Hello, {player}.",
+        },
+      });
+      await projectRepository.importSourceBundle(actor, importedProject);
+      await translationMemoryRepository.upsertSegment(actor, {
+        projectId: importedProject.projectId,
+        localeBranchId: importedProject.localeBranchId,
+        sourceBridgeUnitId: "bridge-unit-memory",
+        memorySegmentId: "tm-bridge-unit-memory",
+        targetText: "Hello, {player}.",
+        expectedSourceHash: "source-hash-repeat",
+        expectedTargetLocale: "en-US",
+        provenance: { source: "approved_draft" },
+      });
+
+      const generate = vi.fn(() => "Provider draft");
+      const service = new ItotoriProjectWorkflowService(
+        projectRepository,
+        actor,
+        new FakeModelProvider({ generate }),
+        modelLedger,
+        translationMemory,
+      );
+      const drafted = await service.draftProject(
+        { ...importedProject, drafts: {}, importStatus: importStatusFixture },
+        "en-US",
+      );
+
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect(drafted.drafts["bridge-unit-repeat"]).toBe("Hello, {player}.");
+      expect(drafted.drafts["bridge-unit-memory"]).toBe("Provider draft");
+
+      const events = await translationMemoryRepository.listReuseEvents({
+        projectId: importedProject.projectId,
+        localeBranchId: importedProject.localeBranchId,
+        targetBridgeUnitId: "bridge-unit-repeat",
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({
+        memorySegmentId: "tm-bridge-unit-memory",
+        matchKind: translationMemoryMatchKindValues.exact,
+        matchScore: 1000,
+        reuseStatus: translationMemoryReuseStatusValues.applied,
+        targetText: "Hello, {player}.",
+        provenance: expect.objectContaining({
+          requestId: "draft:project-test:locale-en-us:en-US",
+          selectedMemorySegmentId: "tm-bridge-unit-memory",
+          targetSourceUnitKey: "hello.scene.001.line.002",
+        }),
+        costImpact: expect.objectContaining({
+          providerCallAvoided: true,
+          calculation: "deterministic_character_estimate_v1",
+        }),
+      });
+
+      const costReport = await modelLedger.getProjectCostReport(importedProject.projectId);
+      expect(costReport.translationMemoryReuse).toMatchObject({
+        reuseEventCount: 1,
+        appliedCount: 1,
+        providerCallAvoidedCount: 1,
+        estimatedTotalTokensSaved: events[0]?.costImpact.estimatedTotalTokensSaved,
+      });
+      expect(costReport.translationMemoryReuse.recentEvents[0]).toMatchObject({
+        targetBridgeUnitId: "bridge-unit-repeat",
+        memorySegmentId: "tm-bridge-unit-memory",
+        providerCallAvoided: true,
+        calculation: "deterministic_character_estimate_v1",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  dbBackedIt("does not reuse old-locale memory when drafting a different requested target locale", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      const modelLedger = new ItotoriModelLedgerRepository(context.db);
+      const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
+      const translationMemory = new ItotoriTranslationMemoryService(translationMemoryRepository);
+      const bridge = repeatedLineBridgeFixture();
+      const importedProject = projectFixture({
+        bridge,
+        targetLocale: "en-US",
+        drafts: {
+          "bridge-unit-memory": "Hello, {player}.",
+        },
+      });
+      await projectRepository.importSourceBundle(actor, importedProject);
+      await translationMemoryRepository.upsertSegment(actor, {
+        projectId: importedProject.projectId,
+        localeBranchId: importedProject.localeBranchId,
+        sourceBridgeUnitId: "bridge-unit-memory",
+        memorySegmentId: "tm-bridge-unit-memory",
+        targetText: "Hello, {player}.",
+        expectedSourceHash: "source-hash-repeat",
+        expectedTargetLocale: "en-US",
+        provenance: { source: "approved_draft" },
+      });
+
+      const generate = vi.fn((request: ModelInvocationRequest) => {
+        const message = request.messages.findLast((candidate) => candidate.role === "user");
+        const body = JSON.parse(String(message?.content)) as {
+          targetLocale: string;
+          sourceText: string;
+        };
+        return `[${body.targetLocale}] ${body.sourceText}`;
+      });
+      const service = new ItotoriProjectWorkflowService(
+        projectRepository,
+        actor,
+        new FakeModelProvider({ generate }),
+        modelLedger,
+        translationMemory,
+      );
+      const drafted = await service.draftProject(
+        { ...importedProject, drafts: {}, importStatus: importStatusFixture },
+        "fr-FR",
+      );
+
+      expect(generate).toHaveBeenCalledTimes(2);
+      expect(drafted.targetLocale).toBe("fr-FR");
+      expect(drafted.drafts["bridge-unit-repeat"]).toBe("[fr-FR] こんにちは、{player}。");
+      expect(drafted.drafts["bridge-unit-memory"]).toBe("[fr-FR] こんにちは、{player}。");
+
+      const requestBodies = generate.mock.calls.map((call) => {
+        const message = call[0].messages.findLast((candidate) => candidate.role === "user");
+        return JSON.parse(String(message?.content)) as { targetLocale: string; sourceText: string };
+      });
+      expect(requestBodies).toEqual([
+        expect.objectContaining({ targetLocale: "fr-FR", sourceText: "こんにちは、{player}。" }),
+        expect.objectContaining({ targetLocale: "fr-FR", sourceText: "こんにちは、{player}。" }),
+      ]);
+      await expect(
+        translationMemoryRepository.listReuseEvents({
+          projectId: importedProject.projectId,
+          localeBranchId: importedProject.localeBranchId,
+          targetBridgeUnitId: "bridge-unit-repeat",
+        }),
+      ).resolves.toHaveLength(0);
+    } finally {
+      await context.close();
+    }
   });
 
   it("drafts explicit non-Japanese-to-English locale pairs", async () => {
@@ -931,6 +1184,32 @@ function bridgeFixture(): BridgeBundle {
   };
 }
 
+function repeatedLineBridgeFixture(): BridgeBundle {
+  const bridge = bridgeFixture();
+  const baseUnit = bridge.units[0]!;
+  return {
+    ...bridge,
+    units: [
+      {
+        ...baseUnit,
+        bridgeUnitId: "bridge-unit-memory",
+        sourceUnitKey: "hello.scene.001.line.001",
+        occurrenceId: "occurrence-memory",
+        sourceHash: "source-hash-repeat",
+        protectedSpans: [],
+      },
+      {
+        ...baseUnit,
+        bridgeUnitId: "bridge-unit-repeat",
+        sourceUnitKey: "hello.scene.001.line.002",
+        occurrenceId: "occurrence-repeat",
+        sourceHash: "source-hash-repeat",
+        protectedSpans: [],
+      },
+    ],
+  };
+}
+
 function nonJapaneseSourceProjectFixture(overrides: Partial<ProjectState> = {}): ProjectState {
   return projectFixture({
     targetLocale: "en-US",
@@ -1073,6 +1352,17 @@ const costReportFixture: ProjectCostReport = {
       accountPrivacy: null,
     },
   ],
+  translationMemoryReuse: {
+    reuseEventCount: 0,
+    appliedCount: 0,
+    suggestedCount: 0,
+    providerCallAvoidedCount: 0,
+    estimatedPromptTokensSaved: 0,
+    estimatedCompletionTokensSaved: 0,
+    estimatedTotalTokensSaved: 0,
+    estimatedCostUsdSaved: null,
+    recentEvents: [],
+  },
 };
 
 const importStatusFixture = {

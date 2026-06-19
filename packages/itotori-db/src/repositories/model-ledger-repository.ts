@@ -14,6 +14,7 @@ import {
   providerCostKindValues,
   providerRuns,
   projects,
+  translationMemoryReuseEvents,
   type ProviderCostKind,
   type ProviderRunStatus,
 } from "../schema.js";
@@ -115,6 +116,39 @@ export type ProviderRunCostSummary = {
   accountPrivacy: LedgerJsonRecord | null;
 };
 
+export type TranslationMemoryReuseCostSummary = {
+  reuseEventId: string;
+  localeBranchId: string;
+  targetBridgeUnitId: string;
+  memorySegmentId: string;
+  matchKind: string;
+  matchScore: number;
+  reuseStatus: string;
+  sourceHash: string;
+  candidateSourceHash: string;
+  targetText: string;
+  providerCallAvoided: boolean;
+  estimatedPromptTokensSaved: number;
+  estimatedCompletionTokensSaved: number;
+  estimatedTotalTokensSaved: number;
+  estimatedCostUsdSaved: number | null;
+  calculation: string;
+  provenance: LedgerJsonRecord;
+  createdAt: string;
+};
+
+export type TranslationMemoryReuseCostReport = {
+  reuseEventCount: number;
+  appliedCount: number;
+  suggestedCount: number;
+  providerCallAvoidedCount: number;
+  estimatedPromptTokensSaved: number;
+  estimatedCompletionTokensSaved: number;
+  estimatedTotalTokensSaved: number;
+  estimatedCostUsdSaved: number | null;
+  recentEvents: TranslationMemoryReuseCostSummary[];
+};
+
 export type ProjectCostReport = {
   projectId: string;
   currency: "USD";
@@ -126,6 +160,7 @@ export type ProjectCostReport = {
   includesUnknownCost: boolean;
   totalsByCostKind: CostKindBreakdown[];
   recentRuns: ProviderRunCostSummary[];
+  translationMemoryReuse: TranslationMemoryReuseCostReport;
 };
 
 export interface ItotoriModelLedgerRepositoryPort {
@@ -238,6 +273,7 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
     `);
 
     const recentRuns = (recentRunsResult.rows as Array<Record<string, unknown>>).map(runFromRow);
+    const translationMemoryReuse = await this.getTranslationMemoryReuseCostReport(targetProjectId);
     const billed = byKind.get(providerCostKindValues.billed)?.amountMicrosUsd ?? 0;
     const providerEstimate =
       byKind.get(providerCostKindValues.providerEstimate)?.amountMicrosUsd ?? 0;
@@ -257,6 +293,69 @@ export class ItotoriModelLedgerRepository implements ItotoriModelLedgerRepositor
         (costKind) => byKind.get(costKind) ?? zeroBreakdown(costKind),
       ),
       recentRuns,
+      translationMemoryReuse,
+    };
+  }
+
+  private async getTranslationMemoryReuseCostReport(
+    projectId: string,
+  ): Promise<TranslationMemoryReuseCostReport> {
+    const totalsResult = await this.db.execute(sql`
+      select
+        count(*)::int as reuse_event_count,
+        count(*) filter (where reuse_status = 'applied')::int as applied_count,
+        count(*) filter (where reuse_status = 'suggested')::int as suggested_count,
+        count(*) filter (where (cost_impact->>'providerCallAvoided')::boolean is true)::int
+          as provider_call_avoided_count,
+        coalesce(sum((cost_impact->>'estimatedPromptTokensSaved')::int), 0)::int
+          as estimated_prompt_tokens_saved,
+        coalesce(sum((cost_impact->>'estimatedCompletionTokensSaved')::int), 0)::int
+          as estimated_completion_tokens_saved,
+        coalesce(sum((cost_impact->>'estimatedTotalTokensSaved')::int), 0)::int
+          as estimated_total_tokens_saved,
+        sum((cost_impact->>'estimatedCostUsdSaved')::numeric)::text
+          as estimated_cost_usd_saved
+      from ${translationMemoryReuseEvents}
+      where project_id = ${projectId}
+    `);
+    const totals = (totalsResult.rows[0] ?? {}) as Record<string, unknown>;
+
+    const recentEventsResult = await this.db.execute(sql`
+      select
+        reuse_event_id,
+        locale_branch_id,
+        target_bridge_unit_id,
+        memory_segment_id,
+        match_kind,
+        match_score,
+        reuse_status,
+        source_hash,
+        candidate_source_hash,
+        target_text,
+        cost_impact,
+        provenance,
+        created_at
+      from ${translationMemoryReuseEvents}
+      where project_id = ${projectId}
+      order by created_at desc, reuse_event_id desc
+      limit 20
+    `);
+
+    return {
+      reuseEventCount: Number(totals.reuse_event_count ?? 0),
+      appliedCount: Number(totals.applied_count ?? 0),
+      suggestedCount: Number(totals.suggested_count ?? 0),
+      providerCallAvoidedCount: Number(totals.provider_call_avoided_count ?? 0),
+      estimatedPromptTokensSaved: Number(totals.estimated_prompt_tokens_saved ?? 0),
+      estimatedCompletionTokensSaved: Number(totals.estimated_completion_tokens_saved ?? 0),
+      estimatedTotalTokensSaved: Number(totals.estimated_total_tokens_saved ?? 0),
+      estimatedCostUsdSaved:
+        totals.estimated_cost_usd_saved === null || totals.estimated_cost_usd_saved === undefined
+          ? null
+          : Number(totals.estimated_cost_usd_saved),
+      recentEvents: (recentEventsResult.rows as Array<Record<string, unknown>>).map(
+        translationMemoryReuseFromRow,
+      ),
     };
   }
 
@@ -708,6 +807,33 @@ function runFromRow(row: Record<string, unknown>): ProviderRunCostSummary {
     totalTokens: nullableNumber(row.total_tokens),
     dataHandling: recordOrEmpty(row.data_handling),
     accountPrivacy: nullableRecord(row.account_privacy),
+  };
+}
+
+function translationMemoryReuseFromRow(
+  row: Record<string, unknown>,
+): TranslationMemoryReuseCostSummary {
+  const costImpact = recordOrEmpty(row.cost_impact);
+  return {
+    reuseEventId: String(row.reuse_event_id),
+    localeBranchId: String(row.locale_branch_id),
+    targetBridgeUnitId: String(row.target_bridge_unit_id),
+    memorySegmentId: String(row.memory_segment_id),
+    matchKind: String(row.match_kind),
+    matchScore: Number(row.match_score),
+    reuseStatus: String(row.reuse_status),
+    sourceHash: String(row.source_hash),
+    candidateSourceHash: String(row.candidate_source_hash),
+    targetText: String(row.target_text),
+    providerCallAvoided: costImpact.providerCallAvoided === true,
+    estimatedPromptTokensSaved: Number(costImpact.estimatedPromptTokensSaved ?? 0),
+    estimatedCompletionTokensSaved: Number(costImpact.estimatedCompletionTokensSaved ?? 0),
+    estimatedTotalTokensSaved: Number(costImpact.estimatedTotalTokensSaved ?? 0),
+    estimatedCostUsdSaved: nullableNumber(costImpact.estimatedCostUsdSaved),
+    calculation: String(costImpact.calculation ?? "unknown"),
+    provenance: recordOrEmpty(row.provenance),
+    createdAt:
+      row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
   };
 }
 

@@ -81,6 +81,10 @@ describe("Itotori dashboard", () => {
     expect(root.textContent).toContain("1/1");
     expect(root.textContent).toContain("patch_result_recorded");
     expect(root.textContent).toContain("provider_estimate");
+    expect(root.textContent).toContain("TM avoided");
+    expect(root.textContent).toContain("TM tokens saved");
+    expect(root.textContent).toContain("bridge-unit-repeat");
+    expect(root.textContent).toContain("exact");
     expect(root.textContent).toContain("itotori-draft-default-v1");
     expect(root.textContent).toContain("benchmark_qa");
     expect(root.textContent).toContain("itotori-fake-qa-v0 -> itotori-fake-qa-v1");

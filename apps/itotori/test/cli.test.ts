@@ -520,6 +520,17 @@ const costReportFixture: ProjectCostReport = {
     }),
   ),
   recentRuns: [],
+  translationMemoryReuse: {
+    reuseEventCount: 0,
+    appliedCount: 0,
+    suggestedCount: 0,
+    providerCallAvoidedCount: 0,
+    estimatedPromptTokensSaved: 0,
+    estimatedCompletionTokensSaved: 0,
+    estimatedTotalTokensSaved: 0,
+    estimatedCostUsdSaved: null,
+    recentEvents: [],
+  },
 };
 
 const dashboardStatusFixture: ProjectDashboardStatus = {
