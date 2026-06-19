@@ -407,6 +407,86 @@ describe("ItotoriTerminologyRepository", () => {
     }
   });
 
+  it("prefers exact glossary matches missing semantic rows over weaker semantic candidates", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const terminology = new ItotoriTerminologyRepository(context.db);
+      await terminology.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-partial-exact",
+        sourceTerm: "Moonseal",
+        preferredTranslation: "Moon Seal",
+        termKind: terminologyTermKindValues.loreTerm,
+      });
+      await terminology.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-partial-weak-semantic",
+        sourceTerm: "欠片",
+        preferredTranslation: "Shard",
+        termKind: terminologyTermKindValues.general,
+        semanticIndex: {
+          searchDocument: "Shard fragment low-similarity glossary candidate",
+          embeddingProvider: "itotori-recorded-fixture",
+          embeddingModel: "semantic-fixture-v1",
+          embeddingDimension: 2,
+          embeddingVector: [0.25, 0.97],
+          status: terminologySemanticIndexStatusValues.ready,
+        },
+      });
+      await context.db
+        .delete(terminologySemanticIndex)
+        .where(eq(terminologySemanticIndex.termId, "term-partial-exact"));
+
+      const service = new ItotoriSemanticGlossarySearchService(
+        context.db,
+        new RecordedEmbeddingFixtureAdapter({
+          fixtureId: "semantic-glossary-fixture-v1",
+          provider: "recorded-fixture",
+          model: "semantic-fixture-v1",
+          dimension: 2,
+          vectors: [{ text: "Moonseal", embedding: [1, 0] }],
+        }),
+      );
+
+      const result = await service.searchGlossary(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        query: "Moonseal",
+        minScore: 0.1,
+        limit: 2,
+      });
+
+      expect(result).toMatchObject({
+        status: "completed",
+        readiness: {
+          exactFallback: { triggered: true, reason: "semantic_exact_match" },
+        },
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: semanticGlossarySearchDiagnosticCodeValues.exactFallbackUsed,
+          }),
+        ]),
+      });
+      expect(result.matches.map((match) => match.term.termId)).toEqual([
+        "term-partial-exact",
+        "term-partial-weak-semantic",
+      ]);
+      expect(result.matches[0]).toMatchObject({
+        score: 100,
+        matchKinds: ["exact_fallback"],
+        exactMatchKinds: ["exact_source"],
+      });
+      expect(result.matches[1]).toMatchObject({
+        matchKinds: ["semantic_vector"],
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("records preferred translation conflicts as glossary conflicts and open terminology findings", async () => {
     const context = await isolatedMigratedContext();
     try {

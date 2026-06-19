@@ -175,6 +175,7 @@ export type SemanticGlossarySearchReadiness = {
       | "missing_recorded_embedding"
       | "stale_semantic_index"
       | "no_semantic_results"
+      | "semantic_exact_match"
       | null;
     toolName: typeof exactSearchToolName;
     toolVersion: typeof exactSearchToolVersion;
@@ -299,10 +300,14 @@ export class ItotoriSemanticGlossarySearchService {
         return semanticMatch(candidate, score, queryEmbedding);
       })
       .filter((match): match is SemanticGlossarySearchMatch => match !== null)
-      .sort(compareSemanticMatches)
-      .slice(0, limit);
+      .sort(compareSemanticMatches);
 
     if (ranked.length > 0) {
+      const exact = await this.searchExactFallback(actor, input);
+      const exactMatches = exact.results
+        .filter(hasStrongExactMatch)
+        .map(exactFallbackMatch);
+      const exactFallbackTriggered = exactMatches.length > 0;
       return {
         outputKind: "semantic_glossary_search",
         status: "completed",
@@ -313,9 +318,24 @@ export class ItotoriSemanticGlossarySearchService {
         sourceRevisionId: context.value.sourceRevisionId,
         query: input.query,
         normalizedQuery,
-        readiness: readinessWithQuery,
-        matches: ranked,
-        diagnostics,
+        readiness: exactFallbackTriggered
+          ? {
+              ...readinessWithQuery,
+              exactFallback: {
+                triggered: true,
+                reason: "semantic_exact_match",
+                toolName: exactSearchToolName,
+                toolVersion: exactSearchToolVersion,
+              },
+            }
+          : readinessWithQuery,
+        matches: mergeSearchMatches(exactMatches, ranked, limit),
+        diagnostics: exactFallbackTriggered
+          ? [
+              ...diagnostics,
+              exactFallbackUsedDiagnostic("semantic_exact_match", exactMatches.length),
+            ]
+          : diagnostics,
       };
     }
 
@@ -398,19 +418,7 @@ export class ItotoriSemanticGlossarySearchService {
       queryEmbedding?: RecordedEmbeddingMatch;
     },
   ): Promise<SemanticGlossarySearchReadModel> {
-    const exactInput = {
-      projectId: input.projectId,
-      localeBranchId: input.localeBranchId,
-      query: input.query,
-      ...(input.limit === undefined ? {} : { limit: input.limit }),
-      ...(input.includeDeprecated === undefined
-        ? {}
-        : { includeDeprecated: input.includeDeprecated }),
-    };
-    const exact = await this.terminologyRepository.searchTerms(
-      fallback.actor,
-      exactInput,
-    );
+    const exact = await this.searchExactFallback(fallback.actor, input);
     return {
       outputKind: "semantic_glossary_search",
       status: "completed",
@@ -439,6 +447,21 @@ export class ItotoriSemanticGlossarySearchService {
         exactFallbackUsedDiagnostic(fallback.reason, exact.results.length),
       ],
     };
+  }
+
+  private async searchExactFallback(
+    actor: AuthorizationActor,
+    input: SemanticGlossarySearchInput,
+  ): Promise<Awaited<ReturnType<ItotoriTerminologyRepositoryPort["searchTerms"]>>> {
+    return this.terminologyRepository.searchTerms(actor, {
+      projectId: input.projectId,
+      localeBranchId: input.localeBranchId,
+      query: input.query,
+      ...(input.limit === undefined ? {} : { limit: input.limit }),
+      ...(input.includeDeprecated === undefined
+        ? {}
+        : { includeDeprecated: input.includeDeprecated }),
+    });
   }
 }
 
@@ -558,6 +581,26 @@ function compareSemanticMatches(
     return right.score - left.score;
   }
   return left.term.sourceTerm.localeCompare(right.term.sourceTerm);
+}
+
+function hasStrongExactMatch(match: TerminologySearchResult): boolean {
+  return match.matchKinds.some(
+    (kind) => kind === "exact_source" || kind === "exact_translation" || kind === "alias",
+  );
+}
+
+function mergeSearchMatches(
+  exactMatches: SemanticGlossarySearchMatch[],
+  semanticMatches: SemanticGlossarySearchMatch[],
+  limit: number,
+): SemanticGlossarySearchMatch[] {
+  const mergedByTermId = new Map<string, SemanticGlossarySearchMatch>();
+  for (const match of [...exactMatches, ...semanticMatches].sort(compareSemanticMatches)) {
+    if (!mergedByTermId.has(match.term.termId)) {
+      mergedByTermId.set(match.term.termId, match);
+    }
+  }
+  return [...mergedByTermId.values()].sort(compareSemanticMatches).slice(0, limit);
 }
 
 function cosineSimilarity(left: number[], right: number[]): number {
