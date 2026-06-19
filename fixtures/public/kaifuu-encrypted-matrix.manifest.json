@@ -96,8 +96,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/helper-unavailable.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "cd35bb6ab285300e2c1bc1bc4e9cd1bfb9e64eb2a137d424597e19b06b85cd83",
-      "bytes": 1101,
+      "sha256": "b99193c3a57624514c1060089f2652fa38ddac16e5f0aa02114531de07909844",
+      "bytes": 1116,
       "redistributable": true
     },
     {
@@ -112,16 +112,16 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/redaction-path.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "5aa0101437b29a316723ca79a933c60ce3145fd9478b4fd0e1241aef83cda6a5",
-      "bytes": 911,
+      "sha256": "383fb42e3d14ba0f4c8e8480191983d277c3f7a8237541c1114e80ac3405ed4c",
+      "bytes": 923,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/validation-failed.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "59840e2a46f65feee70348b5a0e71ecc1f8f4c6d78f9a426849c544dec01a56e",
-      "bytes": 1413,
+      "sha256": "2555ad0e8ce125b4a6daab9916b57488d92aa5f6b04de15a74648a87473717af",
+      "bytes": 1425,
       "redistributable": true
     },
     {

@@ -569,15 +569,7 @@ function helperResult(input) {
       helperKind: input.helperKind,
     },
     capabilityLevel: capabilityLevelForHelperKind(input.helperKind),
-    execution: {
-      mode: "notExecuted",
-      platform: "fixture-local",
-      bounded: true,
-      timeoutMs: 1000,
-      durationMs: 0,
-      networkAccess: false,
-      filesystemAccess: "none",
-    },
+    execution: executionForHelperKind(input.helperKind),
     diagnostic: {
       code: input.code,
       message: input.message,
@@ -589,6 +581,53 @@ function helperResult(input) {
     secretRefs: input.secretRefs ?? [],
     proofHashes: input.proofHashes ?? [],
   };
+}
+
+function executionForHelperKind(helperKind) {
+  switch (helperKind) {
+    case "knownKeyDatabaseImport":
+    case "manualKeyEntry":
+      return {
+        mode: "notExecuted",
+        platform: "fixture-local",
+        bounded: true,
+        timeoutMs: 1000,
+        durationMs: 0,
+        networkAccess: false,
+        filesystemAccess: "none",
+      };
+    case "wineLocalWindowsHelper":
+      return {
+        mode: "platformHelper",
+        platform: "wine-fixture",
+        bounded: true,
+        timeoutMs: 5000,
+        durationMs: 0,
+        networkAccess: false,
+        filesystemAccess: "localGameReadOnly",
+      };
+    case "remoteWindowsHelper":
+      return {
+        mode: "remoteHelper",
+        platform: "windows-fixture",
+        bounded: true,
+        timeoutMs: 5000,
+        durationMs: 0,
+        networkAccess: false,
+        filesystemAccess: "localGameReadOnly",
+      };
+    case "staticParser":
+    default:
+      return {
+        mode: "inProcess",
+        platform: "fixture-static",
+        bounded: true,
+        timeoutMs: 1000,
+        durationMs: 0,
+        networkAccess: false,
+        filesystemAccess: "readOnlyWorkspace",
+      };
+  }
 }
 
 function capabilityLevelForHelperKind(helperKind) {

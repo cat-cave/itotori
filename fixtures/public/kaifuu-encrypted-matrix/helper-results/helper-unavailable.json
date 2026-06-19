@@ -10,13 +10,13 @@
   },
   "capabilityLevel": "wineLocal",
   "execution": {
-    "mode": "notExecuted",
-    "platform": "fixture-local",
+    "mode": "platformHelper",
+    "platform": "wine-fixture",
     "bounded": true,
-    "timeoutMs": 1000,
+    "timeoutMs": 5000,
     "durationMs": 0,
     "networkAccess": false,
-    "filesystemAccess": "none"
+    "filesystemAccess": "localGameReadOnly"
   },
   "diagnostic": {
     "code": "helper_unavailable",

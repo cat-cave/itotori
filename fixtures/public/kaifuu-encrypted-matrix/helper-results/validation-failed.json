@@ -10,13 +10,13 @@
   },
   "capabilityLevel": "staticAnalysis",
   "execution": {
-    "mode": "notExecuted",
-    "platform": "fixture-local",
+    "mode": "inProcess",
+    "platform": "fixture-static",
     "bounded": true,
     "timeoutMs": 1000,
     "durationMs": 0,
     "networkAccess": false,
-    "filesystemAccess": "none"
+    "filesystemAccess": "readOnlyWorkspace"
   },
   "diagnostic": {
     "code": "validation_failed",
