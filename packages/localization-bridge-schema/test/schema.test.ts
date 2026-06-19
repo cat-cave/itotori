@@ -2442,7 +2442,11 @@ describe("localization bridge schema guards", () => {
 
   it.each([
     ["embedded data URI", "data:image/png;base64,AAAA"],
+    ["URI scheme", "https://example.invalid/capture.png"],
     ["absolute POSIX path", "/tmp/runtime/frame.png"],
+    ["current-directory dot segment", "./capture.png"],
+    ["parent-directory dot segment", "../capture.png"],
+    ["nested parent-directory dot segment", "artifacts/utsushi/../capture.png"],
     ["Windows path", "C:\\runtime\\frame.png"],
   ])("rejects non-portable v0.2 runtime screenshot references: %s", (_label, uri) => {
     const report = runtimeEvidenceV02Example();

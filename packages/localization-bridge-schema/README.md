@@ -139,9 +139,10 @@ captures, recordings, or adapter capability labels alone are not enough for E4.
 
 Screenshots and recordings are represented through `artifactRef` records with a
 portable `uri`, not embedded bytes. The guard rejects `data:` URIs, `file:` URIs,
-absolute local paths, and Windows-style backslash paths. Utsushi fixture smoke
-reports currently produce E2 evidence: deterministic text trace plus a referenced
-screenshot artifact. They do not claim E4 pixel fidelity.
+other URI schemes, absolute local paths, Windows-style backslash paths, and `.`
+or `..` path segments. Utsushi fixture smoke reports currently produce E2
+evidence: deterministic text trace plus a referenced screenshot artifact. They
+do not claim E4 pixel fidelity.
 
 The shared schema only owns portability for runtime artifact refs. Managed
 storage refs under `artifacts/utsushi/runtime/...` are required by Utsushi's

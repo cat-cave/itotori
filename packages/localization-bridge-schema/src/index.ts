@@ -3421,7 +3421,7 @@ function assertRuntimeArtifactRefV02(
   if (expectedKind !== undefined && ref.artifactKind !== expectedKind) {
     throw new Error(`${label}.artifactKind must be ${expectedKind}`);
   }
-  assertPortableArtifactUriV02(ref.uri, `${label}.uri`);
+  assertPortableRuntimeArtifactUriV02(ref.uri, `${label}.uri`);
   assertOptionalHashStringV02(ref.hash, `${label}.hash`);
   assertOptionalString(ref.mediaType, `${label}.mediaType`);
   if (ref.byteSize !== undefined) {
@@ -3902,6 +3902,18 @@ function assertPortableArtifactUriV02(value: unknown, label: string): asserts va
   }
   if (/^[A-Za-z]:[\\/]/.test(value) || value.includes("\\")) {
     throw new Error(`${label} must use portable forward-slash artifact paths`);
+  }
+}
+
+function assertPortableRuntimeArtifactUriV02(
+  value: unknown,
+  label: string,
+): asserts value is string {
+  assertPortableArtifactUriV02(value, label);
+  const hasScheme = /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value);
+  const hasDotSegment = value.split("/").some((segment) => segment === "." || segment === "..");
+  if (hasScheme || hasDotSegment) {
+    throw new Error(`${label} must be a portable relative runtime artifact path`);
   }
 }
 
