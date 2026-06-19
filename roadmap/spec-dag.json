@@ -2275,10 +2275,7 @@
     {
       "id": "CATALOG-006",
       "title": "Edition and milestone mapping model",
-      "status": "in_progress",
-      "owner": "orchestrator-wave14",
-      "branch": "spec/catalog-006",
-      "worktree": "/tmp/itotori-spec-catalog-006",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["shared", "itotori", "kaifuu"],
@@ -3143,10 +3140,7 @@
     {
       "id": "KAIFUU-037",
       "title": "Local key discovery helper result contract command",
-      "status": "in_progress",
-      "owner": "orchestrator-wave14",
-      "branch": "spec/kaifuu-037",
-      "worktree": "/tmp/itotori-spec-kaifuu-037",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -5855,10 +5849,7 @@
     {
       "id": "ITOTORI-007",
       "title": "Conversational style guide fixture flow",
-      "status": "in_progress",
-      "owner": "orchestrator-wave14",
-      "branch": "spec/itotori-007",
-      "worktree": "/tmp/itotori-spec-itotori-007",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -19456,6 +19447,330 @@
         "Private-path-shaped public fixtures conflicting with corpus policy",
         "Redaction negative tests losing coverage",
         "Fixture README overclaiming public corpus contents"
+      ]
+    },
+    {
+      "id": "CATALOG-090",
+      "status": "planned",
+      "title": "Edition mapping importer export coverage",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-006"],
+      "summary": "Emit first-class edition, milestone, package-kind, and translation parent-child mapping facts from recorded catalog importers instead of leaving that evidence only in metadata blobs.",
+      "deliverables": [
+        "Recorded importer fact shape for edition names, milestones, package kinds, and release mapping evidence",
+        "DLsite parent/child and VNDB milestone evidence mapped into catalog release mapping inputs",
+        "Export or replay coverage proving imported mapping data survives repository round trip"
+      ],
+      "acceptanceCriteria": [
+        "Recorded DLsite translation_info and VNDB milestone-like evidence can produce first-class catalogReleaseMappings or explicit unsupported-shape diagnostics.",
+        "Importer replay preserves edition and package-kind facts without relying on opaque metadata inspection.",
+        "Existing catalog replay fixtures remain deterministic."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- catalog-recorded"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Opaque metadata hiding artifact mapping evidence",
+        "Importer replay nondeterminism",
+        "Mapping facts without provenance"
+      ]
+    },
+    {
+      "id": "CATALOG-091",
+      "status": "planned",
+      "title": "Catalog artifact mapping typed validation errors",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-006"],
+      "summary": "Replace plain Error throws for edition mapping and install-state artifact validation with structured domain errors that API and CLI callers can classify.",
+      "deliverables": [
+        "Typed catalog artifact mapping validation error codes",
+        "Repository tests asserting codes for cross-work release mapping and install-state failures",
+        "API or service boundary mapping for typed validation errors where applicable"
+      ],
+      "acceptanceCriteria": [
+        "Cross-work mapping and install-state validation failures expose stable machine-readable codes.",
+        "Error messages remain useful but tests do not depend only on string matching.",
+        "No valid CATALOG-006 happy-path mapping is rejected."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- catalog-repository"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db typecheck"
+        }
+      ],
+      "auditFocus": [
+        "String-only validation errors",
+        "Unstable API diagnostics",
+        "Overly broad rejection of valid release mappings"
+      ]
+    },
+    {
+      "id": "CATALOG-092",
+      "status": "planned",
+      "title": "Catalog source-side release mapping traversal index",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-006"],
+      "summary": "Add an explicit source-side traversal index or query-plan proof for release mapping lookups used by translation porting and patch-target discovery.",
+      "deliverables": [
+        "Source-side release mapping traversal index or documented query-plan proof",
+        "Migration regression coverage for the index shape",
+        "Repository query or benchmark fixture demonstrating source-release traversal"
+      ],
+      "acceptanceCriteria": [
+        "Portability queries can efficiently answer what a source release can map to.",
+        "Index definitions are covered by migration tests or schema assertions.",
+        "No duplicate index is added when the existing unique index is already sufficient and documented."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- migration"
+        },
+        {
+          "type": "manual",
+          "value": "Catalog release mapping query-plan review"
+        }
+      ],
+      "auditFocus": [
+        "Unbounded release mapping traversal",
+        "Redundant index churn",
+        "Query-plan assumptions without evidence"
+      ]
+    },
+    {
+      "id": "ITOTORI-135",
+      "status": "planned",
+      "title": "Style-guide fixture flow DB-backed CI lane",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-007"],
+      "summary": "Ensure the style-guide fixture flow persistence test cannot silently pass by skipping when DATABASE_URL is absent in targeted verification.",
+      "deliverables": [
+        "Disposable Postgres verification recipe for style-guide fixture flow",
+        "Targeted test command or skip artifact that makes DB absence visible",
+        "CI or local gate documentation for the DB-backed style-guide fixture lane"
+      ],
+      "acceptanceCriteria": [
+        "The ITOTORI-007 DB-backed fixture test is exercised by a documented command with a real database.",
+        "When the database is unavailable, the result is an explicit skip artifact or failure, not a silent green targeted test.",
+        "Public CI remains deterministic and does not require private providers."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just ci-itotori"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- style-guide-fixture-flow"
+        }
+      ],
+      "auditFocus": [
+        "DB-backed tests silently skipped",
+        "CI depending on private services",
+        "Targeted verification that does not exercise persistence"
+      ]
+    },
+    {
+      "id": "ITOTORI-136",
+      "status": "planned",
+      "title": "Style-guide fixture flow retry semantics",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-007"],
+      "summary": "Define and implement retry behavior for the recorded style-guide fixture flow so reruns are either idempotent or fail with an explicit expected diagnostic.",
+      "deliverables": [
+        "Explicit reset, idempotent, or expected-failure mode for style-guide fixture flow reruns",
+        "DB-backed rerun test",
+        "CLI output that explains rerun behavior"
+      ],
+      "acceptanceCriteria": [
+        "Running the style-guide fixture flow twice cannot leave partially duplicated state.",
+        "If reruns are rejected, the CLI emits a typed, actionable diagnostic.",
+        "If reruns reset or update state, invalidation events remain coherent and auditable."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- style-guide-fixture-flow"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- cli.test.ts"
+        }
+      ],
+      "auditFocus": [
+        "Non-idempotent fixture state",
+        "Duplicate invalidation events",
+        "Unclear rerun CLI behavior"
+      ]
+    },
+    {
+      "id": "ITOTORI-137",
+      "status": "planned",
+      "title": "Style-guide fixture seed externalization",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-007"],
+      "summary": "Move hardcoded bridge, draft, affected-work, and benchmark seed records from the style-guide fixture service into recorded fixture data or derive them from fixture citations.",
+      "deliverables": [
+        "Recorded fixture source for bridge bundle and draft seed data",
+        "Recorded fixture source for affected export and benchmark artifacts or documented derivation",
+        "Tests proving the service consumes fixture data rather than hardcoded scenario records"
+      ],
+      "acceptanceCriteria": [
+        "The recorded style-guide fixture flow can be reviewed as data plus service logic.",
+        "Changing fixture seed text does not require editing service code.",
+        "Fixture citations remain traceable to persisted artifacts and invalidation events."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- style-guide-fixture-flow"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/localization-bridge-schema test -- style-guide"
+        }
+      ],
+      "auditFocus": [
+        "Recorded flow hidden in service literals",
+        "Fixture citations drifting from persisted seed data",
+        "Test data changes requiring code edits"
+      ]
+    },
+    {
+      "id": "ITOTORI-138",
+      "status": "planned",
+      "title": "Style-guide fixture persisted privacy scan",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-007"],
+      "summary": "Strengthen privacy regression coverage for persisted style-guide fixture transcript artifacts and command output.",
+      "deliverables": [
+        "Persisted artifact metadata scan for forbidden raw/private keys",
+        "CLI output privacy regression check",
+        "Fixture path redaction assertion for style-guide conversation artifacts"
+      ],
+      "acceptanceCriteria": [
+        "Persisted style-guide fixture artifacts do not contain raw provider responses or private-local paths.",
+        "CLI output does not expose raw transcript private fields.",
+        "Privacy tests cover the full persisted artifact object, not only selected transcript fields."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- style-guide-fixture-flow"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- cli.test.ts"
+        }
+      ],
+      "auditFocus": [
+        "Raw provider text in artifact metadata",
+        "Private-local path leakage",
+        "Sampling only a subset of persisted transcript fields"
+      ]
+    },
+    {
+      "id": "KAIFUU-159",
+      "status": "planned",
+      "title": "Helper execution duration schema parity",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-037"],
+      "summary": "Align helper execution duration optionality between the Rust helper result contract and the public JSON schema.",
+      "deliverables": [
+        "Rust HelperExecutionSummary and JSON schema durationMs parity decision",
+        "Fixture coverage for missing or present durationMs according to the chosen contract",
+        "CLI validation diagnostics that match the schema"
+      ],
+      "acceptanceCriteria": [
+        "A helper result accepted by Rust validation also conforms to the public schema for durationMs.",
+        "A helper result rejected by schema has a matching Rust diagnostic path.",
+        "The parity decision does not weaken bounded execution metadata."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core helper_result"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec node fixtures/validate-public-manifests.mjs"
+        }
+      ],
+      "auditFocus": [
+        "Schema and Rust contract drift",
+        "Bounded execution metadata weakened",
+        "Fixture validation accepting impossible helper results"
+      ]
+    },
+    {
+      "id": "KAIFUU-160",
+      "status": "planned",
+      "title": "Known-key import metadata contract separation",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-037"],
+      "summary": "Introduce or document a separate public contract for known-key import source/material metadata instead of overloading HelperResult with extra top-level fields.",
+      "deliverables": [
+        "Known-key import metadata schema or explicit no-extra-metadata policy",
+        "Fixture placement that distinguishes helper results from import metadata records",
+        "Manifest validation coverage for the chosen contract"
+      ],
+      "acceptanceCriteria": [
+        "Known-key import boundary fixtures do not require forbidden HelperResult top-level metadata.",
+        "If source/material hashes are retained, they validate against a separate named schema.",
+        "HelperResult remains strict and closed."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core helper_result"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec node fixtures/validate-public-manifests.mjs"
+        }
+      ],
+      "auditFocus": [
+        "HelperResult contract creep",
+        "Known-key import provenance lost",
+        "Public fixtures carrying unvalidated metadata"
       ]
     }
   ]
