@@ -1069,9 +1069,9 @@ mod tests {
         AssetInventoryAssetKind, AssetInventoryAssetRef, AssetInventoryPatchMode,
         AssetInventorySurface, AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind,
         AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
-        CapabilityReport, CapabilityStatus, DetectRequest, DetectionEvidence,
-        DetectionReportStatus, EngineProfile, EvidenceStatus, ExtractionResult,
-        GoldenAssertionStatus, GoldenRoundTripReport, HelperCapability,
+        CapabilityReport, CapabilityStatus, CodecTransform, ContainerTransform, CryptoTransform,
+        DetectRequest, DetectionEvidence, DetectionReportStatus, EngineProfile, EvidenceStatus,
+        ExtractionResult, GoldenAssertionStatus, GoldenRoundTripReport, HelperCapability,
         LayeredAccessCapabilityContract, LayeredAccessPreflightReport,
         LayeredAccessPreflightRequirement, LayeredAccessProfile, LayeredAccessStage,
         OperationStatus, PatchExportEntry, PatchRef, PatchResult, ProfileRequirement,
@@ -5132,9 +5132,52 @@ wait
                 .iter()
                 .any(|diagnostic| { diagnostic.code == SemanticErrorCode::MissingKeyMaterial })
         );
+        assert_eq!(rpg_maker.detected_variant, "mv_or_mz_with_unknown_suffix");
+        assert!(rpg_maker.surfaces.iter().any(|surface| {
+            surface.fixture_id == "kaifuu-rpgmaker-mv-image-rpgmvp"
+                && surface.engine_family == "rpgmaker"
+                && surface.variant == "mv_or_mz"
+                && surface.container == ContainerTransform::ProjectAsset
+                && surface.crypto == CryptoTransform::RpgMakerAssetXor
+                && surface.codec == CodecTransform::PngImage
+                && surface.surface == "image_asset"
+                && surface.key_requirement_refs == vec!["rpg-maker-mv-mz-asset-key".to_string()]
+        }));
+        assert!(rpg_maker.surfaces.iter().any(|surface| {
+            surface.fixture_id == "kaifuu-rpgmaker-plain-image-png"
+                && surface.variant == "plain_asset"
+                && surface.crypto == CryptoTransform::NullKey
+                && surface.key_requirement_refs.is_empty()
+                && surface.diagnostics.is_empty()
+        }));
+        let unknown_surfaces = rpg_maker
+            .surfaces
+            .iter()
+            .filter(|surface| surface.variant == "unknown_suffix")
+            .collect::<Vec<_>>();
+        assert_eq!(unknown_surfaces.len(), 2);
+        for surface in unknown_surfaces {
+            assert_eq!(surface.crypto, CryptoTransform::Unknown);
+            assert!(surface.key_requirement_refs.is_empty());
+            assert!(surface.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SemanticErrorCode::MissingCryptoCapability
+            }));
+            assert!(
+                !surface
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == SemanticErrorCode::MissingKeyMaterial)
+            );
+        }
 
         let serialized = fs::read_to_string(&detect_path).unwrap();
-        for forbidden in ["title.rpgmvp", "theme.rpgmvm", "cursor.rpgmvo"] {
+        for forbidden in [
+            "title.rpgmvp",
+            "theme.rpgmvm",
+            "cursor.rpgmvo",
+            "title.rpgmvu",
+            "title.webp_",
+        ] {
             assert!(!serialized.contains(forbidden), "report leaked {forbidden}");
         }
 

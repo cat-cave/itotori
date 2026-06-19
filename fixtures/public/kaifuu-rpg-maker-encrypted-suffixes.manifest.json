@@ -5,7 +5,7 @@
     "id": "kaifuu-rpg-maker-encrypted-suffixes",
     "title": "Kaifuu RPG Maker Encrypted Suffix Detection Fixture",
     "kind": "synthetic",
-    "summary": "Synthetic public fixture covering every RPG Maker MV/MZ encrypted asset suffix and the expected Kaifuu detection report semantics.",
+    "summary": "Synthetic public fixture covering RPG Maker MV/MZ encrypted, plain, and unknown asset suffix detection semantics.",
     "sourceLocale": "ja-JP",
     "targetLocales": [],
     "publicRedistribution": "allowed",
@@ -21,6 +21,14 @@
   },
   "files": [
     {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/audio/bgm/theme.m4a",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "834b876b0329db34551521376fe47015d582ae52204c8250912f98da5e589fa7",
+      "bytes": 46,
+      "redistributable": true
+    },
+    {
       "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/audio/bgm/theme.m4a_",
       "role": "asset",
       "mediaType": "text/plain",
@@ -34,6 +42,14 @@
       "mediaType": "text/plain",
       "sha256": "253c5d0f4756669a717e4d05d232f6b41880688ff06f8d0d74f255c6b2de135f",
       "bytes": 52,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/audio/se/cursor.ogg",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "54dd990dbc9ab13a6229e7149f6ded065d3e3a0c0a13e127d10309353ae22981",
+      "bytes": 46,
       "redistributable": true
     },
     {
@@ -64,8 +80,16 @@
       "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "d5431fd9f56682adcf4ad293b5e8e3caf2cbb79d09c926aa7ad37790fb2c1514",
-      "bytes": 22064,
+      "sha256": "9e093267d9ce56ed228188aaeaac3e608ebb03cfee9d216d47b9fc8c712930ad",
+      "bytes": 34507,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/img/pictures/title.png",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "560327ce125b3e4749499a1ec419746f26c99494b2b997f73a7f8e79db87a2a2",
+      "bytes": 48,
       "redistributable": true
     },
     {
@@ -83,17 +107,33 @@
       "sha256": "a99c5843b2ec3c58d6ed104bcd2d6b7baef2e89bcff0661ace8a9bc28abbbc3d",
       "bytes": 54,
       "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/img/pictures/title.rpgmvu",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "49cf75c483e4597a1fe27d06b171abefe63a030a13f4482a00a49dd990aba460",
+      "bytes": 51,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/img/pictures/title.webp_",
+      "role": "asset",
+      "mediaType": "text/plain",
+      "sha256": "419c46967a9187033a384e410838940394a821cade280bed68e191d2eb4c98af",
+      "bytes": 50,
+      "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 8,
+    "files": 13,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
     "sourceLocales": ["ja-JP"],
     "targetLocales": [],
     "engineKinds": ["rpg-maker-mv-mz-synthetic-encrypted-suffixes"],
-    "notes": "Covers MV encrypted suffixes .rpgmvp, .rpgmvm, and .rpgmvo plus MZ encrypted suffixes .png_, .m4a_, and .ogg_. The expected detection report asserts adapter status remains unknown while archiveDetection reports matched unsupported encrypted input diagnostics."
+    "notes": "Covers MV encrypted suffixes .rpgmvp, .rpgmvm, and .rpgmvo; MZ encrypted suffixes .png_, .m4a_, and .ogg_; plain .png, .m4a, and .ogg assets; and unknown .rpgmvu and .webp_ suffixes. The expected detection report asserts adapter status remains unknown while archiveDetection reports matched unsupported encrypted input diagnostics and unknown suffix diagnostics without inventing key requirements."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,

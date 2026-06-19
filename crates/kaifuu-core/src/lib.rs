@@ -408,6 +408,7 @@ pub enum ContainerTransform {
     Identity,
     Directory,
     LooseFile,
+    ProjectAsset,
     Archive,
     Xp3,
     SiglusPck,
@@ -424,6 +425,7 @@ pub enum CryptoTransform {
     Xor,
     FixedKey,
     KeyProfile,
+    RpgMakerAssetXor,
     RpgMakerAssetKey,
     HelperGated,
     Unknown,
@@ -433,6 +435,9 @@ pub enum CryptoTransform {
 #[serde(rename_all = "snake_case")]
 pub enum CodecTransform {
     Identity,
+    PngImage,
+    M4aAudio,
+    OggAudio,
     Utf8Text,
     Utf16Text,
     ShiftJisText,
@@ -914,6 +919,8 @@ pub struct ArchiveDetectionRow {
     pub detected: bool,
     pub detected_variant: String,
     pub signals: Vec<ArchiveDetectionSignal>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub surfaces: Vec<ArchiveDetectionSurface>,
     pub evidence: Vec<ArchiveDetectionEvidence>,
     pub requirements: Vec<ProfileRequirement>,
     pub diagnostics: Vec<DetectionDiagnostic>,
@@ -926,6 +933,19 @@ impl ArchiveDetectionRow {
         self.signals
             .sort_by_key(|signal| serde_json::to_string(signal).unwrap_or_default());
         self.signals.dedup();
+        for surface in &mut self.surfaces {
+            surface.key_requirement_refs.sort();
+            surface.key_requirement_refs.dedup();
+            surface.diagnostics.sort_by_key(|diagnostic| {
+                (
+                    diagnostic.code.to_string(),
+                    serde_json::to_string(&diagnostic.signal).unwrap_or_default(),
+                    diagnostic.support_boundary.clone(),
+                )
+            });
+        }
+        self.surfaces
+            .sort_by_key(|surface| surface.fixture_id.clone());
         self.evidence.sort_by_key(|evidence| {
             (
                 serde_json::to_string(&evidence.evidence_type).unwrap_or_default(),
@@ -949,6 +969,21 @@ impl ArchiveDetectionRow {
             )
         });
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ArchiveDetectionSurface {
+    pub fixture_id: String,
+    pub engine_family: String,
+    pub variant: String,
+    pub container: ContainerTransform,
+    pub crypto: CryptoTransform,
+    pub codec: CodecTransform,
+    pub surface: String,
+    pub count: u64,
+    pub key_requirement_refs: Vec<String>,
+    pub diagnostics: Vec<DetectionDiagnostic>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1228,6 +1263,7 @@ fn detect_kirikiri_xp3(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
             "xp3-archive"
         },
         signals,
+        surfaces: vec![],
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::FileExtension,
@@ -1298,6 +1334,7 @@ fn detect_siglus(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         } else {
             Vec::new()
         },
+        surfaces: vec![],
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::FileName,
@@ -1339,21 +1376,34 @@ fn detect_siglus(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
 
 fn detect_rpg_maker_mv_mz(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     let encrypted_asset_count = scan.extension_counts(RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES);
+    let plain_asset_count = scan.extension_counts(RPG_MAKER_MV_MZ_PLAIN_SUFFIXES);
+    let unknown_suffix_count = scan.extension_counts(RPG_MAKER_MV_MZ_UNKNOWN_SUFFIXES);
     let system_json_count = scan.rpg_maker_system_json_encryption_fields;
-    let detected = encrypted_asset_count > 0 || system_json_count > 0;
+    let known_key_requirement = encrypted_asset_count > 0 || system_json_count > 0;
+    let detected = known_key_requirement || unknown_suffix_count > 0;
+    let mut signals = Vec::new();
+    if known_key_requirement {
+        signals.extend([
+            ArchiveDetectionSignal::Encrypted,
+            ArchiveDetectionSignal::MissingKey,
+        ]);
+    }
+    if unknown_suffix_count > 0 {
+        signals.push(ArchiveDetectionSignal::UnknownVariant);
+    }
     archive_row(ArchiveRowInput {
         row_id: "rpg-maker-mv-mz-encrypted-assets",
         engine_family: ArchiveEngineFamily::RpgMakerMvMz,
         detected,
-        detected_variant: "mv-mz-encrypted-asset-signals",
-        signals: if detected {
-            vec![
-                ArchiveDetectionSignal::Encrypted,
-                ArchiveDetectionSignal::MissingKey,
-            ]
+        detected_variant: if known_key_requirement && unknown_suffix_count > 0 {
+            "mv_or_mz_with_unknown_suffix"
+        } else if unknown_suffix_count > 0 {
+            "unknown_suffix"
         } else {
-            Vec::new()
+            "mv_or_mz"
         },
+        signals,
+        surfaces: rpg_maker_mv_mz_surfaces(scan),
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::FileExtension,
@@ -1362,13 +1412,25 @@ fn detect_rpg_maker_mv_mz(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
                 "RPG Maker MV/MZ encrypted asset extension count",
             ),
             evidence(
+                ArchiveEvidenceType::FileExtension,
+                RPG_MAKER_MV_MZ_PLAIN_SUFFIX_PATTERN,
+                plain_asset_count,
+                "RPG Maker MV/MZ plain image/audio asset extension count; does not imply encrypted asset handling",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileExtension,
+                RPG_MAKER_MV_MZ_UNKNOWN_SUFFIX_PATTERN,
+                unknown_suffix_count,
+                "RPG Maker-like encrypted asset suffixes without a known codec/key mapping",
+            ),
+            evidence(
                 ArchiveEvidenceType::MetadataField,
                 "data/System.json encryption fields",
                 system_json_count,
                 "System.json encryption flags or key-field presence count; key values are never serialized",
             ),
         ],
-        requirements: if detected {
+        requirements: if known_key_requirement {
             vec![secret_requirement(
                 "rpg-maker-mv-mz-asset-key",
                 "encrypted RPG Maker MV/MZ assets require a local asset key reference",
@@ -1385,6 +1447,203 @@ const RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES: &[&str] =
     &["rpgmvp", "rpgmvm", "rpgmvo", "png_", "m4a_", "ogg_"];
 const RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN: &str =
     "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_";
+const RPG_MAKER_MV_MZ_PLAIN_SUFFIXES: &[&str] = &["png", "m4a", "ogg"];
+const RPG_MAKER_MV_MZ_PLAIN_SUFFIX_PATTERN: &str = "*.png|*.m4a|*.ogg";
+const RPG_MAKER_MV_MZ_UNKNOWN_SUFFIXES: &[&str] = &["rpgmvu", "webp_"];
+const RPG_MAKER_MV_MZ_UNKNOWN_SUFFIX_PATTERN: &str = "*.rpgmvu|*.webp_";
+
+struct RpgMakerSuffixProfile {
+    suffix: &'static str,
+    fixture_id: &'static str,
+    variant: &'static str,
+    surface: &'static str,
+    crypto: CryptoTransform,
+    codec: CodecTransform,
+    key_required: bool,
+    unknown_crypto: bool,
+}
+
+const RPG_MAKER_MV_MZ_SUFFIX_PROFILES: &[RpgMakerSuffixProfile] = &[
+    RpgMakerSuffixProfile {
+        suffix: "rpgmvp",
+        fixture_id: "kaifuu-rpgmaker-mv-image-rpgmvp",
+        variant: "mv_or_mz",
+        surface: "image_asset",
+        crypto: CryptoTransform::RpgMakerAssetXor,
+        codec: CodecTransform::PngImage,
+        key_required: true,
+        unknown_crypto: false,
+    },
+    RpgMakerSuffixProfile {
+        suffix: "rpgmvm",
+        fixture_id: "kaifuu-rpgmaker-mv-audio-rpgmvm",
+        variant: "mv_or_mz",
+        surface: "audio_asset",
+        crypto: CryptoTransform::RpgMakerAssetXor,
+        codec: CodecTransform::M4aAudio,
+        key_required: true,
+        unknown_crypto: false,
+    },
+    RpgMakerSuffixProfile {
+        suffix: "rpgmvo",
+        fixture_id: "kaifuu-rpgmaker-mv-audio-rpgmvo",
+        variant: "mv_or_mz",
+        surface: "audio_asset",
+        crypto: CryptoTransform::RpgMakerAssetXor,
+        codec: CodecTransform::OggAudio,
+        key_required: true,
+        unknown_crypto: false,
+    },
+    RpgMakerSuffixProfile {
+        suffix: "png_",
+        fixture_id: "kaifuu-rpgmaker-mz-image-png_",
+        variant: "mv_or_mz",
+        surface: "image_asset",
+        crypto: CryptoTransform::RpgMakerAssetXor,
+        codec: CodecTransform::PngImage,
+        key_required: true,
+        unknown_crypto: false,
+    },
+    RpgMakerSuffixProfile {
+        suffix: "m4a_",
+        fixture_id: "kaifuu-rpgmaker-mz-audio-m4a_",
+        variant: "mv_or_mz",
+        surface: "audio_asset",
+        crypto: CryptoTransform::RpgMakerAssetXor,
+        codec: CodecTransform::M4aAudio,
+        key_required: true,
+        unknown_crypto: false,
+    },
+    RpgMakerSuffixProfile {
+        suffix: "ogg_",
+        fixture_id: "kaifuu-rpgmaker-mz-audio-ogg_",
+        variant: "mv_or_mz",
+        surface: "audio_asset",
+        crypto: CryptoTransform::RpgMakerAssetXor,
+        codec: CodecTransform::OggAudio,
+        key_required: true,
+        unknown_crypto: false,
+    },
+    RpgMakerSuffixProfile {
+        suffix: "png",
+        fixture_id: "kaifuu-rpgmaker-plain-image-png",
+        variant: "plain_asset",
+        surface: "image_asset",
+        crypto: CryptoTransform::NullKey,
+        codec: CodecTransform::PngImage,
+        key_required: false,
+        unknown_crypto: false,
+    },
+    RpgMakerSuffixProfile {
+        suffix: "m4a",
+        fixture_id: "kaifuu-rpgmaker-plain-audio-m4a",
+        variant: "plain_asset",
+        surface: "audio_asset",
+        crypto: CryptoTransform::NullKey,
+        codec: CodecTransform::M4aAudio,
+        key_required: false,
+        unknown_crypto: false,
+    },
+    RpgMakerSuffixProfile {
+        suffix: "ogg",
+        fixture_id: "kaifuu-rpgmaker-plain-audio-ogg",
+        variant: "plain_asset",
+        surface: "audio_asset",
+        crypto: CryptoTransform::NullKey,
+        codec: CodecTransform::OggAudio,
+        key_required: false,
+        unknown_crypto: false,
+    },
+    RpgMakerSuffixProfile {
+        suffix: "rpgmvu",
+        fixture_id: "kaifuu-rpgmaker-unknown-rpgmvu",
+        variant: "unknown_suffix",
+        surface: "unknown_asset",
+        crypto: CryptoTransform::Unknown,
+        codec: CodecTransform::Unknown,
+        key_required: false,
+        unknown_crypto: true,
+    },
+    RpgMakerSuffixProfile {
+        suffix: "webp_",
+        fixture_id: "kaifuu-rpgmaker-unknown-webp_",
+        variant: "unknown_suffix",
+        surface: "unknown_asset",
+        crypto: CryptoTransform::Unknown,
+        codec: CodecTransform::Unknown,
+        key_required: false,
+        unknown_crypto: true,
+    },
+];
+
+fn rpg_maker_mv_mz_surfaces(scan: &ArchiveDetectionScan) -> Vec<ArchiveDetectionSurface> {
+    RPG_MAKER_MV_MZ_SUFFIX_PROFILES
+        .iter()
+        .filter_map(|profile| {
+            let count = scan.extension_count(profile.suffix);
+            if count == 0 {
+                return None;
+            }
+            let key_requirement_refs = if profile.key_required {
+                vec!["rpg-maker-mv-mz-asset-key".to_string()]
+            } else {
+                vec![]
+            };
+            Some(ArchiveDetectionSurface {
+                fixture_id: profile.fixture_id.to_string(),
+                engine_family: "rpgmaker".to_string(),
+                variant: profile.variant.to_string(),
+                container: ContainerTransform::ProjectAsset,
+                crypto: profile.crypto,
+                codec: profile.codec,
+                surface: profile.surface.to_string(),
+                count,
+                key_requirement_refs,
+                diagnostics: rpg_maker_surface_diagnostics(profile),
+            })
+        })
+        .collect()
+}
+
+fn rpg_maker_surface_diagnostics(profile: &RpgMakerSuffixProfile) -> Vec<DetectionDiagnostic> {
+    if profile.unknown_crypto {
+        vec![
+            diagnostic(
+                SemanticErrorCode::UnknownEngineVariant,
+                ArchiveDetectionSignal::UnknownVariant,
+                Some(Capability::Detection),
+                "RPG Maker-like asset suffix has no profiled MV/MZ codec or key mapping.",
+                "add a public fixture profile before assigning key requirements",
+            ),
+            diagnostic(
+                SemanticErrorCode::MissingCryptoCapability,
+                ArchiveDetectionSignal::UnknownVariant,
+                Some(Capability::CryptoAccess),
+                "RPG Maker-like asset suffix has no profiled MV/MZ codec or key mapping.",
+                "do not request key material until the suffix crypto profile is known",
+            ),
+        ]
+    } else if profile.key_required {
+        vec![
+            diagnostic(
+                SemanticErrorCode::UnsupportedVariantEncrypted,
+                ArchiveDetectionSignal::Encrypted,
+                Some(Capability::EncryptedInput),
+                "RPG Maker MV/MZ encrypted asset suffix detection is not decryption support.",
+                "provide a supported key profile only after an adapter explicitly supports encrypted media extraction",
+            ),
+            diagnostic(
+                SemanticErrorCode::MissingKeyMaterial,
+                ArchiveDetectionSignal::MissingKey,
+                Some(Capability::KeyProfile),
+                "RPG Maker MV/MZ encrypted asset suffix maps to the asset-key requirement.",
+                "resolve local key material through a secret ref; do not persist raw keys",
+            ),
+        ]
+    } else {
+        vec![]
+    }
+}
 
 fn detect_wolf_rpg_editor(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     let wolf_archive_count = scan.extension_count("wolf");
@@ -1415,6 +1674,7 @@ fn detect_wolf_rpg_editor(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
             "wolf-archive"
         },
         signals,
+        surfaces: vec![],
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::FileExtension,
@@ -1478,6 +1738,7 @@ fn detect_bgi_ethornell(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
             "buriko-arc20-container"
         },
         signals,
+        surfaces: vec![],
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::FileExtension,
@@ -1531,6 +1792,7 @@ fn detect_renpy(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         } else {
             Vec::new()
         },
+        surfaces: vec![],
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::FileExtension,
@@ -1577,6 +1839,7 @@ fn detect_unknown_archive_variant(scan: &ArchiveDetectionScan) -> ArchiveDetecti
         } else {
             Vec::new()
         },
+        surfaces: vec![],
         evidence: vec![
             evidence(
                 ArchiveEvidenceType::AggregateCount,
@@ -1602,6 +1865,7 @@ struct ArchiveRowInput {
     detected: bool,
     detected_variant: &'static str,
     signals: Vec<ArchiveDetectionSignal>,
+    surfaces: Vec<ArchiveDetectionSurface>,
     evidence: Vec<ArchiveDetectionEvidence>,
     requirements: Vec<ProfileRequirement>,
     support_boundary: &'static str,
@@ -1618,6 +1882,11 @@ fn archive_row(input: ArchiveRowInput) -> ArchiveDetectionRow {
     } else {
         vec![]
     };
+    let surfaces = if input.detected {
+        input.surfaces
+    } else {
+        vec![]
+    };
     let diagnostics = diagnostics_for_signals(&signals, input.support_boundary);
     let capabilities = capabilities_for_archive_row(input.detected, &signals);
     ArchiveDetectionRow {
@@ -1626,6 +1895,7 @@ fn archive_row(input: ArchiveRowInput) -> ArchiveDetectionRow {
         detected: input.detected,
         detected_variant: input.detected_variant.to_string(),
         signals,
+        surfaces,
         evidence: input.evidence,
         requirements,
         diagnostics,
@@ -15605,6 +15875,16 @@ mod tests {
         );
         write_fixture_file(&root, "img/pictures/title.rpgmvp", b"rpgmvp synthetic");
         write_fixture_file(&root, "img/pictures/title.png_", b"mz image synthetic");
+        write_fixture_file(
+            &root,
+            "img/pictures/plain-title.png",
+            b"plain image synthetic",
+        );
+        write_fixture_file(
+            &root,
+            "img/pictures/title.webp_",
+            b"unknown image synthetic",
+        );
         write_fixture_file(&root, "audio/bgm/theme.m4a_", b"mz audio synthetic");
         write_fixture_file(&root, "audio/se/cursor.ogg_", b"mz audio synthetic");
         write_fixture_file(
@@ -15657,15 +15937,54 @@ mod tests {
         );
 
         let rpg_maker = detected_archive_row(&report, "rpg-maker-mv-mz-encrypted-assets");
+        assert_eq!(rpg_maker.detected_variant, "mv_or_mz_with_unknown_suffix");
         assert!(rpg_maker.evidence.iter().any(|evidence| {
             evidence.pattern == RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN
                 && evidence.status == EvidenceStatus::Matched
                 && evidence.count == 4
         }));
         assert!(rpg_maker.evidence.iter().any(|evidence| {
+            evidence.pattern == RPG_MAKER_MV_MZ_PLAIN_SUFFIX_PATTERN
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(rpg_maker.evidence.iter().any(|evidence| {
+            evidence.pattern == RPG_MAKER_MV_MZ_UNKNOWN_SUFFIX_PATTERN
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(rpg_maker.evidence.iter().any(|evidence| {
             evidence.pattern == "data/System.json encryption fields"
                 && evidence.status == EvidenceStatus::Matched
                 && evidence.count == 1
+        }));
+        assert!(rpg_maker.surfaces.iter().any(|surface| {
+            surface.fixture_id == "kaifuu-rpgmaker-mv-image-rpgmvp"
+                && surface.engine_family == "rpgmaker"
+                && surface.variant == "mv_or_mz"
+                && surface.container == ContainerTransform::ProjectAsset
+                && surface.crypto == CryptoTransform::RpgMakerAssetXor
+                && surface.codec == CodecTransform::PngImage
+                && surface.surface == "image_asset"
+                && surface.key_requirement_refs == vec!["rpg-maker-mv-mz-asset-key".to_string()]
+        }));
+        assert!(rpg_maker.surfaces.iter().any(|surface| {
+            surface.fixture_id == "kaifuu-rpgmaker-plain-image-png"
+                && surface.variant == "plain_asset"
+                && surface.crypto == CryptoTransform::NullKey
+                && surface.codec == CodecTransform::PngImage
+                && surface.key_requirement_refs.is_empty()
+                && surface.diagnostics.is_empty()
+        }));
+        assert!(rpg_maker.surfaces.iter().any(|surface| {
+            surface.fixture_id == "kaifuu-rpgmaker-unknown-webp_"
+                && surface.variant == "unknown_suffix"
+                && surface.crypto == CryptoTransform::Unknown
+                && surface.key_requirement_refs.is_empty()
+                && surface
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == SemanticErrorCode::MissingCryptoCapability)
         }));
 
         let wolf = detected_archive_row(&report, "wolf-rpg-editor-archives");
@@ -15724,6 +16043,7 @@ mod tests {
 
         assert_eq!(report.status, ArchiveDetectionStatus::Matched);
         let rpg_maker = detected_archive_row(&report, "rpg-maker-mv-mz-encrypted-assets");
+        assert_eq!(rpg_maker.detected_variant, "mv_or_mz");
         assert_eq!(
             rpg_maker.signals,
             vec![
@@ -15754,9 +16074,92 @@ mod tests {
         }));
         assert_eq!(rpg_maker.requirements.len(), 1);
         assert_eq!(rpg_maker.requirements[0].key, "rpg-maker-mv-mz-asset-key");
+        assert_eq!(
+            rpg_maker.surfaces.len(),
+            RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES.len()
+        );
+        for suffix in RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIXES {
+            let surface = rpg_maker
+                .surfaces
+                .iter()
+                .find(|surface| surface.fixture_id.ends_with(suffix))
+                .unwrap_or_else(|| panic!("missing surface for suffix {suffix}"));
+            assert_eq!(surface.engine_family, "rpgmaker");
+            assert_eq!(surface.variant, "mv_or_mz");
+            assert_eq!(surface.container, ContainerTransform::ProjectAsset);
+            assert_eq!(surface.crypto, CryptoTransform::RpgMakerAssetXor);
+            assert_eq!(
+                surface.key_requirement_refs,
+                vec!["rpg-maker-mv-mz-asset-key"]
+            );
+            assert!(
+                surface
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| { diagnostic.code == SemanticErrorCode::MissingKeyMaterial })
+            );
+        }
 
         let serialized = serde_json::to_string(&report).unwrap();
         assert!(!serialized.contains("sample.rpgmvp"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rpg_maker_unknown_suffixes_do_not_emit_missing_key_without_known_requirement() {
+        let root = temp_dir("rpg-maker-unknown-suffix-matrix");
+        for suffix in RPG_MAKER_MV_MZ_UNKNOWN_SUFFIXES {
+            write_fixture_file(
+                &root,
+                &format!("encrypted-assets/sample.{suffix}"),
+                b"synthetic unknown RPG Maker-like asset suffix fixture",
+            );
+        }
+
+        let report = ArchiveDetectionReport::scan(&root);
+
+        assert_eq!(report.status, ArchiveDetectionStatus::Matched);
+        let rpg_maker = detected_archive_row(&report, "rpg-maker-mv-mz-encrypted-assets");
+        assert_eq!(rpg_maker.detected_variant, "unknown_suffix");
+        assert_eq!(
+            rpg_maker.signals,
+            vec![ArchiveDetectionSignal::UnknownVariant]
+        );
+        assert!(rpg_maker.requirements.is_empty());
+        assert!(
+            !rpg_maker
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == SemanticErrorCode::MissingKeyMaterial)
+        );
+        assert!(
+            rpg_maker
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == SemanticErrorCode::UnknownEngineVariant })
+        );
+        assert_eq!(
+            rpg_maker.surfaces.len(),
+            RPG_MAKER_MV_MZ_UNKNOWN_SUFFIXES.len()
+        );
+        for surface in &rpg_maker.surfaces {
+            assert_eq!(surface.engine_family, "rpgmaker");
+            assert_eq!(surface.variant, "unknown_suffix");
+            assert_eq!(surface.container, ContainerTransform::ProjectAsset);
+            assert_eq!(surface.crypto, CryptoTransform::Unknown);
+            assert_eq!(surface.codec, CodecTransform::Unknown);
+            assert!(surface.key_requirement_refs.is_empty());
+            assert!(surface.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SemanticErrorCode::MissingCryptoCapability
+            }));
+            assert!(
+                !surface
+                    .diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.code == SemanticErrorCode::MissingKeyMaterial)
+            );
+        }
 
         let _ = fs::remove_dir_all(root);
     }
