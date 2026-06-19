@@ -20103,6 +20103,146 @@
         "Platform-specific staging assumptions",
         "Diagnostic regression for helper policy failures"
       ]
+    },
+    {
+      "id": "UTSUSHI-143",
+      "status": "planned",
+      "title": "Production runtime registry capability smoke",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-099"],
+      "summary": "Add a default CLI runtime registry capabilities regression so browser host availability diagnostics are proven through production registry wiring rather than only injected test registries.",
+      "deliverables": [
+        "CLI capabilities test that uses the production `runtime_registry()` path",
+        "Assertion that browser adapter diagnostics are present through default registry wiring",
+        "Assertion that fixture adapter metadata remains present alongside browser diagnostics"
+      ],
+      "acceptanceCriteria": [
+        "The default CLI runtime registry exposes browser host availability diagnostics without a custom injected registry.",
+        "The test proves adding or removing adapters cannot silently drop capability diagnostics from production wiring.",
+        "The fixture adapter remains selectable through the same default registry."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli capabilities"
+        }
+      ],
+      "auditFocus": [
+        "Injected-registry-only diagnostics",
+        "Default CLI registry drift",
+        "Fixture adapter selection regression"
+      ]
+    },
+    {
+      "id": "UTSUSHI-144",
+      "status": "planned",
+      "title": "Browser launch diagnostic path alignment",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-099"],
+      "summary": "Align explicitly configured browser launch path resolution with the sanitized availability diagnostic path so configured hosts are validated consistently before launch.",
+      "deliverables": [
+        "Shared browser host resolution path for diagnostics and launch",
+        "Regression test for configured browser paths that are invalid, missing, or private",
+        "Redacted semantic diagnostic when configured browser launch path fails validation"
+      ],
+      "acceptanceCriteria": [
+        "A configured browser host path is validated by the same policy used for availability diagnostics before launch.",
+        "Invalid configured paths fail with machine-readable diagnostics rather than falling through to raw process launch errors.",
+        "Diagnostics do not serialize raw private host paths."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture browser"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli capabilities"
+        }
+      ],
+      "auditFocus": [
+        "Diagnostic/launch path divergence",
+        "Raw configured path leakage",
+        "Browser launch overclaiming host readiness"
+      ]
+    },
+    {
+      "id": "ITOTORI-143",
+      "status": "planned",
+      "title": "Deterministic QA registry output schema",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "qa",
+      "dependsOn": ["ITOTORI-020"],
+      "summary": "Tighten the deterministic pre-export QA registry output schema so exact unit refs, check codes, evidence, and repair hints are contract-validated at the tool boundary.",
+      "deliverables": [
+        "Structured deterministic QA output schema for registry tool results",
+        "Registry tests that reject findings missing exact unit refs or repair hints",
+        "Fixture proving every deterministic QA check code conforms to the output schema"
+      ],
+      "acceptanceCriteria": [
+        "The deterministic QA registry output no longer accepts arbitrary object array items.",
+        "Each emitted finding carries contract-validated unit reference, check code, evidence, and repair hint fields.",
+        "Schema validation failures identify the malformed finding and tool id."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- agent-tool-registry"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Permissive deterministic tool output schemas",
+        "Findings without repair metadata",
+        "Registry boundary accepting malformed QA results"
+      ]
+    },
+    {
+      "id": "ITOTORI-144",
+      "status": "planned",
+      "title": "Protected-span multiset helper reuse",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "qa",
+      "dependsOn": ["ITOTORI-020"],
+      "summary": "Share duplicate protected-span occurrence logic between the standalone protected-span tool and deterministic pre-export QA to prevent drift in repeated-token handling.",
+      "deliverables": [
+        "Shared protected-span occurrence/multiset helper",
+        "Standalone protected-span tool test for duplicate raw protected spans",
+        "Pre-export QA test proving identical helper semantics"
+      ],
+      "acceptanceCriteria": [
+        "Standalone protected-span checks and pre-export QA use the same duplicate-span occurrence logic.",
+        "A source with repeated identical protected spans requires matching repeated target occurrences in both paths.",
+        "False-positive calibration remains intact for single protected-span occurrences."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- agent-tool-registry"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- project-workflow"
+        }
+      ],
+      "auditFocus": [
+        "Protected-span duplicate semantics drift",
+        "Shared helper hiding patch-export-specific assumptions",
+        "False positives on single-occurrence spans"
+      ]
     }
   ]
 }
