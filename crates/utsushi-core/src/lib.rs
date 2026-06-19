@@ -241,6 +241,9 @@ impl RuntimeArtifactRoot {
             .join(&relative_dir)
             .join(format!("{artifact_id}.{extension}"));
         reject_symlink_destination(&path)?;
+        if path.exists() {
+            fs::remove_file(&path)?;
+        }
         Ok(path)
     }
 
@@ -405,6 +408,7 @@ pub struct RuntimeAdapterDescriptor {
     pub capability_contract: RuntimeCapabilityContract,
     pub capabilities: Vec<RuntimeCapability>,
     pub approximation_tiers: Vec<ApproximationTier>,
+    pub diagnostics: Vec<RuntimeAdapterDiagnostic>,
     pub limitations: Vec<String>,
 }
 
@@ -448,6 +452,65 @@ impl RuntimeAdapterDescriptor {
             .into());
         }
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeAdapterDiagnostic {
+    pub diagnostic_kind: String,
+    pub status: String,
+    pub severity: String,
+    pub message: String,
+    pub details: Vec<(String, Value)>,
+}
+
+impl RuntimeAdapterDiagnostic {
+    pub fn new(
+        diagnostic_kind: impl Into<String>,
+        status: impl Into<String>,
+        severity: impl Into<String>,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            diagnostic_kind: diagnostic_kind.into(),
+            status: status.into(),
+            severity: severity.into(),
+            message: message.into(),
+            details: Vec::new(),
+        }
+    }
+
+    pub fn with_detail(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.details.push((key.into(), Value::String(value.into())));
+        self
+    }
+
+    pub fn with_detail_value(mut self, key: impl Into<String>, value: Value) -> Self {
+        self.details.push((key.into(), value));
+        self
+    }
+
+    pub fn to_json(&self) -> Value {
+        let mut value = serde_json::Map::new();
+        value.insert(
+            "diagnosticKind".to_string(),
+            self.diagnostic_kind.clone().into(),
+        );
+        value.insert("status".to_string(), self.status.clone().into());
+        value.insert("severity".to_string(), self.severity.clone().into());
+        value.insert("message".to_string(), self.message.clone().into());
+        if !self.details.is_empty() {
+            value.insert(
+                "details".to_string(),
+                Value::Object(
+                    self.details
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect::<serde_json::Map<_, _>>(),
+                ),
+            );
+        }
+        Value::Object(value)
     }
 }
 
@@ -3242,7 +3305,9 @@ impl RuntimeLaunchCaptureHarness {
         }
 
         if let Some(error) = after_exit_error {
-            return Err(error);
+            return Err(error
+                .with_detail("processExit", "success")
+                .with_detail("processExitSuccess", "true"));
         }
 
         Ok(RuntimeLaunchCaptureOutcome {
@@ -4525,6 +4590,7 @@ mod tests {
                 capability_contract: trace_contract(),
                 capabilities: vec![RuntimeCapability::Trace],
                 approximation_tiers: vec![ApproximationTier::DeterministicFixture],
+                diagnostics: vec![],
                 limitations: vec!["unit test adapter".to_string()],
             }
         }
@@ -4559,6 +4625,7 @@ mod tests {
                 ),
                 capabilities: vec![RuntimeCapability::Trace, RuntimeCapability::FrameCapture],
                 approximation_tiers: vec![ApproximationTier::ReferenceMatched],
+                diagnostics: vec![],
                 limitations: vec![],
             }
         }
@@ -5115,6 +5182,43 @@ mod tests {
             "grandchild heartbeat changed after after-exit hook/process cleanup"
         );
         let _ = fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn successful_exit_after_exit_hook_failure_reports_process_exit_diagnostics() {
+        let plan = RuntimeLaunchCapturePlan::new(
+            HARNESS_RUN_ID,
+            RuntimeOperation::Capture,
+            harness_child_command("tests::harness_child_exits"),
+        )
+        .with_timeout(Duration::from_secs(5))
+        .with_hook_timeout(Duration::from_secs(1));
+        let harness = RuntimeLaunchCaptureHarness::new();
+        let mut hooks = RuntimeCaptureHooks::new();
+        hooks.push(FailingCaptureHook {
+            boundary: RuntimeCaptureBoundary::AfterExit,
+        });
+
+        let error = harness.run(&plan, &mut hooks).unwrap_err();
+
+        assert_eq!(error.kind, RuntimeHarnessErrorKind::CaptureFailed);
+        assert_eq!(error.boundary, Some(RuntimeCaptureBoundary::AfterExit));
+        assert!(
+            error
+                .details
+                .iter()
+                .any(|(key, value)| key == "processExit" && value == "success")
+        );
+        assert!(
+            error
+                .details
+                .iter()
+                .any(|(key, value)| key == "processExitSuccess" && value == "true")
+        );
+        let diagnostic = error.to_json();
+        assert_eq!(diagnostic["boundary"], "after_exit");
+        assert_eq!(diagnostic["details"]["processExit"], "success");
+        assert_eq!(diagnostic["details"]["processExitSuccess"], "true");
     }
 
     #[cfg(not(unix))]

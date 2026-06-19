@@ -9,11 +9,12 @@ use utsushi_core::{
     OBSERVATION_HOOK_SCHEMA_VERSION, ObservationEnvironment, ObservationFramePayload,
     ObservationHookEvent, ObservationHookEventKind, ObservationHookPayload,
     ObservationRedactionMetadata, ObservationTextPayload, RuntimeAdapter, RuntimeAdapterDescriptor,
-    RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability, RuntimeCapabilityClass,
-    RuntimeCapabilityContract, RuntimeCaptureBoundary, RuntimeCaptureContext, RuntimeCaptureHook,
-    RuntimeCaptureHooks, RuntimeCapturedArtifact, RuntimeFeatureSupport, RuntimeHarnessError,
-    RuntimeHarnessErrorKind, RuntimeLaunchCaptureHarness, RuntimeLaunchCapturePlan,
-    RuntimeLaunchCommand, RuntimeOperation, RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
+    RuntimeAdapterDiagnostic, RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability,
+    RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeCaptureBoundary,
+    RuntimeCaptureContext, RuntimeCaptureHook, RuntimeCaptureHooks, RuntimeCapturedArtifact,
+    RuntimeFeatureSupport, RuntimeHarnessError, RuntimeHarnessErrorKind,
+    RuntimeLaunchCaptureHarness, RuntimeLaunchCapturePlan, RuntimeLaunchCommand, RuntimeOperation,
+    RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
 };
 
 const BROWSER_RUN_ID: &str = "019ed050-0000-7000-8000-000000001000";
@@ -76,8 +77,16 @@ impl RuntimeAdapter for BrowserLaunchAdapter {
             BrowserDetectionLabel::Configured => {
                 "Browser executable configured explicitly for this adapter instance.".to_string()
             }
+            BrowserDetectionLabel::ConfiguredUnavailable => {
+                "Configured browser executable is not launchable; update the adapter configuration."
+                    .to_string()
+            }
             BrowserDetectionLabel::Environment => {
                 "Browser executable configured through UTSUSHI_BROWSER_BIN.".to_string()
+            }
+            BrowserDetectionLabel::EnvironmentUnavailable => {
+                "UTSUSHI_BROWSER_BIN is set but does not resolve to a launchable browser executable."
+                    .to_string()
             }
             BrowserDetectionLabel::Path => {
                 "Browser executable can be discovered from PATH.".to_string()
@@ -99,6 +108,7 @@ impl RuntimeAdapter for BrowserLaunchAdapter {
                 RuntimeCapability::SmokeValidation,
             ],
             approximation_tiers: vec![ApproximationTier::LayoutProbe],
+            diagnostics: vec![self.browser_host_availability_diagnostic()],
             limitations,
         }
     }
@@ -309,15 +319,22 @@ impl BrowserLaunchAdapter {
     }
 
     fn browser_detection_label(&self) -> BrowserDetectionLabel {
-        if self.browser_program.is_some() {
-            return BrowserDetectionLabel::Configured;
-        }
-        if env::var("UTSUSHI_BROWSER_BIN")
-            .ok()
-            .and_then(|program| resolve_program_candidate(&program))
+        if self
+            .browser_program
+            .as_ref()
+            .and_then(|program| resolve_program_candidate(&program.to_string_lossy()))
             .is_some()
         {
-            return BrowserDetectionLabel::Environment;
+            return BrowserDetectionLabel::Configured;
+        }
+        if self.browser_program.is_some() {
+            return BrowserDetectionLabel::ConfiguredUnavailable;
+        }
+        if let Ok(program) = env::var("UTSUSHI_BROWSER_BIN") {
+            if resolve_program_candidate(&program).is_some() {
+                return BrowserDetectionLabel::Environment;
+            }
+            return BrowserDetectionLabel::EnvironmentUnavailable;
         }
         if BROWSER_CANDIDATES
             .iter()
@@ -327,14 +344,69 @@ impl BrowserLaunchAdapter {
         }
         BrowserDetectionLabel::Unavailable
     }
+
+    fn browser_host_availability_diagnostic(&self) -> RuntimeAdapterDiagnostic {
+        let label = self.browser_detection_label();
+        let host_available = label.is_available();
+        let (status, severity, message) = if host_available {
+            (
+                "available",
+                "info",
+                "Chromium-compatible browser host is available for browser launch capture.",
+            )
+        } else {
+            (
+                "unavailable",
+                "warning",
+                "No Chromium-compatible browser host is available; capture capability remains adapter-supported but cannot run on this host until UTSUSHI_BROWSER_BIN or PATH provides Chromium/Chrome.",
+            )
+        };
+
+        RuntimeAdapterDiagnostic::new("browser_host_availability", status, severity, message)
+            .with_detail("capability", "browser_launch")
+            .with_detail_value("hostAvailable", json!(host_available))
+            .with_detail("browserSource", label.as_str())
+            .with_detail_value(
+                "requiredFor",
+                json!(["trace", "capture", "smoke_validation"]),
+            )
+            .with_detail(
+                "errorCode",
+                if host_available {
+                    "utsushi.browser_host_available"
+                } else {
+                    "utsushi.browser_host_unavailable"
+                },
+            )
+            .with_detail("pathRedaction", "raw_local_paths_omitted")
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BrowserDetectionLabel {
     Configured,
+    ConfiguredUnavailable,
     Environment,
+    EnvironmentUnavailable,
     Path,
     Unavailable,
+}
+
+impl BrowserDetectionLabel {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Configured => "configured",
+            Self::ConfiguredUnavailable => "configured_unavailable",
+            Self::Environment => "environment",
+            Self::EnvironmentUnavailable => "environment_unavailable",
+            Self::Path => "path",
+            Self::Unavailable => "unavailable",
+        }
+    }
+
+    fn is_available(self) -> bool {
+        matches!(self, Self::Configured | Self::Environment | Self::Path)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -443,6 +515,7 @@ impl RuntimeAdapter for NwjsLaunchAdapter {
             capability_contract: nwjs_unsupported_capability_contract(),
             capabilities: vec![],
             approximation_tiers: vec![ApproximationTier::None],
+            diagnostics: vec![],
             limitations: vec![
                 "NW.js launch/capture is explicitly unsupported in this adapter slice.".to_string(),
                 "RPG Maker MV/MZ desktop packages need a separate bounded NW.js contract for process launch, capture timing, and screenshot extraction before this adapter can claim runtime evidence.".to_string(),
@@ -962,6 +1035,45 @@ mod tests {
                         && feature.evidence_tier_ceiling == Some(EvidenceTier::E2)
                 )
         );
+        assert!(
+            descriptor
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.diagnostic_kind == "browser_host_availability")
+        );
+    }
+
+    #[test]
+    fn browser_descriptor_reports_missing_configured_host_without_raw_path() {
+        let root = temp_dir("browser-host-diagnostic");
+        let private_missing_browser = root.join("private-browser-bin");
+        let adapter = BrowserLaunchAdapter::with_browser_program(private_missing_browser.clone());
+        let descriptor = adapter.descriptor();
+        let diagnostic = descriptor
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.diagnostic_kind == "browser_host_availability")
+            .unwrap()
+            .to_json();
+
+        assert_eq!(diagnostic["status"], "unavailable");
+        assert_eq!(diagnostic["details"]["hostAvailable"], false);
+        assert_eq!(
+            diagnostic["details"]["browserSource"],
+            "configured_unavailable"
+        );
+        assert_eq!(
+            diagnostic["details"]["requiredFor"],
+            json!(["trace", "capture", "smoke_validation"])
+        );
+        assert_eq!(
+            diagnostic["details"]["errorCode"],
+            "utsushi.browser_host_unavailable"
+        );
+        let diagnostic_string = serde_json::to_string(&diagnostic).unwrap();
+        assert!(!diagnostic_string.contains(root.to_string_lossy().as_ref()));
+        assert!(!diagnostic_string.contains(private_missing_browser.to_string_lossy().as_ref()));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]
@@ -1142,6 +1254,46 @@ exit 0
         assert_eq!(harness_error.kind, RuntimeHarnessErrorKind::CaptureFailed);
         assert_eq!(harness_error.code(), "runtime_capture_failed");
         assert!(harness_error.message.contains("did not produce"));
+        assert!(!artifact_root.join(".staging").exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_capture_does_not_promote_stale_staging_screenshot() {
+        let root = temp_dir("browser-stale-screenshot");
+        write_browser_smoke_fixture(&root);
+        let artifact_root = root.join("runtime-artifacts");
+        let stale_path = RuntimeArtifactRoot::new(&artifact_root)
+            .prepare_staging_file(BROWSER_RUN_ID, BROWSER_SCREENSHOT_ID, "png")
+            .unwrap();
+        fs::write(&stale_path, b"\x89PNG\r\n\x1a\nstale screenshot bytes\n").unwrap();
+        let fake_browser = fake_browser(
+            &root,
+            r#"#!/bin/sh
+set -eu
+exit 0
+"#,
+        );
+        let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
+
+        let error = adapter
+            .capture(&RuntimeRequest::new(&root).with_artifact_root(&artifact_root))
+            .unwrap_err();
+        let harness_error = error.downcast_ref::<RuntimeHarnessError>().unwrap();
+
+        assert_eq!(harness_error.kind, RuntimeHarnessErrorKind::CaptureFailed);
+        assert!(harness_error.message.contains("did not produce"));
+        let artifact_uri = utsushi_core::runtime_artifact_uri(
+            BROWSER_RUN_ID,
+            RuntimeArtifactKind::Screenshot,
+            BROWSER_SCREENSHOT_ID,
+        )
+        .unwrap();
+        let artifact_path = RuntimeArtifactRoot::new(&artifact_root)
+            .artifact_path(&artifact_uri)
+            .unwrap();
+        assert!(!artifact_path.exists());
         assert!(!artifact_root.join(".staging").exists());
         let _ = fs::remove_dir_all(root);
     }

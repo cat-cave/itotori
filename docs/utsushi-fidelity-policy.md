@@ -66,6 +66,16 @@ references, but it cannot prove commercial engine behavior, branch coverage, or
 pixel equivalence. Those limits belong in both the adapter descriptor and each
 runtime report.
 
+Adapter descriptors may also include `diagnostics` for host-dependent
+capability checks. Browser launch adapters must report
+`browser_host_availability` with a machine-readable `hostAvailable` flag,
+source category, required operations, and stable error code. This diagnostic is
+separate from the adapter's capability claim: automation can see that
+`frame_capture` is supported by the adapter while the current machine is missing
+a Chromium-compatible launch host. Diagnostics must describe source categories
+such as `environment`, `path`, or `configured_unavailable`; they must not expose
+the resolved executable path or other raw private local paths.
+
 ## Runtime Environment Matrix
 
 | Environment          | Purpose                                           | Alpha status             | Notes                                                                                    |

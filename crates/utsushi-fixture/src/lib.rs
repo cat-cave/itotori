@@ -49,6 +49,7 @@ impl RuntimeAdapter for FixtureRuntimeAdapter {
                 RuntimeCapability::SmokeValidation,
             ],
             approximation_tiers: vec![ApproximationTier::DeterministicFixture],
+            diagnostics: vec![],
             limitations: vec![
                 "Synthetic fixture runtime only; no commercial engine behavior is emulated."
                     .to_string(),

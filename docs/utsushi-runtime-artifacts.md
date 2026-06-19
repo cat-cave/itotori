@@ -21,6 +21,13 @@ outputs, and patch outputs must never be passed as runtime artifact roots.
 Cleanup and writes reject symlinks in the managed root path, artifact parent
 components, and artifact destinations.
 
+Launch adapters that stage process-produced files must prepare a fresh staging
+path before every launch. `RuntimeArtifactRoot::prepare_staging_file` removes a
+pre-existing regular file at the requested staging destination after validating
+that the path is not a symlink or directory. This prevents stale browser
+screenshots from a prior failed cleanup from being promoted as fresh runtime
+artifacts.
+
 ## Portable URI Naming
 
 All v0.2 runtime artifact references use:
