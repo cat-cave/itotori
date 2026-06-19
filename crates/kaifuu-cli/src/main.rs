@@ -3,20 +3,20 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 
 use kaifuu_core::{
-    AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, BoundedHelperProcessRequest,
-    DetectionReport, DetectionResult, EngineAdapter, ExtractRequest, GameProfile,
-    GoldenByteEquivalenceMode, GoldenHarnessRequest, HELPER_REGISTRY_SCHEMA_VERSION,
-    HelperBinaryLaunchDiagnostic, HelperBinaryLaunchValidationRequest,
-    HelperBinaryLaunchValidationResult, HelperCapability, HelperExecutionMode,
-    HelperProcessCancelToken, HelperRedactionStatus, KaifuuResult, LocalKeyImportRequest,
-    LocalKeyImportSource, LocalSecretDirectoryStore, PatchExport, PatchPreflightRequest,
-    PatchRequest, PatchResult, ProfileRequest, ProofHash, SEMANTIC_HELPER_EXECUTION_DISALLOWED,
-    SecretRef, VerifyRequest, atomic_write_text, fixture_helper_registry,
-    normalize_helper_result_value, parse_helper_capability, parse_hex_bytes,
-    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
-    run_bounded_helper_process, run_round_trip_golden, sha256_hash_bytes,
-    validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
-    validate_profile_value, write_json,
+    AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
+    DetectionResult, EngineAdapter, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
+    GoldenHarnessRequest, HELPER_REGISTRY_SCHEMA_VERSION, HelperBinaryLaunchDiagnostic,
+    HelperBinaryLaunchValidationRequest, HelperBinaryLaunchValidationResult, HelperCapability,
+    HelperExecutionMode, HelperProcessCancelToken, HelperRedactionStatus,
+    HelperRegistryInvocationRequest, KaifuuResult, LocalKeyImportRequest, LocalKeyImportSource,
+    LocalSecretDirectoryStore, PatchExport, PatchPreflightRequest, PatchRequest, PatchResult,
+    ProfileRequest, ProofHash, RegisteredBoundedHelperProcessRequest,
+    SEMANTIC_HELPER_EXECUTION_DISALLOWED, SecretRef, VerifyRequest, atomic_write_text,
+    fixture_helper_registry, normalize_helper_result_value, parse_helper_capability,
+    parse_hex_bytes, promote_staged_directory_no_clobber, read_json, redact_for_log_or_report,
+    redact_report_value, run_registered_bounded_helper_process, run_round_trip_golden,
+    sha256_hash_bytes, validate_helper_registry_entry_value, validate_helper_result_value,
+    validate_offset_map_value, validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -273,11 +273,13 @@ fn run_helper_registry_command(args: &[String]) -> Result<(), Box<dyn std::error
             let registry = fixture_helper_registry()?;
             let helper_id = flag_optional(args, "--helper-id")
                 .unwrap_or(kaifuu_core::FIXTURE_HELPER_REGISTRY_ID);
-            let result = registry.invoke(
+            let result = registry.invoke(HelperRegistryInvocationRequest {
                 helper_id,
-                HelperCapability::FixtureInvocation,
-                &serde_json::json!({"fixture": true}),
-            )?;
+                helper_version: "0.1.0",
+                allowlist_entry_id: kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID,
+                capability: HelperCapability::FixtureInvocation,
+                input: &serde_json::json!({"fixture": true}),
+            })?;
             write_json(&output, &redact_report_value(&result))?;
         }
         "check-binary" => {
@@ -510,13 +512,20 @@ fn run_key_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Err
                     Ok::<_, Box<dyn std::error::Error>>(token)
                 })
                 .transpose()?;
-            let result = run_bounded_helper_process(BoundedHelperProcessRequest {
-                helper_id: &helper_id,
-                executable_path: &helper_binary,
-                timeout_ms: effective_timeout_ms,
-                stdin: &stdin,
-                cancel_token,
-            });
+            let result = run_registered_bounded_helper_process(
+                &entry,
+                RegisteredBoundedHelperProcessRequest {
+                    helper_id: &helper_id,
+                    allowlist_entry_id,
+                    executable_path: &helper_binary,
+                    platform,
+                    helper_version,
+                    required_capabilities: &required_capabilities,
+                    timeout_ms: effective_timeout_ms,
+                    stdin: &stdin,
+                    cancel_token,
+                },
+            );
             let failed = result.status == kaifuu_core::OperationStatus::Failed;
             write_json(&output, &result)?;
             if failed {
