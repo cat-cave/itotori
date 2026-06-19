@@ -2214,8 +2214,19 @@ describe("localization bridge schema guards", () => {
     const firstCapture = asTestRecord(captures[0], "first runtime capture");
     const artifactRef = asTestRecord(firstCapture.artifactRef, "first capture artifact ref");
     expect(artifactRef.uri).toBe("artifacts/utsushi/hello/frame-0001.png");
+    expect(artifactRef.uri).not.toMatch(/^artifacts\/utsushi\/runtime\//);
     expect(firstCapture).not.toHaveProperty("bytes");
     expect(firstCapture).not.toHaveProperty("data");
+  });
+
+  it("does not require the managed storage prefix for shared v0.2 runtime artifact refs", () => {
+    const report = runtimeEvidenceV02Example();
+    const captures = report.captures as Array<Record<string, unknown>>;
+    const firstCapture = asTestRecord(captures[0], "first runtime capture");
+    const artifactRef = asTestRecord(firstCapture.artifactRef, "first capture artifact ref");
+    artifactRef.uri = "artifacts/utsushi/schema-fixture/frame-0001.png";
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
   });
 
   it("accepts typed observation hook events on v0.2 runtime evidence", () => {

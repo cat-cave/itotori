@@ -2435,6 +2435,79 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("normalizes schema-portable runtime artifact refs to managed storage refs", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const project = projectFixture();
+      await repo.importSourceBundle(localActor, project);
+
+      const runtimeReportId = "019ed003-0000-7000-8000-000000000905";
+      const artifactId = "019ed003-0000-7000-8000-000000000935";
+      const schemaUri = "artifacts/utsushi/schema-fixture/frame-0001.png";
+      const managedUri = `artifacts/utsushi/runtime/${runtimeReportId}/screenshots/${artifactId}.png`;
+      const runtimeReport = runtimeEvidenceReportFixture({
+        runtimeReportId,
+        captures: [
+          {
+            ...runtimeEvidenceReportFixture().captures[0]!,
+            captureId: "019ed003-0000-7000-8000-000000000925",
+            artifactRef: {
+              ...runtimeEvidenceReportFixture().captures[0]!.artifactRef,
+              artifactId,
+              uri: schemaUri,
+            },
+          },
+        ],
+      });
+
+      await repo.saveRuntimeReport(
+        localActor,
+        project,
+        runtimeReport,
+        "019ed003-0000-7000-8000-000000000985",
+      );
+
+      const itemRows = await context.pool.query<{
+        portable_artifact_uri: string | null;
+        metadata: Record<string, { uri?: string }>;
+      }>(
+        `
+        select portable_artifact_uri, metadata
+        from itotori_runtime_evidence_items
+        where runtime_run_id = $1
+          and evidence_kind = 'capture'
+        `,
+        [runtimeReportId],
+      );
+
+      expect(itemRows.rows).toHaveLength(1);
+      expect(itemRows.rows[0]?.portable_artifact_uri).toBe(managedUri);
+      expect(itemRows.rows[0]?.metadata.artifactRef?.uri).toBe(managedUri);
+      expect(itemRows.rows[0]?.metadata.adapterLocalArtifactRef?.uri).toBe(schemaUri);
+
+      const artifactRows = await context.pool.query<{
+        uri: string | null;
+        metadata: Record<string, { uri?: string }>;
+      }>(
+        `
+        select uri, metadata
+        from itotori_artifacts
+        where artifact_id = $1
+        `,
+        [`${runtimeReportId}:${artifactId}`],
+      );
+
+      expect(artifactRows.rows).toHaveLength(1);
+      expect(artifactRows.rows[0]?.uri).toBe(managedUri);
+      expect(artifactRows.rows[0]?.metadata.artifactRef?.uri).toBe(managedUri);
+      expect(artifactRows.rows[0]?.metadata.adapterLocalArtifactRef?.uri).toBe(schemaUri);
+    } finally {
+      await context.close();
+    }
+  });
+
   it("rejects traversal and raw runtime artifact paths", async () => {
     const context = await migratedContext();
     try {

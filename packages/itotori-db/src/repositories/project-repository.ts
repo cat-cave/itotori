@@ -12,6 +12,7 @@ import {
   type PatchExport,
   type PatchExportV02,
   type RuntimeArtifactRefV02,
+  type RuntimeArtifactKindV02,
   type RuntimeBridgeUnitRefV02,
   type RuntimeEvidenceReportV02,
   type RuntimeValidationFindingV02,
@@ -3178,7 +3179,7 @@ function artifactLinkFromRef(
   bridgeUnitId: string | undefined,
   metadata: Record<string, unknown>,
 ): RuntimeArtifactLink {
-  assertPortableRelativeArtifactUri(artifactRef.uri);
+  assertPortableRuntimeSchemaArtifactUri(artifactRef.uri);
   const storedArtifactRef = runtimeArtifactRefForDb(artifactRef, runtimeReportId);
   const adapterLocalArtifactRef = runtimeArtifactRefForDb(artifactRef);
   return {
@@ -3248,18 +3249,19 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
     ...report.traceEvents.map((event) => {
       const artifactRef = event.artifactRef;
       if (artifactRef !== undefined) {
-        assertPortableRelativeArtifactUri(artifactRef.uri);
+        assertPortableRuntimeSchemaArtifactUri(artifactRef.uri);
       }
+      const storedArtifactRef =
+        artifactRef === undefined
+          ? undefined
+          : runtimeArtifactRefForDb(artifactRef, report.runtimeReportId);
       return {
         runtimeEvidenceId: runtimeChildIdFor(report.runtimeReportId, event.traceEventId),
         evidenceKind: runtimeEvidenceKindValues.traceEvent,
         bridgeUnitId: event.bridgeUnitRef.bridgeUnitId,
-        artifactId:
-          artifactRef === undefined
-            ? undefined
-            : runtimeChildIdFor(report.runtimeReportId, artifactRef.artifactId),
+        artifactId: storedArtifactRef?.artifactId,
         artifactKind: artifactRef?.artifactKind ?? "runtime_trace_event",
-        portableArtifactUri: artifactRef?.uri,
+        portableArtifactUri: storedArtifactRef?.uri,
         evidenceTier: null,
         frame: event.frame,
         metadata: {
@@ -3267,10 +3269,7 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
           eventKind: event.eventKind,
           traceKey: event.traceKey,
           observedText: event.observedText,
-          artifactRef:
-            artifactRef === undefined
-              ? null
-              : runtimeArtifactRefForDb(artifactRef, report.runtimeReportId),
+          artifactRef: storedArtifactRef ?? null,
           adapterLocalArtifactRef:
             artifactRef === undefined ? null : runtimeArtifactRefForDb(artifactRef),
           event: runtimeTraceEventForDb(event),
@@ -3298,14 +3297,18 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
       bridgeUnitRefs: runtimeBranchEventBridgeUnitLinks(event),
     })),
     ...report.captures.map((capture) => {
-      assertPortableRelativeArtifactUri(capture.artifactRef.uri);
+      assertPortableRuntimeSchemaArtifactUri(capture.artifactRef.uri);
+      const storedArtifactRef = runtimeArtifactRefForDb(
+        capture.artifactRef,
+        report.runtimeReportId,
+      );
       return {
         runtimeEvidenceId: runtimeChildIdFor(report.runtimeReportId, capture.captureId),
         evidenceKind: runtimeEvidenceKindValues.capture,
         bridgeUnitId: capture.bridgeUnitRef.bridgeUnitId,
-        artifactId: runtimeChildIdFor(report.runtimeReportId, capture.artifactRef.artifactId),
+        artifactId: storedArtifactRef.artifactId,
         artifactKind: capture.artifactRef.artifactKind,
-        portableArtifactUri: capture.artifactRef.uri,
+        portableArtifactUri: storedArtifactRef.uri,
         evidenceTier: capture.evidenceTier,
         frame: capture.frame,
         metadata: {
@@ -3314,7 +3317,7 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
           height: capture.height,
           nonZeroPixels: capture.nonZeroPixels,
           region: capture.region ?? null,
-          artifactRef: runtimeArtifactRefForDb(capture.artifactRef, report.runtimeReportId),
+          artifactRef: storedArtifactRef,
           adapterLocalArtifactRef: runtimeArtifactRefForDb(capture.artifactRef),
           capture: runtimeCaptureForDb(capture),
         },
@@ -3324,14 +3327,18 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
       };
     }),
     ...report.recordings.map((recording) => {
-      assertPortableRelativeArtifactUri(recording.artifactRef.uri);
+      assertPortableRuntimeSchemaArtifactUri(recording.artifactRef.uri);
+      const storedArtifactRef = runtimeArtifactRefForDb(
+        recording.artifactRef,
+        report.runtimeReportId,
+      );
       return {
         runtimeEvidenceId: runtimeChildIdFor(report.runtimeReportId, recording.recordingId),
         evidenceKind: runtimeEvidenceKindValues.recording,
         bridgeUnitId: recording.bridgeUnitRef.bridgeUnitId,
-        artifactId: runtimeChildIdFor(report.runtimeReportId, recording.artifactRef.artifactId),
+        artifactId: storedArtifactRef.artifactId,
         artifactKind: recording.artifactRef.artifactKind,
-        portableArtifactUri: recording.artifactRef.uri,
+        portableArtifactUri: storedArtifactRef.uri,
         evidenceTier: recording.evidenceTier,
         frame: recording.startedAtFrame,
         metadata: {
@@ -3341,7 +3348,7 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
           width: recording.width,
           height: recording.height,
           encoding: recording.encoding,
-          artifactRef: runtimeArtifactRefForDb(recording.artifactRef, report.runtimeReportId),
+          artifactRef: storedArtifactRef,
           adapterLocalArtifactRef: runtimeArtifactRefForDb(recording.artifactRef),
         },
         bridgeUnitRefs: [
@@ -3364,20 +3371,24 @@ function runtimeEvidenceItemsFor(report: RuntimeReportInput): RuntimeEvidenceIte
       ),
     })),
     ...(report.referenceComparisons ?? []).map((comparison) => {
-      assertPortableRelativeArtifactUri(comparison.artifactRef.uri);
+      assertPortableRuntimeSchemaArtifactUri(comparison.artifactRef.uri);
+      const storedArtifactRef = runtimeArtifactRefForDb(
+        comparison.artifactRef,
+        report.runtimeReportId,
+      );
       return {
         runtimeEvidenceId: runtimeChildIdFor(report.runtimeReportId, comparison.comparisonId),
         evidenceKind: runtimeEvidenceKindValues.referenceComparison,
         bridgeUnitId: comparison.coveredBridgeUnitRefs[0]?.bridgeUnitId,
-        artifactId: runtimeChildIdFor(report.runtimeReportId, comparison.artifactRef.artifactId),
+        artifactId: storedArtifactRef.artifactId,
         artifactKind: comparison.artifactRef.artifactKind,
-        portableArtifactUri: comparison.artifactRef.uri,
+        portableArtifactUri: storedArtifactRef.uri,
         evidenceTier: "E4",
         frame: undefined,
         metadata: {
           adapterLocalEvidenceId: comparison.comparisonId,
           comparison: runtimeReferenceComparisonForDb(comparison),
-          artifactRef: runtimeArtifactRefForDb(comparison.artifactRef, report.runtimeReportId),
+          artifactRef: storedArtifactRef,
           adapterLocalArtifactRef: runtimeArtifactRefForDb(comparison.artifactRef),
         },
         bridgeUnitRefs: comparison.coveredBridgeUnitRefs.map((ref) =>
@@ -3457,7 +3468,7 @@ function runtimeValidationFindingRecord(
       ? undefined
       : runtimeArtifactRefForDb(finding.artifactRef, report.runtimeReportId);
   if (finding.artifactRef !== undefined) {
-    assertPortableRelativeArtifactUri(finding.artifactRef.uri);
+    assertPortableRuntimeSchemaArtifactUri(finding.artifactRef.uri);
   }
   const runtimeReportRef = {
     subjectKind: "runtime_report",
@@ -3521,13 +3532,16 @@ function runtimeArtifactRefForDb(
   artifactRef: RuntimeArtifactRefV02,
   runtimeReportId?: string,
 ): RuntimeArtifactRefV02 {
-  assertPortableRelativeArtifactUri(artifactRef.uri);
+  assertPortableRuntimeSchemaArtifactUri(artifactRef.uri);
   const artifactId =
     runtimeReportId === undefined
       ? artifactRef.artifactId
       : runtimeChildIdFor(runtimeReportId, artifactRef.artifactId);
   const artifactKind = artifactRef.artifactKind;
-  const uri = artifactRef.uri;
+  const uri =
+    runtimeReportId === undefined
+      ? artifactRef.uri
+      : runtimeManagedArtifactUriForDb(artifactRef, runtimeReportId);
   const mediaType = artifactRef.mediaType;
   const byteSize = artifactRef.byteSize;
   return {
@@ -3562,6 +3576,51 @@ function runtimeManagedArtifactHash(ref: {
   byteSize?: number;
 }): string {
   return `sha256:${createHash("sha256").update(stableJsonStringify(ref)).digest("hex")}`;
+}
+
+const RUNTIME_MANAGED_ARTIFACT_URI_ROOT = "artifacts/utsushi/runtime";
+
+const RUNTIME_ARTIFACT_KIND_DIRECTORIES: Record<RuntimeArtifactKindV02, string> = {
+  trace_log: "traces",
+  screenshot: "screenshots",
+  recording: "recordings",
+  capture_metadata: "frame-captures",
+  reference_comparison: "conformance-reports",
+  runtime_report: "reports",
+};
+
+const RUNTIME_ARTIFACT_KIND_EXTENSIONS: Record<RuntimeArtifactKindV02, string> = {
+  trace_log: ".json",
+  screenshot: ".png",
+  recording: ".webm",
+  capture_metadata: ".json",
+  reference_comparison: ".json",
+  runtime_report: ".json",
+};
+
+function runtimeManagedArtifactUriForDb(
+  artifactRef: RuntimeArtifactRefV02,
+  runtimeReportId: string,
+): string {
+  if (artifactRef.uri.startsWith(`${RUNTIME_MANAGED_ARTIFACT_URI_ROOT}/`)) {
+    return artifactRef.uri;
+  }
+  const directory = RUNTIME_ARTIFACT_KIND_DIRECTORIES[artifactRef.artifactKind];
+  const extension =
+    runtimeArtifactUriExtension(artifactRef.uri) ??
+    RUNTIME_ARTIFACT_KIND_EXTENSIONS[artifactRef.artifactKind];
+  return [
+    RUNTIME_MANAGED_ARTIFACT_URI_ROOT,
+    runtimeReportId,
+    directory,
+    `${artifactRef.artifactId}${extension}`,
+  ].join("/");
+}
+
+function runtimeArtifactUriExtension(uri: string): string | undefined {
+  const filename = uri.split("/").at(-1) ?? "";
+  const match = filename.match(/\.[A-Za-z0-9]+$/);
+  return match?.[0];
 }
 
 function runtimeTraceEventForDb(
@@ -3660,16 +3719,20 @@ function runtimeValidationFindingForDb(
 }
 
 function assertPortableRelativeArtifactUri(uri: string): void {
-  assertPortableRuntimeArtifactUri(uri, { allowFixtureUri: false });
+  assertPortableRuntimeArtifactUri(uri, { allowFixtureUri: false, requireManagedRoot: true });
+}
+
+function assertPortableRuntimeSchemaArtifactUri(uri: string): void {
+  assertPortableRuntimeArtifactUri(uri, { allowFixtureUri: false, requireManagedRoot: false });
 }
 
 function assertPortableLegacyRuntimeArtifactUri(uri: string): void {
-  assertPortableRuntimeArtifactUri(uri, { allowFixtureUri: true });
+  assertPortableRuntimeArtifactUri(uri, { allowFixtureUri: true, requireManagedRoot: false });
 }
 
 function assertPortableRuntimeArtifactUri(
   uri: string,
-  options: { allowFixtureUri: boolean },
+  options: { allowFixtureUri: boolean; requireManagedRoot: boolean },
 ): void {
   const hasScheme = /^[A-Za-z][A-Za-z0-9+.-]*:/.test(uri);
   const allowedFixtureUri = options.allowFixtureUri && uri.startsWith("fixture://");
@@ -3685,9 +3748,9 @@ function assertPortableRuntimeArtifactUri(
   ) {
     throw new Error(`runtime artifact uri must be a portable relative artifact path: ${uri}`);
   }
-  if (!options.allowFixtureUri && !uri.startsWith("artifacts/utsushi/runtime/")) {
+  if (options.requireManagedRoot && !uri.startsWith(`${RUNTIME_MANAGED_ARTIFACT_URI_ROOT}/`)) {
     throw new Error(
-      `runtime artifact uri must be under managed runtime artifact root artifacts/utsushi/runtime/: ${uri}`,
+      `runtime artifact uri must be under managed runtime artifact root ${RUNTIME_MANAGED_ARTIFACT_URI_ROOT}/: ${uri}`,
     );
   }
 }

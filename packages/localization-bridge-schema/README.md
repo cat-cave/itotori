@@ -143,6 +143,12 @@ absolute local paths, and Windows-style backslash paths. Utsushi fixture smoke
 reports currently produce E2 evidence: deterministic text trace plus a referenced
 screenshot artifact. They do not claim E4 pixel fidelity.
 
+The shared schema only owns portability for runtime artifact refs. Managed
+storage refs under `artifacts/utsushi/runtime/...` are required by Utsushi's
+runtime artifact store and Itotori's DB projection, not by every contract
+example. Itotori normalizes schema-portable refs into managed storage refs at
+ingestion and preserves the original adapter-local ref in metadata.
+
 ## Patch And Source Revisions
 
 v0.2 source identity is deterministic and explicit:
