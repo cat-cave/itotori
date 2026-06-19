@@ -1,0 +1,182 @@
+{
+  "archiveParameters": [
+    {
+      "kind": "archiveFormat",
+      "name": "archiveFormat",
+      "parameterId": "xp3-archive-format",
+      "source": "detected",
+      "value": "xp3"
+    },
+    {
+      "kind": "variant",
+      "name": "variant",
+      "parameterId": "xp3-profile-variant",
+      "source": "detected",
+      "value": "plain"
+    }
+  ],
+  "assets": [
+    {
+      "assetId": "kirikiri-xp3-archive",
+      "assetKind": "archive",
+      "patching": {
+        "capability": "patching",
+        "limitation": "XP3 detector profile does not parse, decrypt, decompress, repack, or patch archives",
+        "status": "unsupported"
+      },
+      "path": "data.xp3",
+      "sourceHash": "sha256:d91f38ac42fe9b48a70a0434d6972179ec38b2c758a7a6652474f429e46e4522",
+      "textSurfaces": ["dialogue", "narration"]
+    }
+  ],
+  "capabilities": [
+    {
+      "capability": "asset_inventory",
+      "limitation": null,
+      "status": "supported"
+    },
+    {
+      "capability": "asset_listing",
+      "limitation": null,
+      "status": "supported"
+    },
+    {
+      "capability": "asset_text_patching",
+      "limitation": "[REDACTED:kaifuu.secret_redacted]",
+      "status": "unsupported"
+    },
+    {
+      "capability": "codec_access",
+      "limitation": "compressed XP3 payload handling and script decoding are outside the detector profile",
+      "status": "unsupported"
+    },
+    {
+      "capability": "container_access",
+      "limitation": "XP3 archive entry parsing is outside the detector profile",
+      "status": "unsupported"
+    },
+    {
+      "capability": "crypto_access",
+      "limitation": "[REDACTED:kaifuu.secret_redacted]",
+      "status": "unsupported"
+    },
+    {
+      "capability": "delta_patching",
+      "limitation": ".kaifuu delta packages do not apply to detector-only XP3 profiles",
+      "status": "unsupported"
+    },
+    {
+      "capability": "detection",
+      "limitation": null,
+      "status": "supported"
+    },
+    {
+      "capability": "encrypted_input",
+      "limitation": "encrypted payloads are identified only and are never decrypted by this profile",
+      "status": "unsupported"
+    },
+    {
+      "capability": "extraction",
+      "limitation": "KAIFUU-095 is an XP3 detector/profile fixture only",
+      "status": "unsupported"
+    },
+    {
+      "capability": "key_profile",
+      "limitation": "encrypted XP3 diagnostics name the key requirement, but no key support is claimed",
+      "status": "requires_user_input"
+    },
+    {
+      "capability": "non_text_surface_extraction",
+      "limitation": "[REDACTED:kaifuu.secret_redacted]",
+      "status": "unsupported"
+    },
+    {
+      "capability": "patch_back",
+      "limitation": "XP3 patch-back/repack support is outside the detector profile",
+      "status": "unsupported"
+    },
+    {
+      "capability": "patching",
+      "limitation": "[REDACTED:kaifuu.secret_redacted]",
+      "status": "unsupported"
+    },
+    {
+      "capability": "profile_generation",
+      "limitation": null,
+      "status": "supported"
+    },
+    {
+      "capability": "runtime_vm",
+      "limitation": "runtime support belongs to future Utsushi/KiriKiri work, not this detector fixture",
+      "status": "unsupported"
+    }
+  ],
+  "engine": {
+    "adapterId": "kaifuu.kirikiri_xp3",
+    "detectedVariant": "xp3-plain-container",
+    "engineFamily": "kiri_kiri_xp3",
+    "engineVersion": null
+  },
+  "gameId": "kaifuu-kirikiri-xp3-synthetic-archive-xp3-plain-container",
+  "layeredAccess": {
+    "schemaVersion": "0.1.0",
+    "surfaces": [
+      {
+        "assetId": "kirikiri-xp3-archive",
+        "codec": "unknown",
+        "container": "xp3",
+        "crypto": "null_key",
+        "helperStatus": "not_required",
+        "keyMaterialStatus": "not_required",
+        "notes": ["detector-only layered access record; no XP3 archive entry listing, script decoding, extraction, or patch-back is claimed"],
+        "patchBack": "unsupported",
+        "path": "data.xp3",
+        "surfaceId": "kirikiri-xp3-archive#dialogue",
+        "surfaceSelector": "aggregate-only:synthetic-xp3-archive",
+        "surfaceTransform": "archive_entry",
+        "textSurface": "dialogue"
+      }
+    ]
+  },
+  "metadata": {
+    "fixtureOnly": "true",
+    "profileDiagnostics.compressedPayload": "false",
+    "profileDiagnostics.encryptedPayload": "false",
+    "profileDiagnostics.unknownVariant": "false",
+    "profileDiagnostics.unsupportedParserBoundary": "true",
+    "supportBoundary": "XP3 profile fixtures identify synthetic KiriKiri/XP3 archive containers for detector and profile evidence only; archive entry parsing, decompression, decryption, extraction, patch-back, and runtime support are not claimed."
+  },
+  "profileId": "019ed000-0000-7000-8000-000000095001",
+  "requirements": [
+    {
+      "category": "file",
+      "description": "synthetic XP3 detector evidence status",
+      "key": "data.xp3",
+      "placeholder": null,
+      "secret": false,
+      "status": "satisfied"
+    },
+    {
+      "category": "platform",
+      "description": "parser/runtime helpers are outside the detector-only profile",
+      "key": "xp3-parser",
+      "placeholder": null,
+      "secret": false,
+      "status": "not_required"
+    },
+    {
+      "category": "secret_key",
+      "description": "[REDACTED:kaifuu.secret_redacted]",
+      "key": "kirikiri-xp3-key-profile",
+      "placeholder": null,
+      "secret": true,
+      "status": "not_required"
+    }
+  ],
+  "schemaVersion": "0.1.0",
+  "sourceFingerprint": {
+    "engineEvidence": ["data.xp3"]
+  },
+  "sourceLocale": "ja-JP",
+  "title": "KiriKiri XP3 fixture"
+}

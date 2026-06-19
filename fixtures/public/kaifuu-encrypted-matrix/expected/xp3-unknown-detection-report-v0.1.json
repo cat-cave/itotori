@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "gameDir": "[redacted-local-game-dir]",
-  "status": "matched",
+  "status": "unknown",
   "detections": [
     {
       "adapterId": "kaifuu.fixture",
@@ -136,15 +136,41 @@
     {
       "adapterId": "kaifuu.kirikiri_xp3",
       "detected": false,
+      "detectedVariant": "xp3-unknown-container",
       "evidence": [
         {
           "path": "data.xp3",
           "kind": "[REDACTED:kaifuu.secret_redacted]",
-          "status": "missing",
-          "detail": "XP3 synthetic archive signature is missing"
+          "status": "matched",
+          "detail": "XP3 synthetic archive signature matched"
         }
       ],
-      "requirements": [],
+      "requirements": [
+        {
+          "category": "file",
+          "key": "[REDACTED:kaifuu.secret_redacted]",
+          "status": "unsupported",
+          "description": "[REDACTED:kaifuu.secret_redacted]",
+          "placeholder": null,
+          "secret": false
+        },
+        {
+          "category": "file",
+          "key": "data.xp3",
+          "status": "satisfied",
+          "description": "synthetic XP3 archive header fixture",
+          "placeholder": null,
+          "secret": false
+        },
+        {
+          "category": "platform",
+          "key": "xp3-parser",
+          "status": "unsupported",
+          "description": "XP3 archive parser/rebuilder boundary is unsupported for KAIFUU-095",
+          "placeholder": null,
+          "secret": false
+        }
+      ],
       "capabilities": [
         {
           "capability": "asset_inventory",
@@ -230,57 +256,22 @@
     },
     {
       "adapterId": "kaifuu.siglus",
-      "detected": true,
-      "engineFamily": "siglus",
-      "detectedVariant": "scene-pck-gameexe-dat-synthetic",
+      "detected": false,
       "evidence": [
         {
           "path": "Gameexe.dat",
           "kind": "synthetic_siglus_gameexe_dat_signature",
-          "status": "matched",
-          "detail": "Gameexe.dat synthetic signature matched"
+          "status": "missing",
+          "detail": "Gameexe.dat synthetic signature is missing"
         },
         {
           "path": "Scene.pck",
           "kind": "synthetic_siglus_scene_pck_signature",
-          "status": "matched",
-          "detail": "Scene.pck synthetic signature matched"
-        }
-      ],
-      "requirements": [
-        {
-          "category": "file",
-          "key": "Gameexe.dat",
-          "status": "satisfied",
-          "description": "synthetic Siglus Gameexe.dat signature fixture",
-          "placeholder": null,
-          "secret": false
-        },
-        {
-          "category": "file",
-          "key": "Scene.pck",
-          "status": "satisfied",
-          "description": "synthetic Siglus Scene.pck signature fixture",
-          "placeholder": null,
-          "secret": false
-        },
-        {
-          "category": "platform",
-          "key": "siglus-parser",
-          "status": "unsupported",
-          "description": "Scene.pck parser/decompiler boundary is unsupported for KAIFUU-091",
-          "placeholder": null,
-          "secret": false
-        },
-        {
-          "category": "secret_key",
-          "key": "siglus-secondary-key",
           "status": "missing",
-          "description": "encrypted Siglus payload is detected, but key resolution is outside the detector profile",
-          "placeholder": "KAIFUU_SIGLUS_SECONDARY_KEY_PROFILE",
-          "secret": true
+          "detail": "Scene.pck synthetic signature is missing"
         }
       ],
+      "requirements": [],
       "capabilities": [
         {
           "capability": "asset_inventory",
@@ -373,22 +364,22 @@
       {
         "rowId": "kirikiri-xp3",
         "engineFamily": "kiri_kiri_xp3",
-        "detected": false,
-        "detectedVariant": "xp3-archive",
-        "signals": [],
+        "detected": true,
+        "detectedVariant": "xp3-unknown-container",
+        "signals": ["packed", "unknown_variant"],
         "evidence": [
           {
             "evidenceType": "file_extension",
             "pattern": "*.xp3",
-            "status": "missing",
-            "count": 0,
+            "status": "matched",
+            "count": 1,
             "detail": "XP3 archive extension count"
           },
           {
             "evidenceType": "file_magic",
             "pattern": "XP3 header",
-            "status": "missing",
-            "count": 0,
+            "status": "matched",
+            "count": 1,
             "detail": "XP3 archive header count"
           },
           {
@@ -408,97 +399,25 @@
           {
             "evidenceType": "file_magic",
             "pattern": "synthetic XP3 unknown-variant marker",
-            "status": "missing",
-            "count": 0,
+            "status": "matched",
+            "count": 1,
             "detail": "Synthetic unknown XP3 container marker count"
           }
         ],
         "requirements": [],
-        "diagnostics": [],
-        "capabilities": [
-          {
-            "capability": "detection",
-            "status": "supported",
-            "limitation": null
-          }
-        ],
-        "supportBoundary": "Kaifuu detects XP3 archives and encrypted XP3 markers but does not claim XP3 extraction, decryption, or archive rebuild support in this matrix."
-      },
-      {
-        "rowId": "siglus-scene-pck",
-        "engineFamily": "siglus",
-        "detected": true,
-        "detectedVariant": "scene-pck-gameexe-dat",
-        "signals": ["encrypted", "helper_required", "missing_key", "packed"],
-        "evidence": [
-          {
-            "evidenceType": "file_name",
-            "pattern": "Gameexe.dat",
-            "status": "matched",
-            "count": 1,
-            "detail": "Siglus executable metadata marker count"
-          },
-          {
-            "evidenceType": "file_name",
-            "pattern": "Scene.pck",
-            "status": "matched",
-            "count": 1,
-            "detail": "Siglus scenario package marker count"
-          }
-        ],
-        "requirements": [
-          {
-            "category": "file",
-            "key": "Gameexe.dat",
-            "status": "satisfied",
-            "description": "Siglus secondary-key workflows usually require Gameexe.dat evidence",
-            "placeholder": null,
-            "secret": false
-          },
-          {
-            "category": "file",
-            "key": "Scene.pck",
-            "status": "satisfied",
-            "description": "Siglus detection expects aggregate evidence for Scene.pck",
-            "placeholder": null,
-            "secret": false
-          },
-          {
-            "category": "secret_key",
-            "key": "siglus-secondary-key",
-            "status": "missing",
-            "description": "Siglus encrypted packages require a local secondary key reference",
-            "placeholder": "KAIFUU_SIGLUS_SECONDARY_KEY",
-            "secret": true
-          }
-        ],
         "diagnostics": [
           {
-            "code": "kaifuu.helper_unavailable",
-            "signal": "helper_required",
-            "requiredCapability": "key_profile",
-            "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated.",
-            "remediation": "run an explicitly enabled local helper or provide validated local key evidence"
-          },
-          {
-            "code": "kaifuu.missing_key_material",
-            "signal": "missing_key",
-            "requiredCapability": "key_profile",
-            "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated.",
-            "remediation": "resolve local key material through a secret ref; do not persist raw keys"
-          },
-          {
-            "code": "kaifuu.unsupported_variant.encrypted",
-            "signal": "encrypted",
-            "requiredCapability": "encrypted_input",
-            "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated.",
-            "remediation": "provide a supported key profile only after an adapter explicitly supports this encrypted variant"
+            "code": "kaifuu.unknown_engine_variant",
+            "signal": "unknown_variant",
+            "requiredCapability": "detection",
+            "supportBoundary": "Kaifuu detects XP3 archives and encrypted XP3 markers but does not claim XP3 extraction, decryption, or archive rebuild support in this matrix.",
+            "remediation": "add a synthetic public detector fixture or private-local aggregate evidence before claiming support"
           },
           {
             "code": "kaifuu.unsupported_variant.packed",
             "signal": "packed",
             "requiredCapability": "extraction",
-            "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated.",
+            "supportBoundary": "Kaifuu detects XP3 archives and encrypted XP3 markers but does not claim XP3 extraction, decryption, or archive rebuild support in this matrix.",
             "remediation": "use already extracted/plaintext sources or wait for an adapter that claims this container"
           }
         ],
@@ -509,24 +428,47 @@
             "limitation": null
           },
           {
-            "capability": "encrypted_input",
-            "status": "unsupported",
-            "limitation": "encrypted input was detected, but decryption support is not claimed by the matrix"
-          },
-          {
             "capability": "extraction",
             "status": "unsupported",
             "limitation": "archive/encryption matrix detection is not an extraction support claim"
           },
           {
-            "capability": "key_profile",
-            "status": "requires_user_input",
-            "limitation": "recognized protected inputs require local secret refs or helper evidence before future pure adapter work can proceed"
-          },
-          {
             "capability": "patching",
             "status": "unsupported",
             "limitation": "archive/encryption matrix detection does not rebuild, decrypt, or patch containers"
+          }
+        ],
+        "supportBoundary": "Kaifuu detects XP3 archives and encrypted XP3 markers but does not claim XP3 extraction, decryption, or archive rebuild support in this matrix."
+      },
+      {
+        "rowId": "siglus-scene-pck",
+        "engineFamily": "siglus",
+        "detected": false,
+        "detectedVariant": "gameexe-dat-without-scene-pck",
+        "signals": [],
+        "evidence": [
+          {
+            "evidenceType": "file_name",
+            "pattern": "Gameexe.dat",
+            "status": "missing",
+            "count": 0,
+            "detail": "Siglus executable metadata marker count"
+          },
+          {
+            "evidenceType": "file_name",
+            "pattern": "Scene.pck",
+            "status": "missing",
+            "count": 0,
+            "detail": "Siglus scenario package marker count"
+          }
+        ],
+        "requirements": [],
+        "diagnostics": [],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
           }
         ],
         "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated."
@@ -712,5 +654,5 @@
       }
     ]
   },
-  "warnings": []
+  "warnings": ["no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"]
 }
