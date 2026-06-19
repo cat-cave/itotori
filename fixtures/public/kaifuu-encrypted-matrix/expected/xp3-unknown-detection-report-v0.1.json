@@ -477,15 +477,29 @@
         "rowId": "rpg-maker-mv-mz-encrypted-assets",
         "engineFamily": "rpg_maker_mv_mz",
         "detected": false,
-        "detectedVariant": "mv-mz-encrypted-asset-signals",
+        "detectedVariant": "mv_or_mz",
         "signals": [],
         "evidence": [
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.png|*.m4a|*.ogg",
+            "status": "missing",
+            "count": 0,
+            "detail": "RPG Maker MV/MZ plain image/audio asset extension count; does not imply encrypted asset handling"
+          },
           {
             "evidenceType": "file_extension",
             "pattern": "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_",
             "status": "missing",
             "count": 0,
             "detail": "RPG Maker MV/MZ encrypted asset extension count"
+          },
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.rpgmvu|*.webp_",
+            "status": "missing",
+            "count": 0,
+            "detail": "RPG Maker-like encrypted asset suffixes without a known codec/key mapping"
           },
           {
             "evidenceType": "metadata_field",
@@ -654,7 +668,5 @@
       }
     ]
   },
-  "warnings": [
-    "no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"
-  ]
+  "warnings": ["no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"]
 }
