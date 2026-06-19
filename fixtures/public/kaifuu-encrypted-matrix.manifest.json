@@ -24,8 +24,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/detection-summary-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "7ef37135de808aadcbf05efe5ea118249c26d8193d0ee8d05f9daa978b1d2241",
-      "bytes": 1661,
+      "sha256": "70d86ec1ad4f59d2f1277afcc617a4c074a6b02a5345738708d1ff70fb405017",
+      "bytes": 1453,
       "redistributable": true
     },
     {
@@ -48,8 +48,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/siglus-detector-profile-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "5abf1475a3acb56cabfeb0055b06f522485c523a627da54b7a08f4085a78e50f",
-      "bytes": 6719,
+      "sha256": "962f28d577ce78890b84b9dec12e563625d27996c58480a1fec349c91a3c9ffe",
+      "bytes": 6759,
       "redistributable": true
     },
     {
@@ -96,32 +96,32 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/key-profiles/negative/private-path-secret-ref.profile.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "8b0517fab41c53c0773b982aa3fd73692a4ad5eee9bf243e17214343fc324392",
-      "bytes": 2536,
+      "sha256": "ea8ea7d5191273cdaefa8ec7eb0b6fc5b343e21b1fabefceb9ab5c12561b1dad",
+      "bytes": 2508,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/key-profiles/negative/raw-key-secret-ref.profile.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "e41cb0a8dac63c8c4574b7f608fb2184243b49e677b5598b51204d667b72c336",
-      "bytes": 2528,
+      "sha256": "d0bff1de32789c3e38b1f990b81fe9ca5044579eeef4cecbf5b5bce61ae34bec",
+      "bytes": 2500,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/key-profiles/siglus-valid-placeholder.profile.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "23883aa637ef4a577ae0c3968556fa2da5b8b5837c98cfb96381d6069f208718",
-      "bytes": 2533,
+      "sha256": "7cb73740cd8647bea41e1b3887b81d73d8e02d91b7b57e9781e001ca8a9cd4d1",
+      "bytes": 2505,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/keys/public-fixture-key-manifest.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "aa59f2c7ecef18271599dc54637a5dd6f7344a40ca1e999aa3edadd57feea9d7",
-      "bytes": 2231,
+      "sha256": "676423d64c28858d19aaa14f2ddf5ff1524b3744084908cefddc49d39b9b0b00",
+      "bytes": 2151,
       "redistributable": true
     },
     {
@@ -250,7 +250,9 @@
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
-    "sourceLocales": ["ja-JP"],
+    "sourceLocales": [
+      "ja-JP"
+    ],
     "targetLocales": [],
     "engineKinds": [
       "bgi-ethornell-synthetic-container",
