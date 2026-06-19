@@ -330,9 +330,7 @@
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
-    "sourceLocales": [
-      "ja-JP"
-    ],
+    "sourceLocales": ["ja-JP"],
     "targetLocales": [],
     "engineKinds": [
       "bgi-ethornell-synthetic-container",
