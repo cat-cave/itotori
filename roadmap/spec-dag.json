@@ -11499,10 +11499,7 @@
     {
       "id": "ITOTORI-070",
       "title": "Exact search document table and tool v1",
-      "status": "in_progress",
-      "owner": "orchestrator-wave20",
-      "branch": "spec/itotori-070",
-      "worktree": "/tmp/itotori-spec-itotori-070",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -13147,10 +13144,7 @@
     {
       "id": "KAIFUU-093",
       "title": "Siglus known-key parser-boundary smoke fixture",
-      "status": "in_progress",
-      "owner": "orchestrator-wave20",
-      "branch": "spec/kaifuu-093",
-      "worktree": "/tmp/itotori-spec-kaifuu-093",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -20278,11 +20272,84 @@
       ]
     },
     {
+      "id": "KAIFUU-166",
+      "status": "planned",
+      "title": "Siglus parser-boundary fixture generator coverage",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-093"],
+      "summary": "Teach the public encrypted fixture generator to reproduce the Siglus parser-boundary smoke expected output added by KAIFUU-093.",
+      "deliverables": [
+        "Generator support for expected/siglus-parser-boundary-smoke-v0.1.json",
+        "Regression proving fixture regeneration preserves the parser-boundary expected output and manifest entry",
+        "Manifest provenance aligned with generator-owned fixture semantics"
+      ],
+      "acceptanceCriteria": [
+        "Running the public encrypted fixture generator does not delete or stale the Siglus parser-boundary expected output.",
+        "The generated expected output remains public-safe and contains no raw key material, decrypted script text, private paths, or retail asset bytes.",
+        "Manifest validation and regeneration tests fail if the KAIFUU-093 expected output is omitted."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "node fixtures/generate-kaifuu-encrypted-public-fixtures.mjs"
+        },
+        {
+          "type": "command",
+          "value": "node fixtures/validate-public-manifests.mjs"
+        },
+        {
+          "type": "command",
+          "value": "git diff --check"
+        }
+      ],
+      "auditFocus": [
+        "Generator deleting parser-boundary fixtures",
+        "Generated expected output leaking key or local path material",
+        "Manifest claiming generator provenance without reproducible output"
+      ]
+    },
+    {
+      "id": "KAIFUU-167",
+      "status": "planned",
+      "title": "Siglus parser-boundary diagnostic redaction precision",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-093"],
+      "summary": "Keep Siglus parser-boundary failure messages useful while preserving secret redaction guarantees.",
+      "deliverables": [
+        "Redaction allowlist or structured-message split for non-secret helper-required and unsupported-opcode explanations",
+        "Regression for human-readable failure messages in public reports",
+        "Leak scan covering raw keys, local paths, decrypted scripts, and helper dumps"
+      ],
+      "acceptanceCriteria": [
+        "Helper-required and unsupported-opcode reports retain a non-secret human-readable explanation after redaction.",
+        "Secret-like fields and explicit raw key material remain redacted from parser-boundary reports.",
+        "Outcome, semantic code, unsupported opcode, and byte-span fields continue to distinguish failure categories even if message wording changes."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core siglus_known_key_parser_boundary_smoke_reports_slots_and_redacted_diagnostics"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli siglus_parser_boundary_smoke_cli_writes_redacted_report_and_blocks_unsupported_opcode"
+        }
+      ],
+      "auditFocus": [
+        "Useful failure messages over-redacted to opaque placeholders",
+        "Secret redaction weakened while improving wording",
+        "CLI and core report wording drifting"
+      ]
+    },
+    {
       "id": "UTSUSHI-145",
-      "status": "in_progress",
-      "owner": "orchestrator-wave20",
-      "branch": "spec/utsushi-145",
-      "worktree": "/tmp/itotori-spec-utsushi-145",
+      "status": "complete",
       "title": "Runtime artifact ref portability validation",
       "priority": "P2",
       "target": "continuous",
