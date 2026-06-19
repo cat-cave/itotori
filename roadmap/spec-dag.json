@@ -4213,7 +4213,7 @@
     {
       "id": "KAIFUU-051",
       "title": "Synthetic encrypted fixture suite",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared"],
@@ -4263,7 +4263,10 @@
         "Synthetic fixtures accidentally implying production engine support",
         "Fixture key confusion with private key material",
         "Private corpus or retail byte leakage"
-      ]
+      ],
+      "owner": "orchestrator-wave12",
+      "branch": "spec/kaifuu-051",
+      "worktree": "/tmp/itotori-spec-kaifuu-051"
     },
     {
       "id": "KAIFUU-052",
@@ -12912,7 +12915,7 @@
     {
       "id": "KAIFUU-087",
       "title": "Manual key entry and local known-key import boundary",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12944,12 +12947,15 @@
         "Raw keys serialized into fixtures or reports",
         "Known-key paths bypassing helper registry policy",
         "Key refs not tied to engine profile hashes"
-      ]
+      ],
+      "owner": "orchestrator-wave12",
+      "branch": "spec/kaifuu-087",
+      "worktree": "/tmp/itotori-spec-kaifuu-087"
     },
     {
       "id": "KAIFUU-088",
       "title": "Helper binary allowlist schema and hash gate",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12981,7 +12987,10 @@
         "Executable helpers launched without hash validation",
         "Allowlist fixtures tied to local private paths",
         "Helper capabilities broader than allowlist metadata"
-      ]
+      ],
+      "owner": "orchestrator-wave12",
+      "branch": "spec/kaifuu-088",
+      "worktree": "/tmp/itotori-spec-kaifuu-088"
     },
     {
       "id": "KAIFUU-089",
