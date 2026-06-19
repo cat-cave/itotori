@@ -4213,7 +4213,7 @@
     {
       "id": "KAIFUU-051",
       "title": "Synthetic encrypted fixture suite",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared"],
@@ -4263,10 +4263,7 @@
         "Synthetic fixtures accidentally implying production engine support",
         "Fixture key confusion with private key material",
         "Private corpus or retail byte leakage"
-      ],
-      "owner": "orchestrator-wave12",
-      "branch": "spec/kaifuu-051",
-      "worktree": "/tmp/itotori-spec-kaifuu-051"
+      ]
     },
     {
       "id": "KAIFUU-052",
@@ -12915,7 +12912,7 @@
     {
       "id": "KAIFUU-087",
       "title": "Manual key entry and local known-key import boundary",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12947,15 +12944,12 @@
         "Raw keys serialized into fixtures or reports",
         "Known-key paths bypassing helper registry policy",
         "Key refs not tied to engine profile hashes"
-      ],
-      "owner": "orchestrator-wave12",
-      "branch": "spec/kaifuu-087",
-      "worktree": "/tmp/itotori-spec-kaifuu-087"
+      ]
     },
     {
       "id": "KAIFUU-088",
       "title": "Helper binary allowlist schema and hash gate",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12987,10 +12981,7 @@
         "Executable helpers launched without hash validation",
         "Allowlist fixtures tied to local private paths",
         "Helper capabilities broader than allowlist metadata"
-      ],
-      "owner": "orchestrator-wave12",
-      "branch": "spec/kaifuu-088",
-      "worktree": "/tmp/itotori-spec-kaifuu-088"
+      ]
     },
     {
       "id": "KAIFUU-089",
@@ -19143,6 +19134,38 @@
       "auditFocus": [
         "Noisy app test filters",
         "Verification commands that depend on unrelated server sockets"
+      ]
+    },
+    {
+      "id": "KAIFUU-155",
+      "status": "planned",
+      "title": "Key import shell-history-safe CLI help",
+      "priority": "P2",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-087"],
+      "summary": "Harden Kaifuu key import help and usage text so manual imports guide users toward file or prompt-style local input instead of command-line hex key entry.",
+      "deliverables": [
+        "Shell-history-safe key import usage text",
+        "Documentation that treats command-line hex key entry as a constrained test/local escape hatch",
+        "Regression coverage for key import error output"
+      ],
+      "acceptanceCriteria": [
+        "Normal key import usage output no longer advertises --key-hex <hex> as the primary manual entry path.",
+        "Docs and CLI output continue to explain hash-only reports and local-only secret storage.",
+        "Regression tests cover key import usage and missing-material diagnostics."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Raw key material in shell history",
+        "Usage output steering users toward unsafe input channels",
+        "No regression in local-only import metadata"
       ]
     }
   ]

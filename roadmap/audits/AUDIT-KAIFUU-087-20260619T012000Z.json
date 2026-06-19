@@ -1,0 +1,107 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-087-20260619T012000Z",
+  "generatedAt": "2026-06-19T01:20:00Z",
+  "spec": {
+    "id": "KAIFUU-087",
+    "title": "Manual key entry and local known-key import boundary",
+    "branch": "spec/kaifuu-087",
+    "worktree": "/tmp/itotori-spec-kaifuu-087",
+    "commit": "8ee3850660b10d8a183de6c5f8bd0ca106822381"
+  },
+  "auditor": {
+    "name": "codex-security-audit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Focused re-audit at 8ee3850 confirms the previous P1 is fixed: required helper key refs no longer pass by requirement id alone, missing or empty secretRef is rejected, missing or mismatched engineProfileId/sourceHash is rejected, and valid bounded refs succeed without silently dropping secretRefs or serializing raw key material. The remaining --key-hex usage issue is still nonblocking and suitable as a DAG follow-up.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-087-F002"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-087-F002",
+      "severity": "P2",
+      "title": "Key import usage advertises shell-history hex entry",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "line": 221,
+          "symbol": "run_key_command"
+        },
+        {
+          "path": "docs/kaifuu-key-discovery.md",
+          "line": 293
+        }
+      ],
+      "description": "The safe documentation path remains hash-only and local-only, and --key-hex support is still covered by tests without leaking raw material into reports. However, CLI usage output still prints (--key-hex <hex>|--key-file <path>) for key import errors, which can steer users toward shell-history-visible key entry.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "cargo run -q -p kaifuu-cli -- key nope exits with usage text containing --key-hex <hex>."
+        },
+        {
+          "kind": "test",
+          "detail": "cargo test -p kaifuu-cli passed, including key_import_command_writes_local_secret_and_hash_only_report, which exercises --key-hex support while asserting the output report omits the raw hex key, rawKey, and keyMaterial."
+        },
+        {
+          "kind": "file",
+          "detail": "docs/kaifuu-key-discovery.md states --key-hex is accepted for local manual entry and tests, while command output and public fixtures must contain only secretRef, purpose, engine profile id, source hash, material hash, byte length, and redaction status."
+        }
+      ],
+      "impact": "Users can still be nudged toward command-line key material entry, but this does not block KAIFUU-087 completion because the import/report boundary remains local-only and redacted.",
+      "actionableAcceptanceCriteria": [
+        "CLI usage and help text prefer --key-file and avoid presenting --key-hex as the normal shell command path.",
+        "If --key-hex remains supported, it is documented as test/local escape-hatch behavior outside shell-history-oriented usage output.",
+        "Tests assert key import error/usage output does not include raw-key examples or encourage command-line key material entry."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Key import shell-history-safe CLI help",
+          "priority": "P2",
+          "target": "alpha",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-087"],
+          "summary": "Harden Kaifuu key import help and usage text so manual imports guide users toward file or prompt-style local input instead of command-line hex key entry.",
+          "deliverables": [
+            "Shell-history-safe key import usage text",
+            "Documentation that treats command-line hex key entry as a constrained test/local escape hatch",
+            "Regression coverage for key import error output"
+          ],
+          "acceptanceCriteria": [
+            "Normal key import usage output no longer advertises --key-hex <hex> as the primary manual entry path.",
+            "Docs and CLI output continue to explain hash-only reports and local-only secret storage.",
+            "Regression tests cover key import usage and missing-material diagnostics."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli"
+            }
+          ],
+          "auditFocus": [
+            "Raw key material in shell history",
+            "Usage output steering users toward unsafe input channels",
+            "No regression in local-only import metadata"
+          ]
+        }
+      }
+    }
+  ]
+}

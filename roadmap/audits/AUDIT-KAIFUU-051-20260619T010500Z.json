@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-051-20260619T010500Z",
+  "generatedAt": "2026-06-19T01:05:00Z",
+  "spec": {
+    "id": "KAIFUU-051",
+    "title": "Encrypted public fixture matrix",
+    "branch": "spec/kaifuu-051",
+    "worktree": "/tmp/itotori-spec-kaifuu-051",
+    "commit": "a5691948f33342661021bf3c132859d3c36fb860"
+  },
+  "auditor": {
+    "name": "codex",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "KAIFUU-051 passes audit. The public encrypted fixture matrix is generated from deterministic synthetic bytes, is manifest-validated, keeps fixture-only key material scoped to public-safe generated payloads, covers detector aggregate output and helper/key failure paths through public CI, and does not introduce a hidden private-local CI dependency.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
