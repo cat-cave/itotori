@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-known-key-import-boundary",
+  "helperResultId": "helper-result-known-key-import-boundary",
+  "profileId": "019ed000-0000-7000-8000-profile00087",
+  "helper": {
+    "helperId": "kaifuu.fixture.known-key-import",
+    "helperVersion": "0.1.0",
+    "helperKind": "knownKeyDatabaseImport"
+  },
+  "diagnostic": {
+    "code": "success",
+    "message": "synthetic known-key import persisted only local key refs and hash metadata"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "sourceHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "materialHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "keyPurpose": "siglus-secondary-key",
+  "engineProfileId": "019ed000-0000-7000-8000-profile00087",
+  "secretRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/manual-secondary-key",
+      "materialKind": "fixedBytes",
+      "bytes": 16,
+      "validation": {
+        "method": "decryptHeaderProof",
+        "proofHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    }
+  ],
+  "proofHashes": [
+    {
+      "method": "decryptHeaderProof",
+      "proofHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  ]
+}

@@ -277,6 +277,27 @@ it must not require live community services, publish imported keys, or make
 public CI depend on a private key table. A failed lookup is a missing-key or
 helper-unavailable result, not a reason to weaken adapter boundaries.
 
+Manual key entry and known-key imports use the same local-only boundary. The
+CLI command is:
+
+```sh
+kaifuu key import \
+  --secret-store .kaifuu/secrets.local \
+  --secret-ref local-secret:fixture/siglus/manual-secondary-key \
+  --purpose siglus-secondary-key \
+  --engine-profile-id 019ed000-0000-7000-8000-profile00087 \
+  --key-file ./local-key-bytes.bin \
+  --output ./redacted-import-metadata.json
+```
+
+`--key-hex` is accepted for local manual entry and tests, but command output and
+public fixtures must contain only `secretRef`, key purpose, engine profile id,
+source hash, material hash, byte count, source kind, and redaction status. The
+raw key is written only under the ignored local secret store. Helper requests
+receive bounded key-ref metadata through the registry boundary and reject
+missing refs, wrong engine profile ids, source-hash mismatches, or any raw key
+serialization before invoking helper logic.
+
 ## 2026 Research Snapshot
 
 Current tooling points to several different key-discovery mechanisms. Kaifuu
