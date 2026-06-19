@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-helper-key-ref-request",
+  "engineProfileId": "019ed000-0000-7000-8000-profile00087",
+  "sourceHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "requiredKeyRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "engineProfileId": "019ed000-0000-7000-8000-profile00087",
+      "sourceHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ],
+  "keyRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/manual-secondary-key",
+      "keyPurpose": "siglus-secondary-key",
+      "engineProfileId": "019ed000-0000-7000-8000-profile00087",
+      "sourceHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "materialHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "materialKind": "fixedBytes",
+      "bytes": 16,
+      "redactionStatus": "redacted"
+    }
+  ]
+}

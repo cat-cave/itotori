@@ -37,6 +37,9 @@ pub const SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA: &str =
     "kaifuu.helper_registry.incompatible_output_schema";
 pub const SEMANTIC_HELPER_REGISTRY_INVALID_REDACTION_CLASS: &str =
     "kaifuu.helper_registry.invalid_redaction_class";
+pub const SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE: &str = "kaifuu.key_import.wrong_engine_profile";
+pub const SEMANTIC_KEY_IMPORT_HASH_MISMATCH: &str = "kaifuu.key_import.hash_mismatch";
+pub const SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION: &str = "kaifuu.forbidden_public_serialization";
 pub const SEMANTIC_MALFORMED_SECRET_REF: &str = "kaifuu.malformed_secret_ref";
 pub const SEMANTIC_SECRET_REF_OUT_OF_POLICY: &str = "kaifuu.secret_ref_out_of_policy";
 pub const SEMANTIC_EXTERNAL_SECRET_UNAVAILABLE: &str = "kaifuu.external_secret_unavailable";
@@ -3702,6 +3705,108 @@ impl HelperResultSecretRef {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalKeyImportSource {
+    ManualKeyEntry,
+    KnownKeyDatabaseImport,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct LocalKeyImportRequest {
+    pub secret_ref: SecretRef,
+    pub key_purpose: String,
+    pub engine_profile_id: String,
+    pub source_hash: ProofHash,
+    pub redaction_status: HelperRedactionStatus,
+    pub source: LocalKeyImportSource,
+    pub material: Vec<u8>,
+}
+
+impl fmt::Debug for LocalKeyImportRequest {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("LocalKeyImportRequest")
+            .field("secret_ref", &self.secret_ref)
+            .field("key_purpose", &self.key_purpose)
+            .field("engine_profile_id", &self.engine_profile_id)
+            .field("source_hash", &self.source_hash)
+            .field("redaction_status", &self.redaction_status)
+            .field("source", &self.source)
+            .field(
+                "material",
+                &format_args!(
+                    "[REDACTED:{}; byte_len={}]",
+                    SEMANTIC_SECRET_REDACTED,
+                    self.material.len()
+                ),
+            )
+            .finish()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalKeyImportResult {
+    pub schema_version: String,
+    pub import_id: String,
+    pub secret_ref: SecretRef,
+    pub key_purpose: String,
+    pub engine_profile_id: String,
+    pub source_hash: ProofHash,
+    pub material_hash: ProofHash,
+    pub material_bytes: usize,
+    pub redaction_status: HelperRedactionStatus,
+    pub source: LocalKeyImportSource,
+    pub stored_local_ref: bool,
+    pub diagnostics: Vec<LocalKeyImportDiagnostic>,
+}
+
+impl LocalKeyImportResult {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            schema_version: self.schema_version.clone(),
+            import_id: redact_for_log_or_report(&self.import_id),
+            secret_ref: self.secret_ref.clone(),
+            key_purpose: redact_for_log_or_report(&self.key_purpose),
+            engine_profile_id: redact_for_log_or_report(&self.engine_profile_id),
+            source_hash: self.source_hash.clone(),
+            material_hash: self.material_hash.clone(),
+            material_bytes: self.material_bytes,
+            redaction_status: self.redaction_status,
+            source: self.source,
+            stored_local_ref: self.stored_local_ref,
+            diagnostics: self
+                .diagnostics
+                .iter()
+                .map(LocalKeyImportDiagnostic::redacted_for_report)
+                .collect(),
+        }
+    }
+
+    pub fn stable_json(&self) -> KaifuuResult<String> {
+        stable_json(&self.redacted_for_report())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalKeyImportDiagnostic {
+    pub code: String,
+    pub field: String,
+    pub message: String,
+}
+
+impl LocalKeyImportDiagnostic {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            code: redact_for_log_or_report(&self.code),
+            field: redact_for_log_or_report(&self.field),
+            message: redact_for_log_or_report(&self.message),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HelperResultValidationResult {
@@ -4476,6 +4581,185 @@ pub struct HelperExecutionPolicy {
     pub max_runtime_seconds: u32,
 }
 
+pub fn validate_helper_key_ref_request(input: &Value) -> Vec<LocalKeyImportDiagnostic> {
+    let mut diagnostics = Vec::new();
+    for finding in validate_secret_redaction_boundary(input) {
+        diagnostics.push(LocalKeyImportDiagnostic {
+            code: SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION.to_string(),
+            field: finding.field,
+            message: finding.reason,
+        });
+    }
+
+    let expected_engine_profile_id = input
+        .get("engineProfileId")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let expected_source_hash = input
+        .get("sourceHash")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    if let Some(source_hash) = expected_source_hash.as_deref()
+        && ProofHash::new(source_hash.to_string()).is_err()
+    {
+        diagnostics.push(LocalKeyImportDiagnostic {
+            code: "invalid_proof_hash".to_string(),
+            field: "sourceHash".to_string(),
+            message: "sourceHash must be sha256:<64 lowercase hex characters>".to_string(),
+        });
+    }
+
+    let key_refs = input
+        .get("keyRefs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let required_key_refs = input
+        .get("requiredKeyRefs")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for (index, key_ref) in key_refs.iter().enumerate() {
+        let field = format!("keyRefs.{index}");
+        let Some(_requirement_id) = key_ref.get("requirementId").and_then(Value::as_str) else {
+            diagnostics.push(LocalKeyImportDiagnostic {
+                code: "missing_required_field".to_string(),
+                field: format!("{field}.requirementId"),
+                message: "key ref requirementId must not be empty".to_string(),
+            });
+            continue;
+        };
+        if let Some(secret_ref) = key_ref.get("secretRef").and_then(Value::as_str)
+            && let Err(message) = SecretRef::new(secret_ref.to_string())
+        {
+            diagnostics.push(LocalKeyImportDiagnostic {
+                code: "invalid_secret_ref".to_string(),
+                field: format!("{field}.secretRef"),
+                message,
+            });
+        }
+        if key_ref
+            .get("engineProfileId")
+            .and_then(Value::as_str)
+            .is_some_and(|engine_profile_id| {
+                expected_engine_profile_id
+                    .as_deref()
+                    .is_some_and(|expected| expected != engine_profile_id)
+            })
+        {
+            diagnostics.push(LocalKeyImportDiagnostic {
+                code: SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE.to_string(),
+                field: format!("{field}.engineProfileId"),
+                message: "key ref engine profile id does not match the helper request".to_string(),
+            });
+        }
+        if key_ref
+            .get("sourceHash")
+            .and_then(Value::as_str)
+            .is_some_and(|source_hash| {
+                expected_source_hash
+                    .as_deref()
+                    .is_some_and(|expected| expected != source_hash)
+            })
+        {
+            diagnostics.push(LocalKeyImportDiagnostic {
+                code: SEMANTIC_KEY_IMPORT_HASH_MISMATCH.to_string(),
+                field: format!("{field}.sourceHash"),
+                message: "key ref source hash does not match the helper request".to_string(),
+            });
+        }
+    }
+
+    for (index, required) in required_key_refs.iter().enumerate() {
+        let field = format!("requiredKeyRefs.{index}");
+        let Some(requirement_id) = required.get("requirementId").and_then(Value::as_str) else {
+            diagnostics.push(LocalKeyImportDiagnostic {
+                code: "missing_required_field".to_string(),
+                field: format!("{field}.requirementId"),
+                message: "required key ref requirementId must not be empty".to_string(),
+            });
+            continue;
+        };
+        let matching_refs = key_refs
+            .iter()
+            .enumerate()
+            .filter(|(_, key_ref)| {
+                key_ref
+                    .get("requirementId")
+                    .and_then(Value::as_str)
+                    .is_some_and(|candidate| candidate == requirement_id)
+            })
+            .collect::<Vec<_>>();
+        if matching_refs.is_empty() {
+            diagnostics.push(LocalKeyImportDiagnostic {
+                code: SEMANTIC_MISSING_KEY_MATERIAL.to_string(),
+                field,
+                message: format!(
+                    "required local key ref {requirement_id} was not provided to helper boundary"
+                ),
+            });
+            continue;
+        }
+
+        for (key_ref_index, key_ref) in matching_refs {
+            let field = format!("keyRefs.{key_ref_index}");
+            match key_ref.get("secretRef").and_then(Value::as_str) {
+                Some(secret_ref) if !secret_ref.is_empty() => {
+                    if let Err(message) = SecretRef::new(secret_ref.to_string()) {
+                        diagnostics.push(LocalKeyImportDiagnostic {
+                            code: "invalid_secret_ref".to_string(),
+                            field: format!("{field}.secretRef"),
+                            message,
+                        });
+                    }
+                }
+                _ => {
+                    diagnostics.push(LocalKeyImportDiagnostic {
+                        code: SEMANTIC_MISSING_KEY_MATERIAL.to_string(),
+                        field: format!("{field}.secretRef"),
+                        message: format!(
+                            "required local key ref {requirement_id} must include a valid secretRef"
+                        ),
+                    });
+                }
+            }
+
+            match (
+                key_ref.get("engineProfileId").and_then(Value::as_str),
+                expected_engine_profile_id.as_deref(),
+            ) {
+                (Some(engine_profile_id), Some(expected))
+                    if engine_profile_id == expected && !engine_profile_id.is_empty() => {}
+                _ => diagnostics.push(LocalKeyImportDiagnostic {
+                    code: SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE.to_string(),
+                    field: format!("{field}.engineProfileId"),
+                    message: "required key ref engine profile id must match the helper request"
+                        .to_string(),
+                }),
+            }
+
+            match (
+                key_ref.get("sourceHash").and_then(Value::as_str),
+                expected_source_hash.as_deref(),
+            ) {
+                (Some(source_hash), Some(expected))
+                    if source_hash == expected && !source_hash.is_empty() => {}
+                _ => diagnostics.push(LocalKeyImportDiagnostic {
+                    code: SEMANTIC_KEY_IMPORT_HASH_MISMATCH.to_string(),
+                    field: format!("{field}.sourceHash"),
+                    message: "required key ref source hash must match the helper request"
+                        .to_string(),
+                }),
+            }
+        }
+    }
+
+    diagnostics
+        .into_iter()
+        .map(|diagnostic| diagnostic.redacted_for_report())
+        .collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HelperRegistryValidationResult {
@@ -4686,7 +4970,108 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
         FIXTURE_HELPER_REGISTRY_ID
     }
 
-    fn invoke(&self, entry: &HelperRegistryEntry, _input: &Value) -> KaifuuResult<Value> {
+    fn invoke(&self, entry: &HelperRegistryEntry, input: &Value) -> KaifuuResult<Value> {
+        let request_diagnostics = validate_helper_key_ref_request(input);
+        if !request_diagnostics.is_empty() {
+            let code = request_diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.code.as_str())
+                .find(|code| *code == SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION)
+                .or_else(|| {
+                    request_diagnostics
+                        .iter()
+                        .map(|diagnostic| diagnostic.code.as_str())
+                        .find(|code| *code == SEMANTIC_MISSING_KEY_MATERIAL)
+                })
+                .or_else(|| {
+                    request_diagnostics
+                        .first()
+                        .map(|diagnostic| diagnostic.code.as_str())
+                })
+                .unwrap_or(SEMANTIC_KEY_VALIDATION_FAILED);
+            let diagnostic_code = match code {
+                SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION => "redaction_failure",
+                SEMANTIC_MISSING_KEY_MATERIAL => "missing_key",
+                _ => "validation_failed",
+            };
+            return Ok(serde_json::json!({
+                "schemaVersion": HELPER_RESULT_SCHEMA_VERSION,
+                "fixtureId": "kaifuu-helper-registry-key-ref-request",
+                "helperResultId": "helper-result-registry-key-ref-request",
+                "profileId": input
+                    .get("engineProfileId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("019ed000-0000-7000-8000-profile00086"),
+                "helper": {
+                    "helperId": entry.helper_id,
+                    "helperVersion": entry.helper_version,
+                    "helperKind": "knownKeyDatabaseImport"
+                },
+                "diagnostic": {
+                    "code": diagnostic_code,
+                    "message": code
+                },
+                "redaction": {
+                    "status": if diagnostic_code == "redaction_failure" { "failed" } else { "redacted" },
+                    "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                },
+                "secretRefs": [],
+                "proofHashes": []
+            }));
+        }
+
+        let secret_refs = input
+            .get("keyRefs")
+            .and_then(Value::as_array)
+            .map(|key_refs| {
+                key_refs
+                    .iter()
+                    .filter_map(|key_ref| {
+                        let requirement_id = key_ref.get("requirementId")?.as_str()?;
+                        let secret_ref = key_ref.get("secretRef")?.as_str()?;
+                        Some(serde_json::json!({
+                            "requirementId": requirement_id,
+                            "secretRef": secret_ref,
+                            "materialKind": key_ref
+                                .get("materialKind")
+                                .and_then(Value::as_str)
+                                .unwrap_or("fixedBytes"),
+                            "bytes": key_ref
+                                .get("bytes")
+                                .and_then(Value::as_u64)
+                                .unwrap_or(16)
+                        }))
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if !secret_refs.is_empty() {
+            return Ok(serde_json::json!({
+                "schemaVersion": HELPER_RESULT_SCHEMA_VERSION,
+                "fixtureId": "kaifuu-helper-registry-key-ref-request",
+                "helperResultId": "helper-result-registry-key-ref-request",
+                "profileId": input
+                    .get("engineProfileId")
+                    .and_then(Value::as_str)
+                    .unwrap_or("019ed000-0000-7000-8000-profile00086"),
+                "helper": {
+                    "helperId": entry.helper_id,
+                    "helperVersion": entry.helper_version,
+                    "helperKind": "knownKeyDatabaseImport"
+                },
+                "diagnostic": {
+                    "code": "success",
+                    "message": "fixture helper received bounded key refs through registry boundary"
+                },
+                "redaction": {
+                    "status": "redacted",
+                    "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                },
+                "secretRefs": secret_refs,
+                "proofHashes": []
+            }));
+        }
+
         Ok(serde_json::json!({
             "schemaVersion": HELPER_RESULT_SCHEMA_VERSION,
             "fixtureId": "kaifuu-helper-registry-stub",
@@ -5648,6 +6033,150 @@ impl LocalSecretDirectoryStore {
 
     pub fn support_boundary(&self) -> &'static str {
         local_secret_directory_support_boundary()
+    }
+
+    pub fn import_key_reference(
+        &self,
+        request: LocalKeyImportRequest,
+    ) -> Result<LocalKeyImportResult, KeyResolverError> {
+        if request.secret_ref.scheme() != SecretRefScheme::LocalSecret {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(request.secret_ref.scheme()),
+                "manual key imports may only write local-secret refs",
+            ));
+        }
+        if request.material.is_empty() || request.material.len() > self.max_secret_bytes {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret import material must be non-empty and within the configured byte limit",
+            ));
+        }
+        if request.key_purpose.trim().is_empty() {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "key purpose metadata must not be empty",
+            ));
+        }
+        if request.engine_profile_id.trim().is_empty() {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "engine profile id metadata must not be empty",
+            ));
+        }
+        if request.redaction_status != HelperRedactionStatus::Redacted {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "manual and known-key imports must persist only redacted metadata",
+            ));
+        }
+
+        let secret_path = self.checked_new_secret_path(request.secret_ref.name())?;
+        let metadata_path = self.metadata_path_for_secret(request.secret_ref.name())?;
+        write_secret_material_no_clobber(&secret_path, &request.material)?;
+
+        let result = LocalKeyImportResult {
+            schema_version: HELPER_RESULT_SCHEMA_VERSION.to_string(),
+            import_id: deterministic_id("key-import", 87),
+            secret_ref: request.secret_ref.clone(),
+            key_purpose: request.key_purpose,
+            engine_profile_id: request.engine_profile_id,
+            source_hash: request.source_hash,
+            material_hash: ProofHash::new(sha256_hash_bytes(&request.material))
+                .expect("sha256_hash_bytes returns a canonical proof hash"),
+            material_bytes: request.material.len(),
+            redaction_status: request.redaction_status,
+            source: request.source,
+            stored_local_ref: true,
+            diagnostics: vec![],
+        }
+        .redacted_for_report();
+
+        let metadata = result.stable_json().map_err(|_| {
+            KeyResolverError::store_unavailable("local key import metadata could not be serialized")
+        })?;
+        if let Err(error) = atomic_write_text(&metadata_path, &metadata) {
+            let _ = fs::remove_file(&secret_path);
+            return Err(KeyResolverError::store_unavailable(format!(
+                "local key import metadata could not be written: {}",
+                redact_for_log_or_report(&error.to_string())
+            )));
+        }
+        Ok(result)
+    }
+
+    fn checked_new_secret_path(&self, local_secret_id: &str) -> Result<PathBuf, KeyResolverError> {
+        let parts = safe_relative_path_parts(local_secret_id).map_err(|_| {
+            KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret ids must map to safe relative store paths",
+            )
+        })?;
+        ensure_real_directory(&self.root)?;
+        let root = fs::canonicalize(&self.root).map_err(|_| {
+            KeyResolverError::store_unavailable(
+                "local secret store root could not be canonicalized",
+            )
+        })?;
+        let mut parent = self.root.clone();
+        for part in &parts[..parts.len().saturating_sub(1)] {
+            parent.push(part);
+            ensure_real_directory(&parent)?;
+        }
+        let canonical_parent = fs::canonicalize(&parent).map_err(|_| {
+            KeyResolverError::store_unavailable(
+                "local secret store parent could not be canonicalized",
+            )
+        })?;
+        if !canonical_parent.starts_with(&root) {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret material must remain under the configured store root",
+            ));
+        }
+        let mut candidate = parent;
+        candidate.push(
+            parts
+                .last()
+                .expect("validated refs contain at least one part"),
+        );
+        if fs::symlink_metadata(&candidate).is_ok() {
+            return Err(KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret import refuses to overwrite existing material",
+            ));
+        }
+        Ok(candidate)
+    }
+
+    fn metadata_path_for_secret(&self, local_secret_id: &str) -> Result<PathBuf, KeyResolverError> {
+        let mut path = safe_join_relative(&self.root, local_secret_id).map_err(|_| {
+            KeyResolverError::out_of_policy(
+                None,
+                Some(SecretRefScheme::LocalSecret),
+                "local-secret ids must map to safe relative store paths",
+            )
+        })?;
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| {
+                KeyResolverError::out_of_policy(
+                    None,
+                    Some(SecretRefScheme::LocalSecret),
+                    "local-secret ids must include a final path component",
+                )
+            })?
+            .to_string_lossy()
+            .to_string();
+        path.set_file_name(format!("{file_name}.kaifuu-key.json"));
+        Ok(path)
     }
 
     fn checked_secret_path(
@@ -10101,6 +10630,92 @@ pub fn content_hash(input: &str) -> String {
     format!("{hash:016x}")
 }
 
+pub fn sha256_hash_bytes(input: &[u8]) -> String {
+    const H0: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+
+    let bit_len = (input.len() as u64).wrapping_mul(8);
+    let mut padded = input.to_vec();
+    padded.push(0x80);
+    while padded.len() % 64 != 56 {
+        padded.push(0);
+    }
+    padded.extend_from_slice(&bit_len.to_be_bytes());
+
+    let mut hash = H0;
+    for chunk in padded.chunks_exact(64) {
+        let mut words = [0_u32; 64];
+        for (index, word) in words.iter_mut().take(16).enumerate() {
+            let offset = index * 4;
+            *word = u32::from_be_bytes([
+                chunk[offset],
+                chunk[offset + 1],
+                chunk[offset + 2],
+                chunk[offset + 3],
+            ]);
+        }
+        for index in 16..64 {
+            let s0 = words[index - 15].rotate_right(7)
+                ^ words[index - 15].rotate_right(18)
+                ^ (words[index - 15] >> 3);
+            let s1 = words[index - 2].rotate_right(17)
+                ^ words[index - 2].rotate_right(19)
+                ^ (words[index - 2] >> 10);
+            words[index] = words[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(words[index - 7])
+                .wrapping_add(s1);
+        }
+
+        let [mut a, mut b, mut c, mut d, mut e, mut f, mut g, mut h] = hash;
+        for index in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let ch = (e & f) ^ ((!e) & g);
+            let temp1 = h
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[index])
+                .wrapping_add(words[index]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let maj = (a & b) ^ (a & c) ^ (b & c);
+            let temp2 = s0.wrapping_add(maj);
+
+            h = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(temp1);
+            d = c;
+            c = b;
+            b = a;
+            a = temp1.wrapping_add(temp2);
+        }
+
+        for (slot, value) in hash.iter_mut().zip([a, b, c, d, e, f, g, h]) {
+            *slot = slot.wrapping_add(value);
+        }
+    }
+
+    let mut output = String::from("sha256:");
+    for word in hash {
+        output.push_str(&format!("{word:08x}"));
+    }
+    output
+}
+
 pub fn safe_join_relative(root: &Path, relative_path: &str) -> KaifuuResult<PathBuf> {
     let parts = safe_relative_path_parts(relative_path)?;
     let mut output_path = root.to_path_buf();
@@ -10374,6 +10989,58 @@ fn write_and_sync(file: &mut File, content: &str) -> KaifuuResult<()> {
     file.write_all(content.as_bytes())?;
     file.sync_all()?;
     Ok(())
+}
+
+fn write_secret_material_no_clobber(path: &Path, material: &[u8]) -> Result<(), KeyResolverError> {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(path)
+        .map_err(|error| {
+            if error.kind() == ErrorKind::AlreadyExists {
+                KeyResolverError::out_of_policy(
+                    None,
+                    Some(SecretRefScheme::LocalSecret),
+                    "local-secret import refuses to overwrite existing material",
+                )
+            } else {
+                KeyResolverError::store_unavailable(
+                    "local secret store could not create imported material",
+                )
+            }
+        })?;
+    file.write_all(material).map_err(|_| {
+        KeyResolverError::store_unavailable("local secret store could not write imported material")
+    })?;
+    file.sync_all().map_err(|_| {
+        KeyResolverError::store_unavailable("local secret store could not sync imported material")
+    })
+}
+
+fn ensure_real_directory(path: &Path) -> Result<(), KeyResolverError> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() || !metadata.file_type().is_dir() {
+                return Err(KeyResolverError::out_of_policy(
+                    None,
+                    Some(SecretRefScheme::LocalSecret),
+                    "local secret store directories must be real directories",
+                ));
+            }
+            Ok(())
+        }
+        Err(error) if error.kind() == ErrorKind::NotFound => {
+            fs::create_dir(path).map_err(|_| {
+                KeyResolverError::store_unavailable(
+                    "local secret store directory could not be created",
+                )
+            })?;
+            ensure_real_directory(path)
+        }
+        Err(_) => Err(KeyResolverError::store_unavailable(
+            "local secret store directory metadata could not be read",
+        )),
+    }
 }
 
 fn sync_directory_best_effort(path: &Path) {
@@ -12654,6 +13321,12 @@ mod tests {
         ))
     }
 
+    fn public_helper_request_fixture_value(name: &str) -> Value {
+        bridge_fixture_value(&format!(
+            "fixtures/public/kaifuu-helper-results/helper-request/{name}.json"
+        ))
+    }
+
     fn public_helper_registry_fixture_value(name: &str) -> Value {
         bridge_fixture_value(&format!(
             "fixtures/public/kaifuu-helper-results/helper-registry/{name}.json"
@@ -12739,6 +13412,200 @@ mod tests {
         );
         assert_eq!(output["helper"]["helperId"], FIXTURE_HELPER_REGISTRY_ID);
         assert_eq!(output["diagnostic"]["code"], "success");
+    }
+
+    #[test]
+    fn helper_key_ref_request_passes_refs_without_serializing_material() {
+        let registry = fixture_helper_registry().unwrap();
+        let request = public_helper_request_fixture_value("key-ref-request");
+
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &request,
+            )
+            .unwrap();
+
+        assert_eq!(output["diagnostic"]["code"], "success");
+        assert_eq!(
+            output["secretRefs"][0]["secretRef"],
+            "local-secret:fixture/siglus/manual-secondary-key"
+        );
+        let serialized_request = serde_json::to_string(&request).unwrap();
+        let serialized_output = serde_json::to_string(&output).unwrap();
+        for forbidden in [
+            "rawKey",
+            "keyMaterial",
+            "00112233445566778899aabbccddeeff",
+            "decrypted script",
+            "/home/dev",
+        ] {
+            assert!(!serialized_request.contains(forbidden));
+            assert!(!serialized_output.contains(forbidden));
+        }
+    }
+
+    #[test]
+    fn helper_key_ref_request_diagnostics_distinguish_boundary_failures() {
+        let registry = fixture_helper_registry().unwrap();
+        let mut missing = public_helper_request_fixture_value("key-ref-request");
+        missing["keyRefs"] = serde_json::json!([]);
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &missing,
+            )
+            .unwrap();
+        assert_eq!(output["diagnostic"]["code"], "missing_key");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_MISSING_KEY_MATERIAL
+        );
+
+        let mut wrong_profile = public_helper_request_fixture_value("key-ref-request");
+        wrong_profile["keyRefs"][0]["engineProfileId"] =
+            serde_json::json!("019ed000-0000-7000-8000-profile99999");
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &wrong_profile,
+            )
+            .unwrap();
+        assert_eq!(output["diagnostic"]["code"], "validation_failed");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE
+        );
+
+        let mut hash_mismatch = public_helper_request_fixture_value("key-ref-request");
+        hash_mismatch["keyRefs"][0]["sourceHash"] = serde_json::json!(
+            "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        );
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &hash_mismatch,
+            )
+            .unwrap();
+        assert_eq!(output["diagnostic"]["code"], "validation_failed");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_KEY_IMPORT_HASH_MISMATCH
+        );
+
+        let mut forbidden = public_helper_request_fixture_value("key-ref-request");
+        forbidden["keyRefs"][0]["rawKey"] = serde_json::json!("00112233445566778899aabbccddeeff");
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &forbidden,
+            )
+            .unwrap();
+        assert_eq!(output["diagnostic"]["code"], "redaction_failure");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION
+        );
+    }
+
+    #[test]
+    fn helper_key_ref_request_rejects_requirement_id_only_refs() {
+        let registry = fixture_helper_registry().unwrap();
+        let mut request = public_helper_request_fixture_value("key-ref-request");
+        request["keyRefs"][0] = serde_json::json!({
+            "requirementId": "siglus-secondary-key"
+        });
+
+        let diagnostics = validate_helper_key_ref_request(&request);
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SEMANTIC_MISSING_KEY_MATERIAL
+                    && diagnostic.field == "keyRefs.0.secretRef"
+            }),
+            "requirement-id-only keyRef should not satisfy requiredKeyRefs: {diagnostics:#?}"
+        );
+
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &request,
+            )
+            .unwrap();
+        assert_eq!(output["diagnostic"]["code"], "missing_key");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_MISSING_KEY_MATERIAL
+        );
+    }
+
+    #[test]
+    fn helper_key_ref_request_rejects_required_ref_missing_engine_profile() {
+        let registry = fixture_helper_registry().unwrap();
+        let mut request = public_helper_request_fixture_value("key-ref-request");
+        request["keyRefs"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("engineProfileId");
+
+        let diagnostics = validate_helper_key_ref_request(&request);
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE
+                    && diagnostic.field == "keyRefs.0.engineProfileId"
+            }),
+            "required keyRef missing engineProfileId should fail binding: {diagnostics:#?}"
+        );
+
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &request,
+            )
+            .unwrap();
+        assert_eq!(output["diagnostic"]["code"], "validation_failed");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE
+        );
+    }
+
+    #[test]
+    fn helper_key_ref_request_rejects_required_ref_missing_source_hash() {
+        let registry = fixture_helper_registry().unwrap();
+        let mut request = public_helper_request_fixture_value("key-ref-request");
+        request["keyRefs"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("sourceHash");
+
+        let diagnostics = validate_helper_key_ref_request(&request);
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SEMANTIC_KEY_IMPORT_HASH_MISMATCH
+                    && diagnostic.field == "keyRefs.0.sourceHash"
+            }),
+            "required keyRef missing sourceHash should fail binding: {diagnostics:#?}"
+        );
+
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &request,
+            )
+            .unwrap();
+        assert_eq!(output["diagnostic"]["code"], "validation_failed");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_KEY_IMPORT_HASH_MISMATCH
+        );
     }
 
     #[test]
@@ -13037,6 +13904,41 @@ mod tests {
                 && evidence.status == EvidenceStatus::Matched
                 && evidence.count == 3
         }));
+    }
+
+    #[test]
+    fn known_key_import_boundary_fixture_is_hash_only_public_output() {
+        let value = public_helper_result_fixture_value("known-key-import-boundary");
+        let validation = validate_helper_result_value(&value);
+
+        assert_eq!(
+            validation.status,
+            OperationStatus::Passed,
+            "{:#?}",
+            validation.failures
+        );
+        assert_eq!(value["helper"]["helperKind"], "knownKeyDatabaseImport");
+        assert_eq!(
+            value["secretRefs"][0]["secretRef"],
+            "local-secret:fixture/siglus/manual-secondary-key"
+        );
+        assert!(value["sourceHash"].as_str().unwrap().starts_with("sha256:"));
+        assert!(
+            value["materialHash"]
+                .as_str()
+                .unwrap()
+                .starts_with("sha256:")
+        );
+        let serialized = serde_json::to_string(&value).unwrap();
+        for forbidden in [
+            "rawKey",
+            "keyMaterial",
+            "00112233445566778899aabbccddeeff",
+            "decrypted script",
+            "/home/dev",
+        ] {
+            assert!(!serialized.contains(forbidden));
+        }
     }
 
     #[test]
@@ -13401,6 +14303,63 @@ mod tests {
             (0_u8..16).collect::<Vec<_>>().as_slice()
         );
         assert!(!format!("{resolver:?}").contains(&root.display().to_string()));
+    }
+
+    #[test]
+    fn local_secret_directory_store_imports_key_ref_and_hash_only_metadata() {
+        let root = temp_dir("local-secret-import");
+        let store = LocalSecretDirectoryStore::new(&root);
+        let material = (0_u8..16).collect::<Vec<_>>();
+        let source_hash = ProofHash::new(sha256_hash_bytes(b"public import source")).unwrap();
+
+        let result = store
+            .import_key_reference(LocalKeyImportRequest {
+                secret_ref: SecretRef::new("local-secret:fixture/siglus/manual-secondary-key")
+                    .unwrap(),
+                key_purpose: "siglus-secondary-key".to_string(),
+                engine_profile_id: "019ed000-0000-7000-8000-profile00087".to_string(),
+                source_hash: source_hash.clone(),
+                redaction_status: HelperRedactionStatus::Redacted,
+                source: LocalKeyImportSource::ManualKeyEntry,
+                material: material.clone(),
+            })
+            .unwrap();
+
+        assert_eq!(
+            result.secret_ref.as_str(),
+            "local-secret:fixture/siglus/manual-secondary-key"
+        );
+        assert_eq!(result.key_purpose, "siglus-secondary-key");
+        assert_eq!(
+            result.engine_profile_id,
+            "019ed000-0000-7000-8000-profile00087"
+        );
+        assert_eq!(result.source_hash, source_hash);
+        assert_eq!(result.material_hash.as_str(), sha256_hash_bytes(&material));
+        assert_eq!(result.redaction_status, HelperRedactionStatus::Redacted);
+        assert_eq!(result.material_bytes, 16);
+        assert_eq!(
+            store
+                .read_secret("fixture/siglus/manual-secondary-key")
+                .unwrap()
+                .unwrap(),
+            material
+        );
+        let metadata =
+            fs::read_to_string(root.join("fixture/siglus/manual-secondary-key.kaifuu-key.json"))
+                .unwrap();
+        assert!(metadata.contains("local-secret:fixture/siglus/manual-secondary-key"));
+        assert!(metadata.contains("siglus-secondary-key"));
+        assert!(metadata.contains("materialHash"));
+        assert!(!metadata.contains("000102030405060708090a0b0c0d0e0f"));
+    }
+
+    #[test]
+    fn sha256_hash_bytes_matches_known_vector() {
+        assert_eq!(
+            sha256_hash_bytes(b"abc"),
+            "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]

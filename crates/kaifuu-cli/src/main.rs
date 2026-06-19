@@ -5,12 +5,13 @@ use std::path::{Component, Path, PathBuf};
 use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
     DetectionResult, EngineAdapter, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
-    GoldenHarnessRequest, HelperCapability, KaifuuResult, PatchExport, PatchPreflightRequest,
-    PatchRequest, PatchResult, ProfileRequest, VerifyRequest, atomic_write_text,
-    fixture_helper_registry, promote_staged_directory_no_clobber, read_json,
-    redact_for_log_or_report, redact_report_value, run_round_trip_golden,
-    validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
-    validate_profile_value, write_json,
+    GoldenHarnessRequest, HelperCapability, HelperRedactionStatus, KaifuuResult,
+    LocalKeyImportRequest, LocalKeyImportSource, LocalSecretDirectoryStore, PatchExport,
+    PatchPreflightRequest, PatchRequest, PatchResult, ProfileRequest, ProofHash, SecretRef,
+    VerifyRequest, atomic_write_text, fixture_helper_registry, parse_hex_bytes,
+    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
+    run_round_trip_golden, sha256_hash_bytes, validate_helper_registry_entry_value,
+    validate_helper_result_value, validate_offset_map_value, validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -154,6 +155,9 @@ fn run_with_args_and_registry(
         Some("helper-registry") => {
             run_helper_registry_command(&args)?;
         }
+        Some("key") => {
+            run_key_command(&args)?;
+        }
         Some("profile") => {
             run_profile_command(&args, registry)?;
         }
@@ -168,12 +172,69 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|helper-registry|profile|capabilities> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|helper-registry|key|profile|capabilities> ..."
                     .into(),
             );
         }
     }
     Ok(())
+}
+
+fn run_key_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    match positional(args, 1)? {
+        "import" => {
+            let secret_store = PathBuf::from(flag(args, "--secret-store")?);
+            let secret_ref = SecretRef::new(flag(args, "--secret-ref")?.to_string())?;
+            let key_purpose = flag(args, "--purpose")?.to_string();
+            let engine_profile_id = flag(args, "--engine-profile-id")?.to_string();
+            let source_hash = ProofHash::new(
+                flag_optional(args, "--source-hash")
+                    .map(str::to_string)
+                    .unwrap_or_else(|| {
+                        sha256_hash_bytes(format!("{engine_profile_id}:{key_purpose}").as_bytes())
+                    }),
+            )?;
+            let output = PathBuf::from(flag(args, "--output")?);
+            let source = match flag_optional(args, "--source").unwrap_or("manual") {
+                "manual" | "manual-key-entry" => LocalKeyImportSource::ManualKeyEntry,
+                "known-key" | "known-key-database" => LocalKeyImportSource::KnownKeyDatabaseImport,
+                value => {
+                    return Err(format!("unsupported key import source {value}").into());
+                }
+            };
+            let material = import_key_material_from_args(args)?;
+            let result = LocalSecretDirectoryStore::new(secret_store).import_key_reference(
+                LocalKeyImportRequest {
+                    secret_ref,
+                    key_purpose,
+                    engine_profile_id,
+                    source_hash,
+                    redaction_status: HelperRedactionStatus::Redacted,
+                    source,
+                    material,
+                },
+            )?;
+            atomic_write_text(&output, &result.stable_json()?)?;
+        }
+        _ => {
+            return Err(
+                "usage: kaifuu key import --secret-store <dir> --secret-ref <local-secret:id> --purpose <id> --engine-profile-id <id> (--key-hex <hex>|--key-file <path>) --output <metadata.json> [--source-hash sha256:<hash>] [--source manual|known-key]"
+                    .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn import_key_material_from_args(args: &[String]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let key_hex = flag_optional(args, "--key-hex");
+    let key_file = flag_optional(args, "--key-file");
+    match (key_hex, key_file) {
+        (Some(_), Some(_)) => Err("choose either --key-hex or --key-file, not both".into()),
+        (Some(hex), None) => Ok(parse_hex_bytes(hex)?),
+        (None, Some(path)) => Ok(fs::read(path)?),
+        (None, None) => Err("key import requires --key-hex or --key-file".into()),
+    }
 }
 
 fn run_helper_registry_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -938,6 +999,59 @@ mod tests {
             kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
         );
         assert_eq!(result["diagnostic"]["code"], "success");
+    }
+
+    #[test]
+    fn key_import_command_writes_local_secret_and_hash_only_report() {
+        let root = temp_dir("key-import-command");
+        let secret_store = root.join("secrets.local");
+        let output = root.join("key-import-report.json");
+
+        run_cli(&[
+            "key",
+            "import",
+            "--secret-store",
+            secret_store.to_str().unwrap(),
+            "--secret-ref",
+            "local-secret:fixture/siglus/manual-secondary-key",
+            "--purpose",
+            "siglus-secondary-key",
+            "--engine-profile-id",
+            "019ed000-0000-7000-8000-profile00087",
+            "--source-hash",
+            "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "--key-hex",
+            "000102030405060708090a0b0c0d0e0f",
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(
+            report["secretRef"],
+            "local-secret:fixture/siglus/manual-secondary-key"
+        );
+        assert_eq!(report["keyPurpose"], "siglus-secondary-key");
+        assert_eq!(
+            report["engineProfileId"],
+            "019ed000-0000-7000-8000-profile00087"
+        );
+        assert_eq!(report["redactionStatus"], "redacted");
+        assert_eq!(report["materialBytes"], 16);
+        assert!(
+            report["materialHash"]
+                .as_str()
+                .unwrap()
+                .starts_with("sha256:")
+        );
+        assert_eq!(
+            fs::read(secret_store.join("fixture/siglus/manual-secondary-key")).unwrap(),
+            (0_u8..16).collect::<Vec<_>>()
+        );
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("000102030405060708090a0b0c0d0e0f"));
+        assert!(!serialized.contains("rawKey"));
+        assert!(!serialized.contains("keyMaterial"));
     }
 
     #[test]
