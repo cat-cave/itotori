@@ -121,6 +121,7 @@
               "runtime-evidence",
               "benchmark-input",
               "helper-result",
+              "helper-registry",
               "metadata",
               "asset"
             ]
