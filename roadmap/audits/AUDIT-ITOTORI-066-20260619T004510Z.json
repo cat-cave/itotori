@@ -1,0 +1,279 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-066-20260619T004510Z",
+  "generatedAt": "2026-06-19T00:45:10Z",
+  "spec": {
+    "id": "ITOTORI-066",
+    "title": "Style-guide approval and invalidation events",
+    "branch": "spec/itotori-066",
+    "worktree": "/tmp/itotori-spec-itotori-066",
+    "commit": "ac122107f0771976bf5cc2c4c86cb929acb8ebe6"
+  },
+  "auditor": {
+    "name": "itotori-066-style-guide-final-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers after adding style-guide-version provenance to drafts and narrowing invalidation. Four non-blocking authorization, audit-payload, migration, and regression hardening items remain.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 4,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "ITOTORI-066-F001",
+      "ITOTORI-066-F002",
+      "ITOTORI-066-F003",
+      "ITOTORI-066-F004"
+    ]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-066-F001",
+      "severity": "P2",
+      "title": "Style-guide approval uses broad draft.write authorization",
+      "category": "security",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/style-guide-repository.ts"
+        },
+        {
+          "path": "packages/itotori-db/src/services/style-guide-service.ts"
+        }
+      ],
+      "description": "Approval authorization is currently tied to draft.write and service-level validation can inspect branch/version state before the repository permission check.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "The style-guide audit identified draft.write as broader than a dedicated style-guide approval permission and noted that branch/latest validation runs before the repository permission gate."
+        }
+      ],
+      "impact": "A user allowed to persist drafts may be allowed to approve style policy, and unauthorized callers may learn some style-guide state before denial.",
+      "actionableAcceptanceCriteria": [
+        "Style-guide approval uses a dedicated permission or a documented policy permission rather than draft.write.",
+        "Unauthorized approval attempts are denied before branch/version existence or latest-state details are exposed.",
+        "Permission tests cover unauthorized, missing permission, stale version, and successful approval paths."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Dedicated style-guide approval permission gate",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "policy",
+          "dependsOn": ["ITOTORI-066"],
+          "summary": "Replace broad draft.write authorization for style-guide approval with a dedicated approval permission and fail-closed service ordering.",
+          "deliverables": [
+            "Dedicated style-guide approval permission or documented policy permission",
+            "Fail-closed approval service ordering",
+            "Permission regression tests"
+          ],
+          "acceptanceCriteria": [
+            "Approving a style-guide version no longer requires or accepts only draft.write.",
+            "Unauthorized callers cannot infer branch or version latest-state details before denial.",
+            "Repository and service tests cover missing permission, stale version, and success paths."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test -- style-guide"
+            }
+          ],
+          "auditFocus": [
+            "Approval permission too broad",
+            "Authorization checks after state disclosure"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-066-F002",
+      "severity": "P2",
+      "title": "Primary approval event lacks full approval boundary",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/style-guide-repository.ts"
+        }
+      ],
+      "description": "The primary style-guide version changed event does not carry approver id and the full prior/approved source revision boundary; some boundary details only appear on affected-work invalidation events.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Initial audit found the acceptance boundary is not fully represented in the primary approval event when no affected references exist."
+        }
+      ],
+      "impact": "Audit consumers may miss who approved a policy transition and the exact prior-to-approved boundary if no affected-work invalidation event was emitted.",
+      "actionableAcceptanceCriteria": [
+        "The primary style-guide approval/change event records approver id, locale branch id, prior version id, approved version id, and source revision boundary.",
+        "The event is emitted even when there are no affected draft, QA, export, or benchmark references.",
+        "Tests assert the primary event payload independently from affected-work fanout events."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Style-guide approval audit payload boundary",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "policy",
+          "dependsOn": ["ITOTORI-066"],
+          "summary": "Expand the primary style-guide approval event payload so approval boundaries are audit-complete even when no affected-work fanout exists.",
+          "deliverables": [
+            "Updated approval event payload contract",
+            "Migration or compatibility handling for event consumers if needed",
+            "Payload regression tests"
+          ],
+          "acceptanceCriteria": [
+            "Primary approval events include approver id, locale branch id, prior version id, approved version id, and source revision boundary.",
+            "Approval events remain present when no affected work is found.",
+            "Affected-work invalidation events continue to cite the same approval boundary."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test -- style-guide"
+            }
+          ],
+          "auditFocus": [
+            "Approval audit payload missing actors or boundaries",
+            "Divergent primary and fanout event metadata"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-066-F003",
+      "severity": "P2",
+      "title": "Existing draft rows are not backfilled with style-guide provenance",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/migrations/0018_locale_branch_unit_style_guide_provenance.sql"
+        },
+        {
+          "path": "packages/itotori-db/src/repositories/style-guide-repository.ts"
+        }
+      ],
+      "description": "The style_guide_version_id provenance column is nullable and the migration does not backfill existing draft rows with target text, so pre-migration drafts with unknown provenance will not be invalidated by later policy approvals.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit accepted unknown provenance as non-blocking but identified migration behavior risk for existing rows."
+        }
+      ],
+      "impact": "Projects created before the provenance migration may retain drafts that should be reconsidered after a later style-guide approval.",
+      "actionableAcceptanceCriteria": [
+        "A migration or repair command explicitly handles existing draft rows with null style_guide_version_id.",
+        "Unknown provenance behavior is documented as either backfilled, invalidated conservatively, or intentionally excluded.",
+        "Tests cover first approval after migrating a database with existing drafts."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Backfill style-guide provenance for existing drafts",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "policy",
+          "dependsOn": ["ITOTORI-066"],
+          "summary": "Handle pre-provenance draft rows so style-guide approval invalidation has explicit behavior for existing non-null target text.",
+          "deliverables": [
+            "Backfill migration or explicit repair command",
+            "Documented unknown-provenance invalidation policy",
+            "Migration regression test"
+          ],
+          "acceptanceCriteria": [
+            "Existing draft rows with target text receive deterministic style-guide provenance or explicit unknown-provenance handling.",
+            "First later approval after migration does not silently miss drafts that should be reviewed.",
+            "Regression tests cover a database migrated from pre-provenance draft rows."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test -- style-guide"
+            }
+          ],
+          "auditFocus": [
+            "Null style-guide provenance causing missed invalidations",
+            "Unsafe assumptions about existing draft rows"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-066-F004",
+      "severity": "P2",
+      "title": "Draft provenance write path lacks focused DB regression",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/repositories/project-repository.ts"
+        },
+        {
+          "path": "packages/itotori-db/test/style-guide-repository.test.ts"
+        }
+      ],
+      "description": "The invalidation regression manually seeds styleGuideVersionId on draft rows, so it does not directly prove the normal saveDrafts or project write path populates provenance.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Final re-audit observed static code populates style-guide provenance, but requested a focused DB regression to protect that behavior."
+        }
+      ],
+      "impact": "A future draft write change could stop recording style-guide provenance while the invalidation test remains green due to manual seed data.",
+      "actionableAcceptanceCriteria": [
+        "A DB regression writes drafts through the normal project repository path and asserts style_guide_version_id is persisted.",
+        "The same test or a companion test proves approval invalidation sees provenance produced by the normal write path.",
+        "Manual seed-only coverage is no longer the only proof of draft provenance invalidation."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Style-guide draft provenance write regression",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "policy",
+          "dependsOn": ["ITOTORI-066"],
+          "summary": "Add DB regression coverage proving normal draft write paths persist style-guide version provenance consumed by invalidation.",
+          "deliverables": [
+            "Project repository draft provenance test",
+            "Approval invalidation test using normally written draft provenance"
+          ],
+          "acceptanceCriteria": [
+            "Drafts written through the normal repository path persist style_guide_version_id.",
+            "Approval invalidation can target drafts using provenance generated by normal writes, not manually seeded rows.",
+            "The test fails if saveDrafts stops attaching approved style-guide provenance."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test -- repository"
+            }
+          ],
+          "auditFocus": [
+            "Manual fixture provenance hiding write-path regressions",
+            "Draft invalidation tests disconnected from project repository behavior"
+          ]
+        }
+      }
+    }
+  ]
+}

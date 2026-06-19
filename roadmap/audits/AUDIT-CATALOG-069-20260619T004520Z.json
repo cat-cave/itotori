@@ -1,0 +1,204 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-CATALOG-069-20260619T004520Z",
+  "generatedAt": "2026-06-19T00:45:20Z",
+  "spec": {
+    "id": "CATALOG-069",
+    "title": "DLsite demand fact recorded adapter",
+    "branch": "spec/catalog-069",
+    "worktree": "/tmp/itotori-spec-catalog-069",
+    "commit": "a68f7eb5674104877b1a4882abaec4a61ba80060"
+  },
+  "auditor": {
+    "name": "catalog-069-dlsite-demand-final-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers after rank_facts observed_at validation was tightened. Earlier replay determinism and idempotency critical-window gaps remain non-blocking follow-up work.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 2,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["CATALOG-069-F001", "CATALOG-069-F002", "CATALOG-069-F003"]
+  },
+  "findings": [
+    {
+      "id": "CATALOG-069-F001",
+      "severity": "P2",
+      "title": "DLsite demand replay is not deterministic for non-rank observedAt values",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/services/catalog-recorded-importers.ts"
+        },
+        {
+          "path": "packages/itotori-db/src/repositories/catalog-repository.ts"
+        }
+      ],
+      "description": "Non-rank DLsite demand facts may omit observedAt and rely on repository insertion time, so replaying writes before an import marker is committed can change observation timestamps.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Catalog audit found non-rank demand facts can reach repository persistence without observedAt while the repository defaults missing observedAt to new Date()."
+        }
+      ],
+      "impact": "Crash replay or retry before commitStepImport can produce nondeterministic demand fact rows for the same recorded fixture.",
+      "actionableAcceptanceCriteria": [
+        "DLsite demand facts receive deterministic observedAt values before repository persistence.",
+        "Interrupted replay before imported marker commit produces stable demand fact rows.",
+        "Tests cover non-rank demand facts during replay."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Deterministic DLsite demand observedAt replay",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "shared"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-069"],
+          "summary": "Make DLsite demand fact observation timestamps deterministic under recorded importer replay.",
+          "deliverables": [
+            "Deterministic observedAt assignment for non-rank DLsite demand facts",
+            "Interrupted replay fixture or test",
+            "Repository assertion for stable demand fact rows"
+          ],
+          "acceptanceCriteria": [
+            "Non-rank DLsite demand facts do not rely on insertion wall-clock time for observedAt.",
+            "Reprocessing the same recorded demand payload before commitStepImport produces stable rows.",
+            "Tests cover dl_count, rating, wishlist, work_type, and translation_tree facts under replay."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test -- dlsite-demand"
+            }
+          ],
+          "auditFocus": [
+            "Nondeterministic observedAt values",
+            "Replay changing existing demand facts"
+          ]
+        }
+      }
+    },
+    {
+      "id": "CATALOG-069-F002",
+      "severity": "P2",
+      "title": "DLsite idempotency tests only prove checkpoint skip behavior",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/test/catalog-dlsite-demand.test.ts"
+        },
+        {
+          "path": "packages/itotori-db/test/catalog-recorded-importers.test.ts"
+        }
+      ],
+      "description": "Idempotency tests assert a second run has no fetched steps, but do not exercise the critical window where facts were written and the imported marker was not committed.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Catalog audit identified checkpoint skip coverage but no replay of already-written demand facts before commitStepImport."
+        }
+      ],
+      "impact": "The CATALOG-065 idempotency contract may still fail for DLsite demand if a process crashes after fact writes but before import marker commit.",
+      "actionableAcceptanceCriteria": [
+        "A test replays DLsite demand fact writes after clearing or withholding the imported marker.",
+        "Replay does not duplicate or mutate existing demand facts.",
+        "The test covers normal and parse-drift fixture paths where relevant."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "CATALOG-074",
+          "acceptanceCriteria": [
+            "Failure-injection coverage includes DLsite demand replay after facts are written but before commitStepImport is recorded.",
+            "The DLsite demand replay path proves no duplicate or mutated demand facts are produced."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test -- dlsite-demand"
+            }
+          ],
+          "auditFocus": [
+            "Checkpoint skip mistaken for idempotent replay",
+            "Duplicate DLsite demand facts after interrupted import"
+          ],
+          "notes": "Extends the existing catalog ingest failure-injection harness follow-up instead of creating a separate duplicate idempotency node."
+        }
+      }
+    },
+    {
+      "id": "CATALOG-069-F003",
+      "severity": "P3",
+      "title": "Roadmap DLsite app verification filter runs broader tests than intended",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "roadmap/spec-dag.json"
+        },
+        {
+          "path": "apps/itotori/test/dlsite-demand.test.ts"
+        }
+      ],
+      "description": "The roadmap verification command uses a package test filter that can run broader app suites rather than only the DLsite demand test file.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Catalog audit observed pnpm --filter @itotori/app test -- dlsite-demand invoking unrelated server tests in the sandbox."
+        }
+      ],
+      "impact": "Focused verification for CATALOG-069 can become noisy or environment-sensitive, hiding the intended DLsite demand behavior check.",
+      "actionableAcceptanceCriteria": [
+        "CATALOG-069 or a follow-up verification node uses a direct DLsite demand app test command.",
+        "The targeted command does not start unrelated server/listener tests.",
+        "Roadmap verification remains valid under public CI and local sandboxed runs."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "CATALOG",
+          "title": "Targeted DLsite demand app verification command",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "catalog",
+          "dependsOn": ["CATALOG-069"],
+          "summary": "Replace broad DLsite demand app test filtering with a direct test-file verification command.",
+          "deliverables": [
+            "Roadmap verification command update",
+            "Documented targeted app test command"
+          ],
+          "acceptanceCriteria": [
+            "The DLsite demand app verification command runs the intended test file without unrelated server/listener tests.",
+            "The command works in local sandbox and public CI environments.",
+            "Roadmap verification still names a concrete runnable command."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm exec vitest run apps/itotori/test/dlsite-demand.test.ts"
+            }
+          ],
+          "auditFocus": [
+            "Noisy app test filters",
+            "Verification commands that depend on unrelated server sockets"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-086-20260619T004500Z",
+  "generatedAt": "2026-06-19T00:45:00Z",
+  "spec": {
+    "id": "KAIFUU-086",
+    "title": "Helper registry capability model and fixture stub",
+    "branch": "spec/kaifuu-086",
+    "worktree": "/tmp/itotori-spec-kaifuu-086",
+    "commit": "8e596243fe01ef40976f1a2f5e13e6c8289e5e15"
+  },
+  "auditor": {
+    "name": "kaifuu-086-helper-registry-final-reaudit",
+    "kind": "security"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Final re-audit found no P0/P1 blockers after sealing fixture helper execution behind HelperRegistry. Earlier public fixture validation and invalid-field coverage gaps remain as non-blocking follow-up work.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-086-F001", "KAIFUU-086-F002"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-086-F001",
+      "severity": "P2",
+      "title": "Public manifest validation does not validate helper-registry payloads",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "fixtures/validate-public-manifests.mjs"
+        },
+        {
+          "path": "fixtures/public/kaifuu-helper-results/helper-registry.schema.json"
+        }
+      ],
+      "description": "The public manifest includes helper-registry fixture entries, but the manifest validator only schema-validates helper-result roles; helper-registry entries currently receive hash and byte checks without AJV payload validation.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Initial audit observed helper-registry manifest entries and schema, while validate-public-manifests.mjs only validates helper-result payloads."
+        }
+      ],
+      "impact": "Public CI can miss helper-registry schema drift even though KAIFUU-086 relies on those fixtures as the public contract for helper capability metadata.",
+      "actionableAcceptanceCriteria": [
+        "Public manifest validation schema-validates entries with role helper-registry against helper-registry.schema.json.",
+        "A negative helper-registry fixture or validator unit test proves malformed helper-registry payloads fail public fixture validation.",
+        "Existing helper-result validation behavior remains unchanged."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Public helper-registry manifest validation",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu", "shared"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-086"],
+          "summary": "Extend public fixture validation so helper-registry fixture payloads are schema-validated, not only hash-checked.",
+          "deliverables": [
+            "AJV validation path for helper-registry manifest entries",
+            "Malformed helper-registry validation fixture or targeted validator test",
+            "Updated public fixture validation documentation if role handling changes"
+          ],
+          "acceptanceCriteria": [
+            "fixtures/validate-public-manifests.mjs validates helper-registry entries against helper-registry.schema.json.",
+            "Malformed helper-registry payloads fail with a semantic fixture validation error.",
+            "Existing helper-result manifest validation still passes."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm exec node fixtures/validate-public-manifests.mjs"
+            }
+          ],
+          "auditFocus": [
+            "Helper-registry schema drift hidden by hash-only validation",
+            "Regression in helper-result fixture validation"
+          ]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-086-F002",
+      "severity": "P3",
+      "title": "Helper-registry invalid-field coverage is narrower than the contract",
+      "category": "test",
+      "locations": [
+        {
+          "path": "crates/kaifuu-core/src/lib.rs"
+        },
+        {
+          "path": "fixtures/public/kaifuu-helper-results/helper-registry"
+        }
+      ],
+      "description": "KAIFUU-086 validates helper id, version, execution policy fields, and allowlist references, but public invalid fixtures focus on missing capability, bad schema id, and unsupported redaction class.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Initial audit accepted implementation behavior but noted missing negative fixtures for helper id, helper version, execution policy, and allowlist ref id diagnostics."
+        }
+      ],
+      "impact": "Future helper-registry changes could weaken validation for explicit registry contract fields without focused fixture coverage catching the drift.",
+      "actionableAcceptanceCriteria": [
+        "Invalid helper id, helper version, execution policy, and allowlist reference cases have focused tests or public invalid fixtures.",
+        "Diagnostics name the offending registry field.",
+        "Valid helper-registry fixtures remain stable."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Helper-registry invalid-field fixture matrix",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-086"],
+          "summary": "Add focused helper-registry invalid-field fixtures for helper identity, version, execution policy, and allowlist reference validation.",
+          "deliverables": [
+            "Invalid helper id and version fixtures",
+            "Invalid execution policy fixtures",
+            "Invalid allowlist reference fixture",
+            "Focused diagnostic assertions"
+          ],
+          "acceptanceCriteria": [
+            "Helper-registry invalid-field tests fail on helper id, version, execution policy, and allowlist reference regressions.",
+            "Each failure reports the offending field path.",
+            "The fixture helper still validates and invokes through the registry boundary."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core helper_registry"
+            }
+          ],
+          "auditFocus": [
+            "Field-specific validation coverage gaps",
+            "Overly broad helper-registry diagnostics"
+          ]
+        }
+      }
+    }
+  ]
+}
