@@ -5525,6 +5525,86 @@ wait
     }
 
     #[test]
+    fn rpg_maker_validate_fixture_key_command_fails_without_image_evidence() {
+        let root = temp_dir("rpg-maker-key-validation-cli-missing-image");
+        let secret_store = root.join("secret-store");
+        write_fixture_file(
+            &secret_store,
+            "fixture/rpg-maker/asset-key",
+            b"00112233445566778899aabbccddeeff",
+        );
+        let game_dir = public_fixture_path("fixtures/public/kaifuu-encrypted-matrix/raw/rpg-maker");
+        let missing_image_asset = game_dir.join("img").join("pictures").join("missing.rpgmvp");
+        let output = root.join("rpg-maker-key-validation-missing-image.json");
+
+        let result = run_with_args(
+            [
+                "rpg-maker",
+                "validate-fixture-key",
+                "--game-dir",
+                game_dir.to_str().unwrap(),
+                "--image-asset",
+                missing_image_asset.to_str().unwrap(),
+                "--secret-store",
+                secret_store.to_str().unwrap(),
+                "--secret-ref",
+                "local-secret:fixture/rpg-maker/asset-key",
+                "--output",
+                output.to_str().unwrap(),
+                "--fixture-id",
+                "kaifuu-rpg-maker-missing-image-evidence",
+            ]
+            .iter()
+            .map(|arg| arg.to_string())
+            .collect(),
+        );
+
+        let error = result.expect_err("missing image evidence must fail validation");
+        let error = error.to_string();
+        assert!(error.contains("MissingImageEvidence:imageAssetPath"));
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["records"][0]["surface"], "image_asset");
+        assert_eq!(report["records"][0]["codec"], "png_image");
+        assert_eq!(
+            report["records"][0]["diagnosticResult"],
+            "missing_image_evidence"
+        );
+        assert!(report["records"][0]["proofHash"].is_null());
+        assert!(report["records"][0]["imageEvidenceHash"].is_null());
+        assert!(
+            report["records"][0]["systemJsonProofHash"]
+                .as_str()
+                .unwrap()
+                .starts_with("sha256:")
+        );
+        assert_eq!(report["diagnostics"][0]["code"], "missing_image_evidence");
+        assert_eq!(report["diagnostics"][0]["field"], "imageAssetPath");
+        assert_eq!(
+            report["diagnostics"][0]["message"],
+            "encrypted image evidence is missing or unreadable"
+        );
+
+        let serialized = fs::read_to_string(&output).unwrap();
+        for forbidden in [
+            "fixture-only-rpg-maker-asset-key-v1",
+            "00112233445566778899aabbccddeeff",
+            "fixture/rpg-maker/asset-key",
+            secret_store.to_str().unwrap(),
+            missing_image_asset.to_str().unwrap(),
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "CLI report leaked {forbidden}: {serialized}"
+            );
+        }
+        assert!(!serialized.contains("image evidence matched"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn siglus_detector_profile_fixture_reports_identify_inventory_only() {
         let root = temp_dir("public-siglus-detector");
         let game_dir = public_fixture_path("fixtures/public/kaifuu-encrypted-matrix/raw/siglus");

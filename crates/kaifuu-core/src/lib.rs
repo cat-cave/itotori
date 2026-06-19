@@ -1760,6 +1760,7 @@ impl RpgMakerMvMzFixtureKeyValidationDiagnostic {
 pub enum RpgMakerMvMzFixtureKeyValidationDiagnosticCode {
     Success,
     MissingSystemJson,
+    MissingImageEvidence,
     MissingKey,
     BadKey,
     UnsupportedSurface,
@@ -1825,6 +1826,21 @@ where
         );
     }
 
+    let Some(image_evidence_hash) = image_evidence_hash else {
+        return rpg_maker_mv_mz_key_validation_report(
+            request.fixture_id,
+            request.requirement_id,
+            secret_ref_scheme,
+            asset_profile,
+            RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingImageEvidence,
+            None,
+            system_json_proof_hash,
+            None,
+            "imageAssetPath",
+            "encrypted image evidence is missing or unreadable",
+        );
+    };
+
     let material = match request.resolver.resolve_secret_ref_str(
         request.requirement_id,
         request.secret_ref,
@@ -1855,7 +1871,7 @@ where
                 code,
                 None,
                 system_json_proof_hash,
-                image_evidence_hash,
+                Some(image_evidence_hash),
                 "secretRef",
                 message,
             );
@@ -1871,7 +1887,7 @@ where
             RpgMakerMvMzFixtureKeyValidationDiagnosticCode::BadKey,
             None,
             system_json_proof_hash,
-            image_evidence_hash,
+            Some(image_evidence_hash),
             "data/System.json.encryptionKey",
             "resolved secret ref does not match System.json key evidence",
         );
@@ -1880,7 +1896,7 @@ where
     let proof_hash = rpg_maker_mv_mz_validation_proof_hash(
         request.requirement_id,
         &system_key,
-        request.image_asset_path,
+        &image_evidence_hash,
         material.as_bytes(),
     );
     rpg_maker_mv_mz_key_validation_report(
@@ -1891,7 +1907,7 @@ where
         RpgMakerMvMzFixtureKeyValidationDiagnosticCode::Success,
         proof_hash,
         system_json_proof_hash,
-        image_evidence_hash,
+        Some(image_evidence_hash),
         "validation",
         "fixture-safe MV/MZ key evidence matched System.json and encrypted image evidence",
     )
@@ -1952,6 +1968,9 @@ fn rpg_maker_mv_mz_key_validation_report(
         }
         RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingSystemJson => {
             SemanticErrorCode::MissingKeyProfile
+        }
+        RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingImageEvidence => {
+            SemanticErrorCode::KeyValidationFailed
         }
         RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingKey => {
             SemanticErrorCode::MissingKeyMaterial
@@ -2055,7 +2074,7 @@ fn rpg_maker_mv_mz_system_key_matches_material(system_key: &str, material: &[u8]
 fn rpg_maker_mv_mz_validation_proof_hash(
     requirement_id: &str,
     system_key: &str,
-    image_asset_path: &Path,
+    image_evidence_hash: &ProofHash,
     material: &[u8],
 ) -> Option<ProofHash> {
     let mut proof = Vec::new();
@@ -2064,11 +2083,7 @@ fn rpg_maker_mv_mz_validation_proof_hash(
     proof.push(0);
     proof.extend_from_slice(sha256_hash_bytes(system_key.as_bytes()).as_bytes());
     proof.push(0);
-    if let Ok(image_header) = fs::read(image_asset_path) {
-        proof.extend_from_slice(
-            sha256_hash_bytes(&image_header[..image_header.len().min(64)]).as_bytes(),
-        );
-    }
+    proof.extend_from_slice(image_evidence_hash.as_str().as_bytes());
     proof.push(0);
     proof.extend_from_slice(material);
     ProofHash::new(sha256_hash_bytes(&proof)).ok()
@@ -19420,6 +19435,64 @@ printf launched > '{}'
         assert!(serialized.contains("rpg-maker-mv-mz-asset-key"));
         assert!(serialized.contains("image_asset"));
         assert!(serialized.contains("png_image"));
+    }
+
+    #[test]
+    fn rpg_maker_mv_mz_fixture_key_validation_fails_closed_without_image_evidence() {
+        let resolver = LocalKeyResolver::new(InMemoryLocalSecretStore::fixture_ci())
+            .with_policy(KeyResolverPolicy::allow_prefixes(["fixture/"]));
+        let game_dir = repo_fixture_path("fixtures/public/kaifuu-encrypted-matrix/raw/rpg-maker");
+        let missing_image_asset = game_dir.join("img/pictures/missing.rpgmvp");
+
+        let report =
+            validate_rpg_maker_mv_mz_fixture_key(RpgMakerMvMzFixtureKeyValidationRequest {
+                fixture_id: "kaifuu-rpg-maker-missing-image-evidence",
+                game_dir: &game_dir,
+                image_asset_path: &missing_image_asset,
+                requirement_id: "rpg-maker-mv-mz-asset-key",
+                secret_ref: "local-secret:fixture/rpg-maker/asset-key",
+                resolver: &resolver,
+            });
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        let record = &report.records[0];
+        assert_eq!(record.surface, "image_asset");
+        assert_eq!(record.codec, CodecTransform::PngImage);
+        assert_eq!(
+            record.diagnostic_result,
+            RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingImageEvidence
+        );
+        assert!(record.proof_hash.is_none());
+        assert!(record.system_json_proof_hash.is_some());
+        assert!(record.image_evidence_hash.is_none());
+        assert_eq!(
+            report.diagnostics[0].code,
+            RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingImageEvidence
+        );
+        assert_eq!(
+            report.diagnostics[0].semantic_code,
+            SemanticErrorCode::KeyValidationFailed
+        );
+        assert_eq!(report.diagnostics[0].field, "imageAssetPath");
+        assert_eq!(
+            report.diagnostics[0].message,
+            "encrypted image evidence is missing or unreadable"
+        );
+
+        let serialized = report.stable_json().unwrap();
+        for forbidden in [
+            "fixture-only-rpg-maker-asset-key-v1",
+            "00112233445566778899aabbccddeeff",
+            "fixture/rpg-maker/asset-key",
+            &missing_image_asset.display().to_string(),
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "validation report leaked {forbidden}: {serialized}"
+            );
+        }
+        assert!(serialized.contains("missing_image_evidence"));
+        assert!(!serialized.contains("image evidence matched"));
     }
 
     #[test]
