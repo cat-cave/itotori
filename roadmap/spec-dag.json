@@ -11334,7 +11334,7 @@
     {
       "id": "ITOTORI-064",
       "title": "Style-guide live-provider smoke spec",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11368,10 +11368,7 @@
         "Live network required in CI",
         "Ledger metadata missing",
         "Structured output accepted without validation"
-      ],
-      "owner": "orchestrator-wave13",
-      "branch": "spec/itotori-064",
-      "worktree": "/tmp/itotori-spec-itotori-064"
+      ]
     },
     {
       "id": "ITOTORI-065",
@@ -13064,7 +13061,7 @@
     {
       "id": "KAIFUU-091",
       "title": "Siglus Scene.pck and Gameexe.dat detector profile fixtures",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -13103,10 +13100,7 @@
         "Siglus detection overstated as extraction support",
         "Profile fixtures containing retail bytes",
         "Scene and Gameexe provenance split across reports"
-      ],
-      "owner": "orchestrator-wave13",
-      "branch": "spec/kaifuu-091",
-      "worktree": "/tmp/itotori-spec-kaifuu-091"
+      ]
     },
     {
       "id": "KAIFUU-092",
@@ -17778,7 +17772,7 @@
     {
       "id": "CATALOG-070",
       "title": "Platform language conflict augmenter",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "shared"],
@@ -17816,10 +17810,7 @@
         "Loss of original catalog evidence during demotion",
         "Benchmark seed contamination by official-English titles",
         "Live API assumptions in public tests"
-      ],
-      "owner": "orchestrator-wave13",
-      "branch": "spec/catalog-070",
-      "worktree": "/tmp/itotori-spec-catalog-070"
+      ]
     },
     {
       "id": "CATALOG-071",
