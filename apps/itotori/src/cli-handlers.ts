@@ -1,4 +1,8 @@
-import { assertRuntimeReport } from "@itotori/localization-bridge-schema";
+import {
+  assertRuntimeReport,
+  assertStyleGuideConversationTranscript,
+  type StyleGuideConversationTranscript,
+} from "@itotori/localization-bridge-schema";
 import { createCatalogResolverFixtureArtifact } from "@itotori/db";
 import type {
   CatalogExactExternalIdLinkRequest,
@@ -6,6 +10,8 @@ import type {
   CatalogResolverFixtureInput,
   ItotoriCatalogExactExternalIdLinkerPort,
   ItotoriCatalogFuzzyCandidateGeneratorPort,
+  StyleGuideFixtureFlowInput,
+  StyleGuideFixtureFlowResult,
 } from "@itotori/db";
 import { assertBridgeInput } from "./api-schema.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
@@ -21,6 +27,9 @@ export type ItotoriCliServices = {
   manualFeedback: ManualFeedbackImportPort;
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
+  styleGuideFixtureFlow: {
+    run(input: StyleGuideFixtureFlowInput): Promise<StyleGuideFixtureFlowResult>;
+  };
 };
 
 export type ItotoriCliDependencies = {
@@ -67,6 +76,9 @@ export async function runItotoriCliCommand(
       break;
     case "catalog-resolve-fixture":
       await runCatalogResolveFixture(args, dependencies);
+      break;
+    case "style-guide-fixture-flow":
+      await runStyleGuideFixtureFlow(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -182,6 +194,26 @@ async function runCatalogResolveFixture(
   const fixture = dependencies.io.readJson(fixturePath) as CatalogResolverFixtureInput;
   const artifact = createCatalogResolverFixtureArtifact(fixture);
   dependencies.io.writeJson(outputPath, artifact);
+}
+
+async function runStyleGuideFixtureFlow(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const fixturePath =
+    optionalFlag(args, "--fixture") ?? "fixtures/itotori-style-guide/conversations/accepted.json";
+  const outputPath =
+    optionalFlag(args, "--output") ?? "artifacts/itotori/style-guide-fixture-flow.json";
+  const fixture = dependencies.io.readJson(fixturePath);
+  assertStyleGuideConversationTranscript(fixture);
+  const fixtureId = optionalFlag(args, "--fixture-id");
+  const result = await dependencies.withServices((services) =>
+    services.styleGuideFixtureFlow.run({
+      transcript: fixture satisfies StyleGuideConversationTranscript,
+      ...(fixtureId === undefined ? {} : { fixtureId }),
+    }),
+  );
+  dependencies.io.writeJson(outputPath, result);
 }
 
 function requiredFlag(args: string[], name: string): string {

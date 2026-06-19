@@ -43,6 +43,11 @@ export default defineConfig({
         dependsOn: ["ts:build"],
         cache: false,
       },
+      "style-guide:fixture-flow": {
+        command: "node apps/itotori/dist/cli.js style-guide-fixture-flow",
+        dependsOn: ["db:migrate:test"],
+        cache: false,
+      },
       "style-guide:live-provider-smoke": {
         command: "node apps/itotori/dist/style-guide-provider-smoke.js --live",
         dependsOn: ["ts:build"],
