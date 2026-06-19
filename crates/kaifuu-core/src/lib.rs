@@ -4619,10 +4619,9 @@ pub fn validate_helper_key_ref_request(input: &Value) -> Vec<LocalKeyImportDiagn
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let mut refs_by_requirement = BTreeMap::<String, &Value>::new();
     for (index, key_ref) in key_refs.iter().enumerate() {
         let field = format!("keyRefs.{index}");
-        let Some(requirement_id) = key_ref.get("requirementId").and_then(Value::as_str) else {
+        let Some(_requirement_id) = key_ref.get("requirementId").and_then(Value::as_str) else {
             diagnostics.push(LocalKeyImportDiagnostic {
                 code: "missing_required_field".to_string(),
                 field: format!("{field}.requirementId"),
@@ -4669,7 +4668,6 @@ pub fn validate_helper_key_ref_request(input: &Value) -> Vec<LocalKeyImportDiagn
                 message: "key ref source hash does not match the helper request".to_string(),
             });
         }
-        refs_by_requirement.insert(requirement_id.to_string(), key_ref);
     }
 
     for (index, required) in required_key_refs.iter().enumerate() {
@@ -4682,7 +4680,17 @@ pub fn validate_helper_key_ref_request(input: &Value) -> Vec<LocalKeyImportDiagn
             });
             continue;
         };
-        if !refs_by_requirement.contains_key(requirement_id) {
+        let matching_refs = key_refs
+            .iter()
+            .enumerate()
+            .filter(|(_, key_ref)| {
+                key_ref
+                    .get("requirementId")
+                    .and_then(Value::as_str)
+                    .is_some_and(|candidate| candidate == requirement_id)
+            })
+            .collect::<Vec<_>>();
+        if matching_refs.is_empty() {
             diagnostics.push(LocalKeyImportDiagnostic {
                 code: SEMANTIC_MISSING_KEY_MATERIAL.to_string(),
                 field,
@@ -4690,6 +4698,59 @@ pub fn validate_helper_key_ref_request(input: &Value) -> Vec<LocalKeyImportDiagn
                     "required local key ref {requirement_id} was not provided to helper boundary"
                 ),
             });
+            continue;
+        }
+
+        for (key_ref_index, key_ref) in matching_refs {
+            let field = format!("keyRefs.{key_ref_index}");
+            match key_ref.get("secretRef").and_then(Value::as_str) {
+                Some(secret_ref) if !secret_ref.is_empty() => {
+                    if let Err(message) = SecretRef::new(secret_ref.to_string()) {
+                        diagnostics.push(LocalKeyImportDiagnostic {
+                            code: "invalid_secret_ref".to_string(),
+                            field: format!("{field}.secretRef"),
+                            message,
+                        });
+                    }
+                }
+                _ => {
+                    diagnostics.push(LocalKeyImportDiagnostic {
+                        code: SEMANTIC_MISSING_KEY_MATERIAL.to_string(),
+                        field: format!("{field}.secretRef"),
+                        message: format!(
+                            "required local key ref {requirement_id} must include a valid secretRef"
+                        ),
+                    });
+                }
+            }
+
+            match (
+                key_ref.get("engineProfileId").and_then(Value::as_str),
+                expected_engine_profile_id.as_deref(),
+            ) {
+                (Some(engine_profile_id), Some(expected))
+                    if engine_profile_id == expected && !engine_profile_id.is_empty() => {}
+                _ => diagnostics.push(LocalKeyImportDiagnostic {
+                    code: SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE.to_string(),
+                    field: format!("{field}.engineProfileId"),
+                    message: "required key ref engine profile id must match the helper request"
+                        .to_string(),
+                }),
+            }
+
+            match (
+                key_ref.get("sourceHash").and_then(Value::as_str),
+                expected_source_hash.as_deref(),
+            ) {
+                (Some(source_hash), Some(expected))
+                    if source_hash == expected && !source_hash.is_empty() => {}
+                _ => diagnostics.push(LocalKeyImportDiagnostic {
+                    code: SEMANTIC_KEY_IMPORT_HASH_MISMATCH.to_string(),
+                    field: format!("{field}.sourceHash"),
+                    message: "required key ref source hash must match the helper request"
+                        .to_string(),
+                }),
+            }
         }
     }
 
@@ -13439,6 +13500,101 @@ mod tests {
         assert_eq!(
             output["diagnostic"]["message"],
             SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION
+        );
+    }
+
+    #[test]
+    fn helper_key_ref_request_rejects_requirement_id_only_refs() {
+        let registry = fixture_helper_registry().unwrap();
+        let mut request = public_helper_request_fixture_value("key-ref-request");
+        request["keyRefs"][0] = serde_json::json!({
+            "requirementId": "siglus-secondary-key"
+        });
+
+        let diagnostics = validate_helper_key_ref_request(&request);
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SEMANTIC_MISSING_KEY_MATERIAL
+                    && diagnostic.field == "keyRefs.0.secretRef"
+            }),
+            "requirement-id-only keyRef should not satisfy requiredKeyRefs: {diagnostics:#?}"
+        );
+
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &request,
+            )
+            .unwrap();
+        assert_eq!(output["diagnostic"]["code"], "missing_key");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_MISSING_KEY_MATERIAL
+        );
+    }
+
+    #[test]
+    fn helper_key_ref_request_rejects_required_ref_missing_engine_profile() {
+        let registry = fixture_helper_registry().unwrap();
+        let mut request = public_helper_request_fixture_value("key-ref-request");
+        request["keyRefs"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("engineProfileId");
+
+        let diagnostics = validate_helper_key_ref_request(&request);
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE
+                    && diagnostic.field == "keyRefs.0.engineProfileId"
+            }),
+            "required keyRef missing engineProfileId should fail binding: {diagnostics:#?}"
+        );
+
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &request,
+            )
+            .unwrap();
+        assert_eq!(output["diagnostic"]["code"], "validation_failed");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE
+        );
+    }
+
+    #[test]
+    fn helper_key_ref_request_rejects_required_ref_missing_source_hash() {
+        let registry = fixture_helper_registry().unwrap();
+        let mut request = public_helper_request_fixture_value("key-ref-request");
+        request["keyRefs"][0]
+            .as_object_mut()
+            .unwrap()
+            .remove("sourceHash");
+
+        let diagnostics = validate_helper_key_ref_request(&request);
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SEMANTIC_KEY_IMPORT_HASH_MISMATCH
+                    && diagnostic.field == "keyRefs.0.sourceHash"
+            }),
+            "required keyRef missing sourceHash should fail binding: {diagnostics:#?}"
+        );
+
+        let output = registry
+            .invoke(
+                FIXTURE_HELPER_REGISTRY_ID,
+                HelperCapability::FixtureInvocation,
+                &request,
+            )
+            .unwrap();
+        assert_eq!(output["diagnostic"]["code"], "validation_failed");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_KEY_IMPORT_HASH_MISMATCH
         );
     }
 
