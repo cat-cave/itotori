@@ -4,6 +4,7 @@ import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
   assets,
+  catalogSourceProvenance,
   findings,
   localeBranchUnits,
   localeBranches,
@@ -204,7 +205,8 @@ export class TerminologySourceReferenceError extends Error {
   constructor(
     readonly code:
       | "terminology.source_reference.source_revision_mismatch"
-      | "terminology.source_reference.bridge_unit_mismatch",
+      | "terminology.source_reference.bridge_unit_mismatch"
+      | "terminology.source_reference.source_provenance_mismatch",
     message: string,
   ) {
     super(message);
@@ -365,19 +367,21 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
           "sourceReference.sourceRevisionId",
         );
         const bridgeUnitId = optionalNonEmpty(reference.bridgeUnitId, "sourceReference.bridgeUnitId");
+        const sourceProvenanceId = optionalNonEmpty(
+          reference.sourceProvenanceId,
+          "sourceReference.sourceProvenanceId",
+        );
         await validateSourceReferenceContext(tx, context, {
           sourceRevisionId,
           bridgeUnitId,
+          sourceProvenanceId,
         });
         await tx.insert(terminologySourceReferences).values({
           sourceRefId: reference.sourceRefId ?? createUuid7(),
           termId: persistedTerm.termId,
           sourceRevisionId,
           bridgeUnitId,
-          sourceProvenanceId: optionalNonEmpty(
-            reference.sourceProvenanceId,
-            "sourceReference.sourceProvenanceId",
-          ),
+          sourceProvenanceId,
           referenceKind,
           citation: requiredString(reference.citation, "sourceReference.citation"),
           context: optionalNonEmpty(reference.context, "sourceReference.context"),
@@ -590,7 +594,11 @@ async function lockTerminologySourceTerm(
 async function validateSourceReferenceContext(
   db: ItotoriDatabase,
   context: LocaleBranchTerminologyContext,
-  reference: { sourceRevisionId: string | null; bridgeUnitId: string | null },
+  reference: {
+    sourceRevisionId: string | null;
+    bridgeUnitId: string | null;
+    sourceProvenanceId: string | null;
+  },
 ): Promise<void> {
   if (reference.sourceRevisionId !== null) {
     const rows = await db.execute<{ exists: boolean }>(sql`
@@ -640,6 +648,30 @@ async function validateSourceReferenceContext(
       );
     }
   }
+
+  if (reference.sourceProvenanceId !== null) {
+    const rows = await db
+      .select({ metadata: catalogSourceProvenance.metadata })
+      .from(catalogSourceProvenance)
+      .where(eq(catalogSourceProvenance.sourceProvenanceId, reference.sourceProvenanceId))
+      .limit(1);
+    const metadata = rows[0]?.metadata;
+    const projectId = metadata === undefined ? null : metadataString(metadata, "projectId");
+    const localeBranchId = metadata === undefined ? null : metadataString(metadata, "localeBranchId");
+    const sourceBundleId = metadata === undefined ? null : metadataString(metadata, "sourceBundleId");
+    const sourceRevisionId =
+      metadata === undefined ? null : metadataString(metadata, "sourceRevisionId");
+    const branchMatches = localeBranchId === null || localeBranchId === context.localeBranchId;
+    const sourceMatches =
+      sourceBundleId === context.sourceBundleId || sourceRevisionId === context.sourceRevisionId;
+
+    if (projectId !== context.projectId || !branchMatches || !sourceMatches) {
+      throw new TerminologySourceReferenceError(
+        "terminology.source_reference.source_provenance_mismatch",
+        `source provenance ${reference.sourceProvenanceId} is not scoped to locale branch ${context.localeBranchId}`,
+      );
+    }
+  }
 }
 
 async function upsertSemanticIndex(
@@ -671,6 +703,7 @@ async function upsertSemanticIndex(
       .join("\n");
   const searchTokens = tokenize(searchDocument);
   const contentHash = `sha256:${createHash("sha256").update(searchDocument).digest("hex")}`;
+  const semanticIndex = normalizeSemanticIndexInput(input);
   await db
     .insert(terminologySemanticIndex)
     .values({
@@ -678,19 +711,13 @@ async function upsertSemanticIndex(
       termId,
       searchDocument,
       searchTokens,
-      embeddingProvider: input?.embeddingProvider ?? "itotori-lexical",
-      embeddingModel: input?.embeddingModel ?? "terminology-lexical-token-index-v1",
-      embeddingDimension: input?.embeddingDimension ?? 0,
-      embeddingVector: input?.embeddingVector ?? null,
+      embeddingProvider: semanticIndex.embeddingProvider,
+      embeddingModel: semanticIndex.embeddingModel,
+      embeddingDimension: semanticIndex.embeddingDimension,
+      embeddingVector: semanticIndex.embeddingVector,
       contentHash,
-      status: input?.status ?? terminologySemanticIndexStatusValues.indexedLexical,
-      metadata: {
-        hookKind: "lexical_token_index",
-        indexKind: "lexical_token_index",
-        semanticReady: false,
-        vectorReady: false,
-        ...(input?.metadata ?? {}),
-      },
+      status: semanticIndex.status,
+      metadata: semanticIndex.metadata,
       refreshedAt: new Date(),
     })
     .onConflictDoUpdate({
@@ -698,23 +725,96 @@ async function upsertSemanticIndex(
       set: {
         searchDocument,
         searchTokens,
-        embeddingProvider: input?.embeddingProvider ?? "itotori-lexical",
-        embeddingModel: input?.embeddingModel ?? "terminology-lexical-token-index-v1",
-        embeddingDimension: input?.embeddingDimension ?? 0,
-        embeddingVector: input?.embeddingVector ?? null,
+        embeddingProvider: semanticIndex.embeddingProvider,
+        embeddingModel: semanticIndex.embeddingModel,
+        embeddingDimension: semanticIndex.embeddingDimension,
+        embeddingVector: semanticIndex.embeddingVector,
         contentHash,
-        status: input?.status ?? terminologySemanticIndexStatusValues.indexedLexical,
-        metadata: {
-          hookKind: "lexical_token_index",
-          indexKind: "lexical_token_index",
-          semanticReady: false,
-          vectorReady: false,
-          ...(input?.metadata ?? {}),
-        },
+        status: semanticIndex.status,
+        metadata: semanticIndex.metadata,
         refreshedAt: new Date(),
         updatedAt: sql`now()`,
       },
     });
+}
+
+type NormalizedTerminologySemanticIndexInput = {
+  embeddingProvider: string;
+  embeddingModel: string;
+  embeddingDimension: number;
+  embeddingVector: number[] | null;
+  status: TerminologySemanticIndexStatus;
+  metadata: TerminologyJsonRecord;
+};
+
+const lexicalEmbeddingProvider = "itotori-lexical";
+const lexicalEmbeddingModel = "terminology-lexical-token-index-v1";
+
+function normalizeSemanticIndexInput(
+  input: TerminologySemanticIndexInput | undefined,
+): NormalizedTerminologySemanticIndexInput {
+  const embeddingProvider =
+    input?.embeddingProvider === undefined
+      ? lexicalEmbeddingProvider
+      : requiredString(input.embeddingProvider, "semanticIndex.embeddingProvider");
+  const embeddingModel =
+    input?.embeddingModel === undefined
+      ? lexicalEmbeddingModel
+      : requiredString(input.embeddingModel, "semanticIndex.embeddingModel");
+  const embeddingDimension = input?.embeddingDimension ?? 0;
+  if (
+    !Number.isInteger(embeddingDimension) ||
+    embeddingDimension < 0 ||
+    !Number.isSafeInteger(embeddingDimension)
+  ) {
+    throw new Error("semanticIndex.embeddingDimension must be a non-negative safe integer");
+  }
+
+  const embeddingVector = input?.embeddingVector ?? null;
+  if (embeddingVector !== null) {
+    if (!Array.isArray(embeddingVector) || !embeddingVector.every((value) => Number.isFinite(value))) {
+      throw new Error("semanticIndex.embeddingVector must be an array of finite numbers");
+    }
+    if (embeddingVector.length !== embeddingDimension) {
+      throw new Error("semanticIndex.embeddingDimension must match embeddingVector length");
+    }
+  }
+
+  const status =
+    input?.status === undefined
+      ? terminologySemanticIndexStatusValues.indexedLexical
+      : enumValue(
+          input.status,
+          Object.values(terminologySemanticIndexStatusValues),
+          "semanticIndex.status",
+        );
+  const vectorReady = embeddingVector !== null && embeddingDimension > 0;
+  const semanticReady =
+    status === terminologySemanticIndexStatusValues.ready &&
+    vectorReady &&
+    embeddingProvider !== lexicalEmbeddingProvider &&
+    embeddingModel !== lexicalEmbeddingModel;
+
+  if (status === terminologySemanticIndexStatusValues.ready && !semanticReady) {
+    throw new Error(
+      "semanticIndex.status ready requires a non-lexical provider/model and a non-empty matching embedding vector",
+    );
+  }
+
+  return {
+    embeddingProvider,
+    embeddingModel,
+    embeddingDimension,
+    embeddingVector,
+    status,
+    metadata: {
+      ...jsonRecord(input?.metadata ?? {}, "semanticIndex.metadata"),
+      hookKind: "lexical_token_index",
+      indexKind: semanticReady ? "semantic_vector_index" : "lexical_token_index",
+      semanticReady,
+      vectorReady,
+    },
+  };
 }
 
 async function reconcilePreferredTranslationConflict(
@@ -1131,4 +1231,9 @@ function jsonRecord(value: TerminologyJsonRecord, label: string): TerminologyJso
     throw new Error(`${label} must be an object`);
   }
   return value;
+}
+
+function metadataString(metadata: TerminologyJsonRecord, key: string): string | null {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
