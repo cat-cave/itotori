@@ -133,7 +133,9 @@
         "crypto": "unknown",
         "helperStatus": "unavailable",
         "keyMaterialStatus": "missing",
-        "notes": ["detector-only metadata record; secondary-key derivation is outside this profile"],
+        "notes": [
+          "detector-only metadata record; secondary-key derivation is outside this profile"
+        ],
         "patchBack": "unsupported",
         "path": "Gameexe.dat",
         "surfaceId": "siglus-gameexe-dat#metadata",
@@ -148,7 +150,9 @@
         "crypto": "key_profile",
         "helperStatus": "unavailable",
         "keyMaterialStatus": "missing",
-        "notes": ["detector-only layered access record; no parser, normalized script text, or archive entry listing is claimed"],
+        "notes": [
+          "detector-only layered access record; no parser, normalized script text, or archive entry listing is claimed"
+        ],
         "patchBack": "unsupported",
         "path": "Scene.pck",
         "surfaceId": "siglus-scene-pck#dialogue",

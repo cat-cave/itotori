@@ -122,8 +122,8 @@ export function augmentCatalogPlatformLanguageConflicts(
         .map((candidate, index) =>
           normalizeEvidence(candidate, `candidateEvidence[${index}]`, diagnostics),
         )
-        .filter((candidate): candidate is CatalogPlatformLanguageConflictEvidence =>
-          candidate !== null,
+        .filter(
+          (candidate): candidate is CatalogPlatformLanguageConflictEvidence => candidate !== null,
         )
     : [];
 
@@ -262,9 +262,12 @@ export function augmentCatalogPlatformLanguageConflicts(
     conflict.detectedAt = request.detectedAt;
   }
 
-  return result(catalogPlatformLanguageConflictStatusValues.conflict, targetLanguage, [conflict], [
-    ...diagnostics,
-  ]);
+  return result(
+    catalogPlatformLanguageConflictStatusValues.conflict,
+    targetLanguage,
+    [conflict],
+    [...diagnostics],
+  );
 }
 
 function conflictEvidenceFromLanguageEvidence(
@@ -276,7 +279,9 @@ function conflictEvidenceFromLanguageEvidence(
       ? catalogConflictSubjectKindValues.sourceProvenance
       : catalogConflictSubjectKindValues.languageStatus;
   const subjectId =
-    evidence.languageStatusId ?? evidence.sourceProvenanceId ?? `${evidence.catalogSource}:${evidence.sourceId}`;
+    evidence.languageStatusId ??
+    evidence.sourceProvenanceId ??
+    `${evidence.catalogSource}:${evidence.sourceId}`;
   return compactJson({
     subjectKind,
     subjectId,
@@ -311,10 +316,7 @@ function normalizeEvidence(
     diagnostics.push(invalidDiagnostic(`${label}.status is unsupported.`));
     return null;
   }
-  if (
-    evidence.statusScope !== undefined &&
-    !languageStatusScopes.includes(evidence.statusScope)
-  ) {
+  if (evidence.statusScope !== undefined && !languageStatusScopes.includes(evidence.statusScope)) {
     diagnostics.push(invalidDiagnostic(`${label}.statusScope is unsupported.`));
     return null;
   }

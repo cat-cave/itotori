@@ -1805,13 +1805,14 @@ function platformLanguageConflictFactFromRecord(
         summary: result.conflicts[0].summary,
         reasonCode: result.conflicts[0].reasonCode,
         severity: result.conflicts[0].severity,
-        evidence: result.conflicts[0].evidence.map((evidence) =>
-          compactJson({
-            subjectKind: evidence.subjectKind,
-            subjectId: evidence.subjectId,
-            evidencePosition: evidence.evidencePosition,
-            metadata: evidence.metadata,
-          }) as CatalogRecordedConflictEvidenceFact,
+        evidence: result.conflicts[0].evidence.map(
+          (evidence) =>
+            compactJson({
+              subjectKind: evidence.subjectKind,
+              subjectId: evidence.subjectId,
+              evidencePosition: evidence.evidencePosition,
+              metadata: evidence.metadata,
+            }) as CatalogRecordedConflictEvidenceFact,
         ),
         metadata: {
           ...result.conflicts[0].metadata,

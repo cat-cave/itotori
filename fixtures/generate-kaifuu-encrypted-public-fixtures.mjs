@@ -562,7 +562,7 @@ function writeManifest() {
       provenance: {
         author: "Kaifuu fixture authors",
         creationMethod:
-        "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved Siglus detector expected outputs.",
+          "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved Siglus detector expected outputs.",
         rawAssetPolicy: "contains-no-copyrighted-game-assets",
       },
     },

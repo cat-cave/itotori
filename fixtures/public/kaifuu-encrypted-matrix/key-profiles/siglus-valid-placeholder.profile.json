@@ -12,9 +12,7 @@
   },
   "sourceFingerprint": {
     "gameRootHash": "sha256:e8f44e03ef365157dcc19689bebe4f2c49cfaf46109235f0a529bceec77e40d5",
-    "engineEvidence": [
-      "Scene.pck"
-    ]
+    "engineEvidence": ["Scene.pck"]
   },
   "keyRequirements": [
     {
@@ -45,9 +43,7 @@
       "assetId": "kaifuu-encrypted-matrix-siglus-asset",
       "path": "Scene.pck",
       "assetKind": "archive",
-      "textSurfaces": [
-        "dialogue"
-      ],
+      "textSurfaces": ["dialogue"],
       "sourceHash": "sha256:00368fce178445f0f7912fd4226ec13dd5df4d037f38db8d3ab8a95886278cec",
       "patching": {
         "capability": "patching",

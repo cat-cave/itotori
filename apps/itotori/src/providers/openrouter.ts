@@ -646,8 +646,7 @@ function normalizeOpenRouterCost(
       costKind: "provider_estimate",
       currency: "USD",
       amountMicrosUsd: usdToMicros(
-        tokenUsage.promptTokens * promptPriceUsd +
-          tokenUsage.completionTokens * completionPriceUsd,
+        tokenUsage.promptTokens * promptPriceUsd + tokenUsage.completionTokens * completionPriceUsd,
       ),
       pricingSnapshotId: "openrouter_response_endpoint_pricing",
     };
