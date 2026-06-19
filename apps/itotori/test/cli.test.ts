@@ -183,47 +183,50 @@ describe("Itotori CLI handlers", () => {
     ["null", null],
     ["array", []],
     ["scalar", "not-a-request"],
-  ])("writes structured exact-link invalid diagnostics for %s request payloads", async (_name, payload) => {
-    const services = servicesFixture();
-    const repository = {
-      getWorkByExternalId: vi.fn(),
-    };
-    services.catalogExactExternalIdLinker = new ItotoriCatalogExactExternalIdLinkerService(
-      repository,
-      { userId: "local-user" },
-    );
-    const reads = new Map<string, unknown>([["catalog-link-request.json", payload]]);
-    const writes = new Map<string, unknown>();
+  ])(
+    "writes structured exact-link invalid diagnostics for %s request payloads",
+    async (_name, payload) => {
+      const services = servicesFixture();
+      const repository = {
+        getWorkByExternalId: vi.fn(),
+      };
+      services.catalogExactExternalIdLinker = new ItotoriCatalogExactExternalIdLinkerService(
+        repository,
+        { userId: "local-user" },
+      );
+      const reads = new Map<string, unknown>([["catalog-link-request.json", payload]]);
+      const writes = new Map<string, unknown>();
 
-    await runItotoriCliCommand(
-      [
-        "catalog-link-exact",
-        "--request",
-        "catalog-link-request.json",
-        "--output",
-        "catalog-link-result.json",
-      ],
-      {
-        io: jsonStoreFixture(reads, writes),
-        migrateDatabase: vi.fn(async () => {}),
-        withServices: async (callback) => await callback(services),
-      },
-    );
+      await runItotoriCliCommand(
+        [
+          "catalog-link-exact",
+          "--request",
+          "catalog-link-request.json",
+          "--output",
+          "catalog-link-result.json",
+        ],
+        {
+          io: jsonStoreFixture(reads, writes),
+          migrateDatabase: vi.fn(async () => {}),
+          withServices: async (callback) => await callback(services),
+        },
+      );
 
-    expect(writes.get("catalog-link-result.json")).toMatchObject({
-      status: catalogExactExternalIdLinkStatusValues.unsupported,
-      subject: null,
-      workId: null,
-      matches: [],
-      diagnostics: [
-        expect.objectContaining({
-          code: "catalog.exact_external_id.invalid_request",
-          severity: "error",
-        }),
-      ],
-    });
-    expect(repository.getWorkByExternalId).not.toHaveBeenCalled();
-  });
+      expect(writes.get("catalog-link-result.json")).toMatchObject({
+        status: catalogExactExternalIdLinkStatusValues.unsupported,
+        subject: null,
+        workId: null,
+        matches: [],
+        diagnostics: [
+          expect.objectContaining({
+            code: "catalog.exact_external_id.invalid_request",
+            severity: "error",
+          }),
+        ],
+      });
+      expect(repository.getWorkByExternalId).not.toHaveBeenCalled();
+    },
+  );
 
   it("writes fuzzy catalog candidates from fixture requests", async () => {
     const services = servicesFixture();

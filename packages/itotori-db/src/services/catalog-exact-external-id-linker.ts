@@ -78,9 +78,7 @@ export type CatalogExactExternalIdLinkResult = {
 };
 
 export interface ItotoriCatalogExactExternalIdLinkerPort {
-  linkExactExternalIds(
-    request: unknown,
-  ): Promise<CatalogExactExternalIdLinkResult>;
+  linkExactExternalIds(request: unknown): Promise<CatalogExactExternalIdLinkResult>;
 }
 
 type CatalogExternalIdLookupRepository = Pick<ItotoriCatalogRepositoryPort, "getWorkByExternalId">;
@@ -109,9 +107,7 @@ export class ItotoriCatalogExactExternalIdLinkerService implements ItotoriCatalo
     private readonly actor: AuthorizationActor,
   ) {}
 
-  async linkExactExternalIds(
-    request: unknown,
-  ): Promise<CatalogExactExternalIdLinkResult> {
+  async linkExactExternalIds(request: unknown): Promise<CatalogExactExternalIdLinkResult> {
     const normalized = normalizeRequest(request);
     if (normalized.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
       return result(

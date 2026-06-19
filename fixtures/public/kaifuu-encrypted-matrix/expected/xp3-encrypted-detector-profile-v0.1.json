@@ -143,7 +143,9 @@
         "helperStatus": "unavailable",
         "keyMaterialStatus": "missing",
         "keyRequirementRefs": ["kirikiri-xp3-key-profile"],
-        "notes": ["detector-only layered access record; plain inventory may list XP3 entries, but script decoding, extraction, and patch-back are not claimed"],
+        "notes": [
+          "detector-only layered access record; plain inventory may list XP3 entries, but script decoding, extraction, and patch-back are not claimed"
+        ],
         "patchBack": "unsupported",
         "path": "data.xp3",
         "surfaceId": "kirikiri-xp3-archive#dialogue",

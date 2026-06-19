@@ -739,7 +739,9 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
         Object.values(glossaryReviewItemStateValues),
         "state",
       );
-      const sourceReferences = normalizeGlossaryReviewSourceReferences(input.sourceReferences ?? []);
+      const sourceReferences = normalizeGlossaryReviewSourceReferences(
+        input.sourceReferences ?? [],
+      );
       for (const reference of sourceReferences) {
         await validateSourceReferenceContext(tx, context, {
           sourceRevisionId: reference.sourceRevisionId,
@@ -763,7 +765,9 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
       if (termId !== null) {
         const term = await getTermBaseById(tx, termId);
         if (term === null || term.localeBranchId !== input.localeBranchId) {
-          throw new Error(`terminology term ${termId} does not exist for locale branch ${input.localeBranchId}`);
+          throw new Error(
+            `terminology term ${termId} does not exist for locale branch ${input.localeBranchId}`,
+          );
         }
       }
 
@@ -1134,7 +1138,10 @@ function normalizeGlossaryReviewSourceReferences(
   metadata: TerminologyJsonRecord;
 }> {
   return references.map((reference) => ({
-    sourceRevisionId: optionalNonEmpty(reference.sourceRevisionId, "sourceReference.sourceRevisionId"),
+    sourceRevisionId: optionalNonEmpty(
+      reference.sourceRevisionId,
+      "sourceReference.sourceRevisionId",
+    ),
     bridgeUnitId: optionalNonEmpty(reference.bridgeUnitId, "sourceReference.bridgeUnitId"),
     sourceProvenanceId: optionalNonEmpty(
       reference.sourceProvenanceId,
@@ -1170,10 +1177,7 @@ async function activeApprovedTermConflicts(
         eq(terminologyTerms.localeBranchId, input.localeBranchId),
         eq(terminologyTerms.normalizedSourceTerm, input.normalizedSourceTerm),
         eq(terminologyTerms.status, terminologyTermStatusValues.active),
-        ne(
-          terminologyTerms.normalizedPreferredTranslation,
-          input.normalizedProposedTranslation,
-        ),
+        ne(terminologyTerms.normalizedPreferredTranslation, input.normalizedProposedTranslation),
       ),
     )
     .orderBy(asc(terminologyTerms.createdAt));

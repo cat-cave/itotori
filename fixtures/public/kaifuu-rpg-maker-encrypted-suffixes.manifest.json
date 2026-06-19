@@ -64,8 +64,8 @@
       "path": "fixtures/public/kaifuu-rpg-maker-encrypted-suffixes/expected/detection-report-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "ebb1060040e7e2b9ba3d8a111e7bd9270a0bc2d24ab5c10ed0a9c7fcf331693e",
-      "bytes": 22056,
+      "sha256": "d5431fd9f56682adcf4ad293b5e8e3caf2cbb79d09c926aa7ad37790fb2c1514",
+      "bytes": 22064,
       "redistributable": true
     },
     {
@@ -90,9 +90,13 @@
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
-    "sourceLocales": ["ja-JP"],
+    "sourceLocales": [
+      "ja-JP"
+    ],
     "targetLocales": [],
-    "engineKinds": ["rpg-maker-mv-mz-synthetic-encrypted-suffixes"],
+    "engineKinds": [
+      "rpg-maker-mv-mz-synthetic-encrypted-suffixes"
+    ],
     "notes": "Covers MV encrypted suffixes .rpgmvp, .rpgmvm, and .rpgmvo plus MZ encrypted suffixes .png_, .m4a_, and .ogg_. The expected detection report asserts adapter status remains unknown while archiveDetection reports matched unsupported encrypted input diagnostics."
   },
   "benchmarkUse": {
