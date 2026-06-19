@@ -17,11 +17,11 @@ use kaifuu_core::{
     LayeredAccessCapabilityContract, LayeredAccessHelperStatus, LayeredAccessKeyMaterialStatus,
     LayeredAccessOperationContract, LayeredAccessProfile, LayeredTextSurfaceAccess,
     OperationStatus, PatchBackTransform, PatchPreflightRequest, PatchRef, PatchRequest,
-    PatchResult, ProfileRequest, ProfileRequirement, ProtectedSpan, RequirementCategory,
-    RequirementStatus, SecretRef, SemanticErrorCode, SourceFingerprint, SurfaceTransform,
-    TextSurface, VerificationResult, VerifyRequest, atomic_write_text, content_hash,
-    deterministic_id, normalize_protected_spans, parse_hex_bytes, require_str, require_u64,
-    safe_join_relative, sha256_file_ref,
+    PatchResult, PlainXp3Entry, PlainXp3InventoryError, ProfileRequest, ProfileRequirement,
+    ProtectedSpan, RequirementCategory, RequirementStatus, SecretRef, SemanticErrorCode,
+    SourceFingerprint, SurfaceTransform, TextSurface, VerificationResult, VerifyRequest,
+    atomic_write_text, content_hash, deterministic_id, normalize_protected_spans, parse_hex_bytes,
+    read_plain_xp3_inventory, require_str, require_u64, safe_join_relative, sha256_file_ref,
 };
 use serde_json::{Value, json};
 
@@ -32,6 +32,7 @@ const XP3_ARCHIVE_PATH: &str = "data.xp3";
 const XP3_MAGIC: &[u8] = b"XP3";
 const XP3_ENCRYPTED_MARKER: &str = "XP3-CRYPT";
 const XP3_COMPRESSED_MARKER: &str = "XP3-COMPRESSED";
+const XP3_HELPER_REQUIRED_MARKER: &str = "XP3-HELPER-REQUIRED";
 const XP3_UNKNOWN_MARKER: &str = "XP3-UNKNOWN-VARIANT";
 const XP3_GAME_ID: &str = "kaifuu-kirikiri-xp3-synthetic-archive";
 const XP3_SUPPORT_BOUNDARY: &str = "XP3 profile fixtures identify synthetic KiriKiri/XP3 archive containers for detector and profile evidence only; archive entry parsing, decompression, decryption, extraction, patch-back, and runtime support are not claimed.";
@@ -1419,6 +1420,7 @@ impl EngineAdapter for FixtureAdapter {
 
 #[derive(Debug, Clone)]
 struct Xp3FixtureState {
+    archive_path: std::path::PathBuf,
     archive_exists: bool,
     archive_signature: bool,
     archive_hash: Option<String>,
@@ -1429,6 +1431,7 @@ struct Xp3FixtureState {
 enum Xp3FixtureVariant {
     Plain,
     Encrypted,
+    HelperRequired,
     Compressed,
     Unknown,
     NotXp3,
@@ -1453,6 +1456,8 @@ impl Xp3ProfileDetectorAdapter {
             }
         } else if text.contains(&XP3_UNKNOWN_MARKER.to_ascii_lowercase()) {
             Xp3FixtureVariant::Unknown
+        } else if text.contains(&XP3_HELPER_REQUIRED_MARKER.to_ascii_lowercase()) {
+            Xp3FixtureVariant::HelperRequired
         } else if text.contains(&XP3_ENCRYPTED_MARKER.to_ascii_lowercase())
             || text.contains("kaifuu-xp3-encrypted")
         {
@@ -1464,12 +1469,14 @@ impl Xp3ProfileDetectorAdapter {
         } else {
             Xp3FixtureVariant::Plain
         };
+        let archive_hash = archive_exists
+            .then(|| sha256_file_ref(&archive_path).ok())
+            .flatten();
         Xp3FixtureState {
+            archive_path,
             archive_exists,
             archive_signature,
-            archive_hash: archive_exists
-                .then(|| sha256_file_ref(&archive_path).ok())
-                .flatten(),
+            archive_hash,
             variant,
         }
     }
@@ -1478,6 +1485,7 @@ impl Xp3ProfileDetectorAdapter {
         match variant {
             Xp3FixtureVariant::Plain => "xp3-plain-container",
             Xp3FixtureVariant::Encrypted => "xp3-encrypted-container",
+            Xp3FixtureVariant::HelperRequired => "xp3-helper-required-container",
             Xp3FixtureVariant::Compressed => "xp3-compressed-container",
             Xp3FixtureVariant::Unknown => "xp3-unknown-container",
             Xp3FixtureVariant::NotXp3 => "not-xp3",
@@ -1489,6 +1497,7 @@ impl Xp3ProfileDetectorAdapter {
             Xp3FixtureVariant::Plain => "019ed000-0000-7000-8000-000000095001",
             Xp3FixtureVariant::Encrypted => "019ed000-0000-7000-8000-000000095002",
             Xp3FixtureVariant::Compressed => "019ed000-0000-7000-8000-000000095003",
+            Xp3FixtureVariant::HelperRequired => "019ed000-0000-7000-8000-000000095004",
             Xp3FixtureVariant::Unknown | Xp3FixtureVariant::NotXp3 => {
                 "019ed000-0000-7000-8000-000000095099"
             }
@@ -1499,6 +1508,7 @@ impl Xp3ProfileDetectorAdapter {
         match variant {
             Xp3FixtureVariant::Plain => "plain",
             Xp3FixtureVariant::Encrypted => "encrypted",
+            Xp3FixtureVariant::HelperRequired => "helper_required",
             Xp3FixtureVariant::Compressed => "compressed",
             Xp3FixtureVariant::Unknown => "unknown",
             Xp3FixtureVariant::NotXp3 => "not-xp3",
@@ -1508,12 +1518,18 @@ impl Xp3ProfileDetectorAdapter {
     fn is_detected(variant: Xp3FixtureVariant) -> bool {
         matches!(
             variant,
-            Xp3FixtureVariant::Plain | Xp3FixtureVariant::Encrypted | Xp3FixtureVariant::Compressed
+            Xp3FixtureVariant::Plain
+                | Xp3FixtureVariant::Encrypted
+                | Xp3FixtureVariant::HelperRequired
+                | Xp3FixtureVariant::Compressed
         )
     }
 
     fn can_inventory(variant: Xp3FixtureVariant) -> bool {
-        Self::is_detected(variant)
+        matches!(
+            variant,
+            Xp3FixtureVariant::Plain | Xp3FixtureVariant::Compressed
+        )
     }
 
     fn profile_from_state(&self, state: Xp3FixtureState) -> KaifuuResult<GameProfile> {
@@ -1552,17 +1568,30 @@ impl Xp3ProfileDetectorAdapter {
     }
 
     fn inventory_from_state(&self, state: Xp3FixtureState) -> KaifuuResult<AssetInventoryManifest> {
+        if state.variant == Xp3FixtureVariant::Encrypted {
+            return Err(Self::diagnostic_error(Self::crypto_boundary_failure(
+                state.variant,
+            )));
+        }
+        if state.variant == Xp3FixtureVariant::HelperRequired {
+            return Err(Self::diagnostic_error(Self::helper_required_failure(
+                state.variant,
+            )));
+        }
         if !Self::can_inventory(state.variant) {
             return Err(Self::diagnostic_error(Self::invalid_input_failure(
                 state.variant,
             )));
         }
+        let archive_bytes = fs::read(&state.archive_path)?;
+        let xp3_inventory =
+            read_plain_xp3_inventory(&archive_bytes).map_err(Self::inventory_reader_error)?;
         let mut manifest = AssetInventoryManifest {
             schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
             manifest_id: deterministic_id("xp3-inventory", 95),
             adapter_id: XP3_DETECTOR_ADAPTER_ID.to_string(),
             source_locale: "ja-JP".to_string(),
-            assets: state.inventory_assets(),
+            assets: state.inventory_assets(&xp3_inventory.entries),
             surfaces: vec![],
             capabilities: self.capabilities().reports,
             warnings: vec![],
@@ -1607,6 +1636,7 @@ impl Xp3ProfileDetectorAdapter {
             ),
             Xp3FixtureVariant::Plain
             | Xp3FixtureVariant::Encrypted
+            | Xp3FixtureVariant::HelperRequired
             | Xp3FixtureVariant::Compressed => Self::unsupported_failure(
                 SemanticErrorCode::UnsupportedLayeredTransform,
                 Capability::ContainerAccess,
@@ -1634,6 +1664,54 @@ impl Xp3ProfileDetectorAdapter {
         )
     }
 
+    fn crypto_boundary_failure(variant: Xp3FixtureVariant) -> AdapterFailure {
+        Self::unsupported_failure(
+            SemanticErrorCode::MissingCryptoCapability,
+            Capability::CryptoAccess,
+            Self::detected_variant(variant),
+            "encrypted XP3 inventory requires crypto support and resolved key material; no decryption is implemented",
+            "add an explicit crypto-capable XP3 adapter before inventory or extraction",
+        )
+    }
+
+    fn helper_required_failure(variant: Xp3FixtureVariant) -> AdapterFailure {
+        Self::unsupported_failure(
+            SemanticErrorCode::HelperRequired,
+            Capability::KeyProfile,
+            Self::detected_variant(variant),
+            "this XP3 profile requires an external helper before archive table access",
+            "run an approved helper or provide a future helper result before inventory or extraction",
+        )
+    }
+
+    fn inventory_reader_error(error: PlainXp3InventoryError) -> Box<dyn std::error::Error> {
+        let failure = match error {
+            PlainXp3InventoryError::UnsupportedEncrypted => {
+                Self::crypto_boundary_failure(Xp3FixtureVariant::Encrypted)
+            }
+            PlainXp3InventoryError::UnsupportedIndexEncoding(_) => Self::unsupported_failure(
+                SemanticErrorCode::MissingCodecCapability,
+                Capability::CodecAccess,
+                Self::detected_variant(Xp3FixtureVariant::Compressed),
+                format!("plain XP3 inventory supports only uncompressed index tables: {error}"),
+                "use a fixture with an uncompressed XP3 index table or add codec support",
+            ),
+            PlainXp3InventoryError::MalformedHeader
+            | PlainXp3InventoryError::Truncated(_)
+            | PlainXp3InventoryError::InvalidOffset(_)
+            | PlainXp3InventoryError::InvalidChunk(_)
+            | PlainXp3InventoryError::InvalidUtf16Path
+            | PlainXp3InventoryError::DuplicateEntry(_) => Self::unsupported_failure(
+                SemanticErrorCode::MissingContainerCapability,
+                Capability::ContainerAccess,
+                Self::detected_variant(Xp3FixtureVariant::Plain),
+                format!("plain XP3 inventory could not parse the fixture file table: {error}"),
+                "use a well-formed plain XP3 fixture with unique file entries",
+            ),
+        };
+        Self::diagnostic_error(failure)
+    }
+
     fn unsupported_patch_result(
         &self,
         patch_export_id: String,
@@ -1642,13 +1720,10 @@ impl Xp3ProfileDetectorAdapter {
         let detected_variant = Self::detected_variant(variant).to_string();
         let mut failures = vec![Self::parser_boundary_failure(variant)];
         if variant == Xp3FixtureVariant::Encrypted {
-            failures.push(Self::unsupported_failure(
-                SemanticErrorCode::MissingCryptoCapability,
-                Capability::CryptoAccess,
-                detected_variant.clone(),
-                "encrypted XP3 handling requires a future key-profile-aware adapter",
-                "provide future adapter crypto support before extraction or patching",
-            ));
+            failures.push(Self::crypto_boundary_failure(variant));
+        }
+        if variant == Xp3FixtureVariant::HelperRequired {
+            failures.push(Self::helper_required_failure(variant));
         }
         if variant == Xp3FixtureVariant::Compressed {
             failures.push(Self::unsupported_failure(
@@ -1703,7 +1778,7 @@ impl Xp3FixtureState {
         }]
     }
 
-    fn inventory_assets(&self) -> Vec<AssetInventoryAsset> {
+    fn inventory_assets(&self, entries: &[PlainXp3Entry]) -> Vec<AssetInventoryAsset> {
         if !self.archive_exists {
             return vec![];
         }
@@ -1716,18 +1791,48 @@ impl Xp3FixtureState {
             "detectedVariant".to_string(),
             Xp3ProfileDetectorAdapter::detected_variant(self.variant).to_string(),
         );
+        metadata.insert("entryCount".to_string(), entries.len().to_string());
+        metadata.insert(
+            "profileId".to_string(),
+            Xp3ProfileDetectorAdapter::profile_id(self.variant).to_string(),
+        );
         metadata.insert(
             "supportBoundary".to_string(),
-            "container identified only; archive entries are not parsed".to_string(),
+            "plain XP3 index table parsed for inventory only; payload extraction and patch-back are unsupported".to_string(),
         );
-        vec![AssetInventoryAsset {
+        let mut assets = vec![AssetInventoryAsset {
             asset_id: "kirikiri-xp3-archive".to_string(),
             asset_key: XP3_ARCHIVE_PATH.to_string(),
             asset_kind: AssetInventoryAssetKind::Archive,
             path: Some(XP3_ARCHIVE_PATH.to_string()),
             source_hash: self.archive_hash.clone(),
             metadata,
-        }]
+        }];
+
+        assets.extend(entries.iter().enumerate().map(|(index, entry)| {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("archivePath".to_string(), XP3_ARCHIVE_PATH.to_string());
+            metadata.insert("archiveSize".to_string(), entry.archive_size.to_string());
+            metadata.insert("compressed".to_string(), entry.compressed.to_string());
+            metadata.insert("originalSize".to_string(), entry.original_size.to_string());
+            metadata.insert(
+                "profileId".to_string(),
+                Xp3ProfileDetectorAdapter::profile_id(self.variant).to_string(),
+            );
+            metadata.insert("segmentCount".to_string(), entry.segment_count.to_string());
+            if let Some(stored_adler32) = &entry.stored_adler32 {
+                metadata.insert("storedAdler32".to_string(), stored_adler32.clone());
+            }
+            AssetInventoryAsset {
+                asset_id: format!("kirikiri-xp3-entry-{index:04}"),
+                asset_key: entry.path.clone(),
+                asset_kind: xp3_inventory_asset_kind(&entry.path),
+                path: Some(entry.path.clone()),
+                source_hash: entry.payload_hash.clone(),
+                metadata,
+            }
+        }));
+        assets
     }
 
     fn archive_parameters(&self) -> Vec<ArchiveParameter> {
@@ -1756,6 +1861,13 @@ impl Xp3FixtureState {
                 value: "fixture-key-profile-marker".to_string(),
                 source: Some(ArchiveParameterSource::Detected),
             }),
+            Xp3FixtureVariant::HelperRequired => parameters.push(ArchiveParameter {
+                parameter_id: "xp3-helper-requirement".to_string(),
+                name: "helperRequirement".to_string(),
+                kind: ArchiveParameterKind::Variant,
+                value: "fixture-helper-required".to_string(),
+                source: Some(ArchiveParameterSource::Detected),
+            }),
             Xp3FixtureVariant::Compressed => parameters.push(ArchiveParameter {
                 parameter_id: "xp3-compression".to_string(),
                 name: "compression".to_string(),
@@ -1769,7 +1881,10 @@ impl Xp3FixtureState {
     }
 
     fn key_requirements(&self) -> KaifuuResult<Vec<KeyRequirement>> {
-        if self.variant != Xp3FixtureVariant::Encrypted {
+        if !matches!(
+            self.variant,
+            Xp3FixtureVariant::Encrypted | Xp3FixtureVariant::HelperRequired
+        ) {
             return Ok(vec![]);
         }
         Ok(vec![KeyRequirement {
@@ -1789,6 +1904,12 @@ impl Xp3FixtureState {
             Xp3FixtureVariant::Encrypted => (
                 CryptoTransform::KeyProfile,
                 LayeredAccessKeyMaterialStatus::Missing,
+                LayeredAccessHelperStatus::Unavailable,
+                vec!["kirikiri-xp3-key-profile".to_string()],
+            ),
+            Xp3FixtureVariant::HelperRequired => (
+                CryptoTransform::HelperGated,
+                LayeredAccessKeyMaterialStatus::HelperGated,
                 LayeredAccessHelperStatus::Unavailable,
                 vec!["kirikiri-xp3-key-profile".to_string()],
             ),
@@ -1854,12 +1975,20 @@ impl Xp3FixtureState {
                 secret: false,
             },
         ];
-        if self.variant == Xp3FixtureVariant::Encrypted {
+        if matches!(
+            self.variant,
+            Xp3FixtureVariant::Encrypted | Xp3FixtureVariant::HelperRequired
+        ) {
             requirements.push(ProfileRequirement {
                 category: RequirementCategory::SecretKey,
                 key: "kirikiri-xp3-key-profile".to_string(),
                 status: RequirementStatus::Missing,
-                description: "encrypted XP3 payload is detected, but key resolution is outside the detector profile".to_string(),
+                description: if self.variant == Xp3FixtureVariant::HelperRequired {
+                    "XP3 helper-required payload is detected, but helper execution is outside the detector profile"
+                } else {
+                    "encrypted XP3 payload is detected, but key resolution is outside the detector profile"
+                }
+                .to_string(),
                 placeholder: Some("KAIFUU_KIRIKIRI_XP3_KEY_PROFILE".to_string()),
                 secret: true,
             });
@@ -1912,7 +2041,10 @@ impl Xp3FixtureState {
                 category: RequirementCategory::SecretKey,
                 key: "kirikiri-xp3-key-profile".to_string(),
                 status: RequirementStatus::NotRequired,
-                description: if self.variant == Xp3FixtureVariant::Encrypted {
+                description: if matches!(
+                    self.variant,
+                    Xp3FixtureVariant::Encrypted | Xp3FixtureVariant::HelperRequired
+                ) {
                     "encrypted XP3 profile metadata names the key requirement, but detector-only profiles do not resolve local key material"
                 } else {
                     "key material is not required for this synthetic XP3 profile"
@@ -1931,6 +2063,12 @@ impl Xp3FixtureState {
             "profileDiagnostics.encryptedPayload".to_string(),
             (self.variant == Xp3FixtureVariant::Encrypted).to_string(),
         );
+        if self.variant == Xp3FixtureVariant::HelperRequired {
+            metadata.insert(
+                "profileDiagnostics.helperRequired".to_string(),
+                "true".to_string(),
+            );
+        }
         metadata.insert(
             "profileDiagnostics.compressedPayload".to_string(),
             (self.variant == Xp3FixtureVariant::Compressed).to_string(),
@@ -2114,6 +2252,16 @@ impl EngineAdapter for Xp3ProfileDetectorAdapter {
 
     fn extract(&self, request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
         let state = Self::inspect(request.game_dir);
+        if state.variant == Xp3FixtureVariant::Encrypted {
+            return Err(Self::diagnostic_error(Self::crypto_boundary_failure(
+                state.variant,
+            )));
+        }
+        if state.variant == Xp3FixtureVariant::HelperRequired {
+            return Err(Self::diagnostic_error(Self::helper_required_failure(
+                state.variant,
+            )));
+        }
         Err(Self::diagnostic_error(Self::parser_boundary_failure(
             state.variant,
         )))
@@ -2909,6 +3057,21 @@ fn file_starts_with(path: &Path, expected: &[u8]) -> bool {
         .unwrap_or(false)
 }
 
+fn xp3_inventory_asset_kind(path: &str) -> AssetInventoryAssetKind {
+    match Path::new(path)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("ks" | "tjs" | "txt") => AssetInventoryAssetKind::Script,
+        Some("png" | "jpg" | "jpeg" | "bmp" | "webp") => AssetInventoryAssetKind::Image,
+        Some("ogg" | "wav" | "mp3" | "m4a") => AssetInventoryAssetKind::Audio,
+        Some("ttf" | "otf") => AssetInventoryAssetKind::Font,
+        _ => AssetInventoryAssetKind::Unknown,
+    }
+}
+
 fn evidence_status(exists: bool, signature_matches: bool) -> EvidenceStatus {
     if signature_matches {
         EvidenceStatus::Matched
@@ -2942,7 +3105,8 @@ mod tests {
     use super::*;
     use kaifuu_core::{
         GoldenAssertionStatus, GoldenByteEquivalenceMode, GoldenHarnessRequest, PatchExport,
-        ProtectedSpanMapping, read_json, run_round_trip_golden, stable_json,
+        ProtectedSpanMapping, XP3_PLAIN_MAGIC, read_json, run_round_trip_golden, sha256_hash_bytes,
+        stable_json,
     };
     use std::collections::{BTreeMap, BTreeSet};
     use std::path::PathBuf;
@@ -4119,6 +4283,64 @@ mod tests {
         dir
     }
 
+    #[derive(Clone, Copy)]
+    struct Xp3TestEntry<'a> {
+        path: &'a str,
+        payload: &'a [u8],
+        compressed: bool,
+        adler32: u32,
+    }
+
+    fn plain_xp3_fixture(entries: &[Xp3TestEntry<'_>]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(XP3_PLAIN_MAGIC);
+        bytes.extend_from_slice(&0_u64.to_le_bytes());
+
+        let mut segment_offsets = Vec::new();
+        for entry in entries {
+            segment_offsets.push(bytes.len() as u64);
+            bytes.extend_from_slice(entry.payload);
+        }
+
+        let index_offset = bytes.len() as u64;
+        let mut index = Vec::new();
+        for (entry, offset) in entries.iter().zip(segment_offsets) {
+            let mut file = Vec::new();
+            let path_units = entry.path.encode_utf16().collect::<Vec<_>>();
+            let mut info = Vec::new();
+            info.extend_from_slice(&0_u32.to_le_bytes());
+            info.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            info.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            info.extend_from_slice(&(path_units.len() as u16).to_le_bytes());
+            for unit in path_units {
+                info.extend_from_slice(&unit.to_le_bytes());
+            }
+            append_xp3_chunk(&mut file, b"info", &info);
+
+            let mut segment = Vec::new();
+            segment.extend_from_slice(&(u32::from(entry.compressed)).to_le_bytes());
+            segment.extend_from_slice(&offset.to_le_bytes());
+            segment.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            segment.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            append_xp3_chunk(&mut file, b"segm", &segment);
+            append_xp3_chunk(&mut file, b"adlr", &entry.adler32.to_le_bytes());
+            append_xp3_chunk(&mut index, b"File", &file);
+        }
+
+        bytes.push(0);
+        bytes.extend_from_slice(&(index.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(&index);
+        bytes[XP3_PLAIN_MAGIC.len()..XP3_PLAIN_MAGIC.len() + 8]
+            .copy_from_slice(&index_offset.to_le_bytes());
+        bytes
+    }
+
+    fn append_xp3_chunk(output: &mut Vec<u8>, name: &[u8; 4], content: &[u8]) {
+        output.extend_from_slice(name);
+        output.extend_from_slice(&(content.len() as u64).to_le_bytes());
+        output.extend_from_slice(content);
+    }
+
     #[test]
     fn xp3_profile_records_cover_plain_encrypted_compressed_and_unknown_cases() {
         let cases: &[(&str, &[u8], &str)] = &[
@@ -4201,14 +4423,6 @@ mod tests {
                 );
             }
 
-            let inventory = adapter
-                .asset_inventory(AssetInventoryRequest {
-                    game_dir: &game_dir,
-                })
-                .unwrap();
-            assert_eq!(inventory.validate().status, OperationStatus::Passed);
-            assert_eq!(inventory.assets[0].asset_key, XP3_ARCHIVE_PATH);
-
             let _ = fs::remove_dir_all(game_dir);
         }
 
@@ -4244,6 +4458,118 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(unknown_dir);
+    }
+
+    #[test]
+    fn xp3_plain_inventory_reports_file_entries_sizes_hashes_and_profile_id() {
+        let game_dir = xp3_fixture_dir(
+            "xp3-plain-inventory",
+            &plain_xp3_fixture(&[
+                Xp3TestEntry {
+                    path: "scenario/intro.ks",
+                    payload: b"hello xp3",
+                    compressed: false,
+                    adler32: 0x1111_2222,
+                },
+                Xp3TestEntry {
+                    path: "scenario/compressed.ks",
+                    payload: b"compressed payload bytes",
+                    compressed: true,
+                    adler32: 0x3333_4444,
+                },
+            ]),
+        );
+
+        let inventory = Xp3ProfileDetectorAdapter
+            .asset_inventory(AssetInventoryRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+
+        assert_eq!(inventory.validate().status, OperationStatus::Passed);
+        assert_eq!(inventory.assets.len(), 3);
+        assert_eq!(inventory.assets[0].asset_key, XP3_ARCHIVE_PATH);
+        assert_eq!(
+            inventory.assets[0]
+                .metadata
+                .get("profileId")
+                .map(String::as_str),
+            Some("019ed000-0000-7000-8000-000000095001")
+        );
+        let compressed = inventory
+            .assets
+            .iter()
+            .find(|asset| asset.asset_key == "scenario/compressed.ks")
+            .unwrap();
+        assert_eq!(compressed.asset_kind, AssetInventoryAssetKind::Script);
+        let compressed_hash = sha256_hash_bytes(b"compressed payload bytes");
+        assert_eq!(
+            compressed.source_hash.as_deref(),
+            Some(compressed_hash.as_str())
+        );
+        assert_eq!(
+            compressed.metadata.get("originalSize").map(String::as_str),
+            Some("24")
+        );
+        assert_eq!(
+            compressed.metadata.get("archiveSize").map(String::as_str),
+            Some("24")
+        );
+        assert_eq!(
+            compressed.metadata.get("compressed").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            compressed.metadata.get("storedAdler32").map(String::as_str),
+            Some("adler32:33334444")
+        );
+
+        let plain = inventory
+            .assets
+            .iter()
+            .find(|asset| asset.asset_key == "scenario/intro.ks")
+            .unwrap();
+        assert_eq!(
+            plain.metadata.get("compressed").map(String::as_str),
+            Some("false")
+        );
+
+        let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn xp3_encrypted_and_helper_required_inventory_stop_with_diagnostics() {
+        let encrypted_dir = xp3_fixture_dir(
+            "xp3-encrypted-inventory",
+            b"XP3\r\nXP3-CRYPT\nfixture-only encrypted archive",
+        );
+        let encrypted_failure = adapter_failure_from_error(
+            Xp3ProfileDetectorAdapter
+                .asset_inventory(AssetInventoryRequest {
+                    game_dir: &encrypted_dir,
+                })
+                .unwrap_err(),
+        );
+        assert_eq!(
+            encrypted_failure.error_code,
+            "kaifuu.missing_capability.crypto"
+        );
+
+        let helper_dir = xp3_fixture_dir(
+            "xp3-helper-required-inventory",
+            b"XP3\r\nXP3-HELPER-REQUIRED\nfixture-only helper archive",
+        );
+        let helper_failure = adapter_failure_from_error(
+            Xp3ProfileDetectorAdapter
+                .extract(ExtractRequest {
+                    game_dir: &helper_dir,
+                })
+                .unwrap_err(),
+        );
+        assert_eq!(helper_failure.error_code, "kaifuu.helper_required");
+
+        let _ = fs::remove_dir_all(encrypted_dir);
+        let _ = fs::remove_dir_all(helper_dir);
     }
 
     #[test]
