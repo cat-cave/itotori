@@ -1,4 +1,11 @@
 export {
+  deterministicPreExportQa,
+  deterministicPreExportQaImplementationHash,
+  deterministicPreExportQaInputSchema,
+  deterministicPreExportQaJobFixture,
+  deterministicPreExportQaOutputFixture,
+  deterministicPreExportQaOutputSchema,
+  deterministicPreExportQaTool,
   fixtureInvocationContext,
   parseTranslationQualityJudgeOutput,
   protectedSpanCheck,
@@ -13,6 +20,8 @@ export {
   translationQualityJudgeOutputSchema,
 } from "./examples.js";
 export type {
+  DeterministicPreExportQaInput,
+  DeterministicPreExportQaOutput,
   ProtectedSpanCheckFinding,
   ProtectedSpanCheckInput,
   ProtectedSpanCheckOutput,

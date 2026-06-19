@@ -1,9 +1,12 @@
 import { FINDING_KINDS, TRIAGE_SEVERITIES } from "@itotori/localization-bridge-schema";
 import type { JsonObject, JsonValue } from "../providers/types.js";
+import { runDeterministicPreExportQa } from "../services/deterministic-pre-export-qa.js";
+import type { ProjectState } from "../services/project-workflow.js";
 import type {
   AgentJobInput,
   AgentJudgmentOutput,
   AgentOutputFinding,
+  DeterministicToolDefinition,
   DeterministicToolJobInput,
   RegistryInvocationContext,
   RegistrySchemaDescriptor,
@@ -38,6 +41,16 @@ export type ProtectedSpanCheckOutput = JsonObject & {
   outputKind: "protected_span_check";
   missingProtectedSpans: string[];
   findings: ProtectedSpanCheckFinding[];
+};
+
+export type DeterministicPreExportQaInput = JsonObject & {
+  project: JsonObject;
+};
+
+export type DeterministicPreExportQaOutput = JsonObject & {
+  outputKind: "deterministic_pre_export_qa";
+  failures: JsonObject[];
+  findings: JsonObject[];
 };
 
 export const translationQualityJudgeInputSchema = {
@@ -130,6 +143,36 @@ export const protectedSpanCheckOutputSchema = {
   },
 } satisfies RegistrySchemaDescriptor;
 
+export const deterministicPreExportQaInputSchema = {
+  schemaId: "itotori.tool.deterministic-pre-export-qa.input",
+  schemaVersion: "1.0.0",
+  description: "Project snapshot for the deterministic pre-export QA suite.",
+  jsonSchema: {
+    type: "object",
+    required: ["project"],
+    additionalProperties: false,
+    properties: {
+      project: { type: "object" },
+    },
+  },
+} satisfies RegistrySchemaDescriptor;
+
+export const deterministicPreExportQaOutputSchema = {
+  schemaId: "itotori.tool.deterministic-pre-export-qa.output",
+  schemaVersion: "1.0.0",
+  description: "Full deterministic pre-export QA failures and finding records.",
+  jsonSchema: {
+    type: "object",
+    required: ["outputKind", "failures", "findings"],
+    additionalProperties: false,
+    properties: {
+      outputKind: { const: "deterministic_pre_export_qa" },
+      failures: { type: "array", items: { type: "object" } },
+      findings: { type: "array", items: { type: "object" } },
+    },
+  },
+} satisfies RegistrySchemaDescriptor;
+
 export const fixtureInvocationContext = {
   taskId: "019ed011-0000-7000-8000-000000000011",
   occurredAt: "2026-06-17T12:00:00.000Z",
@@ -166,6 +209,54 @@ export const protectedSpanCheckJobFixture = {
   },
 } satisfies DeterministicToolJobInput<ProtectedSpanCheckInput>;
 
+export const deterministicPreExportQaJobFixture = {
+  jobKind: "deterministic_tool_job",
+  toolName: "tool.deterministic-pre-export-qa",
+  toolVersion: "1.0.0",
+  context: fixtureInvocationContext,
+  input: {
+    project: {
+      projectId: "project-test",
+      localeBranchId: "locale-en-us",
+      targetLocale: "en-US",
+      bridge: {
+        schemaVersion: "0.1.0",
+        bridgeId: "bridge-test",
+        sourceBundleHash: "hash-test",
+        sourceLocale: "ja-JP",
+        extractorName: "kaifuu-fixture",
+        extractorVersion: "0.0.0",
+        units: [
+          {
+            bridgeUnitId: "bridge-unit-test",
+            sourceUnitKey: "hello.scene.001.line.001",
+            occurrenceId: "occurrence-1",
+            sourceHash: "source-hash",
+            sourceLocale: "ja-JP",
+            sourceText: "こんにちは、{player}。",
+            textSurface: "dialogue",
+            protectedSpans: [
+              {
+                kind: "placeholder",
+                raw: "{player}",
+                start: 6,
+                end: 14,
+                preserveMode: "exact",
+              },
+            ],
+            patchRef: {
+              assetId: "source.json",
+              writeMode: "replace",
+              sourceUnitKey: "hello.scene.001.line.001",
+            },
+          },
+        ],
+      },
+      drafts: { "bridge-unit-test": "Hello." },
+    },
+  },
+} satisfies DeterministicToolJobInput<DeterministicPreExportQaInput>;
+
 export const translationQualityJudgeOutputFixture = {
   outputKind: "score",
   score: 0.25,
@@ -193,11 +284,15 @@ export const protectedSpanCheckOutputFixture = {
 } satisfies ProtectedSpanCheckOutput;
 
 export const protectedSpanCheckImplementationHash =
-  "sha256:01f38382cce3aa536f1ec7355b2ac3374a4e6b80f8ad6fb2847a60491aee4a57" satisfies StableJsonHash;
+  "sha256:23ab6a33ca870f302b23ee2d815d8b91f5f4e982f86406136a09dff015974c57" satisfies StableJsonHash;
+
+export const deterministicPreExportQaImplementationHash =
+  "sha256:c4c01335ee53909440c804927b2ea38f76f761784cf307c80a7599decdd7b545" satisfies StableJsonHash;
 
 export function protectedSpanCheck(input: ProtectedSpanCheckInput): ProtectedSpanCheckOutput {
-  const missingProtectedSpans = input.protectedSpans.filter(
-    (span) => !input.targetText.includes(span),
+  const missingProtectedSpans = missingRequiredProtectedSpanOccurrences(
+    input.protectedSpans,
+    input.targetText,
   );
   return {
     outputKind: "protected_span_check",
@@ -206,6 +301,46 @@ export function protectedSpanCheck(input: ProtectedSpanCheckInput): ProtectedSpa
       span,
       rationale: "The target text does not contain the protected span.",
     })),
+  };
+}
+
+export function deterministicPreExportQa(
+  input: DeterministicPreExportQaInput,
+): DeterministicPreExportQaOutput {
+  const result = runDeterministicPreExportQa(input.project as unknown as ProjectState);
+  return {
+    outputKind: "deterministic_pre_export_qa",
+    failures: result.failures as unknown as JsonObject[],
+    findings: result.findings as JsonObject[],
+  };
+}
+
+export const deterministicPreExportQaOutputFixture = deterministicPreExportQa(
+  deterministicPreExportQaJobFixture.input,
+);
+
+export function deterministicPreExportQaTool(): DeterministicToolDefinition<
+  DeterministicPreExportQaInput,
+  DeterministicPreExportQaOutput
+> {
+  return {
+    registryKind: "deterministic_tool_definition",
+    toolName: "tool.deterministic-pre-export-qa",
+    toolVersion: "1.0.0",
+    description: "Runs the full deterministic pre-export QA suite over a project snapshot.",
+    taskKind: "deterministic_qa",
+    capabilityKey: "localization.pre_export_qa",
+    inputSchema: deterministicPreExportQaInputSchema,
+    outputSchema: deterministicPreExportQaOutputSchema,
+    reproducibility: {
+      algorithmName: "deterministic-pre-export-qa",
+      algorithmVersion: "itotori-020.1",
+      implementationHash: deterministicPreExportQaImplementationHash,
+      inputHashAlgorithm: "sha256-stable-json-v1",
+      outputHashAlgorithm: "sha256-stable-json-v1",
+      sideEffectFree: true,
+    },
+    run: (input) => deterministicPreExportQa(input),
   };
 }
 
@@ -224,4 +359,38 @@ export function parseTranslationQualityJudgeOutput(
 
 function isJsonObject(value: JsonValue): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function missingRequiredProtectedSpanOccurrences(
+  requiredSpans: string[],
+  targetText: string,
+): string[] {
+  const availableCounts = new Map<string, number>();
+  const missing: string[] = [];
+  for (const spanRaw of requiredSpans) {
+    const available = availableCounts.get(spanRaw) ?? countOccurrences(targetText, spanRaw);
+    if (available <= 0) {
+      missing.push(spanRaw);
+      continue;
+    }
+    availableCounts.set(spanRaw, available - 1);
+  }
+  return missing;
+}
+
+function countOccurrences(targetText: string, raw: string): number {
+  if (raw.length === 0) {
+    return 0;
+  }
+  let count = 0;
+  let searchStart = 0;
+  while (searchStart <= targetText.length) {
+    const index = targetText.indexOf(raw, searchStart);
+    if (index < 0) {
+      return count;
+    }
+    count += 1;
+    searchStart = index + raw.length;
+  }
+  return count;
 }

@@ -33,6 +33,10 @@ import {
   type ProviderRunRecord,
   createProviderRunId,
 } from "../providers/types.js";
+import {
+  DeterministicPreExportQaError,
+  runDeterministicPreExportQa,
+} from "./deterministic-pre-export-qa.js";
 
 export type ProjectState = ItotoriProjectRecord;
 export type RuntimeReportInput = RuntimeVerificationReport | RuntimeEvidenceReportV02;
@@ -211,6 +215,18 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     project: ProjectState;
     patchExport: PatchExport;
   }> {
+    const deterministicQa = runDeterministicPreExportQa(project);
+    if (deterministicQa.failures.length > 0) {
+      for (const finding of deterministicQa.findings) {
+        await this.repository.recordFinding(this.actor, {
+          projectId: project.projectId,
+          localeBranchId: project.localeBranchId,
+          finding,
+          status: "open",
+        });
+      }
+      throw new DeterministicPreExportQaError(deterministicQa.failures);
+    }
     if (isBridgeBundleV02(project.bridge)) {
       throw new Error("v0.2 patch export is not supported by the deterministic local exporter");
     }
