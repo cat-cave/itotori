@@ -8,9 +8,9 @@ use utsushi_core::{
     ObservationEnvironment, ObservationFramePayload, ObservationHookEvent,
     ObservationHookEventKind, ObservationHookPayload, ObservationRedactionMetadata,
     ObservationSourceRevision, ObservationTextPayload, RuntimeAdapter, RuntimeAdapterDescriptor,
-    RuntimeAdapterRegistry, RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability,
-    RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
-    RuntimePlaybackFeature, RuntimeRequest, UtsushiResult, runtime_artifact_uri,
+    RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability, RuntimeCapabilityClass,
+    RuntimeCapabilityContract, RuntimeFeatureSupport, RuntimePlaybackFeature, RuntimeRequest,
+    UtsushiResult, runtime_artifact_uri,
 };
 
 mod launch_adapters;
@@ -20,9 +20,6 @@ pub use launch_adapters::{BrowserLaunchAdapter, NwjsLaunchAdapter};
 pub use reference_corpus::{ReferenceCaptureValidationReport, validate_reference_capture_corpus};
 
 pub struct FixtureRuntimeAdapter;
-static FIXTURE_RUNTIME_ADAPTER: FixtureRuntimeAdapter = FixtureRuntimeAdapter;
-static BROWSER_LAUNCH_ADAPTER: BrowserLaunchAdapter = BrowserLaunchAdapter::new();
-static NWJS_LAUNCH_ADAPTER: NwjsLaunchAdapter = NwjsLaunchAdapter::new();
 
 impl FixtureRuntimeAdapter {
     pub const NAME: &'static str = "utsushi-fixture";
@@ -36,20 +33,6 @@ impl Default for FixtureRuntimeAdapter {
     fn default() -> Self {
         Self::new()
     }
-}
-
-pub fn registry() -> RuntimeAdapterRegistry<'static> {
-    let mut registry = RuntimeAdapterRegistry::new();
-    registry
-        .register(&FIXTURE_RUNTIME_ADAPTER)
-        .expect("fixture runtime adapter descriptor is valid");
-    registry
-        .register(&BROWSER_LAUNCH_ADAPTER)
-        .expect("browser launch adapter descriptor is valid");
-    registry
-        .register(&NWJS_LAUNCH_ADAPTER)
-        .expect("NW.js capability diagnostic descriptor is valid");
-    registry
 }
 
 impl RuntimeAdapter for FixtureRuntimeAdapter {
@@ -672,34 +655,6 @@ mod tests {
             "trace"
         );
         let _ = fs::remove_dir_all(game_dir);
-    }
-
-    #[test]
-    fn fixture_registry_factory_exposes_runtime_adapter() {
-        let registry = registry();
-        let descriptors = registry.descriptors();
-
-        assert_eq!(descriptors.len(), 3);
-        let fixture = descriptors
-            .iter()
-            .find(|descriptor| descriptor.name == FixtureRuntimeAdapter::NAME)
-            .unwrap();
-        assert!(fixture.supports(RuntimeCapability::Trace));
-        assert!(fixture.supports(RuntimeCapability::FrameCapture));
-        assert!(fixture.supports(RuntimeCapability::SmokeValidation));
-        assert_eq!(fixture.fidelity_tier, FidelityTier::LayoutProbe);
-        assert!(
-            descriptors
-                .iter()
-                .any(|descriptor| descriptor.name == BrowserLaunchAdapter::NAME
-                    && descriptor.supports(RuntimeCapability::FrameCapture))
-        );
-        assert!(
-            descriptors
-                .iter()
-                .any(|descriptor| descriptor.name == NwjsLaunchAdapter::NAME
-                    && descriptor.capabilities.is_empty())
-        );
     }
 
     #[test]

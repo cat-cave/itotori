@@ -8,6 +8,13 @@ use utsushi_core::{
 const USAGE: &str = "usage: utsushi capabilities --output <path>\n       utsushi validate-reference-captures <corpus_manifest> --output <path>\n       utsushi <trace|capture|smoke> <game_dir> [--adapter <name>] [--artifact-root <path>] --output <path>";
 const DEFAULT_ADAPTER_NAME: &str = utsushi_fixture::FixtureRuntimeAdapter::NAME;
 
+static FIXTURE_RUNTIME_ADAPTER: utsushi_fixture::FixtureRuntimeAdapter =
+    utsushi_fixture::FixtureRuntimeAdapter;
+static BROWSER_LAUNCH_ADAPTER: utsushi_fixture::BrowserLaunchAdapter =
+    utsushi_fixture::BrowserLaunchAdapter::new();
+static NWJS_LAUNCH_ADAPTER: utsushi_fixture::NwjsLaunchAdapter =
+    utsushi_fixture::NwjsLaunchAdapter::new();
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("{error}");
@@ -17,8 +24,22 @@ fn main() {
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    let registry = utsushi_fixture::registry();
+    let registry = runtime_registry();
     run_cli_with_registry(&args, &registry)
+}
+
+fn runtime_registry() -> RuntimeAdapterRegistry<'static> {
+    let mut registry = RuntimeAdapterRegistry::new();
+    registry
+        .register(&FIXTURE_RUNTIME_ADAPTER)
+        .expect("fixture runtime adapter descriptor is valid");
+    registry
+        .register(&BROWSER_LAUNCH_ADAPTER)
+        .expect("browser launch adapter descriptor is valid");
+    registry
+        .register(&NWJS_LAUNCH_ADAPTER)
+        .expect("NW.js capability diagnostic descriptor is valid");
+    registry
 }
 
 fn run_cli_with_registry(
@@ -334,6 +355,10 @@ mod tests {
         registry
     }
 
+    fn empty_registry() -> RuntimeAdapterRegistry<'static> {
+        RuntimeAdapterRegistry::new()
+    }
+
     fn args(values: &[&Path]) -> Vec<String> {
         values
             .iter()
@@ -469,12 +494,12 @@ mod tests {
     }
 
     #[test]
-    fn smoke_command_writes_fixture_observation_hook_events() {
+    fn smoke_command_defaults_to_fixture_adapter_from_cli_runtime_registry() {
         let root = temp_dir("fixture-smoke-output");
         let game_dir = root.join("game");
         write_fixture_source(&game_dir);
         let output = root.join("smoke.json");
-        let registry = utsushi_fixture::registry();
+        let registry = runtime_registry();
 
         run_cli_with_registry(
             &args(&[
@@ -522,6 +547,33 @@ mod tests {
     }
 
     #[test]
+    fn runtime_commands_reject_unknown_adapter_from_cli_runtime_registry() {
+        let root = temp_dir("unknown-adapter");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        let output = root.join("trace.json");
+        let registry = runtime_registry();
+
+        let error = run_cli_with_registry(
+            &args(&[
+                Path::new("trace"),
+                game_dir.as_path(),
+                Path::new("--adapter"),
+                Path::new("missing-runtime"),
+                Path::new("--output"),
+                output.as_path(),
+            ]),
+            &registry,
+        )
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("runtime adapter not registered: missing-runtime"));
+        assert!(!output.exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn runtime_commands_pass_optional_artifact_root_to_adapter() {
         let root = temp_dir("artifact-root");
         let game_dir = root.join("game");
@@ -562,7 +614,7 @@ mod tests {
         let output = root.join("validation-report.json");
         let corpus_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../fixtures/public/utsushi-reference-captures/reference-capture-corpus.json");
-        let registry = utsushi_fixture::registry();
+        let registry = empty_registry();
 
         run_cli_with_registry(
             &args(&[
@@ -587,7 +639,7 @@ mod tests {
         let corpus_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../fixtures/public/utsushi-reference-captures/reference-capture-corpus.json");
         let output = PathBuf::from("validation-report.json");
-        let registry = utsushi_fixture::registry();
+        let registry = empty_registry();
 
         let unknown = run_cli_with_registry(
             &args(&[
