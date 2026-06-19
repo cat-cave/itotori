@@ -478,6 +478,17 @@ export const terminologyConflictStatusValues = {
 export type TerminologyConflictStatus =
   (typeof terminologyConflictStatusValues)[keyof typeof terminologyConflictStatusValues];
 
+export const glossaryReviewItemStateValues = {
+  proposed: "proposed",
+  approved: "approved",
+  rejected: "rejected",
+  conflict: "conflict",
+  staleSource: "stale_source",
+} as const;
+
+export type GlossaryReviewItemState =
+  (typeof glossaryReviewItemStateValues)[keyof typeof glossaryReviewItemStateValues];
+
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -2052,6 +2063,68 @@ export const terminologyConflictEvidence = pgTable(
       table.evidencePosition,
     ),
     index("itotori_terminology_conflict_evidence_term_idx").on(table.termId),
+  ],
+);
+
+export const glossaryReviewItems = pgTable(
+  "itotori_glossary_review_items",
+  {
+    reviewItemId: text("review_item_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    termId: text("term_id").references(() => terminologyTerms.termId, { onDelete: "set null" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    styleGuideVersionId: text("style_guide_version_id").references(
+      () => styleGuideVersions.styleGuideVersionId,
+      { onDelete: "set null" },
+    ),
+    state: text("state").notNull(),
+    sourceTerm: text("source_term").notNull(),
+    normalizedSourceTerm: text("normalized_source_term").notNull(),
+    proposedTranslation: text("proposed_translation").notNull(),
+    normalizedProposedTranslation: text("normalized_proposed_translation").notNull(),
+    protectedSpanRefs: jsonb("protected_span_refs")
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    provenance: jsonb("provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    semanticDiagnostics: jsonb("semantic_diagnostics")
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdByUserId: text("created_by_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_glossary_review_items_proposal_idx").on(
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.normalizedSourceTerm,
+      table.normalizedProposedTranslation,
+    ),
+    index("itotori_glossary_review_items_term_idx").on(table.termId, table.sourceRevisionId),
+    index("itotori_glossary_review_items_queue_idx").on(
+      table.localeBranchId,
+      table.state,
+      table.updatedAt,
+    ),
+    index("itotori_glossary_review_items_style_guide_idx").on(table.styleGuideVersionId),
   ],
 );
 

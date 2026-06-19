@@ -140,6 +140,10 @@ const migrations = [
     id: "0020_terminology_glossary",
     file: "0020_terminology_glossary.sql",
   },
+  {
+    id: "0021_glossary_review_items",
+    file: "0021_glossary_review_items.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

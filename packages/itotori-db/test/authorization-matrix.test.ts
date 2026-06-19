@@ -323,6 +323,24 @@ const repositoryPermissionGateMatrix = [
     "terminology-repository.test.ts conflict listing coverage",
     (repo) => repo.listConflicts(deniedActor),
   ),
+  terminologyGate(
+    "getGlossaryContext",
+    "catalogRead",
+    "terminology-repository.test.ts glossary context coverage",
+    (repo) => repo.getGlossaryContext(deniedActor, undefined as never),
+  ),
+  terminologyGate(
+    "upsertGlossaryReviewItem",
+    "draftWrite",
+    "terminology-repository.test.ts glossary review item coverage",
+    (repo) => repo.upsertGlossaryReviewItem(deniedActor, undefined as never),
+  ),
+  terminologyGate(
+    "listGlossaryReviewItems",
+    "catalogRead",
+    "terminology-repository.test.ts glossary review queue coverage",
+    (repo) => repo.listGlossaryReviewItems(deniedActor),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -649,6 +667,24 @@ describe("repository permission gate matrix", () => {
           "mutation": "ItotoriTerminologyRepository.listConflicts",
           "requiredPermission": "catalog.read",
           "successFixture": "terminology-repository.test.ts conflict listing coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyRepository.getGlossaryContext",
+          "requiredPermission": "catalog.read",
+          "successFixture": "terminology-repository.test.ts glossary context coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyRepository.upsertGlossaryReviewItem",
+          "requiredPermission": "draft.write",
+          "successFixture": "terminology-repository.test.ts glossary review item coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyRepository.listGlossaryReviewItems",
+          "requiredPermission": "catalog.read",
+          "successFixture": "terminology-repository.test.ts glossary review queue coverage",
         },
       ]
     `);
