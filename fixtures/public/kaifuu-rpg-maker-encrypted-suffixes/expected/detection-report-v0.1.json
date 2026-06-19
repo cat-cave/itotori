@@ -134,6 +134,101 @@
       ]
     },
     {
+      "adapterId": "kaifuu.kirikiri_xp3",
+      "detected": false,
+      "evidence": [
+        {
+          "path": "data.xp3",
+          "kind": "[REDACTED:kaifuu.secret_redacted]",
+          "status": "missing",
+          "detail": "XP3 synthetic archive signature is missing"
+        }
+      ],
+      "requirements": [],
+      "capabilities": [
+        {
+          "capability": "asset_inventory",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "asset_listing",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "asset_text_patching",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "codec_access",
+          "status": "unsupported",
+          "limitation": "compressed XP3 payload handling and script decoding are outside the detector profile"
+        },
+        {
+          "capability": "container_access",
+          "status": "unsupported",
+          "limitation": "XP3 archive entry parsing is outside the detector profile"
+        },
+        {
+          "capability": "crypto_access",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "delta_patching",
+          "status": "unsupported",
+          "limitation": ".kaifuu delta packages do not apply to detector-only XP3 profiles"
+        },
+        {
+          "capability": "detection",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "encrypted_input",
+          "status": "unsupported",
+          "limitation": "encrypted payloads are identified only and are never decrypted by this profile"
+        },
+        {
+          "capability": "extraction",
+          "status": "unsupported",
+          "limitation": "KAIFUU-095 is an XP3 detector/profile fixture only"
+        },
+        {
+          "capability": "key_profile",
+          "status": "requires_user_input",
+          "limitation": "encrypted XP3 diagnostics name the key requirement, but no key support is claimed"
+        },
+        {
+          "capability": "non_text_surface_extraction",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "patch_back",
+          "status": "unsupported",
+          "limitation": "XP3 patch-back/repack support is outside the detector profile"
+        },
+        {
+          "capability": "patching",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "profile_generation",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "runtime_vm",
+          "status": "unsupported",
+          "limitation": "runtime support belongs to future Utsushi/KiriKiri work, not this detector fixture"
+        }
+      ]
+    },
+    {
       "adapterId": "kaifuu.siglus",
       "detected": false,
       "evidence": [
@@ -263,10 +358,24 @@
           },
           {
             "evidenceType": "file_magic",
+            "pattern": "synthetic XP3 compression marker",
+            "status": "missing",
+            "count": 0,
+            "detail": "Synthetic compressed XP3 fixture marker count"
+          },
+          {
+            "evidenceType": "file_magic",
             "pattern": "synthetic XP3 encryption marker",
             "status": "missing",
             "count": 0,
             "detail": "Synthetic encrypted XP3 fixture marker count"
+          },
+          {
+            "evidenceType": "file_magic",
+            "pattern": "synthetic XP3 unknown-variant marker",
+            "status": "missing",
+            "count": 0,
+            "detail": "Synthetic unknown XP3 container marker count"
           }
         ],
         "requirements": [],
@@ -538,7 +647,5 @@
       }
     ]
   },
-  "warnings": [
-    "no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"
-  ]
+  "warnings": ["no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"]
 }

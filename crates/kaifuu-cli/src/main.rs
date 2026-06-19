@@ -3657,28 +3657,41 @@ wait
             capabilities_path.to_str().unwrap(),
         ]);
         let capabilities: Vec<AdapterCapabilities> = read_json(&capabilities_path).unwrap();
-        assert_eq!(capabilities.len(), 2);
-        let capabilities = capabilities
+        assert_eq!(capabilities.len(), 3);
+        let fixture_capabilities = capabilities
             .iter()
             .find(|capabilities| {
                 capabilities.adapter_id == kaifuu_engine_fixture::FIXTURE_ADAPTER_ID
             })
             .unwrap();
         assert_eq!(
-            capabilities.adapter_id,
+            fixture_capabilities.adapter_id,
             kaifuu_engine_fixture::FIXTURE_ADAPTER_ID
         );
-        assert!(capabilities.reports.iter().any(|report| {
+        assert!(fixture_capabilities.reports.iter().any(|report| {
             report.capability == Capability::LineParityPatching
                 && report.status == CapabilityStatus::Limited
         }));
-        assert!(capabilities.access_contract.is_some());
-        assert!(capabilities.helper_requirements.iter().any(|requirement| {
-            requirement.helper_registry_id == kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
-                && requirement.allowlist_ref_id == kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID
-                && requirement
-                    .capabilities
-                    .contains(&HelperCapability::FixtureInvocation)
+        assert!(fixture_capabilities.access_contract.is_some());
+        assert!(
+            fixture_capabilities
+                .helper_requirements
+                .iter()
+                .any(|requirement| {
+                    requirement.helper_registry_id == kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
+                        && requirement.allowlist_ref_id
+                            == kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID
+                        && requirement
+                            .capabilities
+                            .contains(&HelperCapability::FixtureInvocation)
+                })
+        );
+        assert!(capabilities.iter().any(|capabilities| {
+            capabilities.adapter_id == kaifuu_engine_fixture::XP3_DETECTOR_ADAPTER_ID
+                && capabilities.reports.iter().any(|report| {
+                    report.capability == Capability::Detection
+                        && report.status == CapabilityStatus::Supported
+                })
         }));
 
         let detect_path = root.join("detect.json");
@@ -4889,7 +4902,7 @@ wait
 
         let detection_report: DetectionReport = read_json(&detect_path).unwrap();
         assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
-        assert_eq!(detection_report.detections.len(), 2);
+        assert_eq!(detection_report.detections.len(), 3);
         let fixture_detection = detection_report
             .detections
             .iter()
@@ -4898,6 +4911,17 @@ wait
         assert!(!fixture_detection.detected);
         assert!(fixture_detection.evidence.iter().any(|evidence| {
             evidence.path == "source.json" && evidence.status == EvidenceStatus::Missing
+        }));
+        let xp3_detection = detection_report
+            .detections
+            .iter()
+            .find(|detection| {
+                detection.adapter_id == kaifuu_engine_fixture::XP3_DETECTOR_ADAPTER_ID
+            })
+            .unwrap();
+        assert!(!xp3_detection.detected);
+        assert!(xp3_detection.evidence.iter().any(|evidence| {
+            evidence.path == "data.xp3" && evidence.status == EvidenceStatus::Missing
         }));
         assert!(
             detection_report
