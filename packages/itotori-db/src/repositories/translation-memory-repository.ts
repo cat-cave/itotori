@@ -199,9 +199,7 @@ export interface ItotoriTranslationMemoryRepositoryPort {
   ): Promise<TranslationMemoryReuseEventRecord[]>;
 }
 
-export class ItotoriTranslationMemoryRepository
-  implements ItotoriTranslationMemoryRepositoryPort
-{
+export class ItotoriTranslationMemoryRepository implements ItotoriTranslationMemoryRepositoryPort {
   constructor(private readonly db: ItotoriDatabase) {}
 
   async upsertSegment(
@@ -345,10 +343,7 @@ export class ItotoriTranslationMemoryRepository
       )
       .limit(scoredCandidateLimit);
 
-    const minFuzzyScore = boundedScore(
-      input.minFuzzyScore,
-      translationMemoryDefaultFuzzyThreshold,
-    );
+    const minFuzzyScore = boundedScore(input.minFuzzyScore, translationMemoryDefaultFuzzyThreshold);
     const fuzzyMatches = fuzzyRows
       .map((row) => {
         const segment = segmentRecordFromRow(row);
@@ -471,7 +466,11 @@ export class ItotoriTranslationMemoryRepository
           { memorySegmentId: input.memorySegmentId },
         );
       }
-      assertReusableSegmentScope(target, segmentRecordFromRow(segment), input.requestedTargetLocale);
+      assertReusableSegmentScope(
+        target,
+        segmentRecordFromRow(segment),
+        input.requestedTargetLocale,
+      );
 
       if (input.applyDraft) {
         await tx
@@ -490,7 +489,11 @@ export class ItotoriTranslationMemoryRepository
           : translationMemoryReuseStatusValues.suggested);
       const costImpact =
         input.costImpact ??
-        estimateTranslationMemoryCostImpact(target.sourceText, segment.targetText, input.applyDraft);
+        estimateTranslationMemoryCostImpact(
+          target.sourceText,
+          segment.targetText,
+          input.applyDraft,
+        );
       const provenance = input.provenance ?? {};
       const rows = await tx
         .insert(translationMemoryReuseEvents)
@@ -600,7 +603,11 @@ export class ItotoriTranslationMemoryService {
         ? {}
         : { includeExistingTargets: input.includeExistingTargets }),
     });
-    if (input.bridgeUnitIds !== undefined && input.bridgeUnitIds.length > 0 && targets.length === 0) {
+    if (
+      input.bridgeUnitIds !== undefined &&
+      input.bridgeUnitIds.length > 0 &&
+      targets.length === 0
+    ) {
       return invalidPrefill(
         diagnostic(
           "translation_memory.locale_branch_or_units.missing",
@@ -780,7 +787,10 @@ async function getUnitContextInDb(
       currentTargetText: localeBranchUnits.targetText,
     })
     .from(localeBranches)
-    .innerJoin(localeBranchUnits, eq(localeBranchUnits.localeBranchId, localeBranches.localeBranchId))
+    .innerJoin(
+      localeBranchUnits,
+      eq(localeBranchUnits.localeBranchId, localeBranches.localeBranchId),
+    )
     .innerJoin(sourceBundles, eq(sourceBundles.sourceBundleId, localeBranches.sourceBundleId))
     .innerJoin(sourceUnits, eq(sourceUnits.bridgeUnitId, localeBranchUnits.bridgeUnitId))
     .where(
@@ -829,7 +839,10 @@ function assertExpectedUnitScope(
       },
     );
   }
-  if (input.expectedTargetLocale !== undefined && input.expectedTargetLocale !== context.targetLocale) {
+  if (
+    input.expectedTargetLocale !== undefined &&
+    input.expectedTargetLocale !== context.targetLocale
+  ) {
     throw new TranslationMemorySourceScopeError(
       "target_locale_mismatch",
       "translation memory target locale does not match the locale branch",
@@ -904,7 +917,9 @@ function segmentRecordFromRow(row: TranslationMemorySegmentRow): TranslationMemo
   };
 }
 
-function reuseEventRecordFromRow(row: TranslationMemoryReuseEventRow): TranslationMemoryReuseEventRecord {
+function reuseEventRecordFromRow(
+  row: TranslationMemoryReuseEventRow,
+): TranslationMemoryReuseEventRecord {
   return {
     reuseEventId: row.reuseEventId,
     projectId: row.projectId,
@@ -925,7 +940,10 @@ function reuseEventRecordFromRow(row: TranslationMemoryReuseEventRow): Translati
   };
 }
 
-function compareMatches(left: TranslationMemoryMatchRecord, right: TranslationMemoryMatchRecord): number {
+function compareMatches(
+  left: TranslationMemoryMatchRecord,
+  right: TranslationMemoryMatchRecord,
+): number {
   return (
     right.matchScore - left.matchScore ||
     left.sourceUnitKey.localeCompare(right.sourceUnitKey) ||
@@ -969,7 +987,11 @@ function estimateTokenCount(text: string): number {
   return Math.max(1, Math.ceil([...text].length / 4));
 }
 
-function boundedPositiveInteger(value: number | undefined, fallback: number, maximum: number): number {
+function boundedPositiveInteger(
+  value: number | undefined,
+  fallback: number,
+  maximum: number,
+): number {
   if (value === undefined || !Number.isInteger(value) || value <= 0) {
     return fallback;
   }
@@ -1061,7 +1083,9 @@ function diagnostic(
   };
 }
 
-function invalidPrefill(diagnosticEntry: TranslationMemoryDiagnostic): TranslationMemoryPrefillResult {
+function invalidPrefill(
+  diagnosticEntry: TranslationMemoryDiagnostic,
+): TranslationMemoryPrefillResult {
   return {
     status: "invalid",
     diagnostics: [diagnosticEntry],

@@ -83,9 +83,9 @@ describe("ItotoriTranslationMemoryRepository", () => {
         matchScore: 1000,
       });
 
-      await expect(
-        targetText(context.db, "locale-en-us", "unit-target-exact"),
-      ).resolves.toBe("Good morning, senpai.");
+      await expect(targetText(context.db, "locale-en-us", "unit-target-exact")).resolves.toBe(
+        "Good morning, senpai.",
+      );
       const events = await repository.listReuseEvents({
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
@@ -286,9 +286,9 @@ describe("ItotoriTranslationMemoryRepository", () => {
         targetText: "Welcome back, master.",
         expectedSourceHash: "hash:welcome-master",
       });
-      expect(lexicalSimilarityScore("おかえりなさい、ご主人様。", "おかえりなさいご主人様！")).toBeGreaterThanOrEqual(
-        650,
-      );
+      expect(
+        lexicalSimilarityScore("おかえりなさい、ご主人様。", "おかえりなさいご主人様！"),
+      ).toBeGreaterThanOrEqual(650);
 
       const matchSet = await repository.findReusableSegments({
         projectId: "project-tm",

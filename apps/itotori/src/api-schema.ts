@@ -845,22 +845,46 @@ export function assertProjectCostReport(
   const recentEvents = asArray(reuse.recentEvents, `${label}.translationMemoryReuse.recentEvents`);
   for (const [index, eventValue] of recentEvents.entries()) {
     const event = asRecord(eventValue, `${label}.translationMemoryReuse.recentEvents[${index}]`);
-    assertString(event.reuseEventId, `${label}.translationMemoryReuse.recentEvents[${index}].reuseEventId`);
-    assertString(event.localeBranchId, `${label}.translationMemoryReuse.recentEvents[${index}].localeBranchId`);
+    assertString(
+      event.reuseEventId,
+      `${label}.translationMemoryReuse.recentEvents[${index}].reuseEventId`,
+    );
+    assertString(
+      event.localeBranchId,
+      `${label}.translationMemoryReuse.recentEvents[${index}].localeBranchId`,
+    );
     assertString(
       event.targetBridgeUnitId,
       `${label}.translationMemoryReuse.recentEvents[${index}].targetBridgeUnitId`,
     );
-    assertString(event.memorySegmentId, `${label}.translationMemoryReuse.recentEvents[${index}].memorySegmentId`);
-    assertString(event.matchKind, `${label}.translationMemoryReuse.recentEvents[${index}].matchKind`);
-    assertNonNegativeInteger(event.matchScore, `${label}.translationMemoryReuse.recentEvents[${index}].matchScore`);
-    assertString(event.reuseStatus, `${label}.translationMemoryReuse.recentEvents[${index}].reuseStatus`);
-    assertString(event.sourceHash, `${label}.translationMemoryReuse.recentEvents[${index}].sourceHash`);
+    assertString(
+      event.memorySegmentId,
+      `${label}.translationMemoryReuse.recentEvents[${index}].memorySegmentId`,
+    );
+    assertString(
+      event.matchKind,
+      `${label}.translationMemoryReuse.recentEvents[${index}].matchKind`,
+    );
+    assertNonNegativeInteger(
+      event.matchScore,
+      `${label}.translationMemoryReuse.recentEvents[${index}].matchScore`,
+    );
+    assertString(
+      event.reuseStatus,
+      `${label}.translationMemoryReuse.recentEvents[${index}].reuseStatus`,
+    );
+    assertString(
+      event.sourceHash,
+      `${label}.translationMemoryReuse.recentEvents[${index}].sourceHash`,
+    );
     assertString(
       event.candidateSourceHash,
       `${label}.translationMemoryReuse.recentEvents[${index}].candidateSourceHash`,
     );
-    assertString(event.targetText, `${label}.translationMemoryReuse.recentEvents[${index}].targetText`);
+    assertString(
+      event.targetText,
+      `${label}.translationMemoryReuse.recentEvents[${index}].targetText`,
+    );
     assertBoolean(
       event.providerCallAvoided,
       `${label}.translationMemoryReuse.recentEvents[${index}].providerCallAvoided`,
@@ -883,9 +907,15 @@ export function assertProjectCostReport(
         `${label}.translationMemoryReuse.recentEvents[${index}].estimatedCostUsdSaved`,
       );
     }
-    assertString(event.calculation, `${label}.translationMemoryReuse.recentEvents[${index}].calculation`);
+    assertString(
+      event.calculation,
+      `${label}.translationMemoryReuse.recentEvents[${index}].calculation`,
+    );
     asRecord(event.provenance, `${label}.translationMemoryReuse.recentEvents[${index}].provenance`);
-    assertString(event.createdAt, `${label}.translationMemoryReuse.recentEvents[${index}].createdAt`);
+    assertString(
+      event.createdAt,
+      `${label}.translationMemoryReuse.recentEvents[${index}].createdAt`,
+    );
   }
 }
 
