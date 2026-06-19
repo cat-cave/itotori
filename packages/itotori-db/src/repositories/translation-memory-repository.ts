@@ -142,6 +142,7 @@ export type UpsertTranslationMemorySegmentInput = {
 export type FindTranslationMemoryMatchesInput = {
   projectId: string;
   localeBranchId: string;
+  requestedTargetLocale: string;
   targetBridgeUnitId: string;
   includeFuzzy?: boolean;
   minFuzzyScore?: number;
@@ -159,6 +160,7 @@ export type ListTranslationMemoryPrefillTargetsInput = {
 export type RecordTranslationMemoryReuseInput = {
   projectId: string;
   localeBranchId: string;
+  requestedTargetLocale: string;
   targetBridgeUnitId: string;
   memorySegmentId: string;
   matchKind: TranslationMemoryMatchKind;
@@ -282,6 +284,9 @@ export class ItotoriTranslationMemoryRepository
     if (target === null) {
       return null;
     }
+    if (target.targetLocale !== input.requestedTargetLocale) {
+      return { target, matches: [] };
+    }
 
     const candidateLimit = boundedPositiveInteger(
       input.candidateLimit,
@@ -296,6 +301,7 @@ export class ItotoriTranslationMemoryRepository
           and ${translationMemorySegments.localeBranchId} = ${target.localeBranchId}
           and ${translationMemorySegments.sourceRevisionId} = ${target.sourceRevisionId}
           and ${translationMemorySegments.sourceHash} = ${target.sourceHash}
+          and ${translationMemorySegments.targetLocale} = ${input.requestedTargetLocale}
           and ${translationMemorySegments.status} = ${translationMemorySegmentStatusValues.reusable}`,
       )
       .orderBy(
@@ -328,6 +334,7 @@ export class ItotoriTranslationMemoryRepository
           and ${translationMemorySegments.localeBranchId} = ${target.localeBranchId}
           and ${translationMemorySegments.sourceRevisionId} = ${target.sourceRevisionId}
           and ${translationMemorySegments.sourceHash} <> ${target.sourceHash}
+          and ${translationMemorySegments.targetLocale} = ${input.requestedTargetLocale}
           and ${translationMemorySegments.status} = ${translationMemorySegmentStatusValues.reusable}`,
       )
       .orderBy(
@@ -425,6 +432,16 @@ export class ItotoriTranslationMemoryRepository
           },
         );
       }
+      if (target.targetLocale !== input.requestedTargetLocale) {
+        throw new TranslationMemorySourceScopeError(
+          "target_locale_mismatch",
+          "translation memory reuse target locale does not match the requested target locale",
+          {
+            requestedTargetLocale: input.requestedTargetLocale,
+            currentTargetLocale: target.targetLocale,
+          },
+        );
+      }
       if (
         input.applyDraft &&
         input.overwriteExistingTarget !== true &&
@@ -454,7 +471,7 @@ export class ItotoriTranslationMemoryRepository
           { memorySegmentId: input.memorySegmentId },
         );
       }
-      assertReusableSegmentScope(target, segmentRecordFromRow(segment));
+      assertReusableSegmentScope(target, segmentRecordFromRow(segment), input.requestedTargetLocale);
 
       if (input.applyDraft) {
         await tx
@@ -535,6 +552,7 @@ export class ItotoriTranslationMemoryRepository
 export type PrefillTranslationMemoryDraftsInput = {
   projectId: string;
   localeBranchId: string;
+  requestedTargetLocale: string;
   bridgeUnitIds?: readonly string[];
   applyDrafts?: boolean;
   includeExistingTargets?: boolean;
@@ -553,7 +571,7 @@ export type TranslationMemoryPrefillReuse = {
 
 export type TranslationMemoryPrefillSkip = {
   target: TranslationMemoryUnitContext;
-  reasonCode: "no_reusable_segment" | "existing_target_text";
+  reasonCode: "no_reusable_segment" | "existing_target_text" | "target_locale_mismatch";
 };
 
 export type TranslationMemoryPrefillResult = {
@@ -608,10 +626,15 @@ export class ItotoriTranslationMemoryService {
         skipped.push({ target, reasonCode: "existing_target_text" });
         continue;
       }
+      if (target.targetLocale !== input.requestedTargetLocale) {
+        skipped.push({ target, reasonCode: "target_locale_mismatch" });
+        continue;
+      }
 
       const matchSet = await this.repository.findReusableSegments({
         projectId: input.projectId,
         localeBranchId: input.localeBranchId,
+        requestedTargetLocale: input.requestedTargetLocale,
         targetBridgeUnitId: target.bridgeUnitId,
         ...(input.includeFuzzy === undefined ? {} : { includeFuzzy: input.includeFuzzy }),
         ...(input.minFuzzyScore === undefined ? {} : { minFuzzyScore: input.minFuzzyScore }),
@@ -629,6 +652,7 @@ export class ItotoriTranslationMemoryService {
       const event = await this.repository.recordReuse(actor, {
         projectId: input.projectId,
         localeBranchId: input.localeBranchId,
+        requestedTargetLocale: input.requestedTargetLocale,
         targetBridgeUnitId: target.bridgeUnitId,
         memorySegmentId: match.memorySegmentId,
         matchKind: match.matchKind,
@@ -820,6 +844,7 @@ function assertExpectedUnitScope(
 function assertReusableSegmentScope(
   target: TranslationMemoryUnitContext,
   segment: TranslationMemorySegmentRecord,
+  requestedTargetLocale: string,
 ): void {
   if (
     segment.projectId !== target.projectId ||
@@ -838,6 +863,20 @@ function assertReusableSegmentScope(
         targetSourceRevisionId: target.sourceRevisionId,
         segmentSourceRevisionId: segment.sourceRevisionId,
         segmentStatus: segment.status,
+      },
+    );
+  }
+  if (
+    target.targetLocale !== requestedTargetLocale ||
+    segment.targetLocale !== requestedTargetLocale
+  ) {
+    throw new TranslationMemorySourceScopeError(
+      "target_locale_mismatch",
+      "translation memory segment target locale does not match the requested target locale",
+      {
+        requestedTargetLocale,
+        targetLocale: target.targetLocale,
+        segmentTargetLocale: segment.targetLocale,
       },
     );
   }

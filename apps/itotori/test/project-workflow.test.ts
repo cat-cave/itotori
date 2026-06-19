@@ -4,6 +4,7 @@ import {
   ItotoriProjectRepository,
   ItotoriTranslationMemoryRepository,
   ItotoriTranslationMemoryService,
+  localUserId,
   translationMemoryMatchKindValues,
   translationMemoryReuseStatusValues,
   type AuthorizationActor,
@@ -36,7 +37,7 @@ import {
   type ProjectState,
 } from "../src/services/project-workflow.js";
 
-const actor: AuthorizationActor = { userId: "user-test" };
+const actor: AuthorizationActor = { userId: localUserId };
 const dbBackedIt = process.env.DATABASE_URL ? it : it.skip;
 
 describe("ItotoriProjectWorkflowService", () => {
@@ -168,6 +169,7 @@ describe("ItotoriProjectWorkflowService", () => {
       expect.objectContaining({
         projectId: "project-test",
         localeBranchId: "locale-en-us",
+        requestedTargetLocale: "en-US",
         bridgeUnitIds: ["bridge-unit-memory", "bridge-unit-repeat"],
         applyDrafts: true,
         includeFuzzy: false,
@@ -262,6 +264,78 @@ describe("ItotoriProjectWorkflowService", () => {
         providerCallAvoided: true,
         calculation: "deterministic_character_estimate_v1",
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  dbBackedIt("does not reuse old-locale memory when drafting a different requested target locale", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      const modelLedger = new ItotoriModelLedgerRepository(context.db);
+      const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
+      const translationMemory = new ItotoriTranslationMemoryService(translationMemoryRepository);
+      const bridge = repeatedLineBridgeFixture();
+      const importedProject = projectFixture({
+        bridge,
+        targetLocale: "en-US",
+        drafts: {
+          "bridge-unit-memory": "Hello, {player}.",
+        },
+      });
+      await projectRepository.importSourceBundle(actor, importedProject);
+      await translationMemoryRepository.upsertSegment(actor, {
+        projectId: importedProject.projectId,
+        localeBranchId: importedProject.localeBranchId,
+        sourceBridgeUnitId: "bridge-unit-memory",
+        memorySegmentId: "tm-bridge-unit-memory",
+        targetText: "Hello, {player}.",
+        expectedSourceHash: "source-hash-repeat",
+        expectedTargetLocale: "en-US",
+        provenance: { source: "approved_draft" },
+      });
+
+      const generate = vi.fn((request: ModelInvocationRequest) => {
+        const message = request.messages.findLast((candidate) => candidate.role === "user");
+        const body = JSON.parse(String(message?.content)) as {
+          targetLocale: string;
+          sourceText: string;
+        };
+        return `[${body.targetLocale}] ${body.sourceText}`;
+      });
+      const service = new ItotoriProjectWorkflowService(
+        projectRepository,
+        actor,
+        new FakeModelProvider({ generate }),
+        modelLedger,
+        translationMemory,
+      );
+      const drafted = await service.draftProject(
+        { ...importedProject, drafts: {}, importStatus: importStatusFixture },
+        "fr-FR",
+      );
+
+      expect(generate).toHaveBeenCalledTimes(2);
+      expect(drafted.targetLocale).toBe("fr-FR");
+      expect(drafted.drafts["bridge-unit-repeat"]).toBe("[fr-FR] こんにちは、{player}。");
+      expect(drafted.drafts["bridge-unit-memory"]).toBe("[fr-FR] こんにちは、{player}。");
+
+      const requestBodies = generate.mock.calls.map((call) => {
+        const message = call[0].messages.findLast((candidate) => candidate.role === "user");
+        return JSON.parse(String(message?.content)) as { targetLocale: string; sourceText: string };
+      });
+      expect(requestBodies).toEqual([
+        expect.objectContaining({ targetLocale: "fr-FR", sourceText: "こんにちは、{player}。" }),
+        expect.objectContaining({ targetLocale: "fr-FR", sourceText: "こんにちは、{player}。" }),
+      ]);
+      await expect(
+        translationMemoryRepository.listReuseEvents({
+          projectId: importedProject.projectId,
+          localeBranchId: importedProject.localeBranchId,
+          targetBridgeUnitId: "bridge-unit-repeat",
+        }),
+      ).resolves.toHaveLength(0);
     } finally {
       await context.close();
     }
@@ -1122,6 +1196,7 @@ function repeatedLineBridgeFixture(): BridgeBundle {
         sourceUnitKey: "hello.scene.001.line.001",
         occurrenceId: "occurrence-memory",
         sourceHash: "source-hash-repeat",
+        protectedSpans: [],
       },
       {
         ...baseUnit,
@@ -1129,6 +1204,7 @@ function repeatedLineBridgeFixture(): BridgeBundle {
         sourceUnitKey: "hello.scene.001.line.002",
         occurrenceId: "occurrence-repeat",
         sourceHash: "source-hash-repeat",
+        protectedSpans: [],
       },
     ],
   };

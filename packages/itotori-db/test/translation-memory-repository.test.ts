@@ -54,6 +54,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
       const matchSet = await repository.findReusableSegments({
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
+        requestedTargetLocale: "en-US",
         targetBridgeUnitId: "unit-target-exact",
         candidateLimit: 5,
       });
@@ -66,6 +67,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
       const result = await service.prefillDrafts(localActor, {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
+        requestedTargetLocale: "en-US",
         bridgeUnitIds: ["unit-target-exact"],
         requestId: "prefill-exact",
       });
@@ -135,6 +137,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         repository.findReusableSegments({
           projectId: "project-tm",
           localeBranchId: "locale-fr-fr",
+          requestedTargetLocale: "fr-FR",
           targetBridgeUnitId: "unit-target-exact",
           candidateLimit: 5,
         }),
@@ -143,6 +146,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         repository.recordReuse(localActor, {
           projectId: "project-tm",
           localeBranchId: "locale-fr-fr",
+          requestedTargetLocale: "fr-FR",
           targetBridgeUnitId: "unit-target-exact",
           memorySegmentId: "tm-memory-a",
           matchKind: translationMemoryMatchKindValues.exact,
@@ -175,6 +179,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         repository.findReusableSegments({
           projectId: "project-tm",
           localeBranchId: "locale-en-us",
+          requestedTargetLocale: "en-US",
           targetBridgeUnitId: "unit-target-exact",
           includeFuzzy: true,
           minFuzzyScore: 300,
@@ -184,6 +189,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
         repository.recordReuse(localActor, {
           projectId: "project-tm",
           localeBranchId: "locale-en-us",
+          requestedTargetLocale: "en-US",
           targetBridgeUnitId: "unit-target-exact",
           memorySegmentId: "tm-memory-a",
           matchKind: translationMemoryMatchKindValues.fuzzy,
@@ -192,6 +198,73 @@ describe("ItotoriTranslationMemoryRepository", () => {
         }),
       ).rejects.toMatchObject({
         code: "memory_segment_scope_mismatch",
+      } satisfies Partial<TranslationMemorySourceScopeError>);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("does not reuse same-branch memory when requested target locale differs from current branch locale", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedTranslationMemoryProject(context.db);
+      const repository = new ItotoriTranslationMemoryRepository(context.db);
+      const service = new ItotoriTranslationMemoryService(repository);
+      await repository.upsertSegment(localActor, {
+        projectId: "project-tm",
+        localeBranchId: "locale-en-us",
+        sourceBridgeUnitId: "unit-memory-a",
+        memorySegmentId: "tm-memory-a",
+        targetText: "Good morning, senpai.",
+        expectedSourceHash: "hash:good-morning",
+        expectedTargetLocale: "en-US",
+      });
+
+      await expect(
+        repository.findReusableSegments({
+          projectId: "project-tm",
+          localeBranchId: "locale-en-us",
+          requestedTargetLocale: "fr-FR",
+          targetBridgeUnitId: "unit-target-exact",
+          candidateLimit: 5,
+        }),
+      ).resolves.toMatchObject({ matches: [] });
+
+      const prefill = await service.prefillDrafts(localActor, {
+        projectId: "project-tm",
+        localeBranchId: "locale-en-us",
+        requestedTargetLocale: "fr-FR",
+        bridgeUnitIds: ["unit-target-exact"],
+        requestId: "prefill-wrong-requested-locale",
+      });
+      expect(prefill).toMatchObject({
+        status: "completed",
+        appliedCount: 0,
+        suggestedCount: 0,
+        skippedCount: 1,
+        skipped: [expect.objectContaining({ reasonCode: "target_locale_mismatch" })],
+      });
+      await expect(targetText(context.db, "locale-en-us", "unit-target-exact")).resolves.toBeNull();
+      await expect(
+        repository.listReuseEvents({
+          projectId: "project-tm",
+          localeBranchId: "locale-en-us",
+          targetBridgeUnitId: "unit-target-exact",
+        }),
+      ).resolves.toHaveLength(0);
+      await expect(
+        repository.recordReuse(localActor, {
+          projectId: "project-tm",
+          localeBranchId: "locale-en-us",
+          requestedTargetLocale: "fr-FR",
+          targetBridgeUnitId: "unit-target-exact",
+          memorySegmentId: "tm-memory-a",
+          matchKind: translationMemoryMatchKindValues.exact,
+          matchScore: 1000,
+          applyDraft: true,
+        }),
+      ).rejects.toMatchObject({
+        code: "target_locale_mismatch",
       } satisfies Partial<TranslationMemorySourceScopeError>);
     } finally {
       await context.close();
@@ -220,6 +293,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
       const matchSet = await repository.findReusableSegments({
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
+        requestedTargetLocale: "en-US",
         targetBridgeUnitId: "unit-fuzzy-target",
         includeFuzzy: true,
         minFuzzyScore: 650,
@@ -237,6 +311,7 @@ describe("ItotoriTranslationMemoryRepository", () => {
       const result = await service.prefillDrafts(localActor, {
         projectId: "project-tm",
         localeBranchId: "locale-en-us",
+        requestedTargetLocale: "en-US",
         bridgeUnitIds: ["unit-fuzzy-target"],
         applyDrafts: false,
         includeFuzzy: true,

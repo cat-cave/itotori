@@ -400,6 +400,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     const result = await this.translationMemory.prefillDrafts(this.actor, {
       projectId: project.projectId,
       localeBranchId: project.localeBranchId,
+      requestedTargetLocale: locale,
       bridgeUnitIds: project.bridge.units.map((unit) => unit.bridgeUnitId),
       applyDrafts: true,
       includeFuzzy: false,
