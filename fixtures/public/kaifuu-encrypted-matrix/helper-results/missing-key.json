@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-encrypted-matrix-missing-key",
+  "helperResultId": "helper-result-encrypted-matrix-missing-key",
+  "profileId": "019f0000-0000-7000-8000-kaifuu0510085",
+  "helper": {
+    "helperId": "kaifuu.fixture.known-key-import",
+    "helperVersion": "0.1.0",
+    "helperKind": "knownKeyDatabaseImport"
+  },
+  "diagnostic": {
+    "code": "missing_key",
+    "message": "fixture-only key lookup did not find local material"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:12252df4214d38b73fccd4493287bb85aeb768e6b271b23a99336559b0315f48"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/missing-secondary-key",
+      "materialKind": "fixedBytes",
+      "bytes": 16
+    }
+  ],
+  "proofHashes": []
+}

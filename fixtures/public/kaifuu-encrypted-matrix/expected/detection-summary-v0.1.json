@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-encrypted-matrix",
+  "scanRoot": "fixtures/public/kaifuu-encrypted-matrix/raw",
+  "expectedReportStatus": "matched",
+  "expectedRows": [
+    {
+      "rowId": "kirikiri-xp3",
+      "engineFamily": "kiri_kiri_xp3",
+      "detected": true,
+      "signals": [
+        "encrypted",
+        "helper_required",
+        "missing_key",
+        "packed"
+      ]
+    },
+    {
+      "rowId": "siglus-scene-pck",
+      "engineFamily": "siglus",
+      "detected": true,
+      "signals": [
+        "encrypted",
+        "helper_required",
+        "missing_key",
+        "packed"
+      ]
+    },
+    {
+      "rowId": "rpg-maker-mv-mz-encrypted-assets",
+      "engineFamily": "rpg_maker_mv_mz",
+      "detected": true,
+      "signals": [
+        "encrypted",
+        "missing_key"
+      ]
+    },
+    {
+      "rowId": "wolf-rpg-editor-archives",
+      "engineFamily": "wolf_rpg_editor",
+      "detected": true,
+      "signals": [
+        "encrypted",
+        "helper_required",
+        "missing_key",
+        "packed",
+        "protected"
+      ]
+    },
+    {
+      "rowId": "bgi-ethornell-containers",
+      "engineFamily": "bgi_ethornell",
+      "detected": true,
+      "signals": [
+        "encrypted",
+        "missing_key",
+        "packed",
+        "unknown_variant"
+      ]
+    },
+    {
+      "rowId": "unknown-archive-variant",
+      "engineFamily": "unknown",
+      "detected": true,
+      "signals": [
+        "unknown_variant"
+      ]
+    }
+  ],
+  "redactionExpectations": [
+    "aggregate evidence only",
+    "no raw key material",
+    "no helper dumps",
+    "no decrypted text",
+    "no local absolute paths"
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-encrypted-matrix-validation-failed",
+  "helperResultId": "helper-result-encrypted-matrix-validation-failed",
+  "profileId": "019f0000-0000-7000-8000-kaifuu0510085",
+  "helper": {
+    "helperId": "kaifuu.fixture.static-parser",
+    "helperVersion": "0.1.0",
+    "helperKind": "staticParser"
+  },
+  "diagnostic": {
+    "code": "validation_failed",
+    "message": "fixture-only key candidate did not match the public proof"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:997dafc8a512ed258e8095ea504257f1cb550eae60b30e2bf84ae1b9b4f4a0f0"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "bgi-ethornell-container-key",
+      "secretRef": "local-secret:fixture/bgi/container-key",
+      "materialKind": "fixedBytes",
+      "bytes": 16,
+      "validation": {
+        "method": "fixtureRoundTripProof",
+        "proofHash": "sha256:7cab06728c9b4dcb1413c9ecdf2aae317378f2c7d40bd675daac9df4601607dc"
+      }
+    }
+  ],
+  "proofHashes": [
+    {
+      "method": "fixtureRoundTripProof",
+      "proofHash": "sha256:4fc7a7efc6dd8f9fe80faa49e720fa98cde7222d224852f271e14133b373d712"
+    }
+  ]
+}

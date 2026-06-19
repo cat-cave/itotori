@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "0.1.0",
+  "profileId": "019f0000-0000-7000-8000-kaifuu0510001",
+  "gameId": "kaifuu-encrypted-matrix-siglus",
+  "title": "Kaifuu Encrypted Matrix Siglus Fixture",
+  "sourceLocale": "ja-JP",
+  "engine": {
+    "adapterId": "kaifuu.siglus",
+    "engineFamily": "siglus",
+    "engineVersion": null,
+    "detectedVariant": "scene-pck-secondary-key"
+  },
+  "sourceFingerprint": {
+    "gameRootHash": "sha256:e8f44e03ef365157dcc19689bebe4f2c49cfaf46109235f0a529bceec77e40d5",
+    "engineEvidence": [
+      "Scene.pck"
+    ]
+  },
+  "keyRequirements": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/secondary-key",
+      "kind": "fixedBytes",
+      "bytes": 16,
+      "validation": {
+        "method": "decryptHeaderProof",
+        "proofHash": "sha256:2c22b6c9e76383ee06844122c0bd099a0bddacc12c78f81b01cd0d0dc5be0532"
+      }
+    }
+  ],
+  "archiveParameters": [],
+  "helperEvidence": {
+    "helperKind": "staticParser",
+    "toolVersion": "kaifuu-fixture-generator/0.1.0",
+    "redactedLogHash": "sha256:c41b103ebc13e43c8b586775ce26d6c4e3d56ea4bce6d52f9fade046b8fcdd8c",
+    "proofHashes": [
+      {
+        "method": "decryptHeaderProof",
+        "proofHash": "sha256:2c22b6c9e76383ee06844122c0bd099a0bddacc12c78f81b01cd0d0dc5be0532"
+      }
+    ]
+  },
+  "assets": [
+    {
+      "assetId": "kaifuu-encrypted-matrix-siglus-asset",
+      "path": "Scene.pck",
+      "assetKind": "archive",
+      "textSurfaces": [
+        "dialogue"
+      ],
+      "sourceHash": "sha256:00368fce178445f0f7912fd4226ec13dd5df4d037f38db8d3ab8a95886278cec",
+      "patching": {
+        "capability": "patching",
+        "status": "unsupported",
+        "limitation": "fixture profile exercises key metadata only and does not claim patch-back"
+      }
+    }
+  ],
+  "capabilities": [
+    {
+      "capability": "key_profile",
+      "status": "limited",
+      "limitation": "public fixture-only key profile metadata"
+    },
+    {
+      "capability": "patching",
+      "status": "unsupported",
+      "limitation": "fixture profile exercises key metadata only and does not claim patch-back"
+    }
+  ],
+  "requirements": [
+    {
+      "category": "secret_key",
+      "key": "siglus-secondary-key",
+      "status": "satisfied",
+      "description": "fixture-only secret ref placeholder for public validation",
+      "placeholder": null,
+      "secret": true
+    }
+  ],
+  "metadata": {
+    "fixtureOnly": "true",
+    "generatedBy": "fixtures/generate-kaifuu-encrypted-public-fixtures.mjs"
+  }
+}

@@ -11714,11 +11714,15 @@ mod tests {
     }
 
     fn bridge_fixture_value(relative_path: &str) -> Value {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../..")
-            .join(relative_path);
+        let path = repo_fixture_path(relative_path);
         serde_json::from_str(&fs::read_to_string(path).expect("fixture should be readable"))
             .expect("fixture should be valid JSON")
+    }
+
+    fn repo_fixture_path(relative_path: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join(relative_path)
     }
 
     fn bridge_v02_fixture_value() -> Value {
@@ -12644,6 +12648,12 @@ mod tests {
         ))
     }
 
+    fn encrypted_matrix_fixture_value(relative_path: &str) -> Value {
+        bridge_fixture_value(&format!(
+            "fixtures/public/kaifuu-encrypted-matrix/{relative_path}"
+        ))
+    }
+
     fn public_helper_registry_fixture_value(name: &str) -> Value {
         bridge_fixture_value(&format!(
             "fixtures/public/kaifuu-helper-results/helper-registry/{name}.json"
@@ -12834,6 +12844,199 @@ mod tests {
             .into_iter()
             .collect::<BTreeSet<_>>()
         );
+    }
+
+    #[test]
+    fn public_encrypted_matrix_helper_results_cover_failure_paths() {
+        let fixture_codes = [
+            ("missing-key", HelperDiagnosticCode::MissingKey),
+            ("helper-required", HelperDiagnosticCode::HelperRequired),
+            (
+                "helper-unavailable",
+                HelperDiagnosticCode::HelperUnavailable,
+            ),
+            ("validation-failed", HelperDiagnosticCode::ValidationFailed),
+            ("redaction-path", HelperDiagnosticCode::RedactionFailure),
+        ];
+
+        for (fixture, expected_code) in fixture_codes {
+            let value = encrypted_matrix_fixture_value(&format!("helper-results/{fixture}.json"));
+            let validation = validate_helper_result_value(&value);
+            assert_eq!(
+                validation.status,
+                OperationStatus::Passed,
+                "{fixture} should validate: {:#?}",
+                validation.failures
+            );
+
+            let helper_result: HelperResult = serde_json::from_value(value).unwrap();
+            assert_eq!(helper_result.diagnostic.code, expected_code);
+            let serialized = helper_result.stable_json().unwrap();
+            assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
+            assert!(!serialized.contains("/home/dev"));
+            assert!(!serialized.contains("private/key.bin"));
+        }
+    }
+
+    #[test]
+    fn public_encrypted_matrix_key_profile_fixtures_validate_and_redact_negatives() {
+        let valid =
+            encrypted_matrix_fixture_value("key-profiles/siglus-valid-placeholder.profile.json");
+        let validation = validate_profile_value(&valid);
+        assert_eq!(
+            validation.status,
+            OperationStatus::Passed,
+            "valid placeholder profile should pass: {:#?}",
+            validation.failures
+        );
+
+        for fixture in [
+            "key-profiles/negative/raw-key-secret-ref.profile.json",
+            "key-profiles/negative/private-path-secret-ref.profile.json",
+        ] {
+            let value = encrypted_matrix_fixture_value(fixture);
+            let validation = validate_profile_value(&value).redacted_for_report();
+            assert_eq!(
+                validation.status,
+                OperationStatus::Failed,
+                "{fixture} should fail profile validation"
+            );
+            let serialized = serde_json::to_string(&validation).unwrap();
+            assert!(serialized.contains("secretRef"));
+            assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
+            assert!(!serialized.contains("/home/dev"));
+            assert!(!serialized.contains("private/key.bin"));
+        }
+    }
+
+    #[test]
+    fn public_encrypted_matrix_fixture_reports_detector_aggregate_output() {
+        let raw_dir = repo_fixture_path("fixtures/public/kaifuu-encrypted-matrix/raw");
+        let report = DetectionReport::from_results(
+            &raw_dir,
+            vec![DetectionResult {
+                adapter_id: "kaifuu.fixture".to_string(),
+                detected: false,
+                engine_family: None,
+                engine_version: None,
+                detected_variant: None,
+                evidence: vec![],
+                requirements: vec![],
+                capabilities: vec![],
+            }],
+        );
+        let expected = encrypted_matrix_fixture_value("expected/detection-summary-v0.1.json");
+
+        assert_eq!(report.status, DetectionReportStatus::Unknown);
+        assert_eq!(report.game_dir, REDACTED_DETECTION_GAME_DIR);
+        assert_eq!(
+            report.archive_detection.status,
+            ArchiveDetectionStatus::Matched
+        );
+        assert!(
+            report
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("unsupported input diagnostics"))
+        );
+
+        for expected_row in expected["expectedRows"].as_array().unwrap() {
+            let row_id = expected_row["rowId"].as_str().unwrap();
+            let row = detected_archive_row(&report.archive_detection, row_id);
+            assert_eq!(
+                serde_json::to_value(&row.engine_family).unwrap(),
+                expected_row["engineFamily"]
+            );
+            assert_eq!(row.detected, expected_row["detected"].as_bool().unwrap());
+            assert_eq!(
+                serde_json::to_value(&row.signals).unwrap(),
+                expected_row["signals"],
+                "{row_id} signals should match public fixture summary"
+            );
+        }
+
+        let kirikiri = detected_archive_row(&report.archive_detection, "kirikiri-xp3");
+        assert!(kirikiri.evidence.iter().any(|evidence| {
+            evidence.pattern == "*.xp3"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 2
+        }));
+        assert!(kirikiri.evidence.iter().any(|evidence| {
+            evidence.pattern == "synthetic XP3 encryption marker"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+
+        let rpg_maker = detected_archive_row(
+            &report.archive_detection,
+            "rpg-maker-mv-mz-encrypted-assets",
+        );
+        assert!(rpg_maker.evidence.iter().any(|evidence| {
+            evidence.pattern == RPG_MAKER_MV_MZ_ENCRYPTED_SUFFIX_PATTERN
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(rpg_maker.evidence.iter().any(|evidence| {
+            evidence.pattern == "data/System.json encryption fields"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+
+        let unknown = detected_archive_row(&report.archive_detection, "unknown-archive-variant");
+        assert!(unknown.evidence.iter().any(|evidence| {
+            evidence.pattern == "*.pak|*.bundle|*.bin|unprofiled *.dat|*.pck|*.arc"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 3
+        }));
+
+        let serialized = serde_json::to_string(&report).unwrap();
+        for forbidden in [
+            raw_dir.display().to_string(),
+            "data.xp3".to_string(),
+            "fixture-only-rpg-maker-asset-key-v1".to_string(),
+        ] {
+            assert!(
+                !serialized.contains(&forbidden),
+                "report leaked {forbidden}"
+            );
+        }
+        assert!(serialized.contains("aggregate-only"));
+    }
+
+    #[test]
+    fn public_encrypted_matrix_detector_negative_markers_stay_unknown_only() {
+        let marker_dir = repo_fixture_path(
+            "fixtures/public/kaifuu-encrypted-matrix/negative-detectors/orphaned-subtype-markers",
+        );
+        let report = ArchiveDetectionReport::scan(&marker_dir);
+
+        assert_eq!(report.status, ArchiveDetectionStatus::Matched);
+        for row_id in [
+            "kirikiri-xp3",
+            "bgi-ethornell-containers",
+            "wolf-rpg-editor-archives",
+        ] {
+            let row = report
+                .rows
+                .iter()
+                .find(|row| row.row_id == row_id)
+                .unwrap_or_else(|| panic!("missing archive row {row_id}"));
+            assert!(!row.detected, "{row_id} should not family-detect");
+            assert!(row.signals.is_empty(), "{row_id} leaked signals");
+            assert!(row.requirements.is_empty(), "{row_id} leaked requirements");
+            assert!(row.diagnostics.is_empty(), "{row_id} leaked diagnostics");
+        }
+
+        let unknown = detected_archive_row(&report, "unknown-archive-variant");
+        assert_eq!(
+            unknown.signals,
+            vec![ArchiveDetectionSignal::UnknownVariant]
+        );
+        assert!(unknown.evidence.iter().any(|evidence| {
+            evidence.pattern == "orphaned encrypted/protected subtype marker"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 3
+        }));
     }
 
     #[test]

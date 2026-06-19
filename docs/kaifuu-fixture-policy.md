@@ -84,6 +84,20 @@ include SHA-256 hashes and byte lengths, and validate with
 variant they represent, the adapter support boundary they exercise, and whether
 the fixture is positive, negative, or round-trip evidence.
 
+The KAIFUU-051 encrypted-input fixture lane lives under
+`fixtures/public/kaifuu-encrypted-matrix/` and is regenerated with:
+
+```sh
+node fixtures/generate-kaifuu-encrypted-public-fixtures.mjs
+```
+
+That generator owns the tiny archive-like bytes, public fixture-only key
+manifest, helper-result fixtures, detector negative fixtures, key-profile
+negative fixtures, README provenance, and public manifest hashes. Its keys are
+labels for generated public payloads only. They are intentionally not manual key
+import support, local helper execution support, helper binary allowlist policy,
+or evidence that any retail encrypted game can be decrypted by public CI.
+
 ## Private Corpora
 
 Private corpora stay under `fixtures/private-local/` and remain ignored by git.

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-encrypted-matrix-helper-required",
+  "helperResultId": "helper-result-encrypted-matrix-helper-required",
+  "profileId": "019f0000-0000-7000-8000-kaifuu0510085",
+  "helper": {
+    "helperId": "kaifuu.fixture.manual-entry",
+    "helperVersion": "0.1.0",
+    "helperKind": "manualKeyEntry"
+  },
+  "diagnostic": {
+    "code": "helper_required",
+    "message": "fixture helper needs an explicit local entry workflow"
+  },
+  "redaction": {
+    "status": "not_required",
+    "redactedLogHash": "sha256:85a48ca94e34ed1c3e3cdeb25af24b7f9a0d901a2d7efad478500d64dc1e9b15"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "kirikiri-xp3-key-profile",
+      "secretRef": "prompt:fixture/kirikiri/xp3-archive-password",
+      "materialKind": "archivePassword"
+    }
+  ],
+  "proofHashes": []
+}
