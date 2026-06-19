@@ -4354,26 +4354,29 @@ mod tests {
         fs::create_dir_all(&missing_pair_dir).unwrap();
         fs::copy(&source_fixture, missing_pair_dir.join("Scene.pck")).unwrap();
 
-        let missing_pair_profile = root.join("missing-pair-profile.json");
+        let missing_pair_detect = root.join("missing-pair-detect.json");
         run_cli(&[
-            "profile",
-            "init",
+            "detect",
             missing_pair_dir.to_str().unwrap(),
             "--output",
-            missing_pair_profile.to_str().unwrap(),
+            missing_pair_detect.to_str().unwrap(),
         ]);
-        let profile: GameProfile = read_json(&missing_pair_profile).unwrap();
+        let missing_report: DetectionReport = read_json(&missing_pair_detect).unwrap();
+        let missing_siglus = missing_report
+            .detections
+            .iter()
+            .find(|detection| {
+                detection.adapter_id == kaifuu_engine_fixture::SIGLUS_DETECTOR_ADAPTER_ID
+            })
+            .unwrap();
+        assert!(!missing_siglus.detected);
         assert_eq!(
-            profile
-                .metadata
-                .get("profileDiagnostics.missingPair")
-                .map(String::as_str),
-            Some("true")
+            missing_siglus.detected_variant.as_deref(),
+            Some("scene-pck-missing-gameexe-dat")
         );
-        assert_eq!(
-            profile.engine.detected_variant,
-            "scene-pck-missing-gameexe-dat"
-        );
+        assert!(missing_siglus.requirements.iter().any(|requirement| {
+            requirement.key == "Gameexe.dat" && requirement.status == RequirementStatus::Missing
+        }));
 
         let unknown_dir = root.join("unknown-variant");
         fs::create_dir_all(&unknown_dir).unwrap();
@@ -4402,7 +4405,7 @@ mod tests {
                 detection.adapter_id == kaifuu_engine_fixture::SIGLUS_DETECTOR_ADAPTER_ID
             })
             .unwrap();
-        assert!(siglus.detected);
+        assert!(!siglus.detected);
         assert_eq!(
             siglus.detected_variant.as_deref(),
             Some("unknown-siglus-named-files")

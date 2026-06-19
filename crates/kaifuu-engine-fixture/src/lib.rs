@@ -1481,7 +1481,7 @@ impl SiglusProfileDetectorAdapter {
     }
 
     fn is_detected(variant: SiglusFixtureVariant) -> bool {
-        !matches!(variant, SiglusFixtureVariant::NotSiglus)
+        matches!(variant, SiglusFixtureVariant::CompleteSyntheticPair)
     }
 
     fn can_inventory(variant: SiglusFixtureVariant) -> bool {
@@ -1490,7 +1490,9 @@ impl SiglusProfileDetectorAdapter {
 
     fn profile_from_state(&self, state: SiglusFixtureState) -> KaifuuResult<GameProfile> {
         if !Self::is_detected(state.variant) {
-            return Err("Siglus profile requires Scene.pck or Gameexe.dat evidence".into());
+            return Err(Self::diagnostic_error(Self::invalid_input_failure(
+                state.variant,
+            )));
         }
         let mut profile = GameProfile {
             schema_version: "0.1.0".to_string(),
@@ -1532,7 +1534,9 @@ impl SiglusProfileDetectorAdapter {
         state: SiglusFixtureState,
     ) -> KaifuuResult<AssetInventoryManifest> {
         if !Self::can_inventory(state.variant) {
-            return Err("Siglus inventory requires Scene.pck or Gameexe.dat evidence".into());
+            return Err(Self::diagnostic_error(Self::invalid_input_failure(
+                state.variant,
+            )));
         }
         let mut manifest = AssetInventoryManifest {
             schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
@@ -1576,6 +1580,61 @@ impl SiglusProfileDetectorAdapter {
             "Siglus Scene.pck parsing/decompilation is outside KAIFUU-091 detector fixtures",
             "use identify or asset-inventory output only; do not request extract or patch for this detector profile",
         )
+    }
+
+    fn invalid_input_failure(variant: SiglusFixtureVariant) -> AdapterFailure {
+        let (code, required_capability, asset_ref, support_boundary, remediation) = match variant {
+            SiglusFixtureVariant::MissingGameexeDat => (
+                SemanticErrorCode::MissingContainerCapability,
+                Capability::AssetListing,
+                SIGLUS_GAMEEXE_PATH,
+                "Siglus detector profile requires both synthetic Scene.pck and Gameexe.dat signatures before profiling or inventory",
+                "provide the complete synthetic Scene.pck/Gameexe.dat signature pair or treat this input as a diagnostic-only partial fixture",
+            ),
+            SiglusFixtureVariant::MissingScenePck => (
+                SemanticErrorCode::MissingContainerCapability,
+                Capability::AssetListing,
+                SIGLUS_SCENE_PATH,
+                "Siglus detector profile requires both synthetic Scene.pck and Gameexe.dat signatures before profiling or inventory",
+                "provide the complete synthetic Scene.pck/Gameexe.dat signature pair or treat this input as a diagnostic-only partial fixture",
+            ),
+            SiglusFixtureVariant::UnknownNamedPair => (
+                SemanticErrorCode::UnknownEngineVariant,
+                Capability::Detection,
+                "Scene.pck/Gameexe.dat",
+                "Scene.pck/Gameexe.dat names were present without recognized synthetic KAIFUU-091 Siglus signatures",
+                "use the complete synthetic signature pair fixture or add an explicit adapter for this Siglus variant before profiling or inventory",
+            ),
+            SiglusFixtureVariant::NotSiglus => (
+                SemanticErrorCode::UnknownEngineVariant,
+                Capability::Detection,
+                "Scene.pck/Gameexe.dat",
+                "Siglus detector profile requires recognized synthetic Scene.pck/Gameexe.dat fixture evidence",
+                "run detection with a complete synthetic Siglus fixture or select another adapter",
+            ),
+            SiglusFixtureVariant::CompleteSyntheticPair => (
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                Capability::CodecAccess,
+                SIGLUS_SCENE_PATH,
+                SIGLUS_SUPPORT_BOUNDARY,
+                "use identify or asset-inventory output only",
+            ),
+        };
+        Self::unsupported_failure(
+            code,
+            required_capability,
+            Self::detected_variant(variant),
+            asset_ref,
+            support_boundary,
+            remediation,
+        )
+    }
+
+    fn diagnostic_error(failure: AdapterFailure) -> Box<dyn std::error::Error> {
+        match kaifuu_core::stable_json(&failure) {
+            Ok(serialized) => serialized.into(),
+            Err(error) => error,
+        }
     }
 
     fn unsupported_patch_result(
@@ -1995,12 +2054,14 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
     fn detect(&self, request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
         let state = Self::inspect(request.game_dir);
         let detected = Self::is_detected(state.variant);
+        let diagnostic_only = !detected && state.variant != SiglusFixtureVariant::NotSiglus;
         let mut result = DetectionResult {
             adapter_id: SIGLUS_DETECTOR_ADAPTER_ID.to_string(),
             detected,
             engine_family: detected.then(|| "siglus".to_string()),
             engine_version: None,
-            detected_variant: detected.then(|| Self::detected_variant(state.variant).to_string()),
+            detected_variant: (detected || diagnostic_only)
+                .then(|| Self::detected_variant(state.variant).to_string()),
             evidence: vec![
                 DetectionEvidence {
                     path: SIGLUS_SCENE_PATH.to_string(),
@@ -2023,7 +2084,7 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
                     ),
                 },
             ],
-            requirements: if detected {
+            requirements: if detected || diagnostic_only {
                 state.detection_requirements()
             } else {
                 vec![]
@@ -2041,7 +2102,9 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
     fn list_assets(&self, request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
         let state = Self::inspect(request.game_dir);
         if !Self::can_inventory(state.variant) {
-            return Err("Siglus asset listing requires Scene.pck or Gameexe.dat evidence".into());
+            return Err(Self::diagnostic_error(Self::invalid_input_failure(
+                state.variant,
+            )));
         }
         Ok(AssetList {
             adapter_id: SIGLUS_DETECTOR_ADAPTER_ID.to_string(),
@@ -2059,7 +2122,9 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
     fn extract(&self, request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
         let state = Self::inspect(request.game_dir);
         let variant = Self::detected_variant(state.variant);
-        Err(Self::parser_boundary_failure(variant).error_code.into())
+        Err(Self::diagnostic_error(Self::parser_boundary_failure(
+            variant,
+        )))
     }
 
     fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
@@ -3286,6 +3351,169 @@ mod tests {
             report.capability == Capability::RuntimeVm
                 && report.status == kaifuu_core::CapabilityStatus::Unsupported
         }));
+    }
+
+    fn siglus_fixture_dir(name: &str, scene: Option<&[u8]>, gameexe: Option<&[u8]>) -> PathBuf {
+        let dir = temp_dir(name);
+        if let Some(scene) = scene {
+            fs::write(dir.join(SIGLUS_SCENE_PATH), scene).unwrap();
+        }
+        if let Some(gameexe) = gameexe {
+            fs::write(dir.join(SIGLUS_GAMEEXE_PATH), gameexe).unwrap();
+        }
+        dir
+    }
+
+    fn adapter_failure_from_error(error: Box<dyn std::error::Error>) -> AdapterFailure {
+        serde_json::from_str(&error.to_string()).unwrap()
+    }
+
+    #[test]
+    fn siglus_only_complete_synthetic_pair_is_profileable_and_inventoryable() {
+        let complete_dir = siglus_fixture_dir(
+            "siglus-complete-pair",
+            Some(SIGLUS_SCENE_MAGIC),
+            Some(SIGLUS_GAMEEXE_MAGIC),
+        );
+        let missing_pair_dir =
+            siglus_fixture_dir("siglus-missing-pair", Some(SIGLUS_SCENE_MAGIC), None);
+        let unknown_dir = siglus_fixture_dir(
+            "siglus-unknown-named-pair",
+            Some(b"unknown scene bytes"),
+            Some(b"unknown gameexe bytes"),
+        );
+        let adapter = SiglusProfileDetectorAdapter;
+
+        let complete_detection = adapter
+            .detect(DetectRequest {
+                game_dir: &complete_dir,
+            })
+            .unwrap();
+        assert!(complete_detection.detected);
+        assert_eq!(
+            complete_detection.detected_variant.as_deref(),
+            Some("scene-pck-gameexe-dat-synthetic")
+        );
+        assert!(
+            adapter
+                .profile(ProfileRequest {
+                    game_dir: &complete_dir
+                })
+                .is_ok()
+        );
+        assert!(
+            adapter
+                .asset_inventory(AssetInventoryRequest {
+                    game_dir: &complete_dir
+                })
+                .is_ok()
+        );
+
+        let missing_detection = adapter
+            .detect(DetectRequest {
+                game_dir: &missing_pair_dir,
+            })
+            .unwrap();
+        assert!(!missing_detection.detected);
+        assert_eq!(
+            missing_detection.detected_variant.as_deref(),
+            Some("scene-pck-missing-gameexe-dat")
+        );
+        assert!(missing_detection.requirements.iter().any(|requirement| {
+            requirement.key == SIGLUS_GAMEEXE_PATH
+                && requirement.status == RequirementStatus::Missing
+        }));
+        let missing_failure = adapter_failure_from_error(
+            adapter
+                .profile(ProfileRequest {
+                    game_dir: &missing_pair_dir,
+                })
+                .unwrap_err(),
+        );
+        assert_eq!(
+            missing_failure.error_code,
+            "kaifuu.missing_capability.container"
+        );
+        assert_eq!(
+            missing_failure.required_capability,
+            Some(Capability::AssetListing)
+        );
+        assert_eq!(
+            missing_failure.detected_variant.as_deref(),
+            Some("scene-pck-missing-gameexe-dat")
+        );
+        assert!(
+            adapter
+                .asset_inventory(AssetInventoryRequest {
+                    game_dir: &missing_pair_dir
+                })
+                .is_err()
+        );
+
+        let unknown_detection = adapter
+            .detect(DetectRequest {
+                game_dir: &unknown_dir,
+            })
+            .unwrap();
+        assert!(!unknown_detection.detected);
+        assert_eq!(
+            unknown_detection.detected_variant.as_deref(),
+            Some("unknown-siglus-named-files")
+        );
+        assert!(unknown_detection.requirements.iter().any(|requirement| {
+            requirement.key == "siglus-synthetic-signature"
+                && requirement.status == RequirementStatus::Unsupported
+        }));
+        let unknown_failure = adapter_failure_from_error(
+            adapter
+                .asset_inventory(AssetInventoryRequest {
+                    game_dir: &unknown_dir,
+                })
+                .unwrap_err(),
+        );
+        assert_eq!(unknown_failure.error_code, "kaifuu.unknown_engine_variant");
+        assert_eq!(
+            unknown_failure.required_capability,
+            Some(Capability::Detection)
+        );
+        assert_eq!(
+            unknown_failure.detected_variant.as_deref(),
+            Some("unknown-siglus-named-files")
+        );
+
+        let _ = fs::remove_dir_all(complete_dir);
+        let _ = fs::remove_dir_all(missing_pair_dir);
+        let _ = fs::remove_dir_all(unknown_dir);
+    }
+
+    #[test]
+    fn siglus_extract_returns_serialized_semantic_boundary_failure() {
+        let game_dir = siglus_fixture_dir(
+            "siglus-extract-boundary",
+            Some(SIGLUS_SCENE_MAGIC),
+            Some(SIGLUS_GAMEEXE_MAGIC),
+        );
+        let failure = adapter_failure_from_error(
+            SiglusProfileDetectorAdapter
+                .extract(ExtractRequest {
+                    game_dir: &game_dir,
+                })
+                .unwrap_err(),
+        );
+
+        assert_eq!(failure.error_code, "kaifuu.unsupported_layered_transform");
+        assert_eq!(failure.required_capability, Some(Capability::CodecAccess));
+        assert_eq!(failure.asset_ref.as_deref(), Some(SIGLUS_SCENE_PATH));
+        assert!(failure.support_boundary.contains("parsing/decompilation"));
+        assert!(
+            failure
+                .remediation
+                .as_deref()
+                .unwrap_or("")
+                .contains("do not request extract")
+        );
+
+        let _ = fs::remove_dir_all(game_dir);
     }
 
     #[test]
