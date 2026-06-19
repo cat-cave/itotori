@@ -13,6 +13,7 @@ import { ItotoriFeedbackRepository } from "../src/repositories/feedback-reposito
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
+import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -303,6 +304,24 @@ const repositoryPermissionGateMatrix = [
     "draftWrite",
     "style-guide-repository.test.ts approval coverage",
     (repo) => repo.approveVersion(deniedActor, undefined as never),
+  ),
+  terminologyGate(
+    "upsertTerm",
+    "draftWrite",
+    "terminology-repository.test.ts term persistence coverage",
+    (repo) => repo.upsertTerm(deniedActor, undefined as never),
+  ),
+  terminologyGate(
+    "searchTerms",
+    "catalogRead",
+    "terminology-repository.test.ts term search coverage",
+    (repo) => repo.searchTerms(deniedActor, undefined as never),
+  ),
+  terminologyGate(
+    "listConflicts",
+    "catalogRead",
+    "terminology-repository.test.ts conflict listing coverage",
+    (repo) => repo.listConflicts(deniedActor),
   ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
@@ -613,6 +632,24 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "draft.write",
           "successFixture": "style-guide-repository.test.ts approval coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyRepository.upsertTerm",
+          "requiredPermission": "draft.write",
+          "successFixture": "terminology-repository.test.ts term persistence coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyRepository.searchTerms",
+          "requiredPermission": "catalog.read",
+          "successFixture": "terminology-repository.test.ts term search coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyRepository.listConflicts",
+          "requiredPermission": "catalog.read",
+          "successFixture": "terminology-repository.test.ts conflict listing coverage",
+        },
       ]
     `);
   });
@@ -756,6 +793,22 @@ function styleGuideGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriStyleGuideRepository(db)),
+  });
+}
+
+function terminologyGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriTerminologyRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriTerminologyRepository",
+    sourceFile: "terminology-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriTerminologyRepository(db)),
   });
 }
 
