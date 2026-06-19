@@ -1,0 +1,14 @@
+{
+  // The browser client is a faithful 1:1 port of the reference IIFE, which
+  // relies pervasively on object/array index access being present (the DAG is
+  // self-consistent at runtime). It is bundled by esbuild, not emitted by tsc,
+  // so this config only type-checks it. Every other strictness flag from the
+  // base config stays on; only noUncheckedIndexedAccess is relaxed to keep the
+  // port readable and behavior-identical without ~60 non-null assertions.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src/client/**/*.ts", "src/types.ts"]
+}

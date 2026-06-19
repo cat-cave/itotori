@@ -139,6 +139,14 @@ roadmap-ready:
 roadmap-pop:
     node scripts/spec-dag.mjs pop
 
+roadmap-dashboard:
+    pnpm --filter @itotori/spec-dag-dashboard build
+    node packages/spec-dag-dashboard/dist/cli.js
+
+roadmap-dashboard-watch:
+    pnpm --filter @itotori/spec-dag-dashboard build
+    node packages/spec-dag-dashboard/dist/cli.js --watch
+
 upgrade:
     corepack enable
     node scripts/update-node-version.mjs
