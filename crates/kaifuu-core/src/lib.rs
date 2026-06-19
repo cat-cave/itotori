@@ -1780,65 +1780,65 @@ where
     let image_evidence_hash = rpg_maker_mv_mz_image_evidence_hash(request.image_asset_path);
 
     let Some(system_json_path) = find_rpg_maker_system_json(request.game_dir) else {
-        return rpg_maker_mv_mz_key_validation_report(
-            request.fixture_id,
-            request.requirement_id,
+        return rpg_maker_mv_mz_key_validation_report(RpgMakerMvMzKeyValidationReportParams {
+            fixture_id: request.fixture_id,
+            requirement_id: request.requirement_id,
             secret_ref_scheme,
             asset_profile,
-            RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingSystemJson,
-            None,
-            None,
+            code: RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingSystemJson,
+            proof_hash: None,
+            system_json_proof_hash: None,
             image_evidence_hash,
-            "gameDir",
-            "RPG Maker MV/MZ key validation requires data/System.json evidence",
-        );
+            field: "gameDir",
+            message: "RPG Maker MV/MZ key validation requires data/System.json evidence",
+        });
     };
 
     let system_key = parse_rpg_maker_system_json_key(&system_json_path);
     let system_json_proof_hash = rpg_maker_mv_mz_system_json_proof_hash(&system_json_path);
     let Some(system_key) = system_key else {
-        return rpg_maker_mv_mz_key_validation_report(
-            request.fixture_id,
-            request.requirement_id,
+        return rpg_maker_mv_mz_key_validation_report(RpgMakerMvMzKeyValidationReportParams {
+            fixture_id: request.fixture_id,
+            requirement_id: request.requirement_id,
             secret_ref_scheme,
             asset_profile,
-            RpgMakerMvMzFixtureKeyValidationDiagnosticCode::BadKey,
-            None,
+            code: RpgMakerMvMzFixtureKeyValidationDiagnosticCode::BadKey,
+            proof_hash: None,
             system_json_proof_hash,
             image_evidence_hash,
-            "data/System.json.encryptionKey",
-            "System.json does not contain a fixture-safe MV/MZ encryptionKey value",
-        );
+            field: "data/System.json.encryptionKey",
+            message: "System.json does not contain a fixture-safe MV/MZ encryptionKey value",
+        });
     };
 
     if !asset_profile.supported_image_surface {
-        return rpg_maker_mv_mz_key_validation_report(
-            request.fixture_id,
-            request.requirement_id,
+        return rpg_maker_mv_mz_key_validation_report(RpgMakerMvMzKeyValidationReportParams {
+            fixture_id: request.fixture_id,
+            requirement_id: request.requirement_id,
             secret_ref_scheme,
             asset_profile,
-            RpgMakerMvMzFixtureKeyValidationDiagnosticCode::UnsupportedSurface,
-            None,
+            code: RpgMakerMvMzFixtureKeyValidationDiagnosticCode::UnsupportedSurface,
+            proof_hash: None,
             system_json_proof_hash,
             image_evidence_hash,
-            "imageAssetPath",
-            "MV/MZ key validation currently accepts encrypted image surfaces only and does not claim audio or patch support",
-        );
+            field: "imageAssetPath",
+            message: "MV/MZ key validation currently accepts encrypted image surfaces only and does not claim audio or patch support",
+        });
     }
 
     let Some(image_evidence_hash) = image_evidence_hash else {
-        return rpg_maker_mv_mz_key_validation_report(
-            request.fixture_id,
-            request.requirement_id,
+        return rpg_maker_mv_mz_key_validation_report(RpgMakerMvMzKeyValidationReportParams {
+            fixture_id: request.fixture_id,
+            requirement_id: request.requirement_id,
             secret_ref_scheme,
             asset_profile,
-            RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingImageEvidence,
-            None,
+            code: RpgMakerMvMzFixtureKeyValidationDiagnosticCode::MissingImageEvidence,
+            proof_hash: None,
             system_json_proof_hash,
-            None,
-            "imageAssetPath",
-            "encrypted image evidence is missing or unreadable",
-        );
+            image_evidence_hash: None,
+            field: "imageAssetPath",
+            message: "encrypted image evidence is missing or unreadable",
+        });
     };
 
     let material = match request.resolver.resolve_secret_ref_str(
@@ -1863,34 +1863,34 @@ where
                     "secret ref could not be resolved through the local key boundary",
                 ),
             };
-            return rpg_maker_mv_mz_key_validation_report(
-                request.fixture_id,
-                request.requirement_id,
+            return rpg_maker_mv_mz_key_validation_report(RpgMakerMvMzKeyValidationReportParams {
+                fixture_id: request.fixture_id,
+                requirement_id: request.requirement_id,
                 secret_ref_scheme,
                 asset_profile,
                 code,
-                None,
+                proof_hash: None,
                 system_json_proof_hash,
-                Some(image_evidence_hash),
-                "secretRef",
+                image_evidence_hash: Some(image_evidence_hash),
+                field: "secretRef",
                 message,
-            );
+            });
         }
     };
 
     if !rpg_maker_mv_mz_system_key_matches_material(&system_key, material.as_bytes()) {
-        return rpg_maker_mv_mz_key_validation_report(
-            request.fixture_id,
-            request.requirement_id,
+        return rpg_maker_mv_mz_key_validation_report(RpgMakerMvMzKeyValidationReportParams {
+            fixture_id: request.fixture_id,
+            requirement_id: request.requirement_id,
             secret_ref_scheme,
             asset_profile,
-            RpgMakerMvMzFixtureKeyValidationDiagnosticCode::BadKey,
-            None,
+            code: RpgMakerMvMzFixtureKeyValidationDiagnosticCode::BadKey,
+            proof_hash: None,
             system_json_proof_hash,
-            Some(image_evidence_hash),
-            "data/System.json.encryptionKey",
-            "resolved secret ref does not match System.json key evidence",
-        );
+            image_evidence_hash: Some(image_evidence_hash),
+            field: "data/System.json.encryptionKey",
+            message: "resolved secret ref does not match System.json key evidence",
+        });
     }
 
     let proof_hash = rpg_maker_mv_mz_validation_proof_hash(
@@ -1899,18 +1899,18 @@ where
         &image_evidence_hash,
         material.as_bytes(),
     );
-    rpg_maker_mv_mz_key_validation_report(
-        request.fixture_id,
-        request.requirement_id,
+    rpg_maker_mv_mz_key_validation_report(RpgMakerMvMzKeyValidationReportParams {
+        fixture_id: request.fixture_id,
+        requirement_id: request.requirement_id,
         secret_ref_scheme,
         asset_profile,
-        RpgMakerMvMzFixtureKeyValidationDiagnosticCode::Success,
+        code: RpgMakerMvMzFixtureKeyValidationDiagnosticCode::Success,
         proof_hash,
         system_json_proof_hash,
-        Some(image_evidence_hash),
-        "validation",
-        "fixture-safe MV/MZ key evidence matched System.json and encrypted image evidence",
-    )
+        image_evidence_hash: Some(image_evidence_hash),
+        field: "validation",
+        message: "fixture-safe MV/MZ key evidence matched System.json and encrypted image evidence",
+    })
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -1918,6 +1918,19 @@ struct RpgMakerMvMzValidationAssetProfile {
     surface: &'static str,
     codec: CodecTransform,
     supported_image_surface: bool,
+}
+
+struct RpgMakerMvMzKeyValidationReportParams<'a> {
+    fixture_id: &'a str,
+    requirement_id: &'a str,
+    secret_ref_scheme: Option<SecretRefScheme>,
+    asset_profile: RpgMakerMvMzValidationAssetProfile,
+    code: RpgMakerMvMzFixtureKeyValidationDiagnosticCode,
+    proof_hash: Option<ProofHash>,
+    system_json_proof_hash: Option<ProofHash>,
+    image_evidence_hash: Option<ProofHash>,
+    field: &'a str,
+    message: &'a str,
 }
 
 fn rpg_maker_mv_mz_validation_asset_profile(path: &Path) -> RpgMakerMvMzValidationAssetProfile {
@@ -1946,17 +1959,20 @@ fn rpg_maker_mv_mz_validation_asset_profile(path: &Path) -> RpgMakerMvMzValidati
 }
 
 fn rpg_maker_mv_mz_key_validation_report(
-    fixture_id: &str,
-    requirement_id: &str,
-    secret_ref_scheme: Option<SecretRefScheme>,
-    asset_profile: RpgMakerMvMzValidationAssetProfile,
-    code: RpgMakerMvMzFixtureKeyValidationDiagnosticCode,
-    proof_hash: Option<ProofHash>,
-    system_json_proof_hash: Option<ProofHash>,
-    image_evidence_hash: Option<ProofHash>,
-    field: &str,
-    message: &str,
+    params: RpgMakerMvMzKeyValidationReportParams<'_>,
 ) -> RpgMakerMvMzFixtureKeyValidationReport {
+    let RpgMakerMvMzKeyValidationReportParams {
+        fixture_id,
+        requirement_id,
+        secret_ref_scheme,
+        asset_profile,
+        code,
+        proof_hash,
+        system_json_proof_hash,
+        image_evidence_hash,
+        field,
+        message,
+    } = params;
     let status = if code == RpgMakerMvMzFixtureKeyValidationDiagnosticCode::Success {
         OperationStatus::Passed
     } else {
