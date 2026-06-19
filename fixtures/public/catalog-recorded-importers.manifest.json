@@ -48,8 +48,8 @@
       "path": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "358d171d743098870918e7ddd167888e46bc9be67266a27eeade3e9f12e54719",
-      "bytes": 1929,
+      "sha256": "933fc686027aba88bebbbabf1471f6758d315260774503c8630268747d03e680",
+      "bytes": 8115,
       "redistributable": true
     },
     {

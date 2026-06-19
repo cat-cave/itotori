@@ -1061,7 +1061,7 @@ function normalizeDlsiteStorefrontPayload(
     rating_summary: optionalDemandRecord(payload, "rating_summary", fixture, response),
     rating_histogram: optionalDemandRecord(payload, "rating_histogram", fixture, response),
     wishlist_count: optionalDemandNumber(payload, "wishlist_count", fixture, response),
-    rank_facts: optionalDemandArray(payload, "rank_facts", fixture, response),
+    rank_facts: optionalDlsiteRankFacts(payload, "rank_facts", fixture, response),
   });
 
   return compactJson({
@@ -1301,9 +1301,6 @@ function dlsiteDemandFacts(
     add(catalogDemandFactKindValues.wishlistCount, "wishlist_count", { count: wishlistCount });
   }
   for (const [index, rank] of (optionalArray(demand, "rank_facts") ?? []).entries()) {
-    if (rank === null || typeof rank !== "object" || Array.isArray(rank)) {
-      continue;
-    }
     const rankRecord = rank as CatalogJsonRecord;
     add(
       catalogDemandFactKindValues.rank,
@@ -1317,6 +1314,36 @@ function dlsiteDemandFacts(
   }
   add(catalogDemandFactKindValues.translationTree, "translation_info", normalized.translationInfo);
   return facts;
+}
+
+function optionalDlsiteRankFacts(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): CatalogJsonRecord[] | undefined {
+  const ranks = optionalDemandArray(record, field, fixture, response);
+  if (ranks === undefined) {
+    return undefined;
+  }
+  return ranks.map((rank, index) => {
+    const sourceField = `${field}[${index}]`;
+    if (rank === null || typeof rank !== "object" || Array.isArray(rank)) {
+      throw storefrontSemanticError(
+        catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+        `DLsite demand.${sourceField} must be a JSON object`,
+        fixture,
+        response,
+        sourceField,
+      );
+    }
+    const rankRecord = rank as CatalogJsonRecord;
+    requireDemandString(rankRecord, "scope", fixture, response, `${sourceField}.scope`);
+    requireDemandString(rankRecord, "category", fixture, response, `${sourceField}.category`);
+    requireDemandPositiveInteger(rankRecord, "rank", fixture, response, `${sourceField}.rank`);
+    requireDemandString(rankRecord, "observed_at", fixture, response, `${sourceField}.observed_at`);
+    return rankRecord;
+  });
 }
 
 function optionalDemandNumber(
@@ -1338,6 +1365,46 @@ function optionalDemandNumber(
     fixture,
     response,
     field,
+  );
+}
+
+function requireDemandString(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+  sourceField: string,
+): string {
+  const value = record[field];
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `DLsite demand.${sourceField} must be a non-empty string`,
+    fixture,
+    response,
+    sourceField,
+  );
+}
+
+function requireDemandPositiveInteger(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+  sourceField: string,
+): number {
+  const value = record[field];
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `DLsite demand.${sourceField} must be a positive integer`,
+    fixture,
+    response,
+    sourceField,
   );
 }
 

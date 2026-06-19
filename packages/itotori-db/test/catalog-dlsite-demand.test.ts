@@ -186,6 +186,37 @@ describe("dlsite-demand recorded importer", () => {
       /CATALOG-012 semantic diagnostic parse_drift .*sourceId=RJ09999999 sourceField=dl_count/u,
     );
   });
+
+  it("reports malformed rank facts as DLsite parse drift", () => {
+    expect(() =>
+      createDlsiteRecordedStorefrontAdapter(
+        fixtureWithResponseBySourceId(parseDriftFixture, "RJ09999990"),
+      ),
+    ).toThrow(
+      /CATALOG-012 semantic diagnostic parse_drift .*sourceId=RJ09999990 sourceField=rank_facts\[0\]/u,
+    );
+    expect(() =>
+      createDlsiteRecordedStorefrontAdapter(
+        fixtureWithResponseBySourceId(parseDriftFixture, "RJ09999991"),
+      ),
+    ).toThrow(
+      /CATALOG-012 semantic diagnostic parse_drift .*sourceId=RJ09999991 sourceField=rank_facts\[0\]\.category/u,
+    );
+    expect(() =>
+      createDlsiteRecordedStorefrontAdapter(
+        fixtureWithResponseBySourceId(parseDriftFixture, "RJ09999992"),
+      ),
+    ).toThrow(
+      /CATALOG-012 semantic diagnostic parse_drift .*sourceId=RJ09999992 sourceField=rank_facts\[0\]\.rank/u,
+    );
+    expect(() =>
+      createDlsiteRecordedStorefrontAdapter(
+        fixtureWithResponseBySourceId(parseDriftFixture, "RJ09999993"),
+      ),
+    ).toThrow(
+      /CATALOG-012 semantic diagnostic parse_drift .*sourceId=RJ09999993 sourceField=rank_facts\[0\]\.observed_at/u,
+    );
+  });
 });
 
 async function demandFactCount(pool: {
@@ -208,4 +239,15 @@ function readStorefrontFixture(name: string): CatalogRecordedStorefrontFixture {
       "utf8",
     ),
   ) as CatalogRecordedStorefrontFixture;
+}
+
+function fixtureWithResponseBySourceId(
+  fixture: CatalogRecordedStorefrontFixture,
+  sourceId: string,
+): CatalogRecordedStorefrontFixture {
+  const response = fixture.responses.find((entry) => entry.sourceId === sourceId);
+  if (response === undefined) {
+    throw new Error(`missing fixture response ${sourceId}`);
+  }
+  return { ...fixture, responses: [response] };
 }
