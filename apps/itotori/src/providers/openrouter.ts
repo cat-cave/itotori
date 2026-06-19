@@ -16,6 +16,7 @@ import {
   type ModelToolCall,
   type ProviderDataHandlingPolicy,
   type ProviderDescriptor,
+  type ProviderCost,
   type ProviderInputClassification,
   type ProviderLiveRunOptions,
   type ProviderRunArtifact,
@@ -242,6 +243,7 @@ export class OpenRouterProvider implements ModelProvider {
       routeSettingsHash,
       errorClasses: [],
       tokenUsage: normalized.tokenUsage,
+      cost: normalized.cost,
       dataHandling: effectiveDataHandling,
     });
     const metadata = adapterMetadata(body, providerRouting);
@@ -546,6 +548,7 @@ function normalizeOpenRouterResponse(
   actualModelId: string;
   upstreamProvider: string | undefined;
   tokenUsage: TokenUsage;
+  cost: ProviderCost;
 } {
   const record = asRecord(body, "OpenRouter response");
   const choices = asArray(record.choices, "OpenRouter response choices");
@@ -553,6 +556,7 @@ function normalizeOpenRouterResponse(
   const message = asRecord(firstChoice.message, "OpenRouter first choice message");
   const content = message.content === null ? null : (optionalString(message.content) ?? "");
   const finishReason = optionalString(firstChoice.finish_reason) ?? "unknown";
+  const tokenUsage = normalizeUsage(record.usage);
   return {
     content,
     toolCalls: normalizeToolCalls(message.tool_calls),
@@ -560,7 +564,8 @@ function normalizeOpenRouterResponse(
     actualModelId:
       optionalString(record.model) ?? selectedOpenRouterModel(body) ?? requestedModelId,
     upstreamProvider: selectedOpenRouterProvider(body),
-    tokenUsage: normalizeUsage(record.usage),
+    tokenUsage,
+    cost: normalizeOpenRouterCost(record, tokenUsage),
   };
 }
 
@@ -592,6 +597,68 @@ function normalizeUsage(value: unknown): TokenUsage {
   return usage;
 }
 
+function normalizeOpenRouterCost(
+  response: Record<string, unknown>,
+  tokenUsage: TokenUsage,
+): ProviderCost {
+  const usage = isRecord(response.usage) ? response.usage : undefined;
+  const usageCostUsd = finiteNonNegativeNumber(usage?.cost);
+  if (usageCostUsd !== undefined) {
+    return {
+      costKind: "provider_estimate",
+      currency: "USD",
+      amountMicrosUsd: usdToMicros(usageCostUsd),
+    };
+  }
+
+  const costDetails = isRecord(usage?.cost_details) ? usage.cost_details : undefined;
+  const promptCostUsd = finiteNonNegativeNumber(costDetails?.upstream_inference_prompt_cost);
+  const completionCostUsd = finiteNonNegativeNumber(
+    costDetails?.upstream_inference_completions_cost,
+  );
+  if (promptCostUsd !== undefined && completionCostUsd !== undefined) {
+    return {
+      costKind: "provider_estimate",
+      currency: "USD",
+      amountMicrosUsd: usdToMicros(promptCostUsd + completionCostUsd),
+    };
+  }
+
+  const upstreamCostUsd = finiteNonNegativeNumber(costDetails?.upstream_inference_cost);
+  if (upstreamCostUsd !== undefined) {
+    return {
+      costKind: "provider_estimate",
+      currency: "USD",
+      amountMicrosUsd: usdToMicros(upstreamCostUsd),
+    };
+  }
+
+  const endpointPricing = selectedOpenRouterPricing(response);
+  const promptPriceUsd = finiteNonNegativeNumber(endpointPricing?.prompt);
+  const completionPriceUsd = finiteNonNegativeNumber(endpointPricing?.completion);
+  if (
+    promptPriceUsd !== undefined &&
+    completionPriceUsd !== undefined &&
+    tokenUsage.promptTokens !== undefined &&
+    tokenUsage.completionTokens !== undefined
+  ) {
+    return {
+      costKind: "provider_estimate",
+      currency: "USD",
+      amountMicrosUsd: usdToMicros(
+        tokenUsage.promptTokens * promptPriceUsd +
+          tokenUsage.completionTokens * completionPriceUsd,
+      ),
+      pricingSnapshotId: "openrouter_response_endpoint_pricing",
+    };
+  }
+
+  return {
+    costKind: "unknown",
+    currency: "USD",
+  };
+}
+
 function buildProviderRunRecord(input: {
   descriptor: ProviderDescriptor;
   request: ModelInvocationRequest;
@@ -603,6 +670,7 @@ function buildProviderRunRecord(input: {
   routeSettingsHash: string;
   errorClasses: string[];
   tokenUsage: TokenUsage;
+  cost?: ProviderCost;
   dataHandling: ProviderDataHandlingPolicy;
 }): ProviderRunRecord {
   const completedAt = new Date();
@@ -632,10 +700,7 @@ function buildProviderRunRecord(input: {
     fallbackUsed: fallbackPlan.length > 1 && input.actualModelId !== input.requestedModelId,
     fallbackPlan,
     tokenUsage: input.tokenUsage,
-    cost: {
-      costKind: "unknown",
-      currency: "USD",
-    },
+    cost: input.status === "succeeded" && input.cost ? input.cost : unknownCost(),
     prompt: input.request.prompt,
     dataHandling: input.dataHandling,
   };
@@ -646,6 +711,13 @@ function buildProviderRunRecord(input: {
     run.accountPrivacy = input.descriptor.capabilities.accountPrivacy;
   }
   return run;
+}
+
+function unknownCost(): ProviderCost {
+  return {
+    costKind: "unknown",
+    currency: "USD",
+  };
 }
 
 function buildArtifact(input: {
@@ -725,6 +797,11 @@ function selectedOpenRouterEndpoint(body: unknown): Record<string, unknown> | un
   ) as Record<string, unknown> | undefined;
 }
 
+function selectedOpenRouterPricing(body: unknown): Record<string, unknown> | undefined {
+  const selectedEndpoint = selectedOpenRouterEndpoint(body);
+  return isRecord(selectedEndpoint?.pricing) ? selectedEndpoint.pricing : undefined;
+}
+
 async function safeJson(response: Response): Promise<unknown> {
   try {
     return await response.json();
@@ -793,6 +870,23 @@ function assignNumber<T extends object, K extends keyof T>(
   if (typeof value === "number" && Number.isFinite(value)) {
     target[key] = value as T[K];
   }
+}
+
+function finiteNonNegativeNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed >= 0) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function usdToMicros(value: number): number {
+  return Math.round(value * 1_000_000);
 }
 
 function isJsonValue(value: unknown): value is JsonValue {

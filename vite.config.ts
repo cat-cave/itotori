@@ -38,6 +38,16 @@ export default defineConfig({
         dependsOn: ["ts:build"],
         cache: false,
       },
+      "style-guide:provider-smoke": {
+        command: "node apps/itotori/dist/style-guide-provider-smoke.js",
+        dependsOn: ["ts:build"],
+        cache: false,
+      },
+      "style-guide:live-provider-smoke": {
+        command: "node apps/itotori/dist/style-guide-provider-smoke.js --live",
+        dependsOn: ["ts:build"],
+        cache: false,
+      },
       "rust:check": {
         command: "cargo check --workspace",
       },
