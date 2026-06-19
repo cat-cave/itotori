@@ -810,6 +810,19 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
           });
         }
       }
+      const conflictUpdateState =
+        input.state === undefined
+          ? sql`
+              case
+                when ${glossaryReviewItems.state} in (
+                  ${glossaryReviewItemStateValues.approved},
+                  ${glossaryReviewItemStateValues.rejected}
+                )
+                then ${glossaryReviewItems.state}
+                else ${state}
+              end
+            `
+          : state;
 
       const provenance = {
         ...jsonRecord(input.provenance ?? {}, "provenance"),
@@ -851,7 +864,7 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
           set: {
             termId,
             styleGuideVersionId,
-            state,
+            state: conflictUpdateState,
             sourceTerm,
             proposedTranslation,
             protectedSpanRefs,

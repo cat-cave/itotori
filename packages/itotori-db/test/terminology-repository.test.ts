@@ -725,6 +725,14 @@ describe("ItotoriTerminologyRepository", () => {
         proposedTranslation: "Crimson Moon",
         metadata: { reviewerQueueFixture: "same-proposal" },
       });
+      const explicitlyApprovedProposal = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceTerm: "紅月",
+        proposedTranslation: "Crimson Moon",
+        state: glossaryReviewItemStateValues.approved,
+      });
       const approved = await repository.upsertGlossaryReviewItem(localActor, {
         projectId: "project-terminology",
         localeBranchId: "locale-en-us",
@@ -733,11 +741,25 @@ describe("ItotoriTerminologyRepository", () => {
         sourceTerm: "司書",
         proposedTranslation: "Archivist",
       });
+      const approvedDuplicate = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceTerm: "司書",
+        proposedTranslation: "Archivist",
+      });
       const rejected = await repository.upsertGlossaryReviewItem(localActor, {
         projectId: "project-terminology",
         localeBranchId: "locale-en-us",
         sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
         state: glossaryReviewItemStateValues.rejected,
+        sourceTerm: "門",
+        proposedTranslation: "Portal",
+      });
+      const rejectedDuplicate = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
         sourceTerm: "門",
         proposedTranslation: "Portal",
       });
@@ -757,18 +779,27 @@ describe("ItotoriTerminologyRepository", () => {
       });
 
       expect(proposedAgain.reviewItemId).toBe(proposed.reviewItemId);
+      expect(explicitlyApprovedProposal.reviewItemId).toBe(proposed.reviewItemId);
+      expect(approvedDuplicate.reviewItemId).toBe(approved.reviewItemId);
+      expect(rejectedDuplicate.reviewItemId).toBe(rejected.reviewItemId);
       expect(proposed.reviewItemId).toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
       );
       expect([
         proposedAgain.state,
+        explicitlyApprovedProposal.state,
         approved.state,
+        approvedDuplicate.state,
         rejected.state,
+        rejectedDuplicate.state,
         conflict.state,
         stale.state,
       ]).toEqual([
         glossaryReviewItemStateValues.proposed,
         glossaryReviewItemStateValues.approved,
+        glossaryReviewItemStateValues.approved,
+        glossaryReviewItemStateValues.approved,
+        glossaryReviewItemStateValues.rejected,
         glossaryReviewItemStateValues.rejected,
         glossaryReviewItemStateValues.conflict,
         glossaryReviewItemStateValues.staleSource,
