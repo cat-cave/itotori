@@ -5834,6 +5834,7 @@ pub fn validate_helper_key_ref_request(input: &Value) -> Vec<LocalKeyImportDiagn
 
 fn validate_helper_registry_request_binding(
     entry: &HelperRegistryEntry,
+    capability: HelperCapability,
     input: &Value,
 ) -> Vec<LocalKeyImportDiagnostic> {
     let mut diagnostics = Vec::new();
@@ -5910,7 +5911,7 @@ fn validate_helper_registry_request_binding(
             message: "expectedRedactedLogHash must be sha256:<64 lowercase hex characters>"
                 .to_string(),
         }),
-        None if helper_request_requires_redacted_log_expectation(input) => {
+        None if helper_request_requires_redacted_log_expectation(capability, input) => {
             diagnostics.push(LocalKeyImportDiagnostic {
                 code: SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION.to_string(),
                 field: "expectedRedactedLogHash".to_string(),
@@ -5927,21 +5928,25 @@ fn validate_helper_registry_request_binding(
         .collect()
 }
 
-fn helper_request_requires_redacted_log_expectation(input: &Value) -> bool {
-    input
-        .get("requestedCapability")
-        .and_then(Value::as_str)
-        .is_some_and(|capability| capability == "key_validation")
+fn helper_request_requires_redacted_log_expectation(
+    capability: HelperCapability,
+    input: &Value,
+) -> bool {
+    capability == HelperCapability::KeyValidation
         && input
-            .get("requiredKeyRefs")
+            .get("keyRefs")
             .and_then(Value::as_array)
-            .is_some_and(|required_key_refs| {
-                required_key_refs.iter().any(|required| {
-                    required
+            .is_some_and(|key_refs| {
+                key_refs.iter().any(|key_ref| {
+                    key_ref
                         .get("requirementId")
                         .and_then(Value::as_str)
                         .is_some_and(|requirement_id| requirement_id == "siglus-secondary-key")
-                        && required
+                        && key_ref
+                            .get("secretRef")
+                            .and_then(Value::as_str)
+                            .is_some_and(|secret_ref| !secret_ref.is_empty())
+                        && key_ref
                             .get("keyPurpose")
                             .and_then(Value::as_str)
                             .is_some_and(|key_purpose| key_purpose == "siglus-secondary-key")
@@ -6971,7 +6976,11 @@ fn helper_binary_launch_failure(
 
 trait HelperExecutableAdapter {
     fn helper_id(&self) -> &'static str;
-    fn invoke(&self, entry: &HelperRegistryEntry, input: &Value) -> KaifuuResult<Value>;
+    fn invoke(
+        &self,
+        entry: &HelperRegistryEntry,
+        request: HelperRegistryInvocationRequest<'_>,
+    ) -> KaifuuResult<Value>;
 }
 
 #[derive(Default)]
@@ -7043,7 +7052,7 @@ impl HelperRegistry {
                 redact_for_log_or_report(request.helper_id)
             )
         })?;
-        let output = executable.invoke(entry, request.input)?;
+        let output = executable.invoke(entry, request)?;
         validate_helper_registry_output(entry, &output)?;
         Ok(output)
     }
@@ -7146,14 +7155,23 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
         FIXTURE_HELPER_REGISTRY_ID
     }
 
-    fn invoke(&self, entry: &HelperRegistryEntry, input: &Value) -> KaifuuResult<Value> {
+    fn invoke(
+        &self,
+        entry: &HelperRegistryEntry,
+        request: HelperRegistryInvocationRequest<'_>,
+    ) -> KaifuuResult<Value> {
+        let input = request.input;
         let fixture_id = input
             .get("fixtureId")
             .and_then(Value::as_str)
             .unwrap_or("kaifuu-helper-registry-key-ref-request");
         let helper_result_id = format!("helper-result-{fixture_id}");
         let mut request_diagnostics = validate_helper_key_ref_request(input);
-        request_diagnostics.extend(validate_helper_registry_request_binding(entry, input));
+        request_diagnostics.extend(validate_helper_registry_request_binding(
+            entry,
+            request.capability,
+            input,
+        ));
         if !request_diagnostics.is_empty() {
             let code = request_diagnostics
                 .iter()
@@ -17663,6 +17681,44 @@ printf launched > '{}'
     }
 
     #[test]
+    fn siglus_secondary_key_helper_boundary_requires_redacted_output_for_success_key_refs() {
+        let registry = fixture_helper_registry().unwrap();
+        let mut request = public_helper_request_fixture_value("siglus-secondary-key-request");
+        let request_object = request.as_object_mut().unwrap();
+        request_object.remove("expectedRedactedLogHash");
+        request_object.remove("requiredKeyRefs");
+
+        let output = registry
+            .invoke(fixture_helper_key_validation(&request))
+            .unwrap();
+
+        assert_eq!(output["diagnostic"]["code"], "redaction_failure");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION
+        );
+        assert_eq!(output["redaction"]["status"], "failed");
+        assert_eq!(output["secretRefs"], serde_json::json!([]));
+        assert_eq!(
+            validate_helper_result_value(&output).status,
+            OperationStatus::Passed
+        );
+
+        let serialized = serde_json::to_string(&output).unwrap();
+        for forbidden in [
+            "rawKey",
+            "keyMaterial",
+            "00112233445566778899aabbccddeeff",
+            "fixture-only-siglus-secondary-key-v1",
+            "decrypted script",
+            "/home/",
+            "C:\\",
+        ] {
+            assert!(!serialized.contains(forbidden), "leaked {forbidden}");
+        }
+    }
+
+    #[test]
     fn siglus_secondary_key_helper_boundary_diagnostics_cover_required_failures() {
         let registry = fixture_helper_registry().unwrap();
         let cases = [
@@ -17843,7 +17899,11 @@ printf launched > '{}'
                 FIXTURE_HELPER_REGISTRY_ID
             }
 
-            fn invoke(&self, _entry: &HelperRegistryEntry, _input: &Value) -> KaifuuResult<Value> {
+            fn invoke(
+                &self,
+                _entry: &HelperRegistryEntry,
+                _request: HelperRegistryInvocationRequest<'_>,
+            ) -> KaifuuResult<Value> {
                 Ok(serde_json::json!({"not": "a helper result"}))
             }
         }
