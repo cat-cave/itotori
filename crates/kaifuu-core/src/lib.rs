@@ -38,6 +38,7 @@ pub const SEMANTIC_HELPER_TIMEOUT: &str = "kaifuu.helper_timeout";
 pub const SEMANTIC_HELPER_CANCELLED: &str = "kaifuu.helper_cancelled";
 pub const SEMANTIC_HELPER_EXIT_FAILURE: &str = "kaifuu.helper_exit_failure";
 pub const SEMANTIC_HELPER_IO_FAILURE: &str = "kaifuu.helper_io_failure";
+pub const SEMANTIC_HELPER_OUTPUT_OVERFLOW: &str = "kaifuu.helper_output_overflow";
 pub const SEMANTIC_KEY_VALIDATION_FAILED: &str = "kaifuu.key_validation_failed";
 pub const SEMANTIC_SECRET_REDACTED: &str = "kaifuu.secret_redacted";
 pub const SEMANTIC_HELPER_REQUIRED: &str = "kaifuu.helper_required";
@@ -5570,6 +5571,7 @@ const HELPER_PROCESS_OUTPUT_CAPTURE_LIMIT: usize = 64 * 1024;
 const HELPER_PROCESS_OUTPUT_TEXT_LIMIT: usize = 1024;
 const HELPER_PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const HELPER_PROCESS_TERMINATION_GRACE: Duration = Duration::from_millis(200);
+const HELPER_PROCESS_OUTPUT_COLLECTION_GRACE: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone, Default)]
 pub struct HelperProcessCancelToken {
@@ -5771,11 +5773,11 @@ pub fn run_bounded_helper_process(
         &mut cancelled,
         &mut terminated,
     );
-    let stdout = join_helper_output(stdout_reader);
-    let stderr = join_helper_output(stderr_reader);
+    let stdout = collect_helper_output(stdout_reader);
+    let stderr = collect_helper_output(stderr_reader);
     execution.duration_ms = Some(elapsed_millis_u32(started));
 
-    let (status, diagnostic, exit_code) = match exit_status {
+    let (mut status, mut diagnostic, exit_code) = match exit_status {
         Ok(Some(status)) if timed_out => (
             OperationStatus::Failed,
             helper_process_diagnostic(
@@ -5827,6 +5829,25 @@ pub fn run_bounded_helper_process(
             None,
         ),
     };
+    let stdout_summary = helper_process_output_summary(&stdout.output);
+    let stderr_summary = helper_process_output_summary(&stderr.output);
+    if status == OperationStatus::Passed && (!stdout.complete || !stderr.complete) {
+        status = OperationStatus::Failed;
+        diagnostic = helper_process_diagnostic(
+            SEMANTIC_HELPER_IO_FAILURE,
+            "output",
+            "helper output pipes did not close before report generation",
+        );
+    } else if status == OperationStatus::Passed
+        && (stdout_summary.truncated || stderr_summary.truncated)
+    {
+        status = OperationStatus::Failed;
+        diagnostic = helper_process_diagnostic(
+            SEMANTIC_HELPER_OUTPUT_OVERFLOW,
+            "output",
+            "helper output exceeded the bounded capture limit",
+        );
+    }
 
     helper_process_report(
         request.helper_id,
@@ -5837,8 +5858,8 @@ pub fn run_bounded_helper_process(
         timed_out,
         cancelled,
         terminated,
-        helper_process_output_summary(&stdout),
-        helper_process_output_summary(&stderr),
+        stdout_summary,
+        stderr_summary,
     )
 }
 
@@ -5990,42 +6011,64 @@ fn signal_helper_process(child: &mut Child, signal: HelperProcessSignal) {
     }
 }
 
-fn spawn_helper_output_reader<R>(
-    mut stream: R,
-) -> thread::JoinHandle<io::Result<HelperCapturedOutput>>
+fn spawn_helper_output_reader<R>(mut stream: R) -> mpsc::Receiver<io::Result<HelperCapturedOutput>>
 where
     R: Read + Send + 'static,
 {
+    let (sender, receiver) = mpsc::channel();
     thread::spawn(move || {
-        let mut output = HelperCapturedOutput::default();
-        let mut buffer = [0_u8; 8192];
-        loop {
-            let read = stream.read(&mut buffer)?;
-            if read == 0 {
-                break;
+        let result = (|| -> io::Result<HelperCapturedOutput> {
+            let mut output = HelperCapturedOutput::default();
+            let mut buffer = [0_u8; 8192];
+            loop {
+                let read = stream.read(&mut buffer)?;
+                if read == 0 {
+                    break;
+                }
+                output.byte_count = output.byte_count.saturating_add(read as u64);
+                let remaining =
+                    HELPER_PROCESS_OUTPUT_CAPTURE_LIMIT.saturating_sub(output.bytes.len());
+                if remaining > 0 {
+                    output
+                        .bytes
+                        .extend_from_slice(&buffer[..read.min(remaining)]);
+                }
+                if read > remaining {
+                    output.truncated = true;
+                }
             }
-            output.byte_count = output.byte_count.saturating_add(read as u64);
-            let remaining = HELPER_PROCESS_OUTPUT_CAPTURE_LIMIT.saturating_sub(output.bytes.len());
-            if remaining > 0 {
-                output
-                    .bytes
-                    .extend_from_slice(&buffer[..read.min(remaining)]);
-            }
-            if read > remaining {
-                output.truncated = true;
-            }
-        }
-        Ok(output)
-    })
+            Ok(output)
+        })();
+        let _ = sender.send(result);
+    });
+    receiver
 }
 
-fn join_helper_output(
-    reader: Option<thread::JoinHandle<io::Result<HelperCapturedOutput>>>,
-) -> HelperCapturedOutput {
-    reader
-        .and_then(|reader| reader.join().ok())
-        .and_then(Result::ok)
-        .unwrap_or_default()
+#[derive(Debug)]
+struct HelperCollectedOutput {
+    output: HelperCapturedOutput,
+    complete: bool,
+}
+
+fn collect_helper_output(
+    reader: Option<mpsc::Receiver<io::Result<HelperCapturedOutput>>>,
+) -> HelperCollectedOutput {
+    let Some(reader) = reader else {
+        return HelperCollectedOutput {
+            output: HelperCapturedOutput::default(),
+            complete: true,
+        };
+    };
+    match reader.recv_timeout(HELPER_PROCESS_OUTPUT_COLLECTION_GRACE) {
+        Ok(Ok(output)) => HelperCollectedOutput {
+            output,
+            complete: true,
+        },
+        Ok(Err(_)) | Err(_) => HelperCollectedOutput {
+            output: HelperCapturedOutput::default(),
+            complete: false,
+        },
+    }
 }
 
 fn helper_process_output_summary(output: &HelperCapturedOutput) -> HelperProcessOutputSummary {
@@ -14271,6 +14314,19 @@ mod tests {
         fs::set_permissions(path, permissions).unwrap();
     }
 
+    #[cfg(unix)]
+    fn kill_pid_from_file(path: &Path) {
+        for _ in 0..20 {
+            if let Ok(pid) = fs::read_to_string(path).unwrap_or_default().parse::<i32>() {
+                unsafe {
+                    let _ = kill(pid, 9);
+                }
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
     fn bridge_fixture_value(relative_path: &str) -> Value {
         let path = repo_fixture_path(relative_path);
         serde_json::from_str(&fs::read_to_string(path).expect("fixture should be readable"))
@@ -15250,7 +15306,7 @@ printf 'err C:\Users\Dev\SecretGame\n' >&2
             executable_path: &helper,
             timeout_ms: 1000,
             stdin: b"fixture input",
-            filesystem_access: HelperExecutionFilesystemAccess::TempOnly,
+            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: None,
         });
 
@@ -15304,7 +15360,7 @@ wait
             executable_path: &helper,
             timeout_ms: 50,
             stdin: b"",
-            filesystem_access: HelperExecutionFilesystemAccess::TempOnly,
+            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: None,
         });
 
@@ -15320,6 +15376,48 @@ wait
         let serialized = serde_json::to_string(&report).unwrap();
         assert!(!serialized.contains(marker.to_str().unwrap()));
         assert!(!serialized.contains(helper.to_str().unwrap()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn helper_process_runner_timeout_reports_while_escaped_descendant_holds_stdout() {
+        let root = temp_dir("helper-process-timeout-escaped-stdout");
+        let helper = root.join("helper-stub");
+        let escaped_pid = root.join("escaped.pid");
+        write_executable_stub(
+            &helper,
+            &format!(
+                r#"#!/bin/sh
+setsid sh -c 'printf "%s" "$$" > "$1"; sleep 5' sh "{}" &
+wait
+"#,
+                escaped_pid.display()
+            ),
+        );
+
+        let started = Instant::now();
+        let report = run_bounded_helper_process(BoundedHelperProcessRequest {
+            helper_id: "kaifuu.fixture.process-stub",
+            executable_path: &helper,
+            timeout_ms: 50,
+            stdin: b"",
+            filesystem_access: HelperExecutionFilesystemAccess::None,
+            cancel_token: None,
+        });
+        let elapsed = started.elapsed();
+        kill_pid_from_file(&escaped_pid);
+
+        assert!(
+            elapsed < Duration::from_millis(1000),
+            "report generation waited for escaped stdout holder: {elapsed:?}"
+        );
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(report.diagnostic.code, SEMANTIC_HELPER_TIMEOUT);
+        assert!(report.timed_out);
+        assert!(report.terminated);
+        let serialized = serde_json::to_string(&report).unwrap();
+        assert!(!serialized.contains(helper.to_str().unwrap()));
+        assert!(!serialized.contains(escaped_pid.to_str().unwrap()));
     }
 
     #[cfg(unix)]
@@ -15340,7 +15438,7 @@ sleep 1
             executable_path: &helper,
             timeout_ms: 50,
             stdin: &stdin,
-            filesystem_access: HelperExecutionFilesystemAccess::TempOnly,
+            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: None,
         });
 
@@ -15380,7 +15478,7 @@ wait
             executable_path: &helper,
             timeout_ms: 5000,
             stdin: b"",
-            filesystem_access: HelperExecutionFilesystemAccess::TempOnly,
+            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: Some(cancel_token),
         });
 
@@ -15396,6 +15494,54 @@ wait
         let serialized = serde_json::to_string(&report).unwrap();
         assert!(!serialized.contains(marker.to_str().unwrap()));
         assert!(!serialized.contains(helper.to_str().unwrap()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn helper_process_runner_cancel_reports_while_escaped_descendant_holds_stdout() {
+        let root = temp_dir("helper-process-cancel-escaped-stdout");
+        let helper = root.join("helper-stub");
+        let escaped_pid = root.join("escaped.pid");
+        write_executable_stub(
+            &helper,
+            &format!(
+                r#"#!/bin/sh
+setsid sh -c 'printf "%s" "$$" > "$1"; sleep 5' sh "{}" &
+wait
+"#,
+                escaped_pid.display()
+            ),
+        );
+        let cancel_token = HelperProcessCancelToken::new();
+        let cancel_thread_token = cancel_token.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            cancel_thread_token.cancel();
+        });
+
+        let started = Instant::now();
+        let report = run_bounded_helper_process(BoundedHelperProcessRequest {
+            helper_id: "kaifuu.fixture.process-stub",
+            executable_path: &helper,
+            timeout_ms: 5000,
+            stdin: b"",
+            filesystem_access: HelperExecutionFilesystemAccess::None,
+            cancel_token: Some(cancel_token),
+        });
+        let elapsed = started.elapsed();
+        kill_pid_from_file(&escaped_pid);
+
+        assert!(
+            elapsed < Duration::from_millis(1000),
+            "report generation waited for escaped stdout holder: {elapsed:?}"
+        );
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(report.diagnostic.code, SEMANTIC_HELPER_CANCELLED);
+        assert!(report.cancelled);
+        assert!(report.terminated);
+        let serialized = serde_json::to_string(&report).unwrap();
+        assert!(!serialized.contains(helper.to_str().unwrap()));
+        assert!(!serialized.contains(escaped_pid.to_str().unwrap()));
     }
 
     #[cfg(unix)]
@@ -15422,7 +15568,7 @@ sleep 1
             executable_path: &helper,
             timeout_ms: 5000,
             stdin: &stdin,
-            filesystem_access: HelperExecutionFilesystemAccess::TempOnly,
+            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: Some(cancel_token),
         });
 
@@ -15430,6 +15576,40 @@ sleep 1
         assert_eq!(report.diagnostic.code, SEMANTIC_HELPER_CANCELLED);
         assert!(report.cancelled);
         assert!(report.terminated);
+        let serialized = serde_json::to_string(&report).unwrap();
+        assert!(!serialized.contains(helper.to_str().unwrap()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn helper_process_runner_output_overflow_is_semantic_failure() {
+        let root = temp_dir("helper-process-output-overflow");
+        let helper = root.join("helper-stub");
+        write_executable_stub(
+            &helper,
+            r#"#!/bin/sh
+yes A | head -c 70000
+"#,
+        );
+
+        let report = run_bounded_helper_process(BoundedHelperProcessRequest {
+            helper_id: "kaifuu.fixture.process-stub",
+            executable_path: &helper,
+            timeout_ms: 1000,
+            stdin: b"",
+            filesystem_access: HelperExecutionFilesystemAccess::None,
+            cancel_token: None,
+        });
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(report.diagnostic.code, SEMANTIC_HELPER_OUTPUT_OVERFLOW);
+        assert!(report.stdout.truncated);
+        assert!(report.stdout.byte_count > report.stdout.captured_byte_count);
+        assert_eq!(
+            report.stdout.captured_byte_count,
+            HELPER_PROCESS_OUTPUT_CAPTURE_LIMIT as u64
+        );
+        assert!(report.stdout.redacted_text.len() <= HELPER_PROCESS_OUTPUT_TEXT_LIMIT);
         let serialized = serde_json::to_string(&report).unwrap();
         assert!(!serialized.contains(helper.to_str().unwrap()));
     }
