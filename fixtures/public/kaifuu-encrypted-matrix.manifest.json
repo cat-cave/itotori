@@ -5,7 +5,7 @@
     "id": "kaifuu-encrypted-matrix",
     "title": "Kaifuu Synthetic Encrypted Matrix",
     "kind": "synthetic",
-    "summary": "Generated public fixture-only encrypted, packed, missing-key, helper-required, validation-failed, redaction, and unknown archive detector cases.",
+    "summary": "Generated public fixture-only encrypted, packed, missing-key, helper-required, validation-failed, redaction, parser-boundary, and unknown archive detector cases.",
     "sourceLocale": "ja-JP",
     "targetLocales": [],
     "publicRedistribution": "allowed",
@@ -15,7 +15,7 @@
     },
     "provenance": {
       "author": "Kaifuu fixture authors",
-      "creationMethod": "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved XP3/Siglus detector expected outputs.",
+      "creationMethod": "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved XP3/Siglus detector and parser-boundary expected outputs.",
       "rawAssetPolicy": "contains-no-copyrighted-game-assets"
     }
   },
@@ -50,6 +50,14 @@
       "mediaType": "application/json",
       "sha256": "962f28d577ce78890b84b9dec12e563625d27996c58480a1fec349c91a3c9ffe",
       "bytes": 6759,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/expected/siglus-parser-boundary-smoke-v0.1.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "2d3fd3fa299fa9f77d20c60fbe219b48761c5b6e2bd400923edfcb74c0230c47",
+      "bytes": 2127,
       "redistributable": true
     },
     {
@@ -326,7 +334,7 @@
     }
   ],
   "aggregateStats": {
-    "files": 38,
+    "files": 39,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
@@ -340,7 +348,7 @@
       "wolf-rpg-editor-synthetic-archive",
       "unknown-synthetic-archive-signals"
     ],
-    "notes": "All bytes are generated fixture-only data. Public helper results cover missing_key, helper_required, helper_unavailable, validation_failed, and redaction_failure paths; XP3 and Siglus detector expected outputs cover identify/profile/inventory-only boundaries; negative profiles cover raw-key-looking and private-path-looking secret refs."
+    "notes": "All bytes are generated fixture-only data. Public helper results cover missing_key, helper_required, helper_unavailable, validation_failed, and redaction_failure paths; XP3 and Siglus detector expected outputs cover identify/profile/inventory-only boundaries; Siglus parser-boundary output covers key-ref-only known-key smoke slots and diagnostics; negative profiles cover raw-key-looking and private-path-looking secret refs."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,
