@@ -21,6 +21,7 @@ export const exactSearchDiagnosticCodeValues = {
   localeBranchMissing: "locale_branch_missing",
   unsupportedArtifactType: "unsupported_artifact_type",
   staleSourceRevision: "stale_source_revision",
+  blankQuery: "blank_query",
 } as const;
 
 export type ExactSearchDiagnosticCode =
@@ -271,6 +272,10 @@ export class ItotoriExactSearchDocumentRepository implements ItotoriExactSearchD
   ): Promise<SearchExactToolResult> {
     await requirePermission(this.db, actor, permissionValues.catalogRead);
 
+    if (input.query.trim().length === 0) {
+      return searchFailure(input, "", null, [blankQueryDiagnostic()]);
+    }
+
     const normalizedQuery = normalizeExactSearchTerm(input.query);
     const context = await currentLocaleBranchContext(
       this.db,
@@ -505,6 +510,16 @@ function staleSourceRevisionDiagnostic(
     message: `source revision ${requestedSourceRevisionId} is stale for current locale branch revision ${currentSourceRevisionId}`,
     field: "sourceRevisionId",
     metadata: { requestedSourceRevisionId, currentSourceRevisionId },
+  };
+}
+
+function blankQueryDiagnostic(): ExactSearchDiagnostic {
+  return {
+    code: exactSearchDiagnosticCodeValues.blankQuery,
+    reasonCode: exactSearchDiagnosticCodeValues.blankQuery,
+    severity: "error",
+    message: "exact search v1 requires a non-empty query",
+    field: "query",
   };
 }
 

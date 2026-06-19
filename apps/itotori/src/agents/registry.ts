@@ -24,7 +24,7 @@ import { assertProviderInvocationSupported } from "../providers/capability-guard
 
 export type StableJsonHash = `sha256:${string}`;
 export type AgentName = `agent.${string}`;
-export type DeterministicToolName = `tool.${string}`;
+export type DeterministicToolName = `tool.${string}` | `search.${string}`;
 
 export type AgentTaskKind = Extract<TriageTaskKindV02, "draft_translation" | "llm_qa" | "repair">;
 export type DeterministicToolTaskKind = Extract<
@@ -441,8 +441,11 @@ function assertDeterministicToolDefinitionShape(
     );
   }
   const toolName = definition["toolName"];
-  if (typeof toolName !== "string" || !toolName.startsWith("tool.")) {
-    throw new Error("deterministic tool definitions must use a tool.* name");
+  if (
+    typeof toolName !== "string" ||
+    (!toolName.startsWith("tool.") && !toolName.startsWith("search."))
+  ) {
+    throw new Error("deterministic tool definitions must use a tool.* or search.* name");
   }
   if ("agentName" in definition) {
     throw new Error("deterministic tool definitions must not include agentName");

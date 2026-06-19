@@ -251,6 +251,23 @@ describe("ItotoriExactSearchDocumentRepository", () => {
           expect.objectContaining({ code: exactSearchDiagnosticCodeValues.staleSourceRevision }),
         ],
       });
+      await expect(
+        repository.searchExact(localActor, {
+          projectId: "project-search",
+          localeBranchId: "locale-en-us",
+          query: "   ",
+        }),
+      ).resolves.toMatchObject({
+        status: "failed",
+        matches: [],
+        normalizedQuery: "",
+        diagnostics: [
+          expect.objectContaining({
+            code: exactSearchDiagnosticCodeValues.blankQuery,
+            field: "query",
+          }),
+        ],
+      });
     } finally {
       await context.close();
     }
