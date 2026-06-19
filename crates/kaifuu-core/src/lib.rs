@@ -12838,7 +12838,7 @@ fn parse_xp3_segment_chunk(
     file: &mut PlainXp3FileChunk,
 ) -> Result<(), PlainXp3InventoryError> {
     let segment_size = 4 + 8 + 8 + 8;
-    if (end - start) % segment_size != 0 {
+    if !(end - start).is_multiple_of(segment_size) {
         return Err(PlainXp3InventoryError::InvalidChunk(
             "segment table size is not a multiple of 28".to_string(),
         ));
