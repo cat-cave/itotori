@@ -46,6 +46,13 @@ export {
   catalogSourceRecordKindValues,
   catalogSourceValues,
   catalogTranslationPortabilityValues,
+  terminologyAliasKindValues,
+  terminologyConflictKindValues,
+  terminologyConflictStatusValues,
+  terminologySemanticIndexStatusValues,
+  terminologySourceReferenceKindValues,
+  terminologyTermKindValues,
+  terminologyTermStatusValues,
 } from "./schema.js";
 export type {
   CatalogConfidence,
@@ -82,6 +89,13 @@ export type {
   RuntimeRunStatus,
   StyleGuideVersionStatus,
   CatalogCandidateMatchStatus,
+  TerminologyAliasKind,
+  TerminologyConflictKind,
+  TerminologyConflictStatus,
+  TerminologySemanticIndexStatus,
+  TerminologySourceReferenceKind,
+  TerminologyTermKind,
+  TerminologyTermStatus,
 } from "./schema.js";
 export {
   defaultWorkspaceId,
@@ -177,6 +191,26 @@ export type {
   StyleGuideRecord,
   StyleGuideVersionRecord,
 } from "./repositories/style-guide-repository.js";
+export { ItotoriTerminologyRepository } from "./repositories/terminology-repository.js";
+export type {
+  ItotoriTerminologyRepositoryPort,
+  TerminologyAliasInput,
+  TerminologyAliasRecord,
+  TerminologyConflictFilter,
+  TerminologyConflictRecord,
+  TerminologyJsonRecord,
+  TerminologySearchInput,
+  TerminologySearchMatchKind,
+  TerminologySearchReadModel,
+  TerminologySearchResult,
+  TerminologySemanticIndexInput,
+  TerminologySemanticIndexRecord,
+  TerminologySourceReferenceInput,
+  TerminologySourceReferenceRecord,
+  TerminologyTermRecord,
+  UpsertTerminologyTermInput,
+  UpsertTerminologyTermResult,
+} from "./repositories/terminology-repository.js";
 export {
   affectedWorkInvalidatedPayloadSchemaVersion,
   ItotoriStyleGuideService,

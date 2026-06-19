@@ -35,6 +35,7 @@ import {
   runtimeIngestResultFixture,
   runtimeReportFixture,
   runtimeStatusFixture,
+  terminologySearchFixture,
 } from "./api-fixtures.js";
 
 const deniedActor = { userId: "api-user-without-required-permission" };
@@ -149,6 +150,14 @@ describe("Itotori API handlers", () => {
       { method: "GET", pathname: "/api/catalog/completeness" },
       services,
     );
+    const terminologySearch = await handleItotoriApiRequest(
+      {
+        method: "GET",
+        pathname: "/api/terminology/search",
+        search: "?localeBranchId=locale-1&q=Hero",
+      },
+      services,
+    );
 
     expect(projects).toEqual({ statusCode: 200, body: { projects: [dashboardStatusFixture] } });
     expect(projectStatus).toEqual({ statusCode: 200, body: dashboardStatusFixture });
@@ -190,6 +199,7 @@ describe("Itotori API handlers", () => {
     expect(decisions).toEqual({ statusCode: 200, body: dashboardDecisionsFixture });
     expect(catalogConflicts).toEqual({ statusCode: 200, body: catalogConflictReviewFixture });
     expect(catalogCompleteness).toEqual({ statusCode: 200, body: catalogCompletenessFixture });
+    expect(terminologySearch).toEqual({ statusCode: 200, body: terminologySearchFixture });
     expect(services.projectWorkflow.getDashboardStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenCalledTimes(2);
     expect(services.projectWorkflow.getRuntimeStatus).toHaveBeenNthCalledWith(1, undefined);
@@ -198,6 +208,10 @@ describe("Itotori API handlers", () => {
     expect(services.projectWorkflow.getDashboardDecisions).toHaveBeenCalledTimes(1);
     expect(services.catalogRepository.catalogConflictReview).toHaveBeenCalledWith({});
     expect(services.catalogRepository.catalogCompletenessBenchmarkPools).toHaveBeenCalledWith({});
+    expect(services.terminologyRepository.searchTerms).toHaveBeenCalledWith({
+      localeBranchId: "locale-1",
+      query: "Hero",
+    });
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
   });
 
@@ -276,6 +290,55 @@ describe("Itotori API handlers", () => {
       filter,
     );
     expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      query: "?projectId=project-1&localeBranchId=locale-1&q=Hero&limit=5",
+      filter: { projectId: "project-1", localeBranchId: "locale-1", query: "Hero", limit: 5 },
+    },
+    {
+      query: "?localeBranchId=locale-1&q=Hero&includeDeprecated=true",
+      filter: { localeBranchId: "locale-1", query: "Hero", includeDeprecated: true },
+    },
+  ])("passes terminology search filter $query to the read model", async ({ query, filter }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/terminology/search", search: query },
+      services,
+    );
+
+    expect(response).toEqual({ statusCode: 200, body: terminologySearchFixture });
+    expect(services.terminologyRepository.searchTerms).toHaveBeenCalledWith(filter);
+    expect(services.authorization.requirePermission).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      query: "?q=Hero",
+      error: /localeBranchId/u,
+    },
+    {
+      query: "?localeBranchId=locale-1",
+      error: /q must be non-empty/u,
+    },
+    {
+      query: "?localeBranchId=locale-1&q=Hero&limit=0",
+      error: /limit/u,
+    },
+  ])("rejects malformed terminology search query $query", async ({ query, error }) => {
+    const services = serviceFixture();
+
+    const response = await handleItotoriApiRequest(
+      { method: "GET", pathname: "/api/terminology/search", search: query },
+      services,
+    );
+
+    expect(response.statusCode).toBe(400);
+    expect(response.body).toMatchObject({ code: "bad_request" });
+    expect(response.body.error).toMatch(error);
+    expect(services.terminologyRepository.searchTerms).not.toHaveBeenCalled();
   });
 
   it("serves project cost reports with unknown token source component counters", async () => {
@@ -1060,6 +1123,9 @@ function serviceFixture(): ItotoriApiServices {
     catalogRepository: {
       catalogConflictReview: vi.fn(async () => catalogConflictReviewFixture),
       catalogCompletenessBenchmarkPools: vi.fn(async () => catalogCompletenessFixture),
+    },
+    terminologyRepository: {
+      searchTerms: vi.fn(async () => terminologySearchFixture),
     },
   };
 }

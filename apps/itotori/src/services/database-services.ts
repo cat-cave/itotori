@@ -9,6 +9,7 @@ import {
   ItotoriProjectRepository,
   ItotoriStyleGuideFixtureFlowService,
   ItotoriStyleGuideRepository,
+  ItotoriTerminologyRepository,
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
@@ -20,6 +21,8 @@ import {
   type CatalogConflictReviewReadModel,
   type CatalogCompletenessBenchmarkPools,
   type CatalogCompletenessPoolFilter,
+  type TerminologySearchInput,
+  type TerminologySearchReadModel,
   type StyleGuideFixtureFlowInput,
   type StyleGuideFixtureFlowResult,
 } from "@itotori/db";
@@ -45,6 +48,9 @@ export type ItotoriApplicationServices = {
     catalogCompletenessBenchmarkPools(
       filter?: CatalogCompletenessPoolFilter,
     ): Promise<CatalogCompletenessBenchmarkPools>;
+  };
+  terminologyRepository: {
+    searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
@@ -83,6 +89,7 @@ export async function withDatabaseItotoriServices<T>(
     const catalogRepository = new ItotoriCatalogRepository(context.db);
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
     const styleGuideRepository = new ItotoriStyleGuideRepository(context.db);
+    const terminologyRepository = new ItotoriTerminologyRepository(context.db);
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -97,6 +104,9 @@ export async function withDatabaseItotoriServices<T>(
           catalogRepository.catalogConflictReview(localUserActor, filter),
         catalogCompletenessBenchmarkPools: (filter) =>
           catalogRepository.catalogCompletenessBenchmarkPools(localUserActor, filter),
+      },
+      terminologyRepository: {
+        searchTerms: (input) => terminologyRepository.searchTerms(localUserActor, input),
       },
       catalogExactExternalIdLinker: new ItotoriCatalogExactExternalIdLinkerService(
         catalogRepository,

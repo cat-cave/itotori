@@ -18,6 +18,8 @@ import {
   type ProjectCostReport,
   type ProjectDashboardStatus,
   type RuntimeDashboardStatus,
+  type TerminologySearchInput,
+  type TerminologySearchReadModel,
 } from "@itotori/db";
 import type { ItotoriAuthorizationPort } from "./auth.js";
 import {
@@ -80,6 +82,9 @@ export type ItotoriApiServices = {
     catalogCompletenessBenchmarkPools(
       filter?: CatalogCompletenessPoolFilter,
     ): Promise<CatalogCompletenessBenchmarkPools>;
+  };
+  terminologyRepository: {
+    searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
   };
   projectWorkflow: Pick<
     ItotoriProjectWorkflowPort,
@@ -160,13 +165,21 @@ async function routeItotoriApiRequest(
     );
   }
 
+  if (request.method === "GET" && request.pathname === "/api/terminology/search") {
+    return ok(
+      "terminology.search",
+      await services.terminologyRepository.searchTerms(parseTerminologySearchInput(request.search)),
+    );
+  }
+
   if (
     request.pathname === "/api/projects/status" ||
     request.pathname === "/api/projects/decisions" ||
     request.pathname === "/api/projects/cost" ||
     request.pathname === "/api/hello/status" ||
     request.pathname === "/api/catalog/conflicts" ||
-    request.pathname === "/api/catalog/completeness"
+    request.pathname === "/api/catalog/completeness" ||
+    request.pathname === "/api/terminology/search"
   ) {
     return methodNotAllowed(["GET"]);
   }
@@ -311,6 +324,45 @@ function parseRuntimeRunIdQuery(search = ""): string | undefined {
   return runtimeRunId;
 }
 
+function parseTerminologySearchInput(search = ""): TerminologySearchInput {
+  const params = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const localeBranchId = params.get("localeBranchId");
+  const query = params.get("q");
+  if (localeBranchId === null || localeBranchId.trim().length === 0) {
+    throw new ApiValidationError("localeBranchId must be non-empty");
+  }
+  if (query === null || query.trim().length === 0) {
+    throw new ApiValidationError("q must be non-empty");
+  }
+  const input: TerminologySearchInput = {
+    localeBranchId,
+    query,
+  };
+  const projectId = params.get("projectId");
+  if (projectId !== null) {
+    if (projectId.trim().length === 0) {
+      throw new ApiValidationError("projectId must be non-empty");
+    }
+    input.projectId = projectId;
+  }
+  const limit = params.get("limit");
+  if (limit !== null) {
+    const parsedLimit = Number(limit);
+    if (!Number.isInteger(parsedLimit) || parsedLimit < 1 || parsedLimit > 100) {
+      throw new ApiValidationError("limit must be an integer from 1 through 100");
+    }
+    input.limit = parsedLimit;
+  }
+  const includeDeprecated = params.get("includeDeprecated");
+  if (includeDeprecated !== null) {
+    if (includeDeprecated !== "true" && includeDeprecated !== "false") {
+      throw new ApiValidationError("includeDeprecated must be true or false");
+    }
+    input.includeDeprecated = includeDeprecated === "true";
+  }
+  return input;
+}
+
 function enumParam<T extends string>(value: string, allowed: readonly T[], label: string): T {
   if (!allowed.includes(value as T)) {
     throw new ApiValidationError(`${label} must be one of ${allowed.join(", ")}`);
@@ -335,6 +387,7 @@ function ok(
   routeId: "catalog.completeness",
   body: CatalogCompletenessBenchmarkPools,
 ): ApiJsonResponse;
+function ok(routeId: "terminology.search", body: TerminologySearchReadModel): ApiJsonResponse;
 function ok(routeId: "projects.status", body: ProjectDashboardStatus): ApiJsonResponse;
 function ok(routeId: "projects.decisions", body: DashboardDecisionReadModel): ApiJsonResponse;
 function ok(routeId: "projects.cost", body: ProjectCostReport): ApiJsonResponse;
