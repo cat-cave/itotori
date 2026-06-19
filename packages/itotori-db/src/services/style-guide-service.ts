@@ -5,8 +5,14 @@ import type {
   ItotoriStyleGuideRepositoryPort,
   StyleGuideVersionRecord,
 } from "../repositories/style-guide-repository.js";
-export { styleGuideVersionChangedPayloadSchemaVersion } from "../repositories/style-guide-repository.js";
-export type { StyleGuideVersionChangedPayload } from "../repositories/style-guide-repository.js";
+export {
+  affectedWorkInvalidatedPayloadSchemaVersion,
+  styleGuideVersionChangedPayloadSchemaVersion,
+} from "../repositories/style-guide-repository.js";
+export type {
+  AffectedWorkInvalidatedPayload,
+  StyleGuideVersionChangedPayload,
+} from "../repositories/style-guide-repository.js";
 
 export const styleGuidePolicySchemaVersion = "style-guide-policy.v0";
 
@@ -39,6 +45,7 @@ export type StyleGuideCommandResult = {
   diagnostics: StyleGuideDiagnostic[];
   version?: StyleGuideVersionRecord;
   outboxEvent?: OutboxEventRecord;
+  invalidationOutboxEvents?: OutboxEventRecord[];
 };
 
 export class ItotoriStyleGuideService {
@@ -116,6 +123,13 @@ export class ItotoriStyleGuideService {
     actor: AuthorizationActor,
     input: ApproveStyleGuideVersionCommand,
   ): Promise<StyleGuideCommandResult> {
+    return this.approveStyleGuideVersion(actor, input);
+  }
+
+  async approveStyleGuideVersion(
+    actor: AuthorizationActor,
+    input: ApproveStyleGuideVersionCommand,
+  ): Promise<StyleGuideCommandResult> {
     const branch = await this.repository.getLocaleBranchContext(
       input.projectId,
       input.localeBranchId,
@@ -171,6 +185,7 @@ export class ItotoriStyleGuideService {
       diagnostics: [],
       version: approved.version,
       outboxEvent: approved.outboxEvent,
+      invalidationOutboxEvents: approved.invalidationOutboxEvents,
     };
   }
 }

@@ -113,5 +113,27 @@
         }
       }
     }
+  },
+  "outbox": {
+    "approval": {
+      "priorStyleGuideVersionId": "style-guide-version-en-us-001",
+      "approvedStyleGuideVersionId": "style-guide-version-en-us-002",
+      "expectedAffectedSurfaces": ["drafts", "qa_findings", "exports", "benchmarks"]
+    },
+    "rejection": {
+      "styleGuideVersionId": "style-guide-version-en-us-001",
+      "expectedLatestVersionId": "style-guide-version-en-us-002",
+      "expectedDiagnosticCode": "style_guide.approval.not_latest_version"
+    },
+    "staleApproval": {
+      "styleGuideVersionId": "style-guide-version-en-us-001",
+      "expectedLatestVersionId": "style-guide-version-en-us-001",
+      "expectedDiagnosticCode": "style_guide.approval.stale_version"
+    },
+    "rollback": {
+      "styleGuideVersionId": "style-guide-version-en-us-002",
+      "expectedLatestVersionId": "style-guide-version-en-us-002",
+      "forcedEventType": "affected_work_invalidated"
+    }
   }
 }

@@ -46,6 +46,7 @@ export const outboxEventTypeValues = {
   rerunRequested: "rerun_requested",
   triageLoopRequested: "triage_loop_requested",
   styleGuideVersionChanged: "style_guide_version_changed",
+  affectedWorkInvalidated: "affected_work_invalidated",
   jobScheduled: "job_scheduled",
   jobCompleted: "job_completed",
   jobFailed: "job_failed",

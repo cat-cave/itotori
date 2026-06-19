@@ -168,12 +168,14 @@ export type {
   StyleGuideVersionRecord,
 } from "./repositories/style-guide-repository.js";
 export {
+  affectedWorkInvalidatedPayloadSchemaVersion,
   ItotoriStyleGuideService,
   styleGuidePolicySchemaVersion,
   styleGuideVersionChangedPayloadSchemaVersion,
   validatePolicy,
 } from "./services/style-guide-service.js";
 export type {
+  AffectedWorkInvalidatedPayload,
   ApproveStyleGuideVersionCommand,
   StyleGuideCommandResult,
   StyleGuideDiagnostic,

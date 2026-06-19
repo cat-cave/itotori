@@ -4,7 +4,10 @@ import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
   eventOutbox,
+  artifacts,
+  findings,
   localeBranches,
+  localeBranchUnits,
   type OutboxEventType,
   type OutboxStatus,
   outboxEventTypeValues,
@@ -24,6 +27,7 @@ import {
 
 export const styleGuideVersionChangedPayloadSchemaVersion =
   "itotori.style_guide_version_changed.v1";
+export const affectedWorkInvalidatedPayloadSchemaVersion = "itotori.affected_work_invalidated.v1";
 
 export type StyleGuideRecord = {
   styleGuideId: string;
@@ -80,6 +84,49 @@ export type StyleGuideVersionChangedPayload = {
   sourceRevisionReference: SourceRevisionReference;
 };
 
+export type AffectedWorkSurface = "drafts" | "qa_findings" | "exports" | "benchmarks";
+
+export type AffectedWorkReference =
+  | {
+      surface: "drafts";
+      draftId: string;
+      bridgeUnitId: string;
+    }
+  | {
+      surface: "qa_findings";
+      findingId: string;
+    }
+  | {
+      surface: "exports";
+      artifactId: string;
+      artifactKind: string;
+    }
+  | {
+      surface: "benchmarks";
+      artifactId: string;
+      artifactKind: string;
+    };
+
+export type AffectedWorkInvalidatedPayload = {
+  schemaVersion: typeof affectedWorkInvalidatedPayloadSchemaVersion;
+  eventName: "AffectedWorkInvalidated";
+  invalidationKind: "style_guide_version_approved";
+  projectId: string;
+  localeBranchId: string;
+  approverUserId: string;
+  priorStyleGuideVersionId: string;
+  approvedStyleGuideVersionId: string;
+  sourceRevisionBoundary: {
+    prior: SourceRevisionReference;
+    approved: SourceRevisionReference;
+  };
+  affectedWork: {
+    surface: AffectedWorkSurface;
+    count: number;
+    references: AffectedWorkReference[];
+  };
+};
+
 export type CreateStyleGuideVersionInput = {
   projectId: string;
   localeBranchId: string;
@@ -110,6 +157,7 @@ export type ApproveStyleGuideVersionResult = {
   previousApprovedVersionId: string | null;
   version: StyleGuideVersionRecord;
   outboxEvent: OutboxEventRecord;
+  invalidationOutboxEvents: OutboxEventRecord[];
 };
 
 export interface ItotoriStyleGuideRepositoryPort {
@@ -369,6 +417,10 @@ export class ItotoriStyleGuideRepository implements ItotoriStyleGuideRepositoryP
       }
 
       const previousApprovedVersionId = guide.approvedVersionId;
+      const previousApprovedVersion =
+        previousApprovedVersionId === null
+          ? null
+          : await getVersionByIdInTx(tx, previousApprovedVersionId);
       if (guide.latestVersionId !== input.expectedLatestVersionId) {
         throw new Error(
           `style guide approval expected latest version ${input.expectedLatestVersionId} but latest is ${guide.latestVersionId ?? "none"}`,
@@ -428,7 +480,24 @@ export class ItotoriStyleGuideRepository implements ItotoriStyleGuideRepositoryP
         sourceRevisionReference: approved.sourceRevisionReference,
       });
 
-      return { previousApprovedVersionId, version: approved, outboxEvent };
+      const invalidationOutboxEvents =
+        previousApprovedVersion === null
+          ? []
+          : await appendAffectedWorkInvalidatedEventsInTx(tx, {
+              projectId: input.projectId,
+              localeBranchId: input.localeBranchId,
+              approverUserId: input.approverUserId ?? actor.userId,
+              priorVersion: previousApprovedVersion,
+              approvedVersion: approved,
+              causationOutboxEvent: outboxEvent,
+            });
+
+      return {
+        previousApprovedVersionId,
+        version: approved,
+        outboxEvent,
+        invalidationOutboxEvents,
+      };
     });
   }
 
@@ -505,6 +574,227 @@ function styleGuideVersionChangedIdempotencyKey(
     payload.localeBranchId,
     payload.previousVersionId ?? "none",
     payload.newVersionId,
+  ].join(":");
+}
+
+type AffectedWorkBySurface = Record<AffectedWorkSurface, AffectedWorkReference[]>;
+
+type AppendAffectedWorkInvalidatedInput = {
+  projectId: string;
+  localeBranchId: string;
+  approverUserId: string;
+  priorVersion: StyleGuideVersionRecord;
+  approvedVersion: StyleGuideVersionRecord;
+  causationOutboxEvent: OutboxEventRecord;
+};
+
+async function appendAffectedWorkInvalidatedEventsInTx(
+  db: StyleGuideDb,
+  input: AppendAffectedWorkInvalidatedInput,
+): Promise<OutboxEventRecord[]> {
+  const affectedWork = await listAffectedWorkByPriorStyleGuideVersionInTx(db, {
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    priorStyleGuideVersionId: input.priorVersion.styleGuideVersionId,
+  });
+  const outboxEvents: OutboxEventRecord[] = [];
+
+  for (const surface of affectedWorkSurfaces) {
+    const references = affectedWork[surface];
+    if (references.length === 0) {
+      continue;
+    }
+
+    outboxEvents.push(
+      await appendAffectedWorkInvalidatedEventInTx(db, {
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        approverUserId: input.approverUserId,
+        priorStyleGuideVersionId: input.priorVersion.styleGuideVersionId,
+        approvedStyleGuideVersionId: input.approvedVersion.styleGuideVersionId,
+        sourceRevisionBoundary: {
+          prior: input.priorVersion.sourceRevisionReference,
+          approved: input.approvedVersion.sourceRevisionReference,
+        },
+        affectedWork: {
+          surface,
+          count: references.length,
+          references,
+        },
+        causationOutboxEvent: input.causationOutboxEvent,
+      }),
+    );
+  }
+
+  return outboxEvents;
+}
+
+const affectedWorkSurfaces = [
+  "drafts",
+  "qa_findings",
+  "exports",
+  "benchmarks",
+] as const satisfies readonly AffectedWorkSurface[];
+
+async function listAffectedWorkByPriorStyleGuideVersionInTx(
+  db: StyleGuideDb,
+  input: {
+    projectId: string;
+    localeBranchId: string;
+    priorStyleGuideVersionId: string;
+  },
+): Promise<AffectedWorkBySurface> {
+  const drafts = await db
+    .select({ bridgeUnitId: localeBranchUnits.bridgeUnitId })
+    .from(localeBranchUnits)
+    .where(
+      sql`${localeBranchUnits.localeBranchId} = ${input.localeBranchId}
+        and ${localeBranchUnits.targetText} is not null`,
+    )
+    .orderBy(asc(localeBranchUnits.bridgeUnitId));
+
+  const findingsRows = await db
+    .select({ findingId: findings.findingId })
+    .from(findings)
+    .where(
+      sql`${findings.projectId} = ${input.projectId}
+        and ${findings.localeBranchId} = ${input.localeBranchId}
+        and ${findings.status} <> 'resolved'
+        and (
+          ${findings.affectedRefs} @> ${JSON.stringify([{ styleGuideVersionId: input.priorStyleGuideVersionId }])}::jsonb
+          or ${findings.evidence} @> ${JSON.stringify([{ styleGuideVersionId: input.priorStyleGuideVersionId }])}::jsonb
+          or ${findings.provenance} @> ${JSON.stringify([{ styleGuideVersionId: input.priorStyleGuideVersionId }])}::jsonb
+          or ${findings.causalLinks} @> ${JSON.stringify([{ styleGuideVersionId: input.priorStyleGuideVersionId }])}::jsonb
+        )`,
+    )
+    .orderBy(asc(findings.findingId));
+
+  const exportRows = await db
+    .select({ artifactId: artifacts.artifactId, artifactKind: artifacts.artifactKind })
+    .from(artifacts)
+    .where(
+      sql`${artifacts.projectId} = ${input.projectId}
+        and ${artifacts.localeBranchId} = ${input.localeBranchId}
+        and ${artifacts.artifactKind} in ('patch_export', 'patch_result', 'delta_package')
+        and (
+          ${artifacts.metadata}->>'styleGuideVersionId' = ${input.priorStyleGuideVersionId}
+          or ${artifacts.metadata}->>'styleGuidePolicyVersionId' = ${input.priorStyleGuideVersionId}
+        )`,
+    )
+    .orderBy(asc(artifacts.artifactId));
+
+  const benchmarkRows = await db
+    .select({ artifactId: artifacts.artifactId, artifactKind: artifacts.artifactKind })
+    .from(artifacts)
+    .where(
+      sql`${artifacts.projectId} = ${input.projectId}
+        and ${artifacts.localeBranchId} = ${input.localeBranchId}
+        and ${artifacts.artifactKind} = 'benchmark_report'
+        and (
+          ${artifacts.metadata}->>'styleGuideVersionId' = ${input.priorStyleGuideVersionId}
+          or ${artifacts.metadata}->>'styleGuidePolicyVersionId' = ${input.priorStyleGuideVersionId}
+        )`,
+    )
+    .orderBy(asc(artifacts.artifactId));
+
+  return {
+    drafts: drafts.map((row) => ({
+      surface: "drafts",
+      draftId: `${input.localeBranchId}:${row.bridgeUnitId}`,
+      bridgeUnitId: row.bridgeUnitId,
+    })),
+    qa_findings: findingsRows.map((row) => ({
+      surface: "qa_findings",
+      findingId: row.findingId,
+    })),
+    exports: exportRows.map((row) => ({
+      surface: "exports",
+      artifactId: row.artifactId,
+      artifactKind: row.artifactKind,
+    })),
+    benchmarks: benchmarkRows.map((row) => ({
+      surface: "benchmarks",
+      artifactId: row.artifactId,
+      artifactKind: row.artifactKind,
+    })),
+  };
+}
+
+async function appendAffectedWorkInvalidatedEventInTx(
+  db: StyleGuideDb,
+  input: Omit<
+    AffectedWorkInvalidatedPayload,
+    "schemaVersion" | "eventName" | "invalidationKind"
+  > & {
+    causationOutboxEvent: OutboxEventRecord;
+  },
+): Promise<OutboxEventRecord> {
+  const outboxEventId = createUuid7();
+  const payload: AffectedWorkInvalidatedPayload = {
+    schemaVersion: affectedWorkInvalidatedPayloadSchemaVersion,
+    eventName: "AffectedWorkInvalidated",
+    invalidationKind: "style_guide_version_approved",
+    projectId: input.projectId,
+    localeBranchId: input.localeBranchId,
+    approverUserId: input.approverUserId,
+    priorStyleGuideVersionId: input.priorStyleGuideVersionId,
+    approvedStyleGuideVersionId: input.approvedStyleGuideVersionId,
+    sourceRevisionBoundary: input.sourceRevisionBoundary,
+    affectedWork: input.affectedWork,
+  };
+  const idempotencyKey = affectedWorkInvalidatedIdempotencyKey(payload);
+
+  const rows = await db.execute(sql`
+    insert into ${eventOutbox} (
+      outbox_event_id,
+      project_id,
+      locale_branch_id,
+      event_type,
+      status,
+      idempotency_key,
+      correlation_id,
+      causation_id,
+      payload
+    )
+    values (
+      ${outboxEventId},
+      ${input.projectId},
+      ${input.localeBranchId},
+      ${outboxEventTypeValues.affectedWorkInvalidated},
+      ${outboxStatusValues.pending},
+      ${idempotencyKey},
+      ${input.causationOutboxEvent.correlationId},
+      ${input.causationOutboxEvent.outboxEventId},
+      ${JSON.stringify(payload)}::jsonb
+    )
+    on conflict (idempotency_key) do nothing
+    returning *
+  `);
+  if (rows.rows[0] !== undefined) {
+    return outboxEventFromRow(rows.rows[0] as Record<string, unknown>);
+  }
+
+  const existingRows = await db.execute(sql`
+    select *
+    from ${eventOutbox}
+    where idempotency_key = ${idempotencyKey}
+    limit 1
+  `);
+  const existing = existingRows.rows[0];
+  if (existing === undefined) {
+    throw new Error(`outbox event ${outboxEventId} was not persisted`);
+  }
+  return outboxEventFromRow(existing as Record<string, unknown>);
+}
+
+function affectedWorkInvalidatedIdempotencyKey(payload: AffectedWorkInvalidatedPayload): string {
+  return [
+    "affected-work-invalidated",
+    "style-guide-approved",
+    payload.localeBranchId,
+    payload.priorStyleGuideVersionId,
+    payload.approvedStyleGuideVersionId,
+    payload.affectedWork.surface,
   ].join(":");
 }
 

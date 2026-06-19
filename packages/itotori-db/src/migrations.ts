@@ -120,6 +120,10 @@ const migrations = [
     id: "0015_style_guide_versions",
     file: "0015_style_guide_versions.sql",
   },
+  {
+    id: "0016_affected_work_invalidated_outbox",
+    file: "0016_affected_work_invalidated_outbox.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
