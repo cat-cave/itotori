@@ -5899,10 +5899,7 @@
     {
       "id": "ITOTORI-008",
       "title": "Glossary and terminology index",
-      "status": "in_progress",
-      "owner": "orchestrator-wave15",
-      "branch": "spec/itotori-008",
-      "worktree": "/tmp/itotori-spec-itotori-008",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -12989,10 +12986,7 @@
     {
       "id": "KAIFUU-089",
       "title": "Bounded helper process runner with timeout and cancel",
-      "status": "in_progress",
-      "owner": "orchestrator-wave15",
-      "branch": "spec/kaifuu-089",
-      "worktree": "/tmp/itotori-spec-kaifuu-089",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -13000,14 +12994,15 @@
       "dependsOn": ["KAIFUU-086", "KAIFUU-088", "UNIV-016"],
       "summary": "Implement bounded helper process execution with timeout, cancellation, and redacted output.",
       "deliverables": [
-        "Bounded helper process runner with timeout, cancellation, stdin limits, stdout/stderr limits, and temp-dir confinement",
+        "Bounded helper process runner with timeout, cancellation, bounded stdin writes, stdout/stderr limits, and honest host-inherited filesystem reporting",
         "Redacted stdout and stderr capture schema with truncation metadata",
-        "Runner fixtures for success, timeout, cancel, nonzero exit, output overflow, and temp-dir escape attempts"
+        "Runner fixtures for success, timeout, cancel, nonzero exit, output overflow, policy-gated no-launch, and escaped descendant pipe holders"
       ],
       "acceptanceCriteria": [
         "Helper execution uses the registry entry and allowlist hash gate before creating a bounded process.",
-        "Timeout, cancellation, output overflow, nonzero exit, and temp-dir escape attempts terminate the process and return semantic diagnostics.",
-        "Temporary inputs and outputs remain under a confined per-run directory and are cleaned or retained according to redacted artifact policy.",
+        "Only registry entries with local_process execution policy launch through this process runner; fixture_in_process and disallowed policies fail before launch.",
+        "Timeout, cancellation, output overflow, nonzero exit, and blocked stdin or stdout/stderr pipe holders return semantic diagnostics.",
+        "Execution reports do not claim filesystem confinement; local helper process runs are reported as host-inherited until a real sandbox exists.",
         "stdout and stderr are redacted, size-bounded, and annotated with truncation metadata before any public report is written."
       ],
       "verification": [
@@ -13023,7 +13018,8 @@
       "auditFocus": [
         "Unbounded helper execution",
         "stdout or stderr leaking keys and private paths",
-        "Temporary files escaping managed directories"
+        "Execution policy bypass",
+        "Filesystem isolation overclaims"
       ]
     },
     {
@@ -13222,10 +13218,7 @@
     {
       "id": "KAIFUU-095",
       "title": "XP3 profile schema and aggregate detector fixtures",
-      "status": "in_progress",
-      "owner": "orchestrator-wave15",
-      "branch": "spec/kaifuu-095",
-      "worktree": "/tmp/itotori-spec-kaifuu-095",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -19780,6 +19773,42 @@
         "HelperResult contract creep",
         "Known-key import provenance lost",
         "Public fixtures carrying unvalidated metadata"
+      ]
+    },
+    {
+      "id": "KAIFUU-161",
+      "status": "planned",
+      "title": "Helper stdin byte ceiling",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-089"],
+      "summary": "Add an explicit byte ceiling for helper stdin payloads so input size is bounded by policy, not only by timeout and cancellation.",
+      "deliverables": [
+        "Helper stdin byte-limit configuration in the runner request or registry policy",
+        "Semantic diagnostic for stdin payloads that exceed the configured ceiling",
+        "CLI and core regression tests for oversized stdin rejection before helper launch"
+      ],
+      "acceptanceCriteria": [
+        "Oversized stdin is rejected before helper process creation.",
+        "The rejection report is redacted and includes payload size metadata without serializing raw input.",
+        "Existing timeout and cancellation coverage remains intact for allowed stdin sizes."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core helper_process_runner"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli key_helper_run_process"
+        }
+      ],
+      "auditFocus": [
+        "Unbounded stdin memory use",
+        "Raw stdin leakage in diagnostics",
+        "Launch occurring before policy rejection"
       ]
     }
   ]
