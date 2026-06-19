@@ -169,17 +169,20 @@ partial, or unsupported. `RuntimeAdapterRegistry` rejects duplicate adapter name
 and rejects descriptors whose evidence ceiling exceeds the declared fidelity or
 capability contract.
 
-The Utsushi CLI owns production runtime composition in
-`crates/utsushi-cli/src/main.rs::runtime_registry`; future runtime adapters must
+The Utsushi CLI owns runtime composition in
+`crates/utsushi-cli/src/main.rs::runtime_registry`, where it explicitly registers
+the fixture, browser, and NW.js diagnostic adapters. Future runtime adapters must
 be registered there to become selectable through `utsushi <trace|capture|smoke>`.
+Adapter crates expose adapter constructors and descriptor behavior, not composed
+production registries.
 
-The synthetic fixture adapter lives in `utsushi-fixture` and uses the same trait
-and registry path as future adapters. Its descriptor advertises trace, frame
-capture, and smoke validation, but not branch discovery or reference comparison.
-Its approximation tier is `deterministic_fixture`, and its reports state that
-captures are deterministic artifact references without pixel comparison. The base
-fixture contract explicitly does not implement jump, snapshot, live screenshot,
-or recording APIs.
+The synthetic fixture adapter lives in `utsushi-fixture` and implements the same
+trait as future adapters. Its descriptor advertises trace, frame capture, and
+smoke validation, but not branch discovery or reference comparison. Its
+approximation tier is `deterministic_fixture`, and its reports state that
+captures are deterministic artifact references without pixel comparison. The
+base fixture contract explicitly does not implement jump, snapshot, live
+screenshot, or recording APIs.
 
 The `utsushi-browser` adapter is the first host-backed launch/capture slice. It
 uses the core bounded process harness to launch a Chromium-compatible browser

@@ -355,6 +355,10 @@ mod tests {
         registry
     }
 
+    fn empty_registry() -> RuntimeAdapterRegistry<'static> {
+        RuntimeAdapterRegistry::new()
+    }
+
     fn args(values: &[&Path]) -> Vec<String> {
         values
             .iter()
@@ -610,7 +614,7 @@ mod tests {
         let output = root.join("validation-report.json");
         let corpus_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../fixtures/public/utsushi-reference-captures/reference-capture-corpus.json");
-        let registry = utsushi_fixture::registry();
+        let registry = empty_registry();
 
         run_cli_with_registry(
             &args(&[
@@ -635,7 +639,7 @@ mod tests {
         let corpus_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../../fixtures/public/utsushi-reference-captures/reference-capture-corpus.json");
         let output = PathBuf::from("validation-report.json");
-        let registry = utsushi_fixture::registry();
+        let registry = empty_registry();
 
         let unknown = run_cli_with_registry(
             &args(&[
