@@ -3,6 +3,11 @@ import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
+  ensureBranchPolicyGlossaryReferenceInTx,
+  resolveBranchPolicyGlossaryReferenceInTx,
+  type BranchPolicyGlossaryReferenceRecord,
+} from "./branch-reference-repository.js";
+import {
   assets,
   catalogSourceProvenance,
   findings,
@@ -236,6 +241,8 @@ export type GlossaryContextReadModel = {
   localeBranchId: string;
   sourceRevisionId: string;
   styleGuideVersionId: string | null;
+  glossaryReferenceId: string | null;
+  branchReference: BranchPolicyGlossaryReferenceRecord | null;
   term: TerminologyTermRecord;
   termProvenance: GlossaryTermProvenance[];
   protectedSpanReferences: GlossaryProtectedSpanReference[];
@@ -283,6 +290,7 @@ export type GlossaryReviewItemRecord = {
   termId: string | null;
   sourceRevisionId: string;
   styleGuideVersionId: string | null;
+  glossaryReferenceId: string | null;
   state: GlossaryReviewItemState;
   sourceTerm: string;
   normalizedSourceTerm: string;
@@ -687,6 +695,10 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
     await validateSourceRevisionContext(this.db, context, sourceRevisionId);
 
     const styleGuideVersionId = await approvedStyleGuideVersionId(this.db, localeBranchId);
+    const branchReference = await resolveBranchPolicyGlossaryReferenceInTx(this.db, {
+      projectId: term.projectId,
+      localeBranchId,
+    });
     const sourceReferences = term.sourceReferences.filter(
       (reference) =>
         reference.sourceRevisionId === null || reference.sourceRevisionId === sourceRevisionId,
@@ -704,7 +716,9 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
     return {
       localeBranchId,
       sourceRevisionId,
-      styleGuideVersionId,
+      styleGuideVersionId: branchReference?.styleGuideVersionId ?? styleGuideVersionId,
+      glossaryReferenceId: branchReference?.referenceId ?? null,
+      branchReference,
       term,
       termProvenance: sourceReferences.map(termProvenanceFromReference),
       protectedSpanReferences,
@@ -760,6 +774,13 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
       if (styleGuideVersionId !== null) {
         await validateStyleGuideVersionContext(tx, context, styleGuideVersionId);
       }
+      const branchReference = await ensureBranchPolicyGlossaryReferenceInTx(tx, actor, {
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        styleGuideVersionId,
+        updateReason: "glossary_review_reference",
+        metadata: { source: "upsertGlossaryReviewItem" },
+      });
 
       const termId = input.termId === undefined ? null : requiredString(input.termId, "termId");
       if (termId !== null) {
@@ -835,6 +856,7 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
         localeBranchId: input.localeBranchId,
         sourceRevisionId: input.sourceRevisionId,
         styleGuideVersionId,
+        glossaryReferenceId: branchReference.referenceId,
         sourceReferences,
       };
 
@@ -847,6 +869,7 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
           termId,
           sourceRevisionId: input.sourceRevisionId,
           styleGuideVersionId,
+          glossaryReferenceId: branchReference.referenceId,
           state,
           sourceTerm,
           normalizedSourceTerm,
@@ -868,6 +891,7 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
           set: {
             termId,
             styleGuideVersionId,
+            glossaryReferenceId: branchReference.referenceId,
             state: conflictUpdateState,
             sourceTerm,
             proposedTranslation,
@@ -1841,6 +1865,7 @@ function glossaryReviewItemFromRow(
     termId: row.termId,
     sourceRevisionId: row.sourceRevisionId,
     styleGuideVersionId: row.styleGuideVersionId,
+    glossaryReferenceId: row.glossaryReferenceId,
     state: row.state as GlossaryReviewItemState,
     sourceTerm: row.sourceTerm,
     normalizedSourceTerm: row.normalizedSourceTerm,

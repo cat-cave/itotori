@@ -3,6 +3,10 @@ import { describe, expect, it } from "vitest";
 import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import type { ItotoriDatabase } from "../src/connection.js";
 import {
+  ItotoriBranchReferenceRepository,
+  branchPolicyGlossaryReferenceUpdatedEventKind,
+} from "../src/repositories/branch-reference-repository.js";
+import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
@@ -12,8 +16,11 @@ import {
   catalogSourceProvenance,
   catalogSourceRecordKindValues,
   catalogSourceValues,
+  branchPolicyGlossaryReferences,
+  events,
   findings,
   glossaryReviewItemStateValues,
+  localeBranchUnits,
   sourceRevisions,
   styleGuideVersionStatusValues,
   terminologyAliasKindValues,
@@ -842,6 +849,209 @@ describe("ItotoriTerminologyRepository", () => {
       await context.close();
     }
   });
+
+  it("resolves branch-scoped policy and glossary references without leaking sibling locale decisions", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.reset(localActor);
+      await projectRepository.importSourceBundle(localActor, projectFixture());
+      await projectRepository.importSourceBundle(localActor, siblingLocaleProjectFixture());
+
+      const styleRepository = new ItotoriStyleGuideRepository(context.db);
+      await styleRepository.createVersion(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: "style-guide-version-en-us-reference",
+        status: styleGuideVersionStatusValues.approved,
+        policy: {
+          schemaVersion: "itotori.style-guide.policy.v1",
+          sections: { tone: ["Use title case for lore terms."] },
+        },
+      });
+      await styleRepository.createVersion(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-fr-fr",
+        styleGuideVersionId: "style-guide-version-fr-fr-reference",
+        status: styleGuideVersionStatusValues.approved,
+        policy: {
+          schemaVersion: "itotori.style-guide.policy.v1",
+          sections: { tone: ["Use French sentence case."] },
+        },
+      });
+
+      const terminologyRepository = new ItotoriTerminologyRepository(context.db);
+      await terminologyRepository.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-branch-only-crimson-moon",
+        sourceTerm: "紅月",
+        preferredTranslation: "Crimson Moon",
+      });
+
+      const branchReferences = new ItotoriBranchReferenceRepository(context.db);
+      const enReference = await branchReferences.updateBranchPolicyGlossaryReference(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        updateReason: "test_en_branch_reference",
+      });
+      const frReference = await branchReferences.updateBranchPolicyGlossaryReference(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-fr-fr",
+        updateReason: "test_fr_branch_reference",
+      });
+
+      expect(enReference).toMatchObject({
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: "style-guide-version-en-us-reference",
+        versionSequence: 1,
+        glossaryTermRefs: [
+          expect.objectContaining({
+            termId: "term-branch-only-crimson-moon",
+            preferredTranslation: "Crimson Moon",
+          }),
+        ],
+      });
+      expect(frReference).toMatchObject({
+        localeBranchId: "locale-fr-fr",
+        styleGuideVersionId: "style-guide-version-fr-fr-reference",
+        versionSequence: 1,
+        glossaryTermRefs: [],
+      });
+      await expect(
+        branchReferences.resolveBranchPolicyGlossaryReference(localActor, {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+        }),
+      ).resolves.toMatchObject({
+        referenceId: enReference.referenceId,
+        glossaryContentHash: enReference.glossaryContentHash,
+      });
+
+      const auditRows = await context.db
+        .select()
+        .from(events)
+        .where(eq(events.eventKind, branchPolicyGlossaryReferenceUpdatedEventKind));
+      expect(auditRows).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            eventId: enReference.eventId,
+            localeBranchId: "locale-en-us",
+            payload: expect.objectContaining({
+              referenceId: enReference.referenceId,
+              glossaryContentHash: enReference.glossaryContentHash,
+            }),
+          }),
+          expect.objectContaining({
+            eventId: frReference.eventId,
+            localeBranchId: "locale-fr-fr",
+            payload: expect.objectContaining({
+              referenceId: frReference.referenceId,
+              glossaryContentHash: frReference.glossaryContentHash,
+            }),
+          }),
+        ]),
+      );
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("audits glossary reference updates without rewriting historical draft provenance", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const projectRepository = new ItotoriProjectRepository(context.db);
+      await projectRepository.reset(localActor);
+      await projectRepository.importSourceBundle(localActor, { ...projectFixture(), drafts: {} });
+      const styleRepository = new ItotoriStyleGuideRepository(context.db);
+      await styleRepository.createVersion(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        styleGuideVersionId: "style-guide-version-draft-reference",
+        status: styleGuideVersionStatusValues.approved,
+        policy: {
+          schemaVersion: "itotori.style-guide.policy.v1",
+          sections: { terminology: ["Prefer established glossary translations."] },
+        },
+      });
+
+      const terminologyRepository = new ItotoriTerminologyRepository(context.db);
+      await terminologyRepository.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-draft-crimson-moon",
+        sourceTerm: "紅月",
+        preferredTranslation: "Crimson Moon",
+      });
+
+      await projectRepository.saveDrafts(localActor, projectFixture());
+
+      const draftRowsBefore = await context.db
+        .select({
+          bridgeUnitId: localeBranchUnits.bridgeUnitId,
+          styleGuideVersionId: localeBranchUnits.styleGuideVersionId,
+          glossaryReferenceId: localeBranchUnits.glossaryReferenceId,
+        })
+        .from(localeBranchUnits)
+        .where(eq(localeBranchUnits.localeBranchId, "locale-en-us"));
+      const draftProvenanceBefore = draftRowsBefore.find(
+        (row) => row.bridgeUnitId === "bridge-unit-term",
+      );
+      expect(draftProvenanceBefore).toMatchObject({
+        styleGuideVersionId: "style-guide-version-draft-reference",
+        glossaryReferenceId: expect.any(String),
+      });
+
+      await terminologyRepository.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-draft-archivist",
+        sourceTerm: "司書",
+        preferredTranslation: "Archivist",
+      });
+      const branchReferences = new ItotoriBranchReferenceRepository(context.db);
+      const updatedReference = await branchReferences.updateBranchPolicyGlossaryReference(
+        localActor,
+        {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+          updateReason: "test_glossary_term_added",
+        },
+      );
+
+      expect(updatedReference).toMatchObject({
+        versionSequence: 2,
+        supersedesReferenceId: draftProvenanceBefore?.glossaryReferenceId,
+        glossaryTermRefs: expect.arrayContaining([
+          expect.objectContaining({ termId: "term-draft-archivist" }),
+        ]),
+      });
+
+      const draftRowsAfter = await context.db
+        .select({
+          bridgeUnitId: localeBranchUnits.bridgeUnitId,
+          styleGuideVersionId: localeBranchUnits.styleGuideVersionId,
+          glossaryReferenceId: localeBranchUnits.glossaryReferenceId,
+        })
+        .from(localeBranchUnits)
+        .where(eq(localeBranchUnits.localeBranchId, "locale-en-us"));
+      expect(draftRowsAfter.find((row) => row.bridgeUnitId === "bridge-unit-term")).toEqual(
+        draftProvenanceBefore,
+      );
+
+      const referenceRows = await context.db
+        .select()
+        .from(branchPolicyGlossaryReferences)
+        .where(eq(branchPolicyGlossaryReferences.localeBranchId, "locale-en-us"))
+        .orderBy(branchPolicyGlossaryReferences.versionSequence);
+      expect(referenceRows.map((row) => row.referenceId)).toEqual([
+        draftProvenanceBefore?.glossaryReferenceId,
+        updatedReference.referenceId,
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 function projectFixture(): ItotoriProjectRecord {
@@ -878,6 +1088,17 @@ function projectFixture(): ItotoriProjectRecord {
           },
         },
       ],
+    },
+  };
+}
+
+function siblingLocaleProjectFixture(): ItotoriProjectRecord {
+  return {
+    ...projectFixture(),
+    localeBranchId: "locale-fr-fr",
+    targetLocale: "fr-FR",
+    drafts: {
+      "bridge-unit-term": "La lune cramoisie se leve.",
     },
   };
 }
