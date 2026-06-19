@@ -178,7 +178,12 @@
         "wishlist_count": 411,
         "rank_facts": [
           { "scope": "weekly", "category": "RPG", "rank": 31, "observed_at": "2026-06-18" },
-          { "scope": "all_time", "category": "translation", "rank": 88, "observed_at": "2026-06-18" }
+          {
+            "scope": "all_time",
+            "category": "translation",
+            "rank": 88,
+            "observed_at": "2026-06-18"
+          }
         ]
       },
       "metadata": {

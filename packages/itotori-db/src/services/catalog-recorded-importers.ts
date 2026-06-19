@@ -1341,7 +1341,13 @@ function optionalDlsiteRankFacts(
     requireDemandString(rankRecord, "scope", fixture, response, `${sourceField}.scope`);
     requireDemandString(rankRecord, "category", fixture, response, `${sourceField}.category`);
     requireDemandPositiveInteger(rankRecord, "rank", fixture, response, `${sourceField}.rank`);
-    requireDemandObservedAt(rankRecord, "observed_at", fixture, response, `${sourceField}.observed_at`);
+    requireDemandObservedAt(
+      rankRecord,
+      "observed_at",
+      fixture,
+      response,
+      `${sourceField}.observed_at`,
+    );
     return rankRecord;
   });
 }

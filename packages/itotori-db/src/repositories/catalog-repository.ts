@@ -702,7 +702,9 @@ const catalogLanguageStatusEnums = Object.values(
 const catalogLanguageStatusScopes = Object.values(
   catalogLanguageStatusScopeValues,
 ) as CatalogLanguageStatusScope[];
-const catalogDemandFactKinds = Object.values(catalogDemandFactKindValues) as CatalogDemandFactKind[];
+const catalogDemandFactKinds = Object.values(
+  catalogDemandFactKindValues,
+) as CatalogDemandFactKind[];
 const catalogConflictKinds = Object.values(catalogConflictKindValues) as CatalogConflictKind[];
 const catalogConflictStatuses = Object.values(
   catalogConflictStatusValues,
@@ -2408,15 +2410,14 @@ async function readWorkSnapshot(
     demandFactRows,
     conflictRows,
     localScanEntryRows,
-  ] =
-    await Promise.all([
-      db.select().from(catalogExternalIds).where(eq(catalogExternalIds.workId, workId)),
-      db.select().from(catalogReleases).where(eq(catalogReleases.workId, workId)),
-      db.select().from(catalogLanguageStatuses).where(eq(catalogLanguageStatuses.workId, workId)),
-      db.select().from(catalogDemandFacts).where(eq(catalogDemandFacts.workId, workId)),
-      db.select().from(catalogConflicts).where(eq(catalogConflicts.workId, workId)),
-      db.select().from(catalogLocalScanEntries).where(eq(catalogLocalScanEntries.workId, workId)),
-    ]);
+  ] = await Promise.all([
+    db.select().from(catalogExternalIds).where(eq(catalogExternalIds.workId, workId)),
+    db.select().from(catalogReleases).where(eq(catalogReleases.workId, workId)),
+    db.select().from(catalogLanguageStatuses).where(eq(catalogLanguageStatuses.workId, workId)),
+    db.select().from(catalogDemandFacts).where(eq(catalogDemandFacts.workId, workId)),
+    db.select().from(catalogConflicts).where(eq(catalogConflicts.workId, workId)),
+    db.select().from(catalogLocalScanEntries).where(eq(catalogLocalScanEntries.workId, workId)),
+  ]);
   const localScanEntryIds = localScanEntryRows.map((row) => row.localScanEntryId);
   const seedTargetRows =
     localScanEntryIds.length === 0

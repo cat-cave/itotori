@@ -79,7 +79,10 @@ describe("dlsite-demand recorded fixture mapper", () => {
 
     expect(mapped.diagnostics).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ code: "missing_demand_field", sourceField: "demand.wishlist_count" }),
+        expect.objectContaining({
+          code: "missing_demand_field",
+          sourceField: "demand.wishlist_count",
+        }),
         expect.objectContaining({ code: "missing_demand_field", sourceField: "demand.rank_facts" }),
       ]),
     );
@@ -98,9 +101,9 @@ describe("dlsite-demand recorded fixture mapper", () => {
     expect(recovered.metadata).toMatchObject({
       geoRecovery: { status: "japan_locked_recovered" },
     });
-    expect(mapped.facts.filter((fact) => fact.factKind === catalogDemandFactKindValues.rank)).toHaveLength(
-      2,
-    );
+    expect(
+      mapped.facts.filter((fact) => fact.factKind === catalogDemandFactKindValues.rank),
+    ).toHaveLength(2);
     expect(() => createDlsiteRecordedStorefrontAdapter(parseDriftFixture)).toThrow(
       /parse_drift .*sourceId=RJ09999999 sourceField=dl_count/u,
     );

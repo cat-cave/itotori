@@ -40,16 +40,16 @@
       "path": "fixtures/catalog-recorded-importers/dlsite-storefront-replay.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "b6bb2e3a48b0430c75154ede3a185f4b4b00a714e21cd5a93efdd8fce2cbc3d3",
-      "bytes": 7339,
+      "sha256": "13c2b803ed869d16958ff9c3ca7d6fc68c1e58a724f5b4b451c669e5a31a89f0",
+      "bytes": 7397,
       "redistributable": true
     },
     {
       "path": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "e40462c441b72f95d226bcc3ff3034cff804bb708a48433f93569dc0a174f39f",
-      "bytes": 11351,
+      "sha256": "45ee3563e77aa753a90bfa20c687445864530541983d0b0a88267b122d31cbc2",
+      "bytes": 11465,
       "redistributable": true
     },
     {

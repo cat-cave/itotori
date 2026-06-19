@@ -13,7 +13,10 @@
       "sourceId": "RJ09999999",
       "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999999",
       "fetchedAt": "2026-06-18T13:10:09.000Z",
-      "checkpointCursor": { "afterStepKey": "dlsite-rj09999999-parse-drift", "cursor": "RJ09999999" },
+      "checkpointCursor": {
+        "afterStepKey": "dlsite-rj09999999-parse-drift",
+        "cursor": "RJ09999999"
+      },
       "httpStatus": 200,
       "payload": {
         "workno": "RJ09999999",
@@ -53,7 +56,10 @@
       "sourceId": "RJ09999990",
       "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999990",
       "fetchedAt": "2026-06-18T13:10:10.000Z",
-      "checkpointCursor": { "afterStepKey": "dlsite-rj09999990-rank-non-object", "cursor": "RJ09999990" },
+      "checkpointCursor": {
+        "afterStepKey": "dlsite-rj09999990-rank-non-object",
+        "cursor": "RJ09999990"
+      },
       "httpStatus": 200,
       "payload": {
         "workno": "RJ09999990",
@@ -93,7 +99,10 @@
       "sourceId": "RJ09999991",
       "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999991",
       "fetchedAt": "2026-06-18T13:10:11.000Z",
-      "checkpointCursor": { "afterStepKey": "dlsite-rj09999991-rank-missing-category", "cursor": "RJ09999991" },
+      "checkpointCursor": {
+        "afterStepKey": "dlsite-rj09999991-rank-missing-category",
+        "cursor": "RJ09999991"
+      },
       "httpStatus": 200,
       "payload": {
         "workno": "RJ09999991",
@@ -121,9 +130,7 @@
         "rating_summary": { "average": 4.2, "count": 10 },
         "rating_histogram": { "5": 7, "4": 2, "3": 1 },
         "wishlist_count": 9,
-        "rank_facts": [
-          { "scope": "daily", "rank": 8, "observed_at": "2026-06-18" }
-        ]
+        "rank_facts": [{ "scope": "daily", "rank": 8, "observed_at": "2026-06-18" }]
       },
       "metadata": {
         "fixturePath": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
@@ -135,7 +142,10 @@
       "sourceId": "RJ09999992",
       "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999992",
       "fetchedAt": "2026-06-18T13:10:12.000Z",
-      "checkpointCursor": { "afterStepKey": "dlsite-rj09999992-rank-invalid-rank", "cursor": "RJ09999992" },
+      "checkpointCursor": {
+        "afterStepKey": "dlsite-rj09999992-rank-invalid-rank",
+        "cursor": "RJ09999992"
+      },
       "httpStatus": 200,
       "payload": {
         "workno": "RJ09999992",
@@ -177,7 +187,10 @@
       "sourceId": "RJ09999993",
       "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999993",
       "fetchedAt": "2026-06-18T13:10:13.000Z",
-      "checkpointCursor": { "afterStepKey": "dlsite-rj09999993-rank-invalid-observed-at", "cursor": "RJ09999993" },
+      "checkpointCursor": {
+        "afterStepKey": "dlsite-rj09999993-rank-invalid-observed-at",
+        "cursor": "RJ09999993"
+      },
       "httpStatus": 200,
       "payload": {
         "workno": "RJ09999993",
@@ -205,9 +218,7 @@
         "rating_summary": { "average": 4.2, "count": 10 },
         "rating_histogram": { "5": 7, "4": 2, "3": 1 },
         "wishlist_count": 9,
-        "rank_facts": [
-          { "scope": "daily", "category": "ADV", "rank": 8, "observed_at": 20260618 }
-        ]
+        "rank_facts": [{ "scope": "daily", "category": "ADV", "rank": 8, "observed_at": 20260618 }]
       },
       "metadata": {
         "fixturePath": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
@@ -219,7 +230,10 @@
       "sourceId": "RJ09999994",
       "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999994",
       "fetchedAt": "2026-06-18T13:10:14.000Z",
-      "checkpointCursor": { "afterStepKey": "dlsite-rj09999994-rank-invalid-observed-at-string", "cursor": "RJ09999994" },
+      "checkpointCursor": {
+        "afterStepKey": "dlsite-rj09999994-rank-invalid-observed-at-string",
+        "cursor": "RJ09999994"
+      },
       "httpStatus": 200,
       "payload": {
         "workno": "RJ09999994",
@@ -261,7 +275,10 @@
       "sourceId": "RJ09999995",
       "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999995",
       "fetchedAt": "2026-06-18T13:10:15.000Z",
-      "checkpointCursor": { "afterStepKey": "dlsite-rj09999995-rank-invalid-observed-at-date-time", "cursor": "RJ09999995" },
+      "checkpointCursor": {
+        "afterStepKey": "dlsite-rj09999995-rank-invalid-observed-at-date-time",
+        "cursor": "RJ09999995"
+      },
       "httpStatus": 200,
       "payload": {
         "workno": "RJ09999995",
