@@ -15,13 +15,19 @@ import {
   catalogEngineSourceValues,
   catalogExternalIdKindValues,
   catalogExternalIds,
+  catalogInstallStateValues,
   catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
   catalogLocalScanEntries,
   catalogLocalScanExternalIds,
   catalogPathRedactionClassValues,
   catalogRawContentRedactionClassValues,
+  catalogReleaseInstallStates,
   catalogReleaseKindValues,
+  catalogReleaseMappingKindValues,
+  catalogReleaseMappings,
+  catalogReleasePackageKindValues,
+  catalogTranslationPortabilityValues,
   catalogSeedOriginValues,
   catalogSeedStatusValues,
   catalogSeedTargets,
@@ -434,6 +440,457 @@ describe("ItotoriCatalogRepository", () => {
         fetchedAt: new Date(fetchedAt),
         payloadHash: hash("dlsite:RJ349517"),
       });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("models edition mappings, collection members, translation parentage, milestones, and install targets", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const provenance = await recordFixtureProvenance(repo);
+      const workId = uuid(1201);
+      const baseReleaseId = uuid(1202);
+      const remasterReleaseId = uuid(1203);
+      const fandiscReleaseId = uuid(1204);
+      const bundleReleaseId = uuid(1205);
+      const memberReleaseId = uuid(1206);
+      const englishChildReleaseId = uuid(1207);
+      const vndbMilestoneReleaseId = uuid(1208);
+
+      const firstSnapshot = await repo.upsertWork(localActor, {
+        workId,
+        canonicalTitle: "Edition mapping fixture",
+        originalLanguage: "ja-JP",
+        firstReleaseYear: 2014,
+        releases: [
+          {
+            releaseId: baseReleaseId,
+            catalogSource: catalogSourceValues.dlsite,
+            sourceReleaseId: "RJBASE001",
+            releaseTitle: "Edition mapping fixture",
+            releaseKind: catalogReleaseKindValues.original,
+            editionName: "Japanese base edition",
+            milestone: "dlsite-rjbase001-v1.00",
+            packageKind: catalogReleasePackageKindValues.dlsiteProduct,
+            engine: {
+              engineName: "RPG Maker VX Ace",
+              engineSource: catalogEngineSourceValues.dlsiteWorktypeInferred,
+              engineConfidence: catalogConfidenceValues.medium,
+              engineProvenanceId: provenance.dlsite.sourceProvenanceId,
+            },
+            platform: "pc",
+            language: "ja-JP",
+            releaseYear: 2014,
+            sourceProvenanceId: provenance.dlsite.sourceProvenanceId,
+          },
+          {
+            releaseId: remasterReleaseId,
+            catalogSource: catalogSourceValues.steam,
+            sourceReleaseId: "steam-remaster-001",
+            releaseTitle: "Edition mapping fixture HD",
+            releaseKind: catalogReleaseKindValues.remaster,
+            editionName: "HD remaster",
+            milestone: "steam-remaster-001-build-2026-06",
+            packageKind: catalogReleasePackageKindValues.steamApp,
+            engine: {
+              engineName: "Unity",
+              engineSource: catalogEngineSourceValues.manual,
+              engineConfidence: catalogConfidenceValues.low,
+            },
+            platform: "steam",
+            language: "ja-JP",
+            releaseYear: 2021,
+            sourceProvenanceId: provenance.steam.sourceProvenanceId,
+          },
+          {
+            releaseId: fandiscReleaseId,
+            catalogSource: catalogSourceValues.vndb,
+            sourceReleaseId: "vndb-fandisc-r1",
+            releaseTitle: "Edition mapping fixture fandisc",
+            releaseKind: catalogReleaseKindValues.fandisc,
+            editionName: "After story fandisc",
+            milestone: "vndb-r-fandisc-1",
+            packageKind: catalogReleasePackageKindValues.physicalMedia,
+            platform: "pc",
+            language: "ja-JP",
+            releaseYear: 2015,
+            sourceProvenanceId: provenance.vndb.sourceProvenanceId,
+          },
+          {
+            releaseId: bundleReleaseId,
+            catalogSource: catalogSourceValues.dlsite,
+            sourceReleaseId: "RJBUNDLE001",
+            releaseTitle: "Edition mapping fixture collection",
+            releaseKind: catalogReleaseKindValues.bundle,
+            editionName: "Anniversary collection",
+            packageKind: catalogReleasePackageKindValues.bundle,
+            platform: "pc",
+            language: "ja-JP",
+            releaseYear: 2022,
+            sourceProvenanceId: provenance.dlsite.sourceProvenanceId,
+          },
+          {
+            releaseId: memberReleaseId,
+            catalogSource: catalogSourceValues.dlsite,
+            sourceReleaseId: "RJBUNDLE001:member:base",
+            releaseTitle: "Edition mapping fixture collection member",
+            releaseKind: catalogReleaseKindValues.collectionMember,
+            editionName: "Collection member base game",
+            milestone: "dlsite-rjbase001-v1.00",
+            packageKind: catalogReleasePackageKindValues.looseFiles,
+            platform: "pc",
+            language: "ja-JP",
+            releaseYear: 2022,
+            sourceProvenanceId: provenance.dlsite.sourceProvenanceId,
+          },
+          {
+            releaseId: englishChildReleaseId,
+            catalogSource: catalogSourceValues.dlsite,
+            sourceReleaseId: "RJEN001",
+            releaseTitle: "Edition mapping fixture English",
+            releaseKind: catalogReleaseKindValues.officialTranslation,
+            editionName: "Official English child edition",
+            milestone: "dlsite-rjen001-v1.00",
+            packageKind: catalogReleasePackageKindValues.dlsiteProduct,
+            platform: "pc",
+            language: "en-US",
+            releaseYear: 2023,
+            isOfficial: true,
+            sourceProvenanceId: provenance.dlsite.sourceProvenanceId,
+            metadata: { parentWorkno: "RJBASE001", childWorkno: "RJEN001" },
+          },
+          {
+            releaseId: vndbMilestoneReleaseId,
+            catalogSource: catalogSourceValues.vndb,
+            sourceReleaseId: "vndb-r-base-1",
+            releaseTitle: "Edition mapping fixture VNDB milestone",
+            releaseKind: catalogReleaseKindValues.edition,
+            editionName: "VNDB base release milestone",
+            milestone: "dlsite-rjbase001-v1.00",
+            packageKind: catalogReleasePackageKindValues.unknown,
+            platform: "pc",
+            language: "ja-JP",
+            releaseYear: 2014,
+            sourceProvenanceId: provenance.vndb.sourceProvenanceId,
+          },
+        ],
+        releaseMappings: [
+          {
+            releaseMappingId: uuid(1210),
+            sourceReleaseId: remasterReleaseId,
+            targetReleaseId: baseReleaseId,
+            relationKind: catalogReleaseMappingKindValues.remasterOf,
+            portability: catalogTranslationPortabilityValues.needsReview,
+            sourceProvenanceId: provenance.steam.sourceProvenanceId,
+            confidence: catalogConfidenceValues.medium,
+            observedAt: fetchedAt,
+            metadata: { reason: "engine changed from RPG Maker VX Ace to Unity" },
+          },
+          {
+            releaseMappingId: uuid(1211),
+            sourceReleaseId: fandiscReleaseId,
+            targetReleaseId: baseReleaseId,
+            relationKind: catalogReleaseMappingKindValues.fandiscOf,
+            portability: catalogTranslationPortabilityValues.incompatible,
+            sourceProvenanceId: provenance.vndb.sourceProvenanceId,
+            confidence: catalogConfidenceValues.high,
+            observedAt: fetchedAt,
+          },
+          {
+            releaseMappingId: uuid(1212),
+            sourceReleaseId: bundleReleaseId,
+            targetReleaseId: memberReleaseId,
+            relationKind: catalogReleaseMappingKindValues.bundleContains,
+            sourceProvenanceId: provenance.dlsite.sourceProvenanceId,
+            confidence: catalogConfidenceValues.high,
+            observedAt: fetchedAt,
+          },
+          {
+            releaseMappingId: uuid(1213),
+            sourceReleaseId: englishChildReleaseId,
+            targetReleaseId: baseReleaseId,
+            relationKind: catalogReleaseMappingKindValues.translationOf,
+            portability: catalogTranslationPortabilityValues.likelyPortable,
+            sourceProvenanceId: provenance.dlsite.sourceProvenanceId,
+            confidence: catalogConfidenceValues.high,
+            observedAt: fetchedAt,
+            metadata: { dlsiteParentWorkno: "RJBASE001", dlsiteChildWorkno: "RJEN001" },
+          },
+          {
+            releaseMappingId: uuid(1214),
+            sourceReleaseId: vndbMilestoneReleaseId,
+            targetReleaseId: baseReleaseId,
+            relationKind: catalogReleaseMappingKindValues.sameMilestoneAs,
+            portability: catalogTranslationPortabilityValues.exact,
+            sourceProvenanceId: provenance.vndb.sourceProvenanceId,
+            confidence: catalogConfidenceValues.medium,
+            observedAt: fetchedAt,
+            metadata: { vndbReleaseId: "vndb-r-base-1" },
+          },
+          {
+            releaseMappingId: uuid(1215),
+            sourceReleaseId: memberReleaseId,
+            targetReleaseId: baseReleaseId,
+            relationKind: catalogReleaseMappingKindValues.collectionContains,
+            portability: catalogTranslationPortabilityValues.exact,
+            sourceProvenanceId: provenance.dlsite.sourceProvenanceId,
+            confidence: catalogConfidenceValues.high,
+            observedAt: fetchedAt,
+          },
+        ],
+      });
+
+      expect(firstSnapshot.releases).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            releaseId: baseReleaseId,
+            editionName: "Japanese base edition",
+            milestone: "dlsite-rjbase001-v1.00",
+            packageKind: catalogReleasePackageKindValues.dlsiteProduct,
+            engineName: "RPG Maker VX Ace",
+            engineProvenanceId: provenance.dlsite.sourceProvenanceId,
+          }),
+          expect.objectContaining({
+            releaseId: remasterReleaseId,
+            releaseKind: catalogReleaseKindValues.remaster,
+            engineName: "Unity",
+            packageKind: catalogReleasePackageKindValues.steamApp,
+          }),
+          expect.objectContaining({
+            releaseId: memberReleaseId,
+            releaseKind: catalogReleaseKindValues.collectionMember,
+            milestone: "dlsite-rjbase001-v1.00",
+          }),
+        ]),
+      );
+      expect(firstSnapshot.releaseMappings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            sourceReleaseId: englishChildReleaseId,
+            targetReleaseId: baseReleaseId,
+            relationKind: catalogReleaseMappingKindValues.translationOf,
+            portability: catalogTranslationPortabilityValues.likelyPortable,
+          }),
+          expect.objectContaining({
+            sourceReleaseId: remasterReleaseId,
+            targetReleaseId: baseReleaseId,
+            relationKind: catalogReleaseMappingKindValues.remasterOf,
+            portability: catalogTranslationPortabilityValues.needsReview,
+          }),
+          expect.objectContaining({
+            sourceReleaseId: bundleReleaseId,
+            targetReleaseId: memberReleaseId,
+            relationKind: catalogReleaseMappingKindValues.bundleContains,
+          }),
+        ]),
+      );
+
+      const localScan = await repo.recordLocalScan(localActor, {
+        localScanId: uuid(1220),
+        scanRootLabel: "edition fixture library",
+        scanRootPathHash: hash("edition-fixture-scan-root"),
+        scannerName: "edition-mapping-regression",
+        scannerVersion: "0.0.0",
+        startedAt: fetchedAt,
+        completedAt: "2026-06-17T12:03:00.000Z",
+        entries: [
+          {
+            localScanEntryId: uuid(1221),
+            workId,
+            pathHash: hash("edition-fixture-installed-member"),
+            pathRedactionClass: catalogPathRedactionClassValues.privatePathHash,
+            owned: true,
+            engineName: "RPG Maker VX Ace",
+            engineSource: catalogEngineSourceValues.localScan,
+            engineConfidence: catalogConfidenceValues.high,
+            sourceProvenanceId: provenance.local.sourceProvenanceId,
+            metadata: { packageIdentity: "RJBUNDLE001:member:base" },
+          },
+        ],
+      });
+      const localEntry = requiredTestRow(localScan.entries, "edition local scan entry");
+
+      const installedSnapshot = await repo.upsertWork(localActor, {
+        workId,
+        canonicalTitle: "Edition mapping fixture",
+        originalLanguage: "ja-JP",
+        firstReleaseYear: 2014,
+        installStates: [
+          {
+            installStateId: uuid(1222),
+            releaseId: memberReleaseId,
+            localScanEntryId: localEntry.localScanEntryId,
+            installState: catalogInstallStateValues.patchTarget,
+            targetArtifactLabel: "Anniversary collection / base game member",
+            sourceProvenanceId: provenance.local.sourceProvenanceId,
+            confidence: catalogConfidenceValues.high,
+            observedAt: fetchedAt,
+            metadata: { patchExportTarget: true },
+          },
+          {
+            installStateId: uuid(1223),
+            releaseId: englishChildReleaseId,
+            installState: catalogInstallStateValues.notInstalled,
+            targetArtifactLabel: "Official English child edition",
+            sourceProvenanceId: provenance.dlsite.sourceProvenanceId,
+            confidence: catalogConfidenceValues.medium,
+            observedAt: fetchedAt,
+          },
+        ],
+      });
+
+      expect(installedSnapshot.installStates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            releaseId: memberReleaseId,
+            localScanEntryId: localEntry.localScanEntryId,
+            installState: catalogInstallStateValues.patchTarget,
+            targetArtifactLabel: "Anniversary collection / base game member",
+          }),
+          expect.objectContaining({
+            releaseId: englishChildReleaseId,
+            installState: catalogInstallStateValues.notInstalled,
+          }),
+        ]),
+      );
+      expect(installedSnapshot.localScanEntries[0]).toMatchObject({
+        localScanEntryId: localEntry.localScanEntryId,
+        workId,
+      });
+
+      const counts = await context.db.execute(sql`
+        select
+          (select count(*)::int from itotori_catalog_releases where work_id = ${workId}) as release_count,
+          (select count(*)::int from ${catalogReleaseMappings} where work_id = ${workId}) as mapping_count,
+          (select count(*)::int from ${catalogReleaseInstallStates} where work_id = ${workId}) as install_state_count
+      `);
+      expect(counts.rows[0]).toMatchObject({
+        release_count: 7,
+        mapping_count: 6,
+        install_state_count: 2,
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects release mappings that reference releases from another work", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const parentWorkId = uuid(1230);
+      const parentReleaseId = uuid(1231);
+      const otherWorkId = uuid(1232);
+      const otherReleaseId = uuid(1233);
+      await recordWorkWithRelease(repo, parentWorkId, parentReleaseId, "Mapping parent fixture");
+      await recordWorkWithRelease(repo, otherWorkId, otherReleaseId, "Mapping other fixture");
+
+      await expect(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Mapping parent fixture",
+          releaseMappings: [
+            {
+              releaseMappingId: uuid(1234),
+              sourceReleaseId: otherReleaseId,
+              targetReleaseId: parentReleaseId,
+              relationKind: catalogReleaseMappingKindValues.remasterOf,
+            },
+          ],
+        }),
+      ).rejects.toThrow("releaseMapping.sourceReleaseId must belong to the parent work");
+
+      await expect(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Mapping parent fixture",
+          releaseMappings: [
+            {
+              releaseMappingId: uuid(1235),
+              sourceReleaseId: parentReleaseId,
+              targetReleaseId: otherReleaseId,
+              relationKind: catalogReleaseMappingKindValues.remasterOf,
+            },
+          ],
+        }),
+      ).rejects.toThrow("releaseMapping.targetReleaseId must belong to the parent work");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects install states that reference a release from another work", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const parentWorkId = uuid(1240);
+      const parentReleaseId = uuid(1241);
+      const otherWorkId = uuid(1242);
+      const otherReleaseId = uuid(1243);
+      await recordWorkWithRelease(repo, parentWorkId, parentReleaseId, "Install parent fixture");
+      await recordWorkWithRelease(repo, otherWorkId, otherReleaseId, "Install other fixture");
+
+      await expect(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Install parent fixture",
+          installStates: [
+            {
+              installStateId: uuid(1244),
+              releaseId: otherReleaseId,
+              installState: catalogInstallStateValues.patchTarget,
+            },
+          ],
+        }),
+      ).rejects.toThrow("installState.releaseId must belong to the parent work");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects install states that reference a local scan entry from another work", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const parentWorkId = uuid(1250);
+      const parentReleaseId = uuid(1251);
+      const otherWorkId = uuid(1252);
+      await recordWorkWithRelease(repo, parentWorkId, parentReleaseId, "Scan parent fixture");
+      await recordWorkWithRelease(repo, otherWorkId, uuid(1256), "Scan other fixture");
+      const localScan = await repo.recordLocalScan(localActor, {
+        localScanId: uuid(1253),
+        scanRootLabel: "cross-work scan fixture",
+        scanRootPathHash: hash("cross-work-scan-root"),
+        scannerName: "catalog-cross-work-regression",
+        scannerVersion: "0.0.0",
+        startedAt: fetchedAt,
+        entries: [
+          {
+            localScanEntryId: uuid(1254),
+            workId: otherWorkId,
+            pathHash: hash("cross-work-scan-entry"),
+            pathRedactionClass: catalogPathRedactionClassValues.privatePathHash,
+          },
+        ],
+      });
+      const otherEntry = requiredTestRow(localScan.entries, "cross-work local scan entry");
+
+      await expect(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Scan parent fixture",
+          installStates: [
+            {
+              installStateId: uuid(1255),
+              releaseId: parentReleaseId,
+              localScanEntryId: otherEntry.localScanEntryId,
+              installState: catalogInstallStateValues.patchTarget,
+            },
+          ],
+        }),
+      ).rejects.toThrow("installState.localScanEntryId must belong to the install state work");
     } finally {
       await context.close();
     }
@@ -1114,7 +1571,9 @@ describe("ItotoriCatalogRepository", () => {
             'itotori_catalog_language_statuses_work_lang_idx',
             'itotori_catalog_seed_targets_status_idx',
             'itotori_catalog_local_scan_entries_path_idx',
-            'itotori_catalog_candidate_matches_source_target_idx'
+            'itotori_catalog_candidate_matches_source_target_idx',
+            'itotori_catalog_release_mappings_relation_idx',
+            'itotori_catalog_release_install_states_target_idx'
           )
       `);
       expect(new Set(result.rows.map((row) => String(row.indexname)))).toEqual(
@@ -1125,6 +1584,8 @@ describe("ItotoriCatalogRepository", () => {
           "itotori_catalog_seed_targets_status_idx",
           "itotori_catalog_local_scan_entries_path_idx",
           "itotori_catalog_candidate_matches_source_target_idx",
+          "itotori_catalog_release_mappings_relation_idx",
+          "itotori_catalog_release_install_states_target_idx",
         ]),
       );
     } finally {
@@ -1163,6 +1624,30 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 });
+
+async function recordWorkWithRelease(
+  repo: ItotoriCatalogRepository,
+  workId: string,
+  releaseId: string,
+  title: string,
+): Promise<void> {
+  await repo.upsertWork(localActor, {
+    workId,
+    canonicalTitle: title,
+    originalLanguage: "ja-JP",
+    releases: [
+      {
+        releaseId,
+        catalogSource: catalogSourceValues.dlsite,
+        sourceReleaseId: releaseId,
+        releaseTitle: title,
+        releaseKind: catalogReleaseKindValues.original,
+        platform: "pc",
+        language: "ja-JP",
+      },
+    ],
+  });
+}
 
 async function recordFixtureProvenance(repo: ItotoriCatalogRepository): Promise<{
   vndb: CatalogSourceProvenanceRecord;

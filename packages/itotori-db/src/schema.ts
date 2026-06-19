@@ -215,16 +215,70 @@ export type CatalogEngineSource =
 
 export const catalogReleaseKindValues = {
   original: "original",
+  edition: "edition",
   officialTranslation: "official_translation",
   fanPatch: "fan_patch",
   patch: "patch",
   remaster: "remaster",
+  fandisc: "fandisc",
   bundle: "bundle",
+  collectionMember: "collection_member",
   unknown: "unknown",
 } as const;
 
 export type CatalogReleaseKind =
   (typeof catalogReleaseKindValues)[keyof typeof catalogReleaseKindValues];
+
+export const catalogReleasePackageKindValues = {
+  looseFiles: "loose_files",
+  archive: "archive",
+  installer: "installer",
+  steamApp: "steam_app",
+  dlsiteProduct: "dlsite_product",
+  physicalMedia: "physical_media",
+  bundle: "bundle",
+  unknown: "unknown",
+} as const;
+
+export type CatalogReleasePackageKind =
+  (typeof catalogReleasePackageKindValues)[keyof typeof catalogReleasePackageKindValues];
+
+export const catalogReleaseMappingKindValues = {
+  editionOf: "edition_of",
+  remasterOf: "remaster_of",
+  fandiscOf: "fandisc_of",
+  bundleContains: "bundle_contains",
+  collectionContains: "collection_contains",
+  translationOf: "translation_of",
+  patchTargets: "patch_targets",
+  sameMilestoneAs: "same_milestone_as",
+} as const;
+
+export type CatalogReleaseMappingKind =
+  (typeof catalogReleaseMappingKindValues)[keyof typeof catalogReleaseMappingKindValues];
+
+export const catalogTranslationPortabilityValues = {
+  exact: "exact",
+  likelyPortable: "likely_portable",
+  needsReview: "needs_review",
+  incompatible: "incompatible",
+  unknown: "unknown",
+} as const;
+
+export type CatalogTranslationPortability =
+  (typeof catalogTranslationPortabilityValues)[keyof typeof catalogTranslationPortabilityValues];
+
+export const catalogInstallStateValues = {
+  sourceArchive: "source_archive",
+  installed: "installed",
+  patchTarget: "patch_target",
+  notInstalled: "not_installed",
+  archived: "archived",
+  unknown: "unknown",
+} as const;
+
+export type CatalogInstallState =
+  (typeof catalogInstallStateValues)[keyof typeof catalogInstallStateValues];
 
 export const catalogLanguageStatusValues = {
   officialFull: "official_full",
@@ -479,6 +533,16 @@ export const catalogReleases = pgTable(
     sourceReleaseId: text("source_release_id"),
     releaseTitle: text("release_title").notNull(),
     releaseKind: text("release_kind").notNull(),
+    editionName: text("edition_name"),
+    milestone: text("milestone"),
+    packageKind: text("package_kind").notNull().default(catalogReleasePackageKindValues.unknown),
+    engineName: text("engine_name"),
+    engineSource: text("engine_source"),
+    engineConfidence: text("engine_confidence"),
+    engineProvenanceId: text("engine_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
     platform: text("platform"),
     language: text("language"),
     releaseDate: text("release_date"),
@@ -498,8 +562,99 @@ export const catalogReleases = pgTable(
   (table) => [
     index("itotori_catalog_releases_work_kind_idx").on(table.workId, table.releaseKind),
     index("itotori_catalog_releases_source_idx").on(table.catalogSource, table.sourceReleaseId),
+    index("itotori_catalog_releases_milestone_idx").on(table.workId, table.milestone),
+    index("itotori_catalog_releases_engine_idx").on(table.engineName, table.engineSource),
+    index("itotori_catalog_releases_engine_provenance_idx").on(table.engineProvenanceId),
     index("itotori_catalog_releases_platform_language_idx").on(table.platform, table.language),
     index("itotori_catalog_releases_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogReleaseMappings = pgTable(
+  "itotori_catalog_release_mappings",
+  {
+    releaseMappingId: text("release_mapping_id").primaryKey(),
+    workId: text("work_id")
+      .notNull()
+      .references(() => catalogWorks.workId, { onDelete: "cascade" }),
+    sourceReleaseId: text("source_release_id")
+      .notNull()
+      .references(() => catalogReleases.releaseId, { onDelete: "cascade" }),
+    targetReleaseId: text("target_release_id")
+      .notNull()
+      .references(() => catalogReleases.releaseId, { onDelete: "cascade" }),
+    relationKind: text("relation_kind").notNull(),
+    portability: text("portability").notNull().default(catalogTranslationPortabilityValues.unknown),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    confidence: text("confidence").notNull().default(catalogConfidenceValues.unknown),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_catalog_release_mappings_relation_idx").on(
+      table.sourceReleaseId,
+      table.targetReleaseId,
+      table.relationKind,
+    ),
+    index("itotori_catalog_release_mappings_work_idx").on(table.workId, table.relationKind),
+    index("itotori_catalog_release_mappings_target_idx").on(
+      table.targetReleaseId,
+      table.relationKind,
+    ),
+    index("itotori_catalog_release_mappings_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogReleaseInstallStates = pgTable(
+  "itotori_catalog_release_install_states",
+  {
+    installStateId: text("install_state_id").primaryKey(),
+    workId: text("work_id")
+      .notNull()
+      .references(() => catalogWorks.workId, { onDelete: "cascade" }),
+    releaseId: text("release_id")
+      .notNull()
+      .references(() => catalogReleases.releaseId, { onDelete: "cascade" }),
+    localScanEntryId: text("local_scan_entry_id").references(
+      () => catalogLocalScanEntries.localScanEntryId,
+      { onDelete: "set null" },
+    ),
+    installState: text("install_state").notNull(),
+    targetArtifactLabel: text("target_artifact_label"),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    confidence: text("confidence").notNull().default(catalogConfidenceValues.unknown),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_catalog_release_install_states_target_idx").on(
+      table.releaseId,
+      sql`coalesce(${table.localScanEntryId}, '')`,
+      table.installState,
+    ),
+    index("itotori_catalog_release_install_states_work_idx").on(table.workId, table.installState),
+    index("itotori_catalog_release_install_states_release_idx").on(
+      table.releaseId,
+      table.installState,
+    ),
+    index("itotori_catalog_release_install_states_local_scan_idx").on(table.localScanEntryId),
+    index("itotori_catalog_release_install_states_provenance_idx").on(table.sourceProvenanceId),
   ],
 );
 
