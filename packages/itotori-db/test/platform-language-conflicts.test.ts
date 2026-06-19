@@ -4,7 +4,6 @@ import { localUserId, type AuthorizationActor } from "../src/authorization.js";
 import {
   catalogCompletenessPoolValues,
   ItotoriCatalogRepository,
-  type CatalogJsonRecord,
 } from "../src/repositories/catalog-repository.js";
 import {
   augmentCatalogPlatformLanguageConflicts,
