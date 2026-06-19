@@ -82,6 +82,7 @@ describe("OpenRouterProvider", () => {
           prompt_tokens: 11,
           completion_tokens: 7,
           total_tokens: 18,
+          cost: 0.000019,
         },
         openrouter_metadata: {
           requested: "openai/gpt-4o-mini",
@@ -118,6 +119,11 @@ describe("OpenRouterProvider", () => {
       upstreamProvider: "OpenAI",
     });
     expect(result.providerRun.provider.routeSettingsHash).toMatch(/^sha256:/u);
+    expect(result.providerRun.cost).toEqual({
+      costKind: "provider_estimate",
+      currency: "USD",
+      amountMicrosUsd: 19,
+    });
     expect(fetchCalls).toHaveLength(1);
     const requestBody = JSON.parse(String(fetchCalls[0]?.init?.body)) as {
       provider: { data_collection?: string; require_parameters?: boolean };

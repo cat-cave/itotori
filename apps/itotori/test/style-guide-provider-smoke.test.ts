@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   OpenRouterProvider,
+  openRouterDefaultCapabilities,
+  type ModelCapabilities,
   type ModelInvocationResult,
   type ProviderRunRecord,
 } from "../src/providers/index.js";
@@ -144,6 +146,73 @@ describe("style-guide provider smoke", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("accepts mocked successful OpenRouter live ledger with provider cost estimate", async () => {
+    const fixture = readSmokeFixture();
+    const recorder = memoryRecorder();
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        id: "gen-style-guide-cost-test",
+        model: "openai/gpt-4o-mini",
+        choices: [
+          {
+            finish_reason: "stop",
+            message: {
+              role: "assistant",
+              content: JSON.stringify(fixture.providerResult.contentJson),
+            },
+          },
+        ],
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 42,
+          total_tokens: 142,
+          cost: 0.000123,
+        },
+        openrouter_metadata: {
+          requested: "openai/gpt-4o-mini",
+          strategy: "direct",
+          attempt: 1,
+          endpoints: {
+            available: [
+              {
+                provider: "OpenAI",
+                model: "openai/gpt-4o-mini",
+                selected: true,
+              },
+            ],
+          },
+        },
+      }),
+    ) as unknown as typeof fetch;
+    const provider = new OpenRouterProvider({
+      modelId: "openai/gpt-4o-mini",
+      apiKey: "test-key",
+      fetch: fetchMock,
+      capabilities: styleGuideLiveSmokeCapabilities(),
+      live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
+    });
+
+    const result = await provider.invoke(styleGuideSuggestionRequest("openai/gpt-4o-mini"));
+
+    expect(result.providerRun.cost).toEqual({
+      costKind: "provider_estimate",
+      currency: "USD",
+      amountMicrosUsd: 123,
+    });
+    expect(recorder.recordProviderRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        run: expect.objectContaining({
+          cost: {
+            costKind: "provider_estimate",
+            currency: "USD",
+            amountMicrosUsd: 123,
+          },
+        }),
+      }),
+    );
+    expect(() => assertStyleGuideProviderSmokeLedger(result.providerRun)).not.toThrow();
+  });
+
   it("skips live provider smoke unless explicit opt-in and credentials are already exported", async () => {
     await expect(runStyleGuideProviderSmoke({ mode: "live", env: {} })).resolves.toEqual({
       status: "skipped",
@@ -190,4 +259,31 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+function styleGuideLiveSmokeCapabilities(): ModelCapabilities {
+  return {
+    ...openRouterDefaultCapabilities,
+    structuredOutputs: {
+      ...openRouterDefaultCapabilities.structuredOutputs,
+      jsonSchema: "supported",
+      preferredModes: ["json_schema"],
+    },
+    dataHandling: {
+      costTier: "paid",
+      promptLogging: "disabled",
+      completionLogging: "disabled",
+      retention: "metadata_only",
+      trainingUse: "deny",
+      dataCollection: "deny",
+      rawCaptureDefault: "disabled",
+    },
+    accountPrivacy: {
+      inputOutputLogging: "disabled",
+      useOfInputsOutputs: "deny",
+      providerDataPolicyFilters: "enabled",
+      metadataCollection: "expected",
+      euRouting: "unknown",
+    },
+  };
 }
