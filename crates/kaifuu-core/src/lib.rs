@@ -51,6 +51,7 @@ pub const SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA: &str =
     "kaifuu.helper_registry.incompatible_output_schema";
 pub const SEMANTIC_HELPER_REGISTRY_INVALID_REDACTION_CLASS: &str =
     "kaifuu.helper_registry.invalid_redaction_class";
+pub const SEMANTIC_HELPER_EXECUTION_DISALLOWED: &str = "kaifuu.helper_execution_policy.disallowed";
 pub const SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE: &str = "kaifuu.key_import.wrong_engine_profile";
 pub const SEMANTIC_KEY_IMPORT_HASH_MISMATCH: &str = "kaifuu.key_import.hash_mismatch";
 pub const SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION: &str = "kaifuu.forbidden_public_serialization";
@@ -3669,6 +3670,7 @@ pub enum HelperExecutionFilesystemAccess {
     TempOnly,
     ReadOnlyWorkspace,
     LocalGameReadOnly,
+    HostInherited,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -4599,7 +4601,13 @@ fn validate_helper_result_execution(
         fixture_id,
         execution,
         "execution.filesystemAccess",
-        &["none", "tempOnly", "readOnlyWorkspace", "localGameReadOnly"],
+        &[
+            "none",
+            "tempOnly",
+            "readOnlyWorkspace",
+            "localGameReadOnly",
+            "hostInherited",
+        ],
     );
     mode
 }
@@ -5598,7 +5606,6 @@ pub struct BoundedHelperProcessRequest<'a> {
     pub executable_path: &'a Path,
     pub timeout_ms: u32,
     pub stdin: &'a [u8],
-    pub filesystem_access: HelperExecutionFilesystemAccess,
     pub cancel_token: Option<HelperProcessCancelToken>,
 }
 
@@ -5698,8 +5705,8 @@ pub fn run_bounded_helper_process(
         bounded: true,
         timeout_ms,
         duration_ms: None,
-        network_access: false,
-        filesystem_access: request.filesystem_access,
+        network_access: true,
+        filesystem_access: HelperExecutionFilesystemAccess::HostInherited,
     };
 
     if !fs::metadata(request.executable_path).is_ok_and(|metadata| metadata.is_file()) {
@@ -15306,7 +15313,6 @@ printf 'err C:\Users\Dev\SecretGame\n' >&2
             executable_path: &helper,
             timeout_ms: 1000,
             stdin: b"fixture input",
-            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: None,
         });
 
@@ -15317,6 +15323,11 @@ printf 'err C:\Users\Dev\SecretGame\n' >&2
             HelperResultExecutionMode::LocalProcess
         );
         assert_eq!(report.execution.bounded, true);
+        assert_eq!(report.execution.network_access, true);
+        assert_eq!(
+            report.execution.filesystem_access,
+            HelperExecutionFilesystemAccess::HostInherited
+        );
         assert!(report.stdout.byte_count > 0);
         assert_eq!(
             report.stdout.redacted_text,
@@ -15360,7 +15371,6 @@ wait
             executable_path: &helper,
             timeout_ms: 50,
             stdin: b"",
-            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: None,
         });
 
@@ -15401,7 +15411,6 @@ wait
             executable_path: &helper,
             timeout_ms: 50,
             stdin: b"",
-            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: None,
         });
         let elapsed = started.elapsed();
@@ -15438,7 +15447,6 @@ sleep 1
             executable_path: &helper,
             timeout_ms: 50,
             stdin: &stdin,
-            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: None,
         });
 
@@ -15478,7 +15486,6 @@ wait
             executable_path: &helper,
             timeout_ms: 5000,
             stdin: b"",
-            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: Some(cancel_token),
         });
 
@@ -15525,7 +15532,6 @@ wait
             executable_path: &helper,
             timeout_ms: 5000,
             stdin: b"",
-            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: Some(cancel_token),
         });
         let elapsed = started.elapsed();
@@ -15568,7 +15574,6 @@ sleep 1
             executable_path: &helper,
             timeout_ms: 5000,
             stdin: &stdin,
-            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: Some(cancel_token),
         });
 
@@ -15597,7 +15602,6 @@ yes A | head -c 70000
             executable_path: &helper,
             timeout_ms: 1000,
             stdin: b"",
-            filesystem_access: HelperExecutionFilesystemAccess::None,
             cancel_token: None,
         });
 

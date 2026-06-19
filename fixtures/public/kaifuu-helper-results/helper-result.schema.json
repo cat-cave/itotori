@@ -109,7 +109,13 @@
         },
         "filesystemAccess": {
           "type": "string",
-          "enum": ["none", "tempOnly", "readOnlyWorkspace", "localGameReadOnly"]
+          "enum": [
+            "none",
+            "tempOnly",
+            "readOnlyWorkspace",
+            "localGameReadOnly",
+            "hostInherited"
+          ]
         }
       },
       "not": {

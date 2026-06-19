@@ -5,14 +5,16 @@ use std::path::{Component, Path, PathBuf};
 use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, BoundedHelperProcessRequest,
     DetectionReport, DetectionResult, EngineAdapter, ExtractRequest, GameProfile,
-    GoldenByteEquivalenceMode, GoldenHarnessRequest, HelperBinaryLaunchValidationRequest,
-    HelperCapability, HelperExecutionFilesystemAccess, HelperProcessCancelToken,
-    HelperRedactionStatus, KaifuuResult, LocalKeyImportRequest, LocalKeyImportSource,
-    LocalSecretDirectoryStore, PatchExport, PatchPreflightRequest, PatchRequest, PatchResult,
-    ProfileRequest, ProofHash, SecretRef, VerifyRequest, atomic_write_text,
-    fixture_helper_registry, normalize_helper_result_value, parse_helper_capability,
-    parse_hex_bytes, promote_staged_directory_no_clobber, read_json, redact_for_log_or_report,
-    redact_report_value, run_bounded_helper_process, run_round_trip_golden, sha256_hash_bytes,
+    GoldenByteEquivalenceMode, GoldenHarnessRequest, HELPER_REGISTRY_SCHEMA_VERSION,
+    HelperBinaryLaunchDiagnostic, HelperBinaryLaunchValidationRequest,
+    HelperBinaryLaunchValidationResult, HelperCapability, HelperExecutionMode,
+    HelperProcessCancelToken, HelperRedactionStatus, KaifuuResult, LocalKeyImportRequest,
+    LocalKeyImportSource, LocalSecretDirectoryStore, PatchExport, PatchPreflightRequest,
+    PatchRequest, PatchResult, ProfileRequest, ProofHash, SEMANTIC_HELPER_EXECUTION_DISALLOWED,
+    SecretRef, VerifyRequest, atomic_write_text, fixture_helper_registry,
+    normalize_helper_result_value, parse_helper_capability, parse_hex_bytes,
+    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
+    run_bounded_helper_process, run_round_trip_golden, sha256_hash_bytes,
     validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
     validate_profile_value, write_json,
 };
@@ -451,6 +453,15 @@ fn run_key_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Err
             if required_capabilities.is_empty() {
                 return Err("run-process requires at least one --capability".into());
             }
+            if entry.execution_policy.mode == HelperExecutionMode::Disallowed {
+                let policy_report = helper_execution_policy_disallowed_report(
+                    &helper_id,
+                    allowlist_entry_id,
+                    platform,
+                );
+                write_json(&output, &policy_report)?;
+                return Err(SEMANTIC_HELPER_EXECUTION_DISALLOWED.into());
+            }
             let allowlist_validation = entry
                 .validate_binary_launch(HelperBinaryLaunchValidationRequest {
                     helper_id: &helper_id,
@@ -476,6 +487,11 @@ fn run_key_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Err
                 )
                 .into());
             }
+            let policy_timeout_ms = entry
+                .execution_policy
+                .max_runtime_seconds
+                .saturating_mul(1000);
+            let effective_timeout_ms = timeout_ms.min(policy_timeout_ms);
             let stdin = flag_optional(args, "--stdin")
                 .map(fs::read)
                 .transpose()?
@@ -497,9 +513,8 @@ fn run_key_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Err
             let result = run_bounded_helper_process(BoundedHelperProcessRequest {
                 helper_id: &helper_id,
                 executable_path: &helper_binary,
-                timeout_ms,
+                timeout_ms: effective_timeout_ms,
                 stdin: &stdin,
-                filesystem_access: HelperExecutionFilesystemAccess::None,
                 cancel_token,
             });
             let failed = result.status == kaifuu_core::OperationStatus::Failed;
@@ -516,6 +531,31 @@ fn run_key_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Err
         }
     }
     Ok(())
+}
+
+fn helper_execution_policy_disallowed_report(
+    helper_id: &str,
+    allowlist_entry_id: &str,
+    platform: &str,
+) -> HelperBinaryLaunchValidationResult {
+    HelperBinaryLaunchValidationResult {
+        schema_version: HELPER_REGISTRY_SCHEMA_VERSION.to_string(),
+        helper_id: redact_for_log_or_report(helper_id),
+        allowlist_entry_id: redact_for_log_or_report(allowlist_entry_id),
+        status: kaifuu_core::OperationStatus::Failed,
+        observed_hash: None,
+        platform: redact_for_log_or_report(platform),
+        diagnostics: vec![HelperBinaryLaunchDiagnostic {
+            helper_id: redact_for_log_or_report(helper_id),
+            allowlist_entry_id: redact_for_log_or_report(allowlist_entry_id),
+            code: SEMANTIC_HELPER_EXECUTION_DISALLOWED.to_string(),
+            field: "executionPolicy.mode".to_string(),
+            observed_hash: None,
+            platform: redact_for_log_or_report(platform),
+            remediation_code: "select_allowed_helper_policy".to_string(),
+            message: "helper registry execution policy disallows local process launch".to_string(),
+        }],
+    }
 }
 
 fn run_offset_map_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -1382,8 +1422,8 @@ printf 'stderr C:\Users\Dev\SecretGame\n' >&2
         assert_eq!(report["status"], "passed");
         assert_eq!(report["diagnostic"]["code"], "success");
         assert_eq!(report["execution"]["bounded"], true);
-        assert_eq!(report["execution"]["networkAccess"], false);
-        assert_eq!(report["execution"]["filesystemAccess"], "none");
+        assert_eq!(report["execution"]["networkAccess"], true);
+        assert_eq!(report["execution"]["filesystemAccess"], "hostInherited");
         assert!(report["stdout"]["byteCount"].as_u64().unwrap() > 0);
         assert_eq!(
             report["stdout"]["redactedText"],
@@ -1460,6 +1500,63 @@ printf launched > '{}'
 
     #[cfg(unix)]
     #[test]
+    fn key_helper_run_process_disallowed_policy_blocks_launch() {
+        let root = temp_dir("key-helper-run-process-disallowed-policy");
+        let helper = root.join("helper-stub");
+        let marker = root.join("launched-marker");
+        let output = root.join("process-report.json");
+        write_executable_stub(
+            &helper,
+            &format!(
+                r#"#!/bin/sh
+printf launched > '{}'
+"#,
+                marker.display()
+            ),
+        );
+        let registry = write_process_helper_registry_entry(&root, &helper);
+        let mut registry_value: serde_json::Value = read_json(&registry).unwrap();
+        registry_value["executionPolicy"]["mode"] = serde_json::json!("disallowed");
+        fs::write(
+            &registry,
+            serde_json::to_string_pretty(&registry_value).unwrap(),
+        )
+        .unwrap();
+
+        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
+        args.extend(allowlisted_process_args(&registry, &helper));
+        args.extend([
+            "--timeout-ms".to_string(),
+            "1000".to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+        let result = run_with_args(args);
+
+        assert!(result.is_err());
+        assert!(
+            !marker.exists(),
+            "helper launched despite disallowed policy"
+        );
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["observedHash"], serde_json::Value::Null);
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"]
+                    == kaifuu_core::SEMANTIC_HELPER_EXECUTION_DISALLOWED
+                    && diagnostic["field"] == "executionPolicy.mode")
+        );
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains(marker.to_str().unwrap()));
+        assert!(!serialized.contains(helper.to_str().unwrap()));
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn key_helper_run_process_output_overflow_is_failure() {
         let root = temp_dir("key-helper-run-process-output-overflow");
         let helper = root.join("helper-stub");
@@ -1494,6 +1591,50 @@ yes A | head -c 70000
             report["stdout"]["byteCount"].as_u64().unwrap()
                 > report["stdout"]["capturedByteCount"].as_u64().unwrap()
         );
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains(helper.to_str().unwrap()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn key_helper_run_process_registry_policy_bounds_timeout() {
+        let root = temp_dir("key-helper-run-process-policy-timeout");
+        let helper = root.join("helper-stub");
+        let output = root.join("process-report.json");
+        write_executable_stub(
+            &helper,
+            r#"#!/bin/sh
+sleep 2
+"#,
+        );
+        let registry = write_process_helper_registry_entry(&root, &helper);
+        let mut registry_value: serde_json::Value = read_json(&registry).unwrap();
+        registry_value["executionPolicy"]["maxRuntimeSeconds"] = serde_json::json!(1);
+        fs::write(
+            &registry,
+            serde_json::to_string_pretty(&registry_value).unwrap(),
+        )
+        .unwrap();
+
+        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
+        args.extend(allowlisted_process_args(&registry, &helper));
+        args.extend([
+            "--timeout-ms".to_string(),
+            "5000".to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+        let result = run_with_args(args);
+
+        assert!(result.is_err());
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(
+            report["diagnostic"]["code"],
+            kaifuu_core::SEMANTIC_HELPER_TIMEOUT
+        );
+        assert_eq!(report["execution"]["timeoutMs"], 1000);
+        assert_eq!(report["timedOut"], true);
         let serialized = fs::read_to_string(&output).unwrap();
         assert!(!serialized.contains(helper.to_str().unwrap()));
     }
