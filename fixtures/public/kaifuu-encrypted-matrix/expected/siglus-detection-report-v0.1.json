@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "gameDir": "[redacted-local-game-dir]",
-  "status": "unknown",
+  "status": "matched",
   "detections": [
     {
       "adapterId": "kaifuu.fixture",
@@ -135,22 +135,57 @@
     },
     {
       "adapterId": "kaifuu.siglus",
-      "detected": false,
+      "detected": true,
+      "engineFamily": "siglus",
+      "detectedVariant": "scene-pck-gameexe-dat-synthetic",
       "evidence": [
         {
           "path": "Gameexe.dat",
           "kind": "synthetic_siglus_gameexe_dat_signature",
-          "status": "missing",
-          "detail": "Gameexe.dat synthetic signature is missing"
+          "status": "matched",
+          "detail": "Gameexe.dat synthetic signature matched"
         },
         {
           "path": "Scene.pck",
           "kind": "synthetic_siglus_scene_pck_signature",
-          "status": "missing",
-          "detail": "Scene.pck synthetic signature is missing"
+          "status": "matched",
+          "detail": "Scene.pck synthetic signature matched"
         }
       ],
-      "requirements": [],
+      "requirements": [
+        {
+          "category": "file",
+          "key": "Gameexe.dat",
+          "status": "satisfied",
+          "description": "synthetic Siglus Gameexe.dat signature fixture",
+          "placeholder": null,
+          "secret": false
+        },
+        {
+          "category": "file",
+          "key": "Scene.pck",
+          "status": "satisfied",
+          "description": "synthetic Siglus Scene.pck signature fixture",
+          "placeholder": null,
+          "secret": false
+        },
+        {
+          "category": "platform",
+          "key": "siglus-parser",
+          "status": "unsupported",
+          "description": "Scene.pck parser/decompiler boundary is unsupported for KAIFUU-091",
+          "placeholder": null,
+          "secret": false
+        },
+        {
+          "category": "secret_key",
+          "key": "siglus-secondary-key",
+          "status": "missing",
+          "description": "encrypted Siglus payload is detected, but key resolution is outside the detector profile",
+          "placeholder": "KAIFUU_SIGLUS_SECONDARY_KEY_PROFILE",
+          "secret": true
+        }
+      ],
       "capabilities": [
         {
           "capability": "asset_inventory",
@@ -283,82 +318,79 @@
       {
         "rowId": "siglus-scene-pck",
         "engineFamily": "siglus",
-        "detected": false,
-        "detectedVariant": "gameexe-dat-without-scene-pck",
-        "signals": [],
+        "detected": true,
+        "detectedVariant": "scene-pck-gameexe-dat",
+        "signals": ["encrypted", "helper_required", "missing_key", "packed"],
         "evidence": [
           {
             "evidenceType": "file_name",
             "pattern": "Gameexe.dat",
-            "status": "missing",
-            "count": 0,
+            "status": "matched",
+            "count": 1,
             "detail": "Siglus executable metadata marker count"
           },
           {
             "evidenceType": "file_name",
             "pattern": "Scene.pck",
-            "status": "missing",
-            "count": 0,
-            "detail": "Siglus scenario package marker count"
-          }
-        ],
-        "requirements": [],
-        "diagnostics": [],
-        "capabilities": [
-          {
-            "capability": "detection",
-            "status": "supported",
-            "limitation": null
-          }
-        ],
-        "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated."
-      },
-      {
-        "rowId": "rpg-maker-mv-mz-encrypted-assets",
-        "engineFamily": "rpg_maker_mv_mz",
-        "detected": true,
-        "detectedVariant": "mv-mz-encrypted-asset-signals",
-        "signals": ["encrypted", "missing_key"],
-        "evidence": [
-          {
-            "evidenceType": "file_extension",
-            "pattern": "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_",
-            "status": "matched",
-            "count": 6,
-            "detail": "RPG Maker MV/MZ encrypted asset extension count"
-          },
-          {
-            "evidenceType": "metadata_field",
-            "pattern": "data/System.json encryption fields",
             "status": "matched",
             "count": 1,
-            "detail": "System.json encryption flags or key-field presence count; key values are never serialized"
+            "detail": "Siglus scenario package marker count"
           }
         ],
         "requirements": [
           {
+            "category": "file",
+            "key": "Gameexe.dat",
+            "status": "satisfied",
+            "description": "Siglus secondary-key workflows usually require Gameexe.dat evidence",
+            "placeholder": null,
+            "secret": false
+          },
+          {
+            "category": "file",
+            "key": "Scene.pck",
+            "status": "satisfied",
+            "description": "Siglus detection expects aggregate evidence for Scene.pck",
+            "placeholder": null,
+            "secret": false
+          },
+          {
             "category": "secret_key",
-            "key": "rpg-maker-mv-mz-asset-key",
+            "key": "siglus-secondary-key",
             "status": "missing",
-            "description": "encrypted RPG Maker MV/MZ assets require a local asset key reference",
-            "placeholder": "KAIFUU_RPG_MAKER_ASSET_KEY",
+            "description": "Siglus encrypted packages require a local secondary key reference",
+            "placeholder": "KAIFUU_SIGLUS_SECONDARY_KEY",
             "secret": true
           }
         ],
         "diagnostics": [
           {
+            "code": "kaifuu.helper_unavailable",
+            "signal": "helper_required",
+            "requiredCapability": "key_profile",
+            "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated.",
+            "remediation": "run an explicitly enabled local helper or provide validated local key evidence"
+          },
+          {
             "code": "kaifuu.missing_key_material",
             "signal": "missing_key",
             "requiredCapability": "key_profile",
-            "supportBoundary": "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims.",
+            "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated.",
             "remediation": "resolve local key material through a secret ref; do not persist raw keys"
           },
           {
             "code": "kaifuu.unsupported_variant.encrypted",
             "signal": "encrypted",
             "requiredCapability": "encrypted_input",
-            "supportBoundary": "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims.",
+            "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated.",
             "remediation": "provide a supported key profile only after an adapter explicitly supports this encrypted variant"
+          },
+          {
+            "code": "kaifuu.unsupported_variant.packed",
+            "signal": "packed",
+            "requiredCapability": "extraction",
+            "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated.",
+            "remediation": "use already extracted/plaintext sources or wait for an adapter that claims this container"
           }
         ],
         "capabilities": [
@@ -386,6 +418,39 @@
             "capability": "patching",
             "status": "unsupported",
             "limitation": "archive/encryption matrix detection does not rebuild, decrypt, or patch containers"
+          }
+        ],
+        "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated."
+      },
+      {
+        "rowId": "rpg-maker-mv-mz-encrypted-assets",
+        "engineFamily": "rpg_maker_mv_mz",
+        "detected": false,
+        "detectedVariant": "mv-mz-encrypted-asset-signals",
+        "signals": [],
+        "evidence": [
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_",
+            "status": "missing",
+            "count": 0,
+            "detail": "RPG Maker MV/MZ encrypted asset extension count"
+          },
+          {
+            "evidenceType": "metadata_field",
+            "pattern": "data/System.json encryption fields",
+            "status": "missing",
+            "count": 0,
+            "detail": "System.json encryption flags or key-field presence count; key values are never serialized"
+          }
+        ],
+        "requirements": [],
+        "diagnostics": [],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
           }
         ],
         "supportBoundary": "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims."
@@ -538,5 +603,5 @@
       }
     ]
   },
-  "warnings": ["no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"]
+  "warnings": []
 }

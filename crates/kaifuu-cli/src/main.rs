@@ -2847,29 +2847,29 @@ mod tests {
             capabilities_path.to_str().unwrap(),
         ]);
         let capabilities: Vec<AdapterCapabilities> = read_json(&capabilities_path).unwrap();
-        assert_eq!(capabilities.len(), 1);
+        assert_eq!(capabilities.len(), 2);
+        let capabilities = capabilities
+            .iter()
+            .find(|capabilities| {
+                capabilities.adapter_id == kaifuu_engine_fixture::FIXTURE_ADAPTER_ID
+            })
+            .unwrap();
         assert_eq!(
-            capabilities[0].adapter_id,
+            capabilities.adapter_id,
             kaifuu_engine_fixture::FIXTURE_ADAPTER_ID
         );
-        assert!(capabilities[0].reports.iter().any(|report| {
+        assert!(capabilities.reports.iter().any(|report| {
             report.capability == Capability::LineParityPatching
                 && report.status == CapabilityStatus::Limited
         }));
-        assert!(capabilities[0].access_contract.is_some());
-        assert!(
-            capabilities[0]
-                .helper_requirements
-                .iter()
-                .any(|requirement| {
-                    requirement.helper_registry_id == kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
-                        && requirement.allowlist_ref_id
-                            == kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID
-                        && requirement
-                            .capabilities
-                            .contains(&HelperCapability::FixtureInvocation)
-                })
-        );
+        assert!(capabilities.access_contract.is_some());
+        assert!(capabilities.helper_requirements.iter().any(|requirement| {
+            requirement.helper_registry_id == kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
+                && requirement.allowlist_ref_id == kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID
+                && requirement
+                    .capabilities
+                    .contains(&HelperCapability::FixtureInvocation)
+        }));
 
         let detect_path = root.join("detect.json");
         run_cli(&[
@@ -4079,25 +4079,33 @@ mod tests {
 
         let detection_report: DetectionReport = read_json(&detect_path).unwrap();
         assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
-        assert_eq!(detection_report.detections.len(), 1);
-        assert!(!detection_report.detections[0].detected);
+        assert_eq!(detection_report.detections.len(), 2);
+        let fixture_detection = detection_report
+            .detections
+            .iter()
+            .find(|detection| detection.adapter_id == kaifuu_engine_fixture::FIXTURE_ADAPTER_ID)
+            .unwrap();
+        assert!(!fixture_detection.detected);
+        assert!(fixture_detection.evidence.iter().any(|evidence| {
+            evidence.path == "source.json" && evidence.status == EvidenceStatus::Missing
+        }));
         assert!(
-            detection_report.detections[0]
-                .evidence
+            detection_report
+                .detections
                 .iter()
-                .any(|evidence| {
-                    evidence.path == "source.json" && evidence.status == EvidenceStatus::Missing
-                })
+                .all(|detection| !detection.detected)
         );
         assert!(detection_report.warnings[0].contains("no registered adapter"));
 
         let serialized = fs::read_to_string(&detect_path).unwrap();
         assert!(!serialized.contains("confidence"));
         let serialized_report: serde_json::Value = serde_json::from_str(&serialized).unwrap();
-        let detection_json = serialized_report["detections"][0].as_object().unwrap();
-        assert!(!detection_json.contains_key("engineFamily"));
-        assert!(!detection_json.contains_key("engineVersion"));
-        assert!(!detection_json.contains_key("detectedVariant"));
+        for detection_json in serialized_report["detections"].as_array().unwrap() {
+            let detection_json = detection_json.as_object().unwrap();
+            assert!(!detection_json.contains_key("engineFamily"));
+            assert!(!detection_json.contains_key("engineVersion"));
+            assert!(!detection_json.contains_key("detectedVariant"));
+        }
         let _ = fs::remove_dir_all(root);
     }
 
@@ -4228,6 +4236,184 @@ mod tests {
         for forbidden in ["title.rpgmvp", "theme.rpgmvm", "cursor.rpgmvo"] {
             assert!(!serialized.contains(forbidden), "report leaked {forbidden}");
         }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn siglus_detector_profile_fixture_reports_identify_inventory_only() {
+        let root = temp_dir("public-siglus-detector");
+        let game_dir = public_fixture_path("fixtures/public/kaifuu-encrypted-matrix/raw/siglus");
+        let expected_root = public_fixture_path("fixtures/public/kaifuu-encrypted-matrix/expected");
+
+        let detect_path = root.join("siglus-detect.json");
+        run_cli(&[
+            "detect",
+            game_dir.to_str().unwrap(),
+            "--output",
+            detect_path.to_str().unwrap(),
+        ]);
+        let actual_detection: serde_json::Value = read_json(&detect_path).unwrap();
+        let expected_detection: serde_json::Value =
+            read_json(&expected_root.join("siglus-detection-report-v0.1.json")).unwrap();
+        assert_eq!(actual_detection, expected_detection);
+        let detection_report: DetectionReport =
+            serde_json::from_value(actual_detection.clone()).unwrap();
+        let siglus_detection = detection_report
+            .detections
+            .iter()
+            .find(|detection| {
+                detection.adapter_id == kaifuu_engine_fixture::SIGLUS_DETECTOR_ADAPTER_ID
+            })
+            .unwrap();
+        assert!(siglus_detection.detected);
+        assert_eq!(siglus_detection.engine_family.as_deref(), Some("siglus"));
+        assert!(siglus_detection.capabilities.iter().any(|capability| {
+            capability.capability == Capability::AssetInventory
+                && capability.status == CapabilityStatus::Supported
+        }));
+        assert!(siglus_detection.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Extraction
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+        assert!(siglus_detection.capabilities.iter().any(|capability| {
+            capability.capability == Capability::RuntimeVm
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+
+        let profile_path = root.join("siglus-profile.json");
+        run_cli(&[
+            "profile",
+            "init",
+            game_dir.to_str().unwrap(),
+            "--output",
+            profile_path.to_str().unwrap(),
+        ]);
+        let actual_profile: serde_json::Value = read_json(&profile_path).unwrap();
+        let expected_profile: serde_json::Value =
+            read_json(&expected_root.join("siglus-detector-profile-v0.1.json")).unwrap();
+        assert_eq!(actual_profile, expected_profile);
+        let profile: GameProfile = serde_json::from_value(actual_profile).unwrap();
+        assert_eq!(profile.profile_id, "019ed000-0000-7000-8000-000000091001");
+        assert_eq!(
+            profile
+                .metadata
+                .get("profileDiagnostics.encryptedPayload")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            profile
+                .metadata
+                .get("profileDiagnostics.unsupportedParserBoundary")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert!(profile.assets.iter().all(|asset| {
+            asset
+                .source_hash
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("sha256:")
+        }));
+        assert!(profile.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Patching
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+
+        let inventory_path = root.join("siglus-inventory.json");
+        run_cli(&[
+            "asset-inventory",
+            game_dir.to_str().unwrap(),
+            "--output",
+            inventory_path.to_str().unwrap(),
+        ]);
+        let actual_inventory: serde_json::Value = read_json(&inventory_path).unwrap();
+        let expected_inventory: serde_json::Value =
+            read_json(&expected_root.join("siglus-asset-inventory-v0.1.json")).unwrap();
+        assert_eq!(actual_inventory, expected_inventory);
+        let inventory: AssetInventoryManifest = serde_json::from_value(actual_inventory).unwrap();
+        assert_eq!(inventory.validate().status, OperationStatus::Passed);
+        assert!(inventory.assets.iter().all(|asset| {
+            asset
+                .source_hash
+                .as_deref()
+                .unwrap_or("")
+                .starts_with("sha256:")
+        }));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn siglus_detector_reports_missing_pair_and_unknown_variant_diagnostics() {
+        let root = temp_dir("siglus-detector-diagnostics");
+        let source_fixture =
+            public_fixture_path("fixtures/public/kaifuu-encrypted-matrix/raw/siglus/Scene.pck");
+        let missing_pair_dir = root.join("missing-pair");
+        fs::create_dir_all(&missing_pair_dir).unwrap();
+        fs::copy(&source_fixture, missing_pair_dir.join("Scene.pck")).unwrap();
+
+        let missing_pair_detect = root.join("missing-pair-detect.json");
+        run_cli(&[
+            "detect",
+            missing_pair_dir.to_str().unwrap(),
+            "--output",
+            missing_pair_detect.to_str().unwrap(),
+        ]);
+        let missing_report: DetectionReport = read_json(&missing_pair_detect).unwrap();
+        let missing_siglus = missing_report
+            .detections
+            .iter()
+            .find(|detection| {
+                detection.adapter_id == kaifuu_engine_fixture::SIGLUS_DETECTOR_ADAPTER_ID
+            })
+            .unwrap();
+        assert!(!missing_siglus.detected);
+        assert_eq!(
+            missing_siglus.detected_variant.as_deref(),
+            Some("scene-pck-missing-gameexe-dat")
+        );
+        assert!(missing_siglus.requirements.iter().any(|requirement| {
+            requirement.key == "Gameexe.dat" && requirement.status == RequirementStatus::Missing
+        }));
+
+        let unknown_dir = root.join("unknown-variant");
+        fs::create_dir_all(&unknown_dir).unwrap();
+        fs::write(
+            unknown_dir.join("Scene.pck"),
+            b"fixture-only unknown siglus-like scene",
+        )
+        .unwrap();
+        fs::write(
+            unknown_dir.join("Gameexe.dat"),
+            b"fixture-only unknown siglus-like metadata",
+        )
+        .unwrap();
+        let unknown_detect = root.join("unknown-detect.json");
+        run_cli(&[
+            "detect",
+            unknown_dir.to_str().unwrap(),
+            "--output",
+            unknown_detect.to_str().unwrap(),
+        ]);
+        let report: DetectionReport = read_json(&unknown_detect).unwrap();
+        let siglus = report
+            .detections
+            .iter()
+            .find(|detection| {
+                detection.adapter_id == kaifuu_engine_fixture::SIGLUS_DETECTOR_ADAPTER_ID
+            })
+            .unwrap();
+        assert!(!siglus.detected);
+        assert_eq!(
+            siglus.detected_variant.as_deref(),
+            Some("unknown-siglus-named-files")
+        );
+        assert!(siglus.requirements.iter().any(|requirement| {
+            requirement.key == "siglus-synthetic-signature"
+                && requirement.status == RequirementStatus::Unsupported
+        }));
 
         let _ = fs::remove_dir_all(root);
     }

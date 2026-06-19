@@ -7820,10 +7820,30 @@ fn path_starts_with_home_or_local_env_var(path: &str) -> bool {
 }
 
 fn text_contains_raw_key_material(text: &str) -> bool {
+    if is_sha256_ref(text) || is_uuid_like(text) {
+        return false;
+    }
     if looks_like_raw_key_material(text) {
         return true;
     }
     text_contains_raw_key_material_token(text)
+}
+
+fn is_uuid_like(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 36 {
+        return false;
+    }
+    for (index, byte) in bytes.iter().enumerate() {
+        if matches!(index, 8 | 13 | 18 | 23) {
+            if *byte != b'-' {
+                return false;
+            }
+        } else if !byte.is_ascii_hexdigit() {
+            return false;
+        }
+    }
+    true
 }
 
 fn text_contains_raw_key_material_token(text: &str) -> bool {
