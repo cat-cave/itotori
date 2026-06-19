@@ -517,6 +517,19 @@ function renderCost(cost: ProjectCostReport): string {
       `,
     )
     .join("");
+  const reuseRows = cost.translationMemoryReuse.recentEvents
+    .map(
+      (event) => `
+        <tr>
+          <td>${escapeHtml(event.targetBridgeUnitId)}</td>
+          <td>${escapeHtml(event.reuseStatus)}</td>
+          <td>${escapeHtml(event.matchKind)}</td>
+          <td>${event.providerCallAvoided ? "yes" : "no"}</td>
+          <td>${event.estimatedTotalTokensSaved}</td>
+        </tr>
+      `,
+    )
+    .join("");
   return panel(
     "cost",
     "Model cost",
@@ -526,6 +539,14 @@ function renderCost(cost: ProjectCostReport): string {
         <div><dt>Estimated</dt><dd>${formatMicrosUsd(cost.estimatedMicrosUsd)}</dd></div>
         <div><dt>Runs</dt><dd>${cost.runCount}</dd></div>
         <div><dt>Unknown</dt><dd>${cost.unknownRunCount}</dd></div>
+        <div>
+          <dt>TM avoided</dt>
+          <dd>${cost.translationMemoryReuse.providerCallAvoidedCount}</dd>
+        </div>
+        <div>
+          <dt>TM tokens saved</dt>
+          <dd>${cost.translationMemoryReuse.estimatedTotalTokensSaved}</dd>
+        </div>
       </dl>
       <table>
         <thead>
@@ -537,6 +558,18 @@ function renderCost(cost: ProjectCostReport): string {
           </tr>
         </thead>
         <tbody>${rows}</tbody>
+      </table>
+      <table>
+        <thead>
+          <tr>
+            <th>TM unit</th>
+            <th>Status</th>
+            <th>Match</th>
+            <th>Avoided</th>
+            <th>Tokens saved</th>
+          </tr>
+        </thead>
+        <tbody>${reuseRows || `<tr><td colspan="5">No translation memory reuse.</td></tr>`}</tbody>
       </table>
     `,
   );

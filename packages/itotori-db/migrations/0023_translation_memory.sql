@@ -63,4 +63,3 @@ create index if not exists itotori_tm_reuse_events_target_idx
 
 create index if not exists itotori_tm_reuse_events_segment_idx
   on itotori_translation_memory_reuse_events(memory_segment_id, created_at);
-

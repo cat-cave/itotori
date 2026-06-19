@@ -139,6 +139,8 @@ export type {
   PromptPresetLedgerInput,
   ProviderRunCostSummary,
   ProviderRunLedgerInput,
+  TranslationMemoryReuseCostReport,
+  TranslationMemoryReuseCostSummary,
 } from "./repositories/model-ledger-repository.js";
 export {
   deriveFeedbackDedupeKey,

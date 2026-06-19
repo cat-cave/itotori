@@ -10,6 +10,8 @@ import {
   ItotoriStyleGuideFixtureFlowService,
   ItotoriStyleGuideRepository,
   ItotoriTerminologyRepository,
+  ItotoriTranslationMemoryRepository,
+  ItotoriTranslationMemoryService,
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
@@ -90,6 +92,10 @@ export async function withDatabaseItotoriServices<T>(
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
     const styleGuideRepository = new ItotoriStyleGuideRepository(context.db);
     const terminologyRepository = new ItotoriTerminologyRepository(context.db);
+    const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
+    const translationMemoryService = new ItotoriTranslationMemoryService(
+      translationMemoryRepository,
+    );
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -97,6 +103,7 @@ export async function withDatabaseItotoriServices<T>(
         localUserActor,
         undefined,
         modelLedgerRepository,
+        translationMemoryService,
       ),
       manualFeedback: new ManualFeedbackImportService(feedbackRepository, localUserActor),
       catalogRepository: {

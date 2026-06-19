@@ -154,6 +154,41 @@ export const costReportFixture: ProjectCostReport = {
       },
     },
   ],
+  translationMemoryReuse: {
+    reuseEventCount: 1,
+    appliedCount: 1,
+    suggestedCount: 0,
+    providerCallAvoidedCount: 1,
+    estimatedPromptTokensSaved: 7,
+    estimatedCompletionTokensSaved: 5,
+    estimatedTotalTokensSaved: 12,
+    estimatedCostUsdSaved: null,
+    recentEvents: [
+      {
+        reuseEventId: "tm-reuse-1",
+        localeBranchId: "locale-1",
+        targetBridgeUnitId: "bridge-unit-repeat",
+        memorySegmentId: "tm-memory-1",
+        matchKind: "exact",
+        matchScore: 1000,
+        reuseStatus: "applied",
+        sourceHash: "hash:repeat",
+        candidateSourceHash: "hash:repeat",
+        targetText: "Hello again.",
+        providerCallAvoided: true,
+        estimatedPromptTokensSaved: 7,
+        estimatedCompletionTokensSaved: 5,
+        estimatedTotalTokensSaved: 12,
+        estimatedCostUsdSaved: null,
+        calculation: "deterministic_character_estimate_v1",
+        provenance: {
+          requestId: "draft:project-1:locale-1:en-US",
+          selectedMemorySegmentId: "tm-memory-1",
+        },
+        createdAt: "2026-06-17T00:02:00.000Z",
+      },
+    ],
+  },
 };
 
 export const terminologySearchFixture: TerminologySearchReadModel = {
