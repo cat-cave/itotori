@@ -19349,6 +19349,114 @@
         "Usage output steering users toward unsafe input channels",
         "No regression in local-only import metadata"
       ]
+    },
+    {
+      "id": "KAIFUU-156",
+      "status": "planned",
+      "title": "Diagnostic-only adapter CLI selection",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-091"],
+      "summary": "Preserve structured diagnostics from adapters that recognize enough evidence to report a semantic failure but are not detected/profileable as supported adapters.",
+      "deliverables": [
+        "Adapter registry diagnostic-candidate selection API or equivalent report path",
+        "CLI profile and asset-inventory tests for Siglus missing-pair diagnostic-only inputs",
+        "Semantic diagnostic output that avoids generic no-adapter messages when a known detector can explain the failure"
+      ],
+      "acceptanceCriteria": [
+        "CLI profile init and asset inventory return the Siglus missing-pair or unknown-variant AdapterFailure when the Siglus adapter is the best diagnostic candidate.",
+        "Generic no-adapter diagnostics remain for inputs without recognized engine evidence.",
+        "Diagnostic-only candidates do not become detected, profileable, extractable, or patchable support claims."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Diagnostic-only evidence promoted into supported adapter selection",
+        "CLI hiding specific engine diagnostics behind generic no-adapter messages",
+        "Capability overclaiming from diagnostic candidates"
+      ]
+    },
+    {
+      "id": "KAIFUU-157",
+      "status": "planned",
+      "title": "Generated expected-output ownership",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-091"],
+      "summary": "Remove stale manual drift in public encrypted fixture expected outputs by making ownership explicit and reproducible.",
+      "deliverables": [
+        "Fixture generator path that regenerates Siglus expected outputs from current detector commands or a documented separate update command",
+        "Validation that generated expected outputs match committed public manifests",
+        "Documentation naming which public fixture outputs are generator-owned versus command-owned"
+      ],
+      "acceptanceCriteria": [
+        "Regenerating public encrypted fixtures cannot silently preserve stale Siglus expected-output JSON from a previous implementation.",
+        "If expected outputs are not generator-owned, a separate checked command updates and validates them.",
+        "Fixture manifest validation fails when expected outputs drift from the current declared ownership model."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec node fixtures/validate-public-manifests.mjs"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Stale expected outputs preserved across fixture regeneration",
+        "Unclear generated artifact ownership",
+        "Manifest hashes masking command-output drift"
+      ]
+    },
+    {
+      "id": "KAIFUU-158",
+      "status": "planned",
+      "title": "Public negative secret-ref sentinel",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-087", "KAIFUU-091"],
+      "summary": "Replace private-path-shaped public negative key-profile fixtures with non-path sentinels or explicitly documented redaction-only test locations.",
+      "deliverables": [
+        "Non-path sentinel for invalid secretRef redaction fixtures or relocated unit-only private-path negative fixture",
+        "Updated public fixture README language for negative redaction fixtures",
+        "Regression proving raw private-looking paths remain rejected without committing path-shaped public fixture values when avoidable"
+      ],
+      "acceptanceCriteria": [
+        "Public fixture corpora avoid literal private-path-shaped secret refs unless the fixture is explicitly documented as a redaction-negative case.",
+        "Key-profile validation still rejects raw local-path secret refs.",
+        "README and manifest metadata do not claim an absence of private-path-shaped strings when negative fixtures intentionally contain them."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec node fixtures/validate-public-manifests.mjs"
+        }
+      ],
+      "auditFocus": [
+        "Private-path-shaped public fixtures conflicting with corpus policy",
+        "Redaction negative tests losing coverage",
+        "Fixture README overclaiming public corpus contents"
+      ]
     }
   ]
 }
