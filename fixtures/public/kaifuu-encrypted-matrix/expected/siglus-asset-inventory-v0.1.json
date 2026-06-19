@@ -1,0 +1,122 @@
+{
+  "adapterId": "kaifuu.siglus",
+  "assets": [
+    {
+      "assetId": "siglus-gameexe-dat",
+      "assetKey": "Gameexe.dat",
+      "assetKind": "metadata",
+      "metadata": {
+        "signatureMatched": "true",
+        "supportBoundary": "metadata identified only; secondary-key discovery is not implemented"
+      },
+      "path": "Gameexe.dat",
+      "sourceHash": "sha256:e4255da0fb43255b4e9036cf74463f057fa57753df57dfc5c8a31e93c9e5d3af"
+    },
+    {
+      "assetId": "siglus-scene-pck",
+      "assetKey": "Scene.pck",
+      "assetKind": "archive",
+      "metadata": {
+        "signatureMatched": "true",
+        "supportBoundary": "container identified only; archive entries are not parsed"
+      },
+      "path": "Scene.pck",
+      "sourceHash": "sha256:9afaac8af2dd96468e97e069cb678ada48a77d9726e8ebebf1ca75e76b65d465"
+    }
+  ],
+  "capabilities": [
+    {
+      "capability": "asset_inventory",
+      "limitation": null,
+      "status": "supported"
+    },
+    {
+      "capability": "asset_listing",
+      "limitation": null,
+      "status": "supported"
+    },
+    {
+      "capability": "asset_text_patching",
+      "limitation": "[REDACTED:kaifuu.secret_redacted]",
+      "status": "unsupported"
+    },
+    {
+      "capability": "codec_access",
+      "limitation": "Siglus script decode/decompile support is outside the detector profile",
+      "status": "unsupported"
+    },
+    {
+      "capability": "container_access",
+      "limitation": "Scene.pck archive parsing is outside the detector profile",
+      "status": "unsupported"
+    },
+    {
+      "capability": "crypto_access",
+      "limitation": "encrypted Siglus payload handling is outside the detector profile",
+      "status": "unsupported"
+    },
+    {
+      "capability": "delta_patching",
+      "limitation": ".kaifuu delta packages do not apply to detector-only Siglus profiles",
+      "status": "unsupported"
+    },
+    {
+      "capability": "detection",
+      "limitation": null,
+      "status": "supported"
+    },
+    {
+      "capability": "encrypted_input",
+      "limitation": "encrypted payloads are identified only and are never decrypted by this profile",
+      "status": "unsupported"
+    },
+    {
+      "capability": "extraction",
+      "limitation": "KAIFUU-091 is a Siglus detector/profile fixture only",
+      "status": "unsupported"
+    },
+    {
+      "capability": "key_profile",
+      "limitation": "encrypted payload diagnostics name the key requirement, but no key support is claimed",
+      "status": "requires_user_input"
+    },
+    {
+      "capability": "non_text_surface_extraction",
+      "limitation": "no non-text extraction or OCR is performed for Siglus detector fixtures",
+      "status": "unsupported"
+    },
+    {
+      "capability": "patch_back",
+      "limitation": "Siglus patch-back/repack support is outside the detector profile",
+      "status": "unsupported"
+    },
+    {
+      "capability": "patching",
+      "limitation": "[REDACTED:kaifuu.secret_redacted]",
+      "status": "unsupported"
+    },
+    {
+      "capability": "profile_generation",
+      "limitation": null,
+      "status": "supported"
+    },
+    {
+      "capability": "runtime_vm",
+      "limitation": "runtime support belongs to future Utsushi/Siglus work, not this detector fixture",
+      "status": "unsupported"
+    }
+  ],
+  "manifestId": "019ed000-0000-7000-8000-siglusin0091",
+  "metadata": {
+    "fixtureOnly": "true",
+    "profileDiagnostics.encryptedPayload": "true",
+    "profileDiagnostics.missingPair": "false",
+    "profileDiagnostics.unknownVariant": "false",
+    "profileDiagnostics.unsupportedParserBoundary": "true",
+    "supportBoundary": "Siglus detector profile identifies synthetic Scene.pck/Gameexe.dat fixtures for identify and inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed."
+  },
+  "schemaVersion": "0.1.0",
+  "sourceLocale": "ja-JP",
+  "surfaces": [],
+  "warnings": []
+}

@@ -4,25 +4,41 @@ use std::path::Path;
 
 use kaifuu_core::{
     ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterFailure,
-    AdapterHelperRequirementDeclaration, AssetInventoryAsset, AssetInventoryAssetKind,
+    AdapterFailureSemanticParams, AdapterHelperRequirementDeclaration, ArchiveParameter,
+    ArchiveParameterKind, ArchiveParameterSource, AssetInventoryAsset, AssetInventoryAssetKind,
     AssetInventoryAssetRef, AssetInventoryManifest, AssetInventoryPatchMode, AssetInventoryRequest,
     AssetInventorySurface, AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind,
     AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
-    CapabilityReport, DetectRequest, DetectionEvidence, DetectionResult, EncodedStringSlot,
+    CapabilityReport, CapabilityStatus, CodecTransform, ContainerTransform, CryptoTransform,
+    DetectRequest, DetectionEvidence, DetectionResult, EncodedStringSlot,
     EncodedStringSlotProtectedSpan, EngineAdapter, EngineProfile, EvidenceStatus, ExtractRequest,
     ExtractionResult, FIXTURE_HELPER_ALLOWLIST_REF_ID, FIXTURE_HELPER_REGISTRY_ID, GameProfile,
-    HelperCapability, KaifuuResult, LayeredAccessCapabilityContract, LayeredAccessProfile,
-    OperationStatus, PatchRef, PatchRequest, PatchResult, ProfileRequest, ProfileRequirement,
-    ProtectedSpan, RequirementCategory, RequirementStatus, TextSurface, VerificationResult,
-    VerifyRequest, atomic_write_text, content_hash, deterministic_id, normalize_protected_spans,
-    parse_hex_bytes, require_str, require_u64, safe_join_relative,
+    HelperCapability, KaifuuResult, LayeredAccessCapabilityContract, LayeredAccessHelperStatus,
+    LayeredAccessKeyMaterialStatus, LayeredAccessOperationContract, LayeredAccessProfile,
+    LayeredTextSurfaceAccess, OperationStatus, PatchBackTransform, PatchPreflightRequest, PatchRef,
+    PatchRequest, PatchResult, ProfileRequest, ProfileRequirement, ProtectedSpan,
+    RequirementCategory, RequirementStatus, SemanticErrorCode, SourceFingerprint, SurfaceTransform,
+    TextSurface, VerificationResult, VerifyRequest, atomic_write_text, content_hash,
+    deterministic_id, normalize_protected_spans, parse_hex_bytes, require_str, require_u64,
+    safe_join_relative, sha256_file_ref,
 };
 use serde_json::{Value, json};
 
 pub const FIXTURE_ADAPTER_ID: &str = "kaifuu.fixture";
+pub const SIGLUS_DETECTOR_ADAPTER_ID: &str = "kaifuu.siglus";
+const SIGLUS_SCENE_PATH: &str = "Scene.pck";
+const SIGLUS_GAMEEXE_PATH: &str = "Gameexe.dat";
+const SIGLUS_SCENE_MAGIC: &[u8] = b"SIGLUS-SCENE-PCK";
+const SIGLUS_GAMEEXE_MAGIC: &[u8] = b"SIGLUS-GAMEEXE-DAT";
+const SIGLUS_PROFILE_ID: &str = "019ed000-0000-7000-8000-000000091001";
+const SIGLUS_GAME_ID: &str = "kaifuu-siglus-synthetic-scene-pck";
+const SIGLUS_SUPPORT_BOUNDARY: &str = "Siglus detector profile identifies synthetic Scene.pck/Gameexe.dat fixtures for identify and inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed.";
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FixtureAdapter;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct SiglusProfileDetectorAdapter;
 
 impl FixtureAdapter {
     fn source_path(game_dir: &Path) -> std::path::PathBuf {
@@ -1389,9 +1405,725 @@ impl EngineAdapter for FixtureAdapter {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SiglusFixtureVariant {
+    CompleteSyntheticPair,
+    MissingGameexeDat,
+    MissingScenePck,
+    UnknownNamedPair,
+    NotSiglus,
+}
+
+#[derive(Debug, Clone)]
+struct SiglusFixtureState {
+    scene_exists: bool,
+    gameexe_exists: bool,
+    scene_signature: bool,
+    gameexe_signature: bool,
+    scene_hash: Option<String>,
+    gameexe_hash: Option<String>,
+    variant: SiglusFixtureVariant,
+}
+
+impl SiglusProfileDetectorAdapter {
+    fn scene_path(game_dir: &Path) -> std::path::PathBuf {
+        game_dir.join(SIGLUS_SCENE_PATH)
+    }
+
+    fn gameexe_path(game_dir: &Path) -> std::path::PathBuf {
+        game_dir.join(SIGLUS_GAMEEXE_PATH)
+    }
+
+    fn inspect(game_dir: &Path) -> SiglusFixtureState {
+        let scene_path = Self::scene_path(game_dir);
+        let gameexe_path = Self::gameexe_path(game_dir);
+        let scene_exists = scene_path.is_file();
+        let gameexe_exists = gameexe_path.is_file();
+        let scene_signature = file_starts_with(&scene_path, SIGLUS_SCENE_MAGIC);
+        let gameexe_signature = file_starts_with(&gameexe_path, SIGLUS_GAMEEXE_MAGIC);
+        let variant = match (
+            scene_signature,
+            gameexe_signature,
+            scene_exists,
+            gameexe_exists,
+        ) {
+            (true, true, _, _) => SiglusFixtureVariant::CompleteSyntheticPair,
+            (true, false, _, _) => SiglusFixtureVariant::MissingGameexeDat,
+            (false, true, _, _) => SiglusFixtureVariant::MissingScenePck,
+            (false, false, true, _) | (false, false, _, true) => {
+                SiglusFixtureVariant::UnknownNamedPair
+            }
+            _ => SiglusFixtureVariant::NotSiglus,
+        };
+        SiglusFixtureState {
+            scene_exists,
+            gameexe_exists,
+            scene_signature,
+            gameexe_signature,
+            scene_hash: scene_exists
+                .then(|| sha256_file_ref(&scene_path).ok())
+                .flatten(),
+            gameexe_hash: gameexe_exists
+                .then(|| sha256_file_ref(&gameexe_path).ok())
+                .flatten(),
+            variant,
+        }
+    }
+
+    fn detected_variant(variant: SiglusFixtureVariant) -> &'static str {
+        match variant {
+            SiglusFixtureVariant::CompleteSyntheticPair => "scene-pck-gameexe-dat-synthetic",
+            SiglusFixtureVariant::MissingGameexeDat => "scene-pck-missing-gameexe-dat",
+            SiglusFixtureVariant::MissingScenePck => "gameexe-dat-missing-scene-pck",
+            SiglusFixtureVariant::UnknownNamedPair => "unknown-siglus-named-files",
+            SiglusFixtureVariant::NotSiglus => "not-siglus",
+        }
+    }
+
+    fn is_detected(variant: SiglusFixtureVariant) -> bool {
+        !matches!(variant, SiglusFixtureVariant::NotSiglus)
+    }
+
+    fn can_inventory(variant: SiglusFixtureVariant) -> bool {
+        Self::is_detected(variant)
+    }
+
+    fn profile_from_state(&self, state: SiglusFixtureState) -> KaifuuResult<GameProfile> {
+        if !Self::is_detected(state.variant) {
+            return Err("Siglus profile requires Scene.pck or Gameexe.dat evidence".into());
+        }
+        let mut profile = GameProfile {
+            schema_version: "0.1.0".to_string(),
+            profile_id: SIGLUS_PROFILE_ID.to_string(),
+            game_id: SIGLUS_GAME_ID.to_string(),
+            title: "Siglus fixture".to_string(),
+            source_locale: "ja-JP".to_string(),
+            engine: EngineProfile {
+                adapter_id: SIGLUS_DETECTOR_ADAPTER_ID.to_string(),
+                engine_family: "siglus".to_string(),
+                engine_version: None,
+                detected_variant: Self::detected_variant(state.variant).to_string(),
+            },
+            source_fingerprint: Some(SourceFingerprint {
+                game_root_hash: None,
+                engine_evidence: state.engine_evidence(),
+            }),
+            key_requirements: vec![],
+            archive_parameters: vec![ArchiveParameter {
+                parameter_id: "scene-archive".to_string(),
+                name: "sceneArchive".to_string(),
+                kind: ArchiveParameterKind::ArchiveFormat,
+                value: SIGLUS_SCENE_PATH.to_string(),
+                source: Some(ArchiveParameterSource::Detected),
+            }],
+            helper_evidence: None,
+            assets: state.asset_profiles(),
+            layered_access: Some(state.layered_access_profile()),
+            capabilities: self.capabilities().reports,
+            requirements: state.profile_requirements(),
+            metadata: state.metadata(),
+        };
+        profile.normalize();
+        Ok(profile)
+    }
+
+    fn inventory_from_state(
+        &self,
+        state: SiglusFixtureState,
+    ) -> KaifuuResult<AssetInventoryManifest> {
+        if !Self::can_inventory(state.variant) {
+            return Err("Siglus inventory requires Scene.pck or Gameexe.dat evidence".into());
+        }
+        let mut manifest = AssetInventoryManifest {
+            schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
+            manifest_id: deterministic_id("siglus-inventory", 91),
+            adapter_id: SIGLUS_DETECTOR_ADAPTER_ID.to_string(),
+            source_locale: "ja-JP".to_string(),
+            assets: state.inventory_assets(),
+            surfaces: vec![],
+            capabilities: self.capabilities().reports,
+            warnings: vec![],
+            metadata: state.metadata(),
+        };
+        manifest.normalize();
+        Ok(manifest)
+    }
+
+    fn unsupported_failure(
+        code: SemanticErrorCode,
+        required_capability: Capability,
+        variant: impl Into<String>,
+        asset_ref: impl Into<String>,
+        support_boundary: impl Into<String>,
+        remediation: impl Into<String>,
+    ) -> AdapterFailure {
+        AdapterFailure::semantic(
+            AdapterFailureSemanticParams::new(code, SIGLUS_DETECTOR_ADAPTER_ID, support_boundary)
+                .engine("siglus")
+                .detected_variant(variant)
+                .asset_ref(asset_ref)
+                .required_capability(required_capability)
+                .remediation(remediation),
+        )
+    }
+
+    fn parser_boundary_failure(variant: impl Into<String>) -> AdapterFailure {
+        Self::unsupported_failure(
+            SemanticErrorCode::UnsupportedLayeredTransform,
+            Capability::CodecAccess,
+            variant,
+            SIGLUS_SCENE_PATH,
+            "Siglus Scene.pck parsing/decompilation is outside KAIFUU-091 detector fixtures",
+            "use identify or asset-inventory output only; do not request extract or patch for this detector profile",
+        )
+    }
+
+    fn unsupported_patch_result(
+        &self,
+        patch_export_id: String,
+        variant: SiglusFixtureVariant,
+    ) -> PatchResult {
+        let detected_variant = Self::detected_variant(variant).to_string();
+        PatchResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("siglus-patch", 91),
+            patch_export_id,
+            status: OperationStatus::Failed,
+            output_hash: content_hash(SIGLUS_SUPPORT_BOUNDARY),
+            failures: vec![
+                Self::unsupported_failure(
+                    SemanticErrorCode::MissingContainerCapability,
+                    Capability::ContainerAccess,
+                    detected_variant.clone(),
+                    SIGLUS_SCENE_PATH,
+                    "Siglus Scene.pck archive container access is not implemented by the detector profile",
+                    "use identify or asset-inventory output only",
+                ),
+                Self::unsupported_failure(
+                    SemanticErrorCode::MissingCryptoCapability,
+                    Capability::CryptoAccess,
+                    detected_variant.clone(),
+                    SIGLUS_SCENE_PATH,
+                    "Siglus encrypted payload handling is not implemented by the detector profile",
+                    "provide future adapter crypto support before extraction or patching",
+                ),
+                Self::parser_boundary_failure(detected_variant.clone()),
+                Self::unsupported_failure(
+                    SemanticErrorCode::MissingPatchBackCapability,
+                    Capability::PatchBack,
+                    detected_variant,
+                    SIGLUS_SCENE_PATH,
+                    "Siglus patch-back/repack support is not implemented by the detector profile",
+                    "add an explicit patch-back adapter before writing patched Scene.pck output",
+                ),
+            ],
+        }
+    }
+}
+
+impl SiglusFixtureState {
+    fn engine_evidence(&self) -> Vec<String> {
+        let mut evidence = Vec::new();
+        if self.scene_exists {
+            evidence.push(SIGLUS_SCENE_PATH.to_string());
+        }
+        if self.gameexe_exists {
+            evidence.push(SIGLUS_GAMEEXE_PATH.to_string());
+        }
+        evidence
+    }
+
+    fn asset_profiles(&self) -> Vec<AssetProfile> {
+        let mut assets = Vec::new();
+        if self.scene_exists {
+            assets.push(AssetProfile {
+                asset_id: "siglus-scene-pck".to_string(),
+                path: SIGLUS_SCENE_PATH.to_string(),
+                asset_kind: AssetKind::Archive,
+                text_surfaces: vec![TextSurface::Dialogue, TextSurface::Narration],
+                source_hash: self.scene_hash.clone(),
+                patching: CapabilityReport::unsupported(
+                    Capability::Patching,
+                    "Siglus detector profile does not parse, decrypt, repack, or patch Scene.pck",
+                ),
+            });
+        }
+        if self.gameexe_exists {
+            assets.push(AssetProfile {
+                asset_id: "siglus-gameexe-dat".to_string(),
+                path: SIGLUS_GAMEEXE_PATH.to_string(),
+                asset_kind: AssetKind::Metadata,
+                text_surfaces: vec![TextSurface::MetadataText],
+                source_hash: self.gameexe_hash.clone(),
+                patching: CapabilityReport::unsupported(
+                    Capability::Patching,
+                    "Siglus detector profile does not patch Gameexe.dat metadata",
+                ),
+            });
+        }
+        assets
+    }
+
+    fn inventory_assets(&self) -> Vec<AssetInventoryAsset> {
+        let mut assets = Vec::new();
+        if self.scene_exists {
+            let mut metadata = BTreeMap::new();
+            metadata.insert(
+                "signatureMatched".to_string(),
+                self.scene_signature.to_string(),
+            );
+            metadata.insert(
+                "supportBoundary".to_string(),
+                "container identified only; archive entries are not parsed".to_string(),
+            );
+            assets.push(AssetInventoryAsset {
+                asset_id: "siglus-scene-pck".to_string(),
+                asset_key: SIGLUS_SCENE_PATH.to_string(),
+                asset_kind: AssetInventoryAssetKind::Archive,
+                path: Some(SIGLUS_SCENE_PATH.to_string()),
+                source_hash: self.scene_hash.clone(),
+                metadata,
+            });
+        }
+        if self.gameexe_exists {
+            let mut metadata = BTreeMap::new();
+            metadata.insert(
+                "signatureMatched".to_string(),
+                self.gameexe_signature.to_string(),
+            );
+            metadata.insert(
+                "supportBoundary".to_string(),
+                "metadata identified only; secondary-key discovery is not implemented".to_string(),
+            );
+            assets.push(AssetInventoryAsset {
+                asset_id: "siglus-gameexe-dat".to_string(),
+                asset_key: SIGLUS_GAMEEXE_PATH.to_string(),
+                asset_kind: AssetInventoryAssetKind::Metadata,
+                path: Some(SIGLUS_GAMEEXE_PATH.to_string()),
+                source_hash: self.gameexe_hash.clone(),
+                metadata,
+            });
+        }
+        assets
+    }
+
+    fn layered_access_profile(&self) -> LayeredAccessProfile {
+        let mut surfaces = Vec::new();
+        if self.scene_exists {
+            surfaces.push(LayeredTextSurfaceAccess {
+                surface_id: "siglus-scene-pck#dialogue".to_string(),
+                asset_id: "siglus-scene-pck".to_string(),
+                path: SIGLUS_SCENE_PATH.to_string(),
+                text_surface: TextSurface::Dialogue,
+                surface_transform: SurfaceTransform::ArchiveEntry,
+                surface_selector: "aggregate-only:synthetic-scene-package".to_string(),
+                container: ContainerTransform::SiglusPck,
+                crypto: CryptoTransform::KeyProfile,
+                codec: CodecTransform::Unknown,
+                patch_back: PatchBackTransform::Unsupported,
+                key_material_status: LayeredAccessKeyMaterialStatus::Missing,
+                helper_status: LayeredAccessHelperStatus::Unavailable,
+                key_requirement_refs: vec![],
+                notes: vec![
+                    "detector-only layered access record; no parser, normalized script text, or archive entry listing is claimed".to_string(),
+                ],
+            });
+        }
+        if self.gameexe_exists {
+            surfaces.push(LayeredTextSurfaceAccess {
+                surface_id: "siglus-gameexe-dat#metadata".to_string(),
+                asset_id: "siglus-gameexe-dat".to_string(),
+                path: SIGLUS_GAMEEXE_PATH.to_string(),
+                text_surface: TextSurface::MetadataText,
+                surface_transform: SurfaceTransform::BinaryOffset,
+                surface_selector: "aggregate-only:synthetic-gameexe-metadata".to_string(),
+                container: ContainerTransform::LooseFile,
+                crypto: CryptoTransform::Unknown,
+                codec: CodecTransform::Unknown,
+                patch_back: PatchBackTransform::Unsupported,
+                key_material_status: LayeredAccessKeyMaterialStatus::Missing,
+                helper_status: LayeredAccessHelperStatus::Unavailable,
+                key_requirement_refs: vec![],
+                notes: vec![
+                    "detector-only metadata record; secondary-key derivation is outside this profile".to_string(),
+                ],
+            });
+        }
+        let mut profile = LayeredAccessProfile {
+            schema_version: "0.1.0".to_string(),
+            surfaces,
+        };
+        profile.normalize();
+        profile
+    }
+
+    fn detection_requirements(&self) -> Vec<ProfileRequirement> {
+        let mut requirements = vec![
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: SIGLUS_SCENE_PATH.to_string(),
+                status: if self.scene_signature {
+                    RequirementStatus::Satisfied
+                } else {
+                    RequirementStatus::Missing
+                },
+                description: "synthetic Siglus Scene.pck signature fixture".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: SIGLUS_GAMEEXE_PATH.to_string(),
+                status: if self.gameexe_signature {
+                    RequirementStatus::Satisfied
+                } else {
+                    RequirementStatus::Missing
+                },
+                description: "synthetic Siglus Gameexe.dat signature fixture".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::SecretKey,
+                key: "siglus-secondary-key".to_string(),
+                status: RequirementStatus::Missing,
+                description: "encrypted Siglus payload is detected, but key resolution is outside the detector profile".to_string(),
+                placeholder: Some("KAIFUU_SIGLUS_SECONDARY_KEY_PROFILE".to_string()),
+                secret: true,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::Platform,
+                key: "siglus-parser".to_string(),
+                status: RequirementStatus::Unsupported,
+                description: "Scene.pck parser/decompiler boundary is unsupported for KAIFUU-091".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+        ];
+        if self.variant == SiglusFixtureVariant::UnknownNamedPair {
+            requirements.push(ProfileRequirement {
+                category: RequirementCategory::File,
+                key: "siglus-synthetic-signature".to_string(),
+                status: RequirementStatus::Unsupported,
+                description: "Scene.pck/Gameexe.dat names were present without recognized synthetic fixture signatures".to_string(),
+                placeholder: None,
+                secret: false,
+            });
+        }
+        requirements
+    }
+
+    fn profile_requirements(&self) -> Vec<ProfileRequirement> {
+        vec![
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: SIGLUS_SCENE_PATH.to_string(),
+                status: if self.scene_exists {
+                    RequirementStatus::Satisfied
+                } else {
+                    RequirementStatus::NotRequired
+                },
+                description: "synthetic Siglus Scene.pck detector evidence status".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: SIGLUS_GAMEEXE_PATH.to_string(),
+                status: if self.gameexe_exists {
+                    RequirementStatus::Satisfied
+                } else {
+                    RequirementStatus::NotRequired
+                },
+                description: "synthetic Siglus Gameexe.dat detector evidence status".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::SecretKey,
+                key: "siglus-secondary-key".to_string(),
+                status: RequirementStatus::NotRequired,
+                description: "key material is not accepted by the detector-only profile"
+                    .to_string(),
+                placeholder: None,
+                secret: true,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::Platform,
+                key: "siglus-parser".to_string(),
+                status: RequirementStatus::NotRequired,
+                description: "parser/runtime helpers are outside the detector-only profile"
+                    .to_string(),
+                placeholder: None,
+                secret: false,
+            },
+        ]
+    }
+
+    fn metadata(&self) -> BTreeMap<String, String> {
+        let mut metadata = BTreeMap::new();
+        metadata.insert("fixtureOnly".to_string(), "true".to_string());
+        metadata.insert(
+            "profileDiagnostics.missingPair".to_string(),
+            (!self.scene_signature || !self.gameexe_signature).to_string(),
+        );
+        metadata.insert(
+            "profileDiagnostics.unknownVariant".to_string(),
+            (self.variant == SiglusFixtureVariant::UnknownNamedPair).to_string(),
+        );
+        metadata.insert(
+            "profileDiagnostics.encryptedPayload".to_string(),
+            self.scene_signature.to_string(),
+        );
+        metadata.insert(
+            "profileDiagnostics.unsupportedParserBoundary".to_string(),
+            "true".to_string(),
+        );
+        metadata.insert(
+            "supportBoundary".to_string(),
+            SIGLUS_SUPPORT_BOUNDARY.to_string(),
+        );
+        metadata
+    }
+}
+
+impl EngineAdapter for SiglusProfileDetectorAdapter {
+    fn id(&self) -> &'static str {
+        SIGLUS_DETECTOR_ADAPTER_ID
+    }
+
+    fn name(&self) -> &'static str {
+        "Kaifuu Siglus detector profile fixture adapter"
+    }
+
+    fn capabilities(&self) -> AdapterCapabilities {
+        let identify = LayeredAccessOperationContract {
+            status: CapabilityStatus::Supported,
+            required_capabilities: vec![Capability::Detection, Capability::ProfileGeneration],
+            supported_surfaces: vec![SurfaceTransform::Identity],
+            supported_containers: vec![ContainerTransform::LooseFile, ContainerTransform::SiglusPck],
+            supported_crypto: vec![CryptoTransform::Unknown],
+            supported_codecs: vec![CodecTransform::Unknown],
+            supported_patch_back: vec![PatchBackTransform::Unsupported],
+            support_boundary: Some("identify/profile generation reads only synthetic file names, signatures, and source hashes".to_string()),
+        };
+        let inventory = LayeredAccessOperationContract {
+            status: CapabilityStatus::Supported,
+            required_capabilities: vec![Capability::AssetListing, Capability::AssetInventory],
+            supported_surfaces: vec![SurfaceTransform::Identity, SurfaceTransform::ArchiveEntry, SurfaceTransform::BinaryOffset],
+            supported_containers: vec![ContainerTransform::LooseFile, ContainerTransform::SiglusPck],
+            supported_crypto: vec![CryptoTransform::Unknown],
+            supported_codecs: vec![CodecTransform::Unknown],
+            supported_patch_back: vec![PatchBackTransform::Unsupported],
+            support_boundary: Some("inventory reports only top-level Scene.pck/Gameexe.dat assets and hashes; no archive entry parser is claimed".to_string()),
+        };
+        let unsupported = |required_capabilities| LayeredAccessOperationContract {
+            status: CapabilityStatus::Unsupported,
+            required_capabilities,
+            supported_surfaces: vec![],
+            supported_containers: vec![],
+            supported_crypto: vec![],
+            supported_codecs: vec![],
+            supported_patch_back: vec![],
+            support_boundary: Some(SIGLUS_SUPPORT_BOUNDARY.to_string()),
+        };
+        AdapterCapabilities::new(
+            SIGLUS_DETECTOR_ADAPTER_ID,
+            vec![
+                CapabilityReport::supported(Capability::Detection),
+                CapabilityReport::supported(Capability::ProfileGeneration),
+                CapabilityReport::supported(Capability::AssetListing),
+                CapabilityReport::supported(Capability::AssetInventory),
+                CapabilityReport::unsupported(
+                    Capability::Extraction,
+                    "KAIFUU-091 is a Siglus detector/profile fixture only",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::Patching,
+                    "KAIFUU-091 does not patch or rebuild Siglus assets",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::ContainerAccess,
+                    "Scene.pck archive parsing is outside the detector profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::CryptoAccess,
+                    "encrypted Siglus payload handling is outside the detector profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::CodecAccess,
+                    "Siglus script decode/decompile support is outside the detector profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::PatchBack,
+                    "Siglus patch-back/repack support is outside the detector profile",
+                ),
+                CapabilityReport::requires_user_input(
+                    Capability::KeyProfile,
+                    "encrypted payload diagnostics name the key requirement, but no key support is claimed",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::RuntimeVm,
+                    "runtime support belongs to future Utsushi/Siglus work, not this detector fixture",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::EncryptedInput,
+                    "encrypted payloads are identified only and are never decrypted by this profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::AssetTextPatching,
+                    "no Siglus text surfaces are patched by this detector profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::DeltaPatching,
+                    ".kaifuu delta packages do not apply to detector-only Siglus profiles",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::NonTextSurfaceExtraction,
+                    "no non-text extraction or OCR is performed for Siglus detector fixtures",
+                ),
+            ],
+        )
+        .with_access_contract(LayeredAccessCapabilityContract {
+            identify,
+            inventory,
+            extract: unsupported(vec![Capability::Extraction]),
+            patch: unsupported(vec![Capability::Patching, Capability::PatchBack]),
+        })
+    }
+
+    fn detect(&self, request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+        let state = Self::inspect(request.game_dir);
+        let detected = Self::is_detected(state.variant);
+        let mut result = DetectionResult {
+            adapter_id: SIGLUS_DETECTOR_ADAPTER_ID.to_string(),
+            detected,
+            engine_family: detected.then(|| "siglus".to_string()),
+            engine_version: None,
+            detected_variant: detected.then(|| Self::detected_variant(state.variant).to_string()),
+            evidence: vec![
+                DetectionEvidence {
+                    path: SIGLUS_SCENE_PATH.to_string(),
+                    kind: "synthetic_siglus_scene_pck_signature".to_string(),
+                    status: evidence_status(state.scene_exists, state.scene_signature),
+                    detail: signature_detail(
+                        state.scene_exists,
+                        state.scene_signature,
+                        "Scene.pck synthetic signature",
+                    ),
+                },
+                DetectionEvidence {
+                    path: SIGLUS_GAMEEXE_PATH.to_string(),
+                    kind: "synthetic_siglus_gameexe_dat_signature".to_string(),
+                    status: evidence_status(state.gameexe_exists, state.gameexe_signature),
+                    detail: signature_detail(
+                        state.gameexe_exists,
+                        state.gameexe_signature,
+                        "Gameexe.dat synthetic signature",
+                    ),
+                },
+            ],
+            requirements: if detected {
+                state.detection_requirements()
+            } else {
+                vec![]
+            },
+            capabilities: self.capabilities().reports,
+        };
+        result.normalize();
+        Ok(result)
+    }
+
+    fn profile(&self, request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+        self.profile_from_state(Self::inspect(request.game_dir))
+    }
+
+    fn list_assets(&self, request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+        let state = Self::inspect(request.game_dir);
+        if !Self::can_inventory(state.variant) {
+            return Err("Siglus asset listing requires Scene.pck or Gameexe.dat evidence".into());
+        }
+        Ok(AssetList {
+            adapter_id: SIGLUS_DETECTOR_ADAPTER_ID.to_string(),
+            assets: state.asset_profiles(),
+        })
+    }
+
+    fn asset_inventory(
+        &self,
+        request: AssetInventoryRequest<'_>,
+    ) -> KaifuuResult<AssetInventoryManifest> {
+        self.inventory_from_state(Self::inspect(request.game_dir))
+    }
+
+    fn extract(&self, request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+        let state = Self::inspect(request.game_dir);
+        let variant = Self::detected_variant(state.variant);
+        Err(Self::parser_boundary_failure(variant).error_code.into())
+    }
+
+    fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
+        let state = Self::inspect(request.game_dir);
+        Ok(self
+            .unsupported_patch_result(request.patch_export.patch_export_id.clone(), state.variant))
+    }
+
+    fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+        let state = Self::inspect(request.game_dir);
+        Ok(self
+            .unsupported_patch_result(request.patch_export.patch_export_id.clone(), state.variant))
+    }
+
+    fn verify(&self, request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+        let state = Self::inspect(request.game_dir);
+        let variant = Self::detected_variant(state.variant).to_string();
+        Ok(VerificationResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("siglus-verify", 91),
+            status: OperationStatus::Failed,
+            output_hash: content_hash(SIGLUS_SUPPORT_BOUNDARY),
+            failures: vec![Self::unsupported_failure(
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                Capability::RuntimeVm,
+                variant,
+                SIGLUS_SCENE_PATH,
+                "runtime/parser verification is outside the Siglus detector profile",
+                "use detect, profile, or asset-inventory only",
+            )],
+        })
+    }
+}
+
+fn file_starts_with(path: &Path, expected: &[u8]) -> bool {
+    fs::read(path)
+        .map(|bytes| bytes.starts_with(expected))
+        .unwrap_or(false)
+}
+
+fn evidence_status(exists: bool, signature_matches: bool) -> EvidenceStatus {
+    if signature_matches {
+        EvidenceStatus::Matched
+    } else if exists {
+        EvidenceStatus::Invalid
+    } else {
+        EvidenceStatus::Missing
+    }
+}
+
+fn signature_detail(exists: bool, signature_matches: bool, label: &str) -> String {
+    match (exists, signature_matches) {
+        (_, true) => format!("{label} matched"),
+        (true, false) => {
+            format!("{label} is present but does not match the synthetic fixture signature")
+        }
+        (false, false) => format!("{label} is missing"),
+    }
+}
+
 pub fn registry() -> kaifuu_core::AdapterRegistry {
     let mut registry = kaifuu_core::AdapterRegistry::new();
     registry.register(FixtureAdapter);
+    registry.register(SiglusProfileDetectorAdapter);
     registry
 }
 

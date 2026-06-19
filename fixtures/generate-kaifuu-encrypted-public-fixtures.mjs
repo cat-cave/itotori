@@ -1,12 +1,20 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fixtureRoot = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix");
 const manifestPath = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix.manifest.json");
+const preservedExpectedOutputs = [
+  "expected/siglus-asset-inventory-v0.1.json",
+  "expected/siglus-detection-report-v0.1.json",
+  "expected/siglus-detector-profile-v0.1.json",
+].map((relativePath) => ({
+  relativePath,
+  content: readExistingFixtureFile(relativePath),
+}));
 
 const files = [];
 
@@ -417,6 +425,12 @@ writeJson(
   "expected-output",
 );
 
+for (const output of preservedExpectedOutputs) {
+  if (output.content) {
+    writeBytes(output.relativePath, output.content, "expected-output", "application/json");
+  }
+}
+
 writeManifest();
 
 function keyProfile(input) {
@@ -548,7 +562,7 @@ function writeManifest() {
       provenance: {
         author: "Kaifuu fixture authors",
         creationMethod:
-          "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, and negative profile fixtures.",
+        "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved Siglus detector expected outputs.",
         rawAssetPolicy: "contains-no-copyrighted-game-assets",
       },
     },
@@ -580,7 +594,7 @@ function writeManifest() {
         "unknown-synthetic-archive-signals",
       ],
       notes:
-        "All bytes are generated fixture-only data. Public helper results cover missing_key, helper_required, helper_unavailable, validation_failed, and redaction_failure paths; negative profiles cover raw-key-looking and private-path-looking secret refs.",
+        "All bytes are generated fixture-only data. Public helper results cover missing_key, helper_required, helper_unavailable, validation_failed, and redaction_failure paths; Siglus detector expected outputs cover identify/profile/inventory-only boundaries; negative profiles cover raw-key-looking and private-path-looking secret refs.",
     },
     benchmarkUse: {
       allowedInPublicCi: true,
@@ -616,6 +630,11 @@ function writeFile(path, content) {
 
 function readFile(path) {
   return readFileSync(path);
+}
+
+function readExistingFixtureFile(relativePath) {
+  const path = resolve(fixtureRoot, relativePath);
+  return existsSync(path) ? readFileSync(path) : null;
 }
 
 function bytes(text) {
