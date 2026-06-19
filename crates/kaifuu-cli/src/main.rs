@@ -453,8 +453,8 @@ fn run_key_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Err
             if required_capabilities.is_empty() {
                 return Err("run-process requires at least one --capability".into());
             }
-            if entry.execution_policy.mode == HelperExecutionMode::Disallowed {
-                let policy_report = helper_execution_policy_disallowed_report(
+            if entry.execution_policy.mode != HelperExecutionMode::LocalProcess {
+                let policy_report = helper_execution_policy_requires_local_process_report(
                     &helper_id,
                     allowlist_entry_id,
                     platform,
@@ -533,7 +533,7 @@ fn run_key_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Err
     Ok(())
 }
 
-fn helper_execution_policy_disallowed_report(
+fn helper_execution_policy_requires_local_process_report(
     helper_id: &str,
     allowlist_entry_id: &str,
     platform: &str,
@@ -553,7 +553,8 @@ fn helper_execution_policy_disallowed_report(
             observed_hash: None,
             platform: redact_for_log_or_report(platform),
             remediation_code: "select_allowed_helper_policy".to_string(),
-            message: "helper registry execution policy disallows local process launch".to_string(),
+            message: "helper registry execution policy must be local_process for process launch"
+                .to_string(),
         }],
     }
 }
@@ -1553,6 +1554,67 @@ printf launched > '{}'
         let serialized = fs::read_to_string(&output).unwrap();
         assert!(!serialized.contains(marker.to_str().unwrap()));
         assert!(!serialized.contains(helper.to_str().unwrap()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn key_helper_run_process_fixture_policy_blocks_before_allowlist() {
+        let root = temp_dir("key-helper-run-process-fixture-policy");
+        let helper = root.join("helper-stub");
+        let marker = root.join("launched-marker");
+        let output = root.join("process-report.json");
+        write_executable_stub(
+            &helper,
+            &format!(
+                r#"#!/bin/sh
+printf launched > '{}'
+"#,
+                marker.display()
+            ),
+        );
+        let registry = write_process_helper_registry_entry(&root, &helper);
+        let mut registry_value: serde_json::Value = read_json(&registry).unwrap();
+        registry_value["executionPolicy"]["mode"] = serde_json::json!("fixture_in_process");
+        registry_value["binaryAllowlist"]["entries"][0]["sha256Hash"] = serde_json::json!(
+            "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+        );
+        fs::write(
+            &registry,
+            serde_json::to_string_pretty(&registry_value).unwrap(),
+        )
+        .unwrap();
+
+        let mut args = vec!["key-helper".to_string(), "run-process".to_string()];
+        args.extend(allowlisted_process_args(&registry, &helper));
+        args.extend([
+            "--timeout-ms".to_string(),
+            "1000".to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+        let result = run_with_args(args);
+
+        assert!(result.is_err());
+        assert!(
+            !marker.exists(),
+            "helper launched despite fixture-in-process policy"
+        );
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(report["observedHash"], serde_json::Value::Null);
+        assert!(
+            report["diagnostics"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|diagnostic| diagnostic["code"]
+                    == kaifuu_core::SEMANTIC_HELPER_EXECUTION_DISALLOWED
+                    && diagnostic["field"] == "executionPolicy.mode")
+        );
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains(marker.to_str().unwrap()));
+        assert!(!serialized.contains(helper.to_str().unwrap()));
+        assert!(!serialized.contains(kaifuu_core::SEMANTIC_HELPER_ALLOWLIST_HASH_MISMATCH));
     }
 
     #[cfg(unix)]
