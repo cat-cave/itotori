@@ -6,12 +6,16 @@ import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
+import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
 import {
   catalogSourceProvenance,
   catalogSourceRecordKindValues,
   catalogSourceValues,
   findings,
+  glossaryReviewItemStateValues,
+  sourceRevisions,
+  styleGuideVersionStatusValues,
   terminologyAliasKindValues,
   terminologyConflictEvidence,
   terminologyConflictKindValues,
@@ -20,6 +24,7 @@ import {
   terminologySemanticIndexStatusValues,
   terminologySourceReferenceKindValues,
   terminologyTermKindValues,
+  terminologyTermStatusValues,
   terminologyTerms,
 } from "../src/schema.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -593,6 +598,250 @@ describe("ItotoriTerminologyRepository", () => {
       await context.close();
     }
   });
+
+  it("reads glossary context with style guide, provenance, protected spans, and review items", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      await seedApprovedGlossaryPolicy(context.db);
+      const repository = new ItotoriTerminologyRepository(context.db);
+      await repository.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-context-crimson-moon",
+        sourceTerm: "紅月",
+        preferredTranslation: "Crimson Moon",
+        sourceReferences: [
+          {
+            sourceRefId: "source-ref-context-crimson-moon",
+            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+            bridgeUnitId: "bridge-unit-term",
+            referenceKind: terminologySourceReferenceKindValues.sourceUnit,
+            citation: "terminology.scene.001.line.001",
+            context: "Policy fixture includes a protected placeholder near the term.",
+          },
+        ],
+      });
+
+      const reviewItem = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-context-crimson-moon",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceTerm: "紅月",
+        proposedTranslation: "Crimson Moon",
+        sourceReferences: [
+          {
+            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+            bridgeUnitId: "bridge-unit-term",
+            citation: "terminology.scene.001.line.001",
+          },
+        ],
+        provenance: { fixture: "policy-aware-glossary" },
+      });
+
+      await expect(
+        repository.getGlossaryContext(localActor, {
+          localeBranchId: "locale-en-us",
+          termId: "term-context-crimson-moon",
+          sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        }),
+      ).resolves.toMatchObject({
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        styleGuideVersionId: "style-guide-version-glossary-policy",
+        term: {
+          termId: "term-context-crimson-moon",
+          localeBranchId: "locale-en-us",
+          preferredTranslation: "Crimson Moon",
+        },
+        termProvenance: [
+          expect.objectContaining({
+            sourceRefId: "source-ref-context-crimson-moon",
+            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+            bridgeUnitId: "bridge-unit-term",
+            citation: "terminology.scene.001.line.001",
+          }),
+        ],
+        protectedSpanReferences: [
+          expect.objectContaining({
+            bridgeUnitId: "bridge-unit-term",
+            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+            raw: "{player}",
+            preserveMode: "exact",
+          }),
+        ],
+        reviewItems: [
+          expect.objectContaining({
+            reviewItemId: reviewItem.reviewItemId,
+            state: glossaryReviewItemStateValues.proposed,
+            provenance: expect.objectContaining({
+              fixture: "policy-aware-glossary",
+              localeBranchId: "locale-en-us",
+              sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+              styleGuideVersionId: "style-guide-version-glossary-policy",
+            }),
+          }),
+        ],
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("persists proposed, approved, rejected, conflict, and stale-source review states with stable ids", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      await seedApprovedGlossaryPolicy(context.db);
+      await context.db.insert(sourceRevisions).values({
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-stale",
+        projectId: "project-terminology",
+        revisionKind: "content_hash",
+        value: "stale-source-hash",
+      });
+      const repository = new ItotoriTerminologyRepository(context.db);
+      await repository.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-approved-hero",
+        sourceTerm: "勇者",
+        preferredTranslation: "Hero",
+        termKind: terminologyTermKindValues.characterName,
+      });
+
+      const proposed = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceTerm: "紅月",
+        proposedTranslation: "Crimson Moon",
+      });
+      const proposedAgain = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceTerm: "紅月",
+        proposedTranslation: "Crimson Moon",
+        metadata: { reviewerQueueFixture: "same-proposal" },
+      });
+      const explicitlyApprovedProposal = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceTerm: "紅月",
+        proposedTranslation: "Crimson Moon",
+        state: glossaryReviewItemStateValues.approved,
+      });
+      const approved = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        state: glossaryReviewItemStateValues.approved,
+        sourceTerm: "司書",
+        proposedTranslation: "Archivist",
+      });
+      const approvedDuplicate = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceTerm: "司書",
+        proposedTranslation: "Archivist",
+      });
+      const rejected = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        state: glossaryReviewItemStateValues.rejected,
+        sourceTerm: "門",
+        proposedTranslation: "Portal",
+      });
+      const rejectedDuplicate = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceTerm: "門",
+        proposedTranslation: "Portal",
+      });
+      const conflict = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        sourceTerm: "勇者",
+        proposedTranslation: "Brave",
+      });
+      const stale = await repository.upsertGlossaryReviewItem(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-stale",
+        sourceTerm: "古い名",
+        proposedTranslation: "Old Name",
+      });
+
+      expect(proposedAgain.reviewItemId).toBe(proposed.reviewItemId);
+      expect(explicitlyApprovedProposal.reviewItemId).toBe(proposed.reviewItemId);
+      expect(approvedDuplicate.reviewItemId).toBe(approved.reviewItemId);
+      expect(rejectedDuplicate.reviewItemId).toBe(rejected.reviewItemId);
+      expect(proposed.reviewItemId).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u,
+      );
+      expect([
+        proposedAgain.state,
+        explicitlyApprovedProposal.state,
+        approved.state,
+        approvedDuplicate.state,
+        rejected.state,
+        rejectedDuplicate.state,
+        conflict.state,
+        stale.state,
+      ]).toEqual([
+        glossaryReviewItemStateValues.proposed,
+        glossaryReviewItemStateValues.approved,
+        glossaryReviewItemStateValues.approved,
+        glossaryReviewItemStateValues.approved,
+        glossaryReviewItemStateValues.rejected,
+        glossaryReviewItemStateValues.rejected,
+        glossaryReviewItemStateValues.conflict,
+        glossaryReviewItemStateValues.staleSource,
+      ]);
+      expect(conflict.semanticDiagnostics).toEqual([
+        expect.objectContaining({
+          code: "glossary_review.proposal.preferred_translation_conflict",
+          severity: "error",
+          provenance: expect.objectContaining({
+            conflictingTermIds: ["term-approved-hero"],
+            approvedTranslations: ["Hero"],
+          }),
+        }),
+      ]);
+      expect(stale.semanticDiagnostics).toEqual([
+        expect.objectContaining({
+          code: "glossary_review.source_revision.stale",
+          severity: "warning",
+          provenance: expect.objectContaining({
+            currentSourceBundleId: "bridge-terminology",
+          }),
+        }),
+      ]);
+
+      await expect(
+        repository.listGlossaryReviewItems(localActor, {
+          localeBranchId: "locale-en-us",
+          state: glossaryReviewItemStateValues.conflict,
+        }),
+      ).resolves.toEqual([expect.objectContaining({ reviewItemId: conflict.reviewItemId })]);
+
+      const approvedTermRows = await context.db
+        .select({ termId: terminologyTerms.termId, status: terminologyTerms.status })
+        .from(terminologyTerms)
+        .where(eq(terminologyTerms.termId, "term-approved-hero"));
+      expect(approvedTermRows).toEqual([
+        { termId: "term-approved-hero", status: terminologyTermStatusValues.active },
+      ]);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 function projectFixture(): ItotoriProjectRecord {
@@ -617,9 +866,11 @@ function projectFixture(): ItotoriProjectRecord {
           occurrenceId: "occurrence-term-1",
           sourceHash: "source-hash-term",
           sourceLocale: "ja-JP",
-          sourceText: "紅月が昇る。",
+          sourceText: "紅月{player}が昇る。",
           textSurface: "dialogue",
-          protectedSpans: [],
+          protectedSpans: [
+            { kind: "placeholder", raw: "{player}", start: 6, end: 14, preserveMode: "exact" },
+          ],
           patchRef: {
             assetId: "source.json",
             writeMode: "replace",
@@ -671,4 +922,44 @@ async function seedProject(db: ItotoriDatabase): Promise<void> {
   const repo = new ItotoriProjectRepository(db);
   await repo.reset(localActor);
   await repo.importSourceBundle(localActor, projectFixture());
+}
+
+async function seedApprovedGlossaryPolicy(db: ItotoriDatabase): Promise<void> {
+  const repo = new ItotoriStyleGuideRepository(db);
+  await repo.createVersion(localActor, {
+    projectId: "project-terminology",
+    localeBranchId: "locale-en-us",
+    styleGuideVersionId: "style-guide-version-glossary-policy",
+    status: styleGuideVersionStatusValues.approved,
+    policy: {
+      schemaVersion: "itotori.style-guide.policy.v1",
+      sections: {
+        terminology: [
+          {
+            termId: "term-context-crimson-moon",
+            sourceTerm: "紅月",
+            preferredTranslation: "Crimson Moon",
+            provenance: {
+              sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+              citation: "terminology.scene.001.line.001",
+            },
+          },
+        ],
+        protectedSpans: [
+          {
+            bridgeUnitId: "bridge-unit-term",
+            raw: "{player}",
+            preserveMode: "exact",
+          },
+        ],
+      },
+    },
+    semanticDiagnostics: [
+      {
+        code: "glossary_policy.fixture.ready",
+        severity: "info",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+      },
+    ],
+  });
 }

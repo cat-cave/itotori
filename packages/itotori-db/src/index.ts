@@ -46,6 +46,7 @@ export {
   catalogSourceRecordKindValues,
   catalogSourceValues,
   catalogTranslationPortabilityValues,
+  glossaryReviewItemStateValues,
   terminologyAliasKindValues,
   terminologyConflictKindValues,
   terminologyConflictStatusValues,
@@ -77,6 +78,7 @@ export type {
   CatalogSource,
   CatalogSourceRecordKind,
   CatalogTranslationPortability,
+  GlossaryReviewItemState,
   JobIdempotencyPolicy,
   JobStatus,
   JobTaskType,
@@ -197,6 +199,13 @@ export {
 } from "./repositories/terminology-repository.js";
 export type {
   ItotoriTerminologyRepositoryPort,
+  GlossaryContextInput,
+  GlossaryContextReadModel,
+  GlossaryProtectedSpanReference,
+  GlossaryReviewItemFilter,
+  GlossaryReviewItemRecord,
+  GlossaryReviewItemSourceReferenceInput,
+  GlossaryTermProvenance,
   TerminologyAliasInput,
   TerminologyAliasRecord,
   TerminologyConflictFilter,
@@ -213,6 +222,7 @@ export type {
   TerminologyTermRecord,
   UpsertTerminologyTermInput,
   UpsertTerminologyTermResult,
+  UpsertGlossaryReviewItemInput,
 } from "./repositories/terminology-repository.js";
 export {
   affectedWorkInvalidatedPayloadSchemaVersion,
