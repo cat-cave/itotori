@@ -1,8 +1,8 @@
 {
   "schemaVersion": "0.1.0",
-  "fixtureId": "kaifuu-helper-unsupported-protected-executable",
-  "helperResultId": "helper-result-unsupported-protected-executable",
-  "profileId": "019ed000-0000-7000-8000-profile00085",
+  "fixtureId": "kaifuu-key-helper-authorization-denied",
+  "helperResultId": "helper-result-key-helper-authorization-denied",
+  "profileId": "019ed000-0000-7000-8000-profile00037",
   "helper": {
     "helperId": "kaifuu.fixture.remote-windows",
     "helperVersion": "0.1.0",
@@ -19,12 +19,12 @@
     "filesystemAccess": "localGameReadOnly"
   },
   "diagnostic": {
-    "code": "unsupported_protected_executable",
-    "message": "synthetic protected executable boundary is not supported by this helper"
+    "code": "helper_authorization_denied",
+    "message": "synthetic remote Windows helper authorization is denied"
   },
   "redaction": {
     "status": "redacted",
-    "redactedLogHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    "redactedLogHash": "sha256:3434343434343434343434343434343434343434343434343434343434343434"
   },
   "secretRefs": [],
   "proofHashes": []

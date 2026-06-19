@@ -8,6 +8,16 @@
     "helperVersion": "0.1.0",
     "helperKind": "knownKeyDatabaseImport"
   },
+  "capabilityLevel": "localKeyImport",
+  "execution": {
+    "mode": "notExecuted",
+    "platform": "fixture-local",
+    "bounded": true,
+    "timeoutMs": 1000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "none"
+  },
   "diagnostic": {
     "code": "success",
     "message": "synthetic known-key import persisted only local key refs and hash metadata"

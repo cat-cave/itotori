@@ -8,6 +8,16 @@
     "helperVersion": "0.1.0",
     "helperKind": "wineLocalWindowsHelper"
   },
+  "capabilityLevel": "wineLocal",
+  "execution": {
+    "mode": "platformHelper",
+    "platform": "wine-fixture",
+    "bounded": true,
+    "timeoutMs": 5000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "localGameReadOnly"
+  },
   "diagnostic": {
     "code": "helper_unavailable",
     "message": "synthetic Wine helper is unavailable on this runner"

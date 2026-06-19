@@ -9,10 +9,11 @@ use kaifuu_core::{
     HelperRedactionStatus, KaifuuResult, LocalKeyImportRequest, LocalKeyImportSource,
     LocalSecretDirectoryStore, PatchExport, PatchPreflightRequest, PatchRequest, PatchResult,
     ProfileRequest, ProofHash, SecretRef, VerifyRequest, atomic_write_text,
-    fixture_helper_registry, parse_helper_capability, parse_hex_bytes,
-    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
-    run_round_trip_golden, sha256_hash_bytes, validate_helper_registry_entry_value,
-    validate_helper_result_value, validate_offset_map_value, validate_profile_value, write_json,
+    fixture_helper_registry, normalize_helper_result_value, parse_helper_capability,
+    parse_hex_bytes, promote_staged_directory_no_clobber, read_json, redact_for_log_or_report,
+    redact_report_value, run_round_trip_golden, sha256_hash_bytes,
+    validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
+    validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -153,6 +154,9 @@ fn run_with_args_and_registry(
         Some("helper-result") => {
             run_helper_result_command(&args)?;
         }
+        Some("key-helper") => {
+            run_key_helper_command(&args)?;
+        }
         Some("helper-registry") => {
             run_helper_registry_command(&args)?;
         }
@@ -173,7 +177,7 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|helper-registry|key|profile|capabilities> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|profile|capabilities> ..."
                     .into(),
             );
         }
@@ -371,6 +375,42 @@ fn run_helper_result_command(args: &[String]) -> Result<(), Box<dyn std::error::
         _ => {
             return Err(
                 "usage: kaifuu helper-result validate <helper-result.json> --output <report.json>"
+                    .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run_key_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    match positional(args, 1)? {
+        "validate" => {
+            let fixture = PathBuf::from(flag(args, "--fixture")?);
+            let output = PathBuf::from(flag(args, "--output")?);
+            let value: serde_json::Value = read_json(&fixture)?;
+            match normalize_helper_result_value(&value) {
+                Ok(result) => {
+                    atomic_write_text(&output, &result.stable_json()?)?;
+                }
+                Err(validation) => {
+                    write_json(&output, &validation)?;
+                    return Err(format!(
+                        "key helper fixture validation failed for {}: {}",
+                        validation.fixture_id.as_deref().unwrap_or("<unknown>"),
+                        validation
+                            .failures
+                            .iter()
+                            .map(|failure| format!("{}:{}", failure.field, failure.code))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                    .into());
+                }
+            }
+        }
+        _ => {
+            return Err(
+                "usage: kaifuu key-helper validate --fixture <helper-result.json> --output <normalized-helper-result.json>"
                     .into(),
             );
         }
@@ -987,6 +1027,67 @@ mod tests {
         assert_eq!(report["status"], "passed");
         assert_eq!(report["fixtureId"], "kaifuu-helper-success");
         assert_eq!(report["failures"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn key_helper_validate_command_writes_normalized_helper_result_contract() {
+        let root = temp_dir("key-helper-valid");
+        let output = root.join("normalized-helper-result.json");
+        let fixture = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/key-helper/manual-entry.json",
+        );
+
+        run_cli(&[
+            "key-helper",
+            "validate",
+            "--fixture",
+            fixture.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let result: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(result["fixtureId"], "kaifuu-key-helper-manual-entry");
+        assert_eq!(result["helper"]["helperKind"], "manualKeyEntry");
+        assert_eq!(result["capabilityLevel"], "manualEntry");
+        assert_eq!(result["execution"]["mode"], "notExecuted");
+        assert_eq!(result["execution"]["bounded"], true);
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("rawKey"));
+        assert!(!serialized.contains("keyMaterial"));
+        assert!(!serialized.contains("command"));
+    }
+
+    #[test]
+    fn key_helper_validate_command_rejects_arbitrary_command_metadata() {
+        let root = temp_dir("key-helper-invalid");
+        let output = root.join("key-helper-report.json");
+        let fixture = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/invalid/execution-command-field.json",
+        );
+
+        let result = run_with_args(vec![
+            "key-helper".to_string(),
+            "validate".to_string(),
+            "--fixture".to_string(),
+            fixture.to_str().unwrap().to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+
+        assert!(result.is_err());
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert!(
+            report["failures"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|failure| failure["field"] == "execution.command"
+                    && failure["code"] == "forbidden_helper_execution_field")
+        );
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("fixture-helper --dump"));
     }
 
     #[test]
