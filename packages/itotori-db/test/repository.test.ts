@@ -36,6 +36,10 @@ import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriProjectRecord {
   const project: ItotoriProjectRecord = {
     projectId: "project-test",
@@ -2508,7 +2512,16 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
-  it("rejects traversal and raw runtime artifact paths", async () => {
+  it("rejects non-portable runtime artifact refs before storage conversion", async () => {
+    const invalidRuntimeArtifactUris = [
+      ["current-directory dot segment", "./capture.png"],
+      ["parent-directory dot segment", "../capture.png"],
+      ["nested parent-directory dot segment", "artifacts/utsushi/../capture.png"],
+      ["URI scheme", "https://example.invalid/capture.png"],
+      ["embedded data URI", "data:image/png;base64,AAAA"],
+      ["absolute POSIX path", "/tmp/runtime/frame.png"],
+      ["Windows path", "C:\\runtime\\frame.png"],
+    ] as const;
     const context = await migratedContext();
     try {
       const repo = new ItotoriProjectRepository(context.db);
@@ -2516,70 +2529,53 @@ describe("ItotoriProjectRepository", () => {
       const project = projectFixture();
       await repo.importSourceBundle(localActor, project);
 
-      const runtimeReport = {
-        schemaVersion: "0.1.0" as const,
-        runtimeReportId: "runtime-path-test",
-        adapterName: "utsushi-fixture",
-        fidelityTier: "layout_probe",
-        status: "passed" as const,
-        textEvents: [],
-        frameCaptures: [
-          {
-            frameCaptureId: "frame-path-test",
-            bridgeUnitId: "bridge-unit-test",
-            width: 320,
-            height: 180,
-            nonZeroPixels: 57600,
-            artifactPath: "../capture.png",
-          },
-        ],
-        approximations: [],
-      };
+      for (const [_label, uri] of invalidRuntimeArtifactUris) {
+        const runtimeReport = {
+          schemaVersion: "0.1.0" as const,
+          runtimeReportId: "runtime-path-test",
+          adapterName: "utsushi-fixture",
+          fidelityTier: "layout_probe",
+          status: "passed" as const,
+          textEvents: [],
+          frameCaptures: [
+            {
+              frameCaptureId: "frame-path-test",
+              bridgeUnitId: "bridge-unit-test",
+              width: 320,
+              height: 180,
+              nonZeroPixels: 57600,
+              artifactPath: uri,
+            },
+          ],
+          approximations: [],
+        };
 
-      await expect(
-        repo.saveRuntimeReport(localActor, project, runtimeReport, "patch-result-traversal"),
-      ).rejects.toThrow(/portable relative artifact path/);
+        await expect(
+          repo.saveRuntimeReport(localActor, project, runtimeReport, "patch-result-traversal"),
+        ).rejects.toThrow(new RegExp(`portable relative artifact path.*${escapeRegExp(uri)}`));
 
-      await expect(
-        repo.saveRuntimeReport(
-          localActor,
-          project,
-          {
-            ...runtimeReport,
-            runtimeReportId: "runtime-raw-test",
-            frameCaptures: [
-              {
-                ...runtimeReport.frameCaptures[0]!,
-                frameCaptureId: "frame-raw-test",
-                artifactPath: "data:image/png;base64,AAAA",
-              },
-            ],
-          },
-          "patch-result-raw",
-        ),
-      ).rejects.toThrow(/portable relative artifact path/);
-
-      await expect(
-        repo.saveRuntimeReport(
-          localActor,
-          project,
-          runtimeEvidenceReportFixture({
-            runtimeReportId: "019ed003-0000-7000-8000-000000000903",
-            captures: [
-              {
-                ...runtimeEvidenceReportFixture().captures[0]!,
-                captureId: "019ed003-0000-7000-8000-000000000923",
-                artifactRef: {
-                  ...runtimeEvidenceReportFixture().captures[0]!.artifactRef,
-                  artifactId: "019ed003-0000-7000-8000-000000000934",
-                  uri: "../capture.png",
+        await expect(
+          repo.saveRuntimeReport(
+            localActor,
+            project,
+            runtimeEvidenceReportFixture({
+              runtimeReportId: "019ed003-0000-7000-8000-000000000903",
+              captures: [
+                {
+                  ...runtimeEvidenceReportFixture().captures[0]!,
+                  captureId: "019ed003-0000-7000-8000-000000000923",
+                  artifactRef: {
+                    ...runtimeEvidenceReportFixture().captures[0]!.artifactRef,
+                    artifactId: "019ed003-0000-7000-8000-000000000934",
+                    uri,
+                  },
                 },
-              },
-            ],
-          }),
-          "019ed003-0000-7000-8000-000000000983",
-        ),
-      ).rejects.toThrow(/portable relative artifact path/);
+              ],
+            }),
+            "019ed003-0000-7000-8000-000000000983",
+          ),
+        ).rejects.toThrow(new RegExp(`portable relative artifact path.*${escapeRegExp(uri)}`));
+      }
     } finally {
       await context.close();
     }
