@@ -19146,6 +19146,80 @@
       ]
     },
     {
+      "id": "CATALOG-088",
+      "status": "planned",
+      "title": "Platform-compatible conflict demotion",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-070"],
+      "summary": "Prevent platform-language conflict augmentation from demoting benchmark candidates when official target-language evidence and candidate gap evidence refer to incompatible platform scopes.",
+      "deliverables": [
+        "Platform compatibility rule for platform-language conflict candidates",
+        "Fixture cases for same-platform, work-scoped, cross-platform-declared, and incompatible-platform evidence",
+        "Ranking regression proving incompatible-platform conflicts remain review-only and do not benchmark-demote"
+      ],
+      "acceptanceCriteria": [
+        "Official target-language evidence can demote only when candidate evidence is on the same platform, work-scoped, or explicitly declared cross-platform comparable.",
+        "Official platform A evidence against platform B-only gap evidence remains unknown or review-only rather than a benchmark demotion.",
+        "Conflict metadata records the compatibility basis used for each candidate gap.",
+        "Public fixture tests cover official English on one platform versus candidate none on a different platform."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- platform-language-conflicts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- platform-language-conflicts"
+        }
+      ],
+      "auditFocus": [
+        "False benchmark demotion from platform-scoped evidence",
+        "Compatibility metadata too vague for reviewer triage",
+        "Cross-platform declarations accepted without explicit evidence"
+      ]
+    },
+    {
+      "id": "CATALOG-089",
+      "status": "planned",
+      "title": "Recorded conflict per-evidence provenance",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-070"],
+      "summary": "Preserve per-evidence source provenance when recorded importer conflict payloads are converted into repository conflict rows and later surfaced in review or demotion output.",
+      "deliverables": [
+        "CatalogRecordedConflictEvidenceFact sourceProvenanceId support",
+        "Recorded importer pass-through for per-evidence provenance",
+        "Repository and ranking regression tests for conflict provenance output"
+      ],
+      "acceptanceCriteria": [
+        "Recorded conflict evidence can carry its own sourceProvenanceId through import, repository storage, review output, and demotion explanations.",
+        "The importer defaults to the current importer provenance only when an evidence row omits an explicit sourceProvenanceId.",
+        "Demotion provenance names the original IGDB, Wikidata, VNDB, EGS, DLsite, or local evidence source rather than collapsing every row to the importer payload provenance.",
+        "Tests assert per-evidence provenance survives for platform-language conflict fixtures."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- platform-language-conflicts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- recorded-importers"
+        }
+      ],
+      "auditFocus": [
+        "Review/demotion provenance collapsed to the importer run",
+        "Missing fallback for evidence rows without sourceProvenanceId",
+        "Conflict evidence metadata diverging from repository evidence rows"
+      ]
+    },
+    {
       "id": "KAIFUU-155",
       "status": "planned",
       "title": "Key import shell-history-safe CLI help",
