@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-siglus-secondary-key-helper-request",
+  "helperId": "kaifuu.fixture.helper-stub",
+  "helperVersion": "0.1.0",
+  "allowlistEntryId": "kaifuu-fixture-helper-stub-allowlist",
+  "requestedCapability": "key_validation",
+  "engineProfileId": "019ed000-0000-7000-8000-000000091001",
+  "sourceHash": "sha256:9afaac8af2dd96468e97e069cb678ada48a77d9726e8ebebf1ca75e76b65d465",
+  "expectedRedactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "requiredKeyRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "keyPurpose": "siglus-secondary-key",
+      "engineProfileId": "019ed000-0000-7000-8000-000000091001",
+      "sourceHash": "sha256:9afaac8af2dd96468e97e069cb678ada48a77d9726e8ebebf1ca75e76b65d465"
+    }
+  ],
+  "keyRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/secondary-key-ref",
+      "keyPurpose": "siglus-secondary-key",
+      "engineProfileId": "019ed000-0000-7000-8000-000000091001",
+      "sourceHash": "sha256:9afaac8af2dd96468e97e069cb678ada48a77d9726e8ebebf1ca75e76b65d465",
+      "materialHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "materialKind": "fixedBytes",
+      "bytes": 16,
+      "redactionStatus": "redacted"
+    }
+  ]
+}

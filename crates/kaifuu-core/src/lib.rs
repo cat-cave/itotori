@@ -57,8 +57,14 @@ pub const SEMANTIC_HELPER_REGISTRY_FORBIDDEN_EXECUTION_FIELD: &str =
 pub const SEMANTIC_HELPER_PROFILE_FORBIDDEN_EXECUTION_FIELD: &str =
     "kaifuu.helper_profile.forbidden_execution_field";
 pub const SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE: &str = "kaifuu.key_import.wrong_engine_profile";
+pub const SEMANTIC_KEY_IMPORT_WRONG_KEY_PURPOSE: &str = "kaifuu.key_import.wrong_key_purpose";
 pub const SEMANTIC_KEY_IMPORT_HASH_MISMATCH: &str = "kaifuu.key_import.hash_mismatch";
 pub const SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION: &str = "kaifuu.forbidden_public_serialization";
+pub const SEMANTIC_HELPER_REQUEST_WRONG_HELPER: &str = "kaifuu.helper_request.wrong_helper";
+pub const SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION: &str =
+    "kaifuu.helper_request.missing_redacted_output_expectation";
+pub const SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH: &str =
+    "kaifuu.helper_request.redacted_output_mismatch";
 pub const SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY: &str = "kaifuu.helper_allowlist.missing_entry";
 pub const SEMANTIC_HELPER_ALLOWLIST_MISSING_BINARY: &str = "kaifuu.helper_allowlist.missing_binary";
 pub const SEMANTIC_HELPER_ALLOWLIST_HASH_MISMATCH: &str = "kaifuu.helper_allowlist.hash_mismatch";
@@ -5560,6 +5566,10 @@ impl HelperRegistryEntry {
         self.capabilities.contains(&capability)
     }
 
+    pub fn expected_fixture_redacted_log_hash(&self) -> &'static str {
+        "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    }
+
     pub fn validate_binary_launch(
         &self,
         request: HelperBinaryLaunchValidationRequest<'_>,
@@ -5787,6 +5797,19 @@ pub fn validate_helper_key_ref_request(input: &Value) -> Vec<LocalKeyImportDiagn
                 }),
             }
 
+            if let Some(expected_key_purpose) = required.get("keyPurpose").and_then(Value::as_str) {
+                match key_ref.get("keyPurpose").and_then(Value::as_str) {
+                    Some(key_purpose) if key_purpose == expected_key_purpose => {}
+                    _ => diagnostics.push(LocalKeyImportDiagnostic {
+                        code: SEMANTIC_KEY_IMPORT_WRONG_KEY_PURPOSE.to_string(),
+                        field: format!("{field}.keyPurpose"),
+                        message: format!(
+                            "required key ref purpose must match {expected_key_purpose}"
+                        ),
+                    }),
+                }
+            }
+
             match (
                 key_ref.get("sourceHash").and_then(Value::as_str),
                 expected_source_hash.as_deref(),
@@ -5807,6 +5830,128 @@ pub fn validate_helper_key_ref_request(input: &Value) -> Vec<LocalKeyImportDiagn
         .into_iter()
         .map(|diagnostic| diagnostic.redacted_for_report())
         .collect()
+}
+
+fn validate_helper_registry_request_binding(
+    entry: &HelperRegistryEntry,
+    capability: HelperCapability,
+    input: &Value,
+) -> Vec<LocalKeyImportDiagnostic> {
+    let mut diagnostics = Vec::new();
+
+    if let Some(helper_id) = input.get("helperId").and_then(Value::as_str)
+        && helper_id != entry.helper_id
+    {
+        diagnostics.push(LocalKeyImportDiagnostic {
+            code: SEMANTIC_HELPER_REQUEST_WRONG_HELPER.to_string(),
+            field: "helperId".to_string(),
+            message: "helper request helperId does not match the registry entry".to_string(),
+        });
+    }
+
+    if let Some(helper_version) = input.get("helperVersion").and_then(Value::as_str)
+        && helper_version != entry.helper_version
+    {
+        diagnostics.push(LocalKeyImportDiagnostic {
+            code: SEMANTIC_HELPER_ALLOWLIST_STALE_VERSION.to_string(),
+            field: "helperVersion".to_string(),
+            message: "helper request helperVersion does not match the registry entry".to_string(),
+        });
+    }
+
+    if let Some(allowlist_entry_id) = input.get("allowlistEntryId").and_then(Value::as_str)
+        && allowlist_entry_id != entry.execution_policy.allowlist_ref_id
+    {
+        diagnostics.push(LocalKeyImportDiagnostic {
+            code: SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY.to_string(),
+            field: "allowlistEntryId".to_string(),
+            message: "helper request allowlist entry does not match the registry policy"
+                .to_string(),
+        });
+    }
+
+    if let Some(requested_capability) = input.get("requestedCapability").and_then(Value::as_str) {
+        match parse_helper_capability(requested_capability) {
+            Some(capability) if entry.supports(capability) => {}
+            Some(_) => diagnostics.push(LocalKeyImportDiagnostic {
+                code: SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY.to_string(),
+                field: "requestedCapability".to_string(),
+                message: "helper registry entry does not support the requested capability"
+                    .to_string(),
+            }),
+            None => diagnostics.push(LocalKeyImportDiagnostic {
+                code: SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY.to_string(),
+                field: "requestedCapability".to_string(),
+                message: "helper request capability is not registered".to_string(),
+            }),
+        }
+    }
+
+    match input.get("expectedRedactedLogHash") {
+        Some(Value::String(expected_redacted_log_hash)) => {
+            if ProofHash::new(expected_redacted_log_hash.to_string()).is_err() {
+                diagnostics.push(LocalKeyImportDiagnostic {
+                    code: "invalid_proof_hash".to_string(),
+                    field: "expectedRedactedLogHash".to_string(),
+                    message: "expectedRedactedLogHash must be sha256:<64 lowercase hex characters>"
+                        .to_string(),
+                });
+            } else if expected_redacted_log_hash != entry.expected_fixture_redacted_log_hash() {
+                diagnostics.push(LocalKeyImportDiagnostic {
+                    code: SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH.to_string(),
+                    field: "expectedRedactedLogHash".to_string(),
+                    message: "helper redacted output hash did not match the request expectation"
+                        .to_string(),
+                });
+            }
+        }
+        Some(_) => diagnostics.push(LocalKeyImportDiagnostic {
+            code: "invalid_proof_hash".to_string(),
+            field: "expectedRedactedLogHash".to_string(),
+            message: "expectedRedactedLogHash must be sha256:<64 lowercase hex characters>"
+                .to_string(),
+        }),
+        None if helper_request_requires_redacted_log_expectation(capability, input) => {
+            diagnostics.push(LocalKeyImportDiagnostic {
+                code: SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION.to_string(),
+                field: "expectedRedactedLogHash".to_string(),
+                message: "helper request must declare expectedRedactedLogHash before success"
+                    .to_string(),
+            });
+        }
+        None => {}
+    }
+
+    diagnostics
+        .into_iter()
+        .map(|diagnostic| diagnostic.redacted_for_report())
+        .collect()
+}
+
+fn helper_request_requires_redacted_log_expectation(
+    capability: HelperCapability,
+    input: &Value,
+) -> bool {
+    capability == HelperCapability::KeyValidation
+        && input
+            .get("keyRefs")
+            .and_then(Value::as_array)
+            .is_some_and(|key_refs| {
+                key_refs.iter().any(|key_ref| {
+                    key_ref
+                        .get("requirementId")
+                        .and_then(Value::as_str)
+                        .is_some_and(|requirement_id| requirement_id == "siglus-secondary-key")
+                        && key_ref
+                            .get("secretRef")
+                            .and_then(Value::as_str)
+                            .is_some_and(|secret_ref| !secret_ref.is_empty())
+                        && key_ref
+                            .get("keyPurpose")
+                            .and_then(Value::as_str)
+                            .is_some_and(|key_purpose| key_purpose == "siglus-secondary-key")
+                })
+            })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -6831,7 +6976,11 @@ fn helper_binary_launch_failure(
 
 trait HelperExecutableAdapter {
     fn helper_id(&self) -> &'static str;
-    fn invoke(&self, entry: &HelperRegistryEntry, input: &Value) -> KaifuuResult<Value>;
+    fn invoke(
+        &self,
+        entry: &HelperRegistryEntry,
+        request: HelperRegistryInvocationRequest<'_>,
+    ) -> KaifuuResult<Value>;
 }
 
 #[derive(Default)]
@@ -6903,7 +7052,7 @@ impl HelperRegistry {
                 redact_for_log_or_report(request.helper_id)
             )
         })?;
-        let output = executable.invoke(entry, request.input)?;
+        let output = executable.invoke(entry, request)?;
         validate_helper_registry_output(entry, &output)?;
         Ok(output)
     }
@@ -6961,7 +7110,10 @@ impl FixtureHelperStubAdapter {
             schema_version: HELPER_REGISTRY_SCHEMA_VERSION.to_string(),
             helper_id: FIXTURE_HELPER_REGISTRY_ID.to_string(),
             helper_version: "0.1.0".to_string(),
-            capabilities: vec![HelperCapability::FixtureInvocation],
+            capabilities: vec![
+                HelperCapability::FixtureInvocation,
+                HelperCapability::KeyValidation,
+            ],
             input_schema_id: HELPER_REGISTRY_INPUT_SCHEMA_FIXTURE_REQUEST.to_string(),
             output_schema_id: HELPER_REGISTRY_OUTPUT_SCHEMA_HELPER_RESULT.to_string(),
             redaction_class: HelperRedactionClass::PublicFixture,
@@ -6988,7 +7140,10 @@ impl FixtureHelperStubAdapter {
                         signer: "kaifuu-public-fixtures".to_string(),
                         signature_ref: "fixtures-public-no-signature".to_string(),
                     },
-                    capabilities: vec![HelperCapability::FixtureInvocation],
+                    capabilities: vec![
+                        HelperCapability::FixtureInvocation,
+                        HelperCapability::KeyValidation,
+                    ],
                 }],
             },
         }
@@ -7000,8 +7155,23 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
         FIXTURE_HELPER_REGISTRY_ID
     }
 
-    fn invoke(&self, entry: &HelperRegistryEntry, input: &Value) -> KaifuuResult<Value> {
-        let request_diagnostics = validate_helper_key_ref_request(input);
+    fn invoke(
+        &self,
+        entry: &HelperRegistryEntry,
+        request: HelperRegistryInvocationRequest<'_>,
+    ) -> KaifuuResult<Value> {
+        let input = request.input;
+        let fixture_id = input
+            .get("fixtureId")
+            .and_then(Value::as_str)
+            .unwrap_or("kaifuu-helper-registry-key-ref-request");
+        let helper_result_id = format!("helper-result-{fixture_id}");
+        let mut request_diagnostics = validate_helper_key_ref_request(input);
+        request_diagnostics.extend(validate_helper_registry_request_binding(
+            entry,
+            request.capability,
+            input,
+        ));
         if !request_diagnostics.is_empty() {
             let code = request_diagnostics
                 .iter()
@@ -7015,6 +7185,20 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                 })
                 .or_else(|| {
                     request_diagnostics
+                        .iter()
+                        .map(|diagnostic| diagnostic.code.as_str())
+                        .find(|code| {
+                            matches!(
+                                *code,
+                                SEMANTIC_HELPER_REQUEST_WRONG_HELPER
+                                    | SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY
+                                    | SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION
+                                    | SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH
+                            )
+                        })
+                })
+                .or_else(|| {
+                    request_diagnostics
                         .first()
                         .map(|diagnostic| diagnostic.code.as_str())
                 })
@@ -7022,12 +7206,14 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
             let diagnostic_code = match code {
                 SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION => "redaction_failure",
                 SEMANTIC_MISSING_KEY_MATERIAL => "missing_key",
+                SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION => "redaction_failure",
+                SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH => "redaction_failure",
                 _ => "validation_failed",
             };
             return Ok(serde_json::json!({
                 "schemaVersion": HELPER_RESULT_SCHEMA_VERSION,
-                "fixtureId": "kaifuu-helper-registry-key-ref-request",
-                "helperResultId": "helper-result-registry-key-ref-request",
+                "fixtureId": fixture_id,
+                "helperResultId": helper_result_id,
                 "profileId": input
                     .get("engineProfileId")
                     .and_then(Value::as_str)
@@ -7053,7 +7239,7 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                 },
                 "redaction": {
                     "status": if diagnostic_code == "redaction_failure" { "failed" } else { "redacted" },
-                    "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                    "redactedLogHash": entry.expected_fixture_redacted_log_hash()
                 },
                 "secretRefs": [],
                 "proofHashes": []
@@ -7108,8 +7294,8 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                 .collect::<Vec<_>>();
             return Ok(serde_json::json!({
                 "schemaVersion": HELPER_RESULT_SCHEMA_VERSION,
-                "fixtureId": "kaifuu-helper-registry-key-ref-request",
-                "helperResultId": "helper-result-registry-key-ref-request",
+                "fixtureId": fixture_id,
+                "helperResultId": helper_result_id,
                 "profileId": input
                     .get("engineProfileId")
                     .and_then(Value::as_str)
@@ -7131,11 +7317,11 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                 },
                 "diagnostic": {
                     "code": "success",
-                    "message": "fixture helper received bounded key refs through registry boundary"
+                    "message": "fixture helper received bounded refs through registry boundary"
                 },
                 "redaction": {
                     "status": "redacted",
-                    "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                    "redactedLogHash": entry.expected_fixture_redacted_log_hash()
                 },
                 "secretRefs": secret_refs,
                 "proofHashes": proof_hashes
@@ -7168,7 +7354,7 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
             },
             "redaction": {
                 "status": "redacted",
-                "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+                "redactedLogHash": entry.expected_fixture_redacted_log_hash()
             },
             "secretRefs": [
                 {
@@ -16654,6 +16840,16 @@ mod tests {
         }
     }
 
+    fn fixture_helper_key_validation(input: &Value) -> HelperRegistryInvocationRequest<'_> {
+        HelperRegistryInvocationRequest {
+            helper_id: FIXTURE_HELPER_REGISTRY_ID,
+            helper_version: "0.1.0",
+            allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+            capability: HelperCapability::KeyValidation,
+            input,
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn helper_process_runner_redacts_output_without_command_metadata() {
@@ -17438,6 +17634,163 @@ printf launched > '{}'
     }
 
     #[test]
+    fn siglus_secondary_key_helper_boundary_fixture_matches_redacted_output() {
+        let registry = fixture_helper_registry().unwrap();
+        let request = public_helper_request_fixture_value("siglus-secondary-key-request");
+        let output = registry
+            .invoke(fixture_helper_key_validation(&request))
+            .unwrap();
+        let expected = bridge_fixture_value(
+            "fixtures/public/kaifuu-helper-results/siglus-secondary-key-helper-boundary-success.json",
+        );
+
+        assert_eq!(output, expected);
+        assert_eq!(
+            validate_helper_result_value(&output).status,
+            OperationStatus::Passed
+        );
+        assert_eq!(output["diagnostic"]["code"], "success");
+        assert_eq!(output["helper"]["helperId"], FIXTURE_HELPER_REGISTRY_ID);
+        assert_eq!(
+            output["secretRefs"][0]["requirementId"],
+            "siglus-secondary-key"
+        );
+        assert_eq!(
+            output["secretRefs"][0]["secretRef"],
+            "local-secret:fixture/siglus/secondary-key-ref"
+        );
+        assert_eq!(
+            output["redaction"]["redactedLogHash"],
+            "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+        );
+
+        let serialized_request = serde_json::to_string(&request).unwrap();
+        let serialized_output = serde_json::to_string(&output).unwrap();
+        for forbidden in [
+            "rawKey",
+            "keyMaterial",
+            "00112233445566778899aabbccddeeff",
+            "fixture-only-siglus-secondary-key-v1",
+            "decrypted script",
+            "/home/",
+            "C:\\",
+        ] {
+            assert!(!serialized_request.contains(forbidden));
+            assert!(!serialized_output.contains(forbidden));
+        }
+    }
+
+    #[test]
+    fn siglus_secondary_key_helper_boundary_requires_redacted_output_for_success_key_refs() {
+        let registry = fixture_helper_registry().unwrap();
+        let mut request = public_helper_request_fixture_value("siglus-secondary-key-request");
+        let request_object = request.as_object_mut().unwrap();
+        request_object.remove("expectedRedactedLogHash");
+        request_object.remove("requiredKeyRefs");
+
+        let output = registry
+            .invoke(fixture_helper_key_validation(&request))
+            .unwrap();
+
+        assert_eq!(output["diagnostic"]["code"], "redaction_failure");
+        assert_eq!(
+            output["diagnostic"]["message"],
+            SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION
+        );
+        assert_eq!(output["redaction"]["status"], "failed");
+        assert_eq!(output["secretRefs"], serde_json::json!([]));
+        assert_eq!(
+            validate_helper_result_value(&output).status,
+            OperationStatus::Passed
+        );
+
+        let serialized = serde_json::to_string(&output).unwrap();
+        for forbidden in [
+            "rawKey",
+            "keyMaterial",
+            "00112233445566778899aabbccddeeff",
+            "fixture-only-siglus-secondary-key-v1",
+            "decrypted script",
+            "/home/",
+            "C:\\",
+        ] {
+            assert!(!serialized.contains(forbidden), "leaked {forbidden}");
+        }
+    }
+
+    #[test]
+    fn siglus_secondary_key_helper_boundary_diagnostics_cover_required_failures() {
+        let registry = fixture_helper_registry().unwrap();
+        let cases = [
+            (
+                "siglus-secondary-key-missing-key-ref",
+                "missing_key",
+                SEMANTIC_MISSING_KEY_MATERIAL,
+            ),
+            (
+                "siglus-secondary-key-wrong-profile",
+                "validation_failed",
+                SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE,
+            ),
+            (
+                "siglus-secondary-key-wrong-purpose",
+                "validation_failed",
+                SEMANTIC_KEY_IMPORT_WRONG_KEY_PURPOSE,
+            ),
+            (
+                "siglus-secondary-key-helper-rejection",
+                "validation_failed",
+                SEMANTIC_HELPER_REQUEST_WRONG_HELPER,
+            ),
+            (
+                "siglus-secondary-key-redacted-output-mismatch",
+                "redaction_failure",
+                SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH,
+            ),
+            (
+                "siglus-secondary-key-missing-redacted-output-expectation",
+                "redaction_failure",
+                SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION,
+            ),
+        ];
+
+        for (fixture, expected_code, expected_message) in cases {
+            let request = public_helper_request_fixture_value(fixture);
+            let output = registry
+                .invoke(fixture_helper_key_validation(&request))
+                .unwrap();
+            assert_eq!(
+                output["diagnostic"]["code"], expected_code,
+                "{fixture}: {output:#?}"
+            );
+            assert_eq!(
+                output["diagnostic"]["message"], expected_message,
+                "{fixture}: {output:#?}"
+            );
+            assert_eq!(
+                validate_helper_result_value(&output).status,
+                OperationStatus::Passed,
+                "{fixture}: {output:#?}"
+            );
+
+            let serialized = serde_json::to_string(&output).unwrap();
+            for forbidden in [
+                "rawKey",
+                "keyMaterial",
+                "00112233445566778899aabbccddeeff",
+                "decrypted script",
+                "/home/",
+                "C:\\",
+            ] {
+                assert!(
+                    !serialized.contains(forbidden),
+                    "{fixture} leaked {forbidden}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn helper_key_ref_request_rejects_requirement_id_only_refs() {
         let registry = fixture_helper_registry().unwrap();
         let mut request = public_helper_request_fixture_value("key-ref-request");
@@ -17546,7 +17899,11 @@ printf launched > '{}'
                 FIXTURE_HELPER_REGISTRY_ID
             }
 
-            fn invoke(&self, _entry: &HelperRegistryEntry, _input: &Value) -> KaifuuResult<Value> {
+            fn invoke(
+                &self,
+                _entry: &HelperRegistryEntry,
+                _request: HelperRegistryInvocationRequest<'_>,
+            ) -> KaifuuResult<Value> {
                 Ok(serde_json::json!({"not": "a helper result"}))
             }
         }

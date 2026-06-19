@@ -1,0 +1,47 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-siglus-secondary-key-helper-request",
+  "helperResultId": "helper-result-kaifuu-siglus-secondary-key-helper-request",
+  "profileId": "019ed000-0000-7000-8000-000000091001",
+  "helper": {
+    "helperId": "kaifuu.fixture.helper-stub",
+    "helperVersion": "0.1.0",
+    "helperKind": "knownKeyDatabaseImport"
+  },
+  "capabilityLevel": "localKeyImport",
+  "execution": {
+    "mode": "notExecuted",
+    "platform": "fixture-local",
+    "bounded": true,
+    "timeoutMs": 1000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "none"
+  },
+  "diagnostic": {
+    "code": "success",
+    "message": "fixture helper received bounded refs through registry boundary"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/secondary-key-ref",
+      "materialKind": "fixedBytes",
+      "bytes": 16,
+      "validation": {
+        "method": "decryptHeaderProof",
+        "proofHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    }
+  ],
+  "proofHashes": [
+    {
+      "method": "decryptHeaderProof",
+      "proofHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  ]
+}
