@@ -15,6 +15,7 @@ import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-r
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
+import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
 import { isolatedMigratedContext } from "./db-test-context.js";
@@ -362,6 +363,18 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "terminology-repository.test.ts glossary review queue coverage",
     (repo) => repo.listGlossaryReviewItems(deniedActor),
+  ),
+  translationMemoryGate(
+    "upsertSegment",
+    "draftWrite",
+    "translation-memory-repository.test.ts segment persistence coverage",
+    (repo) => repo.upsertSegment(deniedActor, undefined as never),
+  ),
+  translationMemoryGate(
+    "recordReuse",
+    "draftWrite",
+    "translation-memory-repository.test.ts reuse provenance coverage",
+    (repo) => repo.recordReuse(deniedActor, undefined as never),
   ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
@@ -720,6 +733,18 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "terminology-repository.test.ts glossary review queue coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTranslationMemoryRepository.upsertSegment",
+          "requiredPermission": "draft.write",
+          "successFixture": "translation-memory-repository.test.ts segment persistence coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTranslationMemoryRepository.recordReuse",
+          "requiredPermission": "draft.write",
+          "successFixture": "translation-memory-repository.test.ts reuse provenance coverage",
+        },
       ]
     `);
   });
@@ -895,6 +920,22 @@ function terminologyGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriTerminologyRepository(db)),
+  });
+}
+
+function translationMemoryGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriTranslationMemoryRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriTranslationMemoryRepository",
+    sourceFile: "translation-memory-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriTranslationMemoryRepository(db)),
   });
 }
 

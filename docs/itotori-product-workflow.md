@@ -358,6 +358,27 @@ Batch review safeguards:
 - Batch rejection of feedback must keep rationale and duplicate grouping so the
   same unresolved report does not keep resurfacing.
 
+## Translation Memory Reuse
+
+Translation memory is locale-branch scoped. A reusable segment must store the
+locale branch, target locale, source bundle revision, source hash, source unit
+key, occurrence id, source text, target text, and provenance that created the
+memory entry. Reuse lookup must not fall back to another locale branch, and an
+entry whose source revision no longer matches the branch must be rejected before
+it can prefill a draft.
+
+Repeated source lines may produce multiple reusable memory entries. Selection is
+deterministic: exact hash matches rank before fuzzy matches, and ties use source
+unit key, occurrence id, and memory id ordering. Fuzzy matching, when enabled,
+is bounded and lexical only; it uses normalized source text similarity, exposes
+the score and match kind, and must not depend on opaque provider or ML calls.
+
+Draft prefill must leave an audit trail. Applying or suggesting a translation
+memory candidate records the selected memory segment, target bridge unit, match
+kind, score, source hash, candidate source hash, target text, provenance, and
+deterministic cost-impact estimate. This makes reuse visible in review and cost
+reporting instead of silently replacing a provider draft.
+
 ## Style-Guide Conversation Flow
 
 The style-guide builder is inspired by product/persona/behavior creation flows:

@@ -65,6 +65,8 @@ import {
   sourceUnits,
   styleGuides,
   styleGuideVersions,
+  translationMemoryReuseEvents,
+  translationMemorySegments,
   workspaces,
 } from "../schema.js";
 import type { RuntimeBridgeUnitRefRole, RuntimeEvidenceKind } from "../schema.js";
@@ -360,6 +362,8 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         ${artifacts},
         ${findings},
         ${events},
+        ${translationMemoryReuseEvents},
+        ${translationMemorySegments},
         ${styleGuideVersions},
         ${styleGuides},
         ${localeBranchUnits},

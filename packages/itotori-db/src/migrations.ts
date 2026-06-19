@@ -148,6 +148,10 @@ const migrations = [
     id: "0022_branch_policy_glossary_references",
     file: "0022_branch_policy_glossary_references.sql",
   },
+  {
+    id: "0023_translation_memory",
+    file: "0023_translation_memory.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
