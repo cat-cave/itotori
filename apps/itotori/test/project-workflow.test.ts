@@ -325,9 +325,179 @@ describe("ItotoriProjectWorkflowService", () => {
 
     await expect(
       service.exportPatch(projectFixture({ drafts: { "bridge-unit-test": "Hello." } })),
-    ).rejects.toThrow("lost protected span {player}");
+    ).rejects.toThrow("protected-span-missing bridge-unit-test");
 
+    expect(repository.recordFinding).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        finding: expect.objectContaining({
+          findingKind: "protected_span_issue",
+          qualityCategory: "protected_content",
+          description: expect.stringContaining("Repair hint: Restore protected span {player}"),
+        }),
+        status: "open",
+      }),
+    );
     expect(repository.savePatchExport).not.toHaveBeenCalled();
+  });
+
+  it("emits deterministic pre-export findings with exact units and repair hints", async () => {
+    const repository = repositoryFixture();
+    const service = new ItotoriProjectWorkflowService(repository, actor);
+    const bridge = bridgeFixture();
+    bridge.units = [
+      bridge.units[0]!,
+      {
+        ...bridge.units[0]!,
+        bridgeUnitId: "bridge-unit-empty",
+        sourceUnitKey: "empty.unit",
+        sourceText: "空欄",
+        protectedSpans: [],
+      },
+      {
+        ...bridge.units[0]!,
+        bridgeUnitId: "bridge-unit-charset",
+        sourceUnitKey: "charset.unit",
+        sourceText: "制御文字",
+        protectedSpans: [],
+      },
+      {
+        ...bridge.units[0]!,
+        bridgeUnitId: "bridge-unit-length",
+        sourceUnitKey: "length.unit",
+        sourceText: "長い行",
+        protectedSpans: [],
+      },
+      {
+        ...bridge.units[0]!,
+        bridgeUnitId: "bridge-unit-punctuation",
+        sourceUnitKey: "punctuation.unit",
+        sourceText: "終わり。",
+        protectedSpans: [],
+      },
+      {
+        ...bridge.units[0]!,
+        bridgeUnitId: "bridge-unit-glossary-term",
+        sourceUnitKey: "database.glossary.yorishiro.term",
+        sourceText: "依代",
+        protectedSpans: [],
+      },
+      {
+        ...bridge.units[0]!,
+        bridgeUnitId: "bridge-unit-glossary-use",
+        sourceUnitKey: "glossary.use",
+        sourceText: "依代の灯り",
+        protectedSpans: [],
+      },
+    ];
+    const project = projectFixture({
+      bridge,
+      drafts: {
+        "bridge-unit-test": "Hello.",
+        "bridge-unit-empty": " ",
+        "bridge-unit-charset": "Bad\u0007text",
+        "bridge-unit-length": "x".repeat(161),
+        "bridge-unit-punctuation": "Finished",
+        "bridge-unit-glossary-term": "Yorishiro",
+        "bridge-unit-glossary-use": "The vessel light",
+      },
+    });
+
+    await expect(service.exportPatch(project)).rejects.toThrow(
+      "deterministic pre-export QA failed for 6 finding(s)",
+    );
+
+    const findingInputs = vi.mocked(repository.recordFinding).mock.calls.map((call) => call[1]);
+    expect(findingInputs).toHaveLength(6);
+    expect(
+      findingInputs.map((input) => ({
+        unit: input.finding.affectedRefs[0]?.subjectId,
+        check: input.finding.provenance[0]?.checkName,
+        hint: input.finding.description,
+      })),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          unit: "bridge-unit-test",
+          check: "protected-span-missing",
+          hint: expect.stringContaining("Repair hint: Restore protected span {player} exactly"),
+        }),
+        expect.objectContaining({
+          unit: "bridge-unit-empty",
+          check: "empty-translation",
+          hint: expect.stringContaining("Repair hint: Replace the empty target"),
+        }),
+        expect.objectContaining({
+          unit: "bridge-unit-charset",
+          check: "charset-invalid",
+          hint: expect.stringContaining("Repair hint: Remove or replace U+0007"),
+        }),
+        expect.objectContaining({
+          unit: "bridge-unit-length",
+          check: "line-length-exceeded",
+          hint: expect.stringContaining("Repair hint: Shorten or manually wrap line 1"),
+        }),
+        expect.objectContaining({
+          unit: "bridge-unit-punctuation",
+          check: "punctuation-missing",
+          hint: expect.stringContaining("Repair hint: Add appropriate terminal punctuation"),
+        }),
+        expect.objectContaining({
+          unit: "bridge-unit-glossary-use",
+          check: "glossary-exact-mismatch",
+          hint: expect.stringContaining("Repair hint: Use glossary term Yorishiro exactly"),
+        }),
+      ]),
+    );
+    expect(repository.savePatchExport).not.toHaveBeenCalled();
+  });
+
+  it("does not flag deterministic QA false-positive calibration cases", async () => {
+    const repository = repositoryFixture();
+    const service = new ItotoriProjectWorkflowService(repository, actor);
+    const bridge = bridgeFixture();
+    bridge.units = [
+      bridge.units[0]!,
+      {
+        ...bridge.units[0]!,
+        bridgeUnitId: "bridge-unit-short-label",
+        sourceUnitKey: "choice.ok",
+        sourceText: "OK",
+        protectedSpans: [],
+      },
+      {
+        ...bridge.units[0]!,
+        bridgeUnitId: "bridge-unit-glossary-term",
+        sourceUnitKey: "database.glossary.yorishiro.term",
+        sourceText: "依代",
+        protectedSpans: [],
+      },
+      {
+        ...bridge.units[0]!,
+        bridgeUnitId: "bridge-unit-glossary-use",
+        sourceUnitKey: "glossary.use",
+        sourceText: "依代の灯り",
+        protectedSpans: [],
+      },
+    ];
+
+    const { patchExport } = await service.exportPatch(
+      projectFixture({
+        bridge,
+        drafts: {
+          "bridge-unit-test": "Hello, {player}.",
+          "bridge-unit-short-label": "OK",
+          "bridge-unit-glossary-term": "Yorishiro",
+          "bridge-unit-glossary-use": "Yorishiro\tlight\ncontinues.",
+        },
+      }),
+    );
+
+    expect(repository.recordFinding).not.toHaveBeenCalled();
+    expect(repository.savePatchExport).toHaveBeenCalled();
+    expect(patchExport.entries).toHaveLength(4);
   });
 
   it("exports protected span mappings as UTF-8 byte offsets", async () => {
