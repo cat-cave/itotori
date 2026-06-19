@@ -52,6 +52,10 @@ pub const SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA: &str =
 pub const SEMANTIC_HELPER_REGISTRY_INVALID_REDACTION_CLASS: &str =
     "kaifuu.helper_registry.invalid_redaction_class";
 pub const SEMANTIC_HELPER_EXECUTION_DISALLOWED: &str = "kaifuu.helper_execution_policy.disallowed";
+pub const SEMANTIC_HELPER_REGISTRY_FORBIDDEN_EXECUTION_FIELD: &str =
+    "kaifuu.helper_registry.forbidden_execution_field";
+pub const SEMANTIC_HELPER_PROFILE_FORBIDDEN_EXECUTION_FIELD: &str =
+    "kaifuu.helper_profile.forbidden_execution_field";
 pub const SEMANTIC_KEY_IMPORT_WRONG_ENGINE_PROFILE: &str = "kaifuu.key_import.wrong_engine_profile";
 pub const SEMANTIC_KEY_IMPORT_HASH_MISMATCH: &str = "kaifuu.key_import.hash_mismatch";
 pub const SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION: &str = "kaifuu.forbidden_public_serialization";
@@ -1892,6 +1896,7 @@ pub fn validate_profile_value(value: &Value) -> ProfileValidationResult {
         return profile_validation_result(None, failures, vec![]);
     }
     add_redaction_failures(&mut failures, value);
+    add_profile_helper_execution_field_failures(&mut failures, value);
 
     let profile_id = required_string_value(&mut failures, value, "profileId");
     validate_schema_version(&mut failures, value);
@@ -2010,6 +2015,48 @@ fn add_redaction_failures(failures: &mut Vec<ProfileValidationFailure>, value: &
             field: finding.field,
             message: finding.reason,
         });
+    }
+}
+
+fn add_profile_helper_execution_field_failures(
+    failures: &mut Vec<ProfileValidationFailure>,
+    value: &Value,
+) {
+    add_profile_helper_execution_field_failures_at(failures, value, "$");
+}
+
+fn add_profile_helper_execution_field_failures_at(
+    failures: &mut Vec<ProfileValidationFailure>,
+    value: &Value,
+    field: &str,
+) {
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    for (key, child) in object {
+        let child_field = if field == "$" {
+            key.to_string()
+        } else {
+            format!("{field}.{key}")
+        };
+        if helper_execution_config_field_is_forbidden(key) {
+            failures.push(ProfileValidationFailure {
+                code: SEMANTIC_HELPER_PROFILE_FORBIDDEN_EXECUTION_FIELD.to_string(),
+                field: child_field.clone(),
+                message: "profile data must not serialize arbitrary helper commands, args, env, shell, or executable paths".to_string(),
+            });
+        }
+        if child.is_object() {
+            add_profile_helper_execution_field_failures_at(failures, child, &child_field);
+        } else if let Some(array) = child.as_array() {
+            for (index, item) in array.iter().enumerate() {
+                add_profile_helper_execution_field_failures_at(
+                    failures,
+                    item,
+                    &format!("{child_field}.{index}"),
+                );
+            }
+        }
     }
 }
 
@@ -4258,11 +4305,7 @@ fn validate_helper_result_forbidden_metadata_fields(
         } else {
             format!("{field}.{key}")
         };
-        let normalized = normalize_secret_field_name(key);
-        if matches!(
-            normalized.as_str(),
-            "command" | "args" | "argv" | "shell" | "env" | "environment" | "executablepath"
-        ) && !child_field.starts_with("execution.")
+        if helper_execution_config_field_is_forbidden(key) && !child_field.starts_with("execution.")
         {
             helper_result_failure(
                 failures,
@@ -4664,11 +4707,7 @@ fn validate_helper_result_execution_forbidden_fields(
     };
     for (key, child) in object {
         let child_field = format!("{field}.{key}");
-        let normalized = normalize_secret_field_name(key);
-        if matches!(
-            normalized.as_str(),
-            "command" | "args" | "argv" | "shell" | "env" | "environment" | "executablepath"
-        ) {
+        if helper_execution_config_field_is_forbidden(key) {
             helper_result_failure(
                 failures,
                 fixture_id,
@@ -5548,6 +5587,15 @@ pub struct HelperBinaryLaunchValidationRequest<'a> {
     pub platform: &'a str,
     pub helper_version: &'a str,
     pub required_capabilities: &'a [HelperCapability],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HelperRegistryInvocationRequest<'a> {
+    pub helper_id: &'a str,
+    pub helper_version: &'a str,
+    pub allowlist_entry_id: &'a str,
+    pub capability: HelperCapability,
+    pub input: &'a Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -6446,36 +6494,23 @@ impl HelperRegistry {
             .collect()
     }
 
-    pub fn invoke(
-        &self,
-        helper_id: &str,
-        capability: HelperCapability,
-        input: &Value,
-    ) -> KaifuuResult<Value> {
-        let entry = self.entries.get(helper_id).ok_or_else(|| {
+    pub fn invoke(&self, request: HelperRegistryInvocationRequest<'_>) -> KaifuuResult<Value> {
+        let entry = self.entries.get(request.helper_id).ok_or_else(|| {
             format!(
                 "{}: helper registry id {} is not registered",
                 SEMANTIC_HELPER_UNAVAILABLE,
-                redact_for_log_or_report(helper_id)
+                redact_for_log_or_report(request.helper_id)
             )
         })?;
-        if !entry.supports(capability) {
-            return Err(format!(
-                "{}: helper {} does not provide capability {}",
-                SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
-                redact_for_log_or_report(helper_id),
-                helper_capability_name(capability)
-            )
-            .into());
-        }
-        let executable = self.executables.get(helper_id).ok_or_else(|| {
+        validate_helper_registry_invocation(entry, request)?;
+        let executable = self.executables.get(request.helper_id).ok_or_else(|| {
             format!(
                 "{}: helper registry id {} has no executable adapter",
                 SEMANTIC_HELPER_UNAVAILABLE,
-                redact_for_log_or_report(helper_id)
+                redact_for_log_or_report(request.helper_id)
             )
         })?;
-        let output = executable.invoke(entry, input)?;
+        let output = executable.invoke(entry, request.input)?;
         validate_helper_registry_output(entry, &output)?;
         Ok(output)
     }
@@ -6772,16 +6807,20 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
 /// ```
 /// use kaifuu_core::{
 ///     fixture_helper_registry, validate_helper_result_value, HelperCapability,
-///     OperationStatus, FIXTURE_HELPER_REGISTRY_ID,
+///     HelperRegistryInvocationRequest, OperationStatus, FIXTURE_HELPER_ALLOWLIST_REF_ID,
+///     FIXTURE_HELPER_REGISTRY_ID,
 /// };
 ///
 /// let registry = fixture_helper_registry().unwrap();
+/// let input = serde_json::json!({"fixture": true});
 /// let output = registry
-///     .invoke(
-///         FIXTURE_HELPER_REGISTRY_ID,
-///         HelperCapability::FixtureInvocation,
-///         &serde_json::json!({"fixture": true}),
-///     )
+///     .invoke(HelperRegistryInvocationRequest {
+///         helper_id: FIXTURE_HELPER_REGISTRY_ID,
+///         helper_version: "0.1.0",
+///         allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+///         capability: HelperCapability::FixtureInvocation,
+///         input: &input,
+///     })
 ///     .unwrap();
 ///
 /// assert_eq!(
@@ -6828,6 +6867,29 @@ pub fn validate_helper_registry_entry_value(value: &Value) -> HelperRegistryVali
         );
         return helper_registry_validation_result(helper_id, diagnostics);
     }
+    validate_helper_registry_allowed_object_keys(
+        &mut diagnostics,
+        helper_id.as_deref(),
+        value,
+        "$",
+        &[
+            "schemaVersion",
+            "helperId",
+            "helperVersion",
+            "capabilities",
+            "inputSchemaId",
+            "outputSchemaId",
+            "redactionClass",
+            "executionPolicy",
+            "binaryAllowlist",
+        ],
+    );
+    validate_helper_registry_forbidden_execution_fields(
+        &mut diagnostics,
+        helper_id.as_deref(),
+        value,
+        "$",
+    );
 
     validate_helper_registry_schema_version(&mut diagnostics, helper_id.as_deref(), value);
     for field in ["helperId", "helperVersion"] {
@@ -7031,6 +7093,20 @@ fn validate_helper_registry_execution_policy(
         );
         return;
     }
+    validate_helper_registry_allowed_object_keys(
+        diagnostics,
+        helper_id,
+        policy,
+        "executionPolicy",
+        &[
+            "policyId",
+            "mode",
+            "allowlistRefId",
+            "filesystemAccess",
+            "networkAccess",
+            "maxRuntimeSeconds",
+        ],
+    );
     for field in ["executionPolicy.policyId", "executionPolicy.allowlistRefId"] {
         if let Some(text) = required_helper_registry_string(diagnostics, helper_id, policy, field) {
             validate_helper_registry_identifier(diagnostics, helper_id, field, &text);
@@ -7101,6 +7177,13 @@ fn validate_helper_registry_binary_allowlist(
         );
         return;
     };
+    validate_helper_registry_allowed_object_keys(
+        diagnostics,
+        helper_id,
+        value.get("binaryAllowlist").expect("checked above"),
+        "binaryAllowlist",
+        &["entries"],
+    );
     let Some(entries) = allowlist.get("entries").and_then(Value::as_array) else {
         helper_registry_failure(
             diagnostics,
@@ -7147,6 +7230,23 @@ fn validate_helper_registry_binary_allowlist(
             );
             continue;
         };
+        let entry_value = Value::Object(entry.clone());
+        validate_helper_registry_allowed_object_keys(
+            diagnostics,
+            helper_id,
+            &entry_value,
+            &field,
+            &[
+                "allowlistEntryId",
+                "helperId",
+                "platform",
+                "helperVersion",
+                "executableName",
+                "sha256Hash",
+                "signature",
+                "capabilities",
+            ],
+        );
 
         for child in [
             "allowlistEntryId",
@@ -7253,6 +7353,14 @@ fn validate_helper_registry_binary_signature(
         );
         return;
     };
+    let signature_value = Value::Object(signature.clone());
+    validate_helper_registry_allowed_object_keys(
+        diagnostics,
+        helper_id,
+        &signature_value,
+        field,
+        &["signatureKind", "signer", "signatureRef"],
+    );
     for child in ["signatureKind", "signer", "signatureRef"] {
         let child_field = format!("{field}.{child}");
         if let Some(text) = required_helper_registry_string(
@@ -7329,6 +7437,78 @@ fn validate_helper_registry_binary_capabilities(
                 field,
                 "binary allowlist capabilities must not contain duplicate values",
             );
+        }
+    }
+}
+
+fn validate_helper_registry_allowed_object_keys(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: &Value,
+    field: &str,
+    allowed: &[&str],
+) {
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    for key in object.keys() {
+        if !allowed.contains(&key.as_str()) {
+            let child_field = if field == "$" {
+                key.to_string()
+            } else {
+                format!("{field}.{key}")
+            };
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                "unknown_helper_registry_field",
+                &child_field,
+                "helper registry field is not allowed by the public contract",
+            );
+        }
+    }
+}
+
+fn validate_helper_registry_forbidden_execution_fields(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: &Value,
+    field: &str,
+) {
+    let Some(object) = value.as_object() else {
+        return;
+    };
+    for (key, child) in object {
+        let child_field = if field == "$" {
+            key.to_string()
+        } else {
+            format!("{field}.{key}")
+        };
+        if helper_execution_config_field_is_forbidden(key) {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                SEMANTIC_HELPER_REGISTRY_FORBIDDEN_EXECUTION_FIELD,
+                &child_field,
+                "helper registry data must not serialize arbitrary commands, args, env, shell, or executable paths",
+            );
+        }
+        if child.is_object() {
+            validate_helper_registry_forbidden_execution_fields(
+                diagnostics,
+                helper_id,
+                child,
+                &child_field,
+            );
+        } else if let Some(array) = child.as_array() {
+            for (index, item) in array.iter().enumerate() {
+                validate_helper_registry_forbidden_execution_fields(
+                    diagnostics,
+                    helper_id,
+                    item,
+                    &format!("{child_field}.{index}"),
+                );
+            }
         }
     }
 }
@@ -7451,6 +7631,85 @@ fn validate_helper_registry_output(
         return Err(format!(
             "{}: helper output provenance does not match registry entry",
             SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA
+        )
+        .into());
+    }
+    Ok(())
+}
+
+fn validate_helper_registry_invocation(
+    entry: &HelperRegistryEntry,
+    request: HelperRegistryInvocationRequest<'_>,
+) -> KaifuuResult<()> {
+    if entry.helper_id != request.helper_id {
+        return Err(format!(
+            "{}: helper id {} does not match registered helper",
+            SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY,
+            redact_for_log_or_report(request.helper_id)
+        )
+        .into());
+    }
+    if entry.helper_version != request.helper_version {
+        return Err(format!(
+            "{}: helper {} version does not match registered helper version",
+            SEMANTIC_HELPER_ALLOWLIST_STALE_VERSION,
+            redact_for_log_or_report(request.helper_id)
+        )
+        .into());
+    }
+    if entry.execution_policy.allowlist_ref_id != request.allowlist_entry_id {
+        return Err(format!(
+            "{}: helper {} must be invoked through its registered allowlist reference",
+            SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY,
+            redact_for_log_or_report(request.helper_id)
+        )
+        .into());
+    }
+    if entry.input_schema_id != HELPER_REGISTRY_INPUT_SCHEMA_FIXTURE_REQUEST {
+        return Err(format!(
+            "{}: unsupported helper registry input schema {}",
+            SEMANTIC_HELPER_REGISTRY_UNSUPPORTED_SCHEMA_ID,
+            redact_for_log_or_report(&entry.input_schema_id)
+        )
+        .into());
+    }
+    if entry.output_schema_id != HELPER_REGISTRY_OUTPUT_SCHEMA_HELPER_RESULT {
+        return Err(format!(
+            "{}: unsupported helper registry output schema {}",
+            SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA,
+            redact_for_log_or_report(&entry.output_schema_id)
+        )
+        .into());
+    }
+    if !entry.supports(request.capability) {
+        return Err(format!(
+            "{}: helper {} does not provide capability {}",
+            SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
+            redact_for_log_or_report(request.helper_id),
+            helper_capability_name(request.capability)
+        )
+        .into());
+    }
+    let allowlist_entry = entry
+        .binary_allowlist
+        .entries
+        .iter()
+        .find(|candidate| candidate.allowlist_entry_id == request.allowlist_entry_id)
+        .ok_or_else(|| {
+            format!(
+                "{}: helper allowlist reference {} is not registered",
+                SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY,
+                redact_for_log_or_report(request.allowlist_entry_id)
+            )
+        })?;
+    if allowlist_entry.helper_id != request.helper_id
+        || allowlist_entry.helper_version != request.helper_version
+        || !allowlist_entry.capabilities.contains(&request.capability)
+        || !is_sha256_ref(&allowlist_entry.sha256_hash)
+    {
+        return Err(format!(
+            "{}: helper allowlist entry does not match registered id, version, hash, and capability",
+            SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY
         )
         .into());
     }
@@ -8824,6 +9083,20 @@ fn normalize_secret_field_name(key: &str) -> String {
         .filter(|character| character.is_ascii_alphanumeric())
         .flat_map(char::to_lowercase)
         .collect()
+}
+
+fn helper_execution_config_field_is_forbidden(key: &str) -> bool {
+    matches!(
+        normalize_secret_field_name(key).as_str(),
+        "command"
+            | "args"
+            | "argv"
+            | "shell"
+            | "env"
+            | "environment"
+            | "executable"
+            | "executablepath"
+    )
 }
 
 fn is_forbidden_secret_field(normalized: &str) -> bool {
@@ -15821,6 +16094,16 @@ mod tests {
             .join(name)
     }
 
+    fn fixture_helper_invocation(input: &Value) -> HelperRegistryInvocationRequest<'_> {
+        HelperRegistryInvocationRequest {
+            helper_id: FIXTURE_HELPER_REGISTRY_ID,
+            helper_version: "0.1.0",
+            allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+            capability: HelperCapability::FixtureInvocation,
+            input,
+        }
+    }
+
     #[cfg(unix)]
     #[test]
     fn helper_process_runner_redacts_output_without_command_metadata() {
@@ -16207,6 +16490,35 @@ yes A | head -c 70000
     }
 
     #[test]
+    fn helper_registry_rejects_arbitrary_command_configuration_fields() {
+        let mut value = public_helper_registry_fixture_value("valid-helper");
+        value["command"] = serde_json::json!("sh -c helper");
+        value["executionPolicy"]["args"] = serde_json::json!(["--dump"]);
+        value["binaryAllowlist"]["entries"][0]["env"] =
+            serde_json::json!({"SECRET_PATH": "/home/dev/private-game"});
+
+        let validation = validate_helper_registry_entry_value(&value).redacted_for_report();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for field in [
+            "command",
+            "executionPolicy.args",
+            "binaryAllowlist.entries.0.env",
+        ] {
+            assert!(
+                validation.diagnostics.iter().any(|diagnostic| {
+                    diagnostic.code == SEMANTIC_HELPER_REGISTRY_FORBIDDEN_EXECUTION_FIELD
+                        && diagnostic.field == field
+                }),
+                "missing forbidden command diagnostic for {field}: {:#?}",
+                validation.diagnostics
+            );
+        }
+        let serialized = serde_json::to_string(&validation).unwrap();
+        assert!(!serialized.contains("/home/dev/private-game"));
+    }
+
+    #[test]
     fn helper_binary_allowlist_hash_gate_blocks_before_launch() {
         let valid_value = public_helper_registry_fixture_value("valid-helper");
         let valid_entry: HelperRegistryEntry = serde_json::from_value(valid_value).unwrap();
@@ -16374,13 +16686,8 @@ yes A | head -c 70000
         assert_eq!(helpers[0].helper_id, FIXTURE_HELPER_REGISTRY_ID);
         assert!(registry.get(FIXTURE_HELPER_REGISTRY_ID).is_some());
 
-        let output = registry
-            .invoke(
-                FIXTURE_HELPER_REGISTRY_ID,
-                HelperCapability::FixtureInvocation,
-                &serde_json::json!({"fixture": true}),
-            )
-            .unwrap();
+        let input = serde_json::json!({"fixture": true});
+        let output = registry.invoke(fixture_helper_invocation(&input)).unwrap();
 
         assert_eq!(
             validate_helper_result_value(&output).status,
@@ -16391,16 +16698,42 @@ yes A | head -c 70000
     }
 
     #[test]
+    fn fixture_helper_invocation_requires_registered_version_and_allowlist_ref() {
+        let registry = fixture_helper_registry().unwrap();
+        let input = serde_json::json!({"fixture": true});
+
+        let stale_version = registry
+            .invoke(HelperRegistryInvocationRequest {
+                helper_id: FIXTURE_HELPER_REGISTRY_ID,
+                helper_version: "9.9.9",
+                allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+                capability: HelperCapability::FixtureInvocation,
+                input: &input,
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(stale_version.contains(SEMANTIC_HELPER_ALLOWLIST_STALE_VERSION));
+
+        let wrong_allowlist = registry
+            .invoke(HelperRegistryInvocationRequest {
+                helper_id: FIXTURE_HELPER_REGISTRY_ID,
+                helper_version: "0.1.0",
+                allowlist_entry_id: "unknown-helper-allowlist",
+                capability: HelperCapability::FixtureInvocation,
+                input: &input,
+            })
+            .unwrap_err()
+            .to_string();
+        assert!(wrong_allowlist.contains(SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY));
+    }
+
+    #[test]
     fn helper_key_ref_request_passes_refs_without_serializing_material() {
         let registry = fixture_helper_registry().unwrap();
         let request = public_helper_request_fixture_value("key-ref-request");
 
         let output = registry
-            .invoke(
-                FIXTURE_HELPER_REGISTRY_ID,
-                HelperCapability::FixtureInvocation,
-                &request,
-            )
+            .invoke(fixture_helper_invocation(&request))
             .unwrap();
 
         assert_eq!(output["diagnostic"]["code"], "success");
@@ -16428,11 +16761,7 @@ yes A | head -c 70000
         let mut missing = public_helper_request_fixture_value("key-ref-request");
         missing["keyRefs"] = serde_json::json!([]);
         let output = registry
-            .invoke(
-                FIXTURE_HELPER_REGISTRY_ID,
-                HelperCapability::FixtureInvocation,
-                &missing,
-            )
+            .invoke(fixture_helper_invocation(&missing))
             .unwrap();
         assert_eq!(output["diagnostic"]["code"], "missing_key");
         assert_eq!(
@@ -16444,11 +16773,7 @@ yes A | head -c 70000
         wrong_profile["keyRefs"][0]["engineProfileId"] =
             serde_json::json!("019ed000-0000-7000-8000-profile99999");
         let output = registry
-            .invoke(
-                FIXTURE_HELPER_REGISTRY_ID,
-                HelperCapability::FixtureInvocation,
-                &wrong_profile,
-            )
+            .invoke(fixture_helper_invocation(&wrong_profile))
             .unwrap();
         assert_eq!(output["diagnostic"]["code"], "validation_failed");
         assert_eq!(
@@ -16461,11 +16786,7 @@ yes A | head -c 70000
             "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
         );
         let output = registry
-            .invoke(
-                FIXTURE_HELPER_REGISTRY_ID,
-                HelperCapability::FixtureInvocation,
-                &hash_mismatch,
-            )
+            .invoke(fixture_helper_invocation(&hash_mismatch))
             .unwrap();
         assert_eq!(output["diagnostic"]["code"], "validation_failed");
         assert_eq!(
@@ -16476,11 +16797,7 @@ yes A | head -c 70000
         let mut forbidden = public_helper_request_fixture_value("key-ref-request");
         forbidden["keyRefs"][0]["rawKey"] = serde_json::json!("00112233445566778899aabbccddeeff");
         let output = registry
-            .invoke(
-                FIXTURE_HELPER_REGISTRY_ID,
-                HelperCapability::FixtureInvocation,
-                &forbidden,
-            )
+            .invoke(fixture_helper_invocation(&forbidden))
             .unwrap();
         assert_eq!(output["diagnostic"]["code"], "redaction_failure");
         assert_eq!(
@@ -16507,11 +16824,7 @@ yes A | head -c 70000
         );
 
         let output = registry
-            .invoke(
-                FIXTURE_HELPER_REGISTRY_ID,
-                HelperCapability::FixtureInvocation,
-                &request,
-            )
+            .invoke(fixture_helper_invocation(&request))
             .unwrap();
         assert_eq!(output["diagnostic"]["code"], "missing_key");
         assert_eq!(
@@ -16539,11 +16852,7 @@ yes A | head -c 70000
         );
 
         let output = registry
-            .invoke(
-                FIXTURE_HELPER_REGISTRY_ID,
-                HelperCapability::FixtureInvocation,
-                &request,
-            )
+            .invoke(fixture_helper_invocation(&request))
             .unwrap();
         assert_eq!(output["diagnostic"]["code"], "validation_failed");
         assert_eq!(
@@ -16571,11 +16880,7 @@ yes A | head -c 70000
         );
 
         let output = registry
-            .invoke(
-                FIXTURE_HELPER_REGISTRY_ID,
-                HelperCapability::FixtureInvocation,
-                &request,
-            )
+            .invoke(fixture_helper_invocation(&request))
             .unwrap();
         assert_eq!(output["diagnostic"]["code"], "validation_failed");
         assert_eq!(
@@ -16587,11 +16892,14 @@ yes A | head -c 70000
     #[test]
     fn fixture_helper_registry_rejects_missing_capability_and_bad_output() {
         let registry = fixture_helper_registry().unwrap();
-        let missing_capability = registry.invoke(
-            FIXTURE_HELPER_REGISTRY_ID,
-            HelperCapability::KeyDiscovery,
-            &serde_json::json!({"fixture": true}),
-        );
+        let input = serde_json::json!({"fixture": true});
+        let missing_capability = registry.invoke(HelperRegistryInvocationRequest {
+            helper_id: FIXTURE_HELPER_REGISTRY_ID,
+            helper_version: "0.1.0",
+            allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+            capability: HelperCapability::KeyDiscovery,
+            input: &input,
+        });
         assert!(missing_capability.is_err());
         assert!(
             missing_capability
@@ -16619,11 +16927,7 @@ yes A | head -c 70000
         bad_registry.register_executable(BadOutputAdapter);
 
         let error = bad_registry
-            .invoke(
-                FIXTURE_HELPER_REGISTRY_ID,
-                HelperCapability::FixtureInvocation,
-                &serde_json::json!({"fixture": true}),
-            )
+            .invoke(fixture_helper_invocation(&input))
             .unwrap_err()
             .to_string();
         assert!(error.contains(SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA));
@@ -17836,6 +18140,34 @@ yes A | head -c 70000
         assert!(!serialized.contains("00112233445566778899aabbccddeeff"));
         assert!(!serialized.contains("/home/dev/private-game"));
         assert!(!serialized.contains("private translated script line"));
+    }
+
+    #[test]
+    fn profile_validation_rejects_arbitrary_helper_command_metadata() {
+        let mut profile = valid_key_profile_value();
+        profile["metadata"]["command"] = serde_json::json!("sh -c helper");
+        profile["metadata"]["args"] = serde_json::json!("--dump");
+        profile["helperEvidence"]["executable"] = serde_json::json!("helper.exe");
+
+        let validation = validate_profile_value(&profile).redacted_for_report();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        for field in [
+            "metadata.command",
+            "metadata.args",
+            "helperEvidence.executable",
+        ] {
+            assert!(
+                validation.failures.iter().any(|failure| {
+                    failure.code == SEMANTIC_HELPER_PROFILE_FORBIDDEN_EXECUTION_FIELD
+                        && failure.field == field
+                }),
+                "missing forbidden profile helper execution diagnostic for {field}: {:#?}",
+                validation.failures
+            );
+        }
+        let serialized = serde_json::to_string(&validation).unwrap();
+        assert!(!serialized.contains("sh -c helper"));
     }
 
     #[test]
