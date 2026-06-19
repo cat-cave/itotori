@@ -179,6 +179,18 @@ export type {
   QueueJsonRecord,
 } from "./repositories/event-queue-repository.js";
 export {
+  branchPolicyGlossaryReferenceSchemaVersion,
+  branchPolicyGlossaryReferenceUpdatedEventKind,
+  ItotoriBranchReferenceRepository,
+} from "./repositories/branch-reference-repository.js";
+export type {
+  BranchPolicyGlossaryReferenceRecord,
+  BranchReferenceJsonRecord,
+  ItotoriBranchReferenceRepositoryPort,
+  ResolveBranchPolicyGlossaryReferenceInput,
+  UpdateBranchPolicyGlossaryReferenceInput,
+} from "./repositories/branch-reference-repository.js";
+export {
   contentHashForPolicy,
   ItotoriStyleGuideRepository,
 } from "./repositories/style-guide-repository.js";

@@ -32,6 +32,7 @@ import {
   type ProjectCostReport,
   type ProviderRunLedgerInput,
 } from "./model-ledger-repository.js";
+import { ensureBranchPolicyGlossaryReferenceInTx } from "./branch-reference-repository.js";
 import {
   artifacts,
   assets,
@@ -573,22 +574,33 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         tx,
         project.localeBranchId,
       );
+      const hasDrafts = Object.keys(project.drafts).length > 0;
+      const draftBranchReference = hasDrafts
+        ? await ensureBranchPolicyGlossaryReferenceInTx(tx, actor, {
+            projectId: project.projectId,
+            localeBranchId: project.localeBranchId,
+            styleGuideVersionId: draftStyleGuideVersionId,
+            updateReason: "draft_import_reference",
+            metadata: { source: "importSourceBundle" },
+          })
+        : null;
       for (const unit of importTarget.units) {
+        const hasDraft = project.drafts[unit.bridgeUnitId] !== undefined;
         await tx
           .insert(localeBranchUnits)
           .values({
             localeBranchId: project.localeBranchId,
             bridgeUnitId: unit.bridgeUnitId,
             targetText: project.drafts[unit.bridgeUnitId] ?? null,
-            styleGuideVersionId:
-              project.drafts[unit.bridgeUnitId] === undefined ? null : draftStyleGuideVersionId,
+            styleGuideVersionId: hasDraft ? draftStyleGuideVersionId : null,
+            glossaryReferenceId: hasDraft ? (draftBranchReference?.referenceId ?? null) : null,
           })
           .onConflictDoUpdate({
             target: [localeBranchUnits.localeBranchId, localeBranchUnits.bridgeUnitId],
             set: {
               targetText: project.drafts[unit.bridgeUnitId] ?? null,
-              styleGuideVersionId:
-                project.drafts[unit.bridgeUnitId] === undefined ? null : draftStyleGuideVersionId,
+              styleGuideVersionId: hasDraft ? draftStyleGuideVersionId : null,
+              glossaryReferenceId: hasDraft ? (draftBranchReference?.referenceId ?? null) : null,
               updatedAt: sql`now()`,
             },
           });
@@ -681,7 +693,18 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         tx,
         project.localeBranchId,
       );
-      for (const [bridgeUnitId, targetText] of Object.entries(project.drafts)) {
+      const draftEntries = Object.entries(project.drafts);
+      const draftBranchReference =
+        draftEntries.length === 0
+          ? null
+          : await ensureBranchPolicyGlossaryReferenceInTx(tx, actor, {
+              projectId: project.projectId,
+              localeBranchId: project.localeBranchId,
+              styleGuideVersionId: draftStyleGuideVersionId,
+              updateReason: "draft_save_reference",
+              metadata: { source: "saveDrafts" },
+            });
+      for (const [bridgeUnitId, targetText] of draftEntries) {
         await tx
           .insert(localeBranchUnits)
           .values({
@@ -689,12 +712,14 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             bridgeUnitId,
             targetText,
             styleGuideVersionId: draftStyleGuideVersionId,
+            glossaryReferenceId: draftBranchReference?.referenceId ?? null,
           })
           .onConflictDoUpdate({
             target: [localeBranchUnits.localeBranchId, localeBranchUnits.bridgeUnitId],
             set: {
               targetText,
               styleGuideVersionId: draftStyleGuideVersionId,
+              glossaryReferenceId: draftBranchReference?.referenceId ?? null,
               updatedAt: sql`now()`,
             },
           });

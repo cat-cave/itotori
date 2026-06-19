@@ -1504,6 +1504,61 @@ export const styleGuideVersions = pgTable(
   ],
 );
 
+export const branchPolicyGlossaryReferences = pgTable(
+  "itotori_branch_policy_glossary_references",
+  {
+    referenceId: text("reference_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    versionSequence: integer("version_sequence").notNull(),
+    styleGuideVersionId: text("style_guide_version_id").references(
+      () => styleGuideVersions.styleGuideVersionId,
+      { onDelete: "set null" },
+    ),
+    glossaryContentHash: text("glossary_content_hash").notNull(),
+    glossaryTermRefs: jsonb("glossary_term_refs")
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    glossaryReviewItemRefs: jsonb("glossary_review_item_refs")
+      .$type<Record<string, unknown>[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    updateReason: text("update_reason").notNull(),
+    eventId: text("event_id"),
+    supersedesReferenceId: text("supersedes_reference_id"),
+    actorUserId: text("actor_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_branch_policy_glossary_refs_branch_sequence_idx").on(
+      table.localeBranchId,
+      table.versionSequence,
+    ),
+    index("itotori_branch_policy_glossary_refs_project_branch_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.createdAt,
+    ),
+    index("itotori_branch_policy_glossary_refs_style_guide_idx").on(table.styleGuideVersionId),
+    index("itotori_branch_policy_glossary_refs_hash_idx").on(
+      table.localeBranchId,
+      table.glossaryContentHash,
+    ),
+    index("itotori_branch_policy_glossary_refs_event_idx").on(table.eventId),
+  ],
+);
+
 export const localeBranchUnits = pgTable(
   "itotori_locale_branch_units",
   {
@@ -1519,11 +1574,16 @@ export const localeBranchUnits = pgTable(
       () => styleGuideVersions.styleGuideVersionId,
       { onDelete: "set null" },
     ),
+    glossaryReferenceId: text("glossary_reference_id").references(
+      () => branchPolicyGlossaryReferences.referenceId,
+      { onDelete: "set null" },
+    ),
   },
   (table) => [
     primaryKey({ columns: [table.localeBranchId, table.bridgeUnitId] }),
     index("itotori_locale_branch_units_bridge_unit_idx").on(table.bridgeUnitId),
     index("itotori_locale_branch_units_style_guide_version_idx").on(table.styleGuideVersionId),
+    index("itotori_locale_branch_units_glossary_reference_idx").on(table.glossaryReferenceId),
   ],
 );
 
@@ -2084,6 +2144,10 @@ export const glossaryReviewItems = pgTable(
       () => styleGuideVersions.styleGuideVersionId,
       { onDelete: "set null" },
     ),
+    glossaryReferenceId: text("glossary_reference_id").references(
+      () => branchPolicyGlossaryReferences.referenceId,
+      { onDelete: "set null" },
+    ),
     state: text("state").notNull(),
     sourceTerm: text("source_term").notNull(),
     normalizedSourceTerm: text("normalized_source_term").notNull(),
@@ -2125,6 +2189,7 @@ export const glossaryReviewItems = pgTable(
       table.updatedAt,
     ),
     index("itotori_glossary_review_items_style_guide_idx").on(table.styleGuideVersionId),
+    index("itotori_glossary_review_items_glossary_reference_idx").on(table.glossaryReferenceId),
   ],
 );
 
