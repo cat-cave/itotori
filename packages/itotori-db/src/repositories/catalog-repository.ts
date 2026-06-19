@@ -16,6 +16,7 @@ import {
   catalogEngineSourceValues,
   catalogExternalIdKindValues,
   catalogExternalIds,
+  catalogInstallStateValues,
   catalogLanguageStatuses,
   catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
@@ -24,7 +25,11 @@ import {
   catalogLocalScans,
   catalogPathRedactionClassValues,
   catalogRawContentRedactionClassValues,
+  catalogReleaseInstallStates,
   catalogReleaseKindValues,
+  catalogReleaseMappingKindValues,
+  catalogReleaseMappings,
+  catalogReleasePackageKindValues,
   catalogReleases,
   catalogSeedOriginValues,
   catalogSeedStatusValues,
@@ -41,15 +46,20 @@ import {
   type CatalogDemandFactKind,
   type CatalogEngineSource,
   type CatalogExternalIdKind,
+  type CatalogInstallState,
   type CatalogLanguageStatus,
   type CatalogLanguageStatusScope,
   type CatalogPathRedactionClass,
   type CatalogRawContentRedactionClass,
   type CatalogReleaseKind,
+  type CatalogReleaseMappingKind,
+  type CatalogReleasePackageKind,
   type CatalogSeedOrigin,
   type CatalogSeedStatus,
   type CatalogSource,
   type CatalogSourceRecordKind,
+  type CatalogTranslationPortability,
+  catalogTranslationPortabilityValues,
 } from "../schema.js";
 
 export type CatalogJsonRecord = Record<string, unknown>;
@@ -124,6 +134,10 @@ export type CatalogReleaseInput = {
   sourceReleaseId?: string;
   releaseTitle: string;
   releaseKind?: CatalogReleaseKind;
+  editionName?: string;
+  milestone?: string;
+  packageKind?: CatalogReleasePackageKind;
+  engine?: CatalogEngineInput;
   platform?: string;
   language?: string;
   releaseDate?: string;
@@ -140,12 +154,73 @@ export type CatalogReleaseRecord = {
   sourceReleaseId: string | null;
   releaseTitle: string;
   releaseKind: CatalogReleaseKind;
+  editionName: string | null;
+  milestone: string | null;
+  packageKind: CatalogReleasePackageKind;
+  engineName: string | null;
+  engineSource: CatalogEngineSource | null;
+  engineConfidence: CatalogConfidence | null;
+  engineProvenanceId: string | null;
   platform: string | null;
   language: string | null;
   releaseDate: string | null;
   releaseYear: number | null;
   isOfficial: boolean;
   sourceProvenanceId: string | null;
+  metadata: CatalogJsonRecord;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CatalogReleaseMappingInput = {
+  releaseMappingId?: string;
+  sourceReleaseId: string;
+  targetReleaseId: string;
+  relationKind: CatalogReleaseMappingKind;
+  portability?: CatalogTranslationPortability;
+  sourceProvenanceId?: string;
+  confidence?: CatalogConfidence;
+  observedAt?: CatalogDateInput;
+  metadata?: CatalogJsonRecord;
+};
+
+export type CatalogReleaseMappingRecord = {
+  releaseMappingId: string;
+  workId: string;
+  sourceReleaseId: string;
+  targetReleaseId: string;
+  relationKind: CatalogReleaseMappingKind;
+  portability: CatalogTranslationPortability;
+  sourceProvenanceId: string | null;
+  confidence: CatalogConfidence;
+  observedAt: Date;
+  metadata: CatalogJsonRecord;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type CatalogReleaseInstallStateInput = {
+  installStateId?: string;
+  releaseId: string;
+  localScanEntryId?: string;
+  installState: CatalogInstallState;
+  targetArtifactLabel?: string;
+  sourceProvenanceId?: string;
+  confidence?: CatalogConfidence;
+  observedAt?: CatalogDateInput;
+  metadata?: CatalogJsonRecord;
+};
+
+export type CatalogReleaseInstallStateRecord = {
+  installStateId: string;
+  workId: string;
+  releaseId: string;
+  localScanEntryId: string | null;
+  installState: CatalogInstallState;
+  targetArtifactLabel: string | null;
+  sourceProvenanceId: string | null;
+  confidence: CatalogConfidence;
+  observedAt: Date;
   metadata: CatalogJsonRecord;
   createdAt: Date;
   updatedAt: Date;
@@ -268,6 +343,8 @@ export type CatalogWorkInput = {
   metadata?: CatalogJsonRecord;
   externalIds?: CatalogExternalIdInput[];
   releases?: CatalogReleaseInput[];
+  releaseMappings?: CatalogReleaseMappingInput[];
+  installStates?: CatalogReleaseInstallStateInput[];
   languageStatuses?: CatalogLanguageStatusInput[];
   demandFacts?: CatalogDemandFactInput[];
   conflicts?: CatalogConflictInput[];
@@ -291,6 +368,8 @@ export type CatalogWorkRecord = {
 export type CatalogWorkSnapshot = CatalogWorkRecord & {
   externalIds: CatalogExternalIdRecord[];
   releases: CatalogReleaseRecord[];
+  releaseMappings: CatalogReleaseMappingRecord[];
+  installStates: CatalogReleaseInstallStateRecord[];
   languageStatuses: CatalogLanguageStatusRecord[];
   demandFacts: CatalogDemandFactRecord[];
   conflicts: CatalogConflictRecord[];
@@ -696,6 +775,16 @@ const catalogExternalIdKinds = Object.values(
 const catalogConfidences = Object.values(catalogConfidenceValues) as CatalogConfidence[];
 const catalogEngineSources = Object.values(catalogEngineSourceValues) as CatalogEngineSource[];
 const catalogReleaseKinds = Object.values(catalogReleaseKindValues) as CatalogReleaseKind[];
+const catalogReleasePackageKinds = Object.values(
+  catalogReleasePackageKindValues,
+) as CatalogReleasePackageKind[];
+const catalogReleaseMappingKinds = Object.values(
+  catalogReleaseMappingKindValues,
+) as CatalogReleaseMappingKind[];
+const catalogTranslationPortabilities = Object.values(
+  catalogTranslationPortabilityValues,
+) as CatalogTranslationPortability[];
+const catalogInstallStates = Object.values(catalogInstallStateValues) as CatalogInstallState[];
 const catalogLanguageStatusEnums = Object.values(
   catalogLanguageStatusValues,
 ) as CatalogLanguageStatus[];
@@ -818,6 +907,13 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
             sourceReleaseId: release.sourceReleaseId,
             releaseTitle: release.releaseTitle,
             releaseKind: release.releaseKind,
+            editionName: release.editionName,
+            milestone: release.milestone,
+            packageKind: release.packageKind,
+            engineName: release.engine?.engineName ?? null,
+            engineSource: release.engine?.engineSource ?? null,
+            engineConfidence: release.engine?.engineConfidence ?? null,
+            engineProvenanceId: release.engine?.engineProvenanceId ?? null,
             platform: release.platform,
             language: release.language,
             releaseDate: release.releaseDate,
@@ -833,6 +929,13 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
               sourceReleaseId: release.sourceReleaseId,
               releaseTitle: release.releaseTitle,
               releaseKind: release.releaseKind,
+              editionName: release.editionName,
+              milestone: release.milestone,
+              packageKind: release.packageKind,
+              engineName: release.engine?.engineName ?? null,
+              engineSource: release.engine?.engineSource ?? null,
+              engineConfidence: release.engine?.engineConfidence ?? null,
+              engineProvenanceId: release.engine?.engineProvenanceId ?? null,
               platform: release.platform,
               language: release.language,
               releaseDate: release.releaseDate,
@@ -843,6 +946,76 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
               updatedAt: sql`now()`,
             },
           });
+      }
+
+      for (const releaseMapping of normalized.releaseMappings) {
+        await tx
+          .insert(catalogReleaseMappings)
+          .values({
+            releaseMappingId: releaseMapping.releaseMappingId,
+            workId: normalized.workId,
+            sourceReleaseId: releaseMapping.sourceReleaseId,
+            targetReleaseId: releaseMapping.targetReleaseId,
+            relationKind: releaseMapping.relationKind,
+            portability: releaseMapping.portability,
+            sourceProvenanceId: releaseMapping.sourceProvenanceId,
+            confidence: releaseMapping.confidence,
+            observedAt: releaseMapping.observedAt,
+            metadata: releaseMapping.metadata,
+          })
+          .onConflictDoUpdate({
+            target: [
+              catalogReleaseMappings.sourceReleaseId,
+              catalogReleaseMappings.targetReleaseId,
+              catalogReleaseMappings.relationKind,
+            ],
+            set: {
+              workId: normalized.workId,
+              portability: releaseMapping.portability,
+              sourceProvenanceId: releaseMapping.sourceProvenanceId,
+              confidence: releaseMapping.confidence,
+              observedAt: releaseMapping.observedAt,
+              metadata: releaseMapping.metadata,
+              updatedAt: sql`now()`,
+            },
+          });
+      }
+
+      for (const installState of normalized.installStates) {
+        await tx.execute(sql`
+          insert into ${catalogReleaseInstallStates} (
+            install_state_id,
+            work_id,
+            release_id,
+            local_scan_entry_id,
+            install_state,
+            target_artifact_label,
+            source_provenance_id,
+            confidence,
+            observed_at,
+            metadata
+          ) values (
+            ${installState.installStateId},
+            ${normalized.workId},
+            ${installState.releaseId},
+            ${installState.localScanEntryId},
+            ${installState.installState},
+            ${installState.targetArtifactLabel},
+            ${installState.sourceProvenanceId},
+            ${installState.confidence},
+            ${installState.observedAt},
+            ${installState.metadata}::jsonb
+          )
+          on conflict (release_id, coalesce(local_scan_entry_id, ''), install_state)
+          do update set
+            work_id = excluded.work_id,
+            target_artifact_label = excluded.target_artifact_label,
+            source_provenance_id = excluded.source_provenance_id,
+            confidence = excluded.confidence,
+            observed_at = excluded.observed_at,
+            metadata = excluded.metadata,
+            updated_at = now()
+        `);
       }
 
       for (const languageStatus of normalized.languageStatuses) {
@@ -2406,6 +2579,8 @@ async function readWorkSnapshot(
   const [
     externalIdRows,
     releaseRows,
+    releaseMappingRows,
+    installStateRows,
     languageStatusRows,
     demandFactRows,
     conflictRows,
@@ -2413,6 +2588,11 @@ async function readWorkSnapshot(
   ] = await Promise.all([
     db.select().from(catalogExternalIds).where(eq(catalogExternalIds.workId, workId)),
     db.select().from(catalogReleases).where(eq(catalogReleases.workId, workId)),
+    db.select().from(catalogReleaseMappings).where(eq(catalogReleaseMappings.workId, workId)),
+    db
+      .select()
+      .from(catalogReleaseInstallStates)
+      .where(eq(catalogReleaseInstallStates.workId, workId)),
     db.select().from(catalogLanguageStatuses).where(eq(catalogLanguageStatuses.workId, workId)),
     db.select().from(catalogDemandFacts).where(eq(catalogDemandFacts.workId, workId)),
     db.select().from(catalogConflicts).where(eq(catalogConflicts.workId, workId)),
@@ -2453,6 +2633,8 @@ async function readWorkSnapshot(
     ...workFromRow(workRow),
     externalIds: externalIdRows.map(externalIdFromRow),
     releases: releaseRows.map(releaseFromRow),
+    releaseMappings: releaseMappingRows.map(releaseMappingFromRow),
+    installStates: installStateRows.map(releaseInstallStateFromRow),
     languageStatuses: languageStatusRows.map(languageStatusFromRow),
     demandFacts: demandFactRows.map(demandFactFromRow),
     conflicts: conflictRows.map((row) => ({
@@ -2579,6 +2761,8 @@ type NormalizedCatalogWorkInput = {
   metadata: CatalogJsonRecord;
   externalIds: NormalizedExternalIdInput[];
   releases: NormalizedReleaseInput[];
+  releaseMappings: NormalizedReleaseMappingInput[];
+  installStates: NormalizedReleaseInstallStateInput[];
   languageStatuses: NormalizedLanguageStatusInput[];
   demandFacts: NormalizedDemandFactInput[];
   conflicts: NormalizedConflictInput[];
@@ -2608,12 +2792,40 @@ type NormalizedReleaseInput = {
   sourceReleaseId: string | null;
   releaseTitle: string;
   releaseKind: CatalogReleaseKind;
+  editionName: string | null;
+  milestone: string | null;
+  packageKind: CatalogReleasePackageKind;
+  engine: NormalizedCatalogEngineInput | null;
   platform: string | null;
   language: string | null;
   releaseDate: string | null;
   releaseYear: number | null;
   isOfficial: boolean;
   sourceProvenanceId: string | null;
+  metadata: CatalogJsonRecord;
+};
+
+type NormalizedReleaseMappingInput = {
+  releaseMappingId: string;
+  sourceReleaseId: string;
+  targetReleaseId: string;
+  relationKind: CatalogReleaseMappingKind;
+  portability: CatalogTranslationPortability;
+  sourceProvenanceId: string | null;
+  confidence: CatalogConfidence;
+  observedAt: Date;
+  metadata: CatalogJsonRecord;
+};
+
+type NormalizedReleaseInstallStateInput = {
+  installStateId: string;
+  releaseId: string;
+  localScanEntryId: string | null;
+  installState: CatalogInstallState;
+  targetArtifactLabel: string | null;
+  sourceProvenanceId: string | null;
+  confidence: CatalogConfidence;
+  observedAt: Date;
   metadata: CatalogJsonRecord;
 };
 
@@ -2691,6 +2903,8 @@ function assertCatalogWorkInput(input: CatalogWorkInput): NormalizedCatalogWorkI
     metadata: jsonRecord(input.metadata ?? {}, "metadata"),
     externalIds: (input.externalIds ?? []).map(assertExternalIdInput),
     releases: (input.releases ?? []).map(assertReleaseInput),
+    releaseMappings: (input.releaseMappings ?? []).map(assertReleaseMappingInput),
+    installStates: (input.installStates ?? []).map(assertReleaseInstallStateInput),
     languageStatuses: (input.languageStatuses ?? []).map(assertLanguageStatusInput),
     demandFacts: (input.demandFacts ?? []).map(assertDemandFactInput),
     conflicts: (input.conflicts ?? []).map(assertConflictInput),
@@ -2723,12 +2937,36 @@ function assertReleaseInput(input: CatalogReleaseInput): NormalizedReleaseInput 
   if (input.releaseKind !== undefined) {
     assertEnumValue(input.releaseKind, catalogReleaseKinds, "release.releaseKind");
   }
+  if (input.packageKind !== undefined) {
+    assertEnumValue(input.packageKind, catalogReleasePackageKinds, "release.packageKind");
+  }
+  let engine: NormalizedCatalogEngineInput | null = null;
+  if (input.engine !== undefined) {
+    assertEnumValue(input.engine.engineSource, catalogEngineSources, "release.engine.engineSource");
+    if (input.engine.engineConfidence !== undefined) {
+      assertEnumValue(
+        input.engine.engineConfidence,
+        catalogConfidences,
+        "release.engine.engineConfidence",
+      );
+    }
+    engine = {
+      engineName: requiredString(input.engine.engineName, "release.engine.engineName"),
+      engineSource: input.engine.engineSource,
+      engineConfidence: input.engine.engineConfidence ?? catalogConfidenceValues.unknown,
+      engineProvenanceId: input.engine.engineProvenanceId ?? null,
+    };
+  }
   return {
     releaseId: input.releaseId ?? createUuid7(),
     catalogSource: input.catalogSource,
     sourceReleaseId: optionalString(input.sourceReleaseId, "release.sourceReleaseId"),
     releaseTitle: requiredString(input.releaseTitle, "release.releaseTitle"),
     releaseKind: input.releaseKind ?? catalogReleaseKindValues.unknown,
+    editionName: optionalString(input.editionName, "release.editionName"),
+    milestone: optionalString(input.milestone, "release.milestone"),
+    packageKind: input.packageKind ?? catalogReleasePackageKindValues.unknown,
+    engine,
     platform: optionalString(input.platform, "release.platform"),
     language: optionalString(input.language, "release.language"),
     releaseDate: optionalString(input.releaseDate, "release.releaseDate"),
@@ -2736,6 +2974,63 @@ function assertReleaseInput(input: CatalogReleaseInput): NormalizedReleaseInput 
     isOfficial: input.isOfficial ?? false,
     sourceProvenanceId: input.sourceProvenanceId ?? null,
     metadata: jsonRecord(input.metadata ?? {}, "release.metadata"),
+  };
+}
+
+function assertReleaseMappingInput(
+  input: CatalogReleaseMappingInput,
+): NormalizedReleaseMappingInput {
+  assertEnumValue(input.relationKind, catalogReleaseMappingKinds, "releaseMapping.relationKind");
+  if (input.portability !== undefined) {
+    assertEnumValue(
+      input.portability,
+      catalogTranslationPortabilities,
+      "releaseMapping.portability",
+    );
+  }
+  if (input.confidence !== undefined) {
+    assertEnumValue(input.confidence, catalogConfidences, "releaseMapping.confidence");
+  }
+  const sourceReleaseId = requiredString(input.sourceReleaseId, "releaseMapping.sourceReleaseId");
+  const targetReleaseId = requiredString(input.targetReleaseId, "releaseMapping.targetReleaseId");
+  if (sourceReleaseId === targetReleaseId) {
+    throw new Error("releaseMapping source and target releases must differ");
+  }
+  return {
+    releaseMappingId: input.releaseMappingId ?? createUuid7(),
+    sourceReleaseId,
+    targetReleaseId,
+    relationKind: input.relationKind,
+    portability: input.portability ?? catalogTranslationPortabilityValues.unknown,
+    sourceProvenanceId: input.sourceProvenanceId ?? null,
+    confidence: input.confidence ?? catalogConfidenceValues.unknown,
+    observedAt:
+      input.observedAt === undefined ? new Date() : dateInput(input.observedAt, "observedAt"),
+    metadata: jsonRecord(input.metadata ?? {}, "releaseMapping.metadata"),
+  };
+}
+
+function assertReleaseInstallStateInput(
+  input: CatalogReleaseInstallStateInput,
+): NormalizedReleaseInstallStateInput {
+  assertEnumValue(input.installState, catalogInstallStates, "installState.installState");
+  if (input.confidence !== undefined) {
+    assertEnumValue(input.confidence, catalogConfidences, "installState.confidence");
+  }
+  return {
+    installStateId: input.installStateId ?? createUuid7(),
+    releaseId: requiredString(input.releaseId, "installState.releaseId"),
+    localScanEntryId: input.localScanEntryId ?? null,
+    installState: input.installState,
+    targetArtifactLabel: optionalString(
+      input.targetArtifactLabel,
+      "installState.targetArtifactLabel",
+    ),
+    sourceProvenanceId: input.sourceProvenanceId ?? null,
+    confidence: input.confidence ?? catalogConfidenceValues.unknown,
+    observedAt:
+      input.observedAt === undefined ? new Date() : dateInput(input.observedAt, "observedAt"),
+    metadata: jsonRecord(input.metadata ?? {}, "installState.metadata"),
   };
 }
 
@@ -3114,12 +3409,57 @@ function releaseFromRow(row: typeof catalogReleases.$inferSelect): CatalogReleas
     sourceReleaseId: row.sourceReleaseId,
     releaseTitle: row.releaseTitle,
     releaseKind: row.releaseKind as CatalogReleaseKind,
+    editionName: row.editionName,
+    milestone: row.milestone,
+    packageKind: row.packageKind as CatalogReleasePackageKind,
+    engineName: row.engineName,
+    engineSource: row.engineSource as CatalogEngineSource | null,
+    engineConfidence: row.engineConfidence as CatalogConfidence | null,
+    engineProvenanceId: row.engineProvenanceId,
     platform: row.platform,
     language: row.language,
     releaseDate: row.releaseDate,
     releaseYear: row.releaseYear,
     isOfficial: row.isOfficial,
     sourceProvenanceId: row.sourceProvenanceId,
+    metadata: row.metadata,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function releaseMappingFromRow(
+  row: typeof catalogReleaseMappings.$inferSelect,
+): CatalogReleaseMappingRecord {
+  return {
+    releaseMappingId: row.releaseMappingId,
+    workId: row.workId,
+    sourceReleaseId: row.sourceReleaseId,
+    targetReleaseId: row.targetReleaseId,
+    relationKind: row.relationKind as CatalogReleaseMappingKind,
+    portability: row.portability as CatalogTranslationPortability,
+    sourceProvenanceId: row.sourceProvenanceId,
+    confidence: row.confidence as CatalogConfidence,
+    observedAt: row.observedAt,
+    metadata: row.metadata,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function releaseInstallStateFromRow(
+  row: typeof catalogReleaseInstallStates.$inferSelect,
+): CatalogReleaseInstallStateRecord {
+  return {
+    installStateId: row.installStateId,
+    workId: row.workId,
+    releaseId: row.releaseId,
+    localScanEntryId: row.localScanEntryId,
+    installState: row.installState as CatalogInstallState,
+    targetArtifactLabel: row.targetArtifactLabel,
+    sourceProvenanceId: row.sourceProvenanceId,
+    confidence: row.confidence as CatalogConfidence,
+    observedAt: row.observedAt,
     metadata: row.metadata,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

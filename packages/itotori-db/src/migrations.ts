@@ -132,6 +132,10 @@ const migrations = [
     id: "0018_locale_branch_unit_style_guide_provenance",
     file: "0018_locale_branch_unit_style_guide_provenance.sql",
   },
+  {
+    id: "0019_catalog_edition_milestone_mapping",
+    file: "0019_catalog_edition_milestone_mapping.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
