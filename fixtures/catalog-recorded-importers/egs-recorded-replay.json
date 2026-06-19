@@ -1,10 +1,10 @@
 {
   "fixtureId": "catalog-recorded-importer-egs-response-v0.1",
-  "fixtureName": "catalog-recorded-importer-egs-public-response",
+  "fixtureName": "catalog-recorded-importer-egs-erogamescape-public-sql-response",
   "catalogSource": "egs",
   "adapterName": "egs-recorded-response-importer",
   "adapterVersion": "adapter-catalog-011-v1",
-  "sourceVersion": "egs-recorded-synthetic-2026-06-18",
+  "sourceVersion": "egs-erogamescape-sql-synthetic-2026-06-18",
   "parserVersion": "catalog-recorded-importers.v0.1",
   "readiness": "alpha_ready",
   "factImportContract": {
@@ -20,96 +20,127 @@
       "factIdentities"
     ]
   },
-  "partitionKey": "public-egs-recorded",
+  "partitionKey": "public-egs-erogamescape-recorded",
   "steps": [
     {
-      "stepKey": "egs-prod-starlight",
-      "sourceId": "prod-starlight-001",
-      "requestIdentity": "GET /storefront/products/prod-starlight-001?locale=en-US",
+      "stepKey": "egs-game-101001",
+      "sourceId": "101001",
+      "requestIdentity": "POST /~ap2/ero/toukei_kaiseki/sql_for_erogamer_form.php sql=gamelist_by_id id=101001",
       "fetchedAt": "2026-06-18T13:05:00.000Z",
-      "checkpointCursor": { "afterStepKey": "egs-prod-starlight", "cursor": "prod-starlight-001" },
+      "checkpointCursor": { "afterStepKey": "egs-game-101001", "cursor": "101001" },
       "httpStatus": 200,
       "payload": {
-        "id": "prod-starlight-001",
-        "namespace": "fixture-starlight",
-        "catalogItemId": "9c3f4ad2fixture",
-        "slug": "promise-under-starlight",
-        "title": "Promise Under Starlight",
-        "developer": "Fixture Circle",
-        "publisher": "Fixture Works",
-        "releaseDate": "2021-09-10T00:00:00.000Z",
-        "locales": ["en-US", "ja-JP"],
-        "seller": { "name": "Fixture Works" }
+        "endpoint": "https://erogamescape.dyndns.org/~ap2/ero/toukei_kaiseki/sql_for_erogamer_form.php",
+        "queryName": "gamelist_by_id",
+        "sql": "select g.id, g.gamename, b.brandname, g.sellday, g.median, g.count2, g.dlsite_id from gamelist g left join brandlist b on b.id = g.brandname where g.id in (101001)",
+        "rows": [
+          {
+            "id": 101001,
+            "gamename": "星影の約束",
+            "brandname": "Fixture Circle",
+            "sellday": "2021-09-10",
+            "median": 82,
+            "count2": 64,
+            "dlsite_id": "RJ01111111"
+          }
+        ]
       },
       "facts": [
         {
-          "sourceId": "prod-starlight-001",
-          "canonicalTitle": "Promise Under Starlight",
+          "sourceId": "101001",
+          "canonicalTitle": "星影の約束",
           "originalLanguage": "ja-JP",
           "firstReleaseYear": 2021,
+          "titles": ["星影の約束"],
           "externalIds": [
             {
-              "sourceId": "prod-starlight-001",
+              "catalogSource": "dlsite",
+              "sourceId": "RJ01111111",
               "externalIdKind": "store_product",
               "metadata": {
-                "namespace": "fixture-starlight",
-                "catalogItemId": "9c3f4ad2fixture",
-                "slug": "promise-under-starlight"
+                "sourceField": "gamelist.dlsite_id",
+                "linkedFrom": "egs:101001"
               }
             }
           ],
           "releases": [
             {
-              "sourceReleaseId": "prod-starlight-001:egs",
-              "releaseTitle": "Promise Under Starlight",
-              "releaseKind": "official_translation",
+              "sourceReleaseId": "egs:101001:sellday",
+              "releaseTitle": "星影の約束",
+              "releaseKind": "original",
               "platform": "egs",
-              "language": "en-US",
+              "language": "ja-JP",
               "releaseDate": "2021-09-10",
               "releaseYear": 2021,
               "isOfficial": true,
               "metadata": {
-                "namespace": "fixture-starlight",
-                "catalogItemId": "9c3f4ad2fixture",
-                "slug": "promise-under-starlight",
-                "developer": "Fixture Circle",
-                "publisher": "Fixture Works"
+                "sourceField": "gamelist.sellday",
+                "brandname": "Fixture Circle"
               }
             }
           ],
           "languageStatuses": [
             {
-              "language": "en-US",
-              "status": "official_full",
-              "statusScope": "platform",
-              "platform": "egs",
-              "releaseSourceId": "prod-starlight-001:egs",
-              "metadata": { "sourceField": "locales", "locale": "en-US" }
-            },
-            {
               "language": "ja-JP",
               "status": "official_full",
-              "statusScope": "platform",
-              "platform": "egs",
-              "releaseSourceId": "prod-starlight-001:egs",
-              "metadata": { "sourceField": "locales", "locale": "ja-JP" }
+              "statusScope": "work",
+              "releaseSourceId": "egs:101001:sellday",
+              "metadata": {
+                "sourceField": "gamelist.gamename",
+                "assumption": "ErogameScape catalog row is Japanese-market source metadata"
+              }
+            },
+            {
+              "language": "en-US",
+              "status": "unknown",
+              "confidence": "low",
+              "metadata": {
+                "sourceField": "gamelist",
+                "reason": "ErogameScape row does not assert official English availability"
+              }
             }
           ],
-          "seedTarget": { "priority": 30, "metadata": { "benchmarkHint": "egs-official-en" } },
+          "demandFacts": [
+            {
+              "factKind": "rating_summary",
+              "factValue": {
+                "median": 82,
+                "count2": 64,
+                "audience": "ja-JP",
+                "scoreScale": "0-100"
+              },
+              "observedAt": "2026-06-18T13:05:00.000Z",
+              "metadata": {
+                "sourceField": "gamelist.median,count2",
+                "provenance": "ErogameScape Japanese-audience score"
+              }
+            }
+          ],
+          "seedTarget": {
+            "priority": 30,
+            "metadata": {
+              "benchmarkHint": "egs-erogamescape-jp-score",
+              "sourceRecordId": "101001"
+            }
+          },
           "metadata": {
-            "store": {
-              "namespace": "fixture-starlight",
-              "catalogItemId": "9c3f4ad2fixture",
-              "slug": "promise-under-starlight",
-              "developer": "Fixture Circle",
-              "publisher": "Fixture Works"
+            "erogamescape": {
+              "gameId": "101001",
+              "gamename": "星影の約束",
+              "brandname": "Fixture Circle",
+              "sellday": "2021-09-10",
+              "median": 82,
+              "count2": 64,
+              "dlsiteId": "RJ01111111"
             }
           }
         }
       ],
       "metadata": {
         "fixturePath": "fixtures/catalog-recorded-importers/egs-recorded-replay.json",
-        "redactionClass": "public_metadata"
+        "redactionClass": "public_metadata",
+        "endpoint": "sql_for_erogamer_form.php",
+        "queryName": "gamelist_by_id"
       },
       "rateLimit": {
         "remaining": 99,
@@ -119,45 +150,39 @@
       }
     },
     {
-      "stepKey": "egs-prod-moon",
-      "sourceId": "prod-moon-002",
-      "requestIdentity": "GET /storefront/products/prod-moon-002?locale=ja-JP",
+      "stepKey": "egs-game-101002",
+      "sourceId": "101002",
+      "requestIdentity": "POST /~ap2/ero/toukei_kaiseki/sql_for_erogamer_form.php sql=gamelist_by_id id=101002",
       "fetchedAt": "2026-06-18T13:05:02.000Z",
-      "checkpointCursor": { "afterStepKey": "egs-prod-moon", "cursor": "prod-moon-002" },
+      "checkpointCursor": { "afterStepKey": "egs-game-101002", "cursor": "101002" },
       "httpStatus": 200,
       "payload": {
-        "id": "prod-moon-002",
-        "namespace": "fixture-moon",
-        "catalogItemId": "1aa45bd7fixture",
-        "slug": "moonlit-glass-journey",
-        "title": "Moonlit Glass Journey",
-        "developer": "Fixture Studio",
-        "publisher": "Fixture Studio",
-        "releaseDate": "2022-03-01T00:00:00.000Z",
-        "locales": ["ja-JP"],
-        "seller": { "name": "Fixture Studio" }
+        "endpoint": "https://erogamescape.dyndns.org/~ap2/ero/toukei_kaiseki/sql_for_erogamer_form.php",
+        "queryName": "gamelist_by_id",
+        "sql": "select g.id, g.gamename, b.brandname, g.sellday, g.median, g.count2, g.dlsite_id from gamelist g left join brandlist b on b.id = g.brandname where g.id in (101002)",
+        "rows": [
+          {
+            "id": 101002,
+            "gamename": "月硝子の旅路",
+            "brandname": "Fixture Studio",
+            "sellday": "2022-03-01",
+            "median": 74,
+            "count2": 18,
+            "dlsite_id": null
+          }
+        ]
       },
       "facts": [
         {
-          "sourceId": "prod-moon-002",
-          "canonicalTitle": "Moonlit Glass Journey",
+          "sourceId": "101002",
+          "canonicalTitle": "月硝子の旅路",
           "originalLanguage": "ja-JP",
           "firstReleaseYear": 2022,
-          "externalIds": [
-            {
-              "sourceId": "prod-moon-002",
-              "externalIdKind": "store_product",
-              "metadata": {
-                "namespace": "fixture-moon",
-                "catalogItemId": "1aa45bd7fixture",
-                "slug": "moonlit-glass-journey"
-              }
-            }
-          ],
+          "titles": ["月硝子の旅路"],
           "releases": [
             {
-              "sourceReleaseId": "prod-moon-002:egs",
-              "releaseTitle": "Moonlit Glass Journey",
+              "sourceReleaseId": "egs:101002:sellday",
+              "releaseTitle": "月硝子の旅路",
               "releaseKind": "original",
               "platform": "egs",
               "language": "ja-JP",
@@ -165,11 +190,8 @@
               "releaseYear": 2022,
               "isOfficial": true,
               "metadata": {
-                "namespace": "fixture-moon",
-                "catalogItemId": "1aa45bd7fixture",
-                "slug": "moonlit-glass-journey",
-                "developer": "Fixture Studio",
-                "publisher": "Fixture Studio"
+                "sourceField": "gamelist.sellday",
+                "brandname": "Fixture Studio"
               }
             }
           ],
@@ -177,33 +199,64 @@
             {
               "language": "ja-JP",
               "status": "official_full",
-              "statusScope": "platform",
-              "platform": "egs",
-              "releaseSourceId": "prod-moon-002:egs",
-              "metadata": { "sourceField": "locales", "locale": "ja-JP" }
+              "statusScope": "work",
+              "releaseSourceId": "egs:101002:sellday",
+              "metadata": {
+                "sourceField": "gamelist.gamename",
+                "assumption": "ErogameScape catalog row is Japanese-market source metadata"
+              }
             },
             {
               "language": "en-US",
               "status": "unknown",
               "confidence": "low",
-              "metadata": { "sourceField": "locales", "locale": "en-US" }
+              "metadata": {
+                "sourceField": "gamelist",
+                "reason": "ErogameScape row does not assert official English availability"
+              }
             }
           ],
-          "seedTarget": { "priority": 12, "metadata": { "benchmarkHint": "egs-unknown-en" } },
+          "demandFacts": [
+            {
+              "factKind": "rating_summary",
+              "factValue": {
+                "median": 74,
+                "count2": 18,
+                "audience": "ja-JP",
+                "scoreScale": "0-100"
+              },
+              "observedAt": "2026-06-18T13:05:02.000Z",
+              "metadata": {
+                "sourceField": "gamelist.median,count2",
+                "provenance": "ErogameScape Japanese-audience score"
+              }
+            }
+          ],
+          "seedTarget": {
+            "priority": 12,
+            "metadata": {
+              "benchmarkHint": "egs-erogamescape-low-vote-score",
+              "sourceRecordId": "101002"
+            }
+          },
           "metadata": {
-            "store": {
-              "namespace": "fixture-moon",
-              "catalogItemId": "1aa45bd7fixture",
-              "slug": "moonlit-glass-journey",
-              "developer": "Fixture Studio",
-              "publisher": "Fixture Studio"
+            "erogamescape": {
+              "gameId": "101002",
+              "gamename": "月硝子の旅路",
+              "brandname": "Fixture Studio",
+              "sellday": "2022-03-01",
+              "median": 74,
+              "count2": 18,
+              "dlsiteId": null
             }
           }
         }
       ],
       "metadata": {
         "fixturePath": "fixtures/catalog-recorded-importers/egs-recorded-replay.json",
-        "redactionClass": "public_metadata"
+        "redactionClass": "public_metadata",
+        "endpoint": "sql_for_erogamer_form.php",
+        "queryName": "gamelist_by_id"
       }
     }
   ]

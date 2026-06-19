@@ -7,8 +7,9 @@ catalog, bridge, patch, delta, readiness, and runtime evidence schemas.
 ## Boundaries
 
 - **Localization Bridge Schema** is neutral and lives under `packages/localization-bridge-schema`.
-- **Catalog and readiness state** identify works across VNDB, EGS, DLsite,
-  Steam, IGDB, Wikidata, and local corpora. It records translation completeness,
+- **Catalog and readiness state** identify works across VNDB, EGS
+  (ErogameScape / エロゲー批評空間), DLsite, Steam, IGDB, Wikidata, and local
+  corpora. It records translation completeness,
   engine evidence, editions, releases, install state, and opportunity ranking
   before extraction or drafting is assumed possible.
 - **Itotori** consumes catalog/readiness and bridge data, produces draft

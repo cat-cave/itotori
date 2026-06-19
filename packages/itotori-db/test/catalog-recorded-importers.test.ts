@@ -29,6 +29,7 @@ import {
 import {
   catalogConfidenceValues,
   catalogConflictKindValues,
+  catalogDemandFactKindValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusValues,
   catalogSeedOriginValues,
@@ -162,7 +163,7 @@ describe("catalog recorded source importers", () => {
     }
   });
 
-  it("imports EGS recorded responses with product ids, store metadata, locale facts, and request provenance", async () => {
+  it("imports EGS (ErogameScape) SQL rows with game ids, JP score facts, DLsite links, and request provenance", async () => {
     const context = await isolatedMigratedContext();
     try {
       const services = servicesFor(context.db);
@@ -177,56 +178,93 @@ describe("catalog recorded source importers", () => {
       const starlight = await services.catalogRepository.getWorkByExternalId(
         actor,
         "egs",
-        "prod-starlight-001",
-        catalogExternalIdKindValues.storeProduct,
+        "101001",
       );
       expect(starlight).toMatchObject({
-        canonicalTitle: "Promise Under Starlight",
+        canonicalTitle: "星影の約束",
         originalLanguage: "ja-JP",
         firstReleaseYear: 2021,
       });
       expect(starlight?.metadata).toMatchObject({
-        sourceId: "prod-starlight-001",
-        sourceVersion: "egs-recorded-synthetic-2026-06-18",
-        requestIdentity: "GET /storefront/products/prod-starlight-001?locale=en-US",
-        store: {
-          namespace: "fixture-starlight",
-          catalogItemId: "9c3f4ad2fixture",
-          slug: "promise-under-starlight",
-          developer: "Fixture Circle",
-          publisher: "Fixture Works",
+        sourceId: "101001",
+        sourceVersion: "egs-erogamescape-sql-synthetic-2026-06-18",
+        requestIdentity:
+          "POST /~ap2/ero/toukei_kaiseki/sql_for_erogamer_form.php sql=gamelist_by_id id=101001",
+        erogamescape: {
+          gameId: "101001",
+          gamename: "星影の約束",
+          brandname: "Fixture Circle",
+          sellday: "2021-09-10",
+          median: 82,
+          count2: 64,
+          dlsiteId: "RJ01111111",
         },
       });
       expect(starlight?.externalIds).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             catalogSource: "egs",
-            sourceId: "prod-starlight-001",
+            sourceId: "101001",
             externalIdKind: catalogExternalIdKindValues.sourceRecord,
           }),
           expect.objectContaining({
-            catalogSource: "egs",
-            sourceId: "prod-starlight-001",
+            catalogSource: "dlsite",
+            sourceId: "RJ01111111",
             externalIdKind: catalogExternalIdKindValues.storeProduct,
             metadata: expect.objectContaining({
-              namespace: "fixture-starlight",
-              catalogItemId: "9c3f4ad2fixture",
-              slug: "promise-under-starlight",
+              sourceField: "gamelist.dlsite_id",
+              linkedFrom: "egs:101001",
             }),
           }),
         ]),
       );
+      expect(
+        starlight?.externalIds.filter(
+          (externalId) =>
+            externalId.catalogSource === "egs" &&
+            externalId.externalIdKind === catalogExternalIdKindValues.storeProduct,
+        ),
+      ).toEqual([]);
+      await expect(
+        services.catalogRepository.getWorkByExternalId(
+          actor,
+          "dlsite",
+          "RJ01111111",
+          catalogExternalIdKindValues.storeProduct,
+        ),
+      ).resolves.toMatchObject({ workId: starlight?.workId });
       expect(starlight?.languageStatuses).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            language: "en-US",
-            status: catalogLanguageStatusValues.officialFull,
-            platform: "egs",
-          }),
-          expect.objectContaining({
             language: "ja-JP",
             status: catalogLanguageStatusValues.officialFull,
-            platform: "egs",
+            metadata: expect.objectContaining({
+              assumption: "ErogameScape catalog row is Japanese-market source metadata",
+            }),
+          }),
+          expect.objectContaining({
+            language: "en-US",
+            status: catalogLanguageStatusValues.unknown,
+            confidence: catalogConfidenceValues.low,
+          }),
+        ]),
+      );
+      expect(starlight?.demandFacts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            catalogSource: "egs",
+            sourceId: "101001",
+            factKind: catalogDemandFactKindValues.ratingSummary,
+            factValue: {
+              median: 82,
+              count2: 64,
+              audience: "ja-JP",
+              scoreScale: "0-100",
+            },
+            metadata: expect.objectContaining({
+              sourceField: "gamelist.median,count2",
+              provenance: "ErogameScape Japanese-audience score",
+            }),
           }),
         ]),
       );
@@ -240,14 +278,37 @@ describe("catalog recorded source importers", () => {
       );
       expect(provenance).toMatchObject({
         catalogSource: "egs",
-        sourceId: "prod-starlight-001",
-        sourceVersion: "egs-recorded-synthetic-2026-06-18",
-        requestId: "GET /storefront/products/prod-starlight-001?locale=en-US",
+        sourceId: "101001",
+        sourceVersion: "egs-erogamescape-sql-synthetic-2026-06-18",
+        requestId:
+          "POST /~ap2/ero/toukei_kaiseki/sql_for_erogamer_form.php sql=gamelist_by_id id=101001",
         fetchedAt: new Date("2026-06-18T13:05:00.000Z"),
       });
     } finally {
       await context.close();
     }
+  });
+
+  it("guards CATALOG-011 EGS fixtures and spec text against Epic storefront semantics", () => {
+    const fixtureText = readFixtureText("egs-recorded-replay.json");
+    const specText = readFileSync(
+      new URL("../../../roadmap/spec-dag.json", import.meta.url),
+      "utf8",
+    );
+    const catalog011Text = required(
+      specText.match(/"id": "CATALOG-011"[\s\S]*?"auditFocus": \[/u)?.[0],
+      "CATALOG-011 spec text",
+    );
+
+    for (const text of [fixtureText, catalog011Text]) {
+      expect(text).not.toContain("Epic Games Store");
+      expect(text).not.toContain("GET /storefront/products");
+      expect(text).not.toContain("catalogItemId");
+      expect(text).not.toContain('"namespace"');
+      expect(text).not.toContain('"slug"');
+    }
+    expect(fixtureText).toContain("sql_for_erogamer_form.php");
+    expect(catalog011Text).toContain("ErogameScape");
   });
 
   it("imports DLsite recorded storefront responses with demand facts, translation metadata, and provenance diagnostics", async () => {
@@ -830,10 +891,10 @@ describe("catalog recorded source importers", () => {
         canonicalTitle: "Promise Under Starlight HD",
         releaseTitle: "Promise Under Starlight HD",
       });
-      const updatedEgs = withUpdatedFact(egsFixture, "prod-starlight-001", {
-        sourceVersion: "egs-recorded-synthetic-2026-06-18-revision-2",
-        canonicalTitle: "Promise Under Starlight Complete",
-        releaseTitle: "Promise Under Starlight Complete",
+      const updatedEgs = withUpdatedFact(egsFixture, "101001", {
+        sourceVersion: "egs-erogamescape-sql-synthetic-2026-06-18-revision-2",
+        canonicalTitle: "星影の約束 改訂版",
+        releaseTitle: "星影の約束 改訂版",
       });
 
       await expect(runFixture(services, updatedVndb, "worker-vndb-update")).resolves.toMatchObject({
@@ -860,19 +921,14 @@ describe("catalog recorded source importers", () => {
         }),
       });
       await expect(
-        services.catalogRepository.getWorkByExternalId(
-          actor,
-          "egs",
-          "prod-starlight-001",
-          catalogExternalIdKindValues.storeProduct,
-        ),
+        services.catalogRepository.getWorkByExternalId(actor, "egs", "101001"),
       ).resolves.toMatchObject({
-        canonicalTitle: "Promise Under Starlight Complete",
+        canonicalTitle: "星影の約束 改訂版",
         releases: expect.arrayContaining([
-          expect.objectContaining({ releaseTitle: "Promise Under Starlight Complete" }),
+          expect.objectContaining({ releaseTitle: "星影の約束 改訂版" }),
         ]),
         metadata: expect.objectContaining({
-          sourceVersion: "egs-recorded-synthetic-2026-06-18-revision-2",
+          sourceVersion: "egs-erogamescape-sql-synthetic-2026-06-18-revision-2",
         }),
       });
     } finally {
@@ -1211,11 +1267,15 @@ async function rateLimitByAdapter(
 
 function readFixture(name: string): RecordedCatalogCrawlerFixture<CatalogRecordedImporterFact> {
   return JSON.parse(
-    readFileSync(
-      new URL(`../../../fixtures/catalog-recorded-importers/${name}`, import.meta.url),
-      "utf8",
-    ),
+    readFixtureText(name),
   ) as RecordedCatalogCrawlerFixture<CatalogRecordedImporterFact>;
+}
+
+function readFixtureText(name: string): string {
+  return readFileSync(
+    new URL(`../../../fixtures/catalog-recorded-importers/${name}`, import.meta.url),
+    "utf8",
+  );
 }
 
 function readStorefrontFixture(name: string): CatalogRecordedStorefrontFixture {

@@ -13,8 +13,9 @@ An adapter can be marked `alpha_ready` or `production_ready` only when it declar
 
 The crawler records fetches, source provenance, imported-step markers, checkpoints, and rate-limit
 state. Source-specific importers remain responsible for their own fact identity and for using
-upserts or durable markers. This keeps DLsite, Steam, IGDB, Wikidata, VNDB, and EGS parsing outside
-the generic crawler while still making crash replay safe.
+upserts or durable markers. This keeps DLsite, Steam, IGDB, Wikidata, VNDB, and EGS
+(ErogameScape / エロゲー批評空間) parsing outside the generic crawler while still making crash
+replay safe.
 
 For any adapter declaring `factImportContract.contractId = "CATALOG-065"`, each non-skipped step
 must have an `ingestStep` importer and a `verifyFactImport` verifier. The importer receives

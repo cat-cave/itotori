@@ -5,13 +5,13 @@
     "id": "catalog-recorded-importers",
     "title": "Catalog Recorded Importer Fixtures",
     "kind": "synthetic",
-    "summary": "Synthetic VNDB dump, EGS recorded-response, DLsite storefront, Steam storefront, IGDB platform, and Wikidata platform fixtures for deterministic external-source importer verification without live network access.",
+    "summary": "Synthetic VNDB dump, EGS (ErogameScape) SQL-endpoint recorded-response, DLsite storefront, Steam storefront, IGDB platform, and Wikidata platform fixtures for deterministic external-source importer verification without live network access.",
     "sourceLocale": "ja-JP",
     "targetLocales": ["en-US"],
     "publicRedistribution": "allowed",
     "license": {
       "spdx": "CC0-1.0",
-      "evidence": "Hand-authored synthetic VNDB-shaped dump rows, EGS-shaped recorded responses, DLsite-shaped storefront metadata, Steam-shaped appdetails responses, IGDB-shaped platform metadata, and Wikidata-shaped entity statements; no third-party raw assets, private catalog payloads, or credentials."
+      "evidence": "Hand-authored synthetic VNDB-shaped dump rows, EGS (ErogameScape)-shaped SQL response rows, DLsite-shaped storefront metadata, Steam-shaped appdetails responses, IGDB-shaped platform metadata, and Wikidata-shaped entity statements; no third-party raw assets, private catalog payloads, or credentials."
     },
     "provenance": {
       "author": "Itotori contributors",
@@ -32,8 +32,8 @@
       "path": "fixtures/catalog-recorded-importers/egs-recorded-replay.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "ddb8bb1eea4f77b26040b7c48b212759eeb72dff090468c2cdbd9ab67165718e",
-      "bytes": 7357,
+      "sha256": "13e18902615e0c61c393194e2db5ce21f09ae824c764e43a737f6f065a4ffc6b",
+      "bytes": 8950,
       "redistributable": true
     },
     {
@@ -85,7 +85,7 @@
     "sourceLocales": ["ja-JP"],
     "targetLocales": ["en-US"],
     "engineKinds": ["catalog-recorded-importer-synthetic"],
-    "notes": "Covers VNDB external ids, titles, releases, language facts, source-version provenance, EGS product ids, DLsite product identity, work_type, release metadata, translation_info trees, demand facts, Steam appdetails envelopes, supported-language metadata, package/delisting status, IGDB platform releases and language supports, Wikidata entity links, external ids, language statements with qualifiers, official-English conflict facts, fetched-at/request identity provenance, rate-limit metadata, semantic diagnostics, and CATALOG-065 idempotent reruns."
+    "notes": "Covers VNDB external ids, titles, releases, language facts, source-version provenance, EGS (ErogameScape) game ids, gamelist title/brand/release fields, Japanese-audience score facts, DLsite cross-links where present, DLsite product identity, work_type, release metadata, translation_info trees, demand facts, Steam appdetails envelopes, supported-language metadata, package/delisting status, IGDB platform releases and language supports, Wikidata entity links, external ids, language statements with qualifiers, official-English conflict facts, fetched-at/request identity provenance, rate-limit metadata, semantic diagnostics, and CATALOG-065 idempotent reruns."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,
