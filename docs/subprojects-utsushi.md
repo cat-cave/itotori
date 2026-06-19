@@ -169,6 +169,10 @@ partial, or unsupported. `RuntimeAdapterRegistry` rejects duplicate adapter name
 and rejects descriptors whose evidence ceiling exceeds the declared fidelity or
 capability contract.
 
+The Utsushi CLI owns production runtime composition in
+`crates/utsushi-cli/src/main.rs::runtime_registry`; future runtime adapters must
+be registered there to become selectable through `utsushi <trace|capture|smoke>`.
+
 The synthetic fixture adapter lives in `utsushi-fixture` and uses the same trait
 and registry path as future adapters. Its descriptor advertises trace, frame
 capture, and smoke validation, but not branch discovery or reference comparison.
