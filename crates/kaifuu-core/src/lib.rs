@@ -4087,6 +4087,7 @@ impl HelperDiagnostic {
 pub enum HelperDiagnosticCode {
     Success,
     MissingKey,
+    WrongKey,
     HelperRequired,
     HelperUnavailable,
     HelperAuthorizationDenied,
@@ -4101,6 +4102,7 @@ impl HelperDiagnosticCode {
         match self {
             Self::Success => "kaifuu.helper_result.success",
             Self::MissingKey => SEMANTIC_MISSING_KEY_MATERIAL,
+            Self::WrongKey => SEMANTIC_KEY_VALIDATION_FAILED,
             Self::HelperRequired => SEMANTIC_HELPER_REQUIRED,
             Self::HelperUnavailable => SEMANTIC_HELPER_UNAVAILABLE,
             Self::HelperAuthorizationDenied => SEMANTIC_HELPER_AUTHORIZATION_DENIED,
@@ -5163,6 +5165,17 @@ fn validate_helper_result_semantic_matrix(
             );
         }
     }
+    if context.diagnostic == Some(HelperDiagnosticCode::MissingKey)
+        && context.secret_ref_count == Some(0)
+    {
+        helper_result_failure(
+            failures,
+            fixture_id,
+            "missing_key_requires_secret_ref",
+            "secretRefs",
+            "missing_key diagnostics must identify at least one concrete key requirement id",
+        );
+    }
 }
 
 fn helper_result_validation_result(
@@ -5528,6 +5541,7 @@ fn validate_helper_result_diagnostic(
         &[
             "success",
             "missing_key",
+            "wrong_key",
             "helper_required",
             "helper_unavailable",
             "helper_authorization_denied",
@@ -7686,6 +7700,36 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                 SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH => "redaction_failure",
                 _ => "validation_failed",
             };
+            let secret_refs = if diagnostic_code == "missing_key" {
+                input
+                    .get("requiredKeyRefs")
+                    .and_then(Value::as_array)
+                    .map(|required_key_refs| {
+                        required_key_refs
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(index, required_key_ref)| {
+                                let requirement_id =
+                                    required_key_ref.get("requirementId")?.as_str()?;
+                                Some(serde_json::json!({
+                                    "requirementId": requirement_id,
+                                    "secretRef": format!("local-secret:fixture/missing/key-ref-{index}"),
+                                    "materialKind": required_key_ref
+                                        .get("materialKind")
+                                        .and_then(Value::as_str)
+                                        .unwrap_or("fixedBytes"),
+                                    "bytes": required_key_ref
+                                        .get("bytes")
+                                        .and_then(Value::as_u64)
+                                        .unwrap_or(16)
+                                }))
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            } else {
+                vec![]
+            };
             return Ok(serde_json::json!({
                 "schemaVersion": HELPER_RESULT_SCHEMA_VERSION,
                 "fixtureId": fixture_id,
@@ -7717,7 +7761,7 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                     "status": if diagnostic_code == "redaction_failure" { "failed" } else { "redacted" },
                     "redactedLogHash": entry.expected_fixture_redacted_log_hash()
                 },
-                "secretRefs": [],
+                "secretRefs": secret_refs,
                 "proofHashes": []
             }));
         }
@@ -18517,6 +18561,7 @@ printf launched > '{}'
         let fixture_codes = [
             ("success", HelperDiagnosticCode::Success),
             ("missing-key", HelperDiagnosticCode::MissingKey),
+            ("xp3/wrong-key", HelperDiagnosticCode::WrongKey),
             ("helper-required", HelperDiagnosticCode::HelperRequired),
             (
                 "helper-unavailable",
@@ -18569,6 +18614,7 @@ printf launched > '{}'
             [
                 HelperDiagnosticCode::Success,
                 HelperDiagnosticCode::MissingKey,
+                HelperDiagnosticCode::WrongKey,
                 HelperDiagnosticCode::HelperRequired,
                 HelperDiagnosticCode::HelperUnavailable,
                 HelperDiagnosticCode::HelperAuthorizationDenied,
@@ -18579,6 +18625,103 @@ printf launched > '{}'
             ]
             .into_iter()
             .collect::<BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn xp3_helper_result_fixtures_distinguish_required_key_and_protected_states() {
+        let fixture_codes = [
+            ("xp3/helper-required", HelperDiagnosticCode::HelperRequired),
+            ("xp3/missing-key", HelperDiagnosticCode::MissingKey),
+            ("xp3/wrong-key", HelperDiagnosticCode::WrongKey),
+            (
+                "xp3/validation-failed",
+                HelperDiagnosticCode::ValidationFailed,
+            ),
+            (
+                "xp3/unsupported-protected-executable",
+                HelperDiagnosticCode::UnsupportedProtectedExecutable,
+            ),
+        ];
+        let mut covered = BTreeSet::new();
+
+        for (fixture, expected_code) in fixture_codes {
+            let value = public_helper_result_fixture_value(fixture);
+            let validation = validate_helper_result_value(&value);
+            assert_eq!(
+                validation.status,
+                OperationStatus::Passed,
+                "{fixture} should validate: {:#?}",
+                validation.failures
+            );
+
+            let helper_result: HelperResult = serde_json::from_value(value).unwrap();
+            assert_eq!(helper_result.diagnostic.code, expected_code, "{fixture}");
+            assert!(
+                helper_result.profile_id.contains("095")
+                    || helper_result.fixture_id.contains("protected-executable"),
+                "{fixture} should be tied to XP3 fixture profile ids"
+            );
+            assert!(
+                !helper_result.proof_hashes.is_empty(),
+                "{fixture} must carry public proof hash evidence"
+            );
+            if expected_code == HelperDiagnosticCode::MissingKey {
+                assert!(
+                    helper_result
+                        .secret_refs
+                        .iter()
+                        .any(|secret| { secret.requirement_id == "kirikiri-xp3-key-profile" }),
+                    "missing_key must identify the concrete XP3 key requirement id"
+                );
+            }
+            covered.insert(helper_result.diagnostic.code);
+
+            let serialized = helper_result.stable_json().unwrap();
+            for forbidden in [
+                "rawKey",
+                "keyMaterial",
+                "00112233445566778899aabbccddeeff",
+                "/home/",
+                "C:\\",
+            ] {
+                assert!(
+                    !serialized.contains(forbidden),
+                    "{fixture} leaked {forbidden}"
+                );
+            }
+        }
+
+        assert_eq!(
+            covered,
+            [
+                HelperDiagnosticCode::HelperRequired,
+                HelperDiagnosticCode::MissingKey,
+                HelperDiagnosticCode::WrongKey,
+                HelperDiagnosticCode::ValidationFailed,
+                HelperDiagnosticCode::UnsupportedProtectedExecutable,
+            ]
+            .into_iter()
+            .collect::<BTreeSet<_>>()
+        );
+    }
+
+    #[test]
+    fn helper_result_contract_rejects_missing_key_without_concrete_requirement() {
+        let mut value = public_helper_result_fixture_value("xp3/missing-key");
+        value["secretRefs"] = serde_json::json!([]);
+
+        let validation = validate_helper_result_value(&value).redacted_for_report();
+
+        assert_eq!(validation.status, OperationStatus::Failed);
+        assert!(
+            validation.failures.iter().any(|failure| {
+                failure.fixture_id.as_deref() == Some("kaifuu-xp3-missing-key")
+                    && failure.field == "secretRefs"
+                    && failure.code == "missing_key_requires_secret_ref"
+            }),
+            "{:#?}",
+            validation.failures
         );
     }
 

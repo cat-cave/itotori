@@ -134,6 +134,7 @@
           "enum": [
             "success",
             "missing_key",
+            "wrong_key",
             "helper_required",
             "helper_unavailable",
             "helper_authorization_denied",

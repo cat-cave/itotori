@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-xp3-validation-failed",
+  "helperResultId": "xp3-valfail",
+  "profileId": "019ed000-0000-7000-8000-000000095002",
+  "helper": {
+    "helperId": "kaifuu.fixture.static-parser",
+    "helperVersion": "0.1.0",
+    "helperKind": "staticParser"
+  },
+  "capabilityLevel": "staticAnalysis",
+  "execution": {
+    "mode": "inProcess",
+    "platform": "fixture-static",
+    "bounded": true,
+    "timeoutMs": 1000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "readOnlyWorkspace"
+  },
+  "diagnostic": {
+    "code": "validation_failed",
+    "message": "fixture proof rejected"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:4040404040404040404040404040404040404040404040404040404040404040"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "kirikiri-xp3-key-profile",
+      "secretRef": "local-secret:fixture/kirikiri/xp3-validation-candidate",
+      "materialKind": "archivePassword",
+      "validation": {
+        "method": "archiveIndexProof",
+        "proofHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+      }
+    }
+  ],
+  "proofHashes": [
+    {
+      "method": "archiveIndexProof",
+      "proofHash": "sha256:4545454545454545454545454545454545454545454545454545454545454545"
+    }
+  ]
+}

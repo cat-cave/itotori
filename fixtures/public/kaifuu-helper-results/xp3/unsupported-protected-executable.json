@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-xp3-unsupported-protected-executable",
+  "helperResultId": "helper-result-xp3-unsupported-protected-executable",
+  "profileId": "019ed000-0000-7000-8000-000000096005",
+  "helper": {
+    "helperId": "kaifuu.fixture.remote-windows",
+    "helperVersion": "0.1.0",
+    "helperKind": "remoteWindowsHelper"
+  },
+  "capabilityLevel": "remoteWindows",
+  "execution": {
+    "mode": "remoteHelper",
+    "platform": "windows-fixture",
+    "bounded": true,
+    "timeoutMs": 5000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "localGameReadOnly"
+  },
+  "diagnostic": {
+    "code": "unsupported_protected_executable",
+    "message": "fixture protected boundary"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:5050505050505050505050505050505050505050505050505050505050505050"
+  },
+  "secretRefs": [],
+  "proofHashes": [
+    {
+      "method": "archiveIndexProof",
+      "proofHash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    }
+  ]
+}

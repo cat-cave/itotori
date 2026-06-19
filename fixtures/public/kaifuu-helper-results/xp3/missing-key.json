@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-xp3-missing-key",
+  "helperResultId": "helper-result-xp3-missing-key",
+  "profileId": "019ed000-0000-7000-8000-000000095002",
+  "helper": {
+    "helperId": "kaifuu.fixture.known-key-import",
+    "helperVersion": "0.1.0",
+    "helperKind": "knownKeyDatabaseImport"
+  },
+  "capabilityLevel": "localKeyImport",
+  "execution": {
+    "mode": "notExecuted",
+    "platform": "fixture-local",
+    "bounded": true,
+    "timeoutMs": 1000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "none"
+  },
+  "diagnostic": {
+    "code": "missing_key",
+    "message": "synthetic XP3 encrypted profile declares kirikiri-xp3-key-profile but no local key material was found"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:2020202020202020202020202020202020202020202020202020202020202020"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "kirikiri-xp3-key-profile",
+      "secretRef": "local-secret:fixture/kirikiri/xp3/missing-password",
+      "materialKind": "archivePassword"
+    }
+  ],
+  "proofHashes": [
+    {
+      "method": "archiveIndexProof",
+      "proofHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    }
+  ]
+}

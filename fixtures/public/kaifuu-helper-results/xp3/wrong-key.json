@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-xp3-wrong-key",
+  "helperResultId": "xp3-mismatch",
+  "profileId": "019ed000-0000-7000-8000-000000095002",
+  "helper": {
+    "helperId": "kaifuu.fixture.known-key-import",
+    "helperVersion": "0.1.0",
+    "helperKind": "knownKeyDatabaseImport"
+  },
+  "capabilityLevel": "localKeyImport",
+  "execution": {
+    "mode": "notExecuted",
+    "platform": "fixture-local",
+    "bounded": true,
+    "timeoutMs": 1000,
+    "durationMs": 0,
+    "networkAccess": false,
+    "filesystemAccess": "none"
+  },
+  "diagnostic": {
+    "code": "wrong_key",
+    "message": "fixture proof mismatch"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:3030303030303030303030303030303030303030303030303030303030303030"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "kirikiri-xp3-key-profile",
+      "secretRef": "local-secret:fixture/kirikiri/xp3/wrong-password",
+      "materialKind": "archivePassword",
+      "validation": {
+        "method": "decryptHeaderProof",
+        "proofHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+      }
+    }
+  ],
+  "proofHashes": [
+    {
+      "method": "decryptHeaderProof",
+      "proofHash": "sha256:3434343434343434343434343434343434343434343434343434343434343434"
+    }
+  ]
+}
