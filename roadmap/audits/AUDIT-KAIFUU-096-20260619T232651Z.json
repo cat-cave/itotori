@@ -1,0 +1,94 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-096-20260619T232651Z",
+  "generatedAt": "2026-06-19T23:26:51Z",
+  "spec": {
+    "id": "KAIFUU-096",
+    "title": "XP3 helper-required and missing-key semantic fixtures",
+    "branch": "spec/kaifuu-096",
+    "worktree": "/tmp/itotori-spec-kaifuu-096",
+    "commit": "c8d36813ae3ceb305c8fa7a05f2dd6312ce95cac"
+  },
+  "auditor": {
+    "name": "codex-kaifuu-096-audit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "The XP3 helper-result fixtures represent helper_required, missing_key, wrong_key, validation_failed, and unsupported protected executable states, validate against the Rust contract, preserve public fixture safety, and do not overclaim production XP3 decryption or extraction support. One non-blocking documentation drift follow-up was found for the expanded helper-result diagnostic enum.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-096-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-096-F001",
+      "severity": "P3",
+      "title": "Helper-result diagnostic enum documentation drift",
+      "category": "documentation",
+      "locations": [
+        {
+          "path": "docs/kaifuu-key-discovery.md",
+          "line": 275
+        },
+        {
+          "path": "fixtures/public/kaifuu-helper-results/helper-result.schema.json",
+          "line": 137
+        }
+      ],
+      "description": "The helper-result schema and Rust validator now accept the XP3 wrong_key diagnostic, but the key-discovery documentation still presents the helper-result diagnostic enum without wrong_key.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Audit compared the helper-result schema enum with docs/kaifuu-key-discovery.md and found wrong_key missing from the documented diagnostic set."
+        }
+      ],
+      "impact": "Developers reading the documentation may treat wrong_key as invalid even though the public helper-result contract accepts it.",
+      "actionableAcceptanceCriteria": [
+        "docs/kaifuu-key-discovery.md includes wrong_key in the helper-result diagnostic enum documentation.",
+        "The documented helper-result diagnostic set is checked against the public helper-result schema or covered by a docs drift regression."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Helper-result diagnostic enum docs drift guard",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "policy",
+          "dependsOn": ["KAIFUU-096"],
+          "summary": "Synchronize helper-result diagnostic enum documentation with the public helper-result schema after XP3 wrong_key fixture support.",
+          "deliverables": [
+            "Updated helper-result diagnostic enum documentation",
+            "Docs drift guard for helper-result diagnostic names"
+          ],
+          "acceptanceCriteria": [
+            "docs/kaifuu-key-discovery.md documents wrong_key as an accepted helper-result diagnostic where the enum is listed.",
+            "A regression check compares the documented helper-result diagnostic names with fixtures/public/kaifuu-helper-results/helper-result.schema.json or otherwise fails on enum drift."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Documentation matches public helper-result schema",
+            "No private key material appears in docs examples"
+          ]
+        }
+      }
+    }
+  ]
+}
