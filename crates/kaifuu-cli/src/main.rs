@@ -1091,6 +1091,80 @@ mod tests {
     }
 
     #[test]
+    fn key_helper_validate_command_rejects_top_level_command_metadata() {
+        let root = temp_dir("key-helper-top-level-command-invalid");
+        let fixture = root.join("top-level-command.json");
+        let output = root.join("key-helper-report.json");
+        let mut value: serde_json::Value = read_json(&public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/key-helper/static-parser.json",
+        ))
+        .unwrap();
+        value.as_object_mut().unwrap().insert(
+            "command".to_string(),
+            serde_json::json!("fixture-helper --dump-private-state"),
+        );
+        write_json(&fixture, &value).unwrap();
+
+        let result = run_with_args(vec![
+            "key-helper".to_string(),
+            "validate".to_string(),
+            "--fixture".to_string(),
+            fixture.to_str().unwrap().to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+
+        assert!(result.is_err());
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert!(
+            report["failures"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|failure| failure["field"] == "command"
+                    && failure["code"] == "forbidden_helper_metadata_field")
+        );
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains("dump-private-state"));
+    }
+
+    #[test]
+    fn key_helper_validate_command_rejects_static_parser_remote_overclaim() {
+        let root = temp_dir("key-helper-static-remote-overclaim-invalid");
+        let fixture = root.join("static-remote-overclaim.json");
+        let output = root.join("key-helper-report.json");
+        let mut value: serde_json::Value = read_json(&public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/key-helper/static-parser.json",
+        ))
+        .unwrap();
+        value["capabilityLevel"] = serde_json::json!("remoteWindows");
+        value["execution"]["mode"] = serde_json::json!("remoteHelper");
+        write_json(&fixture, &value).unwrap();
+
+        let result = run_with_args(vec![
+            "key-helper".to_string(),
+            "validate".to_string(),
+            "--fixture".to_string(),
+            fixture.to_str().unwrap().to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+
+        assert!(result.is_err());
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert!(
+            report["failures"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|failure| failure["field"] == "helper"
+                    && failure["code"] == "invalid_helper_semantics")
+        );
+    }
+
+    #[test]
     fn helper_registry_validate_command_accepts_public_fixture() {
         let root = temp_dir("helper-registry-valid");
         let output = root.join("helper-registry-report.json");

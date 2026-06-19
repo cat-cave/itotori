@@ -26,10 +26,6 @@
     "status": "redacted",
     "redactedLogHash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
   },
-  "sourceHash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
-  "materialHash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
-  "keyPurpose": "siglus-secondary-key",
-  "engineProfileId": "019ed000-0000-7000-8000-profile00087",
   "secretRefs": [
     {
       "requirementId": "siglus-secondary-key",

@@ -183,8 +183,8 @@
       "path": "fixtures/public/kaifuu-helper-results/known-key-import-boundary.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "3bd2a74c29342b06bda589c77e33579f41f811fc91ad292a8d28d7c48065d4ed",
-      "bytes": 1703,
+      "sha256": "79b571513dbd180c62710f6c706337f32df8fcdfca2ca412db0ecc73504b07ce",
+      "bytes": 1418,
       "redistributable": true
     },
     {
