@@ -408,16 +408,31 @@ function patchExportV02Example(
     hashStrategy: cloneRecord(bridge.hashStrategy),
     patchExportHash: HASH_PATCH_EXPORT_V02_EXAMPLE,
     generatedAt: "2026-06-17T00:00:00.000Z",
-    entries: units.map((unit, index) => ({
-      entryId: `019ed001-0000-7000-8000-00000000091${index}`,
-      bridgeUnitId: unit.bridgeUnitId,
-      sourceUnitKey: unit.sourceUnitKey,
-      sourceHash: unit.sourceHash,
-      sourceRevision: cloneRecord(unit.sourceRevision),
-      targetText: index === 0 ? "Bonjour, {player}." : "La porte s'ouvre.",
-      protectedSpanMappings:
-        index === 0 ? [{ raw: "{player}", targetStart: 9, targetEnd: 17 }] : [],
-    })),
+    entries: units.map((unit, index) => {
+      const spans = (unit.spans as Array<Record<string, unknown>> | undefined) ?? [];
+      const firstSpan = spans[0];
+      return {
+        entryId: `019ed001-0000-7000-8000-00000000091${index}`,
+        bridgeUnitId: unit.bridgeUnitId,
+        sourceUnitKey: unit.sourceUnitKey,
+        sourceHash: unit.sourceHash,
+        sourceRevision: cloneRecord(unit.sourceRevision),
+        targetText: index === 0 ? "Bonjour, {player}." : "La porte s'ouvre.",
+        protectedSpanMappings:
+          index === 0 && firstSpan !== undefined
+            ? [
+                {
+                  raw: "{player}",
+                  sourceSpanId: firstSpan.spanId,
+                  sourceStartByte: firstSpan.startByte,
+                  sourceEndByte: firstSpan.endByte,
+                  targetStart: 9,
+                  targetEnd: 17,
+                },
+              ]
+            : [],
+      };
+    }),
   };
 }
 
@@ -1634,6 +1649,187 @@ describe("localization bridge schema guards", () => {
     const patchExport = patchExportV02Example(bridge);
 
     expect(() => assertPatchExportV02(patchExport)).not.toThrow();
+  });
+
+  it("accepts reordered target mappings for distinct protected spans", () => {
+    const bridge = bridgeV02Example();
+    const unit = asTestRecord(bridgeV02Units(bridge)[0], "first v0.2 unit");
+    unit.sourceText = "{item} for {player}";
+    unit.spans = [
+      {
+        spanId: "019ed001-0000-7000-8000-000000000831",
+        spanKind: "variable_placeholder",
+        raw: "{item}",
+        startByte: 0,
+        endByte: 6,
+        preserveMode: "map",
+        variableName: "item",
+      },
+      {
+        spanId: "019ed001-0000-7000-8000-000000000832",
+        spanKind: "variable_placeholder",
+        raw: "{player}",
+        startByte: 11,
+        endByte: 19,
+        preserveMode: "map",
+        variableName: "player",
+      },
+    ];
+    const patchExport = patchExportV02Example(bridge, 1);
+    const entry = asTestRecord(
+      (patchExport.entries as Array<Record<string, unknown>>)[0],
+      "first v0.2 patch export entry",
+    );
+    entry.targetText = "{player} gets {item}";
+    entry.protectedSpanMappings = [
+      {
+        raw: "{player}",
+        sourceSpanId: "019ed001-0000-7000-8000-000000000832",
+        sourceStartByte: 11,
+        sourceEndByte: 19,
+        targetStart: 0,
+        targetEnd: 8,
+      },
+      {
+        raw: "{item}",
+        sourceSpanId: "019ed001-0000-7000-8000-000000000831",
+        sourceStartByte: 0,
+        sourceEndByte: 6,
+        targetStart: 14,
+        targetEnd: 20,
+      },
+    ];
+
+    const report = evaluatePatchExportCompatibilityV02(patchExport, bridge);
+
+    expect(() => assertPatchExportV02(patchExport)).not.toThrow();
+    expect(report.status).toBe("compatible");
+
+    const noIdentityPatchExport = cloneRecord(patchExport);
+    const noIdentityEntry = asTestRecord(
+      (noIdentityPatchExport.entries as Array<Record<string, unknown>>)[0],
+      "first no-identity v0.2 patch export entry",
+    );
+    noIdentityEntry.protectedSpanMappings = [
+      { raw: "{name}", targetStart: 0, targetEnd: 6 },
+      { raw: "{name}", targetStart: 11, targetEnd: 17 },
+    ];
+
+    expect(evaluatePatchExportCompatibilityV02(noIdentityPatchExport, bridge).status).toBe(
+      "incompatible",
+    );
+  });
+
+  it("accepts duplicate raw protected spans when source identities and target ranges are explicit", () => {
+    const bridge = bridgeV02Example();
+    const unit = asTestRecord(bridgeV02Units(bridge)[0], "first v0.2 unit");
+    unit.sourceText = "{name} meets {name}";
+    unit.spans = [
+      {
+        spanId: "019ed001-0000-7000-8000-000000000841",
+        spanKind: "variable_placeholder",
+        raw: "{name}",
+        startByte: 0,
+        endByte: 6,
+        preserveMode: "map",
+        variableName: "name",
+      },
+      {
+        spanId: "019ed001-0000-7000-8000-000000000842",
+        spanKind: "variable_placeholder",
+        raw: "{name}",
+        startByte: 13,
+        endByte: 19,
+        preserveMode: "map",
+        variableName: "name",
+      },
+    ];
+    const patchExport = patchExportV02Example(bridge, 1);
+    const entry = asTestRecord(
+      (patchExport.entries as Array<Record<string, unknown>>)[0],
+      "first v0.2 patch export entry",
+    );
+    entry.targetText = "{name} and {name}";
+    entry.protectedSpanMappings = [
+      {
+        raw: "{name}",
+        sourceSpanId: "019ed001-0000-7000-8000-000000000842",
+        sourceStartByte: 13,
+        sourceEndByte: 19,
+        targetStart: 0,
+        targetEnd: 6,
+      },
+      {
+        raw: "{name}",
+        sourceSpanId: "019ed001-0000-7000-8000-000000000841",
+        sourceStartByte: 0,
+        sourceEndByte: 6,
+        targetStart: 11,
+        targetEnd: 17,
+      },
+    ];
+
+    const report = evaluatePatchExportCompatibilityV02(patchExport, bridge);
+
+    expect(() => assertPatchExportV02(patchExport)).not.toThrow();
+    expect(report.status).toBe("compatible");
+  });
+
+  it("reports protected span mapping mismatches for wrong source identity or collapsed duplicates", () => {
+    const bridge = bridgeV02Example();
+    const unit = asTestRecord(bridgeV02Units(bridge)[0], "first v0.2 unit");
+    unit.sourceText = "{name} meets {name}";
+    unit.spans = [
+      {
+        spanId: "019ed001-0000-7000-8000-000000000851",
+        spanKind: "variable_placeholder",
+        raw: "{name}",
+        startByte: 0,
+        endByte: 6,
+        preserveMode: "map",
+        variableName: "name",
+      },
+      {
+        spanId: "019ed001-0000-7000-8000-000000000852",
+        spanKind: "variable_placeholder",
+        raw: "{name}",
+        startByte: 13,
+        endByte: 19,
+        preserveMode: "map",
+        variableName: "name",
+      },
+    ];
+    const patchExport = patchExportV02Example(bridge, 1);
+    const entry = asTestRecord(
+      (patchExport.entries as Array<Record<string, unknown>>)[0],
+      "first v0.2 patch export entry",
+    );
+    entry.targetText = "{name} and {name}";
+    entry.protectedSpanMappings = [
+      {
+        raw: "{name}",
+        sourceSpanId: "019ed001-0000-7000-8000-000000000851",
+        sourceStartByte: 0,
+        sourceEndByte: 6,
+        targetStart: 0,
+        targetEnd: 6,
+      },
+      {
+        raw: "{name}",
+        sourceSpanId: "019ed001-0000-7000-8000-000000000851",
+        sourceStartByte: 0,
+        sourceEndByte: 6,
+        targetStart: 0,
+        targetEnd: 6,
+      },
+    ];
+
+    const report = evaluatePatchExportCompatibilityV02(patchExport, bridge);
+
+    expect(report.status).toBe("incompatible");
+    expect(report.incompatibleUnits).toEqual([
+      expect.objectContaining({ reason: "protected_span_mapping_mismatch" }),
+    ]);
   });
 
   it("accepts the committed v0.2 patch export, patch result, and delta metadata fixtures", () => {

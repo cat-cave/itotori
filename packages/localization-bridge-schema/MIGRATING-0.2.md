@@ -76,6 +76,10 @@ Do not collapse unknown speakers into a single string or boolean.
   source unit, and unit-level `sourceHash`. A bundle hash change must be
   reported for traceability, but it must not invalidate unchanged units whose
   unit hash still matches.
+- For `preserveMode: "map"` spans, `protectedSpanMappings[]` can carry
+  `sourceSpanId` plus `sourceStartByte`/`sourceEndByte` so reordered or
+  duplicate raw spans are matched by source identity and explicit target byte
+  range, not by source span order.
 - `evaluatePatchExportCompatibilityV02` returns compatible and incompatible
   unit lists. `source_hash_mismatch` includes both expected and actual source
   hashes so stale patches cannot pass silently. `bridge_unit_id_mismatch`

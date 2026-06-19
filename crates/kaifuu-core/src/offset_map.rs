@@ -374,35 +374,46 @@ impl EncodedStringSlot {
         protected_span_mappings: &[ProtectedSpanMapping],
         diagnostics: &mut Vec<EncodedStringSlotDiagnostic>,
     ) {
+        let mut required_counts = BTreeMap::<&str, usize>::new();
         for protected_span in &self.protected_spans {
-            let mapped = protected_span_mappings
-                .iter()
-                .filter(|mapping| mapping.raw == protected_span.raw)
-                .collect::<Vec<_>>();
-            if mapped.is_empty() {
+            if !protected_span.raw.is_empty() {
+                *required_counts
+                    .entry(protected_span.raw.as_str())
+                    .or_default() += 1;
+            }
+        }
+
+        let mut matching_ranges = BTreeMap::<&str, BTreeSet<(u64, u64)>>::new();
+        for mapping in protected_span_mappings {
+            if required_counts.contains_key(mapping.raw.as_str())
+                && mapping.matches_target_text(target_text)
+            {
+                matching_ranges
+                    .entry(mapping.raw.as_str())
+                    .or_default()
+                    .insert((mapping.target_start, mapping.target_end));
+            }
+        }
+
+        for (raw, required_count) in required_counts {
+            let mapped_count = matching_ranges.get(raw).map_or(0, BTreeSet::len);
+            if mapped_count == 0 {
                 diagnostics.push(self.diagnostic(
                     STRING_SLOT_PROTECTED_SPAN_MUTATION,
-                    format!(
-                        "protected span {:?} is missing from protectedSpanMappings",
-                        protected_span.raw
-                    ),
+                    format!("protected span {raw:?} is missing from protectedSpanMappings"),
                     "restore_protected_span",
                     "preserve the protected token and include a matching protectedSpanMappings entry",
                 ));
                 continue;
             }
-            if !mapped
-                .iter()
-                .any(|mapping| mapping.matches_target_text(target_text))
-            {
+            if mapped_count < required_count {
                 diagnostics.push(self.diagnostic(
                     STRING_SLOT_PROTECTED_SPAN_MUTATION,
                     format!(
-                        "protected span {:?} mapping does not match targetText",
-                        protected_span.raw
+                        "protected span {raw:?} has {mapped_count} target mapping(s), expected {required_count}"
                     ),
                     "restore_protected_span",
-                    "align protectedSpanMappings with the protected token in targetText",
+                    "map each duplicate protected token to a distinct targetText byte range",
                 ));
             }
         }
@@ -2218,23 +2229,33 @@ fn encode_relocated_slot(
         ))
     })?;
 
+    let mut required_counts = BTreeMap::<&str, usize>::new();
     for protected_span in &slot.protected_spans {
-        let mapped = replacement
-            .protected_span_mappings
-            .iter()
-            .filter(|mapping| mapping.raw == protected_span.raw)
-            .collect::<Vec<_>>();
-        if mapped.is_empty()
-            || !mapped
-                .iter()
-                .any(|mapping| mapping.matches_target_text(&replacement.target_text))
+        if !protected_span.raw.is_empty() {
+            *required_counts
+                .entry(protected_span.raw.as_str())
+                .or_default() += 1;
+        }
+    }
+    let mut matching_ranges = BTreeMap::<&str, BTreeSet<(u64, u64)>>::new();
+    for mapping in &replacement.protected_span_mappings {
+        if required_counts.contains_key(mapping.raw.as_str())
+            && mapping.matches_target_text(&replacement.target_text)
         {
+            matching_ranges
+                .entry(mapping.raw.as_str())
+                .or_default()
+                .insert((mapping.target_start, mapping.target_end));
+        }
+    }
+    for (raw, required_count) in required_counts {
+        let mapped_count = matching_ranges.get(raw).map_or(0, BTreeSet::len);
+        if mapped_count < required_count {
             return Err(Box::new(relocated_slot_diagnostic(
                 slot,
                 STRING_SLOT_PROTECTED_SPAN_MUTATION,
                 format!(
-                    "protected span {:?} is missing or misaligned in targetText",
-                    protected_span.raw
+                    "protected span {raw:?} has {mapped_count} target mapping(s), expected {required_count}"
                 ),
                 "restore_protected_span",
                 "preserve protected tokens and align protectedSpanMappings before relocation",
@@ -2921,6 +2942,66 @@ mod tests {
             report.diagnostics[0].remediation_code,
             "restore_protected_span"
         );
+    }
+
+    #[test]
+    fn encoded_string_slot_allows_reordered_distinct_protected_span_mappings() {
+        let slot = EncodedStringSlot {
+            slot_id: "reordered-placeholders".to_string(),
+            encoding: SourceEncoding::Utf8,
+            byte_range: ByteSpan::new(0, 64).unwrap(),
+            layout: EncodedStringSlotLayout::FixedWidth,
+            protected_spans: vec![
+                EncodedStringSlotProtectedSpan::new("{item}"),
+                EncodedStringSlotProtectedSpan::new("{player}"),
+            ],
+        };
+
+        let report = slot.preflight(
+            "{player} gets {item}",
+            &[
+                ProtectedSpanMapping::new("{player}", 0, 8),
+                ProtectedSpanMapping::new("{item}", 14, 20),
+            ],
+            None,
+        );
+
+        assert_eq!(report.status, OperationStatus::Passed, "{report:?}");
+    }
+
+    #[test]
+    fn encoded_string_slot_requires_distinct_target_ranges_for_duplicate_raw_spans() {
+        let slot = EncodedStringSlot {
+            slot_id: "duplicate-placeholders".to_string(),
+            encoding: SourceEncoding::Utf8,
+            byte_range: ByteSpan::new(0, 64).unwrap(),
+            layout: EncodedStringSlotLayout::FixedWidth,
+            protected_spans: vec![
+                EncodedStringSlotProtectedSpan::new("{name}"),
+                EncodedStringSlotProtectedSpan::new("{name}"),
+            ],
+        };
+
+        let collapsed = slot.preflight(
+            "{name} speaks.",
+            &[
+                ProtectedSpanMapping::new("{name}", 0, 6),
+                ProtectedSpanMapping::new("{name}", 0, 6),
+            ],
+            None,
+        );
+        let explicit = slot.preflight(
+            "{name} and {name}",
+            &[
+                ProtectedSpanMapping::new("{name}", 0, 6),
+                ProtectedSpanMapping::new("{name}", 11, 17),
+            ],
+            None,
+        );
+
+        assert_eq!(collapsed.status, OperationStatus::Failed);
+        assert!(collapsed.diagnostics[0].message.contains("expected 2"));
+        assert_eq!(explicit.status, OperationStatus::Passed, "{explicit:?}");
     }
 
     #[test]

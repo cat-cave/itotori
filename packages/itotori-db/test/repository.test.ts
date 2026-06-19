@@ -104,6 +104,42 @@ function bridgeV02Fixture(): BridgeBundleV02 {
   ) as BridgeBundleV02;
 }
 
+function patchExportV02Fixture(bridge: BridgeBundleV02): PatchExportV02 {
+  const unit = bridge.units[0]!;
+  const span = unit.spans[0]!;
+  return {
+    schemaVersion: "0.2.0",
+    patchExportId: "019ed001-0000-7000-8000-000000000901",
+    sourceBridgeId: bridge.bridgeId,
+    sourceGame: bridge.sourceGame,
+    sourceBundleHash: bridge.sourceBundleHash,
+    sourceBundleRevision: bridge.sourceBundleRevision,
+    sourceLocale: bridge.sourceLocale,
+    targetLocale: "fr-FR",
+    hashStrategy: bridge.hashStrategy,
+    entries: [
+      {
+        entryId: "019ed001-0000-7000-8000-000000000910",
+        bridgeUnitId: unit.bridgeUnitId,
+        sourceUnitKey: unit.sourceUnitKey,
+        sourceHash: unit.sourceHash,
+        sourceRevision: unit.sourceRevision,
+        targetText: "Bonjour, {player}.",
+        protectedSpanMappings: [
+          {
+            raw: span.raw,
+            sourceSpanId: span.spanId,
+            sourceStartByte: span.startByte,
+            sourceEndByte: span.endByte,
+            targetStart: 9,
+            targetEnd: 17,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function manualFeedbackFixture(
   overrides: Partial<ManualFeedbackImportInput> = {},
 ): ManualFeedbackImportInput {
@@ -634,6 +670,128 @@ describe("ItotoriProjectRepository", () => {
         ["project-v02"],
       );
       expect(revisions.rows[0]?.count).toBe(firstImport.sourceRevisionCount + 1);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("persists v0.2 patch exports with reordered explicit target span mappings", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const bridge = bridgeV02Fixture();
+      const unit = bridge.units[0]!;
+      unit.sourceText = "{item} for {player}";
+      unit.spans = [
+        {
+          spanId: "019ed001-0000-7000-8000-000000000831",
+          spanKind: "variable_placeholder",
+          raw: "{item}",
+          startByte: 0,
+          endByte: 6,
+          preserveMode: "map",
+          variableName: "item",
+        },
+        {
+          spanId: "019ed001-0000-7000-8000-000000000832",
+          spanKind: "variable_placeholder",
+          raw: "{player}",
+          startByte: 11,
+          endByte: 19,
+          preserveMode: "map",
+          variableName: "player",
+        },
+      ];
+      const project = projectV02Fixture(bridge);
+      await repo.importSourceBundle(localActor, project);
+      const patchExport = patchExportV02Fixture(bridge);
+      patchExport.entries[0]!.targetText = "{player} gets {item}";
+      patchExport.entries[0]!.protectedSpanMappings = [
+        {
+          raw: "{player}",
+          sourceSpanId: "019ed001-0000-7000-8000-000000000832",
+          sourceStartByte: 11,
+          sourceEndByte: 19,
+          targetStart: 0,
+          targetEnd: 8,
+        },
+        {
+          raw: "{item}",
+          sourceSpanId: "019ed001-0000-7000-8000-000000000831",
+          sourceStartByte: 0,
+          sourceEndByte: 6,
+          targetStart: 14,
+          targetEnd: 20,
+        },
+      ];
+
+      await expect(repo.savePatchExport(localActor, project, patchExport)).resolves.toBeUndefined();
+
+      const artifactsResult = await context.pool.query<{ artifact_id: string }>(
+        "select artifact_id from itotori_artifacts where artifact_id = $1",
+        [patchExport.patchExportId],
+      );
+      expect(artifactsResult.rows).toEqual([{ artifact_id: patchExport.patchExportId }]);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects v0.2 patch exports with collapsed duplicate target span mappings", async () => {
+    const context = await migratedContext();
+    try {
+      const repo = new ItotoriProjectRepository(context.db);
+      await repo.reset(localActor);
+      const bridge = bridgeV02Fixture();
+      const unit = bridge.units[0]!;
+      unit.sourceText = "{name} meets {name}";
+      unit.spans = [
+        {
+          spanId: "019ed001-0000-7000-8000-000000000841",
+          spanKind: "variable_placeholder",
+          raw: "{name}",
+          startByte: 0,
+          endByte: 6,
+          preserveMode: "map",
+          variableName: "name",
+        },
+        {
+          spanId: "019ed001-0000-7000-8000-000000000842",
+          spanKind: "variable_placeholder",
+          raw: "{name}",
+          startByte: 13,
+          endByte: 19,
+          preserveMode: "map",
+          variableName: "name",
+        },
+      ];
+      const project = projectV02Fixture(bridge);
+      await repo.importSourceBundle(localActor, project);
+      const patchExport = patchExportV02Fixture(bridge);
+      patchExport.entries[0]!.targetText = "{name} and {name}";
+      patchExport.entries[0]!.protectedSpanMappings = [
+        {
+          raw: "{name}",
+          sourceSpanId: "019ed001-0000-7000-8000-000000000841",
+          sourceStartByte: 0,
+          sourceEndByte: 6,
+          targetStart: 0,
+          targetEnd: 6,
+        },
+        {
+          raw: "{name}",
+          sourceSpanId: "019ed001-0000-7000-8000-000000000841",
+          sourceStartByte: 0,
+          sourceEndByte: 6,
+          targetStart: 0,
+          targetEnd: 6,
+        },
+      ];
+
+      await expect(repo.savePatchExport(localActor, project, patchExport)).rejects.toThrow(
+        /protected_span_mapping_mismatch/,
+      );
     } finally {
       await context.close();
     }

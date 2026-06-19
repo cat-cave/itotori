@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray, not, sql } from "drizzle-orm";
 import {
+  assertPatchExport,
+  assertPatchExportV02,
   assertBridgeBundle,
   assertBridgeBundleV02,
   BRIDGE_SCHEMA_VERSION_V02,
+  evaluatePatchExportCompatibilityV02,
   type BridgeAssetV02,
   type BridgeBundle,
   type BridgeBundleV02,
@@ -738,6 +741,7 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
     patchExport: PatchExport | PatchExportV02,
   ): Promise<void> {
     await requirePermission(this.db, actor, permissionValues.patchExport);
+    validatePatchExportContract(patchExport, project.bridge);
     await this.db.transaction(async (tx) => {
       const { sourceBundleId } = await resolveSourceBundlePersistenceTarget(tx, project);
       await tx
@@ -3798,6 +3802,25 @@ function stringArray(value: unknown): string[] {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validatePatchExportContract(
+  patchExport: PatchExport | PatchExportV02,
+  bridge: BridgeBundle | BridgeBundleV02,
+): void {
+  if (patchExport.schemaVersion === BRIDGE_SCHEMA_VERSION_V02) {
+    assertPatchExportV02(patchExport);
+    if (bridge.schemaVersion !== BRIDGE_SCHEMA_VERSION_V02) {
+      throw new Error("PatchExportV02 requires a v0.2 source bridge");
+    }
+    const report = evaluatePatchExportCompatibilityV02(patchExport, bridge);
+    if (report.status !== "compatible") {
+      const reasons = report.incompatibleUnits.map((unit) => unit.reason ?? "unknown").join(", ");
+      throw new Error(`PatchExportV02 source compatibility failed: ${reasons}`);
+    }
+    return;
+  }
+  assertPatchExport(patchExport);
 }
 
 function stableJsonStringify(value: unknown): string {

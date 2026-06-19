@@ -5286,7 +5286,7 @@
     {
       "id": "KAIFUU-031",
       "title": "Target span mapping edge cases",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared", "itotori"],
@@ -5328,7 +5328,10 @@
         "Implicit source-order assumptions in target protected-span mapping",
         "preserveMode=map ambiguity",
         "Kaifuu and Itotori span identity drift"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/kaifuu-031",
+      "worktree": "/tmp/itotori-spec-kaifuu-031"
     },
     {
       "id": "KAIFUU-032",

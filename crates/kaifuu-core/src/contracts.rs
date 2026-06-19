@@ -839,6 +839,33 @@ pub fn validate_patch_export_v02(value: &Value) -> BridgeContractResult<()> {
             let mapping_label = format!("{label}.protectedSpanMappings[{mapping_index}]");
             let mapping = as_record(mapping, &mapping_label)?;
             assert_required_string(mapping, "raw", &format!("{mapping_label}.raw"))?;
+            if let Some(source_span_id) = mapping.get("sourceSpanId") {
+                assert_uuid7_value(source_span_id, &format!("{mapping_label}.sourceSpanId"))?;
+            }
+            let source_start = mapping
+                .get("sourceStartByte")
+                .map(|value| {
+                    non_negative_integer_value(value, &format!("{mapping_label}.sourceStartByte"))
+                })
+                .transpose()?;
+            let source_end = mapping
+                .get("sourceEndByte")
+                .map(|value| {
+                    non_negative_integer_value(value, &format!("{mapping_label}.sourceEndByte"))
+                })
+                .transpose()?;
+            if source_start.is_some() != source_end.is_some() {
+                return error(format!(
+                    "{mapping_label}.sourceStartByte and {mapping_label}.sourceEndByte must be provided together"
+                ));
+            }
+            if let (Some(source_start), Some(source_end)) = (source_start, source_end)
+                && source_end <= source_start
+            {
+                return error(format!(
+                    "{mapping_label}.sourceEndByte must be greater than {mapping_label}.sourceStartByte"
+                ));
+            }
             let start = assert_required_non_negative_integer(
                 mapping,
                 "targetStart",

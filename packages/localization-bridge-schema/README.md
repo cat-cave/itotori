@@ -177,6 +177,14 @@ When a patch entry names a different bridge unit than the current unit for its
 `sourceUnitKey`, the report uses `bridge_unit_id_mismatch` and includes
 `actualBridgeUnitId`.
 
+For protected spans whose `preserveMode` is `map`, patch exports should record
+the source identity in each `protectedSpanMappings[]` item with `sourceSpanId`
+and, when available, `sourceStartByte`/`sourceEndByte`. The target identity is
+the explicit UTF-8 byte range `targetStart`/`targetEnd` in `targetText`; tools
+must not infer target mappings by walking source spans in order. Duplicate raw
+tokens are valid only when each required occurrence maps to a distinct target
+byte range.
+
 Delta package metadata uses `DeltaPackageMetadataV02` to trace the package back
 to the source bridge, source bundle revision, generated patch export id/hash,
 target locale, and hash strategy.

@@ -66,7 +66,14 @@ export type PatchExportEntry = {
   sourceUnitKey: string;
   sourceHash: string;
   targetText: string;
-  protectedSpanMappings: Array<{ raw: string; targetStart: number; targetEnd: number }>;
+  protectedSpanMappings: Array<{
+    raw: string;
+    sourceSpanId?: Uuid7;
+    sourceStartByte?: number;
+    sourceEndByte?: number;
+    targetStart: number;
+    targetEnd: number;
+  }>;
 };
 
 export type PatchExport = {
@@ -563,6 +570,7 @@ export const PATCH_INCOMPATIBILITY_REASONS_V02 = [
   "missing_source_unit",
   "duplicate_source_unit_key",
   "bridge_unit_id_mismatch",
+  "protected_span_mapping_mismatch",
 ] as const;
 export type PatchIncompatibilityReasonV02 = (typeof PATCH_INCOMPATIBILITY_REASONS_V02)[number];
 
@@ -1523,7 +1531,14 @@ export type PatchExportEntryV02 = {
   sourceHash: string;
   sourceRevision: SourceRevisionV02;
   targetText: string;
-  protectedSpanMappings: Array<{ raw: string; targetStart: number; targetEnd: number }>;
+  protectedSpanMappings: Array<{
+    raw: string;
+    sourceSpanId?: Uuid7;
+    sourceStartByte?: number;
+    sourceEndByte?: number;
+    targetStart: number;
+    targetEnd: number;
+  }>;
 };
 
 export type PatchExportV02 = {
@@ -2967,6 +2982,16 @@ export function evaluatePatchExportCompatibilityV02(
       continue;
     }
 
+    if (!patchEntrySpanMappingsCompatible(entry, currentUnit)) {
+      incompatibleUnits.push({
+        ...base,
+        status: "incompatible",
+        actualSourceHash: currentUnit.sourceHash,
+        reason: "protected_span_mapping_mismatch",
+      });
+      continue;
+    }
+
     compatibleUnits.push({
       ...base,
       status: "compatible",
@@ -2985,6 +3010,82 @@ export function evaluatePatchExportCompatibilityV02(
     compatibleUnits,
     incompatibleUnits,
   };
+}
+
+function patchEntrySpanMappingsCompatible(
+  entry: PatchExportEntryV02,
+  unit: LocalizationUnitV02,
+): boolean {
+  const requiredCounts = new Map<string, number>();
+  for (const span of unit.spans) {
+    requiredCounts.set(span.raw, (requiredCounts.get(span.raw) ?? 0) + 1);
+  }
+
+  const targetRangesByRaw = new Map<string, Set<string>>();
+  const explicitSourceKeys = new Set<string>();
+  for (const mapping of entry.protectedSpanMappings) {
+    if (
+      !targetByteRangeMatchesRaw(
+        entry.targetText,
+        mapping.raw,
+        mapping.targetStart,
+        mapping.targetEnd,
+      )
+    ) {
+      return false;
+    }
+
+    const hasSourceIdentity =
+      mapping.sourceSpanId !== undefined ||
+      mapping.sourceStartByte !== undefined ||
+      mapping.sourceEndByte !== undefined;
+    if ((requiredCounts.get(mapping.raw) ?? 0) > 1 && !hasSourceIdentity) {
+      return false;
+    }
+    if (hasSourceIdentity) {
+      const sourceSpan = unit.spans.find(
+        (span) =>
+          span.raw === mapping.raw &&
+          (mapping.sourceSpanId === undefined || span.spanId === mapping.sourceSpanId) &&
+          (mapping.sourceStartByte === undefined || span.startByte === mapping.sourceStartByte) &&
+          (mapping.sourceEndByte === undefined || span.endByte === mapping.sourceEndByte),
+      );
+      if (sourceSpan === undefined) {
+        return false;
+      }
+      const sourceKey = `${sourceSpan.spanId}:${sourceSpan.startByte}:${sourceSpan.endByte}`;
+      if (explicitSourceKeys.has(sourceKey)) {
+        return false;
+      }
+      explicitSourceKeys.add(sourceKey);
+    }
+
+    if (requiredCounts.has(mapping.raw)) {
+      const ranges = targetRangesByRaw.get(mapping.raw) ?? new Set<string>();
+      ranges.add(`${mapping.targetStart}:${mapping.targetEnd}`);
+      targetRangesByRaw.set(mapping.raw, ranges);
+    }
+  }
+
+  for (const [raw, requiredCount] of requiredCounts) {
+    if ((targetRangesByRaw.get(raw)?.size ?? 0) < requiredCount) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function targetByteRangeMatchesRaw(
+  targetText: string,
+  raw: string,
+  targetStart: number,
+  targetEnd: number,
+): boolean {
+  const targetBytes = Buffer.from(targetText, "utf8");
+  if (targetEnd > targetBytes.length) {
+    return false;
+  }
+  return targetBytes.subarray(targetStart, targetEnd).toString("utf8") === raw;
 }
 
 export function assertRuntimeVerificationReport(
@@ -4653,6 +4754,20 @@ function assertPatchExportEntryV02(
 function assertProtectedSpanMappingV02(value: unknown, label: string): void {
   const mapping = asRecord(value, label);
   assertString(mapping.raw, `${label}.raw`);
+  assertOptionalUuid7(mapping.sourceSpanId, `${label}.sourceSpanId`);
+  assertOptionalNonNegativeInteger(mapping.sourceStartByte, `${label}.sourceStartByte`);
+  assertOptionalNonNegativeInteger(mapping.sourceEndByte, `${label}.sourceEndByte`);
+  if ((mapping.sourceStartByte === undefined) !== (mapping.sourceEndByte === undefined)) {
+    throw new Error(
+      `${label}.sourceStartByte and ${label}.sourceEndByte must be provided together`,
+    );
+  }
+  if (
+    mapping.sourceStartByte !== undefined &&
+    (mapping.sourceEndByte as number) <= (mapping.sourceStartByte as number)
+  ) {
+    throw new Error(`${label}.sourceEndByte must be greater than ${label}.sourceStartByte`);
+  }
   assertNonNegativeInteger(mapping.targetStart, `${label}.targetStart`);
   assertNonNegativeInteger(mapping.targetEnd, `${label}.targetEnd`);
   if ((mapping.targetEnd as number) <= mapping.targetStart) {

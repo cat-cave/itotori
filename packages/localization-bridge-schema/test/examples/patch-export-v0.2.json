@@ -70,6 +70,9 @@
       "protectedSpanMappings": [
         {
           "raw": "{player}",
+          "sourceSpanId": "019ed001-0000-7000-8000-000000000801",
+          "sourceStartByte": 7,
+          "sourceEndByte": 15,
           "targetStart": 9,
           "targetEnd": 17
         }

@@ -152,6 +152,7 @@ impl FixtureAdapter {
         }
 
         let mut declared_counts = BTreeMap::<&str, usize>::new();
+        let mut declared_ranges = BTreeMap::<&str, BTreeSet<(u64, u64)>>::new();
         for mapping in &entry.protected_span_mappings {
             if mapping.raw.is_empty() {
                 continue;
@@ -164,6 +165,22 @@ impl FixtureAdapter {
                     "fixture patching requires protectedSpanMappings to point at raw text in targetText",
                     format!(
                         "Align protectedSpanMappings for protected span {:?} in sourceUnitKey {}",
+                        mapping.raw, entry.source_unit_key
+                    ),
+                ));
+                continue;
+            }
+            if !declared_ranges
+                .entry(mapping.raw.as_str())
+                .or_default()
+                .insert((mapping.target_start, mapping.target_end))
+            {
+                failures.push(Self::patch_failure(
+                    "protected_span_duplicate_mapping",
+                    format!("source.json#{}", entry.source_unit_key),
+                    "fixture patching requires duplicate protected spans to use distinct targetText ranges",
+                    format!(
+                        "Map each protected span {:?} occurrence to a distinct target byte range in sourceUnitKey {}",
                         mapping.raw, entry.source_unit_key
                     ),
                 ));
@@ -191,7 +208,8 @@ impl FixtureAdapter {
 
             let required_count = required_count.max(declared_count);
             let actual_count = entry.target_text.match_indices(raw).count();
-            if actual_count < required_count {
+            let distinct_declared_count = declared_ranges.get(raw).map_or(0, BTreeSet::len);
+            if actual_count < required_count || distinct_declared_count < declared_count {
                 failures.push(Self::patch_failure(
                     "protected_span_missing",
                     format!("source.json#{}", entry.source_unit_key),
@@ -3913,6 +3931,82 @@ mod tests {
                     .as_deref()
                     .unwrap_or("")
                     .contains("{player}")
+        }));
+        assert!(!output_dir.join("source.json").exists());
+        let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn duplicate_raw_protected_spans_require_distinct_target_mappings() {
+        let game_dir = temp_game("duplicate-raw-protected-spans");
+        fs::write(
+            game_dir.join("source.json"),
+            r#"{
+  "gameId": "hello-fixture",
+  "title": "Hello Fixture",
+  "sourceLocale": "ja-JP",
+  "units": [
+    {
+      "sourceUnitKey": "hello.scene.001.line.001",
+      "speaker": "Narrator",
+      "textSurface": "dialogue",
+      "sourceText": "{name} meets {name}.",
+      "protectedSpans": [
+        {
+          "kind": "placeholder",
+          "raw": "{name}",
+          "start": 0,
+          "end": 6
+        },
+        {
+          "kind": "placeholder",
+          "raw": "{name}",
+          "start": 13,
+          "end": 19
+        }
+      ]
+    }
+  ]
+}
+"#,
+        )
+        .unwrap();
+        let adapter = FixtureAdapter;
+        let extraction = adapter
+            .extract(ExtractRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+        let unit = &extraction.bridge.units[0];
+        let patch_export = PatchExport {
+            patch_export_id: deterministic_id("patch", 13),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![kaifuu_core::PatchExportEntry {
+                bridge_unit_id: unit.bridge_unit_id.clone(),
+                source_unit_key: unit.source_unit_key.clone(),
+                source_hash: unit.source_hash.clone(),
+                target_text: "{name} and {name}.".to_string(),
+                protected_span_mappings: vec![
+                    ProtectedSpanMapping::new("{name}", 0, 6),
+                    ProtectedSpanMapping::new("{name}", 0, 6),
+                ],
+            }],
+        };
+
+        let output_dir = game_dir.join("patched");
+        let patch = adapter
+            .patch(PatchRequest {
+                game_dir: &game_dir,
+                patch_export: &patch_export,
+                output_dir: &output_dir,
+            })
+            .unwrap();
+
+        assert_eq!(patch.status, OperationStatus::Failed);
+        assert!(patch.failures.iter().any(|failure| {
+            failure.error_code == "protected_span_duplicate_mapping"
+                || failure.error_code == "protected_span_missing"
         }));
         assert!(!output_dir.join("source.json").exists());
         let _ = fs::remove_dir_all(game_dir);

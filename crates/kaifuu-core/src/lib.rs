@@ -13014,6 +13014,12 @@ pub struct PatchExportEntry {
 #[serde(rename_all = "camelCase")]
 pub struct ProtectedSpanMapping {
     pub raw: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_span_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_start_byte: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_end_byte: Option<u64>,
     pub target_start: u64,
     pub target_end: u64,
 }
@@ -13022,9 +13028,24 @@ impl ProtectedSpanMapping {
     pub fn new(raw: impl Into<String>, target_start: u64, target_end: u64) -> Self {
         Self {
             raw: raw.into(),
+            source_span_id: None,
+            source_start_byte: None,
+            source_end_byte: None,
             target_start,
             target_end,
         }
+    }
+
+    pub fn with_source_identity(
+        mut self,
+        source_span_id: Option<impl Into<String>>,
+        source_start_byte: u64,
+        source_end_byte: u64,
+    ) -> Self {
+        self.source_span_id = source_span_id.map(Into::into);
+        self.source_start_byte = Some(source_start_byte);
+        self.source_end_byte = Some(source_end_byte);
+        self
     }
 
     pub fn first_in_target(raw: &str, target_text: &str) -> Option<Self> {
@@ -13048,6 +13069,34 @@ impl ProtectedSpanMapping {
             return false;
         }
         target_text[start..end] == self.raw
+    }
+
+    pub fn matches_source_span(
+        &self,
+        raw: &str,
+        source_start_byte: Option<u64>,
+        source_end_byte: Option<u64>,
+        source_span_id: Option<&str>,
+    ) -> bool {
+        if self.raw != raw {
+            return false;
+        }
+        if let Some(expected_span_id) = self.source_span_id.as_deref()
+            && Some(expected_span_id) != source_span_id
+        {
+            return false;
+        }
+        if let Some(expected_start) = self.source_start_byte
+            && Some(expected_start) != source_start_byte
+        {
+            return false;
+        }
+        if let Some(expected_end) = self.source_end_byte
+            && Some(expected_end) != source_end_byte
+        {
+            return false;
+        }
+        true
     }
 }
 
