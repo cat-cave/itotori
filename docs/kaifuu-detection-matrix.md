@@ -31,8 +31,8 @@ Each row contains:
 - `engineFamily`: normalized engine-family label.
 - `detected`: whether aggregate evidence matched the row.
 - `detectedVariant`: profiled variant label.
-- `signals`: one or more of `encrypted`, `packed`, `protected`,
-  `missing_key`, `helper_required`, or `unknown_variant`.
+- `signals`: one or more of `compressed`, `encrypted`, `packed`,
+  `protected`, `missing_key`, `helper_required`, or `unknown_variant`.
 - `evidence`: aggregate pattern/count records only. Evidence uses patterns
   such as `*.xp3`, `Scene.pck`, `data/System.json encryption fields`, or
   `BURIKO ARC20 header`; it does not serialize concrete private filenames.
@@ -47,7 +47,7 @@ Each row contains:
 
 | Row id                             | Engine family   | Primary evidence                                                                                  | Signals reported when matched                                                                                                                                             |
 | ---------------------------------- | --------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `kirikiri-xp3`                     | KiriKiri/XP3    | `*.xp3`, XP3 magic, synthetic encrypted XP3 mark                                                  | `packed`; encrypted fixture marks add `encrypted`, `missing_key`, `helper_required`                                                                                       |
+| `kirikiri-xp3`                     | KiriKiri/XP3    | `*.xp3`, XP3 magic, synthetic encrypted/compressed/unknown XP3 marks                              | `packed`; encrypted fixture marks add `encrypted`, `missing_key`, `helper_required`; compressed marks add `compressed`; unknown marks add `unknown_variant`                |
 | `siglus-scene-pck`                 | SiglusEngine    | `Scene.pck`, `Gameexe.dat` aggregate presence                                                     | `packed`, `encrypted`, `missing_key`, `helper_required`                                                                                                                   |
 | `rpg-maker-mv-mz-encrypted-assets` | RPG Maker MV/MZ | `*.rpgmvp`, `*.rpgmvm`, `*.rpgmvo`, `*.png_`, `*.m4a_`, `*.ogg_`, `System.json` encryption fields | `encrypted`, `missing_key`; redacted candidate and bad-key cases are reported through requirements and diagnostics                                                        |
 | `wolf-rpg-editor-archives`         | Wolf RPG Editor | `*.wolf`, WOLF header, synthetic protection mark                                                  | `packed`, `encrypted`, `missing_key`, `helper_required`; protection marks add `protected`                                                                                 |
@@ -77,6 +77,7 @@ Matrix diagnostics reuse Kaifuu capability codes:
 - `kaifuu.invalid_key_material`
 - `kaifuu.helper_unavailable`
 - `kaifuu.unknown_engine_variant`
+- `kaifuu.missing_capability.codec`
 - `kaifuu.missing_capability.crypto`
 - `kaifuu.unsupported_layered_transform`
 

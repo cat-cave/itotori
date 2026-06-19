@@ -949,6 +949,7 @@ pub enum ArchiveEngineFamily {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArchiveDetectionSignal {
+    Compressed,
     Encrypted,
     Packed,
     Protected,
@@ -1172,6 +1173,10 @@ fn detect_kirikiri_xp3(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     let encrypted_marker_count = scan.header_count("kaifuu-xp3-encrypted")
         + scan.header_count("xp3-encrypted")
         + scan.header_count("xp3-crypt");
+    let compressed_marker_count =
+        scan.header_count("kaifuu-xp3-compressed") + scan.header_count("xp3-compressed");
+    let unknown_marker_count =
+        scan.header_count("kaifuu-xp3-unknown") + scan.header_count("xp3-unknown-variant");
     let detected = xp3_extension_count > 0 || xp3_header_count > 0;
     let mut signals = if detected {
         vec![ArchiveDetectionSignal::Packed]
@@ -1185,12 +1190,22 @@ fn detect_kirikiri_xp3(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
             ArchiveDetectionSignal::HelperRequired,
         ]);
     }
+    if compressed_marker_count > 0 {
+        signals.push(ArchiveDetectionSignal::Compressed);
+    }
+    if unknown_marker_count > 0 {
+        signals.push(ArchiveDetectionSignal::UnknownVariant);
+    }
     archive_row(ArchiveRowInput {
         row_id: "kirikiri-xp3",
         engine_family: ArchiveEngineFamily::KiriKiriXp3,
         detected,
-        detected_variant: if encrypted_marker_count > 0 {
+        detected_variant: if unknown_marker_count > 0 {
+            "xp3-unknown-container"
+        } else if encrypted_marker_count > 0 {
             "xp3-encrypted-archive"
+        } else if compressed_marker_count > 0 {
+            "xp3-compressed-archive"
         } else {
             "xp3-archive"
         },
@@ -1213,6 +1228,18 @@ fn detect_kirikiri_xp3(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
                 "synthetic XP3 encryption marker",
                 encrypted_marker_count,
                 "Synthetic encrypted XP3 fixture marker count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "synthetic XP3 compression marker",
+                compressed_marker_count,
+                "Synthetic compressed XP3 fixture marker count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileMagic,
+                "synthetic XP3 unknown-variant marker",
+                unknown_marker_count,
+                "Synthetic unknown XP3 container marker count",
             ),
         ],
         requirements: if encrypted_marker_count > 0 {
@@ -1665,6 +1692,12 @@ fn capabilities_for_archive_row(
             "encrypted input was detected, but decryption support is not claimed by the matrix",
         ));
     }
+    if signals.contains(&ArchiveDetectionSignal::Compressed) {
+        capabilities.push(CapabilityReport::unsupported(
+            Capability::CodecAccess,
+            "compressed archive payloads were detected, but decompression support is not claimed by the matrix",
+        ));
+    }
     if signals.contains(&ArchiveDetectionSignal::MissingKey)
         || signals.contains(&ArchiveDetectionSignal::HelperRequired)
     {
@@ -1683,6 +1716,13 @@ fn diagnostics_for_signals(
     let mut diagnostics = Vec::new();
     for signal in signals {
         match signal {
+            ArchiveDetectionSignal::Compressed => diagnostics.push(diagnostic(
+                SemanticErrorCode::MissingCodecCapability,
+                ArchiveDetectionSignal::Compressed,
+                Some(Capability::CodecAccess),
+                support_boundary,
+                "use an already extracted plaintext source or add a profiled decompression adapter before claiming support",
+            )),
             ArchiveDetectionSignal::Encrypted => diagnostics.push(diagnostic(
                 SemanticErrorCode::UnsupportedVariantEncrypted,
                 ArchiveDetectionSignal::Encrypted,
@@ -15353,10 +15393,20 @@ mod tests {
         assert!(kirikiri.evidence.iter().any(|evidence| {
             evidence.pattern == "*.xp3"
                 && evidence.status == EvidenceStatus::Matched
-                && evidence.count == 2
+                && evidence.count == 4
         }));
         assert!(kirikiri.evidence.iter().any(|evidence| {
             evidence.pattern == "synthetic XP3 encryption marker"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(kirikiri.evidence.iter().any(|evidence| {
+            evidence.pattern == "synthetic XP3 compression marker"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(kirikiri.evidence.iter().any(|evidence| {
+            evidence.pattern == "synthetic XP3 unknown-variant marker"
                 && evidence.status == EvidenceStatus::Matched
                 && evidence.count == 1
         }));

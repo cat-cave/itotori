@@ -12,7 +12,7 @@ they unlock only these generated public byte strings.
 
 Covered detector families:
 
-- KiriKiri/XP3-like packed and encrypted archive signals.
+- KiriKiri/XP3-like plain, encrypted, compressed, and unknown archive signals.
 - Siglus-like `Scene.pck` plus `Gameexe.dat` key-profile signals.
 - RPG Maker MV/MZ encrypted asset suffixes plus `System.json` encryption flags.
 - Wolf RPG Editor-like protected archive signals.

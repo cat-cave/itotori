@@ -8,6 +8,10 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fixtureRoot = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix");
 const manifestPath = resolve(repoRoot, "fixtures/public/kaifuu-encrypted-matrix.manifest.json");
 const preservedExpectedOutputs = [
+  "expected/xp3-compressed-detector-profile-v0.1.json",
+  "expected/xp3-encrypted-detector-profile-v0.1.json",
+  "expected/xp3-plain-detector-profile-v0.1.json",
+  "expected/xp3-unknown-detection-report-v0.1.json",
   "expected/siglus-asset-inventory-v0.1.json",
   "expected/siglus-detection-report-v0.1.json",
   "expected/siglus-detector-profile-v0.1.json",
@@ -36,7 +40,7 @@ they unlock only these generated public byte strings.
 
 Covered detector families:
 
-- KiriKiri/XP3-like packed and encrypted archive signals.
+- KiriKiri/XP3-like plain, encrypted, compressed, and unknown archive signals.
 - Siglus-like \`Scene.pck\` plus \`Gameexe.dat\` key-profile signals.
 - RPG Maker MV/MZ encrypted asset suffixes plus \`System.json\` encryption flags.
 - Wolf RPG Editor-like protected archive signals.
@@ -124,6 +128,42 @@ writeBytes(
 writeBytes(
   "raw/kirikiri/plain-packed.xp3",
   bytes("XP3\r\nfixture-only packed archive without encryption marker\n"),
+  "asset",
+  "application/octet-stream",
+);
+writeBytes(
+  "raw/kirikiri/compressed-packed.xp3",
+  bytes("XP3\r\nXP3-COMPRESSED\nfixture-only compressed archive marker\n"),
+  "asset",
+  "application/octet-stream",
+);
+writeBytes(
+  "raw/kirikiri/unknown-profile.xp3",
+  bytes("XP3\r\nXP3-UNKNOWN-VARIANT\nfixture-only unknown XP3 profile marker\n"),
+  "asset",
+  "application/octet-stream",
+);
+writeBytes(
+  "xp3-profiles/plain/data.xp3",
+  bytes("XP3\r\nfixture-only plain XP3 profile archive\n"),
+  "asset",
+  "application/octet-stream",
+);
+writeBytes(
+  "xp3-profiles/encrypted/data.xp3",
+  bytes("XP3\r\nXP3-CRYPT\nfixture-only encrypted XP3 profile archive\n"),
+  "asset",
+  "application/octet-stream",
+);
+writeBytes(
+  "xp3-profiles/compressed/data.xp3",
+  bytes("XP3\r\nXP3-COMPRESSED\nfixture-only compressed XP3 profile archive\n"),
+  "asset",
+  "application/octet-stream",
+);
+writeBytes(
+  "xp3-profiles/unknown/data.xp3",
+  bytes("XP3\r\nXP3-UNKNOWN-VARIANT\nfixture-only unknown XP3 profile archive\n"),
   "asset",
   "application/octet-stream",
 );
@@ -381,7 +421,7 @@ writeJson(
         rowId: "kirikiri-xp3",
         engineFamily: "kiri_kiri_xp3",
         detected: true,
-        signals: ["encrypted", "helper_required", "missing_key", "packed"],
+        signals: ["compressed", "encrypted", "helper_required", "missing_key", "packed", "unknown_variant"],
       },
       {
         rowId: "siglus-scene-pck",
@@ -528,6 +568,16 @@ function helperResult(input) {
       helperVersion: "0.1.0",
       helperKind: input.helperKind,
     },
+    capabilityLevel: capabilityLevelForHelperKind(input.helperKind),
+    execution: {
+      mode: "notExecuted",
+      platform: "fixture-local",
+      bounded: true,
+      timeoutMs: 1000,
+      durationMs: 0,
+      networkAccess: false,
+      filesystemAccess: "none",
+    },
     diagnostic: {
       code: input.code,
       message: input.message,
@@ -539,6 +589,22 @@ function helperResult(input) {
     secretRefs: input.secretRefs ?? [],
     proofHashes: input.proofHashes ?? [],
   };
+}
+
+function capabilityLevelForHelperKind(helperKind) {
+  switch (helperKind) {
+    case "knownKeyDatabaseImport":
+      return "localKeyImport";
+    case "manualKeyEntry":
+      return "manualEntry";
+    case "wineLocalWindowsHelper":
+      return "wineLocal";
+    case "remoteWindowsHelper":
+      return "remoteWindows";
+    case "staticParser":
+    default:
+      return "staticAnalysis";
+  }
 }
 
 function writeManifest() {
@@ -562,7 +628,7 @@ function writeManifest() {
       provenance: {
         author: "Kaifuu fixture authors",
         creationMethod:
-          "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved Siglus detector expected outputs.",
+          "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved XP3/Siglus detector expected outputs.",
         rawAssetPolicy: "contains-no-copyrighted-game-assets",
       },
     },
@@ -587,14 +653,14 @@ function writeManifest() {
       targetLocales: [],
       engineKinds: [
         "bgi-ethornell-synthetic-container",
-        "kiri-kiri-xp3-synthetic-archive",
+        "kiri-kiri-xp3-synthetic-archive-profile-matrix",
         "rpg-maker-mv-mz-synthetic-encrypted-assets",
         "siglus-synthetic-scene-pck",
         "wolf-rpg-editor-synthetic-archive",
         "unknown-synthetic-archive-signals",
       ],
       notes:
-        "All bytes are generated fixture-only data. Public helper results cover missing_key, helper_required, helper_unavailable, validation_failed, and redaction_failure paths; Siglus detector expected outputs cover identify/profile/inventory-only boundaries; negative profiles cover raw-key-looking and private-path-looking secret refs.",
+        "All bytes are generated fixture-only data. Public helper results cover missing_key, helper_required, helper_unavailable, validation_failed, and redaction_failure paths; XP3 and Siglus detector expected outputs cover identify/profile/inventory-only boundaries; negative profiles cover raw-key-looking and private-path-looking secret refs.",
     },
     benchmarkUse: {
       allowedInPublicCi: true,

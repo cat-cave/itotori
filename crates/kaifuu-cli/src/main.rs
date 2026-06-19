@@ -4521,6 +4521,104 @@ mod tests {
     }
 
     #[test]
+    fn xp3_detector_profile_fixture_reports_variant_profiles_and_unknown_diagnostics() {
+        let root = temp_dir("public-xp3-detector");
+        let fixture_root = public_fixture_path("fixtures/public/kaifuu-encrypted-matrix");
+        let expected_root = fixture_root.join("expected");
+
+        for (variant, expected_name) in [
+            ("plain", "xp3-plain-detector-profile-v0.1.json"),
+            ("encrypted", "xp3-encrypted-detector-profile-v0.1.json"),
+            ("compressed", "xp3-compressed-detector-profile-v0.1.json"),
+        ] {
+            let game_dir = fixture_root.join("xp3-profiles").join(variant);
+            let profile_path = root.join(format!("xp3-{variant}-profile.json"));
+            run_cli(&[
+                "profile",
+                "init",
+                game_dir.to_str().unwrap(),
+                "--output",
+                profile_path.to_str().unwrap(),
+            ]);
+            let actual_profile: serde_json::Value = read_json(&profile_path).unwrap();
+            let expected_profile: serde_json::Value =
+                read_json(&expected_root.join(expected_name)).unwrap();
+            assert_eq!(actual_profile, expected_profile);
+
+            let profile: GameProfile = serde_json::from_value(actual_profile).unwrap();
+            assert_eq!(
+                profile.engine.adapter_id,
+                kaifuu_engine_fixture::XP3_DETECTOR_ADAPTER_ID
+            );
+            assert_eq!(profile.validate().status, OperationStatus::Passed);
+            assert!(profile.capabilities.iter().any(|capability| {
+                capability.capability == Capability::Extraction
+                    && capability.status == CapabilityStatus::Unsupported
+            }));
+            if variant == "encrypted" {
+                assert_eq!(profile.key_requirements.len(), 1);
+                assert!(
+                    profile
+                        .layered_access
+                        .as_ref()
+                        .unwrap()
+                        .surfaces
+                        .iter()
+                        .any(|surface| surface.key_requirement_refs
+                            == vec!["kirikiri-xp3-key-profile".to_string()])
+                );
+            }
+            if variant == "compressed" {
+                assert!(profile.archive_parameters.iter().any(|parameter| {
+                    parameter.kind == kaifuu_core::ArchiveParameterKind::Compression
+                        && parameter.value == "compressed"
+                }));
+            }
+        }
+
+        let unknown_dir = fixture_root.join("xp3-profiles/unknown");
+        let detect_path = root.join("xp3-unknown-detect.json");
+        run_cli(&[
+            "detect",
+            unknown_dir.to_str().unwrap(),
+            "--output",
+            detect_path.to_str().unwrap(),
+        ]);
+        let actual_detection: serde_json::Value = read_json(&detect_path).unwrap();
+        let expected_detection: serde_json::Value =
+            read_json(&expected_root.join("xp3-unknown-detection-report-v0.1.json")).unwrap();
+        assert_eq!(actual_detection, expected_detection);
+        let detection_report: DetectionReport = serde_json::from_value(actual_detection).unwrap();
+        assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
+        let xp3_detection = detection_report
+            .detections
+            .iter()
+            .find(|detection| {
+                detection.adapter_id == kaifuu_engine_fixture::XP3_DETECTOR_ADAPTER_ID
+            })
+            .unwrap();
+        assert!(!xp3_detection.detected);
+        assert_eq!(
+            xp3_detection.detected_variant.as_deref(),
+            Some("xp3-unknown-container")
+        );
+        let xp3_archive = detection_report
+            .archive_detection
+            .rows
+            .iter()
+            .find(|row| row.row_id == "kirikiri-xp3")
+            .unwrap();
+        assert!(
+            xp3_archive
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == SemanticErrorCode::UnknownEngineVariant)
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn siglus_detector_reports_missing_pair_and_unknown_variant_diagnostics() {
         let root = temp_dir("siglus-detector-diagnostics");
         let source_fixture =

@@ -91,12 +91,13 @@ The KAIFUU-051 encrypted-input fixture lane lives under
 node fixtures/generate-kaifuu-encrypted-public-fixtures.mjs
 ```
 
-That generator owns the tiny archive-like bytes, public fixture-only key
-manifest, helper-result fixtures, detector negative fixtures, key-profile
-negative fixtures, README provenance, and public manifest hashes. Its keys are
-labels for generated public payloads only. They are intentionally not manual key
-import support, local helper execution support, helper binary allowlist policy,
-or evidence that any retail encrypted game can be decrypted by public CI.
+That generator owns the tiny archive-like bytes, XP3 plain/encrypted/compressed
+profile fixtures, public fixture-only key manifest, helper-result fixtures,
+detector negative fixtures, key-profile negative fixtures, README provenance,
+and public manifest hashes. Its keys are labels for generated public payloads
+only. They are intentionally not manual key import support, local helper
+execution support, helper binary allowlist policy, or evidence that any retail
+encrypted game can be decrypted by public CI.
 
 ## Private Corpora
 

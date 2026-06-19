@@ -15,7 +15,7 @@
     },
     "provenance": {
       "author": "Kaifuu fixture authors",
-      "creationMethod": "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved Siglus detector expected outputs.",
+      "creationMethod": "Deterministic generator writes tiny synthetic archive-like byte strings, public fixture-only key labels, helper results, negative profile fixtures, and preserved XP3/Siglus detector expected outputs.",
       "rawAssetPolicy": "contains-no-copyrighted-game-assets"
     }
   },
@@ -24,8 +24,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/detection-summary-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "70d86ec1ad4f59d2f1277afcc617a4c074a6b02a5345738708d1ff70fb405017",
-      "bytes": 1453,
+      "sha256": "5a666db4b04e9e5662970bdd3ff4d2186d90ec2cdd214de326c2db712d7d4a54",
+      "bytes": 1710,
       "redistributable": true
     },
     {
@@ -40,8 +40,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/siglus-detection-report-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "5cec36ac6b201eabe3699ad64250a3002c7c76df3318d6d4ed45a677f5e10ff8",
-      "bytes": 21028,
+      "sha256": "4fadea3099b930d054bed4dacd13461a8fe4aa00654ca4e31c6232f1b83ad335",
+      "bytes": 24598,
       "redistributable": true
     },
     {
@@ -50,6 +50,38 @@
       "mediaType": "application/json",
       "sha256": "962f28d577ce78890b84b9dec12e563625d27996c58480a1fec349c91a3c9ffe",
       "bytes": 6759,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/expected/xp3-compressed-detector-profile-v0.1.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "1f2131bfad3af7b8cba9155348ea9bf1e30757e4a9531059a294f9ab01ad0a5d",
+      "bytes": 5759,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/expected/xp3-encrypted-detector-profile-v0.1.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "8eafa2585d493a97d9e98f012a3d447e3924ef4c1d0ae0826f84a3dff2a2ba44",
+      "bytes": 6134,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/expected/xp3-plain-detector-profile-v0.1.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "c194b376dec9aee26a744c9c08ec54c075d0b302698c68c0f5431d65e97df874",
+      "bytes": 5598,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/expected/xp3-unknown-detection-report-v0.1.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "81cd8ea1b485421f5af286d497219237d798f720a8bba6de599b859869b35458",
+      "bytes": 22043,
       "redistributable": true
     },
     {
@@ -64,8 +96,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/helper-unavailable.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "b99193c3a57624514c1060089f2652fa38ddac16e5f0aa02114531de07909844",
-      "bytes": 1116,
+      "sha256": "cd35bb6ab285300e2c1bc1bc4e9cd1bfb9e64eb2a137d424597e19b06b85cd83",
+      "bytes": 1101,
       "redistributable": true
     },
     {
@@ -80,48 +112,48 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/redaction-path.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "383fb42e3d14ba0f4c8e8480191983d277c3f7a8237541c1114e80ac3405ed4c",
-      "bytes": 923,
+      "sha256": "5aa0101437b29a316723ca79a933c60ce3145fd9478b4fd0e1241aef83cda6a5",
+      "bytes": 911,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/helper-results/validation-failed.json",
       "role": "helper-result",
       "mediaType": "application/json",
-      "sha256": "2555ad0e8ce125b4a6daab9916b57488d92aa5f6b04de15a74648a87473717af",
-      "bytes": 1425,
+      "sha256": "59840e2a46f65feee70348b5a0e71ecc1f8f4c6d78f9a426849c544dec01a56e",
+      "bytes": 1413,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/key-profiles/negative/private-path-secret-ref.profile.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "ea8ea7d5191273cdaefa8ec7eb0b6fc5b343e21b1fabefceb9ab5c12561b1dad",
-      "bytes": 2508,
+      "sha256": "8b0517fab41c53c0773b982aa3fd73692a4ad5eee9bf243e17214343fc324392",
+      "bytes": 2536,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/key-profiles/negative/raw-key-secret-ref.profile.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "d0bff1de32789c3e38b1f990b81fe9ca5044579eeef4cecbf5b5bce61ae34bec",
-      "bytes": 2500,
+      "sha256": "e41cb0a8dac63c8c4574b7f608fb2184243b49e677b5598b51204d667b72c336",
+      "bytes": 2528,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/key-profiles/siglus-valid-placeholder.profile.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "7cb73740cd8647bea41e1b3887b81d73d8e02d91b7b57e9781e001ca8a9cd4d1",
-      "bytes": 2505,
+      "sha256": "23883aa637ef4a577ae0c3968556fa2da5b8b5837c98cfb96381d6069f208718",
+      "bytes": 2533,
       "redistributable": true
     },
     {
       "path": "fixtures/public/kaifuu-encrypted-matrix/keys/public-fixture-key-manifest.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "676423d64c28858d19aaa14f2ddf5ff1524b3744084908cefddc49d39b9b0b00",
-      "bytes": 2151,
+      "sha256": "aa59f2c7ecef18271599dc54637a5dd6f7344a40ca1e999aa3edadd57feea9d7",
+      "bytes": 2231,
       "redistributable": true
     },
     {
@@ -157,6 +189,14 @@
       "redistributable": true
     },
     {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/raw/kirikiri/compressed-packed.xp3",
+      "role": "asset",
+      "mediaType": "application/octet-stream",
+      "sha256": "5adeb61e3a6570e5aa2ba150a5e6d5e805b02ebc14d4b6d2e6d3e1fb25e857ff",
+      "bytes": 59,
+      "redistributable": true
+    },
+    {
       "path": "fixtures/public/kaifuu-encrypted-matrix/raw/kirikiri/data.xp3",
       "role": "asset",
       "mediaType": "application/octet-stream",
@@ -170,6 +210,14 @@
       "mediaType": "application/octet-stream",
       "sha256": "000154a885e088d5bc733996390767bcad0aa5bfc33db4c3c883bbda3bce93f4",
       "bytes": 59,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/raw/kirikiri/unknown-profile.xp3",
+      "role": "asset",
+      "mediaType": "application/octet-stream",
+      "sha256": "c7b10afe47fea3f0312d8be2e65a6e4705fd5ca72fdf8a79c8d0004cc5684952",
+      "bytes": 65,
       "redistributable": true
     },
     {
@@ -240,27 +288,61 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/README.md",
       "role": "metadata",
       "mediaType": "text/markdown",
-      "sha256": "11a609c9a0baf3f99ce50abe6b4e39f294f2c0213afcd5062a83f90d4973ba56",
-      "bytes": 1281,
+      "sha256": "33ec36591632a0496cdb747a29babfe037fc3c548da755203877db5301174d1d",
+      "bytes": 1302,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/xp3-profiles/compressed/data.xp3",
+      "role": "asset",
+      "mediaType": "application/octet-stream",
+      "sha256": "5858f88977964d8ebf686d8d4ffc035ae646373e7a68024aca0a674e6381c30e",
+      "bytes": 64,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/xp3-profiles/encrypted/data.xp3",
+      "role": "asset",
+      "mediaType": "application/octet-stream",
+      "sha256": "605192c9e412fa27de16469df6d5badd165797bc8f698a3a3d759fe8636558ca",
+      "bytes": 58,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/xp3-profiles/plain/data.xp3",
+      "role": "asset",
+      "mediaType": "application/octet-stream",
+      "sha256": "d91f38ac42fe9b48a70a0434d6972179ec38b2c758a7a6652474f429e46e4522",
+      "bytes": 44,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/xp3-profiles/unknown/data.xp3",
+      "role": "asset",
+      "mediaType": "application/octet-stream",
+      "sha256": "4d0e3fd34ba230be694944d668398bdc2765780506e3d2722208e86a75359f39",
+      "bytes": 66,
       "redistributable": true
     }
   ],
   "aggregateStats": {
-    "files": 28,
+    "files": 38,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
-    "sourceLocales": ["ja-JP"],
+    "sourceLocales": [
+      "ja-JP"
+    ],
     "targetLocales": [],
     "engineKinds": [
       "bgi-ethornell-synthetic-container",
-      "kiri-kiri-xp3-synthetic-archive",
+      "kiri-kiri-xp3-synthetic-archive-profile-matrix",
       "rpg-maker-mv-mz-synthetic-encrypted-assets",
       "siglus-synthetic-scene-pck",
       "wolf-rpg-editor-synthetic-archive",
       "unknown-synthetic-archive-signals"
     ],
-    "notes": "All bytes are generated fixture-only data. Public helper results cover missing_key, helper_required, helper_unavailable, validation_failed, and redaction_failure paths; Siglus detector expected outputs cover identify/profile/inventory-only boundaries; negative profiles cover raw-key-looking and private-path-looking secret refs."
+    "notes": "All bytes are generated fixture-only data. Public helper results cover missing_key, helper_required, helper_unavailable, validation_failed, and redaction_failure paths; XP3 and Siglus detector expected outputs cover identify/profile/inventory-only boundaries; negative profiles cover raw-key-looking and private-path-looking secret refs."
   },
   "benchmarkUse": {
     "allowedInPublicCi": true,
