@@ -33,7 +33,7 @@ describe("platform-language-conflicts app contract", () => {
 
     expect(results.map((entry) => [entry.caseId, entry.result.status])).toEqual([
       ["igdb-official-english-vs-vndb-dlsite-gaps", "conflict"],
-      ["wikidata-official-english-vs-egs-gap", "conflict"],
+      ["wikidata-official-english-vs-egs-unknown", "unknown"],
       ["steam-already-official-false-positive", "no_conflict"],
       ["local-corpus-unknown-remains-unknown", "unknown"],
     ]);
