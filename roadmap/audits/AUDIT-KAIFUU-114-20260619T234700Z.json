@@ -1,0 +1,109 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-114-20260619T234700Z",
+  "generatedAt": "2026-06-19T23:47:00Z",
+  "spec": {
+    "id": "KAIFUU-114",
+    "title": "MV/MZ fixture-key validation from System.json and image evidence",
+    "branch": "spec/kaifuu-114",
+    "worktree": "/tmp/itotori-spec-kaifuu-114",
+    "commit": "200fb6e8fad93ea5338c42281de31b0e5f95ad88"
+  },
+  "auditor": {
+    "name": "codex-kaifuu-114-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "The repaired RPG Maker MV/MZ fixture-key validation now fails closed when encrypted image evidence is missing or unreadable, validates readable image evidence before success, and keeps key material redacted. No P0/P1 findings remain. One non-blocking CLI key-import parity follow-up remains.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-114-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-114-F001",
+      "severity": "P2",
+      "title": "RPG Maker fixture key import format parity",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "line": 211
+        },
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "line": 346
+        },
+        {
+          "path": "crates/kaifuu-core/src/lib.rs",
+          "line": 10331
+        }
+      ],
+      "description": "The CLI key import path stores decoded bytes for --key-hex, while RPG Maker fixture-key validation resolves local key material as UTF-8 hex text and decodes it again. Direct fixture-key validation is correct, but a normal CLI import followed by validation can fail with BadKey:secretRef.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit compared the CLI import path with RpgMakerAssetKey resolution and found a format mismatch between decoded stored bytes and expected UTF-8 hex material."
+        },
+        {
+          "kind": "command",
+          "detail": "cargo test -p kaifuu-core rpg_maker; cargo test -p kaifuu-cli rpg_maker; pnpm exec node fixtures/validate-public-manifests.mjs"
+        }
+      ],
+      "impact": "A user following the natural CLI workflow could import a fixture-safe RPG Maker key and then see validation fail even though the underlying key and image evidence are valid.",
+      "actionableAcceptanceCriteria": [
+        "A key imported with `kaifuu key import --key-hex` can be used by `kaifuu rpg-maker validate-fixture-key` without BadKey:secretRef.",
+        "The key store and RPG Maker key resolver share a documented local-only material format or explicit typed conversion boundary.",
+        "A CLI regression covers import-then-validate for fixture-safe RPG Maker evidence without logging raw key material."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "RPG Maker CLI key import validation parity",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "engine-research",
+          "dependsOn": ["KAIFUU-114"],
+          "summary": "Align the CLI key import material format with RPG Maker fixture-key validation so the normal local key-import workflow validates fixture-safe encrypted evidence.",
+          "deliverables": [
+            "Shared typed conversion boundary for imported key material and RPG Maker fixture-key resolution",
+            "CLI import-then-validate regression for fixture-safe RPG Maker encrypted image evidence"
+          ],
+          "acceptanceCriteria": [
+            "`kaifuu key import --key-hex` followed by `kaifuu rpg-maker validate-fixture-key` succeeds for a valid recorded fixture key and encrypted image evidence.",
+            "Invalid imported key material still fails closed with redacted errors.",
+            "No raw key material is printed in logs, diagnostics, snapshots, or public fixtures."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli rpg_maker"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core rpg_maker"
+            }
+          ],
+          "auditFocus": [
+            "Import and resolver material format parity",
+            "Safe redaction of local-only key material",
+            "Fixture-safe encrypted image evidence remains public"
+          ]
+        }
+      }
+    }
+  ]
+}
