@@ -52,6 +52,27 @@ describe("dlsite-demand recorded fixture mapper", () => {
     );
   });
 
+  it("accepts valid rank observed_at date-time strings", () => {
+    const normal = structuredClone(responseBySourceId(fixture, "RJ01111111"));
+    const rankFacts = normal.payload["rank_facts"];
+    if (!Array.isArray(rankFacts) || rankFacts[0] === null || typeof rankFacts[0] !== "object") {
+      throw new Error("RJ01111111 fixture must include rank_facts[0]");
+    }
+    (rankFacts[0] as { observed_at?: unknown }).observed_at = "2026-06-18T00:00Z";
+
+    const mapped = mapDlsiteDemandFactsForRecordedResponse(fixture, normal);
+
+    expect(mapped.diagnostics).toEqual([]);
+    expect(mapped.facts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          factKind: catalogDemandFactKindValues.rank,
+          observedAt: "2026-06-18T00:00Z",
+        }),
+      ]),
+    );
+  });
+
   it("keeps missing DLsite demand fields as diagnostics instead of zero-valued facts", () => {
     const missing = responseBySourceId(fixture, "RJ02222222");
     const mapped = mapDlsiteDemandFactsForRecordedResponse(fixture, missing);
@@ -111,6 +132,11 @@ describe("dlsite-demand recorded fixture mapper", () => {
         fixtureWithResponseBySourceId(parseDriftFixture, "RJ09999994"),
       ),
     ).toThrow(/parse_drift .*sourceId=RJ09999994 sourceField=rank_facts\[0\]\.observed_at/u);
+    expect(() =>
+      createDlsiteRecordedStorefrontAdapter(
+        fixtureWithResponseBySourceId(parseDriftFixture, "RJ09999995"),
+      ),
+    ).toThrow(/parse_drift .*sourceId=RJ09999995 sourceField=rank_facts\[0\]\.observed_at/u);
   });
 });
 

@@ -223,6 +223,13 @@ describe("dlsite-demand recorded importer", () => {
     ).toThrow(
       /CATALOG-012 semantic diagnostic parse_drift .*sourceId=RJ09999994 sourceField=rank_facts\[0\]\.observed_at/u,
     );
+    expect(() =>
+      createDlsiteRecordedStorefrontAdapter(
+        fixtureWithResponseBySourceId(parseDriftFixture, "RJ09999995"),
+      ),
+    ).toThrow(
+      /CATALOG-012 semantic diagnostic parse_drift .*sourceId=RJ09999995 sourceField=rank_facts\[0\]\.observed_at/u,
+    );
   });
 });
 

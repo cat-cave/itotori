@@ -1418,15 +1418,20 @@ function isValidObservedAtInput(value: string): boolean {
   if (Number.isNaN(parsed.getTime())) {
     return false;
   }
-  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
-  if (dateOnly === null) {
-    return true;
+  return hasValidCalendarDatePrefix(value);
+}
+
+function hasValidCalendarDatePrefix(value: string): boolean {
+  const datePrefix = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/u.exec(value);
+  if (datePrefix === null) {
+    return false;
   }
-  const [, year, month, day] = dateOnly;
+  const [, year, month, day] = datePrefix;
+  const calendarDate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
   return (
-    parsed.getUTCFullYear() === Number(year) &&
-    parsed.getUTCMonth() + 1 === Number(month) &&
-    parsed.getUTCDate() === Number(day)
+    calendarDate.getUTCFullYear() === Number(year) &&
+    calendarDate.getUTCMonth() + 1 === Number(month) &&
+    calendarDate.getUTCDate() === Number(day)
   );
 }
 
