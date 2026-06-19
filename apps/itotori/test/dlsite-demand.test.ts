@@ -106,6 +106,11 @@ describe("dlsite-demand recorded fixture mapper", () => {
         fixtureWithResponseBySourceId(parseDriftFixture, "RJ09999993"),
       ),
     ).toThrow(/parse_drift .*sourceId=RJ09999993 sourceField=rank_facts\[0\]\.observed_at/u);
+    expect(() =>
+      createDlsiteRecordedStorefrontAdapter(
+        fixtureWithResponseBySourceId(parseDriftFixture, "RJ09999994"),
+      ),
+    ).toThrow(/parse_drift .*sourceId=RJ09999994 sourceField=rank_facts\[0\]\.observed_at/u);
   });
 });
 

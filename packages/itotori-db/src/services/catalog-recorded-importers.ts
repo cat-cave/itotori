@@ -1341,7 +1341,7 @@ function optionalDlsiteRankFacts(
     requireDemandString(rankRecord, "scope", fixture, response, `${sourceField}.scope`);
     requireDemandString(rankRecord, "category", fixture, response, `${sourceField}.category`);
     requireDemandPositiveInteger(rankRecord, "rank", fixture, response, `${sourceField}.rank`);
-    requireDemandString(rankRecord, "observed_at", fixture, response, `${sourceField}.observed_at`);
+    requireDemandObservedAt(rankRecord, "observed_at", fixture, response, `${sourceField}.observed_at`);
     return rankRecord;
   });
 }
@@ -1385,6 +1385,48 @@ function requireDemandString(
     fixture,
     response,
     sourceField,
+  );
+}
+
+function requireDemandObservedAt(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+  sourceField: string,
+): string {
+  const value = requireDemandString(record, field, fixture, response, sourceField);
+  if (isValidObservedAtInput(value)) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `DLsite demand.${sourceField} must be a valid date string`,
+    fixture,
+    response,
+    sourceField,
+  );
+}
+
+function isValidObservedAtInput(value: string): boolean {
+  const observedAtShape =
+    /^\d{4}-\d{2}-\d{2}(?:$|T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?$)/u;
+  if (!observedAtShape.test(value)) {
+    return false;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(value);
+  if (dateOnly === null) {
+    return true;
+  }
+  const [, year, month, day] = dateOnly;
+  return (
+    parsed.getUTCFullYear() === Number(year) &&
+    parsed.getUTCMonth() + 1 === Number(month) &&
+    parsed.getUTCDate() === Number(day)
   );
 }
 
