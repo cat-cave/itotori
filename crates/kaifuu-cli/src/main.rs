@@ -11,14 +11,14 @@ use kaifuu_core::{
     HelperRegistryInvocationRequest, KaifuuResult, LocalKeyImportRequest, LocalKeyImportSource,
     LocalSecretDirectoryStore, PatchExport, PatchPreflightRequest, PatchRequest, PatchResult,
     ProfileRequest, ProofHash, RegisteredBoundedHelperProcessRequest,
-    SEMANTIC_HELPER_EXECUTION_DISALLOWED, SecretRef, SiglusParserBoundarySmokeRequest,
-    SiglusParserBoundarySmokeVariant, VerifyRequest, atomic_write_text, fixture_helper_registry,
-    normalize_helper_result_value, parse_helper_capability, parse_hex_bytes,
-    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
-    run_registered_bounded_helper_process, run_round_trip_golden,
-    run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes,
+    RpgMakerMvMzFixtureKeyValidationRequest, SEMANTIC_HELPER_EXECUTION_DISALLOWED, SecretRef,
+    SiglusParserBoundarySmokeRequest, SiglusParserBoundarySmokeVariant, VerifyRequest,
+    atomic_write_text, fixture_helper_registry, normalize_helper_result_value,
+    parse_helper_capability, parse_hex_bytes, promote_staged_directory_no_clobber, read_json,
+    redact_for_log_or_report, redact_report_value, run_registered_bounded_helper_process,
+    run_round_trip_golden, run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes,
     validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
-    validate_profile_value, write_json,
+    validate_profile_value, validate_rpg_maker_mv_mz_fixture_key, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -171,6 +171,9 @@ fn run_with_args_and_registry(
         Some("siglus") => {
             run_siglus_command(&args)?;
         }
+        Some("rpg-maker") => {
+            run_rpg_maker_command(&args)?;
+        }
         Some("profile") => {
             run_profile_command(&args, registry)?;
         }
@@ -185,7 +188,56 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|siglus|profile|capabilities> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|siglus|rpg-maker|profile|capabilities> ..."
+                    .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn run_rpg_maker_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    match positional(args, 1)? {
+        "validate-fixture-key" => {
+            let game_dir = PathBuf::from(flag(args, "--game-dir")?);
+            let image_asset = PathBuf::from(flag(args, "--image-asset")?);
+            let secret_store = PathBuf::from(flag(args, "--secret-store")?);
+            let secret_ref = flag(args, "--secret-ref")?;
+            let output = PathBuf::from(flag(args, "--output")?);
+            let fixture_id = flag_optional(args, "--fixture-id")
+                .unwrap_or("kaifuu-rpg-maker-mv-mz-fixture-key-validation");
+            let requirement_id =
+                flag_optional(args, "--requirement-id").unwrap_or("rpg-maker-mv-mz-asset-key");
+            let resolver =
+                kaifuu_core::LocalKeyResolver::new(LocalSecretDirectoryStore::new(&secret_store));
+            let report =
+                validate_rpg_maker_mv_mz_fixture_key(RpgMakerMvMzFixtureKeyValidationRequest {
+                    fixture_id,
+                    game_dir: &game_dir,
+                    image_asset_path: &image_asset,
+                    requirement_id,
+                    secret_ref,
+                    resolver: &resolver,
+                })
+                .redacted_for_report();
+            let failed = report.status == kaifuu_core::OperationStatus::Failed;
+            atomic_write_text(&output, &report.stable_json()?)?;
+            if failed {
+                return Err(format!(
+                    "RPG Maker MV/MZ key validation failed: {}",
+                    report
+                        .diagnostics
+                        .iter()
+                        .map(|diagnostic| format!("{:?}:{}", diagnostic.code, diagnostic.field))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+                .into());
+            }
+        }
+        _ => {
+            return Err(
+                "usage: kaifuu rpg-maker validate-fixture-key --game-dir <dir> --image-asset <asset> --secret-store <dir> --secret-ref <local-secret:id> --output <report.json> [--requirement-id <id>] [--fixture-id <id>]"
                     .into(),
             );
         }
@@ -5403,6 +5455,70 @@ wait
             "title.webp_",
         ] {
             assert!(!serialized.contains(forbidden), "report leaked {forbidden}");
+        }
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn rpg_maker_validate_fixture_key_command_writes_redacted_proof_report() {
+        let root = temp_dir("rpg-maker-key-validation-cli");
+        let secret_store = root.join("secret-store");
+        write_fixture_file(
+            &secret_store,
+            "fixture/rpg-maker/asset-key",
+            b"00112233445566778899aabbccddeeff",
+        );
+        let game_dir = public_fixture_path("fixtures/public/kaifuu-encrypted-matrix/raw/rpg-maker");
+        let image_asset = game_dir.join("img").join("pictures").join("title.rpgmvp");
+        let output = root.join("rpg-maker-key-validation.json");
+
+        run_cli(&[
+            "rpg-maker",
+            "validate-fixture-key",
+            "--game-dir",
+            game_dir.to_str().unwrap(),
+            "--image-asset",
+            image_asset.to_str().unwrap(),
+            "--secret-store",
+            secret_store.to_str().unwrap(),
+            "--secret-ref",
+            "local-secret:fixture/rpg-maker/asset-key",
+            "--output",
+            output.to_str().unwrap(),
+            "--fixture-id",
+            "kaifuu-rpg-maker-mv-mz-key-validation-success",
+        ]);
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["decryptOrPatchClaimed"], false);
+        assert_eq!(
+            report["records"][0]["requirementId"],
+            "rpg-maker-mv-mz-asset-key"
+        );
+        assert_eq!(report["records"][0]["surface"], "image_asset");
+        assert_eq!(report["records"][0]["codec"], "png_image");
+        assert_eq!(report["records"][0]["diagnosticResult"], "success");
+        assert!(
+            report["records"][0]["proofHash"]
+                .as_str()
+                .unwrap()
+                .starts_with("sha256:")
+        );
+
+        let serialized = fs::read_to_string(&output).unwrap();
+        for forbidden in [
+            "fixture-only-rpg-maker-asset-key-v1",
+            "00112233445566778899aabbccddeeff",
+            "fixture/rpg-maker/asset-key",
+            secret_store.to_str().unwrap(),
+            image_asset.to_str().unwrap(),
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "CLI report leaked {forbidden}: {serialized}"
+            );
         }
 
         let _ = fs::remove_dir_all(root);

@@ -12,6 +12,7 @@ const preservedExpectedOutputs = [
   "expected/xp3-encrypted-detector-profile-v0.1.json",
   "expected/xp3-plain-detector-profile-v0.1.json",
   "expected/xp3-unknown-detection-report-v0.1.json",
+  "expected/rpg-maker-mv-mz-key-validation-success-v0.1.json",
   "expected/siglus-asset-inventory-v0.1.json",
   "expected/siglus-detection-report-v0.1.json",
   "expected/siglus-detector-profile-v0.1.json",

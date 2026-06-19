@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-rpg-maker-mv-mz-key-validation-success",
+  "status": "passed",
+  "supportBoundary": "KAIFUU-114 validates fixture-safe MV/MZ key evidence only; it does not decrypt, extract, replace, or patch encrypted media.",
+  "records": [
+    {
+      "requirementId": "rpg-maker-mv-mz-asset-key",
+      "secretRefScheme": "local-secret",
+      "surface": "image_asset",
+      "codec": "png_image",
+      "diagnosticResult": "success",
+      "proofHash": "sha256:a326ae67c10fd2c4de4907469f85292b85f2040b318c739ea8bac2f2c6ebb176",
+      "systemJsonProofHash": "sha256:c7a19c8919ea7345ac69ac2e6591f6cbd35bd354a3e6be27de7b3461e233246d",
+      "imageEvidenceHash": "sha256:5bda4203182bc8aecb1a49af627733d73728a98f0483ed02ed409e3619e12572"
+    }
+  ],
+  "diagnostics": [
+    {
+      "code": "success",
+      "semanticCode": "kaifuu.secret_redacted",
+      "field": "validation",
+      "message": "fixture-safe MV/MZ key evidence matched System.json and encrypted image evidence"
+    }
+  ],
+  "decryptOrPatchClaimed": false
+}

@@ -29,6 +29,14 @@
       "redistributable": true
     },
     {
+      "path": "fixtures/public/kaifuu-encrypted-matrix/expected/rpg-maker-mv-mz-key-validation-success-v0.1.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "fa2ebb07fd68a17cb83a60cb76ecb4f97cdd0d1a11d5debe62b2b6b408ea645f",
+      "bytes": 1058,
+      "redistributable": true
+    },
+    {
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/siglus-asset-inventory-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
