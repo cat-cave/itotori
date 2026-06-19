@@ -42,8 +42,8 @@
       }
     },
     {
-      "caseId": "wikidata-official-english-vs-egs-gap",
-      "expectedStatus": "conflict",
+      "caseId": "wikidata-official-english-vs-egs-unknown",
+      "expectedStatus": "unknown",
       "request": {
         "targetLanguage": "en-US",
         "sourceField": "claims.language_statements[1]",
@@ -60,13 +60,16 @@
         "candidateEvidence": [
           {
             "catalogSource": "egs",
-            "sourceId": "prod-moonlit-099",
-            "externalIdKind": "store_product",
+            "sourceId": "101002",
+            "externalIdKind": "source_record",
             "language": "en-US",
-            "status": "none",
-            "statusScope": "platform",
-            "platform": "egs",
-            "evidenceRef": "egs.product.locales"
+            "status": "unknown",
+            "statusScope": "work",
+            "evidenceRef": "egs.gamelist",
+            "metadata": {
+              "sourceField": "gamelist",
+              "reason": "ErogameScape row does not assert official English availability"
+            }
           }
         ]
       }

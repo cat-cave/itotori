@@ -291,6 +291,22 @@ describe("catalog recorded source importers", () => {
 
   it("guards CATALOG-011 EGS fixtures and spec text against Epic storefront semantics", () => {
     const fixtureText = readFixtureText("egs-recorded-replay.json");
+    const platformLanguageConflictText = readFixtureText("platform-language-conflicts.json");
+    const platformLanguageConflictFixture = JSON.parse(platformLanguageConflictText) as {
+      cases: Array<{
+        caseId: string;
+        request: {
+          candidateEvidence?: Array<{
+            catalogSource?: string;
+            sourceId?: string;
+            externalIdKind?: string;
+            statusScope?: string;
+            platform?: string | null;
+            evidenceRef?: string;
+          }>;
+        };
+      }>;
+    };
     const specText = readFileSync(
       new URL("../../../roadmap/spec-dag.json", import.meta.url),
       "utf8",
@@ -300,13 +316,43 @@ describe("catalog recorded source importers", () => {
       "CATALOG-011 spec text",
     );
 
-    for (const text of [fixtureText, catalog011Text]) {
+    const egsReleasePlatforms = egsFixture.steps.flatMap((step) =>
+      step.facts.flatMap((fact) =>
+        (fact.releases ?? [])
+          .filter((release) => release.platform !== undefined)
+          .map((release) => ({
+            stepKey: step.stepKey,
+            sourceReleaseId: release.sourceReleaseId,
+            platform: release.platform,
+          })),
+      ),
+    );
+    expect(egsReleasePlatforms).toEqual([]);
+
+    const egsConflictEvidence = platformLanguageConflictFixture.cases.flatMap((testCase) =>
+      (testCase.request.candidateEvidence ?? [])
+        .filter((evidence) => evidence.catalogSource === "egs")
+        .map((evidence) => ({ caseId: testCase.caseId, ...evidence })),
+    );
+    expect(egsConflictEvidence.length).toBeGreaterThan(0);
+    for (const evidence of egsConflictEvidence) {
+      expect(evidence.sourceId).not.toMatch(/^prod-/u);
+      expect(evidence.externalIdKind).toBe(catalogExternalIdKindValues.sourceRecord);
+      expect(evidence.statusScope).toBe("work");
+      expect(evidence.platform ?? null).toBeNull();
+      expect(evidence.evidenceRef).not.toMatch(/product|locales/u);
+    }
+
+    for (const text of [fixtureText, platformLanguageConflictText, catalog011Text]) {
       expect(text).not.toContain("Epic Games Store");
       expect(text).not.toContain("GET /storefront/products");
       expect(text).not.toContain("catalogItemId");
       expect(text).not.toContain('"namespace"');
       expect(text).not.toContain('"slug"');
+      expect(text).not.toContain("prod-moonlit-099");
+      expect(text).not.toContain("egs.product.locales");
     }
+    expect(fixtureText).not.toContain('"platform": "egs"');
     expect(fixtureText).toContain("sql_for_erogamer_form.php");
     expect(catalog011Text).toContain("ErogameScape");
   });

@@ -32,8 +32,16 @@
       "path": "fixtures/catalog-recorded-importers/egs-recorded-replay.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "13e18902615e0c61c393194e2db5ce21f09ae824c764e43a737f6f065a4ffc6b",
-      "bytes": 8950,
+      "sha256": "6d0856acb0fc8b73990bfd739b506b54392b0144f7006c8c12cfee30e2c9de2c",
+      "bytes": 8884,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-recorded-importers/platform-language-conflicts.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "4eeec2959ac7deaadd2800de47e28241fb8290b6ecc262d18a3a2aeaf6ddf2e1",
+      "bytes": 3980,
       "redistributable": true
     },
     {
@@ -78,7 +86,7 @@
     }
   ],
   "aggregateStats": {
-    "files": 7,
+    "files": 8,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,
