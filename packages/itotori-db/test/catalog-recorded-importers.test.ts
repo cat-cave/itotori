@@ -261,8 +261,8 @@ describe("catalog recorded source importers", () => {
       );
 
       expect(result).toMatchObject({
-        fetchedSteps: 2,
-        importedSteps: 2,
+        fetchedSteps: 3,
+        importedSteps: 3,
         skippedSteps: 0,
         replayValidation: [
           {
@@ -277,6 +277,13 @@ describe("catalog recorded source importers", () => {
             fixtureId: "catalog-recorded-importer-dlsite-storefront-v0.1",
             factCount: 1,
             factIdentities: ["catalogSource=dlsite|sourceId=RJ02222222"],
+            alreadyImported: false,
+          },
+          {
+            sourceId: "RJ03333333",
+            fixtureId: "catalog-recorded-importer-dlsite-storefront-v0.1",
+            factCount: 1,
+            factIdentities: ["catalogSource=dlsite|sourceId=RJ03333333"],
             alreadyImported: false,
           },
         ],
@@ -380,7 +387,7 @@ describe("catalog recorded source importers", () => {
           adapterName: "dlsite-recorded-storefront-importer",
           partitionKey: "public-dlsite-storefront",
         }),
-      ).toMatchObject({ lastStepKey: "dlsite-rj02222222" });
+      ).toMatchObject({ lastStepKey: "dlsite-rj03333333-jp-recovered" });
       await expect(
         rateLimitByAdapter(context.pool, "dlsite-recorded-storefront-importer"),
       ).resolves.toMatchObject({
@@ -1164,6 +1171,7 @@ async function catalogCounts(pool: {
     external_ids: string;
     releases: string;
     language_statuses: string;
+    demand_facts: string;
     seed_targets: string;
   }>(`
     select
@@ -1171,6 +1179,7 @@ async function catalogCounts(pool: {
       (select count(*) from itotori_catalog_external_ids)::text as external_ids,
       (select count(*) from itotori_catalog_releases)::text as releases,
       (select count(*) from itotori_catalog_language_statuses)::text as language_statuses,
+      (select count(*) from itotori_catalog_demand_facts)::text as demand_facts,
       (select count(*) from itotori_catalog_seed_targets)::text as seed_targets
   `);
   return result.rows[0];

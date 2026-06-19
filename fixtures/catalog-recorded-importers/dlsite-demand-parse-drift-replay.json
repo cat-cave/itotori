@@ -1,0 +1,52 @@
+{
+  "fixtureId": "catalog-recorded-importer-dlsite-demand-parse-drift-v0.1",
+  "fixtureName": "catalog-recorded-importer-dlsite-demand-parse-drift",
+  "catalogSource": "dlsite",
+  "adapterName": "dlsite-recorded-storefront-importer",
+  "adapterVersion": "adapter-catalog-069-v1",
+  "sourceVersion": "dlsite-demand-parse-drift-synthetic-2026-06-18",
+  "parserVersion": "catalog-recorded-importers.v0.1",
+  "partitionKey": "public-dlsite-demand-parse-drift",
+  "responses": [
+    {
+      "stepKey": "dlsite-rj09999999-parse-drift",
+      "sourceId": "RJ09999999",
+      "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999999",
+      "fetchedAt": "2026-06-18T13:10:09.000Z",
+      "checkpointCursor": { "afterStepKey": "dlsite-rj09999999-parse-drift", "cursor": "RJ09999999" },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ09999999",
+        "title": "Demand Parse Drift Fixture",
+        "maker_name": "Fixture Drift Circle",
+        "release_date": "2023-01-05",
+        "work_type": "ADV",
+        "translation_info": {
+          "original": { "workno": "RJ09999999", "locale": "ja-JP" },
+          "original_workno": "RJ09999999",
+          "parent_workno": null,
+          "child_worknos": [],
+          "translations": [],
+          "language_editions": [
+            {
+              "workno": "RJ09999999",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            }
+          ]
+        },
+        "dl_count": "many",
+        "rating_summary": { "average": 4.2, "count": 10 },
+        "rating_histogram": { "5": 7, "4": 2, "3": 1 },
+        "wishlist_count": 9,
+        "rank_facts": []
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    }
+  ]
+}

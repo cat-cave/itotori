@@ -8,6 +8,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const packageRoot = path.join(repoRoot, "packages/itotori-db");
 const skipReportPath = path.join(repoRoot, ".tmp/itotori-db/no-database-skipped.json");
 const dbTestCommand = "pnpm --filter @itotori/db test";
+const vitestArgs = process.argv.slice(2).filter((arg) => arg !== "--");
 
 runRequiredCommand(
   process.execPath,
@@ -43,7 +44,7 @@ if (!process.env.DATABASE_URL) {
 
 await rm(skipReportPath, { force: true });
 
-const child = spawn("vitest", ["run", "--dir", "test"], {
+const child = spawn("vitest", ["run", "--dir", "test", ...vitestArgs], {
   stdio: "inherit",
   shell: process.platform === "win32",
 });
