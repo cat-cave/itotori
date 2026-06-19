@@ -61,6 +61,8 @@ pub const SEMANTIC_KEY_IMPORT_WRONG_KEY_PURPOSE: &str = "kaifuu.key_import.wrong
 pub const SEMANTIC_KEY_IMPORT_HASH_MISMATCH: &str = "kaifuu.key_import.hash_mismatch";
 pub const SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION: &str = "kaifuu.forbidden_public_serialization";
 pub const SEMANTIC_HELPER_REQUEST_WRONG_HELPER: &str = "kaifuu.helper_request.wrong_helper";
+pub const SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION: &str =
+    "kaifuu.helper_request.missing_redacted_output_expectation";
 pub const SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH: &str =
     "kaifuu.helper_request.redacted_output_mismatch";
 pub const SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY: &str = "kaifuu.helper_allowlist.missing_entry";
@@ -5884,30 +5886,67 @@ fn validate_helper_registry_request_binding(
         }
     }
 
-    if let Some(expected_redacted_log_hash) =
-        input.get("expectedRedactedLogHash").and_then(Value::as_str)
-    {
-        if ProofHash::new(expected_redacted_log_hash.to_string()).is_err() {
+    match input.get("expectedRedactedLogHash") {
+        Some(Value::String(expected_redacted_log_hash)) => {
+            if ProofHash::new(expected_redacted_log_hash.to_string()).is_err() {
+                diagnostics.push(LocalKeyImportDiagnostic {
+                    code: "invalid_proof_hash".to_string(),
+                    field: "expectedRedactedLogHash".to_string(),
+                    message: "expectedRedactedLogHash must be sha256:<64 lowercase hex characters>"
+                        .to_string(),
+                });
+            } else if expected_redacted_log_hash != entry.expected_fixture_redacted_log_hash() {
+                diagnostics.push(LocalKeyImportDiagnostic {
+                    code: SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH.to_string(),
+                    field: "expectedRedactedLogHash".to_string(),
+                    message: "helper redacted output hash did not match the request expectation"
+                        .to_string(),
+                });
+            }
+        }
+        Some(_) => diagnostics.push(LocalKeyImportDiagnostic {
+            code: "invalid_proof_hash".to_string(),
+            field: "expectedRedactedLogHash".to_string(),
+            message: "expectedRedactedLogHash must be sha256:<64 lowercase hex characters>"
+                .to_string(),
+        }),
+        None if helper_request_requires_redacted_log_expectation(input) => {
             diagnostics.push(LocalKeyImportDiagnostic {
-                code: "invalid_proof_hash".to_string(),
+                code: SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION.to_string(),
                 field: "expectedRedactedLogHash".to_string(),
-                message: "expectedRedactedLogHash must be sha256:<64 lowercase hex characters>"
-                    .to_string(),
-            });
-        } else if expected_redacted_log_hash != entry.expected_fixture_redacted_log_hash() {
-            diagnostics.push(LocalKeyImportDiagnostic {
-                code: SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH.to_string(),
-                field: "expectedRedactedLogHash".to_string(),
-                message: "helper redacted output hash did not match the request expectation"
+                message: "helper request must declare expectedRedactedLogHash before success"
                     .to_string(),
             });
         }
+        None => {}
     }
 
     diagnostics
         .into_iter()
         .map(|diagnostic| diagnostic.redacted_for_report())
         .collect()
+}
+
+fn helper_request_requires_redacted_log_expectation(input: &Value) -> bool {
+    input
+        .get("requestedCapability")
+        .and_then(Value::as_str)
+        .is_some_and(|capability| capability == "key_validation")
+        && input
+            .get("requiredKeyRefs")
+            .and_then(Value::as_array)
+            .is_some_and(|required_key_refs| {
+                required_key_refs.iter().any(|required| {
+                    required
+                        .get("requirementId")
+                        .and_then(Value::as_str)
+                        .is_some_and(|requirement_id| requirement_id == "siglus-secondary-key")
+                        && required
+                            .get("keyPurpose")
+                            .and_then(Value::as_str)
+                            .is_some_and(|key_purpose| key_purpose == "siglus-secondary-key")
+                })
+            })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -7135,6 +7174,7 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
                                 *code,
                                 SEMANTIC_HELPER_REQUEST_WRONG_HELPER
                                     | SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY
+                                    | SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION
                                     | SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH
                             )
                         })
@@ -7148,6 +7188,7 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
             let diagnostic_code = match code {
                 SEMANTIC_FORBIDDEN_PUBLIC_SERIALIZATION => "redaction_failure",
                 SEMANTIC_MISSING_KEY_MATERIAL => "missing_key",
+                SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION => "redaction_failure",
                 SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH => "redaction_failure",
                 _ => "validation_failed",
             };
@@ -17649,6 +17690,11 @@ printf launched > '{}'
                 "siglus-secondary-key-redacted-output-mismatch",
                 "redaction_failure",
                 SEMANTIC_HELPER_REQUEST_REDACTED_OUTPUT_MISMATCH,
+            ),
+            (
+                "siglus-secondary-key-missing-redacted-output-expectation",
+                "redaction_failure",
+                SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION,
             ),
         ];
 

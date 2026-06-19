@@ -2031,6 +2031,52 @@ wait
     }
 
     #[test]
+    fn helper_registry_invoke_fixture_stub_rejects_siglus_request_missing_redaction_expectation() {
+        let root = temp_dir("helper-registry-invoke-siglus-request-missing-redaction");
+        let input = root.join("helper-request.json");
+        let output = root.join("helper-result.json");
+        let mut request: serde_json::Value = read_json(&public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-request.json",
+        ))
+        .unwrap();
+        request
+            .as_object_mut()
+            .unwrap()
+            .remove("expectedRedactedLogHash");
+        fs::write(&input, serde_json::to_string_pretty(&request).unwrap()).unwrap();
+
+        run_cli(&[
+            "helper-registry",
+            "invoke-fixture-stub",
+            "--input",
+            input.to_str().unwrap(),
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let result: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(result["diagnostic"]["code"], "redaction_failure");
+        assert_eq!(
+            result["diagnostic"]["message"],
+            kaifuu_core::SEMANTIC_HELPER_REQUEST_MISSING_REDACTED_OUTPUT_EXPECTATION
+        );
+        assert_eq!(result["redaction"]["status"], "failed");
+        assert_eq!(result["secretRefs"], serde_json::json!([]));
+        let serialized = fs::read_to_string(&output).unwrap();
+        for forbidden in [
+            "rawKey",
+            "keyMaterial",
+            "00112233445566778899aabbccddeeff",
+            "fixture-only-siglus-secondary-key-v1",
+            "decrypted script",
+            "/home/",
+            "C:\\",
+        ] {
+            assert!(!serialized.contains(forbidden), "leaked {forbidden}");
+        }
+    }
+
+    #[test]
     fn key_import_command_writes_local_secret_and_hash_only_report() {
         let root = temp_dir("key-import-command");
         let secret_store = root.join("secrets.local");
