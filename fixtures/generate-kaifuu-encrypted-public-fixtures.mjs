@@ -145,7 +145,26 @@ writeBytes(
 );
 writeBytes(
   "xp3-profiles/plain/data.xp3",
-  bytes("XP3\r\nfixture-only plain XP3 profile archive\n"),
+  plainXp3Fixture([
+    {
+      path: "scenario/intro.ks",
+      payload: bytes("hello public xp3\n"),
+      compressed: false,
+      adler32: 0x11112222,
+    },
+    {
+      path: "scenario/compressed.ks",
+      payload: bytes("compressed public payload\n"),
+      compressed: true,
+      adler32: 0x33334444,
+    },
+    {
+      path: "image/title.png",
+      payload: bytes("png fixture bytes\n"),
+      compressed: false,
+      adler32: 0x55556666,
+    },
+  ]),
   "asset",
   "application/octet-stream",
 );
@@ -751,6 +770,88 @@ function readExistingFixtureFile(relativePath) {
 
 function bytes(text) {
   return Buffer.from(text, "utf8");
+}
+
+function plainXp3Fixture(entries) {
+  const chunks = [];
+  chunks.push(Buffer.from([0x58, 0x50, 0x33, 0x0d, 0x0a, 0x20, 0x0a, 0x1a, 0x8b, 0x67, 0x01]));
+  chunks.push(leU64(0n));
+
+  const segmentOffsets = [];
+  let offset = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  for (const entry of entries) {
+    segmentOffsets.push(BigInt(offset));
+    chunks.push(entry.payload);
+    offset += entry.payload.length;
+  }
+
+  const indexOffset = BigInt(offset);
+  const indexChunks = [];
+  for (const [index, entry] of entries.entries()) {
+    const pathBytes = utf16le(entry.path);
+    const info = Buffer.concat([
+      leU32(0),
+      leU64(BigInt(entry.payload.length)),
+      leU64(BigInt(entry.payload.length)),
+      leU16(pathBytes.length / 2),
+      pathBytes,
+    ]);
+    const segment = Buffer.concat([
+      leU32(entry.compressed ? 1 : 0),
+      leU64(segmentOffsets[index]),
+      leU64(BigInt(entry.payload.length)),
+      leU64(BigInt(entry.payload.length)),
+    ]);
+    indexChunks.push(
+      xp3Chunk(
+        "File",
+        Buffer.concat([
+          xp3Chunk("info", info),
+          xp3Chunk("segm", segment),
+          xp3Chunk("adlr", leU32(entry.adler32)),
+        ]),
+      ),
+    );
+  }
+
+  const index = Buffer.concat(indexChunks);
+  chunks.push(Buffer.from([0]));
+  chunks.push(leU64(BigInt(index.length)));
+  chunks.push(index);
+
+  const archive = Buffer.concat(chunks);
+  leU64(indexOffset).copy(archive, 11);
+  return archive;
+}
+
+function xp3Chunk(name, content) {
+  return Buffer.concat([Buffer.from(name, "ascii"), leU64(BigInt(content.length)), content]);
+}
+
+function utf16le(text) {
+  const output = Buffer.alloc(text.length * 2);
+  for (let index = 0; index < text.length; index += 1) {
+    output.writeUInt16LE(text.charCodeAt(index), index * 2);
+  }
+  return output;
+}
+
+function leU16(value) {
+  const buffer = Buffer.alloc(2);
+  buffer.writeUInt16LE(value);
+  return buffer;
+}
+
+function leU32(value) {
+  const buffer = Buffer.alloc(4);
+  buffer.writeUInt32LE(value);
+  return buffer;
+}
+
+function leU64(value) {
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigUInt64LE(value);
+  return buffer;
 }
 
 function sha256Ref(input) {

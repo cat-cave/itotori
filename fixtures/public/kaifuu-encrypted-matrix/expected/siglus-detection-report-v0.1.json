@@ -169,7 +169,7 @@
         {
           "capability": "container_access",
           "status": "unsupported",
-          "limitation": "XP3 archive entry parsing is outside the detector profile"
+          "limitation": "XP3 container access is limited to synthetic plain-index inventory; extraction and rebuild are outside the detector profile"
         },
         {
           "capability": "crypto_access",

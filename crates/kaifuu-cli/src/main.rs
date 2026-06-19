@@ -1067,8 +1067,8 @@ mod tests {
         LayeredAccessPreflightRequirement, LayeredAccessProfile, LayeredAccessStage,
         OperationStatus, PatchExportEntry, PatchRef, PatchResult, ProfileRequirement,
         ProtectedSpanMapping, REDACTED_DETECTION_GAME_DIR, RequirementCategory, RequirementStatus,
-        SemanticErrorCode, TextSurface, VerificationResult, content_hash, deterministic_id,
-        read_json,
+        SemanticErrorCode, TextSurface, VerificationResult, XP3_PLAIN_MAGIC, content_hash,
+        deterministic_id, read_json, sha256_hash_bytes,
     };
     use std::cell::RefCell;
     use std::collections::BTreeMap;
@@ -1222,6 +1222,64 @@ mod tests {
             fs::create_dir_all(parent).unwrap();
         }
         fs::write(path, bytes).unwrap();
+    }
+
+    #[derive(Clone, Copy)]
+    struct Xp3TestEntry<'a> {
+        path: &'a str,
+        payload: &'a [u8],
+        compressed: bool,
+        adler32: u32,
+    }
+
+    fn plain_xp3_fixture(entries: &[Xp3TestEntry<'_>]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(XP3_PLAIN_MAGIC);
+        bytes.extend_from_slice(&0_u64.to_le_bytes());
+
+        let mut segment_offsets = Vec::new();
+        for entry in entries {
+            segment_offsets.push(bytes.len() as u64);
+            bytes.extend_from_slice(entry.payload);
+        }
+
+        let index_offset = bytes.len() as u64;
+        let mut index = Vec::new();
+        for (entry, offset) in entries.iter().zip(segment_offsets) {
+            let mut file = Vec::new();
+            let path_units = entry.path.encode_utf16().collect::<Vec<_>>();
+            let mut info = Vec::new();
+            info.extend_from_slice(&0_u32.to_le_bytes());
+            info.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            info.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            info.extend_from_slice(&(path_units.len() as u16).to_le_bytes());
+            for unit in path_units {
+                info.extend_from_slice(&unit.to_le_bytes());
+            }
+            append_xp3_chunk(&mut file, b"info", &info);
+
+            let mut segment = Vec::new();
+            segment.extend_from_slice(&(u32::from(entry.compressed)).to_le_bytes());
+            segment.extend_from_slice(&offset.to_le_bytes());
+            segment.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            segment.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            append_xp3_chunk(&mut file, b"segm", &segment);
+            append_xp3_chunk(&mut file, b"adlr", &entry.adler32.to_le_bytes());
+            append_xp3_chunk(&mut index, b"File", &file);
+        }
+
+        bytes.push(0);
+        bytes.extend_from_slice(&(index.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(&index);
+        bytes[XP3_PLAIN_MAGIC.len()..XP3_PLAIN_MAGIC.len() + 8]
+            .copy_from_slice(&index_offset.to_le_bytes());
+        bytes
+    }
+
+    fn append_xp3_chunk(output: &mut Vec<u8>, name: &[u8; 4], content: &[u8]) {
+        output.extend_from_slice(name);
+        output.extend_from_slice(&(content.len() as u64).to_le_bytes());
+        output.extend_from_slice(content);
     }
 
     fn run_cli(args: &[&str]) {
@@ -5273,6 +5331,261 @@ wait
                 .iter()
                 .any(|diagnostic| diagnostic.code == SemanticErrorCode::UnknownEngineVariant)
         );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_inventory_cli_reports_plain_file_table_separately_from_extract_and_patch() {
+        let root = temp_dir("xp3-inventory-cli");
+        let game_dir = root.join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        fs::write(
+            game_dir.join("data.xp3"),
+            plain_xp3_fixture(&[
+                Xp3TestEntry {
+                    path: "scenario/intro.ks",
+                    payload: b"plain text payload",
+                    compressed: false,
+                    adler32: 0x0102_0304,
+                },
+                Xp3TestEntry {
+                    path: "image/title.png",
+                    payload: b"compressed-image-bytes",
+                    compressed: true,
+                    adler32: 0x0506_0708,
+                },
+            ]),
+        )
+        .unwrap();
+        let inventory_path = root.join("inventory.json");
+
+        run_cli(&[
+            "asset-inventory",
+            game_dir.to_str().unwrap(),
+            "--output",
+            inventory_path.to_str().unwrap(),
+        ]);
+
+        let inventory: AssetInventoryManifest = read_json(&inventory_path).unwrap();
+        assert_eq!(
+            inventory.adapter_id,
+            kaifuu_engine_fixture::XP3_DETECTOR_ADAPTER_ID
+        );
+        assert_eq!(inventory.validate().status, OperationStatus::Passed);
+        assert!(inventory.capabilities.iter().any(|capability| {
+            capability.capability == Capability::AssetInventory
+                && capability.status == CapabilityStatus::Supported
+        }));
+        assert!(inventory.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Extraction
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+        assert!(inventory.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Patching
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+
+        let script = inventory
+            .assets
+            .iter()
+            .find(|asset| asset.asset_key == "scenario/intro.ks")
+            .unwrap();
+        let script_hash = sha256_hash_bytes(b"plain text payload");
+        assert_eq!(script.source_hash.as_deref(), Some(script_hash.as_str()));
+        assert_eq!(
+            script.metadata.get("profileId").map(String::as_str),
+            Some("019ed000-0000-7000-8000-000000095001")
+        );
+        assert_eq!(
+            script.metadata.get("compressed").map(String::as_str),
+            Some("false")
+        );
+
+        let image = inventory
+            .assets
+            .iter()
+            .find(|asset| asset.asset_key == "image/title.png")
+            .unwrap();
+        assert_eq!(image.asset_kind, AssetInventoryAssetKind::Image);
+        assert_eq!(
+            image.metadata.get("compressed").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            image.metadata.get("storedAdler32").map(String::as_str),
+            Some("adler32:05060708")
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_inventory_cli_reports_public_plain_profile_entries() {
+        let root = temp_dir("public-xp3-inventory-cli");
+        let fixture_root = public_fixture_path("fixtures/public/kaifuu-encrypted-matrix");
+        let game_dir = fixture_root.join("xp3-profiles/plain");
+        let inventory_path = root.join("inventory.json");
+
+        run_cli(&[
+            "asset-inventory",
+            game_dir.to_str().unwrap(),
+            "--output",
+            inventory_path.to_str().unwrap(),
+        ]);
+
+        let inventory: AssetInventoryManifest = read_json(&inventory_path).unwrap();
+        assert_eq!(
+            inventory.adapter_id,
+            kaifuu_engine_fixture::XP3_DETECTOR_ADAPTER_ID
+        );
+        assert_eq!(inventory.validate().status, OperationStatus::Passed);
+
+        let archive = inventory
+            .assets
+            .iter()
+            .find(|asset| asset.asset_key == "data.xp3")
+            .unwrap();
+        assert_eq!(
+            archive.metadata.get("profileId").map(String::as_str),
+            Some("019ed000-0000-7000-8000-000000095001")
+        );
+        assert_eq!(
+            archive.metadata.get("entryCount").map(String::as_str),
+            Some("3")
+        );
+
+        let intro = inventory
+            .assets
+            .iter()
+            .find(|asset| asset.asset_key == "scenario/intro.ks")
+            .unwrap();
+        assert_eq!(intro.asset_kind, AssetInventoryAssetKind::Script);
+        assert_eq!(
+            intro.source_hash.as_deref(),
+            Some(sha256_hash_bytes(b"hello public xp3\n").as_str())
+        );
+        assert_eq!(
+            intro.metadata.get("originalSize").map(String::as_str),
+            Some("17")
+        );
+        assert_eq!(
+            intro.metadata.get("archiveSize").map(String::as_str),
+            Some("17")
+        );
+        assert_eq!(
+            intro.metadata.get("compressed").map(String::as_str),
+            Some("false")
+        );
+        assert_eq!(
+            intro.metadata.get("profileId").map(String::as_str),
+            Some("019ed000-0000-7000-8000-000000095001")
+        );
+
+        let compressed = inventory
+            .assets
+            .iter()
+            .find(|asset| asset.asset_key == "scenario/compressed.ks")
+            .unwrap();
+        assert_eq!(
+            compressed.source_hash.as_deref(),
+            Some(sha256_hash_bytes(b"compressed public payload\n").as_str())
+        );
+        assert_eq!(
+            compressed.metadata.get("originalSize").map(String::as_str),
+            Some("26")
+        );
+        assert_eq!(
+            compressed.metadata.get("archiveSize").map(String::as_str),
+            Some("26")
+        );
+        assert_eq!(
+            compressed.metadata.get("compressed").map(String::as_str),
+            Some("true")
+        );
+        assert_eq!(
+            compressed.metadata.get("storedAdler32").map(String::as_str),
+            Some("adler32:33334444")
+        );
+        assert_eq!(
+            compressed.metadata.get("profileId").map(String::as_str),
+            Some("019ed000-0000-7000-8000-000000095001")
+        );
+
+        let image = inventory
+            .assets
+            .iter()
+            .find(|asset| asset.asset_key == "image/title.png")
+            .unwrap();
+        assert_eq!(image.asset_kind, AssetInventoryAssetKind::Image);
+        assert_eq!(
+            image.source_hash.as_deref(),
+            Some(sha256_hash_bytes(b"png fixture bytes\n").as_str())
+        );
+        assert_eq!(
+            image.metadata.get("originalSize").map(String::as_str),
+            Some("18")
+        );
+        assert_eq!(
+            image.metadata.get("archiveSize").map(String::as_str),
+            Some("18")
+        );
+        assert_eq!(
+            image.metadata.get("compressed").map(String::as_str),
+            Some("false")
+        );
+        assert_eq!(
+            image.metadata.get("profileId").map(String::as_str),
+            Some("019ed000-0000-7000-8000-000000095001")
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xp3_inventory_cli_rejects_encrypted_and_helper_required_profiles() {
+        let root = temp_dir("xp3-inventory-cli-diagnostics");
+        let encrypted_dir = root.join("encrypted");
+        fs::create_dir_all(&encrypted_dir).unwrap();
+        fs::write(
+            encrypted_dir.join("data.xp3"),
+            b"XP3\r\nXP3-CRYPT\nfixture-only encrypted archive",
+        )
+        .unwrap();
+        let encrypted_output = root.join("encrypted.json");
+        let encrypted_error = run_cli_with_registry_result(
+            &[
+                "asset-inventory",
+                encrypted_dir.to_str().unwrap(),
+                "--output",
+                encrypted_output.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(encrypted_error.contains("kaifuu.missing_capability.crypto"));
+
+        let helper_dir = root.join("helper");
+        fs::create_dir_all(&helper_dir).unwrap();
+        fs::write(
+            helper_dir.join("data.xp3"),
+            b"XP3\r\nXP3-HELPER-REQUIRED\nfixture-only helper-required archive",
+        )
+        .unwrap();
+        let helper_output = root.join("helper.json");
+        let helper_error = run_cli_with_registry_result(
+            &[
+                "asset-inventory",
+                helper_dir.to_str().unwrap(),
+                "--output",
+                helper_output.to_str().unwrap(),
+            ],
+            &engine_registry(),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(helper_error.contains("kaifuu.helper_required"));
 
         let _ = fs::remove_dir_all(root);
     }

@@ -90,6 +90,7 @@ pub const STRING_RELOCATION_UNSUPPORTED_POINTER_FORMAT: &str =
     "kaifuu.string_relocation.unsupported_pointer_format";
 pub const STRING_RELOCATION_POINTER_PROVENANCE_MISMATCH: &str =
     "kaifuu.string_relocation.pointer_provenance_mismatch";
+pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
 pub mod contracts;
 mod offset_map;
@@ -8644,6 +8645,8 @@ pub enum SemanticErrorCode {
     MissingKeyMaterial,
     #[serde(rename = "kaifuu.helper_unavailable")]
     HelperUnavailable,
+    #[serde(rename = "kaifuu.helper_required")]
+    HelperRequired,
     #[serde(rename = "kaifuu.key_validation_failed")]
     KeyValidationFailed,
     #[serde(rename = "kaifuu.secret_redacted")]
@@ -8682,6 +8685,7 @@ impl SemanticErrorCode {
             Self::MissingKeyProfile => SEMANTIC_MISSING_KEY_PROFILE,
             Self::MissingKeyMaterial => SEMANTIC_MISSING_KEY_MATERIAL,
             Self::HelperUnavailable => SEMANTIC_HELPER_UNAVAILABLE,
+            Self::HelperRequired => SEMANTIC_HELPER_REQUIRED,
             Self::KeyValidationFailed => SEMANTIC_KEY_VALIDATION_FAILED,
             Self::SecretRedacted => SEMANTIC_SECRET_REDACTED,
             Self::MalformedSecretRef => SEMANTIC_MALFORMED_SECRET_REF,
@@ -11948,6 +11952,7 @@ impl AdapterFailure {
             SEMANTIC_MISSING_KEY_PROFILE
                 | SEMANTIC_MISSING_KEY_MATERIAL
                 | SEMANTIC_HELPER_UNAVAILABLE
+                | SEMANTIC_HELPER_REQUIRED
                 | SEMANTIC_KEY_VALIDATION_FAILED
                 | SEMANTIC_PROTECTED_EXECUTABLE_UNSUPPORTED
                 | SEMANTIC_UNSUPPORTED_LAYERED_TRANSFORM
@@ -12591,6 +12596,339 @@ pub fn sha256_hash_bytes(input: &[u8]) -> String {
 
 pub fn sha256_file_ref(path: &Path) -> io::Result<String> {
     Ok(format!("sha256:{}", sha256_hex(&fs::read(path)?)))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlainXp3Inventory {
+    pub entries: Vec<PlainXp3Entry>,
+}
+
+impl PlainXp3Inventory {
+    pub fn normalize(&mut self) {
+        self.entries.sort_by_key(|entry| entry.path.clone());
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlainXp3Entry {
+    pub path: String,
+    pub original_size: u64,
+    pub archive_size: u64,
+    pub compressed: bool,
+    pub segment_count: usize,
+    pub payload_hash: Option<String>,
+    pub stored_adler32: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlainXp3InventoryError {
+    MalformedHeader,
+    Truncated(&'static str),
+    InvalidOffset(&'static str),
+    UnsupportedIndexEncoding(u8),
+    UnsupportedEncrypted,
+    InvalidChunk(String),
+    InvalidUtf16Path,
+    DuplicateEntry(String),
+}
+
+impl fmt::Display for PlainXp3InventoryError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MalformedHeader => formatter.write_str("malformed XP3 header"),
+            Self::Truncated(field) => write!(formatter, "truncated XP3 {field}"),
+            Self::InvalidOffset(field) => write!(formatter, "invalid XP3 {field} offset"),
+            Self::UnsupportedIndexEncoding(flag) => {
+                write!(formatter, "unsupported XP3 index encoding flag {flag}")
+            }
+            Self::UnsupportedEncrypted => {
+                formatter.write_str("encrypted XP3 inventory requires crypto support")
+            }
+            Self::InvalidChunk(message) => write!(formatter, "invalid XP3 chunk: {message}"),
+            Self::InvalidUtf16Path => formatter.write_str("invalid XP3 UTF-16 path"),
+            Self::DuplicateEntry(path) => write!(formatter, "duplicate XP3 file entry {path}"),
+        }
+    }
+}
+
+impl std::error::Error for PlainXp3InventoryError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PlainXp3Segment {
+    flags: u32,
+    offset: u64,
+    original_size: u64,
+    archive_size: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PlainXp3FileChunk {
+    path: Option<String>,
+    original_size: Option<u64>,
+    archive_size: Option<u64>,
+    segments: Vec<PlainXp3Segment>,
+    stored_adler32: Option<String>,
+}
+
+pub fn read_plain_xp3_inventory(bytes: &[u8]) -> Result<PlainXp3Inventory, PlainXp3InventoryError> {
+    if !bytes.starts_with(XP3_PLAIN_MAGIC) {
+        if has_legacy_xp3_encrypted_marker(bytes) {
+            return Err(PlainXp3InventoryError::UnsupportedEncrypted);
+        }
+        return Err(PlainXp3InventoryError::MalformedHeader);
+    }
+    let index_offset = read_le_u64(bytes, XP3_PLAIN_MAGIC.len(), "index offset")?;
+    let index_offset = usize::try_from(index_offset)
+        .map_err(|_| PlainXp3InventoryError::InvalidOffset("index"))?;
+    if index_offset >= bytes.len() {
+        return Err(PlainXp3InventoryError::InvalidOffset("index"));
+    }
+
+    let index_encoding = *bytes
+        .get(index_offset)
+        .ok_or(PlainXp3InventoryError::Truncated("index encoding"))?;
+    if index_encoding != 0 {
+        return Err(PlainXp3InventoryError::UnsupportedIndexEncoding(
+            index_encoding,
+        ));
+    }
+    let index_size = read_le_u64(bytes, index_offset + 1, "index size")?;
+    let index_start = index_offset
+        .checked_add(9)
+        .ok_or(PlainXp3InventoryError::InvalidOffset("index start"))?;
+    let index_size = usize::try_from(index_size)
+        .map_err(|_| PlainXp3InventoryError::InvalidOffset("index size"))?;
+    let index_end = checked_end(index_start, index_size, bytes.len(), "index")?;
+
+    let mut cursor = index_start;
+    let mut entries = Vec::new();
+    let mut seen_paths = HashSet::new();
+    while cursor < index_end {
+        let chunk_name = read_chunk_name(bytes, cursor, "index chunk name")?;
+        let chunk_size = read_le_u64(bytes, cursor + 4, "index chunk size")?;
+        let content_start = cursor + 12;
+        let content_size = usize::try_from(chunk_size)
+            .map_err(|_| PlainXp3InventoryError::InvalidOffset("index chunk size"))?;
+        let content_end = checked_end(content_start, content_size, index_end, "index chunk")?;
+        if chunk_name == *b"File" {
+            let entry = parse_xp3_file_chunk(bytes, content_start, content_end)?;
+            let path = entry.path.ok_or_else(|| {
+                PlainXp3InventoryError::InvalidChunk("File chunk missing info path".to_string())
+            })?;
+            if !seen_paths.insert(path.clone()) {
+                return Err(PlainXp3InventoryError::DuplicateEntry(path));
+            }
+            let payload_hash = hash_xp3_segments(bytes, &entry.segments)?;
+            entries.push(PlainXp3Entry {
+                path,
+                original_size: entry.original_size.ok_or_else(|| {
+                    PlainXp3InventoryError::InvalidChunk(
+                        "File chunk missing info original size".to_string(),
+                    )
+                })?,
+                archive_size: entry.archive_size.ok_or_else(|| {
+                    PlainXp3InventoryError::InvalidChunk(
+                        "File chunk missing info archive size".to_string(),
+                    )
+                })?,
+                compressed: entry.segments.iter().any(|segment| segment.flags & 1 != 0),
+                segment_count: entry.segments.len(),
+                payload_hash,
+                stored_adler32: entry.stored_adler32,
+            });
+        }
+        cursor = content_end;
+    }
+
+    let mut inventory = PlainXp3Inventory { entries };
+    inventory.normalize();
+    Ok(inventory)
+}
+
+fn has_legacy_xp3_encrypted_marker(bytes: &[u8]) -> bool {
+    if !bytes.starts_with(b"XP3\r\n") {
+        return false;
+    }
+    let marker_region = &bytes[..bytes.len().min(128)];
+    header_contains_ascii(marker_region, "XP3-CRYPT")
+        || header_contains_ascii(marker_region, "kaifuu-xp3-encrypted")
+}
+
+fn parse_xp3_file_chunk(
+    bytes: &[u8],
+    start: usize,
+    end: usize,
+) -> Result<PlainXp3FileChunk, PlainXp3InventoryError> {
+    let mut cursor = start;
+    let mut file = PlainXp3FileChunk {
+        path: None,
+        original_size: None,
+        archive_size: None,
+        segments: vec![],
+        stored_adler32: None,
+    };
+    while cursor < end {
+        let chunk_name = read_chunk_name(bytes, cursor, "file chunk name")?;
+        let chunk_size = read_le_u64(bytes, cursor + 4, "file chunk size")?;
+        let content_start = cursor + 12;
+        let content_size = usize::try_from(chunk_size)
+            .map_err(|_| PlainXp3InventoryError::InvalidOffset("file chunk size"))?;
+        let content_end = checked_end(content_start, content_size, end, "file chunk")?;
+        match &chunk_name {
+            b"info" => parse_xp3_info_chunk(bytes, content_start, content_end, &mut file)?,
+            b"segm" => parse_xp3_segment_chunk(bytes, content_start, content_end, &mut file)?,
+            b"adlr" => {
+                if content_size != 4 {
+                    return Err(PlainXp3InventoryError::InvalidChunk(
+                        "adlr chunk must be four bytes".to_string(),
+                    ));
+                }
+                file.stored_adler32 = Some(format!(
+                    "adler32:{:08x}",
+                    read_le_u32(bytes, content_start, "adlr")?
+                ));
+            }
+            _ => {}
+        }
+        cursor = content_end;
+    }
+    if file.segments.is_empty() {
+        return Err(PlainXp3InventoryError::InvalidChunk(
+            "File chunk missing segment table".to_string(),
+        ));
+    }
+    Ok(file)
+}
+
+fn parse_xp3_info_chunk(
+    bytes: &[u8],
+    start: usize,
+    end: usize,
+    file: &mut PlainXp3FileChunk,
+) -> Result<(), PlainXp3InventoryError> {
+    let minimum_size = 4 + 8 + 8 + 2;
+    if end.saturating_sub(start) < minimum_size {
+        return Err(PlainXp3InventoryError::Truncated("info chunk"));
+    }
+    file.original_size = Some(read_le_u64(bytes, start + 4, "info original size")?);
+    file.archive_size = Some(read_le_u64(bytes, start + 12, "info archive size")?);
+    let path_units = usize::from(read_le_u16(bytes, start + 20, "info path length")?);
+    let path_start = start + 22;
+    let path_bytes = path_units
+        .checked_mul(2)
+        .ok_or(PlainXp3InventoryError::InvalidOffset("info path length"))?;
+    let path_end = checked_end(path_start, path_bytes, end, "info path")?;
+    let mut units = Vec::with_capacity(path_units);
+    let mut cursor = path_start;
+    while cursor < path_end {
+        units.push(read_le_u16(bytes, cursor, "info path unit")?);
+        cursor += 2;
+    }
+    file.path =
+        Some(String::from_utf16(&units).map_err(|_| PlainXp3InventoryError::InvalidUtf16Path)?);
+    Ok(())
+}
+
+fn parse_xp3_segment_chunk(
+    bytes: &[u8],
+    start: usize,
+    end: usize,
+    file: &mut PlainXp3FileChunk,
+) -> Result<(), PlainXp3InventoryError> {
+    let segment_size = 4 + 8 + 8 + 8;
+    if (end - start) % segment_size != 0 {
+        return Err(PlainXp3InventoryError::InvalidChunk(
+            "segment table size is not a multiple of 28".to_string(),
+        ));
+    }
+    let mut cursor = start;
+    while cursor < end {
+        file.segments.push(PlainXp3Segment {
+            flags: read_le_u32(bytes, cursor, "segment flags")?,
+            offset: read_le_u64(bytes, cursor + 4, "segment offset")?,
+            original_size: read_le_u64(bytes, cursor + 12, "segment original size")?,
+            archive_size: read_le_u64(bytes, cursor + 20, "segment archive size")?,
+        });
+        cursor += segment_size;
+    }
+    Ok(())
+}
+
+fn hash_xp3_segments(
+    bytes: &[u8],
+    segments: &[PlainXp3Segment],
+) -> Result<Option<String>, PlainXp3InventoryError> {
+    let mut payload = Vec::new();
+    for segment in segments {
+        let offset = usize::try_from(segment.offset)
+            .map_err(|_| PlainXp3InventoryError::InvalidOffset("segment"))?;
+        let size = usize::try_from(segment.archive_size)
+            .map_err(|_| PlainXp3InventoryError::InvalidOffset("segment size"))?;
+        let end = checked_end(offset, size, bytes.len(), "segment payload")?;
+        payload.extend_from_slice(&bytes[offset..end]);
+    }
+    Ok(Some(sha256_hash_bytes(&payload)))
+}
+
+fn read_chunk_name(
+    bytes: &[u8],
+    offset: usize,
+    field: &'static str,
+) -> Result<[u8; 4], PlainXp3InventoryError> {
+    let end = checked_end(offset, 4, bytes.len(), field)?;
+    let mut name = [0; 4];
+    name.copy_from_slice(&bytes[offset..end]);
+    Ok(name)
+}
+
+fn read_le_u16(
+    bytes: &[u8],
+    offset: usize,
+    field: &'static str,
+) -> Result<u16, PlainXp3InventoryError> {
+    let end = checked_end(offset, 2, bytes.len(), field)?;
+    let mut raw = [0; 2];
+    raw.copy_from_slice(&bytes[offset..end]);
+    Ok(u16::from_le_bytes(raw))
+}
+
+fn read_le_u32(
+    bytes: &[u8],
+    offset: usize,
+    field: &'static str,
+) -> Result<u32, PlainXp3InventoryError> {
+    let end = checked_end(offset, 4, bytes.len(), field)?;
+    let mut raw = [0; 4];
+    raw.copy_from_slice(&bytes[offset..end]);
+    Ok(u32::from_le_bytes(raw))
+}
+
+fn read_le_u64(
+    bytes: &[u8],
+    offset: usize,
+    field: &'static str,
+) -> Result<u64, PlainXp3InventoryError> {
+    let end = checked_end(offset, 8, bytes.len(), field)?;
+    let mut raw = [0; 8];
+    raw.copy_from_slice(&bytes[offset..end]);
+    Ok(u64::from_le_bytes(raw))
+}
+
+fn checked_end(
+    start: usize,
+    size: usize,
+    upper_bound: usize,
+    field: &'static str,
+) -> Result<usize, PlainXp3InventoryError> {
+    let end = start
+        .checked_add(size)
+        .ok_or(PlainXp3InventoryError::InvalidOffset(field))?;
+    if end > upper_bound {
+        return Err(PlainXp3InventoryError::Truncated(field));
+    }
+    Ok(end)
 }
 
 fn sha256_hex(input: &[u8]) -> String {
@@ -14451,6 +14789,65 @@ mod tests {
         fs::write(path, bytes).unwrap();
     }
 
+    #[derive(Clone, Copy)]
+    struct Xp3TestEntry<'a> {
+        path: &'a str,
+        payload: &'a [u8],
+        compressed: bool,
+        adler32: u32,
+    }
+
+    fn plain_xp3_fixture(entries: &[Xp3TestEntry<'_>]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(XP3_PLAIN_MAGIC);
+        bytes.extend_from_slice(&0_u64.to_le_bytes());
+
+        let mut segment_offsets = Vec::new();
+        for entry in entries {
+            segment_offsets.push(bytes.len() as u64);
+            bytes.extend_from_slice(entry.payload);
+        }
+
+        let index_offset = bytes.len() as u64;
+        let mut index = Vec::new();
+        for (entry, offset) in entries.iter().zip(segment_offsets) {
+            let mut file = Vec::new();
+            let path_units = entry.path.encode_utf16().collect::<Vec<_>>();
+
+            let mut info = Vec::new();
+            info.extend_from_slice(&0_u32.to_le_bytes());
+            info.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            info.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            info.extend_from_slice(&(path_units.len() as u16).to_le_bytes());
+            for unit in path_units {
+                info.extend_from_slice(&unit.to_le_bytes());
+            }
+            append_xp3_chunk(&mut file, b"info", &info);
+
+            let mut segment = Vec::new();
+            segment.extend_from_slice(&(u32::from(entry.compressed)).to_le_bytes());
+            segment.extend_from_slice(&offset.to_le_bytes());
+            segment.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            segment.extend_from_slice(&(entry.payload.len() as u64).to_le_bytes());
+            append_xp3_chunk(&mut file, b"segm", &segment);
+            append_xp3_chunk(&mut file, b"adlr", &entry.adler32.to_le_bytes());
+            append_xp3_chunk(&mut index, b"File", &file);
+        }
+
+        bytes.push(0);
+        bytes.extend_from_slice(&(index.len() as u64).to_le_bytes());
+        bytes.extend_from_slice(&index);
+        bytes[XP3_PLAIN_MAGIC.len()..XP3_PLAIN_MAGIC.len() + 8]
+            .copy_from_slice(&index_offset.to_le_bytes());
+        bytes
+    }
+
+    fn append_xp3_chunk(output: &mut Vec<u8>, name: &[u8; 4], content: &[u8]) {
+        output.extend_from_slice(name);
+        output.extend_from_slice(&(content.len() as u64).to_le_bytes());
+        output.extend_from_slice(content);
+    }
+
     fn detected_archive_row<'a>(
         report: &'a ArchiveDetectionReport,
         row_id: &str,
@@ -14462,6 +14859,95 @@ mod tests {
             .unwrap_or_else(|| panic!("missing archive row {row_id}"));
         assert!(row.detected, "{row_id} should be detected: {row:#?}");
         row
+    }
+
+    #[test]
+    fn plain_xp3_inventory_reads_file_table_hashes_and_compression_flags() {
+        let bytes = plain_xp3_fixture(&[
+            Xp3TestEntry {
+                path: "scenario/intro.ks",
+                payload: b"first line",
+                compressed: false,
+                adler32: 0x0102_0304,
+            },
+            Xp3TestEntry {
+                path: "scenario/compressed.ks",
+                payload: b"compressed bytes fixture",
+                compressed: true,
+                adler32: 0x0a0b_0c0d,
+            },
+        ]);
+
+        let inventory = read_plain_xp3_inventory(&bytes).unwrap();
+
+        assert_eq!(inventory.entries.len(), 2);
+        assert_eq!(inventory.entries[0].path, "scenario/compressed.ks");
+        assert_eq!(inventory.entries[0].original_size, 24);
+        assert_eq!(inventory.entries[0].archive_size, 24);
+        assert!(inventory.entries[0].compressed);
+        assert_eq!(inventory.entries[0].segment_count, 1);
+        let compressed_hash = sha256_hash_bytes(b"compressed bytes fixture");
+        assert_eq!(
+            inventory.entries[0].payload_hash.as_deref(),
+            Some(compressed_hash.as_str())
+        );
+        assert_eq!(
+            inventory.entries[0].stored_adler32.as_deref(),
+            Some("adler32:0a0b0c0d")
+        );
+        assert_eq!(inventory.entries[1].path, "scenario/intro.ks");
+        assert!(!inventory.entries[1].compressed);
+        let plain_hash = sha256_hash_bytes(b"first line");
+        assert_eq!(
+            inventory.entries[1].payload_hash.as_deref(),
+            Some(plain_hash.as_str())
+        );
+    }
+
+    #[test]
+    fn plain_xp3_inventory_rejects_malformed_header_and_encrypted_marker() {
+        assert_eq!(
+            read_plain_xp3_inventory(b"XP3\r\nnot the full plain header").unwrap_err(),
+            PlainXp3InventoryError::MalformedHeader
+        );
+
+        assert_eq!(
+            read_plain_xp3_inventory(b"XP3\r\nXP3-CRYPT\nfixture-only encrypted archive")
+                .unwrap_err(),
+            PlainXp3InventoryError::UnsupportedEncrypted
+        );
+
+        let bytes = plain_xp3_fixture(&[Xp3TestEntry {
+            path: "scenario/secret.ks",
+            payload: b"XP3-CRYPT appears inside a plain member payload",
+            compressed: false,
+            adler32: 0,
+        }]);
+        let inventory = read_plain_xp3_inventory(&bytes).unwrap();
+        assert_eq!(inventory.entries.len(), 1);
+    }
+
+    #[test]
+    fn plain_xp3_inventory_rejects_duplicate_file_entries() {
+        let bytes = plain_xp3_fixture(&[
+            Xp3TestEntry {
+                path: "scenario/dup.ks",
+                payload: b"one",
+                compressed: false,
+                adler32: 1,
+            },
+            Xp3TestEntry {
+                path: "scenario/dup.ks",
+                payload: b"two",
+                compressed: false,
+                adler32: 2,
+            },
+        ]);
+
+        assert_eq!(
+            read_plain_xp3_inventory(&bytes).unwrap_err(),
+            PlainXp3InventoryError::DuplicateEntry("scenario/dup.ks".to_string())
+        );
     }
 
     fn golden_boundary_profile(adapter_id: &str) -> GameProfile {
@@ -17694,6 +18180,7 @@ yes A | head -c 70000
                 SemanticErrorCode::MissingKeyProfile,
                 SemanticErrorCode::MissingKeyMaterial,
                 SemanticErrorCode::HelperUnavailable,
+                SemanticErrorCode::HelperRequired,
                 SemanticErrorCode::KeyValidationFailed,
                 SemanticErrorCode::SecretRedacted,
                 SemanticErrorCode::ProtectedExecutableUnsupported,
@@ -17714,6 +18201,7 @@ yes A | head -c 70000
                 "kaifuu.missing_capability.key_profile",
                 "kaifuu.missing_key_material",
                 "kaifuu.helper_unavailable",
+                "kaifuu.helper_required",
                 "kaifuu.key_validation_failed",
                 "kaifuu.secret_redacted",
                 "kaifuu.protected_executable_unsupported",
