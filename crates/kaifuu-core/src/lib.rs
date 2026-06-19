@@ -2039,7 +2039,7 @@ fn add_profile_helper_execution_field_failures_at(
         } else {
             format!("{field}.{key}")
         };
-        if helper_execution_config_field_is_forbidden(key) {
+        if helper_execution_config_field_is_forbidden_at(key, &child_field) {
             failures.push(ProfileValidationFailure {
                 code: SEMANTIC_HELPER_PROFILE_FORBIDDEN_EXECUTION_FIELD.to_string(),
                 field: child_field.clone(),
@@ -5690,9 +5690,22 @@ impl HelperProcessCancelToken {
 }
 
 #[derive(Debug, Clone)]
-pub struct BoundedHelperProcessRequest<'a> {
+struct BoundedHelperProcessRequest<'a> {
     pub helper_id: &'a str,
     pub executable_path: &'a Path,
+    pub timeout_ms: u32,
+    pub stdin: &'a [u8],
+    pub cancel_token: Option<HelperProcessCancelToken>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RegisteredBoundedHelperProcessRequest<'a> {
+    pub helper_id: &'a str,
+    pub allowlist_entry_id: &'a str,
+    pub executable_path: &'a Path,
+    pub platform: &'a str,
+    pub helper_version: &'a str,
+    pub required_capabilities: &'a [HelperCapability],
     pub timeout_ms: u32,
     pub stdin: &'a [u8],
     pub cancel_token: Option<HelperProcessCancelToken>,
@@ -5783,9 +5796,75 @@ struct HelperCapturedOutput {
     truncated: bool,
 }
 
-pub fn run_bounded_helper_process(
-    request: BoundedHelperProcessRequest<'_>,
+pub fn run_registered_bounded_helper_process(
+    entry: &HelperRegistryEntry,
+    request: RegisteredBoundedHelperProcessRequest<'_>,
 ) -> HelperProcessRunResult {
+    let policy_timeout_ms = entry
+        .execution_policy
+        .max_runtime_seconds
+        .saturating_mul(1000);
+    let effective_timeout_ms = request.timeout_ms.min(policy_timeout_ms).max(1);
+    if entry.execution_policy.mode != HelperExecutionMode::LocalProcess {
+        return helper_process_gate_failure(
+            entry,
+            &request,
+            effective_timeout_ms,
+            SEMANTIC_HELPER_EXECUTION_DISALLOWED,
+            "executionPolicy.mode",
+            "helper registry execution policy must be local_process for process launch",
+        );
+    }
+    if request.required_capabilities.is_empty() {
+        return helper_process_gate_failure(
+            entry,
+            &request,
+            effective_timeout_ms,
+            SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
+            "capabilities",
+            "helper process launch requires at least one registered helper capability",
+        );
+    }
+
+    let validation = entry.validate_binary_launch(HelperBinaryLaunchValidationRequest {
+        helper_id: request.helper_id,
+        allowlist_entry_id: request.allowlist_entry_id,
+        executable_path: request.executable_path,
+        platform: request.platform,
+        helper_version: request.helper_version,
+        required_capabilities: request.required_capabilities,
+    });
+    if validation.status == OperationStatus::Failed {
+        if let Some(diagnostic) = validation.diagnostics.first() {
+            return helper_process_gate_failure(
+                entry,
+                &request,
+                effective_timeout_ms,
+                &diagnostic.code,
+                &diagnostic.field,
+                &diagnostic.message,
+            );
+        }
+        return helper_process_gate_failure(
+            entry,
+            &request,
+            effective_timeout_ms,
+            SEMANTIC_HELPER_UNAVAILABLE,
+            "allowlistEntryId",
+            "helper binary launch validation failed",
+        );
+    }
+
+    run_bounded_helper_process(BoundedHelperProcessRequest {
+        helper_id: request.helper_id,
+        executable_path: request.executable_path,
+        timeout_ms: effective_timeout_ms,
+        stdin: request.stdin,
+        cancel_token: request.cancel_token,
+    })
+}
+
+fn run_bounded_helper_process(request: BoundedHelperProcessRequest<'_>) -> HelperProcessRunResult {
     let started = Instant::now();
     let timeout_ms = request.timeout_ms.max(1);
     let mut execution = HelperExecutionSummary {
@@ -5957,6 +6036,50 @@ pub fn run_bounded_helper_process(
         stdout: stdout_summary,
         stderr: stderr_summary,
     })
+}
+
+fn helper_process_gate_failure(
+    entry: &HelperRegistryEntry,
+    request: &RegisteredBoundedHelperProcessRequest<'_>,
+    timeout_ms: u32,
+    code: &str,
+    field: &str,
+    message: &str,
+) -> HelperProcessRunResult {
+    helper_process_report(HelperProcessReport {
+        helper_id: request.helper_id,
+        status: OperationStatus::Failed,
+        diagnostic: helper_process_diagnostic(code, field, message),
+        execution: HelperExecutionSummary {
+            mode: HelperResultExecutionMode::LocalProcess,
+            platform: request.platform.to_string(),
+            bounded: true,
+            timeout_ms,
+            duration_ms: Some(0),
+            network_access: entry.execution_policy.network_access,
+            filesystem_access: helper_process_filesystem_access(
+                entry.execution_policy.filesystem_access,
+            ),
+        },
+        exit_code: None,
+        timed_out: false,
+        cancelled: false,
+        terminated: false,
+        stdout: HelperProcessOutputSummary::empty(),
+        stderr: HelperProcessOutputSummary::empty(),
+    })
+}
+
+fn helper_process_filesystem_access(
+    access: HelperFilesystemAccess,
+) -> HelperExecutionFilesystemAccess {
+    match access {
+        HelperFilesystemAccess::None => HelperExecutionFilesystemAccess::None,
+        HelperFilesystemAccess::TempOnly => HelperExecutionFilesystemAccess::TempOnly,
+        HelperFilesystemAccess::ReadOnlyWorkspace => {
+            HelperExecutionFilesystemAccess::ReadOnlyWorkspace
+        }
+    }
 }
 
 fn wait_for_bounded_helper_process(
@@ -7484,7 +7607,7 @@ fn validate_helper_registry_forbidden_execution_fields(
         } else {
             format!("{field}.{key}")
         };
-        if helper_execution_config_field_is_forbidden(key) {
+        if helper_execution_config_field_is_forbidden_at(key, &child_field) {
             helper_registry_failure(
                 diagnostics,
                 helper_id,
@@ -9097,6 +9220,30 @@ fn helper_execution_config_field_is_forbidden(key: &str) -> bool {
             | "executable"
             | "executablepath"
     )
+}
+
+fn helper_execution_config_field_is_forbidden_at(key: &str, field: &str) -> bool {
+    if helper_execution_config_field_is_forbidden(key) {
+        return true;
+    }
+    let normalized = normalize_secret_field_name(key);
+    let normalized_field = normalize_secret_field_name(field);
+    let helper_context = normalized_field.contains("helper");
+    let helper_config_key = normalized == "path"
+        || normalized == "filepath"
+        || normalized == "binarypath"
+        || normalized == "helperpath"
+        || normalized == "helperbinary"
+        || normalized == "helperbinarypath"
+        || normalized == "location"
+        || normalized == "uri"
+        || normalized == "config"
+        || normalized == "configuration"
+        || normalized == "helperconfig"
+        || normalized == "launchconfig"
+        || normalized == "settings"
+        || normalized == "options";
+    helper_context && helper_config_key
 }
 
 fn is_forbidden_secret_field(normalized: &str) -> bool {
@@ -16428,6 +16575,87 @@ yes A | head -c 70000
         assert!(!serialized.contains(helper.to_str().unwrap()));
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn registered_helper_process_requires_allowlist_version_hash_and_capability_before_launch() {
+        let root = temp_dir("registered-helper-process-gates");
+        let helper = root.join("helper-stub");
+        let marker = root.join("launched-marker");
+        write_executable_stub(
+            &helper,
+            &format!(
+                r#"#!/bin/sh
+printf launched > '{}'
+"#,
+                marker.display()
+            ),
+        );
+
+        let mut value = public_helper_registry_fixture_value("valid-helper");
+        value["executionPolicy"]["mode"] = serde_json::json!("local_process");
+        value["binaryAllowlist"]["entries"][0]["executableName"] =
+            serde_json::json!(helper.file_name().unwrap().to_str().unwrap());
+        value["binaryAllowlist"]["entries"][0]["sha256Hash"] =
+            serde_json::json!(sha256_hash_bytes(&fs::read(&helper).unwrap()));
+        let entry: HelperRegistryEntry = serde_json::from_value(value).unwrap();
+
+        let cases = [
+            (
+                "missing capability",
+                FIXTURE_HELPER_ALLOWLIST_REF_ID,
+                "0.1.0",
+                &[][..],
+                SEMANTIC_HELPER_REGISTRY_MISSING_CAPABILITY,
+            ),
+            (
+                "missing allowlist",
+                "unknown-helper-allowlist",
+                "0.1.0",
+                &[HelperCapability::FixtureInvocation][..],
+                SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY,
+            ),
+            (
+                "stale version",
+                FIXTURE_HELPER_ALLOWLIST_REF_ID,
+                "9.9.9",
+                &[HelperCapability::FixtureInvocation][..],
+                SEMANTIC_HELPER_ALLOWLIST_STALE_VERSION,
+            ),
+        ];
+
+        for (name, allowlist_entry_id, helper_version, required_capabilities, expected_code) in
+            cases
+        {
+            let report = run_registered_bounded_helper_process(
+                &entry,
+                RegisteredBoundedHelperProcessRequest {
+                    helper_id: FIXTURE_HELPER_REGISTRY_ID,
+                    allowlist_entry_id,
+                    executable_path: &helper,
+                    platform: "fixture-any",
+                    helper_version,
+                    required_capabilities,
+                    timeout_ms: 1000,
+                    stdin: b"",
+                    cancel_token: None,
+                },
+            );
+
+            assert_eq!(
+                report.status,
+                OperationStatus::Failed,
+                "{name}: {report:#?}"
+            );
+            assert_eq!(report.diagnostic.code, expected_code, "{name}: {report:#?}");
+            assert!(
+                !marker.exists(),
+                "{name}: helper launched before registry gate"
+            );
+            let serialized = serde_json::to_string(&report).unwrap();
+            assert!(!serialized.contains(helper.to_str().unwrap()));
+        }
+    }
+
     #[test]
     fn public_helper_registry_fixtures_validate_semantic_diagnostics() {
         let valid = public_helper_registry_fixture_value("valid-helper");
@@ -18148,6 +18376,8 @@ yes A | head -c 70000
         profile["metadata"]["command"] = serde_json::json!("sh -c helper");
         profile["metadata"]["args"] = serde_json::json!("--dump");
         profile["helperEvidence"]["executable"] = serde_json::json!("helper.exe");
+        profile["helperEvidence"]["path"] = serde_json::json!("helpers/key-helper.exe");
+        profile["helperEvidence"]["config"] = serde_json::json!({"path": "helpers/key-helper.exe"});
 
         let validation = validate_profile_value(&profile).redacted_for_report();
 
@@ -18156,6 +18386,9 @@ yes A | head -c 70000
             "metadata.command",
             "metadata.args",
             "helperEvidence.executable",
+            "helperEvidence.path",
+            "helperEvidence.config",
+            "helperEvidence.config.path",
         ] {
             assert!(
                 validation.failures.iter().any(|failure| {
