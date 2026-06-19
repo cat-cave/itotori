@@ -7,6 +7,7 @@ use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
+    mpsc,
 };
 use std::thread;
 use std::time::{Duration, Instant};
@@ -5753,34 +5754,10 @@ pub fn run_bounded_helper_process(
     let stdout_reader = child.stdout.take().map(spawn_helper_output_reader);
     let stderr_reader = child.stderr.take().map(spawn_helper_output_reader);
 
-    if let Some(mut stdin) = child.stdin.take() {
-        match stdin.write_all(request.stdin) {
-            Ok(()) => {}
-            Err(error) if error.kind() == ErrorKind::BrokenPipe => {}
-            Err(_) => {
-                let terminated = terminate_helper_process(&mut child);
-                let stdout = join_helper_output(stdout_reader);
-                let stderr = join_helper_output(stderr_reader);
-                execution.duration_ms = Some(elapsed_millis_u32(started));
-                return helper_process_report(
-                    request.helper_id,
-                    OperationStatus::Failed,
-                    helper_process_diagnostic(
-                        SEMANTIC_HELPER_IO_FAILURE,
-                        "stdin",
-                        "helper stdin could not be written",
-                    ),
-                    execution,
-                    None,
-                    false,
-                    false,
-                    terminated,
-                    helper_process_output_summary(&stdout),
-                    helper_process_output_summary(&stderr),
-                );
-            }
-        }
-    }
+    let mut stdin_writer = child
+        .stdin
+        .take()
+        .map(|stdin| spawn_helper_stdin_writer(stdin, request.stdin.to_vec()));
 
     let mut timed_out = false;
     let mut cancelled = false;
@@ -5789,6 +5766,7 @@ pub fn run_bounded_helper_process(
         &mut child,
         Duration::from_millis(u64::from(timeout_ms)),
         request.cancel_token.as_ref(),
+        &mut stdin_writer,
         &mut timed_out,
         &mut cancelled,
         &mut terminated,
@@ -5868,26 +5846,86 @@ fn wait_for_bounded_helper_process(
     child: &mut Child,
     timeout: Duration,
     cancel_token: Option<&HelperProcessCancelToken>,
+    stdin_writer: &mut Option<mpsc::Receiver<io::Result<()>>>,
     timed_out: &mut bool,
     cancelled: &mut bool,
     terminated: &mut bool,
 ) -> io::Result<Option<ExitStatus>> {
     let deadline = Instant::now() + timeout;
+    let mut child_status = None;
     loop {
-        if let Some(status) = child.try_wait()? {
+        let stdin_done = match poll_helper_stdin_writer(stdin_writer) {
+            Ok(stdin_done) => stdin_done,
+            Err(error) => {
+                *terminated = terminate_helper_process(child);
+                return Err(error);
+            }
+        };
+        if child_status.is_none() {
+            child_status = child.try_wait()?;
+        }
+        if stdin_done && let Some(status) = child_status.take() {
             return Ok(Some(status));
         }
         if cancel_token.is_some_and(HelperProcessCancelToken::is_cancelled) {
             *cancelled = true;
             *terminated = terminate_helper_process(child);
-            return child.wait().map(Some);
+            return match child_status.take() {
+                Some(status) => Ok(Some(status)),
+                None => child.wait().map(Some),
+            };
         }
         if Instant::now() >= deadline {
             *timed_out = true;
             *terminated = terminate_helper_process(child);
-            return child.wait().map(Some);
+            return match child_status.take() {
+                Some(status) => Ok(Some(status)),
+                None => child.wait().map(Some),
+            };
         }
         thread::sleep(HELPER_PROCESS_POLL_INTERVAL);
+    }
+}
+
+fn spawn_helper_stdin_writer<W>(mut stdin: W, input: Vec<u8>) -> mpsc::Receiver<io::Result<()>>
+where
+    W: Write + Send + 'static,
+{
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let result = stdin.write_all(&input);
+        let _ = sender.send(result);
+    });
+    receiver
+}
+
+fn poll_helper_stdin_writer(
+    writer: &mut Option<mpsc::Receiver<io::Result<()>>>,
+) -> io::Result<bool> {
+    let Some(receiver) = writer else {
+        return Ok(true);
+    };
+    match receiver.try_recv() {
+        Ok(Ok(())) => {
+            *writer = None;
+            Ok(true)
+        }
+        Ok(Err(error)) if error.kind() == ErrorKind::BrokenPipe => {
+            *writer = None;
+            Ok(true)
+        }
+        Ok(Err(error)) => {
+            *writer = None;
+            Err(error)
+        }
+        Err(mpsc::TryRecvError::Empty) => Ok(false),
+        Err(mpsc::TryRecvError::Disconnected) => {
+            *writer = None;
+            Err(io::Error::new(
+                ErrorKind::Other,
+                "helper stdin writer ended without a result",
+            ))
+        }
     }
 }
 
@@ -15286,6 +15324,36 @@ wait
 
     #[cfg(unix)]
     #[test]
+    fn helper_process_runner_timeout_applies_while_writing_stdin() {
+        let root = temp_dir("helper-process-stdin-timeout");
+        let helper = root.join("helper-stub");
+        write_executable_stub(
+            &helper,
+            r#"#!/bin/sh
+sleep 1
+"#,
+        );
+        let stdin = vec![b'x'; 2 * 1024 * 1024];
+
+        let report = run_bounded_helper_process(BoundedHelperProcessRequest {
+            helper_id: "kaifuu.fixture.process-stub",
+            executable_path: &helper,
+            timeout_ms: 50,
+            stdin: &stdin,
+            filesystem_access: HelperExecutionFilesystemAccess::TempOnly,
+            cancel_token: None,
+        });
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(report.diagnostic.code, SEMANTIC_HELPER_TIMEOUT);
+        assert!(report.timed_out);
+        assert!(report.terminated);
+        let serialized = serde_json::to_string(&report).unwrap();
+        assert!(!serialized.contains(helper.to_str().unwrap()));
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn helper_process_runner_cancel_cleans_process_group() {
         let root = temp_dir("helper-process-cancel");
         let helper = root.join("helper-stub");
@@ -15327,6 +15395,42 @@ wait
         assert!(report.terminated);
         let serialized = serde_json::to_string(&report).unwrap();
         assert!(!serialized.contains(marker.to_str().unwrap()));
+        assert!(!serialized.contains(helper.to_str().unwrap()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn helper_process_runner_cancel_applies_while_writing_stdin() {
+        let root = temp_dir("helper-process-stdin-cancel");
+        let helper = root.join("helper-stub");
+        write_executable_stub(
+            &helper,
+            r#"#!/bin/sh
+sleep 1
+"#,
+        );
+        let stdin = vec![b'x'; 2 * 1024 * 1024];
+        let cancel_token = HelperProcessCancelToken::new();
+        let cancel_thread_token = cancel_token.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(50));
+            cancel_thread_token.cancel();
+        });
+
+        let report = run_bounded_helper_process(BoundedHelperProcessRequest {
+            helper_id: "kaifuu.fixture.process-stub",
+            executable_path: &helper,
+            timeout_ms: 5000,
+            stdin: &stdin,
+            filesystem_access: HelperExecutionFilesystemAccess::TempOnly,
+            cancel_token: Some(cancel_token),
+        });
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert_eq!(report.diagnostic.code, SEMANTIC_HELPER_CANCELLED);
+        assert!(report.cancelled);
+        assert!(report.terminated);
+        let serialized = serde_json::to_string(&report).unwrap();
         assert!(!serialized.contains(helper.to_str().unwrap()));
     }
 
