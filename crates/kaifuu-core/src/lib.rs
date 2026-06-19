@@ -4023,16 +4023,15 @@ pub fn validate_helper_result_value(value: &Value) -> HelperResultValidationResu
         fixture_id.as_deref(),
         value.get("proofHashes"),
     );
-    validate_helper_result_semantic_matrix(
-        &mut failures,
-        fixture_id.as_deref(),
+    let semantic_context = HelperResultSemanticContext {
         helper_kind,
         capability_level,
         execution_mode,
         diagnostic,
         secret_ref_count,
         proof_hash_count,
-    );
+    };
+    validate_helper_result_semantic_matrix(&mut failures, fixture_id.as_deref(), semantic_context);
 
     if diagnostic == Some(HelperDiagnosticCode::Success)
         && redaction == Some(HelperRedactionStatus::Failed)
@@ -4238,19 +4237,26 @@ fn validate_helper_result_forbidden_metadata_fields(
     }
 }
 
-fn validate_helper_result_semantic_matrix(
-    failures: &mut Vec<HelperResultValidationFailure>,
-    fixture_id: Option<&str>,
+#[derive(Clone, Copy)]
+struct HelperResultSemanticContext {
     helper_kind: Option<HelperKind>,
     capability_level: Option<HelperCapabilityLevel>,
     execution_mode: Option<HelperResultExecutionMode>,
     diagnostic: Option<HelperDiagnosticCode>,
     secret_ref_count: Option<usize>,
     proof_hash_count: Option<usize>,
+}
+
+fn validate_helper_result_semantic_matrix(
+    failures: &mut Vec<HelperResultValidationFailure>,
+    fixture_id: Option<&str>,
+    context: HelperResultSemanticContext,
 ) {
-    if let (Some(helper_kind), Some(capability_level), Some(execution_mode)) =
-        (helper_kind, capability_level, execution_mode)
-    {
+    if let (Some(helper_kind), Some(capability_level), Some(execution_mode)) = (
+        context.helper_kind,
+        context.capability_level,
+        context.execution_mode,
+    ) {
         let valid = match helper_kind {
             HelperKind::StaticParser => {
                 capability_level == HelperCapabilityLevel::StaticAnalysis
@@ -4287,8 +4293,8 @@ fn validate_helper_result_semantic_matrix(
         }
     }
 
-    if diagnostic == Some(HelperDiagnosticCode::Success) {
-        if secret_ref_count == Some(0) {
+    if context.diagnostic == Some(HelperDiagnosticCode::Success) {
+        if context.secret_ref_count == Some(0) {
             helper_result_failure(
                 failures,
                 fixture_id,
@@ -4297,7 +4303,7 @@ fn validate_helper_result_semantic_matrix(
                 "success diagnostics must include at least one redacted secretRef",
             );
         }
-        if proof_hash_count == Some(0) {
+        if context.proof_hash_count == Some(0) {
             helper_result_failure(
                 failures,
                 fixture_id,
