@@ -143,6 +143,11 @@ fn descriptor_output(descriptor: RuntimeAdapterDescriptor) -> Value {
             .into_iter()
             .map(|approximation_tier| approximation_tier.as_str())
             .collect::<Vec<_>>(),
+        "diagnostics": descriptor
+            .diagnostics
+            .into_iter()
+            .map(|diagnostic| diagnostic.to_json())
+            .collect::<Vec<_>>(),
         "limitations": descriptor.limitations
     })
 }
@@ -258,6 +263,7 @@ mod tests {
                     RuntimeCapability::SmokeValidation,
                 ],
                 approximation_tiers: vec![ApproximationTier::DeterministicFixture],
+                diagnostics: vec![],
                 limitations: vec!["test runtime adapter".to_string()],
             }
         }
@@ -427,6 +433,73 @@ mod tests {
                 .iter()
                 .any(|capability| capability == "frame_capture")
         );
+        assert_eq!(
+            report["runtimeAdapters"][0]["diagnostics"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn capabilities_command_reports_browser_host_diagnostic_without_launching_smoke() {
+        let root = temp_dir("browser-host-diagnostic");
+        let private_missing_browser = root.join("private-browser-bin");
+        let adapter = utsushi_fixture::BrowserLaunchAdapter::with_browser_program(
+            private_missing_browser.clone(),
+        );
+        let registry = registry_with(&adapter);
+        let output = root.join("capabilities.json");
+
+        run_cli_with_registry(
+            &[
+                "capabilities".to_string(),
+                "--output".to_string(),
+                output.display().to_string(),
+            ],
+            &registry,
+        )
+        .unwrap();
+
+        let report: Value = serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
+        let adapter_report = &report["runtimeAdapters"][0];
+        assert_eq!(
+            adapter_report["adapterName"],
+            utsushi_fixture::BrowserLaunchAdapter::NAME
+        );
+        assert!(
+            adapter_report["capabilities"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|capability| capability == "frame_capture")
+        );
+        let diagnostic = adapter_report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|diagnostic| diagnostic["diagnosticKind"] == "browser_host_availability")
+            .unwrap();
+        assert_eq!(diagnostic["status"], "unavailable");
+        assert_eq!(diagnostic["details"]["hostAvailable"], false);
+        assert_eq!(
+            diagnostic["details"]["browserSource"],
+            "configured_unavailable"
+        );
+        assert_eq!(
+            diagnostic["details"]["requiredFor"],
+            json!(["trace", "capture", "smoke_validation"])
+        );
+        assert_eq!(
+            diagnostic["details"]["errorCode"],
+            "utsushi.browser_host_unavailable"
+        );
+        assert_eq!(diagnostic["details"]["capability"], "browser_launch");
+        let report_string = serde_json::to_string(&report).unwrap();
+        assert!(!report_string.contains(root.to_string_lossy().as_ref()));
+        assert!(!report_string.contains(private_missing_browser.to_string_lossy().as_ref()));
         let _ = fs::remove_dir_all(root);
     }
 
