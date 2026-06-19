@@ -4944,10 +4944,7 @@ fn validate_helper_binary_launch(
 ) -> HelperBinaryLaunchValidationResult {
     let mut diagnostics = Vec::new();
     let observed_hash = match fs::metadata(request.executable_path) {
-        Ok(metadata) if metadata.is_file() => match sha256_file_ref(request.executable_path) {
-            Ok(hash) => Some(hash),
-            Err(_) => None,
-        },
+        Ok(metadata) if metadata.is_file() => sha256_file_ref(request.executable_path).ok(),
         _ => None,
     };
 
@@ -11252,9 +11249,9 @@ fn sha256_hex(input: &[u8]) -> String {
     let mut h = INITIAL;
     for chunk in message.chunks_exact(64) {
         let mut w = [0_u32; 64];
-        for index in 0..16 {
+        for (index, word) in w.iter_mut().take(16).enumerate() {
             let start = index * 4;
-            w[index] = u32::from_be_bytes([
+            *word = u32::from_be_bytes([
                 chunk[start],
                 chunk[start + 1],
                 chunk[start + 2],
