@@ -61,7 +61,9 @@ delta apply on public-safe fixture data:
 5. **Synthetic encrypted fixtures**: required in `KAIFUU-051`. Public CI needs
    generated encrypted/key-required cases with public fixture keys so redaction,
    validation, helper-unavailable, and missing-key behavior is tested without
-   private games.
+   private games. The public KAIFUU-051 lane is
+   `fixtures/public/kaifuu-encrypted-matrix/`; private-local corpus validation
+   remains an additional local workflow and is not a hidden CI dependency.
 6. **Private-local corpus triage**: required in `KAIFUU-036`. Owned encrypted
    corpora get first-class local readiness reports while staying absent from
    public CI.

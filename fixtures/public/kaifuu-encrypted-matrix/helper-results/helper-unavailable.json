@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-encrypted-matrix-helper-unavailable",
+  "helperResultId": "helper-result-encrypted-matrix-helper-unavailable",
+  "profileId": "019f0000-0000-7000-8000-kaifuu0510085",
+  "helper": {
+    "helperId": "kaifuu.fixture.wine-local-windows",
+    "helperVersion": "0.1.0",
+    "helperKind": "wineLocalWindowsHelper"
+  },
+  "diagnostic": {
+    "code": "helper_unavailable",
+    "message": "synthetic Wine helper is unavailable on this runner"
+  },
+  "redaction": {
+    "status": "redacted",
+    "redactedLogHash": "sha256:d0d31385795baa3dc3e9488d7b6c40ec198ad7c7354ca8bfd7cd7831b63d4016"
+  },
+  "secretRefs": [
+    {
+      "requirementId": "wolf-rpg-editor-archive-key",
+      "secretRef": "local-secret:fixture/wolf/archive-key",
+      "materialKind": "fixedBytes",
+      "bytes": 16
+    }
+  ],
+  "proofHashes": []
+}

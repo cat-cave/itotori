@@ -1,0 +1,21 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-encrypted-matrix-redaction-path",
+  "helperResultId": "helper-result-encrypted-matrix-redaction-path",
+  "profileId": "019f0000-0000-7000-8000-kaifuu0510085",
+  "helper": {
+    "helperId": "kaifuu.fixture.static-parser",
+    "helperVersion": "0.1.0",
+    "helperKind": "staticParser"
+  },
+  "diagnostic": {
+    "code": "redaction_failure",
+    "message": "fixture-only helper output failed redaction and must remain local"
+  },
+  "redaction": {
+    "status": "failed",
+    "redactedLogHash": "sha256:8a14979472c4c27f0183a34e9dd37c0935d46e9379a790d22063d7b32ec4b87f"
+  },
+  "secretRefs": [],
+  "proofHashes": []
+}
