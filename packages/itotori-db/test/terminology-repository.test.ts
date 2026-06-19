@@ -890,6 +890,20 @@ describe("ItotoriTerminologyRepository", () => {
       });
 
       const branchReferences = new ItotoriBranchReferenceRepository(context.db);
+      const previousEnReference = await branchReferences.resolveBranchPolicyGlossaryReference(
+        localActor,
+        {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+        },
+      );
+      const previousFrReference = await branchReferences.resolveBranchPolicyGlossaryReference(
+        localActor,
+        {
+          projectId: "project-terminology",
+          localeBranchId: "locale-fr-fr",
+        },
+      );
       const enReference = await branchReferences.updateBranchPolicyGlossaryReference(localActor, {
         projectId: "project-terminology",
         localeBranchId: "locale-en-us",
@@ -904,7 +918,8 @@ describe("ItotoriTerminologyRepository", () => {
       expect(enReference).toMatchObject({
         localeBranchId: "locale-en-us",
         styleGuideVersionId: "style-guide-version-en-us-reference",
-        versionSequence: 1,
+        versionSequence: (previousEnReference?.versionSequence ?? 0) + 1,
+        supersedesReferenceId: previousEnReference?.referenceId ?? null,
         glossaryTermRefs: [
           expect.objectContaining({
             termId: "term-branch-only-crimson-moon",
@@ -915,7 +930,8 @@ describe("ItotoriTerminologyRepository", () => {
       expect(frReference).toMatchObject({
         localeBranchId: "locale-fr-fr",
         styleGuideVersionId: "style-guide-version-fr-fr-reference",
-        versionSequence: 1,
+        versionSequence: (previousFrReference?.versionSequence ?? 0) + 1,
+        supersedesReferenceId: previousFrReference?.referenceId ?? null,
         glossaryTermRefs: [],
       });
       await expect(

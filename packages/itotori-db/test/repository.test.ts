@@ -3278,6 +3278,12 @@ describe("ItotoriProjectRepository", () => {
           nullable: true,
         },
         {
+          tableName: "itotori_locale_branch_units",
+          columnName: "glossary_reference_id",
+          dataType: "text",
+          nullable: true,
+        },
+        {
           tableName: "itotori_locale_branches",
           columnName: "locale_branch_id",
           dataType: "text",
@@ -3389,6 +3395,7 @@ describe("ItotoriProjectRepository", () => {
             'itotori_locale_branches_project_locale_idx',
             'itotori_locale_branches_bundle_idx',
             'itotori_locale_branch_units_bridge_unit_idx',
+            'itotori_locale_branch_units_glossary_reference_idx',
             'itotori_locale_branch_units_style_guide_version_idx'
           )
         group by index_class.relname, table_class.relname, index_record.indisunique
@@ -3407,6 +3414,12 @@ describe("ItotoriProjectRepository", () => {
           tableName: "itotori_locale_branch_units",
           unique: false,
           columnNames: "bridge_unit_id",
+        },
+        {
+          indexName: "itotori_locale_branch_units_glossary_reference_idx",
+          tableName: "itotori_locale_branch_units",
+          unique: false,
+          columnNames: "glossary_reference_id",
         },
         {
           indexName: "itotori_locale_branch_units_style_guide_version_idx",
@@ -3453,6 +3466,12 @@ describe("ItotoriProjectRepository", () => {
           constraintName: "itotori_locale_branch_units_bridge_unit_id_fkey",
           constraintDefinition:
             "FOREIGN KEY (bridge_unit_id) REFERENCES itotori_source_units(bridge_unit_id) ON DELETE CASCADE",
+        },
+        {
+          tableName: "itotori_locale_branch_units",
+          constraintName: "itotori_locale_branch_units_glossary_reference_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (glossary_reference_id) REFERENCES itotori_branch_policy_glossary_references(reference_id) ON DELETE SET NULL",
         },
         {
           tableName: "itotori_locale_branch_units",

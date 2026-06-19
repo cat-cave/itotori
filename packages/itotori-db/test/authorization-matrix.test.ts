@@ -6,6 +6,7 @@ import {
   type AuthorizationActor,
   type Permission,
 } from "../src/authorization.js";
+import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
@@ -292,6 +293,27 @@ const repositoryPermissionGateMatrix = [
     "catalogWrite",
     "catalog-crawler-repository.test.ts crawler job failure coverage",
     (repo) => repo.failCrawlerJob(deniedActor, "job", "worker", new Error("failed")),
+  ),
+  branchReferenceGate(
+    "resolveBranchPolicyGlossaryReference",
+    "catalogRead",
+    "terminology-repository.test.ts branch-scoped policy/glossary coverage",
+    (repo) =>
+      repo.resolveBranchPolicyGlossaryReference(deniedActor, {
+        projectId: "project",
+        localeBranchId: "locale",
+      }),
+  ),
+  branchReferenceGate(
+    "updateBranchPolicyGlossaryReference",
+    "draftWrite",
+    "terminology-repository.test.ts branch reference update coverage",
+    (repo) =>
+      repo.updateBranchPolicyGlossaryReference(deniedActor, {
+        projectId: "project",
+        localeBranchId: "locale",
+        updateReason: "permission_denial_fixture",
+      }),
   ),
   styleGuideGate(
     "createVersion",
@@ -640,6 +662,18 @@ describe("repository permission gate matrix", () => {
         },
         {
           "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriBranchReferenceRepository.resolveBranchPolicyGlossaryReference",
+          "requiredPermission": "catalog.read",
+          "successFixture": "terminology-repository.test.ts branch-scoped policy/glossary coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriBranchReferenceRepository.updateBranchPolicyGlossaryReference",
+          "requiredPermission": "draft.write",
+          "successFixture": "terminology-repository.test.ts branch reference update coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
           "mutation": "ItotoriStyleGuideRepository.createVersion",
           "requiredPermission": "draft.write",
           "successFixture": "style-guide-repository.test.ts version persistence coverage",
@@ -813,6 +847,22 @@ function catalogCrawlerGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriCatalogCrawlerRepository(db)),
+  });
+}
+
+function branchReferenceGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriBranchReferenceRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriBranchReferenceRepository",
+    sourceFile: "branch-reference-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriBranchReferenceRepository(db)),
   });
 }
 
