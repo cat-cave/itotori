@@ -13,9 +13,7 @@
       "engineFamily": "kiri_kiri_xp3",
       "materialKind": "archivePassword",
       "publicKeyMaterial": "fixture-only-kirikiri-xp3-password-v1",
-      "validates": [
-        "raw/kirikiri/data.xp3"
-      ]
+      "validates": ["raw/kirikiri/data.xp3"]
     },
     {
       "keyId": "fixture/siglus/secondary-key",
@@ -24,9 +22,7 @@
       "materialKind": "fixedBytes",
       "bytes": 16,
       "publicKeyMaterial": "fixture-only-siglus-secondary-key-v1",
-      "validates": [
-        "raw/siglus/Scene.pck"
-      ]
+      "validates": ["raw/siglus/Scene.pck"]
     },
     {
       "keyId": "fixture/rpg-maker/asset-key",
@@ -35,9 +31,7 @@
       "materialKind": "rpgMakerAssetKey",
       "bytes": 16,
       "publicKeyMaterial": "fixture-only-rpg-maker-asset-key-v1",
-      "validates": [
-        "raw/rpg-maker/img/pictures/title.rpgmvp"
-      ]
+      "validates": ["raw/rpg-maker/img/pictures/title.rpgmvp"]
     },
     {
       "keyId": "fixture/wolf/archive-key",
@@ -46,9 +40,7 @@
       "materialKind": "fixedBytes",
       "bytes": 16,
       "publicKeyMaterial": "fixture-only-wolf-archive-key-v1",
-      "validates": [
-        "raw/wolf/Data.wolf"
-      ]
+      "validates": ["raw/wolf/Data.wolf"]
     },
     {
       "keyId": "fixture/bgi/container-key",
@@ -57,9 +49,7 @@
       "materialKind": "fixedBytes",
       "bytes": 16,
       "publicKeyMaterial": "fixture-only-bgi-container-key-v1",
-      "validates": [
-        "raw/bgi/pack.arc"
-      ]
+      "validates": ["raw/bgi/pack.arc"]
     }
   ],
   "notes": [
