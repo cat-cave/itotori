@@ -19,6 +19,8 @@ import {
   type ManualFeedbackImportResult,
   type ProjectCostReport,
   type ProjectDashboardStatus,
+  styleGuideFixtureFlowSchemaVersion,
+  type StyleGuideFixtureFlowResult,
 } from "@itotori/db";
 import type { BridgeBundle, BridgeBundleV02 } from "@itotori/localization-bridge-schema";
 import { describe, expect, it, vi } from "vitest";
@@ -300,6 +302,29 @@ describe("Itotori CLI handlers", () => {
       ],
     });
   });
+
+  it("runs the recorded style-guide fixture flow and writes the persisted summary", async () => {
+    const services = servicesFixture();
+    const fixture = styleGuideConversationFixture();
+    const reads = new Map<string, unknown>([
+      ["fixtures/itotori-style-guide/conversations/accepted.json", fixture],
+    ]);
+    const writes = new Map<string, unknown>();
+
+    await runItotoriCliCommand(["style-guide-fixture-flow"], {
+      io: jsonStoreFixture(reads, writes),
+      migrateDatabase: vi.fn(async () => {}),
+      withServices: async (callback) => await callback(services),
+    });
+
+    expect(services.styleGuideFixtureFlow.run).toHaveBeenCalledWith({
+      transcript: fixture,
+      fixtureId: undefined,
+    });
+    expect(writes.get("artifacts/itotori/style-guide-fixture-flow.json")).toEqual(
+      styleGuideFixtureFlowResult,
+    );
+  });
 });
 
 function jsonStoreFixture(reads: Map<string, unknown>, writes: Map<string, unknown>) {
@@ -386,6 +411,9 @@ function servicesFixture(): ItotoriCliServices {
     catalogFuzzyCandidateGenerator: {
       generateFuzzyCandidates: vi.fn(async () => fuzzyCandidateResultFixture),
       listCatalogCandidateMatches: vi.fn(async () => fuzzyCandidateResultFixture.candidates),
+    },
+    styleGuideFixtureFlow: {
+      run: vi.fn(async () => styleGuideFixtureFlowResult),
     },
   };
 }
@@ -663,5 +691,50 @@ const resolverFixture: CatalogResolverFixtureInput = {
         resolution: null,
       },
     ],
+  },
+};
+
+function styleGuideConversationFixture(): unknown {
+  return JSON.parse(
+    readFileSync(
+      new URL("../../../fixtures/itotori-style-guide/conversations/accepted.json", import.meta.url),
+      "utf8",
+    ),
+  );
+}
+
+const styleGuideFixtureFlowResult: StyleGuideFixtureFlowResult = {
+  schemaVersion: styleGuideFixtureFlowSchemaVersion,
+  fixtureId: "style-guide-conversation-accepted",
+  projectId: "019ed063-0000-7000-8000-000000000001",
+  localeBranchId: "019ed063-0000-7000-8000-000000000010",
+  baseStyleGuideVersionId: "019ed063-0000-7000-8000-000000000020",
+  projectedStyleGuideVersionId: "019ed063-0000-7000-8000-000000000030",
+  suggestionArtifactId: "style-guide-suggestions:style-guide-conversation-accepted",
+  acceptedProposalIds: [
+    "019ed063-0000-7000-8000-000000000201",
+    "019ed063-0000-7000-8000-000000000202",
+    "019ed063-0000-7000-8000-000000000203",
+    "019ed063-0000-7000-8000-000000000204",
+    "019ed063-0000-7000-8000-000000000205",
+  ],
+  policyRuleCounts: {
+    tone: 1,
+    terminology: 1,
+    honorifics: 1,
+    formatting: 1,
+    protectedSpans: 1,
+  },
+  dashboard: {
+    selectedLocaleBranchId: "019ed063-0000-7000-8000-000000000010",
+    currentStyleGuidePolicyVersionId: "019ed063-0000-7000-8000-000000000030",
+    branchCount: 1,
+    artifactCount: 3,
+    localeBranches: [],
+  },
+  outbox: {
+    styleGuideVersionChangedEventIds: ["event-1", "event-2", "event-3", "event-4"],
+    affectedWorkInvalidatedEventIds: ["event-5", "event-6", "event-7", "event-8"],
+    affectedSurfaces: ["drafts", "qa_findings", "exports", "benchmarks"],
   },
 };

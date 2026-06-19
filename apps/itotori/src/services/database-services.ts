@@ -7,6 +7,8 @@ import {
   ItotoriCatalogRepository,
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
+  ItotoriStyleGuideFixtureFlowService,
+  ItotoriStyleGuideRepository,
   bootstrapLocalUser,
   createDatabaseContext,
   databaseUrlFromEnv,
@@ -18,6 +20,8 @@ import {
   type CatalogConflictReviewReadModel,
   type CatalogCompletenessBenchmarkPools,
   type CatalogCompletenessPoolFilter,
+  type StyleGuideFixtureFlowInput,
+  type StyleGuideFixtureFlowResult,
 } from "@itotori/db";
 import {
   ItotoriAuthorizationService,
@@ -46,6 +50,9 @@ export type ItotoriApplicationServices = {
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
   catalogCrawlerRepository: ItotoriCatalogCrawlerRepositoryPort;
   catalogCrawlerRunner: ItotoriCatalogCrawlerRunner;
+  styleGuideFixtureFlow: {
+    run(input: StyleGuideFixtureFlowInput): Promise<StyleGuideFixtureFlowResult>;
+  };
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -75,6 +82,7 @@ export async function withDatabaseItotoriServices<T>(
     const modelLedgerRepository = new ItotoriModelLedgerRepository(context.db);
     const catalogRepository = new ItotoriCatalogRepository(context.db);
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
+    const styleGuideRepository = new ItotoriStyleGuideRepository(context.db);
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -100,6 +108,11 @@ export async function withDatabaseItotoriServices<T>(
       ),
       catalogCrawlerRepository,
       catalogCrawlerRunner: new ItotoriCatalogCrawlerRunner(),
+      styleGuideFixtureFlow: new ItotoriStyleGuideFixtureFlowService(
+        projectRepository,
+        styleGuideRepository,
+        localUserActor,
+      ),
     });
   } finally {
     await context.close();

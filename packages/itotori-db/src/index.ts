@@ -193,6 +193,15 @@ export type {
   SubmitStyleGuideVersionInput,
 } from "./services/style-guide-service.js";
 export {
+  ItotoriStyleGuideFixtureFlowService,
+  styleGuideFixtureFlowSchemaVersion,
+  styleGuideSuggestionArtifactSchemaVersion,
+} from "./services/style-guide-fixture-flow.js";
+export type {
+  StyleGuideFixtureFlowInput,
+  StyleGuideFixtureFlowResult,
+} from "./services/style-guide-fixture-flow.js";
+export {
   catalogCompletenessPoolValues,
   ItotoriCatalogRepository,
 } from "./repositories/catalog-repository.js";
