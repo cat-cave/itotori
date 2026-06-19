@@ -2,10 +2,10 @@
   "schemaVersion": "0.1.0",
   "helperId": "kaifuu.fixture.helper-stub",
   "helperVersion": "0.1.0",
-  "capabilities": ["fixture_invocation"],
+  "capabilities": ["fixture_invocation", "key_discovery"],
   "inputSchemaId": "kaifuu.helper.fixture-request.v0.1",
   "outputSchemaId": "kaifuu.helper-result.v0.1",
-  "redactionClass": "raw_helper_log",
+  "redactionClass": "public_fixture",
   "executionPolicy": {
     "policyId": "kaifuu-fixture-helper-stub-policy",
     "mode": "fixture_in_process",
