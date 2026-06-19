@@ -569,6 +569,10 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
           },
         });
 
+      const draftStyleGuideVersionId = await getApprovedStyleGuideVersionIdInTx(
+        tx,
+        project.localeBranchId,
+      );
       for (const unit of importTarget.units) {
         await tx
           .insert(localeBranchUnits)
@@ -576,11 +580,15 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             localeBranchId: project.localeBranchId,
             bridgeUnitId: unit.bridgeUnitId,
             targetText: project.drafts[unit.bridgeUnitId] ?? null,
+            styleGuideVersionId:
+              project.drafts[unit.bridgeUnitId] === undefined ? null : draftStyleGuideVersionId,
           })
           .onConflictDoUpdate({
             target: [localeBranchUnits.localeBranchId, localeBranchUnits.bridgeUnitId],
             set: {
               targetText: project.drafts[unit.bridgeUnitId] ?? null,
+              styleGuideVersionId:
+                project.drafts[unit.bridgeUnitId] === undefined ? null : draftStyleGuideVersionId,
               updatedAt: sql`now()`,
             },
           });
@@ -669,6 +677,10 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
         })
         .where(eq(localeBranches.localeBranchId, project.localeBranchId));
 
+      const draftStyleGuideVersionId = await getApprovedStyleGuideVersionIdInTx(
+        tx,
+        project.localeBranchId,
+      );
       for (const [bridgeUnitId, targetText] of Object.entries(project.drafts)) {
         await tx
           .insert(localeBranchUnits)
@@ -676,10 +688,15 @@ export class ItotoriProjectRepository implements ItotoriProjectRepositoryPort {
             localeBranchId: project.localeBranchId,
             bridgeUnitId,
             targetText,
+            styleGuideVersionId: draftStyleGuideVersionId,
           })
           .onConflictDoUpdate({
             target: [localeBranchUnits.localeBranchId, localeBranchUnits.bridgeUnitId],
-            set: { targetText, updatedAt: sql`now()` },
+            set: {
+              targetText,
+              styleGuideVersionId: draftStyleGuideVersionId,
+              updatedAt: sql`now()`,
+            },
           });
       }
     });
@@ -3658,6 +3675,18 @@ function isRuntimeEvidenceReportV02(
 
 function nullableString(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
+}
+
+async function getApprovedStyleGuideVersionIdInTx(
+  db: Pick<ItotoriDatabase, "select">,
+  localeBranchId: string,
+): Promise<string | null> {
+  const rows = await db
+    .select({ approvedVersionId: styleGuides.approvedVersionId })
+    .from(styleGuides)
+    .where(eq(styleGuides.localeBranchId, localeBranchId))
+    .limit(1);
+  return rows[0]?.approvedVersionId ?? null;
 }
 
 function nullableNumber(value: unknown): number | null {

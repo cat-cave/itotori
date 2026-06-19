@@ -1225,10 +1225,15 @@ export const localeBranchUnits = pgTable(
       .references(() => sourceUnits.bridgeUnitId, { onDelete: "cascade" }),
     targetText: text("target_text"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    styleGuideVersionId: text("style_guide_version_id").references(
+      () => styleGuideVersions.styleGuideVersionId,
+      { onDelete: "set null" },
+    ),
   },
   (table) => [
     primaryKey({ columns: [table.localeBranchId, table.bridgeUnitId] }),
     index("itotori_locale_branch_units_bridge_unit_idx").on(table.bridgeUnitId),
+    index("itotori_locale_branch_units_style_guide_version_idx").on(table.styleGuideVersionId),
   ],
 );
 

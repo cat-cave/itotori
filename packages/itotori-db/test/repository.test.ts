@@ -3272,6 +3272,12 @@ describe("ItotoriProjectRepository", () => {
           nullable: false,
         },
         {
+          tableName: "itotori_locale_branch_units",
+          columnName: "style_guide_version_id",
+          dataType: "text",
+          nullable: true,
+        },
+        {
           tableName: "itotori_locale_branches",
           columnName: "locale_branch_id",
           dataType: "text",
@@ -3382,7 +3388,8 @@ describe("ItotoriProjectRepository", () => {
           and index_class.relname in (
             'itotori_locale_branches_project_locale_idx',
             'itotori_locale_branches_bundle_idx',
-            'itotori_locale_branch_units_bridge_unit_idx'
+            'itotori_locale_branch_units_bridge_unit_idx',
+            'itotori_locale_branch_units_style_guide_version_idx'
           )
         group by index_class.relname, table_class.relname, index_record.indisunique
         order by index_class.relname
@@ -3400,6 +3407,12 @@ describe("ItotoriProjectRepository", () => {
           tableName: "itotori_locale_branch_units",
           unique: false,
           columnNames: "bridge_unit_id",
+        },
+        {
+          indexName: "itotori_locale_branch_units_style_guide_version_idx",
+          tableName: "itotori_locale_branch_units",
+          unique: false,
+          columnNames: "style_guide_version_id",
         },
         {
           indexName: "itotori_locale_branches_bundle_idx",
@@ -3446,6 +3459,12 @@ describe("ItotoriProjectRepository", () => {
           constraintName: "itotori_locale_branch_units_locale_branch_id_fkey",
           constraintDefinition:
             "FOREIGN KEY (locale_branch_id) REFERENCES itotori_locale_branches(locale_branch_id) ON DELETE CASCADE",
+        },
+        {
+          tableName: "itotori_locale_branch_units",
+          constraintName: "itotori_locale_branch_units_style_guide_version_id_fkey",
+          constraintDefinition:
+            "FOREIGN KEY (style_guide_version_id) REFERENCES itotori_style_guide_versions(style_guide_version_id) ON DELETE SET NULL",
         },
         {
           tableName: "itotori_locale_branches",

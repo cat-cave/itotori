@@ -18,6 +18,7 @@ import {
   artifacts,
   eventOutbox,
   findings,
+  localeBranchUnits,
   outboxEventTypeValues,
   styleGuides,
   styleGuideVersions,
@@ -363,6 +364,7 @@ describe("ItotoriStyleGuideService", () => {
         projectId: fixture.projectId,
         localeBranchId: fixture.localeBranchId,
         priorStyleGuideVersionId: createdV1.version.styleGuideVersionId,
+        currentStyleGuideVersionId: fixture.cases.update.styleGuideVersionId,
       });
 
       const approved = await service.approveStyleGuideVersion(localActor, {
@@ -425,6 +427,14 @@ describe("ItotoriStyleGuideService", () => {
           bridgeUnitId: "bridge-unit-test",
         }),
       ]);
+      expect(affectedReferences(payloads, "drafts")).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            draftId: "locale-en-us:bridge-unit-current-policy",
+            bridgeUnitId: "bridge-unit-current-policy",
+          }),
+        ]),
+      );
       expect(affectedReferences(payloads, "qa_findings")).toEqual([
         expect.objectContaining({ findingId: "finding-old-style-policy" }),
       ]);
@@ -543,6 +553,7 @@ describe("ItotoriStyleGuideService", () => {
         projectId: fixture.projectId,
         localeBranchId: fixture.localeBranchId,
         priorStyleGuideVersionId: createdV1.version.styleGuideVersionId,
+        currentStyleGuideVersionId: fixture.cases.update.styleGuideVersionId,
       });
 
       await installAffectedWorkOutboxFailureTrigger(context.db);
@@ -641,7 +652,10 @@ function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriP
     projectId: "project-test",
     localeBranchId: "locale-en-us",
     targetLocale: "en-US",
-    drafts: { "bridge-unit-test": "Hello, {player}." },
+    drafts: {
+      "bridge-unit-test": "Hello, {player}.",
+      "bridge-unit-current-policy": "We should go now.",
+    },
     bridge: {
       schemaVersion: "0.1.0",
       bridgeId: "bridge-test",
@@ -665,6 +679,21 @@ function projectFixture(overrides: Partial<ItotoriProjectRecord> = {}): ItotoriP
             assetId: "source.json",
             writeMode: "replace",
             sourceUnitKey: "hello.scene.001.line.001",
+          },
+        },
+        {
+          bridgeUnitId: "bridge-unit-current-policy",
+          sourceUnitKey: "hello.scene.001.line.002",
+          occurrenceId: "occurrence-2",
+          sourceHash: "source-hash-current-policy",
+          sourceLocale: "ja-JP",
+          sourceText: "もう行こう。",
+          textSurface: "dialogue",
+          protectedSpans: [],
+          patchRef: {
+            assetId: "source.json",
+            writeMode: "replace",
+            sourceUnitKey: "hello.scene.001.line.002",
           },
         },
       ],
@@ -705,8 +734,24 @@ async function seedAffectedWorkForPriorPolicy(
     projectId: string;
     localeBranchId: string;
     priorStyleGuideVersionId: string;
+    currentStyleGuideVersionId: string;
   },
 ): Promise<void> {
+  await db
+    .update(localeBranchUnits)
+    .set({ styleGuideVersionId: input.priorStyleGuideVersionId })
+    .where(
+      sql`${localeBranchUnits.localeBranchId} = ${input.localeBranchId}
+        and ${localeBranchUnits.bridgeUnitId} = 'bridge-unit-test'`,
+    );
+  await db
+    .update(localeBranchUnits)
+    .set({ styleGuideVersionId: input.currentStyleGuideVersionId })
+    .where(
+      sql`${localeBranchUnits.localeBranchId} = ${input.localeBranchId}
+        and ${localeBranchUnits.bridgeUnitId} = 'bridge-unit-current-policy'`,
+    );
+
   await db.insert(findings).values([
     {
       findingId: "finding-old-style-policy",

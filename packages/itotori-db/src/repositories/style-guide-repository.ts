@@ -649,7 +649,8 @@ async function listAffectedWorkByPriorStyleGuideVersionInTx(
     .from(localeBranchUnits)
     .where(
       sql`${localeBranchUnits.localeBranchId} = ${input.localeBranchId}
-        and ${localeBranchUnits.targetText} is not null`,
+        and ${localeBranchUnits.targetText} is not null
+        and ${localeBranchUnits.styleGuideVersionId} = ${input.priorStyleGuideVersionId}`,
     )
     .orderBy(asc(localeBranchUnits.bridgeUnitId));
 
