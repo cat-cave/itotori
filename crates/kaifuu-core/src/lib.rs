@@ -4520,7 +4520,7 @@ impl HelperRegistryDiagnostic {
     }
 }
 
-pub trait HelperExecutableAdapter {
+trait HelperExecutableAdapter {
     fn helper_id(&self) -> &'static str;
     fn invoke(&self, entry: &HelperRegistryEntry, input: &Value) -> KaifuuResult<Value>;
 }
@@ -4536,7 +4536,7 @@ impl HelperRegistry {
         Self::default()
     }
 
-    pub fn register_entry(&mut self, mut entry: HelperRegistryEntry) -> KaifuuResult<()> {
+    fn register_entry(&mut self, mut entry: HelperRegistryEntry) -> KaifuuResult<()> {
         entry.normalize();
         let validation = entry.validate();
         if validation.status == OperationStatus::Failed {
@@ -4556,7 +4556,7 @@ impl HelperRegistry {
         Ok(())
     }
 
-    pub fn register_executable<A>(&mut self, adapter: A)
+    fn register_executable<A>(&mut self, adapter: A)
     where
         A: HelperExecutableAdapter + 'static,
     {
@@ -4657,10 +4657,10 @@ pub const FIXTURE_HELPER_REGISTRY_ID: &str = "kaifuu.fixture.helper-stub";
 pub const FIXTURE_HELPER_ALLOWLIST_REF_ID: &str = "kaifuu-fixture-helper-stub-allowlist";
 
 #[derive(Debug, Default, Clone, Copy)]
-pub struct FixtureHelperStubAdapter;
+struct FixtureHelperStubAdapter;
 
 impl FixtureHelperStubAdapter {
-    pub fn registry_entry() -> HelperRegistryEntry {
+    fn registry_entry() -> HelperRegistryEntry {
         HelperRegistryEntry {
             schema_version: HELPER_REGISTRY_SCHEMA_VERSION.to_string(),
             helper_id: FIXTURE_HELPER_REGISTRY_ID.to_string(),
@@ -4711,6 +4711,47 @@ impl HelperExecutableAdapter for FixtureHelperStubAdapter {
     }
 }
 
+/// Builds the fixture helper registry facade.
+///
+/// Public callers can discover and invoke fixture helpers only through
+/// [`HelperRegistry::entries_for_capability`] and [`HelperRegistry::invoke`].
+///
+/// ```
+/// use kaifuu_core::{
+///     fixture_helper_registry, validate_helper_result_value, HelperCapability,
+///     OperationStatus, FIXTURE_HELPER_REGISTRY_ID,
+/// };
+///
+/// let registry = fixture_helper_registry().unwrap();
+/// let output = registry
+///     .invoke(
+///         FIXTURE_HELPER_REGISTRY_ID,
+///         HelperCapability::FixtureInvocation,
+///         &serde_json::json!({"fixture": true}),
+///     )
+///     .unwrap();
+///
+/// assert_eq!(
+///     validate_helper_result_value(&output).status,
+///     OperationStatus::Passed
+/// );
+/// ```
+///
+/// ```compile_fail
+/// use kaifuu_core::{fixture_helper_registry, FIXTURE_HELPER_REGISTRY_ID};
+///
+/// let mut registry = fixture_helper_registry().unwrap();
+/// let forged_entry = registry.get(FIXTURE_HELPER_REGISTRY_ID).unwrap().clone();
+/// registry.register_entry(forged_entry).unwrap();
+/// ```
+///
+/// ```compile_fail
+/// use kaifuu_core::{FixtureHelperStubAdapter, HelperExecutableAdapter};
+///
+/// let adapter = FixtureHelperStubAdapter;
+/// let entry = FixtureHelperStubAdapter::registry_entry();
+/// let _ = adapter.invoke(&entry, &serde_json::json!({"fixture": true}));
+/// ```
 pub fn fixture_helper_registry() -> KaifuuResult<HelperRegistry> {
     let mut registry = HelperRegistry::new();
     registry.register_entry(FixtureHelperStubAdapter::registry_entry())?;
