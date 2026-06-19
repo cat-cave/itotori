@@ -5751,22 +5751,22 @@ pub fn run_bounded_helper_process(
 
     if !fs::metadata(request.executable_path).is_ok_and(|metadata| metadata.is_file()) {
         execution.duration_ms = Some(elapsed_millis_u32(started));
-        return helper_process_report(
-            request.helper_id,
-            OperationStatus::Failed,
-            helper_process_diagnostic(
+        return helper_process_report(HelperProcessReport {
+            helper_id: request.helper_id,
+            status: OperationStatus::Failed,
+            diagnostic: helper_process_diagnostic(
                 SEMANTIC_HELPER_UNAVAILABLE,
                 "executable",
                 "helper executable is unavailable",
             ),
             execution,
-            None,
-            false,
-            false,
-            false,
-            HelperProcessOutputSummary::empty(),
-            HelperProcessOutputSummary::empty(),
-        );
+            exit_code: None,
+            timed_out: false,
+            cancelled: false,
+            terminated: false,
+            stdout: HelperProcessOutputSummary::empty(),
+            stderr: HelperProcessOutputSummary::empty(),
+        });
     }
 
     let mut command = Command::new(request.executable_path);
@@ -5781,22 +5781,22 @@ pub fn run_bounded_helper_process(
         Ok(child) => child,
         Err(_) => {
             execution.duration_ms = Some(elapsed_millis_u32(started));
-            return helper_process_report(
-                request.helper_id,
-                OperationStatus::Failed,
-                helper_process_diagnostic(
+            return helper_process_report(HelperProcessReport {
+                helper_id: request.helper_id,
+                status: OperationStatus::Failed,
+                diagnostic: helper_process_diagnostic(
                     SEMANTIC_HELPER_UNAVAILABLE,
                     "executable",
                     "helper process could not be started",
                 ),
                 execution,
-                None,
-                false,
-                false,
-                false,
-                HelperProcessOutputSummary::empty(),
-                HelperProcessOutputSummary::empty(),
-            );
+                exit_code: None,
+                timed_out: false,
+                cancelled: false,
+                terminated: false,
+                stdout: HelperProcessOutputSummary::empty(),
+                stderr: HelperProcessOutputSummary::empty(),
+            });
         }
     };
 
@@ -5896,8 +5896,8 @@ pub fn run_bounded_helper_process(
         );
     }
 
-    helper_process_report(
-        request.helper_id,
+    helper_process_report(HelperProcessReport {
+        helper_id: request.helper_id,
         status,
         diagnostic,
         execution,
@@ -5905,9 +5905,9 @@ pub fn run_bounded_helper_process(
         timed_out,
         cancelled,
         terminated,
-        stdout_summary,
-        stderr_summary,
-    )
+        stdout: stdout_summary,
+        stderr: stderr_summary,
+    })
 }
 
 fn wait_for_bounded_helper_process(
@@ -5989,8 +5989,7 @@ fn poll_helper_stdin_writer(
         Err(mpsc::TryRecvError::Empty) => Ok(false),
         Err(mpsc::TryRecvError::Disconnected) => {
             *writer = None;
-            Err(io::Error::new(
-                ErrorKind::Other,
+            Err(io::Error::other(
                 "helper stdin writer ended without a result",
             ))
         }
@@ -6140,8 +6139,8 @@ fn truncate_helper_process_text(text: &str) -> String {
         .collect::<String>()
 }
 
-fn helper_process_report(
-    helper_id: &str,
+struct HelperProcessReport<'a> {
+    helper_id: &'a str,
     status: OperationStatus,
     diagnostic: HelperProcessDiagnostic,
     execution: HelperExecutionSummary,
@@ -6151,19 +6150,21 @@ fn helper_process_report(
     terminated: bool,
     stdout: HelperProcessOutputSummary,
     stderr: HelperProcessOutputSummary,
-) -> HelperProcessRunResult {
+}
+
+fn helper_process_report(report: HelperProcessReport<'_>) -> HelperProcessRunResult {
     HelperProcessRunResult {
         schema_version: HELPER_REGISTRY_SCHEMA_VERSION.to_string(),
-        helper_id: redact_for_log_or_report(helper_id),
-        status,
-        diagnostic,
-        execution,
-        exit_code,
-        timed_out,
-        cancelled,
-        terminated,
-        stdout,
-        stderr,
+        helper_id: redact_for_log_or_report(report.helper_id),
+        status: report.status,
+        diagnostic: report.diagnostic,
+        execution: report.execution,
+        exit_code: report.exit_code,
+        timed_out: report.timed_out,
+        cancelled: report.cancelled,
+        terminated: report.terminated,
+        stdout: report.stdout,
+        stderr: report.stderr,
     }
     .redacted_for_report()
 }
@@ -15362,8 +15363,8 @@ printf 'err C:\Users\Dev\SecretGame\n' >&2
             report.execution.mode,
             HelperResultExecutionMode::LocalProcess
         );
-        assert_eq!(report.execution.bounded, true);
-        assert_eq!(report.execution.network_access, true);
+        assert!(report.execution.bounded);
+        assert!(report.execution.network_access);
         assert_eq!(
             report.execution.filesystem_access,
             HelperExecutionFilesystemAccess::HostInherited
