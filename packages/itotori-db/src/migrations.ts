@@ -121,8 +121,16 @@ const migrations = [
     file: "0015_style_guide_versions.sql",
   },
   {
+    id: "0016_affected_work_invalidated_outbox",
+    file: "0016_affected_work_invalidated_outbox.sql",
+  },
+  {
     id: "0017_catalog_demand_facts",
     file: "0017_catalog_demand_facts.sql",
+  },
+  {
+    id: "0018_locale_branch_unit_style_guide_provenance",
+    file: "0018_locale_branch_unit_style_guide_provenance.sql",
   },
 ] as const;
 
