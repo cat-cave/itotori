@@ -299,6 +299,28 @@ export type {
   UpsertTranslationMemorySegmentInput,
 } from "./repositories/translation-memory-repository.js";
 export {
+  ItotoriSemanticGlossarySearchService,
+  normalizeSemanticSearchText,
+  RecordedEmbeddingFixtureAdapter,
+  semanticGlossarySearchDiagnosticCodeValues,
+  semanticGlossarySearchToolName,
+  semanticGlossarySearchToolVersion,
+  semanticSearchTextHash,
+} from "./services/semantic-search.js";
+export type {
+  RecordedEmbeddingFixture,
+  RecordedEmbeddingFixtureVector,
+  RecordedEmbeddingMatch,
+  SemanticGlossarySearchDiagnostic,
+  SemanticGlossarySearchDiagnosticCode,
+  SemanticGlossarySearchInput,
+  SemanticGlossarySearchMatch,
+  SemanticGlossarySearchMatchKind,
+  SemanticGlossarySearchReadiness,
+  SemanticGlossarySearchReadModel,
+  SemanticGlossarySearchTermSummary,
+} from "./services/semantic-search.js";
+export {
   affectedWorkInvalidatedPayloadSchemaVersion,
   ItotoriStyleGuideService,
   styleGuidePolicySchemaVersion,

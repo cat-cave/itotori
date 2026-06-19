@@ -13,6 +13,11 @@ import {
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
 import {
+  ItotoriSemanticGlossarySearchService,
+  RecordedEmbeddingFixtureAdapter,
+  semanticGlossarySearchDiagnosticCodeValues,
+} from "../src/services/semantic-search.js";
+import {
   catalogSourceProvenance,
   catalogSourceRecordKindValues,
   catalogSourceValues,
@@ -207,6 +212,195 @@ describe("ItotoriTerminologyRepository", () => {
             term: { termId: "term-hero" },
           },
         ],
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("runs provider-free recorded semantic glossary search with exact fallback behavior", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedProject(context.db);
+      const terminology = new ItotoriTerminologyRepository(context.db);
+      await terminology.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-semantic-hero",
+        sourceTerm: "勇者",
+        preferredTranslation: "Hero",
+        termKind: terminologyTermKindValues.characterName,
+        sourceReferences: [
+          {
+            sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+            bridgeUnitId: "bridge-unit-term",
+            referenceKind: terminologySourceReferenceKindValues.sourceUnit,
+            citation: "terminology.scene.001.line.001",
+          },
+        ],
+        semanticIndex: {
+          searchDocument: "Hero protagonist chosen champion relic",
+          embeddingProvider: "itotori-recorded-fixture",
+          embeddingModel: "semantic-fixture-v1",
+          embeddingDimension: 2,
+          embeddingVector: [0.99, 0.01],
+          status: terminologySemanticIndexStatusValues.ready,
+        },
+      });
+      await terminology.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-semantic-gate",
+        sourceTerm: "門",
+        preferredTranslation: "Gate",
+        termKind: terminologyTermKindValues.general,
+        semanticIndex: {
+          searchDocument: "Gate threshold portal village",
+          embeddingProvider: "itotori-recorded-fixture",
+          embeddingModel: "semantic-fixture-v1",
+          embeddingDimension: 2,
+          embeddingVector: [0.2, 0.8],
+          status: terminologySemanticIndexStatusValues.ready,
+        },
+      });
+      await terminology.upsertTerm(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        termId: "term-semantic-stale",
+        sourceTerm: "古い語",
+        preferredTranslation: "Old Term",
+        termKind: terminologyTermKindValues.general,
+        semanticIndex: {
+          searchDocument: "Old stale champion term",
+          embeddingProvider: "itotori-recorded-fixture",
+          embeddingModel: "semantic-fixture-v1",
+          embeddingDimension: 2,
+          embeddingVector: [1, 0],
+          status: terminologySemanticIndexStatusValues.stale,
+        },
+      });
+
+      const service = new ItotoriSemanticGlossarySearchService(
+        context.db,
+        new RecordedEmbeddingFixtureAdapter({
+          fixtureId: "semantic-glossary-fixture-v1",
+          provider: "recorded-fixture",
+          model: "semantic-fixture-v1",
+          dimension: 2,
+          vectors: [
+            { text: "chosen champion", embedding: [1, 0] },
+            { text: "unmatched semantic", embedding: [0, 1] },
+            { text: "古い語", embedding: [1, 0] },
+          ],
+        }),
+      );
+
+      const ranked = await service.searchGlossary(localActor, {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-terminology:bundle-revision",
+        query: "chosen champion",
+        limit: 2,
+        minScore: 0.1,
+      });
+      expect(ranked).toMatchObject({
+        status: "completed",
+        readiness: {
+          embeddingMode: "recorded_fixture",
+          liveProviderRequired: false,
+          fixtureId: "semantic-glossary-fixture-v1",
+          pgvector: {
+            required: false,
+            available: false,
+            reason: "public_ci_uses_recorded_json_vectors",
+          },
+          exactFallback: { triggered: false, reason: null },
+        },
+        diagnostics: [
+          expect.objectContaining({
+            code: semanticGlossarySearchDiagnosticCodeValues.staleSemanticIndex,
+          }),
+        ],
+      });
+      expect(ranked.matches.map((match) => match.term.termId)).toEqual([
+        "term-semantic-hero",
+        "term-semantic-gate",
+      ]);
+      expect(ranked.matches[0]).toMatchObject({
+        matchKinds: ["semantic_vector"],
+        provenance: expect.objectContaining({
+          provenanceKind: "semantic_glossary_search_result",
+          fixtureId: "semantic-glossary-fixture-v1",
+          semanticIndexId: expect.any(String),
+          citations: [
+            expect.objectContaining({
+              citation: "terminology.scene.001.line.001",
+              bridgeUnitId: "bridge-unit-term",
+            }),
+          ],
+        }),
+      });
+
+      await expect(
+        service.searchGlossary(localActor, {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+          query: "勇者",
+        }),
+      ).resolves.toMatchObject({
+        readiness: {
+          exactFallback: { triggered: true, reason: "missing_recorded_embedding" },
+        },
+        matches: [
+          expect.objectContaining({
+            term: expect.objectContaining({ termId: "term-semantic-hero" }),
+            matchKinds: ["exact_fallback"],
+            exactMatchKinds: ["exact_source"],
+          }),
+        ],
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: semanticGlossarySearchDiagnosticCodeValues.exactFallbackUsed,
+          }),
+        ]),
+      });
+
+      await expect(
+        service.searchGlossary(localActor, {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+          query: "古い語",
+          minScore: 1,
+        }),
+      ).resolves.toMatchObject({
+        readiness: {
+          exactFallback: { triggered: true, reason: "stale_semantic_index" },
+        },
+        matches: [
+          expect.objectContaining({
+            term: expect.objectContaining({ termId: "term-semantic-stale" }),
+            matchKinds: ["exact_fallback"],
+          }),
+        ],
+      });
+
+      await expect(
+        service.searchGlossary(localActor, {
+          projectId: "project-terminology",
+          localeBranchId: "locale-en-us",
+          query: "unmatched semantic",
+          minScore: 0.99,
+        }),
+      ).resolves.toMatchObject({
+        readiness: {
+          exactFallback: { triggered: true, reason: "no_semantic_results" },
+        },
+        matches: [],
+        diagnostics: expect.arrayContaining([
+          expect.objectContaining({
+            code: semanticGlossarySearchDiagnosticCodeValues.noSemanticResults,
+          }),
+        ]),
       });
     } finally {
       await context.close();

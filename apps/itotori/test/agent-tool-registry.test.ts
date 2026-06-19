@@ -4,6 +4,8 @@ import {
   jobStatusValues,
   jobTaskTypeValues,
   type SearchExactToolResult,
+  type GlossaryContextReadModel,
+  type SemanticGlossarySearchReadModel,
   type AuthorizationActor,
   type ItotoriEventQueueRepositoryPort,
   type ItotoriProjectRepositoryPort,
@@ -33,6 +35,12 @@ import {
   searchExactRegistryToolName,
   searchExactTool,
   searchExactToolImplementationHash,
+  glossaryContextRegistryToolName,
+  glossaryContextTool,
+  glossaryContextToolImplementationHash,
+  semanticGlossarySearchRegistryToolName,
+  semanticGlossarySearchTool,
+  semanticGlossarySearchToolImplementationHash,
   translationQualityJudgeInputSchema,
   translationQualityJudgeJobFixture,
   translationQualityJudgeOutputFixture,
@@ -45,6 +53,10 @@ import {
   type ProtectedSpanCheckOutput,
   type SearchExactToolInput,
   type SearchExactToolOutput,
+  type GlossaryContextToolInput,
+  type GlossaryContextToolOutput,
+  type SemanticGlossarySearchToolInput,
+  type SemanticGlossarySearchToolOutput,
   type TranslationQualityJudgeInput,
   type TranslationQualityJudgeOutput,
 } from "../src/agents/index.js";
@@ -391,6 +403,146 @@ describe("agent and deterministic tool registries", () => {
         outputHash: result.metadata.outputHash,
       }),
     });
+  });
+
+  it("registers glossary semantic search and context lookup as cited deterministic tools", async () => {
+    const events: TriageEventV02[] = [];
+    const agents = new AgentRegistry();
+    const tools = new DeterministicToolRegistry();
+    const searchGlossary = vi.fn(async () => semanticGlossarySearchServiceResult());
+    const getGlossaryContext = vi.fn(async () => glossaryContextServiceResult());
+
+    const searchMetadata = tools.register(semanticGlossarySearchTool({ searchGlossary }));
+    const contextMetadata = tools.register(glossaryContextTool({ getGlossaryContext }));
+
+    expect(searchMetadata).toMatchObject({
+      registryKind: "deterministic_tool",
+      toolName: semanticGlossarySearchRegistryToolName,
+      toolVersion: "1.0.0",
+      taskKind: "extract",
+      capabilityKey: "search.glossary",
+      inputSchemaId: "itotori.tool.semantic-glossary-search.input",
+      outputSchemaId: "itotori.tool.semantic-glossary-search.output",
+      reproducibility: {
+        algorithmName: "search.glossary",
+        implementationHash: semanticGlossarySearchToolImplementationHash,
+      },
+    });
+    expect(contextMetadata).toMatchObject({
+      registryKind: "deterministic_tool",
+      toolName: glossaryContextRegistryToolName,
+      capabilityKey: "glossary.context",
+      reproducibility: {
+        algorithmName: "glossary.context",
+        implementationHash: glossaryContextToolImplementationHash,
+      },
+    });
+
+    const runtime = new AgentToolRuntime(agents, tools, {
+      emit: (event) => {
+        events.push(event);
+      },
+    });
+
+    const searchJob = {
+      jobKind: "deterministic_tool_job",
+      toolName: semanticGlossarySearchRegistryToolName,
+      toolVersion: "1.0.0",
+      context: fixtureInvocationContext,
+      input: {
+        projectId: "project-terminology",
+        localeBranchId: "locale-en-us",
+        query: "chosen champion",
+        sourceRevisionId: "bridge-terminology:bundle-revision",
+        limit: 3,
+      },
+    } satisfies DeterministicToolJobInput<SemanticGlossarySearchToolInput>;
+
+    const searchResult = await runtime.runDeterministicToolJob<
+      SemanticGlossarySearchToolInput,
+      SemanticGlossarySearchToolOutput
+    >(searchJob, { verifyReproducible: true });
+
+    expect(searchGlossary).toHaveBeenCalledWith(searchJob.input);
+    expect(searchResult.output).toMatchObject({
+      outputKind: "semantic_glossary_search",
+      readiness: {
+        embeddingMode: "recorded_fixture",
+        liveProviderRequired: false,
+        exactFallback: { triggered: false },
+      },
+      matches: [
+        expect.objectContaining({
+          term: expect.objectContaining({ termId: "term-semantic-hero" }),
+          matchKinds: ["semantic_vector"],
+          provenance: expect.objectContaining({
+            provenanceKind: "semantic_glossary_search_result",
+            fixtureId: "semantic-glossary-fixture-v1",
+            citations: [
+              expect.objectContaining({
+                citation: "terminology.scene.001.line.001",
+              }),
+            ],
+          }),
+        }),
+      ],
+    });
+    expect(searchResult.metadata).toMatchObject({
+      runtimeKind: "deterministic_tool",
+      toolName: semanticGlossarySearchRegistryToolName,
+      verification: { rerunOutputHash: searchResult.metadata.outputHash },
+    });
+
+    const contextJob = {
+      jobKind: "deterministic_tool_job",
+      toolName: glossaryContextRegistryToolName,
+      toolVersion: "1.0.0",
+      context: fixtureInvocationContext,
+      input: {
+        localeBranchId: "locale-en-us",
+        termId: "term-semantic-hero",
+        sourceRevisionId: "bridge-terminology:bundle-revision",
+      },
+    } satisfies DeterministicToolJobInput<GlossaryContextToolInput>;
+
+    const contextResult = await runtime.runDeterministicToolJob<
+      GlossaryContextToolInput,
+      GlossaryContextToolOutput
+    >(contextJob);
+
+    expect(getGlossaryContext).toHaveBeenCalledWith(contextJob.input);
+    expect(contextResult.output).toMatchObject({
+      outputKind: "glossary_context_lookup",
+      found: true,
+      termId: "term-semantic-hero",
+      context: expect.objectContaining({
+        term: expect.objectContaining({
+          termId: "term-semantic-hero",
+          createdAt: "2026-06-17T12:00:00.000Z",
+        }),
+      }),
+      provenance: expect.objectContaining({
+        provenanceKind: "glossary_context_lookup",
+        citations: [
+          expect.objectContaining({
+            citation: "terminology.scene.001.line.001",
+          }),
+        ],
+      }),
+    });
+    expect(events).toHaveLength(2);
+    expect(events.map((event) => event.payload)).toEqual([
+      expect.objectContaining({
+        registryKind: "deterministic_tool_invocation",
+        toolName: semanticGlossarySearchRegistryToolName,
+        outputHash: searchResult.metadata.outputHash,
+      }),
+      expect.objectContaining({
+        registryKind: "deterministic_tool_invocation",
+        toolName: glossaryContextRegistryToolName,
+        outputHash: contextResult.metadata.outputHash,
+      }),
+    ]);
   });
 
   it("validates duplicate protected span raw text as distinct deterministic tool occurrences", async () => {
@@ -1005,6 +1157,162 @@ function exactSearchServiceResult(): SearchExactToolResult {
         },
       },
     ],
+  };
+}
+
+function semanticGlossarySearchServiceResult(): SemanticGlossarySearchReadModel {
+  return {
+    outputKind: "semantic_glossary_search",
+    status: "completed",
+    toolName: "search.glossary",
+    toolVersion: "1.0.0",
+    projectId: "project-terminology",
+    localeBranchId: "locale-en-us",
+    sourceRevisionId: "bridge-terminology:bundle-revision",
+    query: "chosen champion",
+    normalizedQuery: "chosen champion",
+    readiness: {
+      embeddingMode: "recorded_fixture",
+      liveProviderRequired: false,
+      fixtureId: "semantic-glossary-fixture-v1",
+      embeddingProvider: "recorded-fixture",
+      embeddingModel: "semantic-fixture-v1",
+      embeddingDimension: 2,
+      queryEmbeddingHash:
+        "sha256:95e99e9e5db29912f9ac19148ec3bd97c9a58c43f2c35f31d912406b0e784e8b",
+      pgvector: {
+        required: false,
+        available: false,
+        reason: "public_ci_uses_recorded_json_vectors",
+      },
+      exactFallback: {
+        triggered: false,
+        reason: null,
+        toolName: "search.exact",
+        toolVersion: "1.0.0",
+      },
+    },
+    matches: [
+      {
+        term: {
+          termId: "term-semantic-hero",
+          sourceTerm: "勇者",
+          preferredTranslation: "Hero",
+          termKind: "character_name",
+          status: "active",
+          sourceLocale: "ja-JP",
+          targetLocale: "en-US",
+        },
+        score: 0.999949,
+        matchKinds: ["semantic_vector"],
+        exactMatchKinds: [],
+        provenance: {
+          provenanceKind: "semantic_glossary_search_result",
+          toolName: "search.glossary",
+          toolVersion: "1.0.0",
+          fixtureId: "semantic-glossary-fixture-v1",
+          queryEmbeddingHash:
+            "sha256:95e99e9e5db29912f9ac19148ec3bd97c9a58c43f2c35f31d912406b0e784e8b",
+          semanticIndexId: "semantic-index-hero",
+          semanticIndexStatus: "ready",
+          embeddingProvider: "itotori-recorded-fixture",
+          embeddingModel: "semantic-fixture-v1",
+          embeddingDimension: 2,
+          contentHash: "sha256:semantic-hero",
+          citations: [
+            {
+              sourceRefId: "source-ref-hero",
+              sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+              bridgeUnitId: "bridge-unit-term",
+              referenceKind: "source_unit",
+              citation: "terminology.scene.001.line.001",
+              context: "Opening narration names the hero.",
+            },
+          ],
+        },
+      },
+    ],
+    diagnostics: [],
+  };
+}
+
+function glossaryContextServiceResult(): GlossaryContextReadModel {
+  const now = new Date("2026-06-17T12:00:00.000Z");
+  return {
+    localeBranchId: "locale-en-us",
+    sourceRevisionId: "bridge-terminology:bundle-revision",
+    styleGuideVersionId: "style-guide-version-glossary-policy",
+    glossaryReferenceId: "glossary-reference-hero",
+    branchReference: null,
+    term: {
+      termId: "term-semantic-hero",
+      projectId: "project-terminology",
+      localeBranchId: "locale-en-us",
+      sourceTerm: "勇者",
+      normalizedSourceTerm: "勇者",
+      sourceLocale: "ja-JP",
+      targetLocale: "en-US",
+      preferredTranslation: "Hero",
+      normalizedPreferredTranslation: "hero",
+      termKind: "character_name",
+      partOfSpeech: null,
+      status: "active",
+      caseSensitive: false,
+      notes: null,
+      metadata: {},
+      createdByUserId: "local-user",
+      createdAt: now,
+      updatedAt: now,
+      aliases: [],
+      sourceReferences: [
+        {
+          sourceRefId: "source-ref-hero",
+          termId: "term-semantic-hero",
+          sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+          bridgeUnitId: "bridge-unit-term",
+          sourceProvenanceId: null,
+          referenceKind: "source_unit",
+          citation: "terminology.scene.001.line.001",
+          context: "Opening narration names the hero.",
+          metadata: {},
+          createdAt: now,
+        },
+      ],
+      semanticIndex: {
+        semanticIndexId: "semantic-index-hero",
+        termId: "term-semantic-hero",
+        searchDocument: "Hero protagonist chosen champion relic",
+        searchTokens: ["hero", "protagonist", "chosen", "champion", "relic"],
+        embeddingProvider: "itotori-recorded-fixture",
+        embeddingModel: "semantic-fixture-v1",
+        embeddingDimension: 2,
+        embeddingVector: [0.99, 0.01],
+        contentHash: "sha256:semantic-hero",
+        status: "ready",
+        metadata: {
+          indexKind: "semantic_vector_index",
+          semanticReady: true,
+          vectorReady: true,
+        },
+        refreshedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      },
+    },
+    termProvenance: [
+      {
+        sourceRefId: "source-ref-hero",
+        sourceRevisionId: "bridge-terminology:unit:bridge-unit-term",
+        bridgeUnitId: "bridge-unit-term",
+        sourceProvenanceId: null,
+        referenceKind: "source_unit",
+        citation: "terminology.scene.001.line.001",
+        context: "Opening narration names the hero.",
+        metadata: {},
+      },
+    ],
+    protectedSpanReferences: [],
+    reviewItems: [],
   };
 }
 

@@ -27,6 +27,21 @@ export {
   searchExactToolOutput,
   searchExactToolOutputSchema,
 } from "./exact-search-tool.js";
+export {
+  glossaryContextRegistryToolName,
+  glossaryContextTool,
+  glossaryContextToolImplementationHash,
+  glossaryContextToolInputSchema,
+  glossaryContextToolOutput,
+  glossaryContextToolOutputSchema,
+  glossaryContextToolVersion,
+  semanticGlossarySearchRegistryToolName,
+  semanticGlossarySearchTool,
+  semanticGlossarySearchToolImplementationHash,
+  semanticGlossarySearchToolInputSchema,
+  semanticGlossarySearchToolOutput,
+  semanticGlossarySearchToolOutputSchema,
+} from "./glossary-search-tools.js";
 export type {
   DeterministicPreExportQaInput,
   DeterministicPreExportQaOutput,
@@ -42,6 +57,14 @@ export type {
   SearchExactToolOutput,
   SearchExactToolService,
 } from "./exact-search-tool.js";
+export type {
+  GlossaryContextToolInput,
+  GlossaryContextToolOutput,
+  GlossaryContextToolService,
+  SemanticGlossarySearchToolInput,
+  SemanticGlossarySearchToolOutput,
+  SemanticGlossarySearchToolService,
+} from "./glossary-search-tools.js";
 export {
   AgentToolDurableJobAdapter,
   durableAgentJobInput,
