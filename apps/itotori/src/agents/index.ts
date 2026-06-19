@@ -19,6 +19,14 @@ export {
   translationQualityJudgeOutputFixture,
   translationQualityJudgeOutputSchema,
 } from "./examples.js";
+export {
+  searchExactRegistryToolName,
+  searchExactTool,
+  searchExactToolImplementationHash,
+  searchExactToolInputSchema,
+  searchExactToolOutput,
+  searchExactToolOutputSchema,
+} from "./exact-search-tool.js";
 export type {
   DeterministicPreExportQaInput,
   DeterministicPreExportQaOutput,
@@ -28,6 +36,12 @@ export type {
   TranslationQualityJudgeInput,
   TranslationQualityJudgeOutput,
 } from "./examples.js";
+export type {
+  SearchExactToolInput,
+  SearchExactToolMatchOutput,
+  SearchExactToolOutput,
+  SearchExactToolService,
+} from "./exact-search-tool.js";
 export {
   AgentToolDurableJobAdapter,
   durableAgentJobInput,

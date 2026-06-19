@@ -47,6 +47,7 @@ export {
   catalogSourceValues,
   catalogTranslationPortabilityValues,
   glossaryReviewItemStateValues,
+  exactSearchSourceArtifactTypeValues,
   translationMemoryMatchKindValues,
   translationMemoryReuseStatusValues,
   translationMemorySegmentStatusValues,
@@ -82,6 +83,7 @@ export type {
   CatalogSourceRecordKind,
   CatalogTranslationPortability,
   GlossaryReviewItemState,
+  ExactSearchSourceArtifactType,
   TranslationMemoryMatchKind,
   TranslationMemoryReuseStatus,
   TranslationMemorySegmentStatus,
@@ -244,6 +246,25 @@ export type {
   UpsertTerminologyTermResult,
   UpsertGlossaryReviewItemInput,
 } from "./repositories/terminology-repository.js";
+export {
+  exactSearchDiagnosticCodeValues,
+  exactSearchToolName,
+  exactSearchToolVersion,
+  ItotoriExactSearchDocumentRepository,
+  normalizeExactSearchTerm,
+} from "./repositories/exact-search-document-repository.js";
+export type {
+  ExactSearchDiagnostic,
+  ExactSearchDiagnosticCode,
+  ExactSearchDocumentRecord,
+  ExactSearchJsonRecord,
+  ExactSearchToolMatch,
+  ItotoriExactSearchDocumentRepositoryPort,
+  RefreshExactSearchDocumentsInput,
+  RefreshExactSearchDocumentsResult,
+  SearchExactInput,
+  SearchExactToolResult,
+} from "./repositories/exact-search-document-repository.js";
 export {
   estimateTranslationMemoryCostImpact,
   ItotoriTranslationMemoryRepository,

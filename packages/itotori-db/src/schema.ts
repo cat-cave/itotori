@@ -513,6 +513,13 @@ export const translationMemoryReuseStatusValues = {
 export type TranslationMemoryReuseStatus =
   (typeof translationMemoryReuseStatusValues)[keyof typeof translationMemoryReuseStatusValues];
 
+export const exactSearchSourceArtifactTypeValues = {
+  sourceUnit: "source_unit",
+} as const;
+
+export type ExactSearchSourceArtifactType =
+  (typeof exactSearchSourceArtifactTypeValues)[keyof typeof exactSearchSourceArtifactTypeValues];
+
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -1664,6 +1671,57 @@ export const translationMemorySegments = pgTable(
       table.projectId,
       table.localeBranchId,
       table.createdAt,
+    ),
+  ],
+);
+
+export const exactSearchDocuments = pgTable(
+  "itotori_exact_search_documents",
+  {
+    searchDocumentId: text("search_document_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    sourceArtifactType: text("source_artifact_type").notNull(),
+    sourceArtifactId: text("source_artifact_id")
+      .notNull()
+      .references(() => sourceUnits.bridgeUnitId, { onDelete: "cascade" }),
+    exactTerm: text("exact_term").notNull(),
+    normalizedExactTerm: text("normalized_exact_term").notNull(),
+    sourceLocale: text("source_locale").notNull(),
+    targetLocale: text("target_locale").notNull(),
+    provenance: jsonb("provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    refreshedAt: timestamp("refreshed_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_exact_search_docs_source_term_idx").on(
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.sourceArtifactType,
+      table.sourceArtifactId,
+      table.normalizedExactTerm,
+    ),
+    index("itotori_exact_search_docs_lookup_idx").on(
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.normalizedExactTerm,
+      table.sourceArtifactType,
+    ),
+    index("itotori_exact_search_docs_project_branch_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
     ),
   ],
 );

@@ -3,6 +3,7 @@ import {
   jobIdempotencyPolicyValues,
   jobStatusValues,
   jobTaskTypeValues,
+  type SearchExactToolResult,
   type AuthorizationActor,
   type ItotoriEventQueueRepositoryPort,
   type ItotoriProjectRepositoryPort,
@@ -21,6 +22,7 @@ import {
   deterministicPreExportQaJobFixture,
   deterministicPreExportQaOutputFixture,
   deterministicPreExportQaTool,
+  fixtureInvocationContext,
   parseTranslationQualityJudgeOutput,
   protectedSpanCheck,
   protectedSpanCheckImplementationHash,
@@ -28,6 +30,9 @@ import {
   protectedSpanCheckJobFixture,
   protectedSpanCheckOutputFixture,
   protectedSpanCheckOutputSchema,
+  searchExactRegistryToolName,
+  searchExactTool,
+  searchExactToolImplementationHash,
   translationQualityJudgeInputSchema,
   translationQualityJudgeJobFixture,
   translationQualityJudgeOutputFixture,
@@ -38,6 +43,8 @@ import {
   type DeterministicToolDefinition,
   type ProtectedSpanCheckInput,
   type ProtectedSpanCheckOutput,
+  type SearchExactToolInput,
+  type SearchExactToolOutput,
   type TranslationQualityJudgeInput,
   type TranslationQualityJudgeOutput,
 } from "../src/agents/index.js";
@@ -283,6 +290,104 @@ describe("agent and deterministic tool registries", () => {
       payload: expect.objectContaining({
         registryKind: "deterministic_tool_invocation",
         toolName: "tool.deterministic-pre-export-qa",
+        outputHash: result.metadata.outputHash,
+      }),
+    });
+  });
+
+  it("registers and executes search.exact through the deterministic tool registry", async () => {
+    const events: TriageEventV02[] = [];
+    const agents = new AgentRegistry();
+    const tools = new DeterministicToolRegistry();
+    const searchExact = vi.fn(async () => exactSearchServiceResult());
+    const metadata = tools.register(searchExactTool({ searchExact }));
+
+    expect(metadata).toMatchObject({
+      registryKind: "deterministic_tool",
+      toolName: searchExactRegistryToolName,
+      toolVersion: "1.0.0",
+      taskKind: "extract",
+      capabilityKey: "search.exact",
+      inputSchemaId: "itotori.tool.search-exact.input",
+      outputSchemaId: "itotori.tool.search-exact.output",
+      reproducibility: {
+        algorithmName: "search.exact",
+        algorithmVersion: "1.0.0",
+        implementationHash: searchExactToolImplementationHash,
+      },
+    });
+
+    const runtime = new AgentToolRuntime(agents, tools, {
+      emit: (event) => {
+        events.push(event);
+      },
+    });
+    const job = {
+      jobKind: "deterministic_tool_job",
+      toolName: searchExactRegistryToolName,
+      toolVersion: "1.0.0",
+      context: fixtureInvocationContext,
+      input: {
+        projectId: "project-search",
+        localeBranchId: "locale-en-us",
+        query: "Hero",
+        sourceRevisionId: "bridge-search:bundle-revision",
+        sourceArtifactTypes: ["source_unit"],
+        limit: 5,
+      },
+    } satisfies DeterministicToolJobInput<SearchExactToolInput>;
+
+    const result = await runtime.runDeterministicToolJob<
+      SearchExactToolInput,
+      SearchExactToolOutput
+    >(job);
+
+    expect(searchExact).toHaveBeenCalledWith(job.input);
+    expect(result.output).toMatchObject({
+      outputKind: "search_exact",
+      status: "completed",
+      toolName: "search.exact",
+      toolVersion: "1.0.0",
+      normalizedQuery: "hero",
+      matches: [
+        expect.objectContaining({
+          searchDocumentId: "exact-search-doc:fixture",
+          sourceArtifactType: "source_unit",
+          sourceArtifactId: "unit-hero",
+          refreshedAt: "2026-06-17T12:00:00.000Z",
+          provenance: expect.objectContaining({
+            toolName: "search.exact",
+            toolVersion: "1.0.0",
+            searchDocumentId: "exact-search-doc:fixture",
+            sourceRevisionId: "bridge-search:bundle-revision",
+          }),
+        }),
+      ],
+      diagnostics: [],
+    });
+    expect(result.metadata).toMatchObject({
+      runtimeKind: "deterministic_tool",
+      toolName: searchExactRegistryToolName,
+      capabilityKey: "search.exact",
+      reproducibility: expect.objectContaining({
+        implementationHash: searchExactToolImplementationHash,
+      }),
+    });
+    expect(result.metadata.outputHash).toMatch(/^sha256:/u);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      actor: { actorKind: "tool", displayName: `${searchExactRegistryToolName}@1.0.0` },
+      provenance: [
+        expect.objectContaining({
+          provenanceKind: "deterministic_check",
+          checkName: searchExactRegistryToolName,
+          checkVersion: "1.0.0",
+        }),
+      ],
+      payload: expect.objectContaining({
+        registryKind: "deterministic_tool_invocation",
+        toolName: searchExactRegistryToolName,
+        capabilityKey: "search.exact",
         outputHash: result.metadata.outputHash,
       }),
     });
@@ -858,6 +963,50 @@ const promptPreset = {
 } satisfies PromptPresetReference;
 
 const localActor: AuthorizationActor = { userId: "local-user" };
+
+function exactSearchServiceResult(): SearchExactToolResult {
+  const now = new Date("2026-06-17T12:00:00.000Z");
+  return {
+    status: "completed",
+    toolName: "search.exact",
+    toolVersion: "1.0.0",
+    projectId: "project-search",
+    localeBranchId: "locale-en-us",
+    sourceRevisionId: "bridge-search:bundle-revision",
+    query: "Hero",
+    normalizedQuery: "hero",
+    diagnostics: [],
+    matches: [
+      {
+        searchDocumentId: "exact-search-doc:fixture",
+        projectId: "project-search",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-search:bundle-revision",
+        sourceArtifactType: "source_unit",
+        sourceArtifactId: "unit-hero",
+        exactTerm: "Hero",
+        normalizedExactTerm: "hero",
+        sourceLocale: "ja-JP",
+        targetLocale: "en-US",
+        refreshedAt: now,
+        createdAt: now,
+        updatedAt: now,
+        provenance: {
+          provenanceKind: "exact_search_document",
+          toolName: "search.exact",
+          toolVersion: "1.0.0",
+          searchDocumentId: "exact-search-doc:fixture",
+          sourceArtifactType: "source_unit",
+          sourceArtifactId: "unit-hero",
+          sourceRevisionId: "bridge-search:bundle-revision",
+          sourceUnitKey: "scene.001.hero",
+          occurrenceId: "occurrence-hero",
+          sourceHash: "hash:hero",
+        },
+      },
+    ],
+  };
+}
 
 function eventPersistenceFixture(): {
   appendEvent: ReturnType<typeof vi.fn>;
