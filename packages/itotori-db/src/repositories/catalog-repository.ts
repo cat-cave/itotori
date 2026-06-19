@@ -11,6 +11,8 @@ import {
   catalogConflicts,
   catalogConflictStatusValues,
   catalogConflictSubjectKindValues,
+  catalogDemandFactKindValues,
+  catalogDemandFacts,
   catalogEngineSourceValues,
   catalogExternalIdKindValues,
   catalogExternalIds,
@@ -36,6 +38,7 @@ import {
   type CatalogConflictKind,
   type CatalogConflictStatus,
   type CatalogConflictSubjectKind,
+  type CatalogDemandFactKind,
   type CatalogEngineSource,
   type CatalogExternalIdKind,
   type CatalogLanguageStatus,
@@ -185,6 +188,33 @@ export type CatalogLanguageStatusRecord = {
   updatedAt: Date;
 };
 
+export type CatalogDemandFactInput = {
+  demandFactId?: string;
+  catalogSource: CatalogSource;
+  sourceId: string;
+  factKind: CatalogDemandFactKind;
+  factValue: CatalogJsonRecord;
+  observedAt?: CatalogDateInput;
+  sourceProvenanceId?: string;
+  parserVersion?: string;
+  metadata?: CatalogJsonRecord;
+};
+
+export type CatalogDemandFactRecord = {
+  demandFactId: string;
+  workId: string;
+  catalogSource: CatalogSource;
+  sourceId: string;
+  factKind: CatalogDemandFactKind;
+  factValue: CatalogJsonRecord;
+  observedAt: Date;
+  sourceProvenanceId: string | null;
+  parserVersion: string;
+  metadata: CatalogJsonRecord;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
 export type CatalogConflictEvidenceInput = {
   conflictEvidenceId?: string;
   subjectKind: CatalogConflictSubjectKind;
@@ -239,6 +269,7 @@ export type CatalogWorkInput = {
   externalIds?: CatalogExternalIdInput[];
   releases?: CatalogReleaseInput[];
   languageStatuses?: CatalogLanguageStatusInput[];
+  demandFacts?: CatalogDemandFactInput[];
   conflicts?: CatalogConflictInput[];
 };
 
@@ -261,6 +292,7 @@ export type CatalogWorkSnapshot = CatalogWorkRecord & {
   externalIds: CatalogExternalIdRecord[];
   releases: CatalogReleaseRecord[];
   languageStatuses: CatalogLanguageStatusRecord[];
+  demandFacts: CatalogDemandFactRecord[];
   conflicts: CatalogConflictRecord[];
   localScanEntries: CatalogLocalScanEntryRecord[];
   seedTargets: CatalogSeedTargetRecord[];
@@ -670,6 +702,7 @@ const catalogLanguageStatusEnums = Object.values(
 const catalogLanguageStatusScopes = Object.values(
   catalogLanguageStatusScopeValues,
 ) as CatalogLanguageStatusScope[];
+const catalogDemandFactKinds = Object.values(catalogDemandFactKindValues) as CatalogDemandFactKind[];
 const catalogConflictKinds = Object.values(catalogConflictKindValues) as CatalogConflictKind[];
 const catalogConflictStatuses = Object.values(
   catalogConflictStatusValues,
@@ -846,6 +879,38 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
               parserVersion: languageStatus.parserVersion,
               rawContentRedactionClass: languageStatus.rawContentRedactionClass,
               metadata: languageStatus.metadata,
+              updatedAt: sql`now()`,
+            },
+          });
+      }
+
+      for (const demandFact of normalized.demandFacts) {
+        await tx
+          .insert(catalogDemandFacts)
+          .values({
+            demandFactId: demandFact.demandFactId,
+            workId: normalized.workId,
+            catalogSource: demandFact.catalogSource,
+            sourceId: demandFact.sourceId,
+            factKind: demandFact.factKind,
+            factValue: demandFact.factValue,
+            observedAt: demandFact.observedAt,
+            sourceProvenanceId: demandFact.sourceProvenanceId,
+            parserVersion: demandFact.parserVersion,
+            metadata: demandFact.metadata,
+          })
+          .onConflictDoUpdate({
+            target: catalogDemandFacts.demandFactId,
+            set: {
+              workId: normalized.workId,
+              catalogSource: demandFact.catalogSource,
+              sourceId: demandFact.sourceId,
+              factKind: demandFact.factKind,
+              factValue: demandFact.factValue,
+              observedAt: demandFact.observedAt,
+              sourceProvenanceId: demandFact.sourceProvenanceId,
+              parserVersion: demandFact.parserVersion,
+              metadata: demandFact.metadata,
               updatedAt: sql`now()`,
             },
           });
@@ -2336,11 +2401,19 @@ async function readWorkSnapshot(
     return null;
   }
 
-  const [externalIdRows, releaseRows, languageStatusRows, conflictRows, localScanEntryRows] =
+  const [
+    externalIdRows,
+    releaseRows,
+    languageStatusRows,
+    demandFactRows,
+    conflictRows,
+    localScanEntryRows,
+  ] =
     await Promise.all([
       db.select().from(catalogExternalIds).where(eq(catalogExternalIds.workId, workId)),
       db.select().from(catalogReleases).where(eq(catalogReleases.workId, workId)),
       db.select().from(catalogLanguageStatuses).where(eq(catalogLanguageStatuses.workId, workId)),
+      db.select().from(catalogDemandFacts).where(eq(catalogDemandFacts.workId, workId)),
       db.select().from(catalogConflicts).where(eq(catalogConflicts.workId, workId)),
       db.select().from(catalogLocalScanEntries).where(eq(catalogLocalScanEntries.workId, workId)),
     ]);
@@ -2380,6 +2453,7 @@ async function readWorkSnapshot(
     externalIds: externalIdRows.map(externalIdFromRow),
     releases: releaseRows.map(releaseFromRow),
     languageStatuses: languageStatusRows.map(languageStatusFromRow),
+    demandFacts: demandFactRows.map(demandFactFromRow),
     conflicts: conflictRows.map((row) => ({
       ...conflictFromRow(row),
       evidence: evidenceByConflict.get(row.conflictId) ?? [],
@@ -2505,6 +2579,7 @@ type NormalizedCatalogWorkInput = {
   externalIds: NormalizedExternalIdInput[];
   releases: NormalizedReleaseInput[];
   languageStatuses: NormalizedLanguageStatusInput[];
+  demandFacts: NormalizedDemandFactInput[];
   conflicts: NormalizedConflictInput[];
 };
 
@@ -2558,6 +2633,18 @@ type NormalizedLanguageStatusInput = {
   metadata: CatalogJsonRecord;
 };
 
+type NormalizedDemandFactInput = {
+  demandFactId: string;
+  catalogSource: CatalogSource;
+  sourceId: string;
+  factKind: CatalogDemandFactKind;
+  factValue: CatalogJsonRecord;
+  observedAt: Date;
+  sourceProvenanceId: string | null;
+  parserVersion: string;
+  metadata: CatalogJsonRecord;
+};
+
 type NormalizedConflictInput = {
   conflictId: string;
   conflictKind: CatalogConflictKind;
@@ -2604,6 +2691,7 @@ function assertCatalogWorkInput(input: CatalogWorkInput): NormalizedCatalogWorkI
     externalIds: (input.externalIds ?? []).map(assertExternalIdInput),
     releases: (input.releases ?? []).map(assertReleaseInput),
     languageStatuses: (input.languageStatuses ?? []).map(assertLanguageStatusInput),
+    demandFacts: (input.demandFacts ?? []).map(assertDemandFactInput),
     conflicts: (input.conflicts ?? []).map(assertConflictInput),
   };
 }
@@ -2688,6 +2776,26 @@ function assertLanguageStatusInput(
     rawContentRedactionClass:
       input.rawContentRedactionClass ?? catalogRawContentRedactionClassValues.publicMetadata,
     metadata: jsonRecord(input.metadata ?? {}, "languageStatus.metadata"),
+  };
+}
+
+function assertDemandFactInput(input: CatalogDemandFactInput): NormalizedDemandFactInput {
+  assertEnumValue(input.catalogSource, catalogSources, "demandFact.catalogSource");
+  assertEnumValue(input.factKind, catalogDemandFactKinds, "demandFact.factKind");
+  return {
+    demandFactId: input.demandFactId ?? createUuid7(),
+    catalogSource: input.catalogSource,
+    sourceId: requiredString(input.sourceId, "demandFact.sourceId"),
+    factKind: input.factKind,
+    factValue: jsonRecord(input.factValue, "demandFact.factValue"),
+    observedAt:
+      input.observedAt === undefined ? new Date() : dateInput(input.observedAt, "observedAt"),
+    sourceProvenanceId: input.sourceProvenanceId ?? null,
+    parserVersion:
+      input.parserVersion === undefined
+        ? "unknown"
+        : requiredString(input.parserVersion, "demandFact.parserVersion"),
+    metadata: jsonRecord(input.metadata ?? {}, "demandFact.metadata"),
   };
 }
 
@@ -3035,6 +3143,23 @@ function languageStatusFromRow(
     importedAt: row.importedAt,
     parserVersion: row.parserVersion,
     rawContentRedactionClass: row.rawContentRedactionClass as CatalogRawContentRedactionClass,
+    metadata: row.metadata,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function demandFactFromRow(row: typeof catalogDemandFacts.$inferSelect): CatalogDemandFactRecord {
+  return {
+    demandFactId: row.demandFactId,
+    workId: row.workId,
+    catalogSource: row.catalogSource as CatalogSource,
+    sourceId: row.sourceId,
+    factKind: row.factKind as CatalogDemandFactKind,
+    factValue: row.factValue,
+    observedAt: row.observedAt,
+    sourceProvenanceId: row.sourceProvenanceId,
+    parserVersion: row.parserVersion,
     metadata: row.metadata,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,

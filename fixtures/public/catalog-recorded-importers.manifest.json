@@ -40,8 +40,16 @@
       "path": "fixtures/catalog-recorded-importers/dlsite-storefront-replay.json",
       "role": "metadata",
       "mediaType": "application/json",
-      "sha256": "dae88b396a61309e99f0c738776cd48f122678eaeed95817f78f61e7ec186e6f",
-      "bytes": 4507,
+      "sha256": "b6bb2e3a48b0430c75154ede3a185f4b4b00a714e21cd5a93efdd8fce2cbc3d3",
+      "bytes": 7339,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
+      "role": "metadata",
+      "mediaType": "application/json",
+      "sha256": "e40462c441b72f95d226bcc3ff3034cff804bb708a48433f93569dc0a174f39f",
+      "bytes": 11351,
       "redistributable": true
     },
     {
@@ -70,7 +78,7 @@
     }
   ],
   "aggregateStats": {
-    "files": 6,
+    "files": 7,
     "textUnits": 0,
     "sourceTextUtf16CodeUnits": 0,
     "protectedSpans": 0,

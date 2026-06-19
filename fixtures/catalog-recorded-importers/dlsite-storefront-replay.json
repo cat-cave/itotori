@@ -117,6 +117,79 @@
         "fixturePath": "fixtures/catalog-recorded-importers/dlsite-storefront-replay.json",
         "redactionClass": "public_metadata"
       }
+    },
+    {
+      "stepKey": "dlsite-rj03333333-jp-recovered",
+      "sourceId": "RJ03333333",
+      "requestIdentity": "GET /maniax/work/=/product_id/RJ03333333.html?locale=ja_JP via recovered-jp-cache",
+      "fetchedAt": "2026-06-18T13:10:06.000Z",
+      "checkpointCursor": {
+        "afterStepKey": "dlsite-rj03333333-jp-recovered",
+        "cursor": "RJ03333333"
+      },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ03333333",
+        "title": "Recovered Lantern Labyrinth",
+        "maker_name": "Recovered Fixture Circle",
+        "release_date": "2020-11-21",
+        "age_category": "all_ages",
+        "work_type": "RPG",
+        "titles": [
+          { "lang": "ja-JP", "title": "回収された灯の迷宮" },
+          { "lang": "en-US", "title": "Recovered Lantern Labyrinth" }
+        ],
+        "translation_info": {
+          "original": { "workno": "RJ03000001", "locale": "ja-JP" },
+          "original_workno": "RJ03000001",
+          "parent_workno": "RJ03000001",
+          "child_worknos": ["RJ03333333", "RJ03333334"],
+          "translations": [
+            { "workno": "RJ03333333", "locale": "en-US", "relationship": "official_translation" },
+            { "workno": "RJ03333334", "locale": "zh-Hans", "relationship": "official_translation" }
+          ],
+          "language_editions": [
+            {
+              "workno": "RJ03000001",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            },
+            {
+              "workno": "RJ03333333",
+              "locale": "en-US",
+              "label": "English",
+              "status": "official_full",
+              "translation_role": "official_translation"
+            },
+            {
+              "workno": "RJ03333334",
+              "locale": "zh-Hans",
+              "label": "Simplified Chinese",
+              "status": "official_full",
+              "translation_role": "official_translation"
+            }
+          ]
+        },
+        "dl_count": 3201,
+        "rating_summary": { "average": 4.54, "count": 122 },
+        "rating_histogram": { "5": 83, "4": 28, "3": 8, "2": 2, "1": 1 },
+        "wishlist_count": 411,
+        "rank_facts": [
+          { "scope": "weekly", "category": "RPG", "rank": 31, "observed_at": "2026-06-18" },
+          { "scope": "all_time", "category": "translation", "rank": 88, "observed_at": "2026-06-18" }
+        ]
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-storefront-replay.json",
+        "redactionClass": "public_metadata",
+        "geoRecovery": {
+          "status": "japan_locked_recovered",
+          "originalHttpStatusOutsideJapan": 404,
+          "recoveredFrom": "recorded-jp-cache"
+        }
+      }
     }
   ]
 }

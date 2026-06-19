@@ -1,0 +1,302 @@
+{
+  "fixtureId": "catalog-recorded-importer-dlsite-demand-parse-drift-v0.1",
+  "fixtureName": "catalog-recorded-importer-dlsite-demand-parse-drift",
+  "catalogSource": "dlsite",
+  "adapterName": "dlsite-recorded-storefront-importer",
+  "adapterVersion": "adapter-catalog-069-v1",
+  "sourceVersion": "dlsite-demand-parse-drift-synthetic-2026-06-18",
+  "parserVersion": "catalog-recorded-importers.v0.1",
+  "partitionKey": "public-dlsite-demand-parse-drift",
+  "responses": [
+    {
+      "stepKey": "dlsite-rj09999999-parse-drift",
+      "sourceId": "RJ09999999",
+      "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999999",
+      "fetchedAt": "2026-06-18T13:10:09.000Z",
+      "checkpointCursor": { "afterStepKey": "dlsite-rj09999999-parse-drift", "cursor": "RJ09999999" },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ09999999",
+        "title": "Demand Parse Drift Fixture",
+        "maker_name": "Fixture Drift Circle",
+        "release_date": "2023-01-05",
+        "work_type": "ADV",
+        "translation_info": {
+          "original": { "workno": "RJ09999999", "locale": "ja-JP" },
+          "original_workno": "RJ09999999",
+          "parent_workno": null,
+          "child_worknos": [],
+          "translations": [],
+          "language_editions": [
+            {
+              "workno": "RJ09999999",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            }
+          ]
+        },
+        "dl_count": "many",
+        "rating_summary": { "average": 4.2, "count": 10 },
+        "rating_histogram": { "5": 7, "4": 2, "3": 1 },
+        "wishlist_count": 9,
+        "rank_facts": []
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    },
+    {
+      "stepKey": "dlsite-rj09999990-rank-non-object",
+      "sourceId": "RJ09999990",
+      "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999990",
+      "fetchedAt": "2026-06-18T13:10:10.000Z",
+      "checkpointCursor": { "afterStepKey": "dlsite-rj09999990-rank-non-object", "cursor": "RJ09999990" },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ09999990",
+        "title": "Rank Non Object Parse Drift Fixture",
+        "maker_name": "Fixture Drift Circle",
+        "release_date": "2023-01-06",
+        "work_type": "ADV",
+        "translation_info": {
+          "original": { "workno": "RJ09999990", "locale": "ja-JP" },
+          "original_workno": "RJ09999990",
+          "parent_workno": null,
+          "child_worknos": [],
+          "translations": [],
+          "language_editions": [
+            {
+              "workno": "RJ09999990",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            }
+          ]
+        },
+        "dl_count": 12,
+        "rating_summary": { "average": 4.2, "count": 10 },
+        "rating_histogram": { "5": 7, "4": 2, "3": 1 },
+        "wishlist_count": 9,
+        "rank_facts": ["daily"]
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    },
+    {
+      "stepKey": "dlsite-rj09999991-rank-missing-category",
+      "sourceId": "RJ09999991",
+      "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999991",
+      "fetchedAt": "2026-06-18T13:10:11.000Z",
+      "checkpointCursor": { "afterStepKey": "dlsite-rj09999991-rank-missing-category", "cursor": "RJ09999991" },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ09999991",
+        "title": "Rank Missing Category Parse Drift Fixture",
+        "maker_name": "Fixture Drift Circle",
+        "release_date": "2023-01-07",
+        "work_type": "ADV",
+        "translation_info": {
+          "original": { "workno": "RJ09999991", "locale": "ja-JP" },
+          "original_workno": "RJ09999991",
+          "parent_workno": null,
+          "child_worknos": [],
+          "translations": [],
+          "language_editions": [
+            {
+              "workno": "RJ09999991",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            }
+          ]
+        },
+        "dl_count": 12,
+        "rating_summary": { "average": 4.2, "count": 10 },
+        "rating_histogram": { "5": 7, "4": 2, "3": 1 },
+        "wishlist_count": 9,
+        "rank_facts": [
+          { "scope": "daily", "rank": 8, "observed_at": "2026-06-18" }
+        ]
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    },
+    {
+      "stepKey": "dlsite-rj09999992-rank-invalid-rank",
+      "sourceId": "RJ09999992",
+      "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999992",
+      "fetchedAt": "2026-06-18T13:10:12.000Z",
+      "checkpointCursor": { "afterStepKey": "dlsite-rj09999992-rank-invalid-rank", "cursor": "RJ09999992" },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ09999992",
+        "title": "Rank Invalid Rank Parse Drift Fixture",
+        "maker_name": "Fixture Drift Circle",
+        "release_date": "2023-01-08",
+        "work_type": "ADV",
+        "translation_info": {
+          "original": { "workno": "RJ09999992", "locale": "ja-JP" },
+          "original_workno": "RJ09999992",
+          "parent_workno": null,
+          "child_worknos": [],
+          "translations": [],
+          "language_editions": [
+            {
+              "workno": "RJ09999992",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            }
+          ]
+        },
+        "dl_count": 12,
+        "rating_summary": { "average": 4.2, "count": 10 },
+        "rating_histogram": { "5": 7, "4": 2, "3": 1 },
+        "wishlist_count": 9,
+        "rank_facts": [
+          { "scope": "daily", "category": "ADV", "rank": "8", "observed_at": "2026-06-18" }
+        ]
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    },
+    {
+      "stepKey": "dlsite-rj09999993-rank-invalid-observed-at",
+      "sourceId": "RJ09999993",
+      "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999993",
+      "fetchedAt": "2026-06-18T13:10:13.000Z",
+      "checkpointCursor": { "afterStepKey": "dlsite-rj09999993-rank-invalid-observed-at", "cursor": "RJ09999993" },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ09999993",
+        "title": "Rank Invalid Observed At Parse Drift Fixture",
+        "maker_name": "Fixture Drift Circle",
+        "release_date": "2023-01-09",
+        "work_type": "ADV",
+        "translation_info": {
+          "original": { "workno": "RJ09999993", "locale": "ja-JP" },
+          "original_workno": "RJ09999993",
+          "parent_workno": null,
+          "child_worknos": [],
+          "translations": [],
+          "language_editions": [
+            {
+              "workno": "RJ09999993",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            }
+          ]
+        },
+        "dl_count": 12,
+        "rating_summary": { "average": 4.2, "count": 10 },
+        "rating_histogram": { "5": 7, "4": 2, "3": 1 },
+        "wishlist_count": 9,
+        "rank_facts": [
+          { "scope": "daily", "category": "ADV", "rank": 8, "observed_at": 20260618 }
+        ]
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    },
+    {
+      "stepKey": "dlsite-rj09999994-rank-invalid-observed-at-string",
+      "sourceId": "RJ09999994",
+      "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999994",
+      "fetchedAt": "2026-06-18T13:10:14.000Z",
+      "checkpointCursor": { "afterStepKey": "dlsite-rj09999994-rank-invalid-observed-at-string", "cursor": "RJ09999994" },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ09999994",
+        "title": "Rank Invalid Observed At String Parse Drift Fixture",
+        "maker_name": "Fixture Drift Circle",
+        "release_date": "2023-01-10",
+        "work_type": "ADV",
+        "translation_info": {
+          "original": { "workno": "RJ09999994", "locale": "ja-JP" },
+          "original_workno": "RJ09999994",
+          "parent_workno": null,
+          "child_worknos": [],
+          "translations": [],
+          "language_editions": [
+            {
+              "workno": "RJ09999994",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            }
+          ]
+        },
+        "dl_count": 12,
+        "rating_summary": { "average": 4.2, "count": 10 },
+        "rating_histogram": { "5": 7, "4": 2, "3": 1 },
+        "wishlist_count": 9,
+        "rank_facts": [
+          { "scope": "daily", "category": "ADV", "rank": 8, "observed_at": "not-a-date" }
+        ]
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    },
+    {
+      "stepKey": "dlsite-rj09999995-rank-invalid-observed-at-date-time",
+      "sourceId": "RJ09999995",
+      "requestIdentity": "GET /maniax/product/info/ajax?product_id=RJ09999995",
+      "fetchedAt": "2026-06-18T13:10:15.000Z",
+      "checkpointCursor": { "afterStepKey": "dlsite-rj09999995-rank-invalid-observed-at-date-time", "cursor": "RJ09999995" },
+      "httpStatus": 200,
+      "payload": {
+        "workno": "RJ09999995",
+        "title": "Rank Invalid Observed At Date Time Parse Drift Fixture",
+        "maker_name": "Fixture Drift Circle",
+        "release_date": "2023-01-11",
+        "work_type": "ADV",
+        "translation_info": {
+          "original": { "workno": "RJ09999995", "locale": "ja-JP" },
+          "original_workno": "RJ09999995",
+          "parent_workno": null,
+          "child_worknos": [],
+          "translations": [],
+          "language_editions": [
+            {
+              "workno": "RJ09999995",
+              "locale": "ja-JP",
+              "label": "Japanese",
+              "status": "official_full",
+              "translation_role": "original"
+            }
+          ]
+        },
+        "dl_count": 12,
+        "rating_summary": { "average": 4.2, "count": 10 },
+        "rating_histogram": { "5": 7, "4": 2, "3": 1 },
+        "wishlist_count": 9,
+        "rank_facts": [
+          { "scope": "daily", "category": "ADV", "rank": 8, "observed_at": "2026-02-31T00:00Z" }
+        ]
+      },
+      "metadata": {
+        "fixturePath": "fixtures/catalog-recorded-importers/dlsite-demand-parse-drift-replay.json",
+        "redactionClass": "public_metadata"
+      }
+    }
+  ]
+}

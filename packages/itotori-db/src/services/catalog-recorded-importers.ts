@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { AuthorizationActor } from "../authorization.js";
 import type {
   CatalogConflictInput,
+  CatalogDemandFactInput,
   CatalogExternalIdInput,
   CatalogJsonRecord,
   CatalogLanguageStatusInput,
@@ -15,6 +16,7 @@ import {
   catalogConflictKindValues,
   catalogConflictStatusValues,
   catalogConflictSubjectKindValues,
+  catalogDemandFactKindValues,
   catalogExternalIdKindValues,
   catalogLanguageStatusScopeValues,
   catalogLanguageStatusValues,
@@ -26,6 +28,7 @@ import {
   type CatalogConflictKind,
   type CatalogConflictStatus,
   type CatalogConflictSubjectKind,
+  type CatalogDemandFactKind,
   type CatalogExternalIdKind,
   type CatalogLanguageStatus,
   type CatalogLanguageStatusScope,
@@ -354,6 +357,13 @@ export type CatalogRecordedSeedTargetFact = {
   metadata?: CatalogJsonRecord;
 };
 
+export type CatalogRecordedDemandFact = {
+  factKind: CatalogDemandFactKind;
+  factValue: CatalogJsonRecord;
+  observedAt?: string;
+  metadata?: CatalogJsonRecord;
+};
+
 export type CatalogRecordedConflictEvidenceFact = {
   subjectKind?: CatalogConflictSubjectKind;
   subjectId?: string;
@@ -383,6 +393,7 @@ export type CatalogRecordedImporterFact = {
   externalIds?: readonly CatalogRecordedExternalIdFact[];
   releases?: readonly CatalogRecordedReleaseFact[];
   languageStatuses?: readonly CatalogRecordedLanguageStatusFact[];
+  demandFacts?: readonly CatalogRecordedDemandFact[];
   conflicts?: readonly CatalogRecordedConflictFact[];
   seedTarget?: CatalogRecordedSeedTargetFact | false;
   metadata?: CatalogJsonRecord;
@@ -410,6 +421,7 @@ function parseDlsiteStorefrontResponse(
   );
   const languages = normalized.languageStatuses;
   const primaryLanguage = languages[0]?.language ?? "ja-JP";
+  const demandFacts = dlsiteDemandFacts(sourceId, normalized, response);
 
   return {
     diagnostics,
@@ -447,12 +459,14 @@ function parseDlsiteStorefrontResponse(
         }) as CatalogRecordedReleaseFact,
       ],
       languageStatuses: languages,
+      demandFacts,
       seedTarget: false,
       metadata: compactJson({
         storefront: "dlsite",
         workno: sourceId,
         releaseMetadata: compactJson({ releaseDate, releaseYear, makerName }),
         workType,
+        geoRecovery: optionalRecord(response.metadata ?? {}, "geoRecovery"),
         translationInfo,
         translationTree: translationInfo,
         demand: compactJson({
@@ -465,6 +479,26 @@ function parseDlsiteStorefrontResponse(
         diagnostics,
       }),
     },
+  };
+}
+
+export function mapDlsiteDemandFactsForRecordedResponse(
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): {
+  facts: readonly CatalogRecordedDemandFact[];
+  diagnostics: readonly CatalogRecordedStorefrontDiagnostic[];
+} {
+  const normalized = normalizeDlsiteStorefrontPayload(fixture, response);
+  return {
+    facts: dlsiteDemandFacts(normalized.sourceId, normalized, response),
+    diagnostics: demandDiagnostics(
+      fixture,
+      response,
+      normalized.demand,
+      ["dl_count", "rating_summary", "rating_histogram", "wishlist_count", "rank_facts"],
+      "DLsite",
+    ),
   };
 }
 
@@ -1023,11 +1057,11 @@ function normalizeDlsiteStorefrontPayload(
   );
   const maker = optionalRecord(payload, "maker");
   const demand = compactJson({
-    dl_count: demandNumber(payload, "dl_count"),
-    rating_summary: optionalRecord(payload, "rating_summary"),
-    rating_histogram: optionalRecord(payload, "rating_histogram"),
-    wishlist_count: demandNumber(payload, "wishlist_count"),
-    rank_facts: optionalArray(payload, "rank_facts"),
+    dl_count: optionalDemandNumber(payload, "dl_count", fixture, response),
+    rating_summary: optionalDemandRecord(payload, "rating_summary", fixture, response),
+    rating_histogram: optionalDemandRecord(payload, "rating_histogram", fixture, response),
+    wishlist_count: optionalDemandNumber(payload, "wishlist_count", fixture, response),
+    rank_facts: optionalDlsiteRankFacts(payload, "rank_facts", fixture, response),
   });
 
   return compactJson({
@@ -1220,6 +1254,249 @@ function demandDiagnostics(
       sourceField: `demand.${field}`,
       message: `${sourceLabel} recorded response did not include demand.${field}`,
     }));
+}
+
+function dlsiteDemandFacts(
+  sourceId: string,
+  normalized: NormalizedDlsiteStorefrontPayload,
+  response: CatalogRecordedStorefrontResponse,
+): CatalogRecordedDemandFact[] {
+  const demand = normalized.demand;
+  const facts: CatalogRecordedDemandFact[] = [];
+  const add = (
+    factKind: CatalogDemandFactKind,
+    sourceField: string,
+    factValue: CatalogJsonRecord,
+    observedAt?: string,
+  ) => {
+    facts.push(
+      compactJson({
+        factKind,
+        factValue,
+        observedAt,
+        metadata: compactJson({
+          sourceField,
+          storefront: "dlsite",
+          workno: sourceId,
+          requestIdentity: response.requestIdentity,
+        }),
+      }) as CatalogRecordedDemandFact,
+    );
+  };
+
+  const dlCount = demandNumber(demand, "dl_count");
+  if (dlCount !== undefined) {
+    add(catalogDemandFactKindValues.dlCount, "dl_count", { count: dlCount });
+  }
+  const ratingSummary = optionalRecord(demand, "rating_summary");
+  if (ratingSummary !== undefined) {
+    add(catalogDemandFactKindValues.ratingSummary, "rating_summary", ratingSummary);
+  }
+  const ratingHistogram = optionalRecord(demand, "rating_histogram");
+  if (ratingHistogram !== undefined) {
+    add(catalogDemandFactKindValues.ratingHistogram, "rating_histogram", ratingHistogram);
+  }
+  const wishlistCount = demandNumber(demand, "wishlist_count");
+  if (wishlistCount !== undefined) {
+    add(catalogDemandFactKindValues.wishlistCount, "wishlist_count", { count: wishlistCount });
+  }
+  for (const [index, rank] of (optionalArray(demand, "rank_facts") ?? []).entries()) {
+    const rankRecord = rank as CatalogJsonRecord;
+    add(
+      catalogDemandFactKindValues.rank,
+      `rank_facts[${index}]`,
+      rankRecord,
+      optionalString(rankRecord, "observed_at"),
+    );
+  }
+  if (normalized.workType !== undefined) {
+    add(catalogDemandFactKindValues.workType, "work_type", { workType: normalized.workType });
+  }
+  add(catalogDemandFactKindValues.translationTree, "translation_info", normalized.translationInfo);
+  return facts;
+}
+
+function optionalDlsiteRankFacts(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): CatalogJsonRecord[] | undefined {
+  const ranks = optionalDemandArray(record, field, fixture, response);
+  if (ranks === undefined) {
+    return undefined;
+  }
+  return ranks.map((rank, index) => {
+    const sourceField = `${field}[${index}]`;
+    if (rank === null || typeof rank !== "object" || Array.isArray(rank)) {
+      throw storefrontSemanticError(
+        catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+        `DLsite demand.${sourceField} must be a JSON object`,
+        fixture,
+        response,
+        sourceField,
+      );
+    }
+    const rankRecord = rank as CatalogJsonRecord;
+    requireDemandString(rankRecord, "scope", fixture, response, `${sourceField}.scope`);
+    requireDemandString(rankRecord, "category", fixture, response, `${sourceField}.category`);
+    requireDemandPositiveInteger(rankRecord, "rank", fixture, response, `${sourceField}.rank`);
+    requireDemandObservedAt(rankRecord, "observed_at", fixture, response, `${sourceField}.observed_at`);
+    return rankRecord;
+  });
+}
+
+function optionalDemandNumber(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): number | undefined {
+  if (!(field in record)) {
+    return undefined;
+  }
+  const value = record[field];
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `DLsite demand.${field} must be a finite number when present`,
+    fixture,
+    response,
+    field,
+  );
+}
+
+function requireDemandString(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+  sourceField: string,
+): string {
+  const value = record[field];
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `DLsite demand.${sourceField} must be a non-empty string`,
+    fixture,
+    response,
+    sourceField,
+  );
+}
+
+function requireDemandObservedAt(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+  sourceField: string,
+): string {
+  const value = requireDemandString(record, field, fixture, response, sourceField);
+  if (isValidObservedAtInput(value)) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `DLsite demand.${sourceField} must be a valid date string`,
+    fixture,
+    response,
+    sourceField,
+  );
+}
+
+function isValidObservedAtInput(value: string): boolean {
+  const observedAtShape =
+    /^\d{4}-\d{2}-\d{2}(?:$|T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:?\d{2})?$)/u;
+  if (!observedAtShape.test(value)) {
+    return false;
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+  return hasValidCalendarDatePrefix(value);
+}
+
+function hasValidCalendarDatePrefix(value: string): boolean {
+  const datePrefix = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/u.exec(value);
+  if (datePrefix === null) {
+    return false;
+  }
+  const [, year, month, day] = datePrefix;
+  const calendarDate = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
+  return (
+    calendarDate.getUTCFullYear() === Number(year) &&
+    calendarDate.getUTCMonth() + 1 === Number(month) &&
+    calendarDate.getUTCDate() === Number(day)
+  );
+}
+
+function requireDemandPositiveInteger(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+  sourceField: string,
+): number {
+  const value = record[field];
+  if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `DLsite demand.${sourceField} must be a positive integer`,
+    fixture,
+    response,
+    sourceField,
+  );
+}
+
+function optionalDemandRecord(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): CatalogJsonRecord | undefined {
+  if (!(field in record)) {
+    return undefined;
+  }
+  const value = record[field];
+  if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+    return value as CatalogJsonRecord;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `DLsite demand.${field} must be a JSON object when present`,
+    fixture,
+    response,
+    field,
+  );
+}
+
+function optionalDemandArray(
+  record: CatalogJsonRecord,
+  field: string,
+  fixture: CatalogRecordedStorefrontFixture,
+  response: CatalogRecordedStorefrontResponse,
+): unknown[] | undefined {
+  if (!(field in record)) {
+    return undefined;
+  }
+  const value = record[field];
+  if (Array.isArray(value)) {
+    return value;
+  }
+  throw storefrontSemanticError(
+    catalogRecordedStorefrontDiagnosticCodeValues.parseDrift,
+    `DLsite demand.${field} must be an array when present`,
+    fixture,
+    response,
+    field,
+  );
 }
 
 function storefrontSemanticError(
@@ -1794,6 +2071,7 @@ async function importRecordedCatalogFact(
       sourceProvenanceId,
       releaseIdsBySourceId,
     ),
+    demandFacts: demandFactInputs(context, fact, importMetadata, sourceProvenanceId),
     conflicts: conflictInputs(
       context,
       {
@@ -1991,6 +2269,36 @@ function languageStatusInputs(
   });
 }
 
+function demandFactInputs(
+  context: CatalogCrawlerIngestContext<CatalogRecordedImporterFact>,
+  fact: CatalogRecordedImporterFact,
+  importMetadata: CatalogJsonRecord,
+  sourceProvenanceId: string,
+): CatalogDemandFactInput[] {
+  return (fact.demandFacts ?? []).map((demandFact, index) => {
+    const sourceField = optionalString(demandFact.metadata, "sourceField") ?? String(index);
+    const input: CatalogDemandFactInput = {
+      demandFactId: stableCatalogId("catalog-demand-fact", [
+        context.adapter.catalogSource,
+        fact.sourceId,
+        demandFact.factKind,
+        sourceField,
+      ]),
+      catalogSource: context.adapter.catalogSource,
+      sourceId: fact.sourceId,
+      factKind: demandFact.factKind,
+      factValue: demandFact.factValue,
+      sourceProvenanceId,
+      parserVersion: context.adapter.parserVersion,
+      metadata: compactJson({ ...demandFact.metadata, ...importMetadata }),
+    };
+    if (demandFact.observedAt !== undefined) {
+      input.observedAt = demandFact.observedAt;
+    }
+    return input;
+  });
+}
+
 function conflictInputs(
   context: CatalogCrawlerIngestContext<CatalogRecordedImporterFact>,
   fact: CatalogRecordedImporterFact,
@@ -2170,6 +2478,16 @@ function assertFact(fact: CatalogRecordedImporterFact): void {
   }
   for (const status of fact.languageStatuses ?? []) {
     requiredString(status.language, "fact.languageStatuses[].language");
+  }
+  for (const demandFact of fact.demandFacts ?? []) {
+    requiredString(demandFact.factKind, "fact.demandFacts[].factKind");
+    if (
+      demandFact.factValue === null ||
+      typeof demandFact.factValue !== "object" ||
+      Array.isArray(demandFact.factValue)
+    ) {
+      throw new Error("fact.demandFacts[].factValue must be a JSON object");
+    }
   }
 }
 

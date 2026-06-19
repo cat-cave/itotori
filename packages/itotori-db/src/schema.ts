@@ -248,6 +248,19 @@ export const catalogLanguageStatusScopeValues = {
 export type CatalogLanguageStatusScope =
   (typeof catalogLanguageStatusScopeValues)[keyof typeof catalogLanguageStatusScopeValues];
 
+export const catalogDemandFactKindValues = {
+  dlCount: "dl_count",
+  ratingSummary: "rating_summary",
+  ratingHistogram: "rating_histogram",
+  wishlistCount: "wishlist_count",
+  rank: "rank",
+  workType: "work_type",
+  translationTree: "translation_tree",
+} as const;
+
+export type CatalogDemandFactKind =
+  (typeof catalogDemandFactKindValues)[keyof typeof catalogDemandFactKindValues];
+
 export const catalogConflictKindValues = {
   externalId: "external_id",
   languageStatus: "language_status",
@@ -530,6 +543,45 @@ export const catalogLanguageStatuses = pgTable(
     ),
     index("itotori_catalog_language_statuses_release_idx").on(table.releaseId),
     index("itotori_catalog_language_statuses_provenance_idx").on(table.sourceProvenanceId),
+  ],
+);
+
+export const catalogDemandFacts = pgTable(
+  "itotori_catalog_demand_facts",
+  {
+    demandFactId: text("demand_fact_id").primaryKey(),
+    workId: text("work_id")
+      .notNull()
+      .references(() => catalogWorks.workId, { onDelete: "cascade" }),
+    catalogSource: text("catalog_source").notNull(),
+    sourceId: text("source_id").notNull(),
+    factKind: text("fact_kind").notNull(),
+    factValue: jsonb("fact_value")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    observedAt: timestamp("observed_at", { withTimezone: true }).notNull().defaultNow(),
+    sourceProvenanceId: text("source_provenance_id").references(
+      () => catalogSourceProvenance.sourceProvenanceId,
+      { onDelete: "set null" },
+    ),
+    parserVersion: text("parser_version").notNull().default("unknown"),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_catalog_demand_facts_source_kind_idx").on(
+      table.catalogSource,
+      table.sourceId,
+      table.factKind,
+      sql`coalesce(${table.metadata}->>'sourceField', '')`,
+    ),
+    index("itotori_catalog_demand_facts_work_idx").on(table.workId),
+    index("itotori_catalog_demand_facts_provenance_idx").on(table.sourceProvenanceId),
   ],
 );
 
