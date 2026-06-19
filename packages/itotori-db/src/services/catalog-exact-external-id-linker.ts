@@ -79,7 +79,7 @@ export type CatalogExactExternalIdLinkResult = {
 
 export interface ItotoriCatalogExactExternalIdLinkerPort {
   linkExactExternalIds(
-    request: CatalogExactExternalIdLinkRequest,
+    request: unknown,
   ): Promise<CatalogExactExternalIdLinkResult>;
 }
 
@@ -110,7 +110,7 @@ export class ItotoriCatalogExactExternalIdLinkerService implements ItotoriCatalo
   ) {}
 
   async linkExactExternalIds(
-    request: CatalogExactExternalIdLinkRequest,
+    request: unknown,
   ): Promise<CatalogExactExternalIdLinkResult> {
     const normalized = normalizeRequest(request);
     if (normalized.diagnostics.some((diagnostic) => diagnostic.severity === "error")) {
@@ -212,8 +212,24 @@ export class ItotoriCatalogExactExternalIdLinkerService implements ItotoriCatalo
   }
 }
 
-function normalizeRequest(request: CatalogExactExternalIdLinkRequest): NormalizedRequest {
+function normalizeRequest(request: unknown): NormalizedRequest {
   const diagnostics: CatalogExactExternalIdLinkDiagnostic[] = [];
+  if (!isRecord(request)) {
+    diagnostics.push(
+      diagnostic(
+        catalogExactExternalIdLinkDiagnosticCodeValues.invalidRequest,
+        "error",
+        "Exact external-id link request must be a JSON object.",
+        { reasonCode: "invalid_request_shape" },
+      ),
+    );
+    return {
+      subject: null,
+      externalIds: [],
+      diagnostics,
+    };
+  }
+
   const subject = normalizeSubject(request.subject, diagnostics);
   const externalIds = Array.isArray(request.externalIds)
     ? request.externalIds.map((externalId, inputIndex) =>
@@ -254,7 +270,7 @@ function normalizeRequest(request: CatalogExactExternalIdLinkRequest): Normalize
 }
 
 function normalizeSubject(
-  subject: CatalogExactExternalIdLinkSubject | undefined,
+  subject: unknown,
   diagnostics: CatalogExactExternalIdLinkDiagnostic[],
 ): CatalogExactExternalIdLinkSubject | null {
   if (subject === undefined) {
@@ -266,7 +282,11 @@ function normalizeSubject(
     "manual_request",
     "fixture",
   ];
-  if (!supportedKinds.includes(subject.kind) || !nonEmptyString(subject.id)) {
+  if (
+    !isRecord(subject) ||
+    !supportedKinds.includes(subject.kind as CatalogExactExternalIdLinkSubject["kind"]) ||
+    !nonEmptyString(subject.id)
+  ) {
     diagnostics.push(
       diagnostic(
         catalogExactExternalIdLinkDiagnosticCodeValues.invalidRequest,
@@ -276,16 +296,32 @@ function normalizeSubject(
     );
     return null;
   }
-  return subject;
+  return {
+    kind: subject.kind as CatalogExactExternalIdLinkSubject["kind"],
+    id: subject.id,
+  };
 }
 
 function normalizeExternalId(
-  externalId: CatalogExactExternalIdLinkExternalId,
+  externalId: unknown,
   inputIndex: number,
   diagnostics: CatalogExactExternalIdLinkDiagnostic[],
 ): NormalizedExternalId | null {
+  if (!isRecord(externalId)) {
+    diagnostics.push(
+      diagnostic(
+        catalogExactExternalIdLinkDiagnosticCodeValues.invalidRequest,
+        "error",
+        `External ID ${inputIndex} must be a JSON object.`,
+        undefined,
+        inputIndex,
+      ),
+    );
+    return null;
+  }
+
   const catalogSource = externalId.catalogSource;
-  if (!catalogSources.includes(catalogSource)) {
+  if (!catalogSources.includes(catalogSource as CatalogSource)) {
     diagnostics.push(
       diagnostic(
         catalogExactExternalIdLinkDiagnosticCodeValues.invalidRequest,
@@ -312,7 +348,7 @@ function normalizeExternalId(
   }
 
   const externalIdKind = externalId.externalIdKind ?? catalogExternalIdKindValues.sourceRecord;
-  if (!catalogExternalIdKinds.includes(externalIdKind)) {
+  if (!catalogExternalIdKinds.includes(externalIdKind as CatalogExternalIdKind)) {
     diagnostics.push(
       diagnostic(
         catalogExactExternalIdLinkDiagnosticCodeValues.invalidRequest,
@@ -332,7 +368,7 @@ function normalizeExternalId(
         "error",
         "local_detection IDs are detector observations and cannot authoritatively link catalog works.",
         {
-          catalogSource,
+          catalogSource: catalogSource as CatalogSource,
           sourceId: externalId.sourceId,
           externalIdKind,
         },
@@ -344,9 +380,9 @@ function normalizeExternalId(
 
   return {
     inputIndex,
-    catalogSource,
+    catalogSource: catalogSource as CatalogSource,
     sourceId: externalId.sourceId,
-    externalIdKind,
+    externalIdKind: externalIdKind as CatalogExternalIdKind,
   };
 }
 
@@ -419,4 +455,8 @@ function matchDiagnosticMetadata(match: CatalogExactExternalIdLinkMatch): Record
 
 function nonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

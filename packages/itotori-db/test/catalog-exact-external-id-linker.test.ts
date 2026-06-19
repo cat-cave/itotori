@@ -5,13 +5,21 @@ import type {
   CatalogWorkSnapshot,
   ItotoriCatalogRepositoryPort,
 } from "../src/repositories/catalog-repository.js";
+import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import {
   catalogExactExternalIdLinkDiagnosticCodeValues,
+  catalogExactExternalIdLinkSchemaVersion,
   catalogExactExternalIdLinkStatusValues,
   ItotoriCatalogExactExternalIdLinkerService,
   type CatalogExactExternalIdLinkRequest,
 } from "../src/services/catalog-exact-external-id-linker.js";
-import { catalogExternalIdKindValues, type CatalogExternalIdKind } from "../src/schema.js";
+import {
+  catalogExternalIdKindValues,
+  catalogSourceRecordKindValues,
+  catalogSourceValues,
+  type CatalogExternalIdKind,
+} from "../src/schema.js";
+import { isolatedMigratedContext } from "./db-test-context.js";
 
 const localActor: AuthorizationActor = { userId: localUserId };
 
@@ -119,6 +127,93 @@ describe("ItotoriCatalogExactExternalIdLinkerService", () => {
     ]);
     expect(repository.calls).toEqual([]);
   });
+
+  it.each([
+    ["malformed object", { schemaVersion: catalogExactExternalIdLinkSchemaVersion }],
+    ["null", null],
+    ["array", []],
+    ["scalar", "not-a-request"],
+  ])("returns semantic invalid-request diagnostics for %s payloads", async (_name, payload) => {
+    const repository = new FakeCatalogLookupRepository([
+      [
+        exactKey("dlsite", "RJ349517", catalogExternalIdKindValues.storeProduct),
+        workSnapshot("work-dlsite", "DLsite-only fixture"),
+      ],
+    ]);
+    const service = new ItotoriCatalogExactExternalIdLinkerService(repository, localActor);
+
+    const result = await service.linkExactExternalIds(payload);
+
+    expect(result).toMatchObject({
+      status: catalogExactExternalIdLinkStatusValues.unsupported,
+      subject: null,
+      workId: null,
+      matches: [],
+      diagnostics: [
+        expect.objectContaining({
+          code: catalogExactExternalIdLinkDiagnosticCodeValues.invalidRequest,
+          severity: "error",
+        }),
+      ],
+    });
+    expect(repository.calls).toEqual([]);
+  });
+
+  it("returns the same exact-match diagnostics against the real catalog repository", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const realRepository = new ItotoriCatalogRepository(context.db);
+      const sourceProvenance = await realRepository.recordSourceProvenance(localActor, {
+        sourceProvenanceId: uuid(1),
+        catalogSource: catalogSourceValues.dlsite,
+        sourceRecordKind: catalogSourceRecordKindValues.recordedFixture,
+        sourceId: "RJ349517",
+        sourceVersion: "fixture-2026-06-19",
+        requestId: "fixture:dlsite:RJ349517",
+        httpStatus: 200,
+        ok: true,
+        payloadHash: `sha256:${"1".repeat(64)}`,
+        payload: { catalogSource: "dlsite", sourceId: "RJ349517" },
+        fetchedAt: "2026-06-19T12:00:00.000Z",
+        metadata: { fixture: true },
+      });
+      await realRepository.upsertWork(localActor, {
+        workId: "work-dlsite",
+        canonicalTitle: "DLsite-only fixture",
+        originalLanguage: "ja-JP",
+        firstReleaseYear: 2022,
+        externalIds: [
+          {
+            externalIdId: uuid(2),
+            catalogSource: catalogSourceValues.dlsite,
+            sourceId: "RJ349517",
+            externalIdKind: catalogExternalIdKindValues.storeProduct,
+            sourceProvenanceId: sourceProvenance.sourceProvenanceId,
+          },
+        ],
+      });
+      const request = fixtureRequest("exactMatch");
+      const fakeService = new ItotoriCatalogExactExternalIdLinkerService(
+        new FakeCatalogLookupRepository([
+          [
+            exactKey("dlsite", "RJ349517", catalogExternalIdKindValues.storeProduct),
+            workSnapshot("work-dlsite", "DLsite-only fixture"),
+          ],
+        ]),
+        localActor,
+      );
+      const realService = new ItotoriCatalogExactExternalIdLinkerService(
+        realRepository,
+        localActor,
+      );
+
+      await expect(realService.linkExactExternalIds(request)).resolves.toEqual(
+        await fakeService.linkExactExternalIds(request),
+      );
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 class FakeCatalogLookupRepository implements Pick<
@@ -188,4 +283,8 @@ function exactKey(
   externalIdKind: CatalogExternalIdKind,
 ): string {
   return `${catalogSource}:${sourceId}:${externalIdKind}`;
+}
+
+function uuid(id: number): string {
+  return `019ed064-0000-7000-8000-${String(id).padStart(12, "0")}`;
 }
