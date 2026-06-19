@@ -3,7 +3,11 @@ export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue
 export type JsonObject = { [key: string]: JsonValue };
 
 export type ProviderFamily = "fake" | "recorded" | "openrouter" | "local-openai-compatible";
-export type EndpointFamily = "chat-completions" | "responses" | "local-chat-completions";
+export type EndpointFamily =
+  | "chat-completions"
+  | "responses"
+  | "local-chat-completions"
+  | "recorded-fixture";
 
 export type CapabilitySupport = "supported" | "unsupported" | "partial" | "untested";
 
