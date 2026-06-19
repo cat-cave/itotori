@@ -5,12 +5,12 @@ use std::path::{Component, Path, PathBuf};
 use kaifuu_core::{
     AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
     DetectionResult, EngineAdapter, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
-    GoldenHarnessRequest, HelperCapability, KaifuuResult, PatchExport, PatchPreflightRequest,
-    PatchRequest, PatchResult, ProfileRequest, VerifyRequest, atomic_write_text,
-    fixture_helper_registry, promote_staged_directory_no_clobber, read_json,
-    redact_for_log_or_report, redact_report_value, run_round_trip_golden,
-    validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
-    validate_profile_value, write_json,
+    GoldenHarnessRequest, HelperBinaryLaunchValidationRequest, HelperCapability, KaifuuResult,
+    PatchExport, PatchPreflightRequest, PatchRequest, PatchResult, ProfileRequest, VerifyRequest,
+    atomic_write_text, fixture_helper_registry, parse_helper_capability,
+    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
+    run_round_trip_golden, validate_helper_registry_entry_value, validate_helper_result_value,
+    validate_offset_map_value, validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -211,9 +211,71 @@ fn run_helper_registry_command(args: &[String]) -> Result<(), Box<dyn std::error
             )?;
             write_json(&output, &redact_report_value(&result))?;
         }
+        "check-binary" => {
+            let registry_entry_path = PathBuf::from(positional(args, 2)?);
+            let output = PathBuf::from(flag(args, "--output")?);
+            let executable_path = PathBuf::from(flag(args, "--helper-binary")?);
+            let allowlist_entry_id = flag(args, "--allowlist-entry-id")?;
+            let platform = flag(args, "--platform")?;
+            let helper_version = flag(args, "--helper-version")?;
+            let value: serde_json::Value = read_json(&registry_entry_path)?;
+            let registry_validation = validate_helper_registry_entry_value(&value);
+            if registry_validation.status == kaifuu_core::OperationStatus::Failed {
+                let registry_validation = registry_validation.redacted_for_report();
+                write_json(&output, &registry_validation)?;
+                return Err(format!(
+                    "helper registry validation failed for {}: {}",
+                    registry_validation
+                        .helper_id
+                        .as_deref()
+                        .unwrap_or("<unknown>"),
+                    registry_validation
+                        .diagnostics
+                        .iter()
+                        .map(|diagnostic| format!("{}:{}", diagnostic.field, diagnostic.code))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+                .into());
+            }
+            let entry: kaifuu_core::HelperRegistryEntry = serde_json::from_value(value)?;
+            let required_capabilities = flag_values(args, "--capability")
+                .iter()
+                .map(|capability| {
+                    parse_helper_capability(capability)
+                        .ok_or_else(|| format!("unsupported helper capability {capability}").into())
+                })
+                .collect::<Result<Vec<_>, Box<dyn std::error::Error>>>()?;
+            let result = entry
+                .validate_binary_launch(HelperBinaryLaunchValidationRequest {
+                    helper_id: &entry.helper_id,
+                    allowlist_entry_id,
+                    executable_path: &executable_path,
+                    platform,
+                    helper_version,
+                    required_capabilities: &required_capabilities,
+                })
+                .redacted_for_report();
+            let failed = result.status == kaifuu_core::OperationStatus::Failed;
+            write_json(&output, &result)?;
+            if failed {
+                return Err(format!(
+                    "helper binary allowlist validation failed for {} / {}: {}",
+                    result.helper_id,
+                    result.allowlist_entry_id,
+                    result
+                        .diagnostics
+                        .iter()
+                        .map(|diagnostic| diagnostic.code.as_str())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+                .into());
+            }
+        }
         _ => {
             return Err(
-                "usage: kaifuu helper-registry <validate <entry.json>|invoke-fixture-stub> --output <report.json>"
+                "usage: kaifuu helper-registry <validate <entry.json>|check-binary <entry.json>|invoke-fixture-stub> --output <report.json>"
                     .into(),
             );
         }
@@ -722,6 +784,19 @@ fn flag_present(args: &[String], name: &str) -> bool {
     args.iter().any(|arg| arg == name)
 }
 
+fn flag_values<'a>(args: &'a [String], name: &str) -> Vec<&'a str> {
+    args.iter()
+        .enumerate()
+        .filter_map(|(index, arg)| {
+            if arg == name {
+                args.get(index + 1).map(String::as_str)
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -938,6 +1013,165 @@ mod tests {
             kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
         );
         assert_eq!(result["diagnostic"]["code"], "success");
+    }
+
+    #[test]
+    fn helper_registry_check_binary_reports_allowlist_diagnostics() {
+        let fixture = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/helper-registry/valid-helper.json",
+        );
+        let allowed_binary = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/helper-binaries/kaifuu-fixture-helper",
+        );
+        let root = temp_dir("helper-registry-check-binary-allowed");
+        let output = root.join("helper-binary-report.json");
+
+        run_cli(&[
+            "helper-registry",
+            "check-binary",
+            fixture.to_str().unwrap(),
+            "--helper-binary",
+            allowed_binary.to_str().unwrap(),
+            "--allowlist-entry-id",
+            kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID,
+            "--platform",
+            "fixture-any",
+            "--helper-version",
+            "0.1.0",
+            "--capability",
+            "fixture_invocation",
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["helperId"], kaifuu_core::FIXTURE_HELPER_REGISTRY_ID);
+        assert_eq!(
+            report["allowlistEntryId"],
+            kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID
+        );
+        assert_eq!(
+            report["observedHash"],
+            "sha256:c1ac7473395cf2fbb823d33c63b5b4810352e3d2c255833498ba4fc4efb29f7c"
+        );
+
+        let mismatch_binary = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/helper-binaries/kaifuu-fixture-helper-mismatch",
+        );
+        let cases = [
+            (
+                "missing",
+                fixture.clone(),
+                public_fixture_path(
+                    "fixtures/public/kaifuu-helper-results/helper-binaries/missing-helper",
+                ),
+                "fixture-any",
+                "0.1.0",
+                "fixture_invocation",
+                kaifuu_core::SEMANTIC_HELPER_ALLOWLIST_MISSING_BINARY,
+            ),
+            (
+                "mismatched",
+                fixture.clone(),
+                mismatch_binary,
+                "fixture-any",
+                "0.1.0",
+                "fixture_invocation",
+                kaifuu_core::SEMANTIC_HELPER_ALLOWLIST_HASH_MISMATCH,
+            ),
+            (
+                "wrong-platform",
+                public_fixture_path(
+                    "fixtures/public/kaifuu-helper-results/helper-registry/allowlist-wrong-platform.json",
+                ),
+                allowed_binary.clone(),
+                "fixture-any",
+                "0.1.0",
+                "fixture_invocation",
+                kaifuu_core::SEMANTIC_HELPER_ALLOWLIST_WRONG_PLATFORM,
+            ),
+            (
+                "stale-version",
+                public_fixture_path(
+                    "fixtures/public/kaifuu-helper-results/helper-registry/allowlist-stale-version.json",
+                ),
+                allowed_binary.clone(),
+                "fixture-any",
+                "0.1.0",
+                "fixture_invocation",
+                kaifuu_core::SEMANTIC_HELPER_ALLOWLIST_STALE_VERSION,
+            ),
+            (
+                "undeclared-capability",
+                public_fixture_path(
+                    "fixtures/public/kaifuu-helper-results/helper-registry/allowlist-missing-declared-capability.json",
+                ),
+                allowed_binary.clone(),
+                "fixture-any",
+                "0.1.0",
+                "key_discovery",
+                kaifuu_core::SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY,
+            ),
+        ];
+
+        for (
+            name,
+            registry_fixture,
+            helper_binary,
+            platform,
+            helper_version,
+            capability,
+            expected_code,
+        ) in cases
+        {
+            let root = temp_dir(&format!("helper-registry-check-binary-{name}"));
+            let output = root.join("helper-binary-report.json");
+            let result = run_with_args(vec![
+                "helper-registry".to_string(),
+                "check-binary".to_string(),
+                registry_fixture.to_str().unwrap().to_string(),
+                "--helper-binary".to_string(),
+                helper_binary.to_str().unwrap().to_string(),
+                "--allowlist-entry-id".to_string(),
+                kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID.to_string(),
+                "--platform".to_string(),
+                platform.to_string(),
+                "--helper-version".to_string(),
+                helper_version.to_string(),
+                "--capability".to_string(),
+                capability.to_string(),
+                "--output".to_string(),
+                output.to_str().unwrap().to_string(),
+            ]);
+
+            assert!(result.is_err(), "{name} unexpectedly passed");
+            let report: serde_json::Value = read_json(&output).unwrap();
+            assert_eq!(report["status"], "failed");
+            assert_eq!(report["helperId"], kaifuu_core::FIXTURE_HELPER_REGISTRY_ID);
+            assert_eq!(
+                report["allowlistEntryId"],
+                kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID
+            );
+            assert_eq!(report["platform"], platform);
+            assert!(
+                report["diagnostics"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|diagnostic| {
+                        diagnostic["code"] == expected_code
+                            && diagnostic["helperId"] == kaifuu_core::FIXTURE_HELPER_REGISTRY_ID
+                            && diagnostic["allowlistEntryId"]
+                                == kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID
+                            && diagnostic["platform"] == platform
+                            && diagnostic["remediationCode"]
+                                .as_str()
+                                .is_some_and(|code| !code.is_empty())
+                    }),
+                "{name}: {report:#?}"
+            );
+        }
     }
 
     #[test]

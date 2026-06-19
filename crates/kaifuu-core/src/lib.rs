@@ -37,6 +37,15 @@ pub const SEMANTIC_HELPER_REGISTRY_INCOMPATIBLE_OUTPUT_SCHEMA: &str =
     "kaifuu.helper_registry.incompatible_output_schema";
 pub const SEMANTIC_HELPER_REGISTRY_INVALID_REDACTION_CLASS: &str =
     "kaifuu.helper_registry.invalid_redaction_class";
+pub const SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY: &str = "kaifuu.helper_allowlist.missing_entry";
+pub const SEMANTIC_HELPER_ALLOWLIST_MISSING_BINARY: &str = "kaifuu.helper_allowlist.missing_binary";
+pub const SEMANTIC_HELPER_ALLOWLIST_HASH_MISMATCH: &str = "kaifuu.helper_allowlist.hash_mismatch";
+pub const SEMANTIC_HELPER_ALLOWLIST_WRONG_PLATFORM: &str = "kaifuu.helper_allowlist.wrong_platform";
+pub const SEMANTIC_HELPER_ALLOWLIST_STALE_VERSION: &str = "kaifuu.helper_allowlist.stale_version";
+pub const SEMANTIC_HELPER_ALLOWLIST_EXECUTABLE_NAME_MISMATCH: &str =
+    "kaifuu.helper_allowlist.executable_name_mismatch";
+pub const SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY: &str =
+    "kaifuu.helper_allowlist.undeclared_capability";
 pub const SEMANTIC_MALFORMED_SECRET_REF: &str = "kaifuu.malformed_secret_ref";
 pub const SEMANTIC_SECRET_REF_OUT_OF_POLICY: &str = "kaifuu.secret_ref_out_of_policy";
 pub const SEMANTIC_EXTERNAL_SECRET_UNAVAILABLE: &str = "kaifuu.external_secret_unavailable";
@@ -4401,16 +4410,25 @@ pub struct HelperRegistryEntry {
     pub output_schema_id: String,
     pub redaction_class: HelperRedactionClass,
     pub execution_policy: HelperExecutionPolicy,
+    pub binary_allowlist: HelperBinaryAllowlist,
 }
 
 impl HelperRegistryEntry {
     pub fn normalize(&mut self) {
         self.capabilities.sort();
         self.capabilities.dedup();
+        self.binary_allowlist.normalize();
     }
 
     pub fn supports(&self, capability: HelperCapability) -> bool {
         self.capabilities.contains(&capability)
+    }
+
+    pub fn validate_binary_launch(
+        &self,
+        request: HelperBinaryLaunchValidationRequest<'_>,
+    ) -> HelperBinaryLaunchValidationResult {
+        validate_helper_binary_launch(self, request)
     }
 
     pub fn validate(&self) -> HelperRegistryValidationResult {
@@ -4478,6 +4496,122 @@ pub struct HelperExecutionPolicy {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct HelperBinaryAllowlist {
+    pub entries: Vec<HelperBinaryAllowlistEntry>,
+}
+
+impl HelperBinaryAllowlist {
+    fn normalize(&mut self) {
+        self.entries
+            .sort_by_key(|entry| entry.allowlist_entry_id.clone());
+        self.entries
+            .dedup_by_key(|entry| entry.allowlist_entry_id.clone());
+        for entry in &mut self.entries {
+            entry.capabilities.sort();
+            entry.capabilities.dedup();
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperBinaryAllowlistEntry {
+    pub allowlist_entry_id: String,
+    pub helper_id: String,
+    pub platform: String,
+    pub helper_version: String,
+    pub executable_name: String,
+    pub sha256_hash: String,
+    pub signature: HelperBinarySignatureMetadata,
+    pub capabilities: Vec<HelperCapability>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperBinarySignatureMetadata {
+    pub signature_kind: String,
+    pub signer: String,
+    pub signature_ref: String,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HelperBinaryLaunchValidationRequest<'a> {
+    pub helper_id: &'a str,
+    pub allowlist_entry_id: &'a str,
+    pub executable_path: &'a Path,
+    pub platform: &'a str,
+    pub helper_version: &'a str,
+    pub required_capabilities: &'a [HelperCapability],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperBinaryLaunchValidationResult {
+    pub schema_version: String,
+    pub helper_id: String,
+    pub allowlist_entry_id: String,
+    pub status: OperationStatus,
+    pub observed_hash: Option<String>,
+    pub platform: String,
+    pub diagnostics: Vec<HelperBinaryLaunchDiagnostic>,
+}
+
+impl HelperBinaryLaunchValidationResult {
+    pub fn redacted_for_report(&self) -> Self {
+        Self {
+            schema_version: self.schema_version.clone(),
+            helper_id: redact_for_log_or_report(&self.helper_id),
+            allowlist_entry_id: redact_for_log_or_report(&self.allowlist_entry_id),
+            status: self.status.clone(),
+            observed_hash: self.observed_hash.as_deref().map(redact_helper_hash),
+            platform: redact_for_log_or_report(&self.platform),
+            diagnostics: self
+                .diagnostics
+                .iter()
+                .map(HelperBinaryLaunchDiagnostic::redacted_for_report)
+                .collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HelperBinaryLaunchDiagnostic {
+    pub helper_id: String,
+    pub allowlist_entry_id: String,
+    pub code: String,
+    pub field: String,
+    pub observed_hash: Option<String>,
+    pub platform: String,
+    pub remediation_code: String,
+    pub message: String,
+}
+
+impl HelperBinaryLaunchDiagnostic {
+    fn redacted_for_report(&self) -> Self {
+        Self {
+            helper_id: redact_for_log_or_report(&self.helper_id),
+            allowlist_entry_id: redact_for_log_or_report(&self.allowlist_entry_id),
+            code: redact_for_log_or_report(&self.code),
+            field: redact_for_log_or_report(&self.field),
+            observed_hash: self.observed_hash.as_deref().map(redact_helper_hash),
+            platform: redact_for_log_or_report(&self.platform),
+            remediation_code: redact_for_log_or_report(&self.remediation_code),
+            message: redact_for_log_or_report(&self.message),
+        }
+    }
+}
+
+fn redact_helper_hash(hash: &str) -> String {
+    if is_sha256_ref(hash) {
+        hash.to_string()
+    } else {
+        redact_for_log_or_report(hash)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HelperRegistryValidationResult {
     pub schema_version: String,
     pub helper_id: Option<String>,
@@ -4518,6 +4652,171 @@ impl HelperRegistryDiagnostic {
             message: redact_for_log_or_report(&self.message),
         }
     }
+}
+
+fn validate_helper_binary_launch(
+    entry: &HelperRegistryEntry,
+    request: HelperBinaryLaunchValidationRequest<'_>,
+) -> HelperBinaryLaunchValidationResult {
+    let mut diagnostics = Vec::new();
+    let observed_hash = match fs::metadata(request.executable_path) {
+        Ok(metadata) if metadata.is_file() => match sha256_file_ref(request.executable_path) {
+            Ok(hash) => Some(hash),
+            Err(_) => None,
+        },
+        _ => None,
+    };
+
+    let allowlist_entry = entry
+        .binary_allowlist
+        .entries
+        .iter()
+        .find(|candidate| candidate.allowlist_entry_id == request.allowlist_entry_id);
+
+    let Some(allowlist_entry) = allowlist_entry else {
+        helper_binary_launch_failure(
+            &mut diagnostics,
+            request,
+            observed_hash.as_deref(),
+            SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY,
+            "allowlistEntryId",
+            "install_or_select_allowed_helper",
+            "helper binary allowlist entry is not registered",
+        );
+        return helper_binary_launch_validation_result(request, observed_hash, diagnostics);
+    };
+
+    if allowlist_entry.helper_id != request.helper_id || entry.helper_id != request.helper_id {
+        helper_binary_launch_failure(
+            &mut diagnostics,
+            request,
+            observed_hash.as_deref(),
+            SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY,
+            "helperId",
+            "install_or_select_allowed_helper",
+            "helper id does not match the binary allowlist entry",
+        );
+    }
+    if allowlist_entry.platform != request.platform {
+        helper_binary_launch_failure(
+            &mut diagnostics,
+            request,
+            observed_hash.as_deref(),
+            SEMANTIC_HELPER_ALLOWLIST_WRONG_PLATFORM,
+            "platform",
+            "select_platform_helper",
+            "helper binary platform does not match the current launch platform",
+        );
+    }
+    if allowlist_entry.helper_version != request.helper_version
+        || entry.helper_version != request.helper_version
+    {
+        helper_binary_launch_failure(
+            &mut diagnostics,
+            request,
+            observed_hash.as_deref(),
+            SEMANTIC_HELPER_ALLOWLIST_STALE_VERSION,
+            "helperVersion",
+            "upgrade_helper_binary",
+            "helper binary version does not match the requested helper version",
+        );
+    }
+    let executable_name = request
+        .executable_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or_default();
+    if executable_name != allowlist_entry.executable_name {
+        helper_binary_launch_failure(
+            &mut diagnostics,
+            request,
+            observed_hash.as_deref(),
+            SEMANTIC_HELPER_ALLOWLIST_EXECUTABLE_NAME_MISMATCH,
+            "executableName",
+            "install_or_select_allowed_helper",
+            "helper binary executable name does not match the allowlist entry",
+        );
+    }
+    if observed_hash.is_none() {
+        helper_binary_launch_failure(
+            &mut diagnostics,
+            request,
+            observed_hash.as_deref(),
+            SEMANTIC_HELPER_ALLOWLIST_MISSING_BINARY,
+            "executablePath",
+            "install_helper_binary",
+            "helper binary is missing or unreadable",
+        );
+    } else if observed_hash.as_deref() != Some(allowlist_entry.sha256_hash.as_str()) {
+        helper_binary_launch_failure(
+            &mut diagnostics,
+            request,
+            observed_hash.as_deref(),
+            SEMANTIC_HELPER_ALLOWLIST_HASH_MISMATCH,
+            "sha256Hash",
+            "reinstall_helper_binary",
+            "helper binary hash does not match the allowlist entry",
+        );
+    }
+    for capability in request.required_capabilities {
+        if !entry.supports(*capability) || !allowlist_entry.capabilities.contains(capability) {
+            helper_binary_launch_failure(
+                &mut diagnostics,
+                request,
+                observed_hash.as_deref(),
+                SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY,
+                "capabilities",
+                "request_declared_helper_capability",
+                &format!(
+                    "helper binary does not declare required capability {}",
+                    helper_capability_name(*capability)
+                ),
+            );
+        }
+    }
+
+    helper_binary_launch_validation_result(request, observed_hash, diagnostics)
+}
+
+fn helper_binary_launch_validation_result(
+    request: HelperBinaryLaunchValidationRequest<'_>,
+    observed_hash: Option<String>,
+    diagnostics: Vec<HelperBinaryLaunchDiagnostic>,
+) -> HelperBinaryLaunchValidationResult {
+    HelperBinaryLaunchValidationResult {
+        schema_version: HELPER_REGISTRY_SCHEMA_VERSION.to_string(),
+        helper_id: redact_for_log_or_report(request.helper_id),
+        allowlist_entry_id: redact_for_log_or_report(request.allowlist_entry_id),
+        status: if diagnostics.is_empty() {
+            OperationStatus::Passed
+        } else {
+            OperationStatus::Failed
+        },
+        observed_hash,
+        platform: redact_for_log_or_report(request.platform),
+        diagnostics,
+    }
+}
+
+fn helper_binary_launch_failure(
+    diagnostics: &mut Vec<HelperBinaryLaunchDiagnostic>,
+    request: HelperBinaryLaunchValidationRequest<'_>,
+    observed_hash: Option<&str>,
+    code: &str,
+    field: &str,
+    remediation_code: &str,
+    message: &str,
+) {
+    diagnostics.push(HelperBinaryLaunchDiagnostic {
+        helper_id: redact_for_log_or_report(request.helper_id),
+        allowlist_entry_id: redact_for_log_or_report(request.allowlist_entry_id),
+        code: code.to_string(),
+        field: field.to_string(),
+        observed_hash: observed_hash.map(redact_for_log_or_report),
+        platform: redact_for_log_or_report(request.platform),
+        remediation_code: remediation_code.to_string(),
+        message: redact_for_log_or_report(message),
+    });
 }
 
 trait HelperExecutableAdapter {
@@ -4677,6 +4976,24 @@ impl FixtureHelperStubAdapter {
                 network_access: false,
                 max_runtime_seconds: 1,
             },
+            binary_allowlist: HelperBinaryAllowlist {
+                entries: vec![HelperBinaryAllowlistEntry {
+                    allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID.to_string(),
+                    helper_id: FIXTURE_HELPER_REGISTRY_ID.to_string(),
+                    platform: "fixture-any".to_string(),
+                    helper_version: "0.1.0".to_string(),
+                    executable_name: "kaifuu-fixture-helper".to_string(),
+                    sha256_hash:
+                        "sha256:c1ac7473395cf2fbb823d33c63b5b4810352e3d2c255833498ba4fc4efb29f7c"
+                            .to_string(),
+                    signature: HelperBinarySignatureMetadata {
+                        signature_kind: "public-fixture-none".to_string(),
+                        signer: "kaifuu-public-fixtures".to_string(),
+                        signature_ref: "fixtures-public-no-signature".to_string(),
+                    },
+                    capabilities: vec![HelperCapability::FixtureInvocation],
+                }],
+            },
         }
     }
 }
@@ -4817,6 +5134,7 @@ pub fn validate_helper_registry_entry_value(value: &Value) -> HelperRegistryVali
     }
     validate_helper_registry_redaction_class(&mut diagnostics, helper_id.as_deref(), value);
     validate_helper_registry_execution_policy(&mut diagnostics, helper_id.as_deref(), value);
+    validate_helper_registry_binary_allowlist(&mut diagnostics, helper_id.as_deref(), value);
 
     helper_registry_validation_result(helper_id, diagnostics)
 }
@@ -5022,6 +5340,263 @@ fn validate_helper_registry_execution_policy(
     }
 }
 
+fn validate_helper_registry_binary_allowlist(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: &Value,
+) {
+    let Some(allowlist) = value.get("binaryAllowlist") else {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "missing_required_field",
+            "binaryAllowlist",
+            "binaryAllowlist must be a JSON object",
+        );
+        return;
+    };
+    let Some(allowlist) = allowlist.as_object() else {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "invalid_field_type",
+            "binaryAllowlist",
+            "binaryAllowlist must be a JSON object",
+        );
+        return;
+    };
+    let Some(entries) = allowlist.get("entries").and_then(Value::as_array) else {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY,
+            "binaryAllowlist.entries",
+            "binaryAllowlist.entries must be a non-empty array",
+        );
+        return;
+    };
+    if entries.is_empty() {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY,
+            "binaryAllowlist.entries",
+            "binaryAllowlist.entries must include at least one helper binary entry",
+        );
+        return;
+    }
+
+    let registry_capabilities = value
+        .get("capabilities")
+        .and_then(Value::as_array)
+        .map(|capabilities| {
+            capabilities
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<BTreeSet<_>>()
+        })
+        .unwrap_or_default();
+    let registry_helper_id = value.get("helperId").and_then(Value::as_str);
+    let mut seen_entry_ids = BTreeSet::new();
+
+    for (index, entry) in entries.iter().enumerate() {
+        let field = format!("binaryAllowlist.entries.{index}");
+        let Some(entry) = entry.as_object() else {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                "invalid_field_type",
+                &field,
+                "binary allowlist entry must be a JSON object",
+            );
+            continue;
+        };
+
+        for child in [
+            "allowlistEntryId",
+            "helperId",
+            "platform",
+            "helperVersion",
+            "executableName",
+        ] {
+            let child_field = format!("{field}.{child}");
+            if let Some(text) = required_helper_registry_string(
+                diagnostics,
+                helper_id,
+                &Value::Object(entry.clone()),
+                &child_field,
+            ) {
+                validate_helper_registry_identifier(diagnostics, helper_id, &child_field, &text);
+                if child == "executableName" && (text.contains('/') || text.contains('\\')) {
+                    helper_registry_failure(
+                        diagnostics,
+                        helper_id,
+                        "invalid_executable_name",
+                        &child_field,
+                        "helper binary executableName must be a filename, not a path",
+                    );
+                }
+            }
+        }
+
+        if let Some(entry_id) = entry.get("allowlistEntryId").and_then(Value::as_str)
+            && !seen_entry_ids.insert(entry_id.to_string())
+        {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                "duplicate_helper_allowlist_entry",
+                "binaryAllowlist.entries",
+                "binary allowlist entry ids must be unique",
+            );
+        }
+        if let (Some(registry_helper_id), Some(entry_helper_id)) = (
+            registry_helper_id,
+            entry.get("helperId").and_then(Value::as_str),
+        ) && registry_helper_id != entry_helper_id
+        {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                SEMANTIC_HELPER_ALLOWLIST_MISSING_ENTRY,
+                &format!("{field}.helperId"),
+                "binary allowlist entry helperId must match the registry helperId",
+            );
+        }
+
+        match entry.get("sha256Hash").and_then(Value::as_str) {
+            Some(hash) if is_sha256_ref(hash) => {}
+            _ => helper_registry_failure(
+                diagnostics,
+                helper_id,
+                "invalid_helper_binary_hash",
+                &format!("{field}.sha256Hash"),
+                "helper binary sha256Hash must be sha256:<64 lowercase hex>",
+            ),
+        }
+
+        validate_helper_registry_binary_signature(
+            diagnostics,
+            helper_id,
+            entry.get("signature"),
+            &format!("{field}.signature"),
+        );
+        validate_helper_registry_binary_capabilities(
+            diagnostics,
+            helper_id,
+            entry.get("capabilities"),
+            &format!("{field}.capabilities"),
+            &registry_capabilities,
+        );
+    }
+}
+
+fn validate_helper_registry_binary_signature(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: Option<&Value>,
+    field: &str,
+) {
+    let Some(signature) = value else {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "missing_required_field",
+            field,
+            "signature metadata must be a JSON object",
+        );
+        return;
+    };
+    let Some(signature) = signature.as_object() else {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            "invalid_field_type",
+            field,
+            "signature metadata must be a JSON object",
+        );
+        return;
+    };
+    for child in ["signatureKind", "signer", "signatureRef"] {
+        let child_field = format!("{field}.{child}");
+        if let Some(text) = required_helper_registry_string(
+            diagnostics,
+            helper_id,
+            &Value::Object(signature.clone()),
+            &child_field,
+        ) {
+            validate_helper_registry_identifier(diagnostics, helper_id, &child_field, &text);
+        }
+    }
+}
+
+fn validate_helper_registry_binary_capabilities(
+    diagnostics: &mut Vec<HelperRegistryDiagnostic>,
+    helper_id: Option<&str>,
+    value: Option<&Value>,
+    field: &str,
+    registry_capabilities: &BTreeSet<&str>,
+) {
+    let Some(capabilities) = value.and_then(Value::as_array) else {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY,
+            field,
+            "binary allowlist capabilities must be a non-empty array",
+        );
+        return;
+    };
+    if capabilities.is_empty() {
+        helper_registry_failure(
+            diagnostics,
+            helper_id,
+            SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY,
+            field,
+            "binary allowlist capabilities must include at least one capability",
+        );
+        return;
+    }
+    let allowed = [
+        "fixture_invocation",
+        "key_discovery",
+        "key_validation",
+        "protected_executable_probe",
+    ];
+    let mut seen = BTreeSet::new();
+    for (index, capability) in capabilities.iter().enumerate() {
+        let child_field = format!("{field}.{index}");
+        let Some(capability) = capability.as_str() else {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                "invalid_field_type",
+                &child_field,
+                "binary allowlist capability must be a string",
+            );
+            continue;
+        };
+        if !allowed.contains(&capability) || !registry_capabilities.contains(capability) {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY,
+                &child_field,
+                "binary allowlist capability must be declared by the helper registry entry",
+            );
+        }
+        if !seen.insert(capability.to_string()) {
+            helper_registry_failure(
+                diagnostics,
+                helper_id,
+                "duplicate_helper_capability",
+                field,
+                "binary allowlist capabilities must not contain duplicate values",
+            );
+        }
+    }
+}
+
 fn validate_helper_registry_enum_string(
     diagnostics: &mut Vec<HelperRegistryDiagnostic>,
     helper_id: Option<&str>,
@@ -5183,6 +5758,16 @@ fn helper_capability_name(capability: HelperCapability) -> &'static str {
         HelperCapability::KeyDiscovery => "key_discovery",
         HelperCapability::KeyValidation => "key_validation",
         HelperCapability::ProtectedExecutableProbe => "protected_executable_probe",
+    }
+}
+
+pub fn parse_helper_capability(value: &str) -> Option<HelperCapability> {
+    match value {
+        "fixture_invocation" => Some(HelperCapability::FixtureInvocation),
+        "key_discovery" => Some(HelperCapability::KeyDiscovery),
+        "key_validation" => Some(HelperCapability::KeyValidation),
+        "protected_executable_probe" => Some(HelperCapability::ProtectedExecutableProbe),
+        _ => None,
     }
 }
 
@@ -10101,6 +10686,105 @@ pub fn content_hash(input: &str) -> String {
     format!("{hash:016x}")
 }
 
+pub fn sha256_file_ref(path: &Path) -> io::Result<String> {
+    Ok(format!("sha256:{}", sha256_hex(&fs::read(path)?)))
+}
+
+fn sha256_hex(input: &[u8]) -> String {
+    const INITIAL: [u32; 8] = [
+        0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab,
+        0x5be0cd19,
+    ];
+    const K: [u32; 64] = [
+        0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4,
+        0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe,
+        0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f,
+        0x4a7484aa, 0x5cb0a9dc, 0x76f988da, 0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7,
+        0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc,
+        0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
+        0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070, 0x19a4c116,
+        0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+        0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7,
+        0xc67178f2,
+    ];
+
+    let mut message = input.to_vec();
+    let bit_len = (message.len() as u64) * 8;
+    message.push(0x80);
+    while message.len() % 64 != 56 {
+        message.push(0);
+    }
+    message.extend_from_slice(&bit_len.to_be_bytes());
+
+    let mut h = INITIAL;
+    for chunk in message.chunks_exact(64) {
+        let mut w = [0_u32; 64];
+        for index in 0..16 {
+            let start = index * 4;
+            w[index] = u32::from_be_bytes([
+                chunk[start],
+                chunk[start + 1],
+                chunk[start + 2],
+                chunk[start + 3],
+            ]);
+        }
+        for index in 16..64 {
+            let s0 = w[index - 15].rotate_right(7)
+                ^ w[index - 15].rotate_right(18)
+                ^ (w[index - 15] >> 3);
+            let s1 = w[index - 2].rotate_right(17)
+                ^ w[index - 2].rotate_right(19)
+                ^ (w[index - 2] >> 10);
+            w[index] = w[index - 16]
+                .wrapping_add(s0)
+                .wrapping_add(w[index - 7])
+                .wrapping_add(s1);
+        }
+
+        let mut a = h[0];
+        let mut b = h[1];
+        let mut c = h[2];
+        let mut d = h[3];
+        let mut e = h[4];
+        let mut f = h[5];
+        let mut g = h[6];
+        let mut hh = h[7];
+        for index in 0..64 {
+            let s1 = e.rotate_right(6) ^ e.rotate_right(11) ^ e.rotate_right(25);
+            let ch = (e & f) ^ ((!e) & g);
+            let temp1 = hh
+                .wrapping_add(s1)
+                .wrapping_add(ch)
+                .wrapping_add(K[index])
+                .wrapping_add(w[index]);
+            let s0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
+            let maj = (a & b) ^ (a & c) ^ (b & c);
+            let temp2 = s0.wrapping_add(maj);
+            hh = g;
+            g = f;
+            f = e;
+            e = d.wrapping_add(temp1);
+            d = c;
+            c = b;
+            b = a;
+            a = temp1.wrapping_add(temp2);
+        }
+
+        h[0] = h[0].wrapping_add(a);
+        h[1] = h[1].wrapping_add(b);
+        h[2] = h[2].wrapping_add(c);
+        h[3] = h[3].wrapping_add(d);
+        h[4] = h[4].wrapping_add(e);
+        h[5] = h[5].wrapping_add(f);
+        h[6] = h[6].wrapping_add(g);
+        h[7] = h[7].wrapping_add(hh);
+    }
+
+    h.iter()
+        .map(|word| format!("{word:08x}"))
+        .collect::<String>()
+}
+
 pub fn safe_join_relative(root: &Path, relative_path: &str) -> KaifuuResult<PathBuf> {
     let parts = safe_relative_path_parts(relative_path)?;
     let mut output_path = root.to_path_buf();
@@ -12650,6 +13334,13 @@ mod tests {
         ))
     }
 
+    fn public_helper_binary_path(name: &str) -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .join("fixtures/public/kaifuu-helper-results/helper-binaries")
+            .join(name)
+    }
+
     #[test]
     fn public_helper_registry_fixtures_validate_semantic_diagnostics() {
         let valid = public_helper_registry_fixture_value("valid-helper");
@@ -12665,6 +13356,10 @@ mod tests {
         assert_eq!(
             entry.execution_policy.allowlist_ref_id,
             FIXTURE_HELPER_ALLOWLIST_REF_ID
+        );
+        assert_eq!(
+            entry.binary_allowlist.entries[0].sha256_hash,
+            sha256_file_ref(&public_helper_binary_path("kaifuu-fixture-helper")).unwrap()
         );
 
         let invalid_cases = [
@@ -12703,6 +13398,123 @@ mod tests {
                 }),
                 "missing {expected_code} for {fixture}: {:#?}",
                 validation.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn helper_binary_allowlist_hash_gate_blocks_before_launch() {
+        let valid_value = public_helper_registry_fixture_value("valid-helper");
+        let valid_entry: HelperRegistryEntry = serde_json::from_value(valid_value).unwrap();
+        let allowed_binary = public_helper_binary_path("kaifuu-fixture-helper");
+        let mismatch_binary = public_helper_binary_path("kaifuu-fixture-helper-mismatch");
+
+        let allowed = valid_entry.validate_binary_launch(HelperBinaryLaunchValidationRequest {
+            helper_id: FIXTURE_HELPER_REGISTRY_ID,
+            allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+            executable_path: &allowed_binary,
+            platform: "fixture-any",
+            helper_version: "0.1.0",
+            required_capabilities: &[HelperCapability::FixtureInvocation],
+        });
+        assert_eq!(allowed.status, OperationStatus::Passed, "{allowed:#?}");
+        assert_eq!(
+            allowed.observed_hash.as_deref(),
+            Some("sha256:c1ac7473395cf2fbb823d33c63b5b4810352e3d2c255833498ba4fc4efb29f7c")
+        );
+
+        let cases = [
+            (
+                "missing binary",
+                valid_entry.clone(),
+                public_helper_binary_path("missing-kaifuu-fixture-helper"),
+                "fixture-any",
+                "0.1.0",
+                &[HelperCapability::FixtureInvocation][..],
+                SEMANTIC_HELPER_ALLOWLIST_MISSING_BINARY,
+            ),
+            (
+                "hash mismatch",
+                valid_entry.clone(),
+                mismatch_binary,
+                "fixture-any",
+                "0.1.0",
+                &[HelperCapability::FixtureInvocation][..],
+                SEMANTIC_HELPER_ALLOWLIST_HASH_MISMATCH,
+            ),
+            (
+                "wrong platform",
+                serde_json::from_value(public_helper_registry_fixture_value(
+                    "allowlist-wrong-platform",
+                ))
+                .unwrap(),
+                allowed_binary.clone(),
+                "fixture-any",
+                "0.1.0",
+                &[HelperCapability::FixtureInvocation][..],
+                SEMANTIC_HELPER_ALLOWLIST_WRONG_PLATFORM,
+            ),
+            (
+                "stale version",
+                serde_json::from_value(public_helper_registry_fixture_value(
+                    "allowlist-stale-version",
+                ))
+                .unwrap(),
+                allowed_binary.clone(),
+                "fixture-any",
+                "0.1.0",
+                &[HelperCapability::FixtureInvocation][..],
+                SEMANTIC_HELPER_ALLOWLIST_STALE_VERSION,
+            ),
+            (
+                "undeclared capability",
+                serde_json::from_value(public_helper_registry_fixture_value(
+                    "allowlist-missing-declared-capability",
+                ))
+                .unwrap(),
+                allowed_binary.clone(),
+                "fixture-any",
+                "0.1.0",
+                &[HelperCapability::KeyDiscovery][..],
+                SEMANTIC_HELPER_ALLOWLIST_UNDECLARED_CAPABILITY,
+            ),
+        ];
+
+        for (
+            name,
+            entry,
+            executable_path,
+            platform,
+            helper_version,
+            required_capabilities,
+            expected_code,
+        ) in cases
+        {
+            let report = entry
+                .validate_binary_launch(HelperBinaryLaunchValidationRequest {
+                    helper_id: FIXTURE_HELPER_REGISTRY_ID,
+                    allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID,
+                    executable_path: &executable_path,
+                    platform,
+                    helper_version,
+                    required_capabilities,
+                })
+                .redacted_for_report();
+            assert_eq!(
+                report.status,
+                OperationStatus::Failed,
+                "{name}: {report:#?}"
+            );
+            assert!(
+                report.diagnostics.iter().any(|diagnostic| {
+                    diagnostic.code == expected_code
+                        && diagnostic.helper_id == FIXTURE_HELPER_REGISTRY_ID
+                        && diagnostic.allowlist_entry_id == FIXTURE_HELPER_ALLOWLIST_REF_ID
+                        && diagnostic.platform == platform
+                        && !diagnostic.remediation_code.is_empty()
+                }),
+                "{name}: missing {expected_code}: {:#?}",
+                report.diagnostics
             );
         }
     }
