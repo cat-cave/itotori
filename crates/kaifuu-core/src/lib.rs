@@ -4812,7 +4812,7 @@ fn helper_binary_launch_failure(
         allowlist_entry_id: redact_for_log_or_report(request.allowlist_entry_id),
         code: code.to_string(),
         field: field.to_string(),
-        observed_hash: observed_hash.map(redact_for_log_or_report),
+        observed_hash: observed_hash.map(redact_helper_hash),
         platform: redact_for_log_or_report(request.platform),
         remediation_code: remediation_code.to_string(),
         message: redact_for_log_or_report(message),
@@ -13505,6 +13505,21 @@ mod tests {
                 OperationStatus::Failed,
                 "{name}: {report:#?}"
             );
+            if name == "hash mismatch" {
+                let observed_hash = report
+                    .observed_hash
+                    .as_deref()
+                    .expect("hash mismatch should report the observed helper binary hash");
+                assert!(is_sha256_ref(observed_hash), "{name}: {report:#?}");
+                assert!(
+                    report.diagnostics.iter().any(|diagnostic| {
+                        diagnostic.code == expected_code
+                            && diagnostic.observed_hash.as_deref() == Some(observed_hash)
+                    }),
+                    "{name}: diagnostic did not preserve observed hash: {:#?}",
+                    report.diagnostics
+                );
+            }
             assert!(
                 report.diagnostics.iter().any(|diagnostic| {
                     diagnostic.code == expected_code
@@ -13515,6 +13530,34 @@ mod tests {
                 }),
                 "{name}: missing {expected_code}: {:#?}",
                 report.diagnostics
+            );
+        }
+    }
+
+    #[test]
+    fn helper_binary_allowlist_diagnostic_observed_hash_redaction_keeps_only_canonical_hashes() {
+        for unsafe_hash in [
+            "sha256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+            "00112233445566778899aabbccddeeff",
+            "/home/dev/game/private-helper",
+            "C:\\Games\\SecretRoute\\helper.exe",
+        ] {
+            let diagnostic = HelperBinaryLaunchDiagnostic {
+                helper_id: FIXTURE_HELPER_REGISTRY_ID.to_string(),
+                allowlist_entry_id: FIXTURE_HELPER_ALLOWLIST_REF_ID.to_string(),
+                code: SEMANTIC_HELPER_ALLOWLIST_HASH_MISMATCH.to_string(),
+                field: "sha256Hash".to_string(),
+                observed_hash: Some(unsafe_hash.to_string()),
+                platform: "fixture-any".to_string(),
+                remediation_code: "reinstall_helper_binary".to_string(),
+                message: "helper binary hash does not match the allowlist entry".to_string(),
+            }
+            .redacted_for_report();
+
+            assert_eq!(
+                diagnostic.observed_hash.as_deref(),
+                Some("[REDACTED:kaifuu.secret_redacted]"),
+                "{unsafe_hash} should be redacted"
             );
         }
     }

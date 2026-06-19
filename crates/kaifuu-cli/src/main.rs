@@ -1154,6 +1154,31 @@ mod tests {
                 kaifuu_core::FIXTURE_HELPER_ALLOWLIST_REF_ID
             );
             assert_eq!(report["platform"], platform);
+            if name == "mismatched" {
+                let observed_hash = report["observedHash"]
+                    .as_str()
+                    .expect("mismatched helper should report top-level observedHash");
+                assert!(
+                    observed_hash.starts_with("sha256:")
+                        && observed_hash.len() == 71
+                        && observed_hash["sha256:".len()..]
+                            .chars()
+                            .all(|character| character.is_ascii_hexdigit()
+                                && !character.is_ascii_uppercase()),
+                    "{name}: observedHash is not canonical: {report:#?}"
+                );
+                assert!(
+                    report["diagnostics"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|diagnostic| {
+                            diagnostic["code"] == expected_code
+                                && diagnostic["observedHash"].as_str() == Some(observed_hash)
+                        }),
+                    "{name}: diagnostic did not preserve observedHash: {report:#?}"
+                );
+            }
             assert!(
                 report["diagnostics"]
                     .as_array()
