@@ -776,6 +776,126 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 
+  it("rejects release mappings that reference releases from another work", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const parentWorkId = uuid(1230);
+      const parentReleaseId = uuid(1231);
+      const otherWorkId = uuid(1232);
+      const otherReleaseId = uuid(1233);
+      await recordWorkWithRelease(repo, parentWorkId, parentReleaseId, "Mapping parent fixture");
+      await recordWorkWithRelease(repo, otherWorkId, otherReleaseId, "Mapping other fixture");
+
+      await expect(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Mapping parent fixture",
+          releaseMappings: [
+            {
+              releaseMappingId: uuid(1234),
+              sourceReleaseId: otherReleaseId,
+              targetReleaseId: parentReleaseId,
+              relationKind: catalogReleaseMappingKindValues.remasterOf,
+            },
+          ],
+        }),
+      ).rejects.toThrow("releaseMapping.sourceReleaseId must belong to the parent work");
+
+      await expect(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Mapping parent fixture",
+          releaseMappings: [
+            {
+              releaseMappingId: uuid(1235),
+              sourceReleaseId: parentReleaseId,
+              targetReleaseId: otherReleaseId,
+              relationKind: catalogReleaseMappingKindValues.remasterOf,
+            },
+          ],
+        }),
+      ).rejects.toThrow("releaseMapping.targetReleaseId must belong to the parent work");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects install states that reference a release from another work", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const parentWorkId = uuid(1240);
+      const parentReleaseId = uuid(1241);
+      const otherWorkId = uuid(1242);
+      const otherReleaseId = uuid(1243);
+      await recordWorkWithRelease(repo, parentWorkId, parentReleaseId, "Install parent fixture");
+      await recordWorkWithRelease(repo, otherWorkId, otherReleaseId, "Install other fixture");
+
+      await expect(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Install parent fixture",
+          installStates: [
+            {
+              installStateId: uuid(1244),
+              releaseId: otherReleaseId,
+              installState: catalogInstallStateValues.patchTarget,
+            },
+          ],
+        }),
+      ).rejects.toThrow("installState.releaseId must belong to the parent work");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("rejects install states that reference a local scan entry from another work", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      const repo = new ItotoriCatalogRepository(context.db);
+      const parentWorkId = uuid(1250);
+      const parentReleaseId = uuid(1251);
+      const otherWorkId = uuid(1252);
+      await recordWorkWithRelease(repo, parentWorkId, parentReleaseId, "Scan parent fixture");
+      await recordWorkWithRelease(repo, otherWorkId, uuid(1256), "Scan other fixture");
+      const localScan = await repo.recordLocalScan(localActor, {
+        localScanId: uuid(1253),
+        scanRootLabel: "cross-work scan fixture",
+        scanRootPathHash: hash("cross-work-scan-root"),
+        scannerName: "catalog-cross-work-regression",
+        scannerVersion: "0.0.0",
+        startedAt: fetchedAt,
+        entries: [
+          {
+            localScanEntryId: uuid(1254),
+            workId: otherWorkId,
+            pathHash: hash("cross-work-scan-entry"),
+            pathRedactionClass: catalogPathRedactionClassValues.privatePathHash,
+          },
+        ],
+      });
+      const otherEntry = requiredTestRow(localScan.entries, "cross-work local scan entry");
+
+      await expect(
+        repo.upsertWork(localActor, {
+          workId: parentWorkId,
+          canonicalTitle: "Scan parent fixture",
+          installStates: [
+            {
+              installStateId: uuid(1255),
+              releaseId: parentReleaseId,
+              localScanEntryId: otherEntry.localScanEntryId,
+              installState: catalogInstallStateValues.patchTarget,
+            },
+          ],
+        }),
+      ).rejects.toThrow("installState.localScanEntryId must belong to the install state work");
+    } finally {
+      await context.close();
+    }
+  });
+
   it("upserts catalog external IDs by natural key when child IDs are omitted or differ", async () => {
     const context = await isolatedMigratedContext();
     try {
@@ -1504,6 +1624,30 @@ describe("ItotoriCatalogRepository", () => {
     }
   });
 });
+
+async function recordWorkWithRelease(
+  repo: ItotoriCatalogRepository,
+  workId: string,
+  releaseId: string,
+  title: string,
+): Promise<void> {
+  await repo.upsertWork(localActor, {
+    workId,
+    canonicalTitle: title,
+    originalLanguage: "ja-JP",
+    releases: [
+      {
+        releaseId,
+        catalogSource: catalogSourceValues.dlsite,
+        sourceReleaseId: releaseId,
+        releaseTitle: title,
+        releaseKind: catalogReleaseKindValues.original,
+        platform: "pc",
+        language: "ja-JP",
+      },
+    ],
+  });
+}
 
 async function recordFixtureProvenance(repo: ItotoriCatalogRepository): Promise<{
   vndb: CatalogSourceProvenanceRecord;

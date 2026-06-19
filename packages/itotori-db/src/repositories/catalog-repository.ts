@@ -833,6 +833,7 @@ export class ItotoriCatalogRepository implements ItotoriCatalogRepositoryPort {
   ): Promise<CatalogWorkSnapshot> {
     await requirePermission(this.db, actor, permissionValues.catalogWrite);
     const normalized = assertCatalogWorkInput(input);
+    await assertWorkScopedArtifactReferences(this.db, normalized);
 
     await this.db.transaction(async (tx) => {
       await tx
@@ -2909,6 +2910,115 @@ function assertCatalogWorkInput(input: CatalogWorkInput): NormalizedCatalogWorkI
     demandFacts: (input.demandFacts ?? []).map(assertDemandFactInput),
     conflicts: (input.conflicts ?? []).map(assertConflictInput),
   };
+}
+
+async function assertWorkScopedArtifactReferences(
+  db: ItotoriDatabase,
+  input: NormalizedCatalogWorkInput,
+): Promise<void> {
+  const inputReleaseIds = new Set(input.releases.map((release) => release.releaseId));
+  const referencedReleaseIds = new Set<string>();
+  for (const mapping of input.releaseMappings) {
+    referencedReleaseIds.add(mapping.sourceReleaseId);
+    referencedReleaseIds.add(mapping.targetReleaseId);
+  }
+  for (const installState of input.installStates) {
+    referencedReleaseIds.add(installState.releaseId);
+  }
+
+  const releaseIds = new Set([...inputReleaseIds, ...referencedReleaseIds]);
+  const existingReleaseWorkIds = new Map<string, string>();
+  if (releaseIds.size > 0) {
+    const rows = await db
+      .select({ releaseId: catalogReleases.releaseId, workId: catalogReleases.workId })
+      .from(catalogReleases)
+      .where(inArray(catalogReleases.releaseId, [...releaseIds]));
+    for (const row of rows) {
+      existingReleaseWorkIds.set(row.releaseId, row.workId);
+    }
+  }
+
+  for (const releaseId of inputReleaseIds) {
+    const workId = existingReleaseWorkIds.get(releaseId);
+    if (workId !== undefined && workId !== input.workId) {
+      throw new Error("release.releaseId must not already belong to a different work");
+    }
+  }
+
+  for (const mapping of input.releaseMappings) {
+    assertReleaseBelongsToWork(
+      mapping.sourceReleaseId,
+      "releaseMapping.sourceReleaseId",
+      input.workId,
+      inputReleaseIds,
+      existingReleaseWorkIds,
+    );
+    assertReleaseBelongsToWork(
+      mapping.targetReleaseId,
+      "releaseMapping.targetReleaseId",
+      input.workId,
+      inputReleaseIds,
+      existingReleaseWorkIds,
+    );
+  }
+
+  for (const installState of input.installStates) {
+    assertReleaseBelongsToWork(
+      installState.releaseId,
+      "installState.releaseId",
+      input.workId,
+      inputReleaseIds,
+      existingReleaseWorkIds,
+    );
+  }
+
+  const localScanEntryIds = [
+    ...new Set(
+      input.installStates
+        .map((installState) => installState.localScanEntryId)
+        .filter((localScanEntryId): localScanEntryId is string => localScanEntryId !== null),
+    ),
+  ];
+  if (localScanEntryIds.length === 0) {
+    return;
+  }
+
+  const localScanEntryRows = await db
+    .select({
+      localScanEntryId: catalogLocalScanEntries.localScanEntryId,
+      workId: catalogLocalScanEntries.workId,
+    })
+    .from(catalogLocalScanEntries)
+    .where(inArray(catalogLocalScanEntries.localScanEntryId, localScanEntryIds));
+  const localScanEntryWorkIds = new Map(
+    localScanEntryRows.map((row) => [row.localScanEntryId, row.workId]),
+  );
+  for (const localScanEntryId of localScanEntryIds) {
+    const workId = localScanEntryWorkIds.get(localScanEntryId);
+    if (workId !== input.workId) {
+      throw new Error("installState.localScanEntryId must belong to the install state work");
+    }
+  }
+}
+
+function assertReleaseBelongsToWork(
+  releaseId: string,
+  fieldName: string,
+  workId: string,
+  inputReleaseIds: Set<string>,
+  existingReleaseWorkIds: Map<string, string>,
+): void {
+  const existingWorkId = existingReleaseWorkIds.get(releaseId);
+  if (existingWorkId === workId) {
+    return;
+  }
+  if (existingWorkId !== undefined) {
+    throw new Error(`${fieldName} must belong to the parent work`);
+  }
+  if (inputReleaseIds.has(releaseId)) {
+    return;
+  }
+  throw new Error(`${fieldName} must reference a release for the parent work`);
 }
 
 function assertExternalIdInput(input: CatalogExternalIdInput): NormalizedExternalIdInput {
