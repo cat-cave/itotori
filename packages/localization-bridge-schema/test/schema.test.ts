@@ -1704,20 +1704,6 @@ describe("localization bridge schema guards", () => {
 
     expect(() => assertPatchExportV02(patchExport)).not.toThrow();
     expect(report.status).toBe("compatible");
-
-    const noIdentityPatchExport = cloneRecord(patchExport);
-    const noIdentityEntry = asTestRecord(
-      (noIdentityPatchExport.entries as Array<Record<string, unknown>>)[0],
-      "first no-identity v0.2 patch export entry",
-    );
-    noIdentityEntry.protectedSpanMappings = [
-      { raw: "{name}", targetStart: 0, targetEnd: 6 },
-      { raw: "{name}", targetStart: 11, targetEnd: 17 },
-    ];
-
-    expect(evaluatePatchExportCompatibilityV02(noIdentityPatchExport, bridge).status).toBe(
-      "incompatible",
-    );
   });
 
   it("accepts duplicate raw protected spans when source identities and target ranges are explicit", () => {
@@ -1773,6 +1759,20 @@ describe("localization bridge schema guards", () => {
 
     expect(() => assertPatchExportV02(patchExport)).not.toThrow();
     expect(report.status).toBe("compatible");
+
+    const noIdentityPatchExport = cloneRecord(patchExport);
+    const noIdentityEntry = asTestRecord(
+      (noIdentityPatchExport.entries as Array<Record<string, unknown>>)[0],
+      "first no-identity v0.2 patch export entry",
+    );
+    noIdentityEntry.protectedSpanMappings = [
+      { raw: "{name}", targetStart: 0, targetEnd: 6 },
+      { raw: "{name}", targetStart: 11, targetEnd: 17 },
+    ];
+
+    expect(evaluatePatchExportCompatibilityV02(noIdentityPatchExport, bridge).status).toBe(
+      "incompatible",
+    );
   });
 
   it("reports protected span mapping mismatches for wrong source identity or collapsed duplicates", () => {

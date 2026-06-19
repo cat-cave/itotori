@@ -374,28 +374,40 @@ impl EncodedStringSlot {
         protected_span_mappings: &[ProtectedSpanMapping],
         diagnostics: &mut Vec<EncodedStringSlotDiagnostic>,
     ) {
-        let mut required_counts = BTreeMap::<&str, usize>::new();
+        let mut required_spans = BTreeMap::<&str, Vec<&EncodedStringSlotProtectedSpan>>::new();
         for protected_span in &self.protected_spans {
             if !protected_span.raw.is_empty() {
-                *required_counts
+                required_spans
                     .entry(protected_span.raw.as_str())
-                    .or_default() += 1;
+                    .or_default()
+                    .push(protected_span);
             }
         }
 
         let mut matching_ranges = BTreeMap::<&str, BTreeSet<(u64, u64)>>::new();
+        let mut matched_source_identities = BTreeSet::<String>::new();
         for mapping in protected_span_mappings {
-            if required_counts.contains_key(mapping.raw.as_str())
-                && mapping.matches_target_text(target_text)
-            {
-                matching_ranges
-                    .entry(mapping.raw.as_str())
-                    .or_default()
-                    .insert((mapping.target_start, mapping.target_end));
+            let Some(source_spans) = required_spans.get(mapping.raw.as_str()) else {
+                continue;
+            };
+            if !mapping.matches_target_text(target_text) {
+                continue;
             }
+            if !protected_span_source_identity_matches(
+                mapping,
+                source_spans,
+                &mut matched_source_identities,
+            ) {
+                continue;
+            }
+            matching_ranges
+                .entry(mapping.raw.as_str())
+                .or_default()
+                .insert((mapping.target_start, mapping.target_end));
         }
 
-        for (raw, required_count) in required_counts {
+        for (raw, source_spans) in required_spans {
+            let required_count = source_spans.len();
             let mapped_count = matching_ranges.get(raw).map_or(0, BTreeSet::len);
             if mapped_count == 0 {
                 diagnostics.push(self.diagnostic(
@@ -450,12 +462,79 @@ pub enum EncodedStringSlotLayout {
 #[serde(rename_all = "camelCase")]
 pub struct EncodedStringSlotProtectedSpan {
     pub raw: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_span_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_start_byte: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_end_byte: Option<u64>,
 }
 
 impl EncodedStringSlotProtectedSpan {
     pub fn new(raw: impl Into<String>) -> Self {
-        Self { raw: raw.into() }
+        Self {
+            raw: raw.into(),
+            source_span_id: None,
+            source_start_byte: None,
+            source_end_byte: None,
+        }
     }
+
+    pub fn with_source_identity(
+        mut self,
+        source_span_id: Option<impl Into<String>>,
+        source_start_byte: u64,
+        source_end_byte: u64,
+    ) -> Self {
+        self.source_span_id = source_span_id.map(Into::into);
+        self.source_start_byte = Some(source_start_byte);
+        self.source_end_byte = Some(source_end_byte);
+        self
+    }
+}
+
+fn protected_span_source_identity_matches(
+    mapping: &ProtectedSpanMapping,
+    source_spans: &[&EncodedStringSlotProtectedSpan],
+    matched_source_identities: &mut BTreeSet<String>,
+) -> bool {
+    let duplicate_raw = source_spans.len() > 1;
+    if duplicate_raw && !mapping.has_source_identity() {
+        return false;
+    }
+
+    if !mapping.has_source_identity() {
+        return true;
+    }
+
+    let Some(source_span) = source_spans.iter().find(|source_span| {
+        mapping.matches_source_span(
+            &source_span.raw,
+            source_span.source_start_byte,
+            source_span.source_end_byte,
+            source_span.source_span_id.as_deref(),
+        )
+    }) else {
+        return false;
+    };
+
+    let Some(source_identity_key) = protected_span_source_identity_key(source_span) else {
+        return false;
+    };
+    matched_source_identities.insert(source_identity_key)
+}
+
+fn protected_span_source_identity_key(span: &EncodedStringSlotProtectedSpan) -> Option<String> {
+    if let Some(source_span_id) = span.source_span_id.as_deref() {
+        return Some(format!(
+            "{source_span_id}:{}:{}",
+            span.source_start_byte?, span.source_end_byte?
+        ));
+    }
+    Some(format!(
+        "{}:{}",
+        span.source_start_byte?, span.source_end_byte?
+    ))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2229,26 +2308,38 @@ fn encode_relocated_slot(
         ))
     })?;
 
-    let mut required_counts = BTreeMap::<&str, usize>::new();
+    let mut required_spans = BTreeMap::<&str, Vec<&EncodedStringSlotProtectedSpan>>::new();
     for protected_span in &slot.protected_spans {
         if !protected_span.raw.is_empty() {
-            *required_counts
+            required_spans
                 .entry(protected_span.raw.as_str())
-                .or_default() += 1;
+                .or_default()
+                .push(protected_span);
         }
     }
     let mut matching_ranges = BTreeMap::<&str, BTreeSet<(u64, u64)>>::new();
+    let mut matched_source_identities = BTreeSet::<String>::new();
     for mapping in &replacement.protected_span_mappings {
-        if required_counts.contains_key(mapping.raw.as_str())
-            && mapping.matches_target_text(&replacement.target_text)
-        {
-            matching_ranges
-                .entry(mapping.raw.as_str())
-                .or_default()
-                .insert((mapping.target_start, mapping.target_end));
+        let Some(source_spans) = required_spans.get(mapping.raw.as_str()) else {
+            continue;
+        };
+        if !mapping.matches_target_text(&replacement.target_text) {
+            continue;
         }
+        if !protected_span_source_identity_matches(
+            mapping,
+            source_spans,
+            &mut matched_source_identities,
+        ) {
+            continue;
+        }
+        matching_ranges
+            .entry(mapping.raw.as_str())
+            .or_default()
+            .insert((mapping.target_start, mapping.target_end));
     }
-    for (raw, required_count) in required_counts {
+    for (raw, source_spans) in required_spans {
+        let required_count = source_spans.len();
         let mapped_count = matching_ranges.get(raw).map_or(0, BTreeSet::len);
         if mapped_count < required_count {
             return Err(Box::new(relocated_slot_diagnostic(
@@ -2977,24 +3068,48 @@ mod tests {
             byte_range: ByteSpan::new(0, 64).unwrap(),
             layout: EncodedStringSlotLayout::FixedWidth,
             protected_spans: vec![
-                EncodedStringSlotProtectedSpan::new("{name}"),
-                EncodedStringSlotProtectedSpan::new("{name}"),
+                EncodedStringSlotProtectedSpan::new("{name}").with_source_identity(
+                    Some("source-span-1"),
+                    0,
+                    6,
+                ),
+                EncodedStringSlotProtectedSpan::new("{name}").with_source_identity(
+                    Some("source-span-2"),
+                    13,
+                    19,
+                ),
             ],
         };
 
         let collapsed = slot.preflight(
             "{name} speaks.",
             &[
-                ProtectedSpanMapping::new("{name}", 0, 6),
-                ProtectedSpanMapping::new("{name}", 0, 6),
+                ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
+                    Some("source-span-1"),
+                    0,
+                    6,
+                ),
+                ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
+                    Some("source-span-2"),
+                    13,
+                    19,
+                ),
             ],
             None,
         );
         let explicit = slot.preflight(
             "{name} and {name}",
             &[
-                ProtectedSpanMapping::new("{name}", 0, 6),
-                ProtectedSpanMapping::new("{name}", 11, 17),
+                ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
+                    Some("source-span-1"),
+                    0,
+                    6,
+                ),
+                ProtectedSpanMapping::new("{name}", 11, 17).with_source_identity(
+                    Some("source-span-2"),
+                    13,
+                    19,
+                ),
             ],
             None,
         );
@@ -3002,6 +3117,117 @@ mod tests {
         assert_eq!(collapsed.status, OperationStatus::Failed);
         assert!(collapsed.diagnostics[0].message.contains("expected 2"));
         assert_eq!(explicit.status, OperationStatus::Passed, "{explicit:?}");
+    }
+
+    #[test]
+    fn encoded_string_slot_rejects_duplicate_raw_protected_spans_without_source_identity() {
+        let slot = EncodedStringSlot {
+            slot_id: "duplicate-placeholders".to_string(),
+            encoding: SourceEncoding::Utf8,
+            byte_range: ByteSpan::new(0, 64).unwrap(),
+            layout: EncodedStringSlotLayout::FixedWidth,
+            protected_spans: vec![
+                EncodedStringSlotProtectedSpan::new("{name}").with_source_identity(
+                    Some("source-span-1"),
+                    0,
+                    6,
+                ),
+                EncodedStringSlotProtectedSpan::new("{name}").with_source_identity(
+                    Some("source-span-2"),
+                    13,
+                    19,
+                ),
+            ],
+        };
+
+        let missing_identity = slot.preflight(
+            "{name} and {name}",
+            &[
+                ProtectedSpanMapping::new("{name}", 0, 6),
+                ProtectedSpanMapping::new("{name}", 11, 17),
+            ],
+            None,
+        );
+        let reused_source_identity = slot.preflight(
+            "{name} and {name}",
+            &[
+                ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
+                    Some("source-span-1"),
+                    0,
+                    6,
+                ),
+                ProtectedSpanMapping::new("{name}", 11, 17).with_source_identity(
+                    Some("source-span-1"),
+                    0,
+                    6,
+                ),
+            ],
+            None,
+        );
+        let wrong_source_identity = slot.preflight(
+            "{name} and {name}",
+            &[
+                ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
+                    Some("source-span-1"),
+                    0,
+                    6,
+                ),
+                ProtectedSpanMapping::new("{name}", 11, 17).with_source_identity(
+                    Some("source-span-2"),
+                    20,
+                    26,
+                ),
+            ],
+            None,
+        );
+
+        assert_eq!(missing_identity.status, OperationStatus::Failed);
+        assert_eq!(reused_source_identity.status, OperationStatus::Failed);
+        assert_eq!(wrong_source_identity.status, OperationStatus::Failed);
+    }
+
+    #[test]
+    fn string_relocation_rejects_duplicate_raw_protected_spans_without_source_identity() {
+        let request = StringTableRebuildRequest {
+            fixture_id: "duplicate-protected-relocation".to_string(),
+            source_bytes_hex: "00".repeat(32),
+            slots: vec![StringRelocationSlot {
+                slot_id: "line-1".to_string(),
+                encoding: SourceEncoding::Utf8,
+                old_byte_range: ByteSpan::new(0, 32).unwrap(),
+                layout: EncodedStringSlotLayout::FixedWidth,
+                protected_spans: vec![
+                    EncodedStringSlotProtectedSpan::new("{name}").with_source_identity(
+                        Some("source-span-1"),
+                        0,
+                        6,
+                    ),
+                    EncodedStringSlotProtectedSpan::new("{name}").with_source_identity(
+                        Some("source-span-2"),
+                        13,
+                        19,
+                    ),
+                ],
+            }],
+            replacements: vec![StringRelocationTarget {
+                slot_id: "line-1".to_string(),
+                target_text: "{name} and {name}".to_string(),
+                protected_span_mappings: vec![
+                    ProtectedSpanMapping::new("{name}", 0, 6),
+                    ProtectedSpanMapping::new("{name}", 11, 17),
+                ],
+            }],
+            references: vec![],
+            string_slot_diagnostics: vec![],
+        };
+
+        let report = plan_string_table_rebuild(&request);
+
+        assert_eq!(report.status, OperationStatus::Failed);
+        assert!(report.string_slot_diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == STRING_SLOT_PROTECTED_SPAN_MUTATION
+                && diagnostic.message.contains("expected 2")
+        }));
     }
 
     #[test]

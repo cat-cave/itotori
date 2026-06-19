@@ -11774,6 +11774,8 @@ pub struct BridgeUnit {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProtectedSpan {
+    #[serde(skip)]
+    pub span_id: Option<String>,
     pub kind: String,
     pub raw: String,
     pub start: u64,
@@ -11814,6 +11816,7 @@ impl ProtectedSpan {
         preserve_mode: impl Into<String>,
     ) -> Self {
         Self {
+            span_id: None,
             kind: kind.into(),
             raw: raw.into(),
             start,
@@ -11859,6 +11862,11 @@ impl ProtectedSpan {
             span.arguments = Some(arguments);
         }
         span
+    }
+
+    pub fn with_span_id(mut self, span_id: impl Into<String>) -> Self {
+        self.span_id = Some(span_id.into());
+        self
     }
 
     fn normalized(mut self, source_text: &str) -> KaifuuResult<Self> {
@@ -13097,6 +13105,12 @@ impl ProtectedSpanMapping {
             return false;
         }
         true
+    }
+
+    pub fn has_source_identity(&self) -> bool {
+        self.source_span_id.is_some()
+            || self.source_start_byte.is_some()
+            || self.source_end_byte.is_some()
     }
 }
 
@@ -15657,11 +15671,10 @@ fn unchanged_patch_export(bridge: &BridgeBundle) -> Result<PatchExport, Box<Gold
             let target_start = search_start + relative_start;
             let target_end = target_start + span.raw.len();
             search_start = target_end;
-            protected_span_mappings.push(ProtectedSpanMapping::new(
-                &span.raw,
-                target_start as u64,
-                target_end as u64,
-            ));
+            protected_span_mappings.push(
+                ProtectedSpanMapping::new(&span.raw, target_start as u64, target_end as u64)
+                    .with_source_identity(span.span_id.clone(), span.start, span.end),
+            );
         }
         entries.push(PatchExportEntry {
             bridge_unit_id: unit.bridge_unit_id.clone(),
@@ -16298,6 +16311,31 @@ fn report_v02_source_compatibility(
             continue;
         }
 
+        if !v02_patch_entry_span_mappings_compatible(entry, unit) {
+            record_golden_failure(
+                report,
+                GoldenFailure {
+                    code: "translated_protected_span_mapping_mismatch".to_string(),
+                    phase: "translated_source_compatibility".to_string(),
+                    adapter_id: adapter_id.to_string(),
+                    message:
+                        "translated patch protectedSpanMappings do not match source bridge spans"
+                            .to_string(),
+                    asset_ref: Some(unit.asset_ref.clone()),
+                    source_unit_key: Some(source_unit_key.to_string()),
+                    support_boundary: Some(
+                        "translated patch mappings must preserve protected spans with valid source identity"
+                            .to_string(),
+                    ),
+                    expected: Some(
+                        "protectedSpanMappings compatible with source bridge".to_string(),
+                    ),
+                    actual: Some("protected span mapping mismatch".to_string()),
+                },
+            );
+            continue;
+        }
+
         compatible += 1;
     }
 
@@ -16322,31 +16360,97 @@ struct V02BridgeUnitSummary {
     bridge_unit_id: String,
     source_hash: String,
     asset_ref: String,
+    spans: Vec<BridgeSpanV02>,
 }
 
 fn v02_bridge_units_by_key(
     source_bridge: &Value,
 ) -> KaifuuResult<BTreeMap<String, V02BridgeUnitSummary>> {
-    let units = source_bridge["units"]
-        .as_array()
-        .ok_or("source bridge missing units array")?;
+    let bridge = BridgeBundleV02::validate_json(source_bridge)?;
     let mut units_by_key = BTreeMap::new();
-    for unit in units {
-        let key = require_str(unit, "sourceUnitKey")?;
-        let asset_ref = unit["patchRef"]["assetId"]
-            .as_str()
-            .or_else(|| unit["sourceAssetRef"]["assetId"].as_str())
-            .unwrap_or("source.json");
+    for unit in bridge.units {
+        let key = unit.source_unit_key.clone();
+        let asset_ref = unit.patch_ref.asset_id.clone();
         units_by_key.insert(
-            key.to_string(),
+            key.clone(),
             V02BridgeUnitSummary {
-                bridge_unit_id: require_str(unit, "bridgeUnitId")?.to_string(),
-                source_hash: require_str(unit, "sourceHash")?.to_string(),
+                bridge_unit_id: unit.bridge_unit_id,
+                source_hash: unit.source_hash,
                 asset_ref: format!("{asset_ref}#{key}"),
+                spans: unit.spans,
             },
         );
     }
     Ok(units_by_key)
+}
+
+fn v02_patch_entry_span_mappings_compatible(entry: &Value, unit: &V02BridgeUnitSummary) -> bool {
+    let Some(target_text) = entry["targetText"].as_str() else {
+        return false;
+    };
+    let Ok(mappings) =
+        serde_json::from_value::<Vec<ProtectedSpanMapping>>(entry["protectedSpanMappings"].clone())
+    else {
+        return false;
+    };
+
+    let mut required_spans = BTreeMap::<&str, Vec<&BridgeSpanV02>>::new();
+    for span in &unit.spans {
+        required_spans
+            .entry(span.raw.as_str())
+            .or_default()
+            .push(span);
+    }
+
+    let mut target_ranges_by_raw = BTreeMap::<&str, BTreeSet<(u64, u64)>>::new();
+    let mut matched_source_identities = BTreeSet::<String>::new();
+    for mapping in &mappings {
+        if !mapping.matches_target_text(target_text) {
+            return false;
+        }
+
+        let Some(source_spans) = required_spans.get(mapping.raw.as_str()) else {
+            continue;
+        };
+
+        let duplicate_raw = source_spans.len() > 1;
+        if duplicate_raw && !mapping.has_source_identity() {
+            return false;
+        }
+
+        if mapping.has_source_identity() {
+            let Some(source_span) = source_spans.iter().find(|source_span| {
+                mapping.matches_source_span(
+                    &source_span.raw,
+                    Some(source_span.start_byte),
+                    Some(source_span.end_byte),
+                    Some(&source_span.span_id),
+                )
+            }) else {
+                return false;
+            };
+            let source_identity_key = format!(
+                "{}:{}:{}",
+                source_span.span_id, source_span.start_byte, source_span.end_byte
+            );
+            if !matched_source_identities.insert(source_identity_key) {
+                return false;
+            }
+        }
+
+        target_ranges_by_raw
+            .entry(mapping.raw.as_str())
+            .or_default()
+            .insert((mapping.target_start, mapping.target_end));
+    }
+
+    for (raw, source_spans) in required_spans {
+        if target_ranges_by_raw.get(raw).map_or(0, BTreeSet::len) < source_spans.len() {
+            return false;
+        }
+    }
+
+    true
 }
 
 fn patch_export_for_adapter(
@@ -21631,6 +21735,130 @@ printf launched > '{}'
         assert_eq!(bundle.schema_version, BRIDGE_SCHEMA_VERSION_V02);
         assert_eq!(bundle.bridge_id, "019ed001-0000-7000-8000-000000000001");
         assert_eq!(bundle.units.len(), 12);
+    }
+
+    #[test]
+    fn v02_source_compatibility_rejects_duplicate_raw_protected_spans_without_valid_identity() {
+        let mut bridge = bridge_v02_fixture_value();
+        let unit = bridge["units"][0].as_object_mut().unwrap();
+        unit.insert(
+            "sourceText".to_string(),
+            serde_json::json!("{name} meets {name}"),
+        );
+        unit.insert(
+            "spans".to_string(),
+            serde_json::json!([
+                {
+                    "spanId": "019ed001-0000-7000-8000-000000000841",
+                    "spanKind": "variable_placeholder",
+                    "raw": "{name}",
+                    "startByte": 0,
+                    "endByte": 6,
+                    "preserveMode": "map",
+                    "variableName": "name"
+                },
+                {
+                    "spanId": "019ed001-0000-7000-8000-000000000842",
+                    "spanKind": "variable_placeholder",
+                    "raw": "{name}",
+                    "startByte": 13,
+                    "endByte": 19,
+                    "preserveMode": "map",
+                    "variableName": "name"
+                }
+            ]),
+        );
+        let source_unit_key = bridge["units"][0]["sourceUnitKey"].as_str().unwrap();
+        let units = v02_bridge_units_by_key(&bridge).unwrap();
+        let source_unit = units.get(source_unit_key).unwrap();
+
+        let valid = serde_json::json!({
+            "targetText": "{name} and {name}",
+            "protectedSpanMappings": [
+                {
+                    "raw": "{name}",
+                    "sourceSpanId": "019ed001-0000-7000-8000-000000000842",
+                    "sourceStartByte": 13,
+                    "sourceEndByte": 19,
+                    "targetStart": 0,
+                    "targetEnd": 6
+                },
+                {
+                    "raw": "{name}",
+                    "sourceSpanId": "019ed001-0000-7000-8000-000000000841",
+                    "sourceStartByte": 0,
+                    "sourceEndByte": 6,
+                    "targetStart": 11,
+                    "targetEnd": 17
+                }
+            ]
+        });
+        let no_identity = serde_json::json!({
+            "targetText": "{name} and {name}",
+            "protectedSpanMappings": [
+                { "raw": "{name}", "targetStart": 0, "targetEnd": 6 },
+                { "raw": "{name}", "targetStart": 11, "targetEnd": 17 }
+            ]
+        });
+        let wrong_identity = serde_json::json!({
+            "targetText": "{name} and {name}",
+            "protectedSpanMappings": [
+                {
+                    "raw": "{name}",
+                    "sourceSpanId": "019ed001-0000-7000-8000-000000000841",
+                    "sourceStartByte": 0,
+                    "sourceEndByte": 6,
+                    "targetStart": 0,
+                    "targetEnd": 6
+                },
+                {
+                    "raw": "{name}",
+                    "sourceSpanId": "019ed001-0000-7000-8000-000000000842",
+                    "sourceStartByte": 20,
+                    "sourceEndByte": 26,
+                    "targetStart": 11,
+                    "targetEnd": 17
+                }
+            ]
+        });
+        let reused_identity = serde_json::json!({
+            "targetText": "{name} and {name}",
+            "protectedSpanMappings": [
+                {
+                    "raw": "{name}",
+                    "sourceSpanId": "019ed001-0000-7000-8000-000000000841",
+                    "sourceStartByte": 0,
+                    "sourceEndByte": 6,
+                    "targetStart": 0,
+                    "targetEnd": 6
+                },
+                {
+                    "raw": "{name}",
+                    "sourceSpanId": "019ed001-0000-7000-8000-000000000841",
+                    "sourceStartByte": 0,
+                    "sourceEndByte": 6,
+                    "targetStart": 11,
+                    "targetEnd": 17
+                }
+            ]
+        });
+
+        assert!(v02_patch_entry_span_mappings_compatible(
+            &valid,
+            source_unit
+        ));
+        assert!(!v02_patch_entry_span_mappings_compatible(
+            &no_identity,
+            source_unit
+        ));
+        assert!(!v02_patch_entry_span_mappings_compatible(
+            &wrong_identity,
+            source_unit
+        ));
+        assert!(!v02_patch_entry_span_mappings_compatible(
+            &reused_identity,
+            source_unit
+        ));
     }
 
     #[test]

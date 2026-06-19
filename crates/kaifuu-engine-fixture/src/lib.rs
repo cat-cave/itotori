@@ -18,11 +18,11 @@ use kaifuu_core::{
     LayeredAccessOperationContract, LayeredAccessProfile, LayeredTextSurfaceAccess,
     OperationStatus, PatchBackTransform, PatchPreflightRequest, PatchRef, PatchRequest,
     PatchResult, PlainXp3Entry, PlainXp3InventoryError, ProfileRequest, ProfileRequirement,
-    ProtectedSpan, RequirementCategory, RequirementStatus, SecretRef, SemanticErrorCode,
-    SourceFingerprint, SurfaceTransform, TextSurface, VerificationResult, VerifyRequest,
-    XP3_PLAIN_MAGIC, atomic_write_text, content_hash, deterministic_id, normalize_protected_spans,
-    parse_hex_bytes, read_plain_xp3_inventory, require_str, require_u64, safe_join_relative,
-    sha256_file_ref,
+    ProtectedSpan, ProtectedSpanMapping, RequirementCategory, RequirementStatus, SecretRef,
+    SemanticErrorCode, SourceFingerprint, SurfaceTransform, TextSurface, VerificationResult,
+    VerifyRequest, XP3_PLAIN_MAGIC, atomic_write_text, content_hash, deterministic_id,
+    normalize_protected_spans, parse_hex_bytes, read_plain_xp3_inventory, require_str, require_u64,
+    safe_join_relative, sha256_file_ref,
 };
 use serde_json::{Value, json};
 
@@ -143,16 +143,20 @@ impl FixtureAdapter {
         required_spans: &[ProtectedSpan],
     ) -> Vec<AdapterFailure> {
         let mut failures = Vec::new();
-        let mut required_counts = BTreeMap::<&str, usize>::new();
+        let mut required_spans_by_raw = BTreeMap::<&str, Vec<&ProtectedSpan>>::new();
         for span in required_spans {
             if span.raw.is_empty() {
                 continue;
             }
-            *required_counts.entry(span.raw.as_str()).or_default() += 1;
+            required_spans_by_raw
+                .entry(span.raw.as_str())
+                .or_default()
+                .push(span);
         }
 
         let mut declared_counts = BTreeMap::<&str, usize>::new();
         let mut declared_ranges = BTreeMap::<&str, BTreeSet<(u64, u64)>>::new();
+        let mut matched_source_identities = BTreeSet::<String>::new();
         for mapping in &entry.protected_span_mappings {
             if mapping.raw.is_empty() {
                 continue;
@@ -165,6 +169,24 @@ impl FixtureAdapter {
                     "fixture patching requires protectedSpanMappings to point at raw text in targetText",
                     format!(
                         "Align protectedSpanMappings for protected span {:?} in sourceUnitKey {}",
+                        mapping.raw, entry.source_unit_key
+                    ),
+                ));
+                continue;
+            }
+            if let Some(source_spans) = required_spans_by_raw.get(mapping.raw.as_str())
+                && !Self::protected_span_mapping_source_identity_matches(
+                    mapping,
+                    source_spans,
+                    &mut matched_source_identities,
+                )
+            {
+                failures.push(Self::patch_failure(
+                    "protected_span_mapping_mismatch",
+                    format!("source.json#{}", entry.source_unit_key),
+                    "fixture patching requires duplicate protectedSpanMappings to reference a real source protected span identity",
+                    format!(
+                        "Align sourceSpanId/sourceStartByte/sourceEndByte for protected span {:?} in sourceUnitKey {}",
                         mapping.raw, entry.source_unit_key
                     ),
                 ));
@@ -188,11 +210,13 @@ impl FixtureAdapter {
         }
 
         let mut protected_raws = BTreeSet::new();
-        for raw in required_counts.keys().chain(declared_counts.keys()) {
+        for raw in required_spans_by_raw.keys().chain(declared_counts.keys()) {
             protected_raws.insert(*raw);
         }
         for raw in protected_raws {
-            let required_count = required_counts.get(raw).copied().unwrap_or_default();
+            let required_count = required_spans_by_raw
+                .get(raw)
+                .map_or(0, |spans| spans.len());
             let declared_count = declared_counts.get(raw).copied().unwrap_or_default();
             if declared_count < required_count {
                 failures.push(Self::patch_failure(
@@ -222,6 +246,39 @@ impl FixtureAdapter {
             }
         }
         failures
+    }
+
+    fn protected_span_mapping_source_identity_matches(
+        mapping: &ProtectedSpanMapping,
+        source_spans: &[&ProtectedSpan],
+        matched_source_identities: &mut BTreeSet<String>,
+    ) -> bool {
+        let duplicate_raw = source_spans.len() > 1;
+        if duplicate_raw && !mapping.has_source_identity() {
+            return false;
+        }
+
+        if !mapping.has_source_identity() {
+            return true;
+        }
+
+        let Some(source_span) = source_spans.iter().find(|source_span| {
+            mapping.matches_source_span(
+                &source_span.raw,
+                Some(source_span.start),
+                Some(source_span.end),
+                source_span.span_id.as_deref(),
+            )
+        }) else {
+            return false;
+        };
+
+        let source_identity_key = if let Some(span_id) = source_span.span_id.as_deref() {
+            format!("{span_id}:{}:{}", source_span.start, source_span.end)
+        } else {
+            format!("{}:{}", source_span.start, source_span.end)
+        };
+        matched_source_identities.insert(source_identity_key)
     }
 
     fn profile_from_source(&self, source_text: &str, source: &Value) -> KaifuuResult<GameProfile> {
@@ -466,7 +523,13 @@ impl FixtureAdapter {
     fn protected_spans_for_unit(unit: &Value, text: &str) -> KaifuuResult<Vec<ProtectedSpan>> {
         let mut spans = Self::parse_fixture_markup_spans(text)?;
         spans.extend(Self::explicit_protected_spans_for_unit(unit, text)?);
-        normalize_protected_spans(text, spans)
+        let mut spans = normalize_protected_spans(text, spans)?;
+        for (index, span) in spans.iter_mut().enumerate() {
+            if span.span_id.is_none() {
+                span.span_id = Some(deterministic_id("span", index + 1));
+            }
+        }
+        Ok(spans)
     }
 
     fn encoded_string_slot_for_unit(
@@ -481,7 +544,13 @@ impl FixtureAdapter {
             slot.protected_spans = protected_spans
                 .iter()
                 .filter(|span| !span.raw.is_empty())
-                .map(|span| EncodedStringSlotProtectedSpan::new(span.raw.clone()))
+                .map(|span| {
+                    EncodedStringSlotProtectedSpan::new(span.raw.clone()).with_source_identity(
+                        span.span_id.clone(),
+                        span.start,
+                        span.end,
+                    )
+                })
                 .collect();
         }
         Ok(Some(slot))
@@ -3229,6 +3298,7 @@ mod tests {
                 let target_end = target_start + span.raw.len();
                 search_start = target_end;
                 ProtectedSpanMapping::new(&span.raw, target_start as u64, target_end as u64)
+                    .with_source_identity(span.span_id.clone(), span.start, span.end)
             })
             .collect()
     }
@@ -3666,14 +3736,14 @@ mod tests {
 
         assert_eq!(report.status, OperationStatus::Failed);
         assert!(report.failures.iter().any(|failure| {
-            failure.phase == "translated_patch"
+            failure.phase == "translated_source_compatibility"
                 && failure.source_unit_key.as_deref() == Some("hello.scene.001.line.001")
                 && failure
                     .asset_ref
                     .as_deref()
                     .unwrap_or("")
-                    .contains("source.json#hello.scene.001.line.001")
-                && failure.code.starts_with("protected_span")
+                    .contains("#hello.scene.001.line.001")
+                && failure.code == "translated_protected_span_mapping_mismatch"
         }));
         assert!(!work_dir.join("translated-patch/source.json").exists());
         let _ = fs::remove_dir_all(work_dir);
@@ -4009,6 +4079,152 @@ mod tests {
                 || failure.error_code == "protected_span_missing"
         }));
         assert!(!output_dir.join("source.json").exists());
+        let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn duplicate_raw_protected_spans_require_valid_source_identity() {
+        let game_dir = temp_game("duplicate-raw-protected-span-identity");
+        fs::write(
+            game_dir.join("source.json"),
+            r#"{
+  "gameId": "hello-fixture",
+  "title": "Hello Fixture",
+  "sourceLocale": "ja-JP",
+  "units": [
+    {
+      "sourceUnitKey": "hello.scene.001.line.001",
+      "speaker": "Narrator",
+      "textSurface": "dialogue",
+      "sourceText": "{name} meets {name}.",
+      "protectedSpans": [
+        {
+          "kind": "placeholder",
+          "raw": "{name}",
+          "start": 0,
+          "end": 6
+        },
+        {
+          "kind": "placeholder",
+          "raw": "{name}",
+          "start": 13,
+          "end": 19
+        }
+      ]
+    }
+  ]
+}
+"#,
+        )
+        .unwrap();
+        let adapter = FixtureAdapter;
+        let extraction = adapter
+            .extract(ExtractRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+        let unit = &extraction.bridge.units[0];
+        let first_span = &unit.protected_spans[0];
+        let second_span = &unit.protected_spans[1];
+        let patch_entry = |protected_span_mappings| kaifuu_core::PatchExportEntry {
+            bridge_unit_id: unit.bridge_unit_id.clone(),
+            source_unit_key: unit.source_unit_key.clone(),
+            source_hash: unit.source_hash.clone(),
+            target_text: "{name} and {name}.".to_string(),
+            protected_span_mappings,
+        };
+        let patch_export = |patch_export_id, protected_span_mappings| PatchExport {
+            patch_export_id,
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![patch_entry(protected_span_mappings)],
+        };
+
+        let missing_identity = patch_export(
+            deterministic_id("patch", 14),
+            vec![
+                ProtectedSpanMapping::new("{name}", 0, 6),
+                ProtectedSpanMapping::new("{name}", 11, 17),
+            ],
+        );
+        let wrong_identity = patch_export(
+            deterministic_id("patch", 15),
+            vec![
+                ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
+                    first_span.span_id.clone(),
+                    first_span.start,
+                    first_span.end,
+                ),
+                ProtectedSpanMapping::new("{name}", 11, 17).with_source_identity(
+                    second_span.span_id.clone(),
+                    20,
+                    26,
+                ),
+            ],
+        );
+        let reused_identity = patch_export(
+            deterministic_id("patch", 16),
+            vec![
+                ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
+                    first_span.span_id.clone(),
+                    first_span.start,
+                    first_span.end,
+                ),
+                ProtectedSpanMapping::new("{name}", 11, 17).with_source_identity(
+                    first_span.span_id.clone(),
+                    first_span.start,
+                    first_span.end,
+                ),
+            ],
+        );
+        let valid = patch_export(
+            deterministic_id("patch", 17),
+            vec![
+                ProtectedSpanMapping::new("{name}", 0, 6).with_source_identity(
+                    second_span.span_id.clone(),
+                    second_span.start,
+                    second_span.end,
+                ),
+                ProtectedSpanMapping::new("{name}", 11, 17).with_source_identity(
+                    first_span.span_id.clone(),
+                    first_span.start,
+                    first_span.end,
+                ),
+            ],
+        );
+
+        for (index, patch_export) in [missing_identity, wrong_identity, reused_identity]
+            .iter()
+            .enumerate()
+        {
+            let output_dir = game_dir.join(format!("patched-invalid-{index}"));
+            let patch = adapter
+                .patch(PatchRequest {
+                    game_dir: &game_dir,
+                    patch_export,
+                    output_dir: &output_dir,
+                })
+                .unwrap();
+
+            assert_eq!(patch.status, OperationStatus::Failed);
+            assert!(patch.failures.iter().any(|failure| {
+                failure.error_code == "protected_span_mapping_mismatch"
+                    || failure.error_code == "protected_span_missing"
+            }));
+            assert!(!output_dir.join("source.json").exists());
+        }
+
+        let output_dir = game_dir.join("patched-valid");
+        let patch = adapter
+            .patch(PatchRequest {
+                game_dir: &game_dir,
+                patch_export: &valid,
+                output_dir: &output_dir,
+            })
+            .unwrap();
+
+        assert_eq!(patch.status, OperationStatus::Passed, "{patch:?}");
+        assert!(output_dir.join("source.json").exists());
         let _ = fs::remove_dir_all(game_dir);
     }
 
