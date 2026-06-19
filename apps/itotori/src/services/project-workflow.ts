@@ -215,9 +215,6 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     project: ProjectState;
     patchExport: PatchExport;
   }> {
-    if (isBridgeBundleV02(project.bridge)) {
-      throw new Error("v0.2 patch export is not supported by the deterministic local exporter");
-    }
     const deterministicQa = runDeterministicPreExportQa(project);
     if (deterministicQa.failures.length > 0) {
       for (const finding of deterministicQa.findings) {
@@ -229,6 +226,9 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         });
       }
       throw new DeterministicPreExportQaError(deterministicQa.failures);
+    }
+    if (isBridgeBundleV02(project.bridge)) {
+      throw new Error("v0.2 patch export is not supported by the deterministic local exporter");
     }
     const entries = project.bridge.units.map((unit, index) => {
       const targetText = project.drafts[unit.bridgeUnitId];

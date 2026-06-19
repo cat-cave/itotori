@@ -343,6 +343,76 @@ describe("ItotoriProjectWorkflowService", () => {
     expect(repository.savePatchExport).not.toHaveBeenCalled();
   });
 
+  it("runs deterministic QA before rejecting unsupported v0.2 patch exports", async () => {
+    const repository = repositoryFixture();
+    const service = new ItotoriProjectWorkflowService(repository, actor);
+    const bridge = bridgeV02Fixture();
+    bridge.units = [bridge.units[0]!];
+
+    await expect(
+      service.exportPatch(
+        projectFixture({
+          bridge,
+          drafts: { "019ed001-0000-7000-8000-000000000201": "Bonjour." },
+        }),
+      ),
+    ).rejects.toThrow("protected-span-missing 019ed001-0000-7000-8000-000000000201");
+
+    expect(repository.recordFinding).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        projectId: "project-test",
+        localeBranchId: "locale-en-us",
+        finding: expect.objectContaining({
+          findingKind: "protected_span_issue",
+          description: expect.stringContaining(
+            "Repair hint: Restore protected span {player} exactly in script/prologue#line-001",
+          ),
+        }),
+        status: "open",
+      }),
+    );
+    expect(repository.savePatchExport).not.toHaveBeenCalled();
+  });
+
+  it("requires duplicate protected span raw text to appear once per source occurrence", async () => {
+    const repository = repositoryFixture();
+    const service = new ItotoriProjectWorkflowService(repository, actor);
+    const bridge = bridgeFixture();
+    bridge.units = [
+      {
+        ...bridge.units[0]!,
+        sourceText: "こんにちは、{player}と{player}。",
+        protectedSpans: [
+          { kind: "placeholder", raw: "{player}", start: 6, end: 14, preserveMode: "exact" },
+          { kind: "placeholder", raw: "{player}", start: 15, end: 23, preserveMode: "exact" },
+        ],
+      },
+    ];
+
+    await expect(
+      service.exportPatch(
+        projectFixture({
+          bridge,
+          drafts: { "bridge-unit-test": "Hello, {player}." },
+        }),
+      ),
+    ).rejects.toThrow("The target contains 1 occurrence(s), but 2 are required.");
+
+    expect(repository.recordFinding).toHaveBeenCalledWith(
+      actor,
+      expect.objectContaining({
+        finding: expect.objectContaining({
+          description: expect.stringContaining(
+            "The target contains 1 occurrence(s), but 2 are required.",
+          ),
+        }),
+        status: "open",
+      }),
+    );
+    expect(repository.savePatchExport).not.toHaveBeenCalled();
+  });
+
   it("emits deterministic pre-export findings with exact units and repair hints", async () => {
     const repository = repositoryFixture();
     const service = new ItotoriProjectWorkflowService(repository, actor);

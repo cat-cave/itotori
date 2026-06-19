@@ -17,6 +17,10 @@ import {
   AgentToolDurableJobAdapter,
   AgentToolRuntime,
   DeterministicToolRegistry,
+  deterministicPreExportQaImplementationHash,
+  deterministicPreExportQaJobFixture,
+  deterministicPreExportQaOutputFixture,
+  deterministicPreExportQaTool,
   parseTranslationQualityJudgeOutput,
   protectedSpanCheck,
   protectedSpanCheckImplementationHash,
@@ -29,6 +33,8 @@ import {
   translationQualityJudgeOutputFixture,
   translationQualityJudgeOutputSchema,
   type AgentDefinition,
+  type DeterministicPreExportQaInput,
+  type DeterministicPreExportQaOutput,
   type DeterministicToolDefinition,
   type ProtectedSpanCheckInput,
   type ProtectedSpanCheckOutput,
@@ -222,6 +228,93 @@ describe("agent and deterministic tool registries", () => {
       outputHash: first.metadata.outputHash,
     });
     expect(first.event.payload).not.toHaveProperty("providerRunId");
+  });
+
+  it("runs the full deterministic pre-export QA suite as a registered tool job", async () => {
+    const events: TriageEventV02[] = [];
+    const agents = new AgentRegistry();
+    const tools = new DeterministicToolRegistry();
+    const metadata = tools.register(deterministicPreExportQaTool());
+
+    expect(metadata).toMatchObject({
+      registryKind: "deterministic_tool",
+      toolName: "tool.deterministic-pre-export-qa",
+      toolVersion: "1.0.0",
+      taskKind: "deterministic_qa",
+      capabilityKey: "localization.pre_export_qa",
+      reproducibility: {
+        algorithmName: "deterministic-pre-export-qa",
+        algorithmVersion: "itotori-020.1",
+        implementationHash: deterministicPreExportQaImplementationHash,
+      },
+    });
+
+    const runtime = new AgentToolRuntime(agents, tools, {
+      emit: (event) => {
+        events.push(event);
+      },
+    });
+
+    const result = await runtime.runDeterministicToolJob<
+      DeterministicPreExportQaInput,
+      DeterministicPreExportQaOutput
+    >(deterministicPreExportQaJobFixture, { verifyReproducible: true });
+
+    expect(result.output.failures).toEqual(deterministicPreExportQaOutputFixture.failures);
+    expect(result.output.findings).toHaveLength(1);
+    expect(result.output.findings[0]).toMatchObject({
+      findingKind: "protected_span_issue",
+      qualityCategory: "protected_content",
+      description: expect.stringContaining(
+        "Repair hint: Restore protected span {player} exactly in hello.scene.001.line.001",
+      ),
+    });
+    expect(result.metadata).toMatchObject({
+      runtimeKind: "deterministic_tool",
+      toolName: "tool.deterministic-pre-export-qa",
+      toolVersion: "1.0.0",
+      capabilityKey: "localization.pre_export_qa",
+      verification: { rerunOutputHash: result.metadata.outputHash },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventKind: "qa_finding_reported",
+      actor: { actorKind: "tool", displayName: "tool.deterministic-pre-export-qa@1.0.0" },
+      payload: expect.objectContaining({
+        registryKind: "deterministic_tool_invocation",
+        toolName: "tool.deterministic-pre-export-qa",
+        outputHash: result.metadata.outputHash,
+      }),
+    });
+  });
+
+  it("validates duplicate protected span raw text as distinct deterministic tool occurrences", async () => {
+    const agents = new AgentRegistry();
+    const tools = new DeterministicToolRegistry();
+    tools.register(protectedSpanTool());
+    const runtime = new AgentToolRuntime(agents, tools);
+
+    const result = await runtime.runDeterministicToolJob<
+      ProtectedSpanCheckInput,
+      ProtectedSpanCheckOutput
+    >({
+      ...protectedSpanCheckJobFixture,
+      input: {
+        targetText: "Hello, {player}.",
+        protectedSpans: ["{player}", "{player}"],
+      },
+    });
+
+    expect(result.output).toEqual({
+      outputKind: "protected_span_check",
+      missingProtectedSpans: ["{player}"],
+      findings: [
+        {
+          span: "{player}",
+          rationale: "The target text does not contain the protected span.",
+        },
+      ],
+    });
   });
 
   it("rejects non-reproducible deterministic tool output when verification is enabled", async () => {

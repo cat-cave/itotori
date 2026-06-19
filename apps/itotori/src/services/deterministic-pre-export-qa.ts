@@ -79,20 +79,28 @@ export function runDeterministicPreExportQa(project: ProjectState): {
       );
     }
 
-    for (const spanRaw of protectedSpanRaws(unit)) {
-      if (!targetText.includes(spanRaw)) {
-        unitFailures.push(
-          failure(unit, targetText, "protected-span-missing", {
-            message: `The target draft does not contain protected span ${JSON.stringify(spanRaw)}.`,
-            expected: spanRaw,
-            observed: targetText,
-            repairHint: `Restore protected span ${spanRaw} exactly in ${unit.sourceUnitKey}.`,
-            findingKind: "protected_span_issue",
-            qualityCategory: "protected_content",
-            severity: "P0",
-          }),
-        );
-      }
+    const requiredProtectedSpans = protectedSpanRaws(unit);
+    for (const spanRaw of missingRequiredProtectedSpanOccurrences(
+      requiredProtectedSpans,
+      targetText,
+    )) {
+      const requiredCount = requiredProtectedSpans.filter((raw) => raw === spanRaw).length;
+      const observedCount = countOccurrences(targetText, spanRaw);
+      const occurrenceNote =
+        requiredCount > 1
+          ? ` The target contains ${observedCount} occurrence(s), but ${requiredCount} are required.`
+          : "";
+      unitFailures.push(
+        failure(unit, targetText, "protected-span-missing", {
+          message: `The target draft does not contain protected span ${JSON.stringify(spanRaw)}.${occurrenceNote}`,
+          expected: spanRaw,
+          observed: targetText,
+          repairHint: `Restore protected span ${spanRaw} exactly in ${unit.sourceUnitKey}.`,
+          findingKind: "protected_span_issue",
+          qualityCategory: "protected_content",
+          severity: "P0",
+        }),
+      );
     }
 
     const charsetProblem = firstCharsetProblem(targetText);
@@ -199,6 +207,40 @@ function protectedSpanRaws(unit: BridgeUnit | LocalizationUnitV02): string[] {
     return unit.spans.map((span) => span.raw);
   }
   return unit.protectedSpans.map((span) => span.raw);
+}
+
+function missingRequiredProtectedSpanOccurrences(
+  requiredSpans: string[],
+  targetText: string,
+): string[] {
+  const availableCounts = new Map<string, number>();
+  const missing: string[] = [];
+  for (const spanRaw of requiredSpans) {
+    const available = availableCounts.get(spanRaw) ?? countOccurrences(targetText, spanRaw);
+    if (available <= 0) {
+      missing.push(spanRaw);
+      continue;
+    }
+    availableCounts.set(spanRaw, available - 1);
+  }
+  return missing;
+}
+
+function countOccurrences(targetText: string, raw: string): number {
+  if (raw.length === 0) {
+    return 0;
+  }
+  let count = 0;
+  let searchStart = 0;
+  while (searchStart <= targetText.length) {
+    const index = targetText.indexOf(raw, searchStart);
+    if (index < 0) {
+      return count;
+    }
+    count += 1;
+    searchStart = index + raw.length;
+  }
+  return count;
 }
 
 function firstCharsetProblem(targetText: string): { label: string; observed: string } | undefined {
