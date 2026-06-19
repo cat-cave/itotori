@@ -30,7 +30,11 @@ artifacts.
 
 ## Portable URI Naming
 
-All v0.2 runtime artifact references use:
+Shared `RuntimeEvidenceReportV02` artifact references use portable relative
+URIs. The shared schema rejects embedded bytes and local filesystem paths, but
+it does not require every producer fixture to use the managed storage prefix.
+
+Utsushi-managed runtime storage and Itotori DB storage use:
 
 ```text
 artifacts/utsushi/runtime/<runtime-report-id>/<kind-directory>/<artifact-id>.<extension>
@@ -48,6 +52,14 @@ The current kind directories are:
 Path segments are deterministic identifiers, not user-provided filenames.
 Absolute paths, URI schemes, backslashes, `.` segments, and `..` segments are
 invalid.
+
+Shared bridge-schema examples may use logical portable refs such as
+`artifacts/utsushi/hello/frame-0001.png` to test contract compatibility outside
+a storage backend. Itotori ingestion normalizes those schema-portable refs to
+the managed storage prefix before writing runtime evidence rows and artifact
+rows, while retaining the original adapter-local ref in sanitized metadata.
+Public Utsushi runtime capture fixtures already use the managed prefix because
+they exercise the runtime artifact store itself.
 
 ## Observation Hook Events
 
@@ -85,6 +97,9 @@ Postgres rows store only references:
 
 Large payload fields such as raw screenshot bytes, trace blobs, recording data,
 or conformance report bodies are not persisted in runtime metadata.
+For v0.2 runtime evidence, `portable_artifact_uri` and `itotori_artifacts.uri`
+are managed storage refs under `artifacts/utsushi/runtime/...`; the original
+schema ref, when different, is retained as `adapterLocalArtifactRef` metadata.
 
 ## Re-Ingest Repair Semantics
 
