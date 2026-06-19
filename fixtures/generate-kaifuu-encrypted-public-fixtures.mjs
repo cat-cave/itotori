@@ -421,7 +421,14 @@ writeJson(
         rowId: "kirikiri-xp3",
         engineFamily: "kiri_kiri_xp3",
         detected: true,
-        signals: ["compressed", "encrypted", "helper_required", "missing_key", "packed", "unknown_variant"],
+        signals: [
+          "compressed",
+          "encrypted",
+          "helper_required",
+          "missing_key",
+          "packed",
+          "unknown_variant",
+        ],
       },
       {
         rowId: "siglus-scene-pck",

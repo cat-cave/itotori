@@ -272,7 +272,9 @@ describe("ItotoriTerminologyRepository", () => {
           localeBranchId: "locale-en-us",
           status: terminologyConflictStatusValues.open,
         }),
-      ).resolves.toEqual([expect.objectContaining({ conflictId: conflictResult.conflict?.conflictId })]);
+      ).resolves.toEqual([
+        expect.objectContaining({ conflictId: conflictResult.conflict?.conflictId }),
+      ]);
     } finally {
       await context.close();
     }

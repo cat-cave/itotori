@@ -1925,10 +1925,7 @@ export const terminologyAliases = pgTable(
       table.aliasKind,
       table.normalizedAliasText,
     ),
-    index("itotori_terminology_aliases_lookup_idx").on(
-      table.aliasKind,
-      table.normalizedAliasText,
-    ),
+    index("itotori_terminology_aliases_lookup_idx").on(table.aliasKind, table.normalizedAliasText),
   ],
 );
 
@@ -1939,9 +1936,12 @@ export const terminologySourceReferences = pgTable(
     termId: text("term_id")
       .notNull()
       .references(() => terminologyTerms.termId, { onDelete: "cascade" }),
-    sourceRevisionId: text("source_revision_id").references(() => sourceRevisions.sourceRevisionId, {
-      onDelete: "set null",
-    }),
+    sourceRevisionId: text("source_revision_id").references(
+      () => sourceRevisions.sourceRevisionId,
+      {
+        onDelete: "set null",
+      },
+    ),
     bridgeUnitId: text("bridge_unit_id").references(() => sourceUnits.bridgeUnitId, {
       onDelete: "set null",
     }),

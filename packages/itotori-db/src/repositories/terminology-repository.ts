@@ -310,7 +310,10 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
           ],
           set: {
             sourceTerm: requiredString(input.sourceTerm, "sourceTerm"),
-            preferredTranslation: requiredString(input.preferredTranslation, "preferredTranslation"),
+            preferredTranslation: requiredString(
+              input.preferredTranslation,
+              "preferredTranslation",
+            ),
             termKind,
             partOfSpeech: optionalNonEmpty(input.partOfSpeech, "partOfSpeech"),
             caseSensitive: input.caseSensitive ?? false,
@@ -366,7 +369,10 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
           reference.sourceRevisionId,
           "sourceReference.sourceRevisionId",
         );
-        const bridgeUnitId = optionalNonEmpty(reference.bridgeUnitId, "sourceReference.bridgeUnitId");
+        const bridgeUnitId = optionalNonEmpty(
+          reference.bridgeUnitId,
+          "sourceReference.bridgeUnitId",
+        );
         const sourceProvenanceId = optionalNonEmpty(
           reference.sourceProvenanceId,
           "sourceReference.sourceProvenanceId",
@@ -449,7 +455,10 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
       termIds.length === 0
         ? [[], []]
         : await Promise.all([
-            this.db.select().from(terminologyAliases).where(inArray(terminologyAliases.termId, termIds)),
+            this.db
+              .select()
+              .from(terminologyAliases)
+              .where(inArray(terminologyAliases.termId, termIds)),
             this.db
               .select()
               .from(terminologySemanticIndex)
@@ -502,7 +511,10 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
       })
       .slice(0, limit);
 
-    const hydrated = await hydrateTerms(this.db, matches.map((match) => match.term.termId));
+    const hydrated = await hydrateTerms(
+      this.db,
+      matches.map((match) => match.term.termId),
+    );
     const hydratedById = new Map(hydrated.map((term) => [term.termId, term]));
     return {
       query: input.query,
@@ -570,7 +582,12 @@ async function getLocaleBranchContext(
       sourceRevisions,
       eq(sourceRevisions.sourceRevisionId, sourceBundles.sourceBundleRevisionId),
     )
-    .where(and(eq(localeBranches.projectId, projectId), eq(localeBranches.localeBranchId, localeBranchId)))
+    .where(
+      and(
+        eq(localeBranches.projectId, projectId),
+        eq(localeBranches.localeBranchId, localeBranchId),
+      ),
+    )
     .limit(1);
   const row = rows[0];
   return row === undefined ? null : row;
@@ -657,8 +674,10 @@ async function validateSourceReferenceContext(
       .limit(1);
     const metadata = rows[0]?.metadata;
     const projectId = metadata === undefined ? null : metadataString(metadata, "projectId");
-    const localeBranchId = metadata === undefined ? null : metadataString(metadata, "localeBranchId");
-    const sourceBundleId = metadata === undefined ? null : metadataString(metadata, "sourceBundleId");
+    const localeBranchId =
+      metadata === undefined ? null : metadataString(metadata, "localeBranchId");
+    const sourceBundleId =
+      metadata === undefined ? null : metadataString(metadata, "sourceBundleId");
     const sourceRevisionId =
       metadata === undefined ? null : metadataString(metadata, "sourceRevisionId");
     const branchMatches = localeBranchId === null || localeBranchId === context.localeBranchId;
@@ -772,7 +791,10 @@ function normalizeSemanticIndexInput(
 
   const embeddingVector = input?.embeddingVector ?? null;
   if (embeddingVector !== null) {
-    if (!Array.isArray(embeddingVector) || !embeddingVector.every((value) => Number.isFinite(value))) {
+    if (
+      !Array.isArray(embeddingVector) ||
+      !embeddingVector.every((value) => Number.isFinite(value))
+    ) {
       throw new Error("semanticIndex.embeddingVector must be an array of finite numbers");
     }
     if (embeddingVector.length !== embeddingDimension) {
@@ -895,11 +917,18 @@ async function recordPreferredTranslationConflict(
       .update(terminologyConflicts)
       .set({
         summary,
-        metadata: conflictMetadata(translations, terms.map((term) => term.termId)),
+        metadata: conflictMetadata(
+          translations,
+          terms.map((term) => term.termId),
+        ),
         updatedAt: sql`now()`,
       })
       .where(eq(terminologyConflicts.conflictId, existingConflict.conflictId));
-    await appendMissingConflictEvidence(db, existingConflict.conflictId, terms.map((term) => term.termId));
+    await appendMissingConflictEvidence(
+      db,
+      existingConflict.conflictId,
+      terms.map((term) => term.termId),
+    );
     const conflict = await getConflictById(db, existingConflict.conflictId);
     if (conflict === null) {
       throw new Error(`terminology conflict ${existingConflict.conflictId} disappeared`);
@@ -917,7 +946,8 @@ async function recordPreferredTranslationConflict(
     qualityCategory: "terminology",
     title: "Glossary preferred translation conflict",
     description: summary,
-    impact: "Translation and QA batches need a reviewer decision before this glossary term is trusted.",
+    impact:
+      "Translation and QA batches need a reviewer decision before this glossary term is trusted.",
     status: "open",
     createdAt: new Date(),
     affectedRefs: terms.map((term) => ({
@@ -952,9 +982,16 @@ async function recordPreferredTranslationConflict(
     status: terminologyConflictStatusValues.open,
     summary,
     findingId,
-    metadata: conflictMetadata(translations, terms.map((term) => term.termId)),
+    metadata: conflictMetadata(
+      translations,
+      terms.map((term) => term.termId),
+    ),
   });
-  await appendMissingConflictEvidence(db, conflictId, terms.map((term) => term.termId));
+  await appendMissingConflictEvidence(
+    db,
+    conflictId,
+    terms.map((term) => term.termId),
+  );
   const conflict = await getConflictById(db, conflictId);
   if (conflict === null) {
     throw new Error(`terminology conflict ${conflictId} was not persisted`);
@@ -971,7 +1008,9 @@ async function appendMissingConflictEvidence(
     .select({ termId: terminologyConflictEvidence.termId })
     .from(terminologyConflictEvidence)
     .where(eq(terminologyConflictEvidence.conflictId, conflictId));
-  const existing = new Set(existingRows.map((row) => row.termId).filter((termId) => termId !== null));
+  const existing = new Set(
+    existingRows.map((row) => row.termId).filter((termId) => termId !== null),
+  );
   let position = existing.size;
   for (const termId of termIds) {
     if (existing.has(termId)) {
@@ -1028,7 +1067,10 @@ async function hydrateTerms(
       .where(inArray(terminologySemanticIndex.termId, termIds)),
   ]);
   const aliasesByTerm = groupBy(aliases.map(aliasFromRow), (alias) => alias.termId);
-  const referencesByTerm = groupBy(references.map(sourceReferenceFromRow), (reference) => reference.termId);
+  const referencesByTerm = groupBy(
+    references.map(sourceReferenceFromRow),
+    (reference) => reference.termId,
+  );
   const semanticByTerm = new Map(semanticRows.map((row) => [row.termId, semanticFromRow(row)]));
   const order = new Map(termIds.map((termId, index) => [termId, index]));
   return terms
@@ -1131,7 +1173,9 @@ function sourceReferenceFromRow(
   };
 }
 
-function semanticFromRow(row: typeof terminologySemanticIndex.$inferSelect): TerminologySemanticIndexRecord {
+function semanticFromRow(
+  row: typeof terminologySemanticIndex.$inferSelect,
+): TerminologySemanticIndexRecord {
   return {
     semanticIndexId: row.semanticIndexId,
     termId: row.termId,

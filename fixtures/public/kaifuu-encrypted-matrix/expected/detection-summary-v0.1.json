@@ -21,52 +21,31 @@
       "rowId": "siglus-scene-pck",
       "engineFamily": "siglus",
       "detected": true,
-      "signals": [
-        "encrypted",
-        "helper_required",
-        "missing_key",
-        "packed"
-      ]
+      "signals": ["encrypted", "helper_required", "missing_key", "packed"]
     },
     {
       "rowId": "rpg-maker-mv-mz-encrypted-assets",
       "engineFamily": "rpg_maker_mv_mz",
       "detected": true,
-      "signals": [
-        "encrypted",
-        "missing_key"
-      ]
+      "signals": ["encrypted", "missing_key"]
     },
     {
       "rowId": "wolf-rpg-editor-archives",
       "engineFamily": "wolf_rpg_editor",
       "detected": true,
-      "signals": [
-        "encrypted",
-        "helper_required",
-        "missing_key",
-        "packed",
-        "protected"
-      ]
+      "signals": ["encrypted", "helper_required", "missing_key", "packed", "protected"]
     },
     {
       "rowId": "bgi-ethornell-containers",
       "engineFamily": "bgi_ethornell",
       "detected": true,
-      "signals": [
-        "encrypted",
-        "missing_key",
-        "packed",
-        "unknown_variant"
-      ]
+      "signals": ["encrypted", "missing_key", "packed", "unknown_variant"]
     },
     {
       "rowId": "unknown-archive-variant",
       "engineFamily": "unknown",
       "detected": true,
-      "signals": [
-        "unknown_variant"
-      ]
+      "signals": ["unknown_variant"]
     }
   ],
   "redactionExpectations": [

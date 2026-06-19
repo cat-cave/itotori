@@ -298,16 +298,10 @@ export function assertTerminologySearchReadModel(
     assertString(term.projectId, `${label}.results[${index}].term.projectId`);
     assertString(term.localeBranchId, `${label}.results[${index}].term.localeBranchId`);
     assertString(term.sourceTerm, `${label}.results[${index}].term.sourceTerm`);
-    assertString(
-      term.normalizedSourceTerm,
-      `${label}.results[${index}].term.normalizedSourceTerm`,
-    );
+    assertString(term.normalizedSourceTerm, `${label}.results[${index}].term.normalizedSourceTerm`);
     assertString(term.sourceLocale, `${label}.results[${index}].term.sourceLocale`);
     assertString(term.targetLocale, `${label}.results[${index}].term.targetLocale`);
-    assertString(
-      term.preferredTranslation,
-      `${label}.results[${index}].term.preferredTranslation`,
-    );
+    assertString(term.preferredTranslation, `${label}.results[${index}].term.preferredTranslation`);
     assertString(
       term.normalizedPreferredTranslation,
       `${label}.results[${index}].term.normalizedPreferredTranslation`,
@@ -318,10 +312,7 @@ export function assertTerminologySearchReadModel(
     assertBoolean(term.caseSensitive, `${label}.results[${index}].term.caseSensitive`);
     assertNullableString(term.notes, `${label}.results[${index}].term.notes`);
     asRecord(term.metadata, `${label}.results[${index}].term.metadata`);
-    assertNullableString(
-      term.createdByUserId,
-      `${label}.results[${index}].term.createdByUserId`,
-    );
+    assertNullableString(term.createdByUserId, `${label}.results[${index}].term.createdByUserId`);
     assertDateLike(term.createdAt, `${label}.results[${index}].term.createdAt`);
     assertDateLike(term.updatedAt, `${label}.results[${index}].term.updatedAt`);
     assertTerminologyAliases(term.aliases, `${label}.results[${index}].term.aliases`);
