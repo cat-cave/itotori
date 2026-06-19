@@ -3,15 +3,16 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 
 use kaifuu_core::{
-    AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, DetectionReport,
-    DetectionResult, EngineAdapter, ExtractRequest, GameProfile, GoldenByteEquivalenceMode,
-    GoldenHarnessRequest, HelperBinaryLaunchValidationRequest, HelperCapability,
+    AdapterRegistry, AssetInventoryManifest, AssetInventoryRequest, BoundedHelperProcessRequest,
+    DetectionReport, DetectionResult, EngineAdapter, ExtractRequest, GameProfile,
+    GoldenByteEquivalenceMode, GoldenHarnessRequest, HelperBinaryLaunchValidationRequest,
+    HelperCapability, HelperExecutionFilesystemAccess, HelperProcessCancelToken,
     HelperRedactionStatus, KaifuuResult, LocalKeyImportRequest, LocalKeyImportSource,
     LocalSecretDirectoryStore, PatchExport, PatchPreflightRequest, PatchRequest, PatchResult,
     ProfileRequest, ProofHash, SecretRef, VerifyRequest, atomic_write_text,
     fixture_helper_registry, normalize_helper_result_value, parse_helper_capability,
     parse_hex_bytes, promote_staged_directory_no_clobber, read_json, redact_for_log_or_report,
-    redact_report_value, run_round_trip_golden, sha256_hash_bytes,
+    redact_report_value, run_bounded_helper_process, run_round_trip_golden, sha256_hash_bytes,
     validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
     validate_profile_value, write_json,
 };
@@ -408,9 +409,46 @@ fn run_key_helper_command(args: &[String]) -> Result<(), Box<dyn std::error::Err
                 }
             }
         }
+        "run-process" => {
+            let helper_id = flag_optional(args, "--helper-id").unwrap_or("kaifuu.local.helper");
+            let helper_binary = PathBuf::from(flag(args, "--helper-binary")?);
+            let timeout_ms = parse_u32_flag(args, "--timeout-ms")?;
+            let output = PathBuf::from(flag(args, "--output")?);
+            let stdin = flag_optional(args, "--stdin")
+                .map(fs::read)
+                .transpose()?
+                .unwrap_or_default();
+            let cancel_token = flag_optional(args, "--cancel-after-ms")
+                .map(|value| {
+                    let delay_ms = value.parse::<u64>().map_err(|_| {
+                        format!("flag --cancel-after-ms must be an unsigned integer, got {value}")
+                    })?;
+                    let token = HelperProcessCancelToken::new();
+                    let cancel_token = token.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                        cancel_token.cancel();
+                    });
+                    Ok::<_, Box<dyn std::error::Error>>(token)
+                })
+                .transpose()?;
+            let result = run_bounded_helper_process(BoundedHelperProcessRequest {
+                helper_id,
+                executable_path: &helper_binary,
+                timeout_ms,
+                stdin: &stdin,
+                filesystem_access: HelperExecutionFilesystemAccess::TempOnly,
+                cancel_token,
+            });
+            let failed = result.status == kaifuu_core::OperationStatus::Failed;
+            write_json(&output, &result)?;
+            if failed {
+                return Err(result.diagnostic.code.into());
+            }
+        }
         _ => {
             return Err(
-                "usage: kaifuu key-helper validate --fixture <helper-result.json> --output <normalized-helper-result.json>"
+                "usage: kaifuu key-helper <validate --fixture <helper-result.json>|run-process --helper-binary <path> --timeout-ms <ms>> --output <report.json>"
                     .into(),
             );
         }
@@ -875,6 +913,17 @@ fn flag<'a>(args: &'a [String], name: &str) -> Result<&'a str, Box<dyn std::erro
     flag_optional(args, name).ok_or_else(|| format!("missing flag {name}").into())
 }
 
+fn parse_u32_flag(args: &[String], name: &str) -> Result<u32, Box<dyn std::error::Error>> {
+    let value = flag(args, name)?;
+    let parsed = value
+        .parse::<u32>()
+        .map_err(|_| format!("flag {name} must be an unsigned integer, got {value}"))?;
+    if parsed == 0 {
+        return Err(format!("flag {name} must be greater than zero").into());
+    }
+    Ok(parsed)
+}
+
 fn flag_optional<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
         .position(|arg| arg == name)
@@ -936,6 +985,16 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[cfg(unix)]
+    fn write_executable_stub(path: &Path, script: &str) {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::write(path, script).unwrap();
+        let mut permissions = fs::metadata(path).unwrap().permissions();
+        permissions.set_mode(0o700);
+        fs::set_permissions(path, permissions).unwrap();
     }
 
     fn temp_game(root: &Path) -> PathBuf {
@@ -1162,6 +1221,160 @@ mod tests {
                 .any(|failure| failure["field"] == "helper"
                     && failure["code"] == "invalid_helper_semantics")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn key_helper_run_process_redacts_stdout_and_stderr() {
+        let root = temp_dir("key-helper-run-process-redaction");
+        let helper = root.join("helper-stub");
+        let output = root.join("process-report.json");
+        write_executable_stub(
+            &helper,
+            r#"#!/bin/sh
+printf 'public-ok 00112233445566778899aabbccddeeff /home/dev/private-game\n'
+printf 'stderr C:\Users\Dev\SecretGame\n' >&2
+"#,
+        );
+
+        run_cli(&[
+            "key-helper",
+            "run-process",
+            "--helper-id",
+            "kaifuu.fixture.process-stub",
+            "--helper-binary",
+            helper.to_str().unwrap(),
+            "--timeout-ms",
+            "1000",
+            "--output",
+            output.to_str().unwrap(),
+        ]);
+
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "passed");
+        assert_eq!(report["diagnostic"]["code"], "success");
+        assert_eq!(report["execution"]["bounded"], true);
+        assert_eq!(report["execution"]["networkAccess"], false);
+        assert!(report["stdout"]["byteCount"].as_u64().unwrap() > 0);
+        assert_eq!(
+            report["stdout"]["redactedText"],
+            "[REDACTED:kaifuu.secret_redacted]"
+        );
+        assert_eq!(
+            report["stderr"]["redactedText"],
+            "[REDACTED:kaifuu.secret_redacted]"
+        );
+        let serialized = fs::read_to_string(&output).unwrap();
+        for forbidden in [
+            "00112233445566778899aabbccddeeff",
+            "/home/dev/private-game",
+            "C:\\Users\\Dev\\SecretGame",
+            helper.to_str().unwrap(),
+        ] {
+            assert!(!serialized.contains(forbidden), "{forbidden} leaked");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn key_helper_run_process_timeout_kills_process_group() {
+        let root = temp_dir("key-helper-run-process-timeout");
+        let helper = root.join("helper-stub");
+        let marker = root.join("leaked-marker");
+        let output = root.join("process-report.json");
+        write_executable_stub(
+            &helper,
+            &format!(
+                r#"#!/bin/sh
+(sleep 1; printf leaked > '{}') &
+wait
+"#,
+                marker.display()
+            ),
+        );
+
+        let result = run_with_args(vec![
+            "key-helper".to_string(),
+            "run-process".to_string(),
+            "--helper-id".to_string(),
+            "kaifuu.fixture.process-stub".to_string(),
+            "--helper-binary".to_string(),
+            helper.to_str().unwrap().to_string(),
+            "--timeout-ms".to_string(),
+            "50".to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+
+        assert!(result.is_err());
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+        assert!(
+            !marker.exists(),
+            "helper child process escaped timeout cleanup"
+        );
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(
+            report["diagnostic"]["code"],
+            kaifuu_core::SEMANTIC_HELPER_TIMEOUT
+        );
+        assert_eq!(report["timedOut"], true);
+        assert_eq!(report["terminated"], true);
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains(marker.to_str().unwrap()));
+        assert!(!serialized.contains(helper.to_str().unwrap()));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn key_helper_run_process_cancel_kills_process_group() {
+        let root = temp_dir("key-helper-run-process-cancel");
+        let helper = root.join("helper-stub");
+        let marker = root.join("cancel-leaked-marker");
+        let output = root.join("process-report.json");
+        write_executable_stub(
+            &helper,
+            &format!(
+                r#"#!/bin/sh
+(sleep 1; printf leaked > '{}') &
+wait
+"#,
+                marker.display()
+            ),
+        );
+
+        let result = run_with_args(vec![
+            "key-helper".to_string(),
+            "run-process".to_string(),
+            "--helper-id".to_string(),
+            "kaifuu.fixture.process-stub".to_string(),
+            "--helper-binary".to_string(),
+            helper.to_str().unwrap().to_string(),
+            "--timeout-ms".to_string(),
+            "5000".to_string(),
+            "--cancel-after-ms".to_string(),
+            "50".to_string(),
+            "--output".to_string(),
+            output.to_str().unwrap().to_string(),
+        ]);
+
+        assert!(result.is_err());
+        std::thread::sleep(std::time::Duration::from_millis(1200));
+        assert!(
+            !marker.exists(),
+            "helper child process escaped cancel cleanup"
+        );
+        let report: serde_json::Value = read_json(&output).unwrap();
+        assert_eq!(report["status"], "failed");
+        assert_eq!(
+            report["diagnostic"]["code"],
+            kaifuu_core::SEMANTIC_HELPER_CANCELLED
+        );
+        assert_eq!(report["cancelled"], true);
+        assert_eq!(report["terminated"], true);
+        let serialized = fs::read_to_string(&output).unwrap();
+        assert!(!serialized.contains(marker.to_str().unwrap()));
+        assert!(!serialized.contains(helper.to_str().unwrap()));
     }
 
     #[test]
