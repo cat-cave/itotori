@@ -19923,6 +19923,186 @@
         "Encrypted/compressed signal regression",
         "Capability overclaiming"
       ]
+    },
+    {
+      "id": "ITOTORI-139",
+      "status": "planned",
+      "title": "Branch reference API fixture coverage",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-058"],
+      "summary": "Expose branch-scoped policy and glossary reference provenance through app/API fixture coverage so non-DB consumers can verify the exact reference attached to drafts and review context.",
+      "deliverables": [
+        "App or service fixture that reads branch policy/glossary references through the public Itotori surface",
+        "Fixture assertion that draft provenance includes the exact style guide version and glossary reference id",
+        "Fixture assertion that sibling locale branch references remain isolated"
+      ],
+      "acceptanceCriteria": [
+        "A consumer outside `packages/itotori-db` can observe the branch policy/glossary reference used for a draft or review context.",
+        "The fixture proves branch-scoped reference ids survive through the API/service boundary without falling back to DB-only assertions.",
+        "Sibling locale branches return distinct reference context when their glossary or style guide differs."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        }
+      ],
+      "auditFocus": [
+        "DB-only branch reference coverage",
+        "API fixture omitting provenance ids",
+        "Locale branch leakage through service read models"
+      ]
+    },
+    {
+      "id": "ITOTORI-140",
+      "status": "planned",
+      "title": "Branch reference Drizzle schema parity",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-058"],
+      "summary": "Bring the Drizzle schema metadata for branch policy/glossary references into parity with the SQL migration constraints so schema drift checks reflect runtime DB enforcement.",
+      "deliverables": [
+        "Drizzle relation metadata for branch reference event linkage where supported",
+        "Schema or contract test that fails when SQL and Drizzle branch-reference constraints drift",
+        "Documentation note for constraints that intentionally remain SQL-only"
+      ],
+      "acceptanceCriteria": [
+        "The branch reference schema representation documents or models the event relationship consistently with the SQL migration.",
+        "A runnable test catches accidental branch reference relation or constraint drift.",
+        "Any SQL-only constraint is explicitly documented with a reason rather than silently diverging."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db typecheck"
+        }
+      ],
+      "auditFocus": [
+        "SQL/Drizzle constraint drift",
+        "False schema parity claims",
+        "Weak migration contract coverage"
+      ]
+    },
+    {
+      "id": "ITOTORI-141",
+      "status": "planned",
+      "title": "Glossary review reference migration contract",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-058"],
+      "summary": "Extend migration contract coverage so glossary review item reference columns, indexes, and foreign keys are asserted explicitly alongside locale branch unit provenance.",
+      "deliverables": [
+        "Migration contract assertions for `itotori_glossary_review_items.glossary_reference_id`",
+        "Index and foreign-key contract coverage for glossary review reference provenance",
+        "Regression fixture that fails if review-item reference persistence is removed from the migration"
+      ],
+      "acceptanceCriteria": [
+        "The DB migration contract test explicitly includes glossary review item glossary-reference column metadata.",
+        "The contract asserts the review-item glossary-reference index and foreign-key relationship.",
+        "Locale branch unit and glossary review item provenance contracts remain distinct and readable."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- repository.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Review-item provenance migration drift",
+        "Contract test overfitting to one table",
+        "Missing FK/index assertions"
+      ]
+    },
+    {
+      "id": "ITOTORI-142",
+      "status": "planned",
+      "title": "Glossary review snapshot transition regression",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "policy",
+      "dependsOn": ["ITOTORI-058"],
+      "summary": "Add focused DB-backed coverage for glossary review item reference snapshots across approved, rejected, and updated transitions so pre-update and post-update semantics are explicit.",
+      "deliverables": [
+        "Glossary review transition fixture with at least approved and rejected review states",
+        "Assertions that review items keep the glossary reference active when they were created or updated",
+        "Assertions that later glossary updates do not silently rewrite historical review item provenance"
+      ],
+      "acceptanceCriteria": [
+        "A glossary review item records the branch glossary reference used when the review row is created or materially updated.",
+        "Approving or rejecting a review item preserves intended reference provenance instead of implicitly adopting unrelated later glossary changes.",
+        "Historical review item provenance is not rewritten by subsequent branch glossary reference updates."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db test -- terminology-repository.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "just ci-itotori"
+        }
+      ],
+      "auditFocus": [
+        "Review transition provenance ambiguity",
+        "Historical review rows rewritten",
+        "Branch glossary snapshot semantics hidden in broad tests"
+      ]
+    },
+    {
+      "id": "KAIFUU-164",
+      "status": "planned",
+      "title": "Helper hash-to-exec race hardening",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-066"],
+      "summary": "Harden registered helper launch so the binary whose hash was validated cannot be swapped before execution through a path-based time-of-check/time-of-use race.",
+      "deliverables": [
+        "Helper launch strategy that binds validated bytes to execution through a trusted staging copy or platform-appropriate file handle strategy",
+        "Regression test for helper binary replacement between hash validation and launch",
+        "Semantic diagnostic for failed staging or race-detection paths"
+      ],
+      "acceptanceCriteria": [
+        "Registered helper execution does not rely solely on hashing a mutable path and later launching that same path.",
+        "A test demonstrates that replacing the helper file after validation cannot cause an unvalidated binary to run.",
+        "Race hardening preserves existing id, version, allowlist, hash, and capability diagnostics."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core registered_helper_process"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli key_helper"
+        }
+      ],
+      "auditFocus": [
+        "Path-based TOCTOU during helper launch",
+        "Platform-specific staging assumptions",
+        "Diagnostic regression for helper policy failures"
+      ]
     }
   ]
 }
