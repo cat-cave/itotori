@@ -1,5 +1,6 @@
 import {
   ItotoriFeedbackRepository,
+  ItotoriExactSearchDocumentRepository,
   ItotoriCatalogExactExternalIdLinkerService,
   ItotoriCatalogFuzzyCandidateGeneratorService,
   ItotoriCatalogCrawlerRepository,
@@ -25,6 +26,10 @@ import {
   type CatalogCompletenessPoolFilter,
   type TerminologySearchInput,
   type TerminologySearchReadModel,
+  type RefreshExactSearchDocumentsInput,
+  type RefreshExactSearchDocumentsResult,
+  type SearchExactInput,
+  type SearchExactToolResult,
   type StyleGuideFixtureFlowInput,
   type StyleGuideFixtureFlowResult,
 } from "@itotori/db";
@@ -53,6 +58,12 @@ export type ItotoriApplicationServices = {
   };
   terminologyRepository: {
     searchTerms(input: TerminologySearchInput): Promise<TerminologySearchReadModel>;
+  };
+  exactSearch: {
+    refreshDocuments(
+      input: RefreshExactSearchDocumentsInput,
+    ): Promise<RefreshExactSearchDocumentsResult>;
+    searchExact(input: SearchExactInput): Promise<SearchExactToolResult>;
   };
   catalogExactExternalIdLinker: ItotoriCatalogExactExternalIdLinkerPort;
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
@@ -92,6 +103,7 @@ export async function withDatabaseItotoriServices<T>(
     const catalogCrawlerRepository = new ItotoriCatalogCrawlerRepository(context.db);
     const styleGuideRepository = new ItotoriStyleGuideRepository(context.db);
     const terminologyRepository = new ItotoriTerminologyRepository(context.db);
+    const exactSearchRepository = new ItotoriExactSearchDocumentRepository(context.db);
     const translationMemoryRepository = new ItotoriTranslationMemoryRepository(context.db);
     const translationMemoryService = new ItotoriTranslationMemoryService(
       translationMemoryRepository,
@@ -114,6 +126,10 @@ export async function withDatabaseItotoriServices<T>(
       },
       terminologyRepository: {
         searchTerms: (input) => terminologyRepository.searchTerms(localUserActor, input),
+      },
+      exactSearch: {
+        refreshDocuments: (input) => exactSearchRepository.refreshDocuments(localUserActor, input),
+        searchExact: (input) => exactSearchRepository.searchExact(localUserActor, input),
       },
       catalogExactExternalIdLinker: new ItotoriCatalogExactExternalIdLinkerService(
         catalogRepository,

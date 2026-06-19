@@ -152,6 +152,10 @@ const migrations = [
     id: "0023_translation_memory",
     file: "0023_translation_memory.sql",
   },
+  {
+    id: "0024_exact_search_documents",
+    file: "0024_exact_search_documents.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

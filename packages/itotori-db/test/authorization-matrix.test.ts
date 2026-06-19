@@ -10,6 +10,7 @@ import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-ref
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
+import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-search-document-repository.js";
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
@@ -375,6 +376,18 @@ const repositoryPermissionGateMatrix = [
     "draftWrite",
     "translation-memory-repository.test.ts reuse provenance coverage",
     (repo) => repo.recordReuse(deniedActor, undefined as never),
+  ),
+  exactSearchGate(
+    "refreshDocuments",
+    "projectImport",
+    "exact-search-document-repository.test.ts refresh coverage",
+    (repo) => repo.refreshDocuments(deniedActor, undefined as never),
+  ),
+  exactSearchGate(
+    "searchExact",
+    "catalogRead",
+    "exact-search-document-repository.test.ts search.exact coverage",
+    (repo) => repo.searchExact(deniedActor, undefined as never),
   ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
@@ -745,6 +758,18 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "draft.write",
           "successFixture": "translation-memory-repository.test.ts reuse provenance coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriExactSearchDocumentRepository.refreshDocuments",
+          "requiredPermission": "project.import",
+          "successFixture": "exact-search-document-repository.test.ts refresh coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriExactSearchDocumentRepository.searchExact",
+          "requiredPermission": "catalog.read",
+          "successFixture": "exact-search-document-repository.test.ts search.exact coverage",
+        },
       ]
     `);
   });
@@ -936,6 +961,22 @@ function translationMemoryGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriTranslationMemoryRepository(db)),
+  });
+}
+
+function exactSearchGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriExactSearchDocumentRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriExactSearchDocumentRepository",
+    sourceFile: "exact-search-document-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriExactSearchDocumentRepository(db)),
   });
 }
 
