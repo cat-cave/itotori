@@ -7078,10 +7078,7 @@
     {
       "id": "ITOTORI-034",
       "title": "Translation memory and reuse index",
-      "status": "in_progress",
-      "owner": "orchestrator-wave19",
-      "branch": "spec/itotori-034",
-      "worktree": "/tmp/itotori-spec-itotori-034",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -13110,10 +13107,7 @@
     {
       "id": "KAIFUU-092",
       "title": "Siglus secondary-key helper-boundary fixtures",
-      "status": "in_progress",
-      "owner": "orchestrator-wave19",
-      "branch": "spec/kaifuu-092",
-      "worktree": "/tmp/itotori-spec-kaifuu-092",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -14993,10 +14987,7 @@
     {
       "id": "UTSUSHI-095",
       "title": "Runtime artifact schema fixture convention alignment",
-      "status": "in_progress",
-      "owner": "orchestrator-wave19",
-      "branch": "spec/utsushi-095",
-      "worktree": "/tmp/itotori-spec-utsushi-095",
+      "status": "complete",
       "priority": "P2",
       "target": "continuous",
       "projects": ["utsushi", "shared", "itotori"],
@@ -20242,6 +20233,150 @@
         "Protected-span duplicate semantics drift",
         "Shared helper hiding patch-export-specific assumptions",
         "False positives on single-occurrence spans"
+      ]
+    },
+    {
+      "id": "KAIFUU-165",
+      "status": "planned",
+      "title": "Helper rejection CLI diagnostic parity",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-092"],
+      "summary": "Align helper-registry CLI dispatch with core helper-boundary validation so rejected helper request fixtures can materialize structured diagnostics instead of failing early as helper_unavailable.",
+      "deliverables": [
+        "CLI helper-registry invocation path for fixture rejection diagnostics",
+        "Regression for siglus secondary-key helper-rejection fixture through normal CLI invocation",
+        "Documentation or test coverage for when --helper-id override is required versus request-derived helper id"
+      ],
+      "acceptanceCriteria": [
+        "The Siglus secondary-key helper-rejection fixture returns structured validation_failed or documented equivalent through CLI without requiring hidden test-only behavior.",
+        "Unregistered helper ids still fail closed before executing unknown helpers.",
+        "CLI and core diagnostics agree on helper-boundary mismatch semantics for public fixtures."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli helper_registry_invoke_fixture_stub"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core siglus_secondary_key_helper_boundary"
+        }
+      ],
+      "auditFocus": [
+        "CLI dispatch bypassing structured helper validation",
+        "Unknown helper execution risk",
+        "Core and CLI diagnostic drift"
+      ]
+    },
+    {
+      "id": "UTSUSHI-145",
+      "status": "planned",
+      "title": "Runtime artifact ref portability validation",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi", "shared", "itotori"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["UTSUSHI-095"],
+      "summary": "Tighten shared runtime artifact reference validation so portable bridge refs reject URI schemes and dot-segment traversal consistently with Utsushi artifact docs and Itotori storage conversion.",
+      "deliverables": [
+        "Shared schema validator coverage for URI schemes and dot-segment runtime artifact refs",
+        "Itotori DB ingestion parity tests for the same invalid ref matrix",
+        "Docs aligned with the exact accepted portable runtime artifact ref grammar"
+      ],
+      "acceptanceCriteria": [
+        "Shared schema rejects runtime artifact refs such as ../capture.png, ./capture.png, and https://example.invalid/capture.png when docs say they are invalid.",
+        "Itotori managed storage conversion and shared schema validation use the same invalid-ref matrix or document the exact boundary difference.",
+        "Existing valid schema-portable refs remain accepted and still normalize into managed storage refs during DB ingestion."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/localization-bridge-schema test -- schema.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test -- repository.test.ts"
+        }
+      ],
+      "auditFocus": [
+        "Schema/docs mismatch",
+        "Traversal accepted before managed storage conversion",
+        "Breaking valid portable runtime refs"
+      ]
+    },
+    {
+      "id": "ITOTORI-145",
+      "status": "planned",
+      "title": "Translation memory DB constraint hardening",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-034"],
+      "summary": "Harden translation-memory SQL constraints for enum-like statuses, match scores, and JSON object shapes so direct or historical rows cannot poison reuse reads.",
+      "deliverables": [
+        "Migration contract assertions for translation memory enum/check constraints",
+        "SQL CHECK constraints or documented equivalent guards for status, match_kind, reuse_status, match_score, provenance, and cost_impact",
+        "Negative DB tests for malformed direct inserts"
+      ],
+      "acceptanceCriteria": [
+        "Invalid translation memory status, match kind, reuse status, or out-of-range match score cannot be persisted through direct SQL.",
+        "Malformed provenance or cost_impact shapes fail with a clear DB or repository diagnostic.",
+        "Existing repository writes and fixtures remain compatible with the hardened constraints."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test -- translation-memory-repository.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/db typecheck"
+        }
+      ],
+      "auditFocus": [
+        "Application-only validation for critical reuse rows",
+        "Constraint drift between Drizzle and SQL",
+        "Historical malformed rows breaking reads"
+      ]
+    },
+    {
+      "id": "ITOTORI-146",
+      "status": "planned",
+      "title": "Translation memory cost-impact cast guard",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "translation-loop",
+      "dependsOn": ["ITOTORI-034"],
+      "summary": "Protect project cost-report aggregation from malformed translation-memory cost_impact JSON inserted outside repository APIs.",
+      "deliverables": [
+        "Cost-report malformed cost_impact fixture or direct-insert regression",
+        "Guarded aggregation query or repository-level quarantine diagnostic",
+        "Dashboard/API test proving malformed TM rows do not crash normal cost reports"
+      ],
+      "acceptanceCriteria": [
+        "Project cost reports remain available when a translation-memory reuse event has malformed cost_impact JSON.",
+        "Malformed rows are either ignored with a diagnostic or rejected by DB constraints before report generation.",
+        "Valid translation-memory reuse savings continue to appear in dashboard/API cost surfaces."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db test -- model-ledger-repository.test.ts"
+        },
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- dashboard"
+        }
+      ],
+      "auditFocus": [
+        "Cost report query crashes on malformed JSON",
+        "Silent loss of valid TM cost savings",
+        "Dashboard/API cost total drift"
       ]
     }
   ]
