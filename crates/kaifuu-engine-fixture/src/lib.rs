@@ -20,8 +20,9 @@ use kaifuu_core::{
     PatchResult, PlainXp3Entry, PlainXp3InventoryError, ProfileRequest, ProfileRequirement,
     ProtectedSpan, RequirementCategory, RequirementStatus, SecretRef, SemanticErrorCode,
     SourceFingerprint, SurfaceTransform, TextSurface, VerificationResult, VerifyRequest,
-    atomic_write_text, content_hash, deterministic_id, normalize_protected_spans, parse_hex_bytes,
-    read_plain_xp3_inventory, require_str, require_u64, safe_join_relative, sha256_file_ref,
+    XP3_PLAIN_MAGIC, atomic_write_text, content_hash, deterministic_id, normalize_protected_spans,
+    parse_hex_bytes, read_plain_xp3_inventory, require_str, require_u64, safe_join_relative,
+    sha256_file_ref,
 };
 use serde_json::{Value, json};
 
@@ -35,7 +36,7 @@ const XP3_COMPRESSED_MARKER: &str = "XP3-COMPRESSED";
 const XP3_HELPER_REQUIRED_MARKER: &str = "XP3-HELPER-REQUIRED";
 const XP3_UNKNOWN_MARKER: &str = "XP3-UNKNOWN-VARIANT";
 const XP3_GAME_ID: &str = "kaifuu-kirikiri-xp3-synthetic-archive";
-const XP3_SUPPORT_BOUNDARY: &str = "XP3 profile fixtures identify synthetic KiriKiri/XP3 archive containers for detector and profile evidence only; archive entry parsing, decompression, decryption, extraction, patch-back, and runtime support are not claimed.";
+const XP3_SUPPORT_BOUNDARY: &str = "XP3 profile fixtures identify synthetic KiriKiri/XP3 archive containers; plain fixture index metadata may be parsed for inventory only, while payload extraction, decompression, decryption, patch-back, and runtime support are not claimed.";
 const SIGLUS_SCENE_PATH: &str = "Scene.pck";
 const SIGLUS_GAMEEXE_PATH: &str = "Gameexe.dat";
 const SIGLUS_SCENE_MAGIC: &[u8] = b"SIGLUS-SCENE-PCK";
@@ -1447,23 +1448,23 @@ impl Xp3ProfileDetectorAdapter {
         let archive_exists = archive_path.is_file();
         let bytes = fs::read(&archive_path).unwrap_or_default();
         let archive_signature = bytes.starts_with(XP3_MAGIC);
-        let text = String::from_utf8_lossy(&bytes).to_ascii_lowercase();
+        let marker_text = Self::legacy_marker_text(&bytes);
         let variant = if !archive_signature {
             if archive_exists {
                 Xp3FixtureVariant::Unknown
             } else {
                 Xp3FixtureVariant::NotXp3
             }
-        } else if text.contains(&XP3_UNKNOWN_MARKER.to_ascii_lowercase()) {
+        } else if marker_text.contains(&XP3_UNKNOWN_MARKER.to_ascii_lowercase()) {
             Xp3FixtureVariant::Unknown
-        } else if text.contains(&XP3_HELPER_REQUIRED_MARKER.to_ascii_lowercase()) {
+        } else if marker_text.contains(&XP3_HELPER_REQUIRED_MARKER.to_ascii_lowercase()) {
             Xp3FixtureVariant::HelperRequired
-        } else if text.contains(&XP3_ENCRYPTED_MARKER.to_ascii_lowercase())
-            || text.contains("kaifuu-xp3-encrypted")
+        } else if marker_text.contains(&XP3_ENCRYPTED_MARKER.to_ascii_lowercase())
+            || marker_text.contains("kaifuu-xp3-encrypted")
         {
             Xp3FixtureVariant::Encrypted
-        } else if text.contains(&XP3_COMPRESSED_MARKER.to_ascii_lowercase())
-            || text.contains("kaifuu-xp3-compressed")
+        } else if marker_text.contains(&XP3_COMPRESSED_MARKER.to_ascii_lowercase())
+            || marker_text.contains("kaifuu-xp3-compressed")
         {
             Xp3FixtureVariant::Compressed
         } else {
@@ -1479,6 +1480,13 @@ impl Xp3ProfileDetectorAdapter {
             archive_hash,
             variant,
         }
+    }
+
+    fn legacy_marker_text(bytes: &[u8]) -> String {
+        if !bytes.starts_with(b"XP3\r\n") || bytes.starts_with(XP3_PLAIN_MAGIC) {
+            return String::new();
+        }
+        String::from_utf8_lossy(&bytes[..bytes.len().min(128)]).to_ascii_lowercase()
     }
 
     fn detected_variant(variant: Xp3FixtureVariant) -> &'static str {
@@ -1773,7 +1781,7 @@ impl Xp3FixtureState {
             source_hash: self.archive_hash.clone(),
             patching: CapabilityReport::unsupported(
                 Capability::Patching,
-                "XP3 detector profile does not parse, decrypt, decompress, repack, or patch archives",
+                "XP3 detector profile does not decrypt, extract payloads, decompress, repack, or patch archives",
             ),
         }]
     }
@@ -1943,7 +1951,7 @@ impl Xp3FixtureState {
                 helper_status,
                 key_requirement_refs,
                 notes: vec![
-                    "detector-only layered access record; no XP3 archive entry listing, script decoding, extraction, or patch-back is claimed".to_string(),
+                    "detector-only layered access record; plain inventory may list XP3 entries, but script decoding, extraction, and patch-back are not claimed".to_string(),
                 ],
             }],
         };
@@ -2117,7 +2125,7 @@ impl EngineAdapter for Xp3ProfileDetectorAdapter {
             supported_crypto: vec![CryptoTransform::NullKey, CryptoTransform::KeyProfile],
             supported_codecs: vec![CodecTransform::Unknown],
             supported_patch_back: vec![PatchBackTransform::Unsupported],
-            support_boundary: Some("inventory reports only the top-level XP3 archive and hash; no archive entry parser is claimed".to_string()),
+            support_boundary: Some("inventory parses synthetic plain XP3 index metadata and reports archive member rows; payload extraction, decompression, decryption, and patch-back are unsupported".to_string()),
         };
         let unsupported = |required_capabilities| LayeredAccessOperationContract {
             status: CapabilityStatus::Unsupported,
@@ -2146,7 +2154,7 @@ impl EngineAdapter for Xp3ProfileDetectorAdapter {
                 ),
                 CapabilityReport::unsupported(
                     Capability::ContainerAccess,
-                    "XP3 archive entry parsing is outside the detector profile",
+                    "XP3 container access is limited to synthetic plain-index inventory; extraction and rebuild are outside the detector profile",
                 ),
                 CapabilityReport::unsupported(
                     Capability::CryptoAccess,
@@ -4532,6 +4540,33 @@ mod tests {
         assert_eq!(
             plain.metadata.get("compressed").map(String::as_str),
             Some("false")
+        );
+
+        let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn xp3_plain_profile_marker_detection_ignores_member_payload_substrings() {
+        let game_dir = xp3_fixture_dir(
+            "xp3-plain-payload-marker",
+            &plain_xp3_fixture(&[Xp3TestEntry {
+                path: "scenario/intro.ks",
+                payload: b"dialogue mentions XP3-CRYPT as literal text",
+                compressed: false,
+                adler32: 0,
+            }]),
+        );
+
+        let detection = Xp3ProfileDetectorAdapter
+            .detect(DetectRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+
+        assert!(detection.detected);
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("xp3-plain-container")
         );
 
         let _ = fs::remove_dir_all(game_dir);

@@ -12673,17 +12673,10 @@ struct PlainXp3FileChunk {
 }
 
 pub fn read_plain_xp3_inventory(bytes: &[u8]) -> Result<PlainXp3Inventory, PlainXp3InventoryError> {
-    if bytes
-        .windows(b"XP3-CRYPT".len())
-        .any(|window| window.eq_ignore_ascii_case(b"XP3-CRYPT"))
-        || bytes
-            .windows(b"kaifuu-xp3-encrypted".len())
-            .any(|window| window.eq_ignore_ascii_case(b"kaifuu-xp3-encrypted"))
-    {
-        return Err(PlainXp3InventoryError::UnsupportedEncrypted);
-    }
-
     if !bytes.starts_with(XP3_PLAIN_MAGIC) {
+        if has_legacy_xp3_encrypted_marker(bytes) {
+            return Err(PlainXp3InventoryError::UnsupportedEncrypted);
+        }
         return Err(PlainXp3InventoryError::MalformedHeader);
     }
     let index_offset = read_le_u64(bytes, XP3_PLAIN_MAGIC.len(), "index offset")?;
@@ -12752,6 +12745,15 @@ pub fn read_plain_xp3_inventory(bytes: &[u8]) -> Result<PlainXp3Inventory, Plain
     let mut inventory = PlainXp3Inventory { entries };
     inventory.normalize();
     Ok(inventory)
+}
+
+fn has_legacy_xp3_encrypted_marker(bytes: &[u8]) -> bool {
+    if !bytes.starts_with(b"XP3\r\n") {
+        return false;
+    }
+    let marker_region = &bytes[..bytes.len().min(128)];
+    header_contains_ascii(marker_region, "XP3-CRYPT")
+        || header_contains_ascii(marker_region, "kaifuu-xp3-encrypted")
 }
 
 fn parse_xp3_file_chunk(
@@ -14909,18 +14911,20 @@ mod tests {
             PlainXp3InventoryError::MalformedHeader
         );
 
-        let mut bytes = plain_xp3_fixture(&[Xp3TestEntry {
+        assert_eq!(
+            read_plain_xp3_inventory(b"XP3\r\nXP3-CRYPT\nfixture-only encrypted archive")
+                .unwrap_err(),
+            PlainXp3InventoryError::UnsupportedEncrypted
+        );
+
+        let bytes = plain_xp3_fixture(&[Xp3TestEntry {
             path: "scenario/secret.ks",
-            payload: b"XP3-CRYPT protected fixture",
+            payload: b"XP3-CRYPT appears inside a plain member payload",
             compressed: false,
             adler32: 0,
         }]);
-        bytes.extend_from_slice(b"\nkaifuu-xp3-encrypted\n");
-
-        assert_eq!(
-            read_plain_xp3_inventory(&bytes).unwrap_err(),
-            PlainXp3InventoryError::UnsupportedEncrypted
-        );
+        let inventory = read_plain_xp3_inventory(&bytes).unwrap();
+        assert_eq!(inventory.entries.len(), 1);
     }
 
     #[test]

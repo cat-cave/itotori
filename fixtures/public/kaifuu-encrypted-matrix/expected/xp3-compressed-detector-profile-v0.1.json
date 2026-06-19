@@ -28,7 +28,7 @@
       "assetKind": "archive",
       "patching": {
         "capability": "patching",
-        "limitation": "XP3 detector profile does not parse, decrypt, decompress, repack, or patch archives",
+        "limitation": "XP3 detector profile does not decrypt, extract payloads, decompress, repack, or patch archives",
         "status": "unsupported"
       },
       "path": "data.xp3",
@@ -59,7 +59,7 @@
     },
     {
       "capability": "container_access",
-      "limitation": "XP3 archive entry parsing is outside the detector profile",
+      "limitation": "XP3 container access is limited to synthetic plain-index inventory; extraction and rebuild are outside the detector profile",
       "status": "unsupported"
     },
     {
@@ -135,9 +135,7 @@
         "crypto": "null_key",
         "helperStatus": "not_required",
         "keyMaterialStatus": "not_required",
-        "notes": [
-          "detector-only layered access record; no XP3 archive entry listing, script decoding, extraction, or patch-back is claimed"
-        ],
+        "notes": ["detector-only layered access record; plain inventory may list XP3 entries, but script decoding, extraction, and patch-back are not claimed"],
         "patchBack": "unsupported",
         "path": "data.xp3",
         "surfaceId": "kirikiri-xp3-archive#dialogue",
@@ -153,7 +151,7 @@
     "profileDiagnostics.encryptedPayload": "false",
     "profileDiagnostics.unknownVariant": "false",
     "profileDiagnostics.unsupportedParserBoundary": "true",
-    "supportBoundary": "XP3 profile fixtures identify synthetic KiriKiri/XP3 archive containers for detector and profile evidence only; archive entry parsing, decompression, decryption, extraction, patch-back, and runtime support are not claimed."
+    "supportBoundary": "XP3 profile fixtures identify synthetic KiriKiri/XP3 archive containers; plain fixture index metadata may be parsed for inventory only, while payload extraction, decompression, decryption, patch-back, and runtime support are not claimed."
   },
   "profileId": "019ed000-0000-7000-8000-000000095003",
   "requirements": [
