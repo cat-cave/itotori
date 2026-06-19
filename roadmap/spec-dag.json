@@ -11457,10 +11457,7 @@
     {
       "id": "ITOTORI-067",
       "title": "Glossary policy context and review service",
-      "status": "in_progress",
-      "owner": "orchestrator-wave16",
-      "branch": "spec/itotori-067",
-      "worktree": "/tmp/itotori-spec-itotori-067",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -13299,10 +13296,7 @@
     {
       "id": "KAIFUU-097",
       "title": "Plain XP3 reader and inventory",
-      "status": "in_progress",
-      "owner": "orchestrator-wave16",
-      "branch": "spec/kaifuu-097",
-      "worktree": "/tmp/itotori-spec-kaifuu-097",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -15291,10 +15285,7 @@
     },
     {
       "id": "CATALOG-064",
-      "status": "in_progress",
-      "owner": "orchestrator-wave16",
-      "branch": "spec/catalog-064",
-      "worktree": "/tmp/itotori-spec-catalog-064",
+      "status": "complete",
       "title": "Exact-linker malformed JSON diagnostics",
       "priority": "P2",
       "target": "continuous",
@@ -19818,6 +19809,110 @@
         "Unbounded stdin memory use",
         "Raw stdin leakage in diagnostics",
         "Launch occurring before policy rejection"
+      ]
+    },
+    {
+      "id": "CATALOG-093",
+      "status": "planned",
+      "title": "Exact-linker DB invalid-request parity",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "shared"],
+      "parallelGroup": "catalog",
+      "dependsOn": ["CATALOG-064"],
+      "summary": "Add a DB-backed exact-linker malformed-payload regression so real repository wiring proves the same invalid-request diagnostics as fake repository tests.",
+      "deliverables": [
+        "DB-backed malformed exact-linker request test against ItotoriCatalogRepository",
+        "Assertion that `catalog.exact_external_id.invalid_request` is returned before repository lookup",
+        "Fixture coverage for at least one malformed top-level payload in the real service wiring"
+      ],
+      "acceptanceCriteria": [
+        "The DB-backed exact-linker test exercises a malformed payload through the exported service using the real catalog repository.",
+        "The returned diagnostic matches the fake-repository invalid-request diagnostic code and shape.",
+        "The test does not require external catalog APIs or network access."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/db exec vitest run test/catalog-exact-external-id-linker.test.ts"
+        }
+      ],
+      "auditFocus": [
+        "Fake-only malformed payload coverage",
+        "Raw type errors escaping real repository wiring",
+        "Network-dependent catalog tests"
+      ]
+    },
+    {
+      "id": "KAIFUU-162",
+      "status": "planned",
+      "title": "XP3 extract failure wording refresh",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-097"],
+      "summary": "Refresh stale XP3 extract and patch failure wording that still says archive entry parsing is outside profile fixtures even though plain XP3 inventory now parses index metadata.",
+      "deliverables": [
+        "Updated XP3 extract and patch semantic failure strings",
+        "Regression assertion that wording distinguishes inventory index parsing from extraction, decompression, decryption, patching, and rebuild support",
+        "Support-boundary snapshot coverage for plain XP3 inventory"
+      ],
+      "acceptanceCriteria": [
+        "XP3 extract and patch failures no longer imply entry parsing is entirely absent.",
+        "Failure wording still clearly says extraction, decompression, decryption, patch-back, and rebuild are unsupported.",
+        "Inventory support remains represented separately from extract and patch support."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-engine-fixture xp3"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli xp3"
+        }
+      ],
+      "auditFocus": [
+        "XP3 capability overclaiming",
+        "Inventory/extraction wording drift",
+        "Stale KAIFUU-095 references"
+      ]
+    },
+    {
+      "id": "KAIFUU-163",
+      "status": "planned",
+      "title": "Aggregate XP3 marker false-positive guard",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-097"],
+      "summary": "Harden aggregate archive detection so encrypted/compressed XP3 marker scans do not misclassify valid plain XP3 files with marker-like text in early payload bytes.",
+      "deliverables": [
+        "Aggregate detector fixture with marker-like payload text inside a valid plain XP3 file",
+        "Detector logic that distinguishes profile/header evidence from payload marker substrings",
+        "Regression tests for XP3 encrypted/compressed/unknown matrix rows"
+      ],
+      "acceptanceCriteria": [
+        "A valid plain XP3 fixture containing marker-like payload text is not reported as encrypted or compressed solely because of payload substring matches.",
+        "Synthetic encrypted/compressed XP3 fixtures still report the intended matrix signals.",
+        "Diagnostics remain aggregate-only and do not claim extraction or decryption support."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core archive_detection_matrix"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-engine-fixture xp3"
+        }
+      ],
+      "auditFocus": [
+        "Payload substring false positives",
+        "Encrypted/compressed signal regression",
+        "Capability overclaiming"
       ]
     }
   ]
