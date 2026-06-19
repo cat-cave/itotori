@@ -1178,8 +1178,7 @@ function semanticGlossarySearchServiceResult(): SemanticGlossarySearchReadModel 
       embeddingProvider: "recorded-fixture",
       embeddingModel: "semantic-fixture-v1",
       embeddingDimension: 2,
-      queryEmbeddingHash:
-        "sha256:95e99e9e5db29912f9ac19148ec3bd97c9a58c43f2c35f31d912406b0e784e8b",
+      queryEmbeddingHash: "sha256:95e99e9e5db29912f9ac19148ec3bd97c9a58c43f2c35f31d912406b0e784e8b",
       pgvector: {
         required: false,
         available: false,

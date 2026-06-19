@@ -113,7 +113,9 @@ export class RecordedEmbeddingFixtureAdapter {
   }
 
   embedQuery(query: string): RecordedEmbeddingMatch | null {
-    return this.vectorsByTextHash.get(semanticSearchTextHash(normalizeSemanticSearchText(query))) ?? null;
+    return (
+      this.vectorsByTextHash.get(semanticSearchTextHash(normalizeSemanticSearchText(query))) ?? null
+    );
   }
 
   metadata(): RecordedEmbeddingFixtureMetadata {
@@ -219,7 +221,8 @@ export class ItotoriSemanticGlossarySearchService {
     private readonly embeddings: RecordedEmbeddingFixtureAdapter,
     options: { terminologyRepository?: ItotoriTerminologyRepositoryPort } = {},
   ) {
-    this.terminologyRepository = options.terminologyRepository ?? new ItotoriTerminologyRepository(db);
+    this.terminologyRepository =
+      options.terminologyRepository ?? new ItotoriTerminologyRepository(db);
   }
 
   async searchGlossary(
@@ -247,7 +250,11 @@ export class ItotoriSemanticGlossarySearchService {
       };
     }
 
-    const context = await currentLocaleBranchContext(this.db, input.projectId, input.localeBranchId);
+    const context = await currentLocaleBranchContext(
+      this.db,
+      input.projectId,
+      input.localeBranchId,
+    );
     if (context.diagnostic !== undefined) {
       return failedResult(input, normalizedQuery, null, readiness, [context.diagnostic]);
     }
@@ -271,7 +278,9 @@ export class ItotoriSemanticGlossarySearchService {
 
     const readinessWithQuery = baseReadiness(queryEmbedding, queryEmbedding.textHash);
     const candidates = await this.semanticCandidates(input);
-    const staleCount = candidates.filter((candidate) => candidate.semanticStatus === terminologySemanticIndexStatusValues.stale).length;
+    const staleCount = candidates.filter(
+      (candidate) => candidate.semanticStatus === terminologySemanticIndexStatusValues.stale,
+    ).length;
     const staleRelevantCount = candidates.filter(
       (candidate) =>
         candidate.semanticStatus === terminologySemanticIndexStatusValues.stale &&
@@ -290,7 +299,10 @@ export class ItotoriSemanticGlossarySearchService {
     );
     const ranked = readyCandidates
       .map((candidate) => {
-        if (candidate.embeddingVector === null || candidate.embeddingVector.length !== queryEmbedding.dimension) {
+        if (
+          candidate.embeddingVector === null ||
+          candidate.embeddingVector.length !== queryEmbedding.dimension
+        ) {
           return null;
         }
         const score = cosineSimilarity(queryEmbedding.embedding, candidate.embeddingVector);
@@ -304,9 +316,7 @@ export class ItotoriSemanticGlossarySearchService {
 
     if (ranked.length > 0) {
       const exact = await this.searchExactFallback(actor, input);
-      const exactMatches = exact.results
-        .filter(hasStrongExactMatch)
-        .map(exactFallbackMatch);
+      const exactMatches = exact.results.filter(hasStrongExactMatch).map(exactFallbackMatch);
       const exactFallbackTriggered = exactMatches.length > 0;
       return {
         outputKind: "semantic_glossary_search",
@@ -346,10 +356,7 @@ export class ItotoriSemanticGlossarySearchService {
     return this.exactFallback(input, normalizedQuery, context.value.sourceRevisionId, {
       actor,
       reason: fallbackReason,
-      diagnostics: [
-        ...diagnostics,
-        noSemanticResultsDiagnostic(fallbackReason),
-      ],
+      diagnostics: [...diagnostics, noSemanticResultsDiagnostic(fallbackReason)],
       queryEmbedding,
     });
   }
@@ -377,7 +384,10 @@ export class ItotoriSemanticGlossarySearchService {
         semanticStatus: terminologySemanticIndex.status,
       })
       .from(terminologyTerms)
-      .innerJoin(terminologySemanticIndex, eq(terminologySemanticIndex.termId, terminologyTerms.termId))
+      .innerJoin(
+        terminologySemanticIndex,
+        eq(terminologySemanticIndex.termId, terminologyTerms.termId),
+      )
       .where(
         and(
           eq(terminologyTerms.projectId, input.projectId),
@@ -397,7 +407,10 @@ export class ItotoriSemanticGlossarySearchService {
             .select()
             .from(terminologySourceReferences)
             .where(inArray(terminologySourceReferences.termId, termIds))
-            .orderBy(asc(terminologySourceReferences.termId), asc(terminologySourceReferences.citation));
+            .orderBy(
+              asc(terminologySourceReferences.termId),
+              asc(terminologySourceReferences.citation),
+            );
     const referencesByTermId = groupBy(references, (reference) => reference.termId);
 
     return rows.map((row) => ({
@@ -659,7 +672,12 @@ async function currentLocaleBranchContext(
     })
     .from(localeBranches)
     .innerJoin(sourceBundles, eq(sourceBundles.sourceBundleId, localeBranches.sourceBundleId))
-    .where(and(eq(localeBranches.projectId, projectId), eq(localeBranches.localeBranchId, localeBranchId)))
+    .where(
+      and(
+        eq(localeBranches.projectId, projectId),
+        eq(localeBranches.localeBranchId, localeBranchId),
+      ),
+    )
     .limit(1);
 
   if (branch === undefined) {
@@ -780,7 +798,10 @@ function assertEmbeddingVector(vector: number[], dimension: number, label: strin
   }
 }
 
-function groupBy<Value, Key>(values: Value[], keyForValue: (value: Value) => Key): Map<Key, Value[]> {
+function groupBy<Value, Key>(
+  values: Value[],
+  keyForValue: (value: Value) => Key,
+): Map<Key, Value[]> {
   const grouped = new Map<Key, Value[]>();
   for (const value of values) {
     const key = keyForValue(value);

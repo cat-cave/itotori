@@ -189,10 +189,7 @@ export const glossaryContextToolOutputSchema = {
 
 export function semanticGlossarySearchTool(
   service: SemanticGlossarySearchToolService,
-): DeterministicToolDefinition<
-  SemanticGlossarySearchToolInput,
-  SemanticGlossarySearchToolOutput
-> {
+): DeterministicToolDefinition<SemanticGlossarySearchToolInput, SemanticGlossarySearchToolOutput> {
   return {
     registryKind: "deterministic_tool_definition",
     toolName: semanticGlossarySearchRegistryToolName,
@@ -266,14 +263,15 @@ export function glossaryContextToolOutput(
       localeBranchId: input.localeBranchId,
       sourceRevisionId: input.sourceRevisionId,
       glossaryReferenceId: context?.glossaryReferenceId ?? null,
-      citations: context?.termProvenance.map((reference) => ({
-        sourceRefId: reference.sourceRefId,
-        sourceRevisionId: reference.sourceRevisionId,
-        bridgeUnitId: reference.bridgeUnitId,
-        referenceKind: reference.referenceKind,
-        citation: reference.citation,
-        context: reference.context,
-      })) ?? [],
+      citations:
+        context?.termProvenance.map((reference) => ({
+          sourceRefId: reference.sourceRefId,
+          sourceRevisionId: reference.sourceRevisionId,
+          bridgeUnitId: reference.bridgeUnitId,
+          referenceKind: reference.referenceKind,
+          citation: reference.citation,
+          context: reference.context,
+        })) ?? [],
     },
     diagnostics:
       context === null

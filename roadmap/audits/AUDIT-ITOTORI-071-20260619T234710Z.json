@@ -1,0 +1,155 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-071-20260619T234710Z",
+  "generatedAt": "2026-06-19T23:47:10Z",
+  "spec": {
+    "id": "ITOTORI-071",
+    "title": "Semantic search recorded and exact fallback harness",
+    "branch": "spec/itotori-071",
+    "worktree": "/tmp/itotori-spec-itotori-071",
+    "commit": "3b0af3d921d90c0d6fac9caa836a96334bd1a23d"
+  },
+  "auditor": {
+    "name": "codex-itotori-071-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "The repaired semantic glossary search harness now merges exact fallback results with semantic results so partial embedding coverage cannot hide exact source, translation, or alias matches. No P0/P1 findings remain. Two non-blocking follow-ups remain for deeper agent tool output schemas and a final deterministic tie-breaker.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-071-F001", "ITOTORI-071-F002"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-071-F001",
+      "severity": "P2",
+      "title": "Semantic glossary tool output schema depth",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "apps/itotori/src/agents/glossary-search-tools.ts"
+        },
+        {
+          "path": "apps/itotori/src/agents/index.ts"
+        }
+      ],
+      "description": "The semantic glossary search tool output schemas still treat nested result objects such as readiness, term, provenance, diagnostics, and context too generically. The runtime harness is usable, but malformed nested tool output would not be rejected as precisely as the surrounding strict contracts imply.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "The original audit identified shallow nested output schemas; re-audit confirmed the blocking exact fallback issue is fixed while this schema-depth concern remains as follow-up work."
+        }
+      ],
+      "impact": "Agents and tests can receive structurally loose nested search output, making future regressions harder to localize and weakening the typed tool boundary.",
+      "actionableAcceptanceCriteria": [
+        "Semantic glossary tool output schemas explicitly constrain nested readiness, term, provenance, diagnostics, and context objects.",
+        "Tests reject malformed nested semantic glossary tool output while accepting the current valid recorded response shapes.",
+        "The stricter schemas remain aligned with the repository/service result types without duplicating divergent contract logic."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Semantic glossary tool output schema depth",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "translation-loop",
+          "dependsOn": ["ITOTORI-071"],
+          "summary": "Tighten semantic glossary search agent tool output schemas so nested readiness, terminology, provenance, diagnostics, and context data are validated at the same strictness as the underlying services.",
+          "deliverables": [
+            "Deep output schema definitions for semantic glossary search tool results",
+            "Malformed nested-output regression tests for the tool registry"
+          ],
+          "acceptanceCriteria": [
+            "The semantic glossary search tool rejects malformed nested readiness, term, provenance, diagnostics, and context objects.",
+            "Current valid recorded semantic and exact fallback outputs continue to pass.",
+            "Schema definitions remain derived from or synchronized with the service result types to avoid drift."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test"
+            },
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app typecheck"
+            }
+          ],
+          "auditFocus": [
+            "Strict nested output validation",
+            "No duplicated divergent result contracts",
+            "Agent tool registry remains readable"
+          ]
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-071-F002",
+      "severity": "P3",
+      "title": "Semantic glossary search total-order tie breaker",
+      "category": "test",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/services/semantic-search.ts",
+          "line": 576
+        }
+      ],
+      "description": "Ranking is deterministic for the tested semantic and exact fallback paths, but the comparator still lacks a final total-order tie-breaker for equal score and equal sourceTerm.",
+      "evidence": [
+        {
+          "kind": "manual",
+          "detail": "Re-audit inspected the ranking comparator after the exact fallback repair and found no remaining P0/P1 issue, but noted a final termId or localeBranch tie-breaker would make the ordering total."
+        }
+      ],
+      "impact": "Rare equal-score/equal-sourceTerm result sets could rely on database or insertion ordering, producing noisy diffs for humans or agents.",
+      "actionableAcceptanceCriteria": [
+        "Semantic glossary search ranking includes a stable final tie-breaker such as termId after score and sourceTerm.",
+        "A regression covers equal score and equal sourceTerm candidates and asserts deterministic output ordering."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Semantic glossary search total-order tie breaker",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "translation-loop",
+          "dependsOn": ["ITOTORI-071"],
+          "summary": "Add a final stable tie-breaker to semantic glossary search ranking for equal score and sourceTerm candidates.",
+          "deliverables": [
+            "Stable final comparator tie-breaker",
+            "Deterministic ranking regression for equal-score equal-sourceTerm candidates"
+          ],
+          "acceptanceCriteria": [
+            "Equal score and equal sourceTerm candidates sort deterministically by a stable identifier.",
+            "Existing semantic and exact fallback ranking expectations remain unchanged except where the new tie-breaker is explicitly relevant."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/db test"
+            }
+          ],
+          "auditFocus": [
+            "Deterministic ordering",
+            "No ranking regression for normal semantic/exact fallback cases"
+          ]
+        }
+      }
+    }
+  ]
+}
