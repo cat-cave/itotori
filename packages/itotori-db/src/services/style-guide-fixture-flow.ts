@@ -14,10 +14,7 @@ import type {
   ProjectDashboardStatus,
 } from "../repositories/project-repository.js";
 import type { ItotoriStyleGuideRepositoryPort } from "../repositories/style-guide-repository.js";
-import {
-  ItotoriStyleGuideService,
-  type StyleGuideCommandResult,
-} from "./style-guide-service.js";
+import { ItotoriStyleGuideService, type StyleGuideCommandResult } from "./style-guide-service.js";
 
 export const styleGuideFixtureFlowSchemaVersion = "itotori.style-guide-fixture-flow.v0";
 export const styleGuideSuggestionArtifactSchemaVersion =
