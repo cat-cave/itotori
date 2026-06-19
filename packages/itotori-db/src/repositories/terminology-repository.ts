@@ -3,11 +3,14 @@ import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { ItotoriDatabase } from "../connection.js";
 import { type AuthorizationActor, permissionValues, requirePermission } from "../authorization.js";
 import {
+  assets,
   findings,
+  localeBranchUnits,
   localeBranches,
   projects,
   sourceBundles,
   sourceRevisions,
+  sourceUnits,
   terminologyAliasKindValues,
   terminologyAliases,
   terminologyConflictEvidence,
@@ -177,7 +180,7 @@ export type TerminologySearchMatchKind =
   | "exact_source"
   | "exact_translation"
   | "alias"
-  | "semantic_hook";
+  | "lexical_hook";
 
 export type TerminologySearchResult = {
   term: TerminologyTermRecord;
@@ -196,6 +199,18 @@ export type UpsertTerminologyTermResult = {
   term: TerminologyTermRecord;
   conflict: TerminologyConflictRecord | null;
 };
+
+export class TerminologySourceReferenceError extends Error {
+  constructor(
+    readonly code:
+      | "terminology.source_reference.source_revision_mismatch"
+      | "terminology.source_reference.bridge_unit_mismatch",
+    message: string,
+  ) {
+    super(message);
+    this.name = "TerminologySourceReferenceError";
+  }
+}
 
 export interface ItotoriTerminologyRepositoryPort {
   upsertTerm(
@@ -239,6 +254,8 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
         Object.values(terminologyTermKindValues),
         "termKind",
       );
+
+      await lockTerminologySourceTerm(tx, input.localeBranchId, normalizedSourceTerm);
 
       const conflictingTerms = await tx
         .select()
@@ -343,14 +360,20 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
           Object.values(terminologySourceReferenceKindValues),
           "sourceReference.referenceKind",
         );
+        const sourceRevisionId = optionalNonEmpty(
+          reference.sourceRevisionId,
+          "sourceReference.sourceRevisionId",
+        );
+        const bridgeUnitId = optionalNonEmpty(reference.bridgeUnitId, "sourceReference.bridgeUnitId");
+        await validateSourceReferenceContext(tx, context, {
+          sourceRevisionId,
+          bridgeUnitId,
+        });
         await tx.insert(terminologySourceReferences).values({
           sourceRefId: reference.sourceRefId ?? createUuid7(),
           termId: persistedTerm.termId,
-          sourceRevisionId: optionalNonEmpty(
-            reference.sourceRevisionId,
-            "sourceReference.sourceRevisionId",
-          ),
-          bridgeUnitId: optionalNonEmpty(reference.bridgeUnitId, "sourceReference.bridgeUnitId"),
+          sourceRevisionId,
+          bridgeUnitId,
           sourceProvenanceId: optionalNonEmpty(
             reference.sourceProvenanceId,
             "sourceReference.sourceProvenanceId",
@@ -364,25 +387,13 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
 
       await upsertSemanticIndex(tx, persistedTerm.termId, input.semanticIndex);
 
-      let conflict: TerminologyConflictRecord | null = null;
-      if (conflictingTerms.length > 0) {
-        await tx
-          .update(terminologyTerms)
-          .set({ status: terminologyTermStatusValues.conflicted, updatedAt: sql`now()` })
-          .where(
-            and(
-              eq(terminologyTerms.localeBranchId, input.localeBranchId),
-              eq(terminologyTerms.normalizedSourceTerm, normalizedSourceTerm),
-            ),
-          );
-        conflict = await recordPreferredTranslationConflict(tx, {
-          actor,
-          projectId: input.projectId,
-          localeBranchId: input.localeBranchId,
-          normalizedSourceTerm,
-          sourceTerm: persistedTerm.sourceTerm,
-        });
-      }
+      const conflict = await reconcilePreferredTranslationConflict(tx, {
+        actor,
+        projectId: input.projectId,
+        localeBranchId: input.localeBranchId,
+        normalizedSourceTerm,
+        sourceTerm: persistedTerm.sourceTerm,
+      });
 
       const term = await getTermById(tx, persistedTerm.termId);
       if (term === null) {
@@ -469,10 +480,10 @@ export class ItotoriTerminologyRepository implements ItotoriTerminologyRepositor
           }
         }
         const semantic = term.semanticIndex;
-        if (semantic !== null && semantic.status === terminologySemanticIndexStatusValues.ready) {
+        if (semantic !== null && isSearchableLexicalIndexStatus(semantic.status)) {
           const overlap = tokenOverlap(queryTokens, semantic.searchTokens);
           if (overlap > 0) {
-            matchKinds.add("semantic_hook");
+            matchKinds.add("lexical_hook");
             score += overlap;
           }
         }
@@ -530,6 +541,7 @@ type LocaleBranchTerminologyContext = {
   localeBranchId: string;
   sourceLocale: string;
   targetLocale: string;
+  sourceBundleId: string;
   sourceRevisionId: string;
 };
 
@@ -544,6 +556,7 @@ async function getLocaleBranchContext(
       localeBranchId: localeBranches.localeBranchId,
       sourceLocale: projects.sourceLocale,
       targetLocale: localeBranches.targetLocale,
+      sourceBundleId: localeBranches.sourceBundleId,
       sourceRevisionId: sourceRevisions.sourceRevisionId,
     })
     .from(localeBranches)
@@ -557,6 +570,76 @@ async function getLocaleBranchContext(
     .limit(1);
   const row = rows[0];
   return row === undefined ? null : row;
+}
+
+async function lockTerminologySourceTerm(
+  db: ItotoriDatabase,
+  localeBranchId: string,
+  normalizedSourceTerm: string,
+): Promise<void> {
+  const lockKey = `terminology:${createHash("sha256")
+    .update(localeBranchId)
+    .update("\0")
+    .update(normalizedSourceTerm)
+    .digest("hex")}`;
+  await db.execute(sql`
+    select pg_advisory_xact_lock(hashtext(${lockKey}))
+  `);
+}
+
+async function validateSourceReferenceContext(
+  db: ItotoriDatabase,
+  context: LocaleBranchTerminologyContext,
+  reference: { sourceRevisionId: string | null; bridgeUnitId: string | null },
+): Promise<void> {
+  if (reference.sourceRevisionId !== null) {
+    const rows = await db.execute<{ exists: boolean }>(sql`
+      select exists(
+        select 1 from ${sourceRevisions}
+        where ${sourceRevisions.sourceRevisionId} = ${reference.sourceRevisionId}
+          and ${sourceRevisions.projectId} = ${context.projectId}
+          and (
+            ${sourceRevisions.sourceRevisionId} = ${context.sourceRevisionId}
+            or exists (
+              select 1 from ${assets}
+              where ${assets.sourceBundleId} = ${context.sourceBundleId}
+                and ${assets.sourceRevisionId} = ${sourceRevisions.sourceRevisionId}
+            )
+            or exists (
+              select 1 from ${sourceUnits}
+              where ${sourceUnits.sourceBundleId} = ${context.sourceBundleId}
+                and ${sourceUnits.sourceRevisionId} = ${sourceRevisions.sourceRevisionId}
+            )
+          )
+      ) as exists
+    `);
+    if (rows.rows[0]?.exists !== true) {
+      throw new TerminologySourceReferenceError(
+        "terminology.source_reference.source_revision_mismatch",
+        `source revision ${reference.sourceRevisionId} is not part of locale branch ${context.localeBranchId}`,
+      );
+    }
+  }
+
+  if (reference.bridgeUnitId !== null) {
+    const rows = await db.execute<{ exists: boolean }>(sql`
+      select exists(
+        select 1 from ${sourceUnits}
+        inner join ${localeBranchUnits}
+          on ${localeBranchUnits.bridgeUnitId} = ${sourceUnits.bridgeUnitId}
+        where ${sourceUnits.bridgeUnitId} = ${reference.bridgeUnitId}
+          and ${sourceUnits.projectId} = ${context.projectId}
+          and ${sourceUnits.sourceBundleId} = ${context.sourceBundleId}
+          and ${localeBranchUnits.localeBranchId} = ${context.localeBranchId}
+      ) as exists
+    `);
+    if (rows.rows[0]?.exists !== true) {
+      throw new TerminologySourceReferenceError(
+        "terminology.source_reference.bridge_unit_mismatch",
+        `bridge unit ${reference.bridgeUnitId} is not part of locale branch ${context.localeBranchId}`,
+      );
+    }
+  }
 }
 
 async function upsertSemanticIndex(
@@ -595,15 +678,17 @@ async function upsertSemanticIndex(
       termId,
       searchDocument,
       searchTokens,
-      embeddingProvider: input?.embeddingProvider ?? "itotori-offline",
-      embeddingModel: input?.embeddingModel ?? "terminology-token-overlap-v1",
+      embeddingProvider: input?.embeddingProvider ?? "itotori-lexical",
+      embeddingModel: input?.embeddingModel ?? "terminology-lexical-token-index-v1",
       embeddingDimension: input?.embeddingDimension ?? 0,
       embeddingVector: input?.embeddingVector ?? null,
       contentHash,
-      status: input?.status ?? terminologySemanticIndexStatusValues.ready,
+      status: input?.status ?? terminologySemanticIndexStatusValues.indexedLexical,
       metadata: {
-        hookKind: "token_overlap",
-        pgvectorReady: true,
+        hookKind: "lexical_token_index",
+        indexKind: "lexical_token_index",
+        semanticReady: false,
+        vectorReady: false,
         ...(input?.metadata ?? {}),
       },
       refreshedAt: new Date(),
@@ -613,21 +698,60 @@ async function upsertSemanticIndex(
       set: {
         searchDocument,
         searchTokens,
-        embeddingProvider: input?.embeddingProvider ?? "itotori-offline",
-        embeddingModel: input?.embeddingModel ?? "terminology-token-overlap-v1",
+        embeddingProvider: input?.embeddingProvider ?? "itotori-lexical",
+        embeddingModel: input?.embeddingModel ?? "terminology-lexical-token-index-v1",
         embeddingDimension: input?.embeddingDimension ?? 0,
         embeddingVector: input?.embeddingVector ?? null,
         contentHash,
-        status: input?.status ?? terminologySemanticIndexStatusValues.ready,
+        status: input?.status ?? terminologySemanticIndexStatusValues.indexedLexical,
         metadata: {
-          hookKind: "token_overlap",
-          pgvectorReady: true,
+          hookKind: "lexical_token_index",
+          indexKind: "lexical_token_index",
+          semanticReady: false,
+          vectorReady: false,
           ...(input?.metadata ?? {}),
         },
         refreshedAt: new Date(),
         updatedAt: sql`now()`,
       },
     });
+}
+
+async function reconcilePreferredTranslationConflict(
+  db: ItotoriDatabase,
+  input: {
+    actor: AuthorizationActor;
+    projectId: string;
+    localeBranchId: string;
+    normalizedSourceTerm: string;
+    sourceTerm: string;
+  },
+): Promise<TerminologyConflictRecord | null> {
+  const translations = await db
+    .selectDistinct({
+      normalizedPreferredTranslation: terminologyTerms.normalizedPreferredTranslation,
+    })
+    .from(terminologyTerms)
+    .where(
+      and(
+        eq(terminologyTerms.localeBranchId, input.localeBranchId),
+        eq(terminologyTerms.normalizedSourceTerm, input.normalizedSourceTerm),
+      ),
+    );
+  if (translations.length <= 1) {
+    return null;
+  }
+
+  await db
+    .update(terminologyTerms)
+    .set({ status: terminologyTermStatusValues.conflicted, updatedAt: sql`now()` })
+    .where(
+      and(
+        eq(terminologyTerms.localeBranchId, input.localeBranchId),
+        eq(terminologyTerms.normalizedSourceTerm, input.normalizedSourceTerm),
+      ),
+    );
+  return recordPreferredTranslationConflict(db, input);
 }
 
 async function recordPreferredTranslationConflict(
@@ -837,6 +961,13 @@ function conflictMetadata(translations: string[], termIds: string[]): Terminolog
     translations,
     termIds,
   };
+}
+
+function isSearchableLexicalIndexStatus(status: TerminologySemanticIndexStatus): boolean {
+  return (
+    status === terminologySemanticIndexStatusValues.indexedLexical ||
+    status === terminologySemanticIndexStatusValues.ready
+  );
 }
 
 function termFromRow(

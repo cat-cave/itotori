@@ -191,7 +191,10 @@ export type {
   StyleGuideRecord,
   StyleGuideVersionRecord,
 } from "./repositories/style-guide-repository.js";
-export { ItotoriTerminologyRepository } from "./repositories/terminology-repository.js";
+export {
+  ItotoriTerminologyRepository,
+  TerminologySourceReferenceError,
+} from "./repositories/terminology-repository.js";
 export type {
   ItotoriTerminologyRepositoryPort,
   TerminologyAliasInput,

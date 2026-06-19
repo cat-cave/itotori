@@ -289,7 +289,7 @@ export function assertTerminologySearchReadModel(
     for (const [matchIndex, matchKind] of matchKinds.entries()) {
       assertEnum(
         matchKind,
-        ["exact_source", "exact_translation", "alias", "semantic_hook"] as const,
+        ["exact_source", "exact_translation", "alias", "lexical_hook"] as const,
         `${label}.results[${index}].matchKinds[${matchIndex}]`,
       );
     }

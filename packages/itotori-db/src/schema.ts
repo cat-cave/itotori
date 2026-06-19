@@ -450,6 +450,7 @@ export type TerminologySourceReferenceKind =
 
 export const terminologySemanticIndexStatusValues = {
   pending: "pending",
+  indexedLexical: "indexed_lexical",
   ready: "ready",
   stale: "stale",
   failed: "failed",

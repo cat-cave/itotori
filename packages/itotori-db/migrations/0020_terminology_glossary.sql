@@ -101,7 +101,7 @@ create table if not exists itotori_terminology_semantic_index (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint itotori_terminology_semantic_index_status_check check (
-    status in ('pending', 'ready', 'stale', 'failed')
+    status in ('pending', 'indexed_lexical', 'ready', 'stale', 'failed')
   ),
   constraint itotori_terminology_semantic_index_dimension_check check (embedding_dimension >= 0),
   constraint itotori_terminology_semantic_index_tokens_check check (jsonb_typeof(search_tokens) = 'array'),
