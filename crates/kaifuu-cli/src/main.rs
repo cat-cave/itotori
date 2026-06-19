@@ -11,12 +11,14 @@ use kaifuu_core::{
     HelperRegistryInvocationRequest, KaifuuResult, LocalKeyImportRequest, LocalKeyImportSource,
     LocalSecretDirectoryStore, PatchExport, PatchPreflightRequest, PatchRequest, PatchResult,
     ProfileRequest, ProofHash, RegisteredBoundedHelperProcessRequest,
-    SEMANTIC_HELPER_EXECUTION_DISALLOWED, SecretRef, VerifyRequest, atomic_write_text,
-    fixture_helper_registry, normalize_helper_result_value, parse_helper_capability,
-    parse_hex_bytes, promote_staged_directory_no_clobber, read_json, redact_for_log_or_report,
-    redact_report_value, run_registered_bounded_helper_process, run_round_trip_golden,
-    sha256_hash_bytes, validate_helper_registry_entry_value, validate_helper_result_value,
-    validate_offset_map_value, validate_profile_value, write_json,
+    SEMANTIC_HELPER_EXECUTION_DISALLOWED, SecretRef, SiglusParserBoundarySmokeRequest,
+    SiglusParserBoundarySmokeVariant, VerifyRequest, atomic_write_text, fixture_helper_registry,
+    normalize_helper_result_value, parse_helper_capability, parse_hex_bytes,
+    promote_staged_directory_no_clobber, read_json, redact_for_log_or_report, redact_report_value,
+    run_registered_bounded_helper_process, run_round_trip_golden,
+    run_siglus_known_key_parser_boundary_smoke, sha256_hash_bytes,
+    validate_helper_registry_entry_value, validate_helper_result_value, validate_offset_map_value,
+    validate_profile_value, write_json,
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
@@ -166,6 +168,9 @@ fn run_with_args_and_registry(
         Some("key") => {
             run_key_command(&args)?;
         }
+        Some("siglus") => {
+            run_siglus_command(&args)?;
+        }
         Some("profile") => {
             run_profile_command(&args, registry)?;
         }
@@ -180,12 +185,64 @@ fn run_with_args_and_registry(
         }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|profile|capabilities> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|siglus|profile|capabilities> ..."
                     .into(),
             );
         }
     }
     Ok(())
+}
+
+fn run_siglus_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    match positional(args, 1)? {
+        "parser-boundary-smoke" => {
+            let scene_path = PathBuf::from(flag(args, "--scene")?);
+            let gameexe_path = PathBuf::from(flag(args, "--gameexe")?);
+            let output = PathBuf::from(flag(args, "--output")?);
+            let key_request = flag_optional(args, "--key-request")
+                .map(PathBuf::from)
+                .map(|path| read_json::<serde_json::Value>(&path))
+                .transpose()?;
+            let variant = parse_siglus_parser_boundary_variant(
+                flag_optional(args, "--variant").unwrap_or("parser-boundary-success"),
+            )?;
+            let report =
+                run_siglus_known_key_parser_boundary_smoke(SiglusParserBoundarySmokeRequest {
+                    scene_path: &scene_path,
+                    gameexe_path: &gameexe_path,
+                    key_request: key_request.as_ref(),
+                    variant,
+                })?;
+            write_json(&output, &report.redacted_for_report())?;
+            if report.status == kaifuu_core::OperationStatus::Failed {
+                return Err(
+                    format!("siglus parser-boundary smoke failed: {:?}", report.outcome).into(),
+                );
+            }
+        }
+        _ => {
+            return Err(
+                "usage: kaifuu siglus parser-boundary-smoke --scene <Scene.pck> --gameexe <Gameexe.dat> --key-request <helper-request.json> --output <report.json> [--variant parser-boundary-success|helper-required|missing-key|unsupported-opcode|out-of-profile]"
+                    .into(),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn parse_siglus_parser_boundary_variant(
+    value: &str,
+) -> Result<SiglusParserBoundarySmokeVariant, Box<dyn std::error::Error>> {
+    match value {
+        "parser-boundary-success" | "success" => {
+            Ok(SiglusParserBoundarySmokeVariant::ParserBoundarySuccess)
+        }
+        "helper-required" => Ok(SiglusParserBoundarySmokeVariant::HelperRequired),
+        "missing-key" => Ok(SiglusParserBoundarySmokeVariant::MissingKey),
+        "unsupported-opcode" => Ok(SiglusParserBoundarySmokeVariant::UnsupportedOpcode),
+        "out-of-profile" => Ok(SiglusParserBoundarySmokeVariant::OutOfProfile),
+        _ => Err(format!("unsupported Siglus parser-boundary smoke variant {value}").into()),
+    }
 }
 
 fn run_key_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
@@ -5452,6 +5509,94 @@ wait
                 .unwrap_or("")
                 .starts_with("sha256:")
         }));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn siglus_parser_boundary_smoke_cli_writes_redacted_report_and_blocks_unsupported_opcode() {
+        let root = temp_dir("siglus-parser-boundary-smoke");
+        let game_dir = public_fixture_path("fixtures/public/kaifuu-encrypted-matrix/raw/siglus");
+        let key_request = public_fixture_path(
+            "fixtures/public/kaifuu-helper-results/helper-request/siglus-secondary-key-request.json",
+        );
+
+        let success_output = root.join("siglus-parser-boundary-success.json");
+        run_cli(&[
+            "siglus",
+            "parser-boundary-smoke",
+            "--scene",
+            game_dir.join("Scene.pck").to_str().unwrap(),
+            "--gameexe",
+            game_dir.join("Gameexe.dat").to_str().unwrap(),
+            "--key-request",
+            key_request.to_str().unwrap(),
+            "--output",
+            success_output.to_str().unwrap(),
+        ]);
+        let success: serde_json::Value = read_json(&success_output).unwrap();
+        let expected_success: serde_json::Value =
+            read_json(&public_fixture_path(
+                "fixtures/public/kaifuu-encrypted-matrix/expected/siglus-parser-boundary-smoke-v0.1.json",
+            ))
+            .unwrap();
+        assert_eq!(success, expected_success);
+        assert_eq!(success["status"], "passed");
+        assert_eq!(success["outcome"], "parser_boundary_success");
+        assert_eq!(success["profileId"], "019ed000-0000-7000-8000-000000091001");
+        assert_eq!(success["patchWriteAttempted"], false);
+        assert_eq!(
+            success["textSlots"][0]["textSlotId"],
+            "siglus.synthetic.scene.text.001"
+        );
+        assert_eq!(
+            success["textSlots"][0]["byteSpan"],
+            serde_json::json!({"startByte": 17, "endByte": 52})
+        );
+
+        let unsupported_output = root.join("siglus-parser-boundary-unsupported.json");
+        let result = run_with_args(vec![
+            "siglus".to_string(),
+            "parser-boundary-smoke".to_string(),
+            "--scene".to_string(),
+            game_dir.join("Scene.pck").to_str().unwrap().to_string(),
+            "--gameexe".to_string(),
+            game_dir.join("Gameexe.dat").to_str().unwrap().to_string(),
+            "--key-request".to_string(),
+            key_request.to_str().unwrap().to_string(),
+            "--variant".to_string(),
+            "unsupported-opcode".to_string(),
+            "--output".to_string(),
+            unsupported_output.to_str().unwrap().to_string(),
+        ]);
+        assert!(result.is_err());
+        let unsupported: serde_json::Value = read_json(&unsupported_output).unwrap();
+        assert_eq!(unsupported["status"], "failed");
+        assert_eq!(unsupported["outcome"], "unsupported_opcode");
+        assert_eq!(unsupported["patchWriteAttempted"], false);
+        assert_eq!(
+            unsupported["diagnostics"][0]["semanticCode"],
+            kaifuu_core::SEMANTIC_SIGLUS_UNSUPPORTED_OPCODE
+        );
+        assert_eq!(
+            unsupported["diagnostics"][0]["unsupportedOpcode"],
+            "SIGLUS_SYNTH_UNSUPPORTED_7f"
+        );
+
+        for output in [success_output, unsupported_output] {
+            let serialized = fs::read_to_string(output).unwrap();
+            for forbidden in [
+                "rawKey",
+                "keyMaterial",
+                "00112233445566778899aabbccddeeff",
+                "fixture-only-siglus-secondary-key-v1",
+                "decrypted script",
+                "/home/",
+                "C:\\",
+            ] {
+                assert!(!serialized.contains(forbidden), "leaked {forbidden}");
+            }
+        }
 
         let _ = fs::remove_dir_all(root);
     }

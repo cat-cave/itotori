@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "0.1.0",
+  "fixtureId": "kaifuu-siglus-known-key-parser-boundary-smoke",
+  "profileId": "019ed000-0000-7000-8000-000000091001",
+  "status": "passed",
+  "outcome": "parser_boundary_success",
+  "supportBoundary": "Synthetic KAIFUU-093 parser-boundary smoke only; this report validates key-ref plumbing and parser diagnostics for fixture inputs and does not claim production Siglus extraction, decryption, patch-back, or runtime compatibility.",
+  "patchWriteAttempted": false,
+  "sources": [
+    {
+      "assetId": "siglus-scene-pck",
+      "path": "Scene.pck",
+      "sourceHash": "sha256:9afaac8af2dd96468e97e069cb678ada48a77d9726e8ebebf1ca75e76b65d465"
+    },
+    {
+      "assetId": "siglus-gameexe-dat",
+      "path": "Gameexe.dat",
+      "sourceHash": "sha256:e4255da0fb43255b4e9036cf74463f057fa57753df57dfc5c8a31e93c9e5d3af"
+    }
+  ],
+  "keyRefs": [
+    {
+      "requirementId": "siglus-secondary-key",
+      "secretRef": "local-secret:fixture/siglus/secondary-key-ref",
+      "keyPurpose": "siglus-secondary-key",
+      "engineProfileId": "019ed000-0000-7000-8000-000000091001",
+      "sourceHash": "sha256:9afaac8af2dd96468e97e069cb678ada48a77d9726e8ebebf1ca75e76b65d465",
+      "materialHash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "bytes": 16,
+      "redactionStatus": "redacted"
+    }
+  ],
+  "textSlots": [
+    {
+      "textSlotId": "siglus.synthetic.scene.text.001",
+      "assetId": "siglus-scene-pck",
+      "sourceHash": "sha256:9afaac8af2dd96468e97e069cb678ada48a77d9726e8ebebf1ca75e76b65d465",
+      "byteSpan": {
+        "startByte": 17,
+        "endByte": 52
+      },
+      "textSurface": "dialogue",
+      "parserOpcode": "SIGLUS_SYNTH_TEXT_SLOT"
+    },
+    {
+      "textSlotId": "siglus.synthetic.scene.choice.001",
+      "assetId": "siglus-scene-pck",
+      "sourceHash": "sha256:9afaac8af2dd96468e97e069cb678ada48a77d9726e8ebebf1ca75e76b65d465",
+      "byteSpan": {
+        "startByte": 53,
+        "endByte": 54
+      },
+      "textSurface": "choice_label",
+      "parserOpcode": "SIGLUS_SYNTH_CHOICE_SLOT"
+    }
+  ],
+  "diagnostics": []
+}
