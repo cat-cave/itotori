@@ -136,6 +136,10 @@ const migrations = [
     id: "0019_catalog_edition_milestone_mapping",
     file: "0019_catalog_edition_milestone_mapping.sql",
   },
+  {
+    id: "0020_terminology_glossary",
+    file: "0020_terminology_glossary.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
