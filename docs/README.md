@@ -9,9 +9,13 @@ These docs describe the monorepo as a three-project suite:
 Start with [hello-world.md](hello-world.md), then read [architecture.md](architecture.md).
 The alpha localization project readiness definition and check matrix live in
 [alpha-localization-project-readiness.md](alpha-localization-project-readiness.md).
+The current spec dashboard is documented in
+[`packages/spec-dag-dashboard/README.md`](../packages/spec-dag-dashboard/README.md),
+and the current runtime evidence dashboard is documented in
+[`apps/runtime-web-review/README.md`](../apps/runtime-web-review/README.md).
 Toolchain upgrade policy lives in [toolchain-policy.md](toolchain-policy.md).
 Testing conventions live in [testing-standard.md](testing-standard.md).
-Itotori permission gates and the local-user baseline are documented in
+Itotori permission gates and the alpha/local bootstrap actor model are documented in
 [permissions.md](permissions.md).
 Localization quality claims, benchmark taxonomy, seeded-defect protocol, and
 human adjudication requirements are documented in
@@ -36,6 +40,9 @@ The implementation roadmap lives in [spec-dag.md](spec-dag.md) and
 `roadmap/spec-dag.json`. Agent-led implementation should also follow
 [orchestration-operating-model.md](orchestration-operating-model.md) and the
 [agent worktree lifecycle](worktree-lifecycle.md).
+`SHARED-025` has landed the alpha proof manifest contract. `ALPHA-007` and
+`ALPHA-009` remain future work for the public vertical command and CI handoff
+from the hello-world compatibility path to the alpha proof workflow.
 Provider credentials, routing, logging, and recording policy is defined in
 [ADR 0002](adrs/0002-provider-routing-and-recording.md).
 Search and indexing infrastructure, including exact indexes, pgvector handling,

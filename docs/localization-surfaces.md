@@ -1,10 +1,16 @@
 # Localization Surfaces
 
-This inventory defines the shared localization surface model that future bridge,
-asset, patch, and runtime evidence schemas should cover. It is engine-agnostic:
-it names player-visible and localization-relevant surfaces without encoding how
-RPG Maker, KiriKiri, SiglusEngine, Ren'Py, Unity, or the fixture engine stores
-them.
+This inventory defines the shared localization surface model that current and
+future bridge, asset, patch, and runtime evidence schemas should cover. It is
+engine-agnostic: it names player-visible and localization-relevant surfaces
+without encoding how RPG Maker, KiriKiri, SiglusEngine, Ren'Py, Unity, or the
+fixture engine stores them.
+
+Current shared schemas already cover v0.2 bridge, patch export, runtime
+evidence, benchmark, asset policy, finding, and proof-manifest records. The
+tables below are still the broader model for future schema growth, so fields
+marked as future typed fields should not be read as absent from every current
+contract.
 
 Engine adapters may keep engine-specific details in adapter-private metadata,
 but shared contracts should use the neutral fields below. If a future schema
@@ -100,6 +106,12 @@ Protection is separate from policy. A localized line can still contain protected
 variables or control markup, and a do-not-translate term can still appear inside
 a larger localized sentence.
 
+Patch export v0.2 records protected-span target mapping explicitly through
+`protectedSpanMappings[]`. Each mapping carries source identity with
+`sourceSpanId` when available, falls back to the source raw token and source byte
+range when needed, and records the target byte range so repeated, reordered, or
+duplicated protected spans remain auditable.
+
 ## Asset Policy Contract
 
 `packages/localization-bridge-schema` now exposes `AssetPolicyBundleV02` for
@@ -184,6 +196,8 @@ or spans.
 - [ ] Control markup, variables, and ruby/furigana are typed spans or annotation
       records with UTF-8 byte offsets, half-open `[startByte, endByte)` bounds,
       and patch behavior.
+- [ ] Patch exports map protected spans through `protectedSpanMappings[]` with
+      explicit source identity and target byte ranges.
 - [ ] `localize`, `romanize`, and `do_not_translate` decisions are explicit,
       locale-scoped with `targetLocale` or `localeBranchId`, and reviewable.
 - [ ] Asset policy decisions are branch-scoped and cover image text, UI art,

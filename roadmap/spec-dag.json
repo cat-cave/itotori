@@ -9461,7 +9461,11 @@
         },
         {
           "type": "command",
-          "value": "just hello"
+          "value": "just alpha-proof"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run alpha:validate-artifact-linkage"
         },
         {
           "type": "command",

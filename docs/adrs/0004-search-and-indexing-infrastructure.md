@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for ITOTORI-030.
+Accepted for ITOTORI-030 and refreshed after ITOTORI-071.
 
 ## Context
 
@@ -28,6 +28,12 @@ Itotori will not require `pgvector` for the current CI, Docker Compose service,
 or default developer database. The default Postgres service remains plain
 `postgres:18`. All mandatory migrations must run without extension privileges
 and without a `vector` type.
+
+The shipped semantic search implementation is `search.glossary` v1. It uses
+recorded JSON embedding fixtures for public CI, stores semantic glossary index
+rows in Postgres, and reports deterministic diagnostics for stale source
+revisions, missing recorded embeddings, stale semantic indexes, no semantic
+results, and exact fallback usage. It does not issue live embedding calls.
 
 `pgvector` is the preferred future semantic index backend when the database can
 install it, but it is a capability, not a product assumption. A semantic search
@@ -81,27 +87,25 @@ The current schema already supplies these mandatory exact indexes:
 | Feedback     | `itotori_feedback_evidence_report_idx`               | Evidence by canonical feedback report.                     |
 | Feedback     | `itotori_feedback_evidence_source_idx`               | Evidence by feedback source.                               |
 
-Future migrations that add first-class glossary, scene, context artifact, and
-agent-tool tables must add these exact indexes before those records are used by
-review or agent search:
+Current migrations include first-class glossary terminology tables and semantic
+glossary index rows used by `search.glossary` v1. Future migrations that add
+scene, context artifact, and additional agent-tool tables must add exact indexes
+before those records are used by review or agent search:
 
-| Future area       | Required index shape                                                              | Purpose                                     |
-| ----------------- | --------------------------------------------------------------------------------- | ------------------------------------------- |
-| Glossary terms    | Unique `(project_id, locale_branch_id, target_locale, normalized_source_term)`    | Exact term lookup and duplicate prevention. |
-| Glossary terms    | `(project_id, locale_branch_id, target_locale, normalized_target_term)`           | Reverse term lookup from draft text.        |
-| Glossary terms    | `(project_id, locale_branch_id, term_status, updated_at)`                         | Active/conflict review queues.              |
-| Glossary terms    | `(project_id, source_bundle_id, source_unit_key)` on the term evidence join table | Terms cited by a source unit.               |
-| Scenes            | Unique `(project_id, source_bundle_id, scene_key)`                                | Exact scene lookup from bridge context.     |
-| Scenes            | `(project_id, source_bundle_id, route_key, scene_order)`                          | Route-ordered scene traversal.              |
-| Scene units       | `(scene_id, unit_order)` and `(bridge_unit_id)`                                   | Nearby-unit and reverse scene lookup.       |
-| Context artifacts | `(project_id, locale_branch_id, artifact_kind, created_at)`                       | Reviewer evidence lists.                    |
-| Context artifacts | `(project_id, source_bundle_id)` and `(bridge_unit_id)`                           | Bundle and source-unit evidence lookup.     |
-| Context artifacts | `(hash)` where non-null                                                           | Exact artifact dedupe.                      |
-| Feedback reports  | `(project_id, locale_branch_id, target_locale, feedback_type, report_status)`     | Typed feedback queues.                      |
-| Feedback reports  | `(project_id, context_status, last_reported_at)`                                  | Missing-context triage.                     |
-| Agent tools       | Unique `(tool_name, tool_version)` on the registry table                          | Exact tool capability lookup.               |
-| Agent tools       | `(tool_status, capability_key)` on the registry table                             | Enabled tool discovery.                     |
-| Agent tool calls  | `(project_id, task_id, created_at)` and `(project_id, tool_name, created_at)`     | Tool-run audit and replay.                  |
+| Area              | Required index shape                                                          | Purpose                                                                    |
+| ----------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Glossary terms    | Current terminology term, source-reference, review, and semantic-index tables | Exact glossary lookup, review, citations, and recorded semantic readiness. |
+| Scenes            | Unique `(project_id, source_bundle_id, scene_key)`                            | Exact scene lookup from bridge context.                                    |
+| Scenes            | `(project_id, source_bundle_id, route_key, scene_order)`                      | Route-ordered scene traversal.                                             |
+| Scene units       | `(scene_id, unit_order)` and `(bridge_unit_id)`                               | Nearby-unit and reverse scene lookup.                                      |
+| Context artifacts | `(project_id, locale_branch_id, artifact_kind, created_at)`                   | Reviewer evidence lists.                                                   |
+| Context artifacts | `(project_id, source_bundle_id)` and `(bridge_unit_id)`                       | Bundle and source-unit evidence lookup.                                    |
+| Context artifacts | `(hash)` where non-null                                                       | Exact artifact dedupe.                                                     |
+| Feedback reports  | `(project_id, locale_branch_id, target_locale, feedback_type, report_status)` | Typed feedback queues.                                                     |
+| Feedback reports  | `(project_id, context_status, last_reported_at)`                              | Missing-context triage.                                                    |
+| Agent tools       | Unique `(tool_name, tool_version)` on the registry table                      | Exact tool capability lookup.                                              |
+| Agent tools       | `(tool_status, capability_key)` on the registry table                         | Enabled tool discovery.                                                    |
+| Agent tool calls  | `(project_id, task_id, created_at)` and `(project_id, tool_name, created_at)` | Tool-run audit and replay.                                                 |
 
 Normalized text columns must be materialized by application code or generated
 columns before unique indexes rely on them. The normalization rule is lower-case
@@ -117,8 +121,10 @@ Agents may call search only through versioned tools. The initial tool family is:
 
 - `itotori.search.exact.v1`
 - `itotori.search.semantic.v1`
+- `search.glossary` v1, the shipped provider-free glossary semantic search
+  tool backed by recorded fixture embeddings and exact fallback.
 
-Both tools accept:
+The generic exact and semantic tool contract accepts:
 
 - `projectId` and optional `localeBranchId`;
 - `targetLocale` when the corpus is locale scoped;
@@ -152,6 +158,13 @@ The semantic tool must never issue a live embedding or model call unless the
 selected provider route satisfies ADR 0002. Public CI must use fake or recorded
 semantic fixtures, or `exact_fallback`. Private source text, feedback, and
 runtime artifacts must keep privacy labels through indexing and retrieval.
+
+`search.glossary` v1 returns `embeddingMode: "recorded_fixture"` readiness,
+recorded fixture provider/model/dimension metadata, `pgvector.required: false`,
+and an `exactFallback` block naming `search.exact` v1. Fallback can be triggered
+by `missing_recorded_embedding`, `stale_semantic_index`, `no_semantic_results`,
+or `semantic_exact_match`, and diagnostics make stale-index or no-result cases
+visible instead of silently returning an empty semantic result set.
 
 ## Pgvector Handling
 

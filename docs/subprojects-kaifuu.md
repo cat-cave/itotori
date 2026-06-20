@@ -3,11 +3,14 @@
 Kaifuu owns engine detection, inventory, readiness, extraction, patching,
 verification, and `.kaifuu` delta packages.
 
-The scaffold implements a fixture engine only. Real engines such as RPG Maker
-MV/MZ, RPG Maker VX Ace/RGSS3, KiriKiri/XP3, TyranoScript, SiglusEngine, Wolf,
-Unity, and Ren'Py come after the shared contracts and hello world are stable.
-The current priority is not "plaintext first"; it is a layered access pipeline
-where plaintext is the identity/null-key special case.
+The scaffold implements fixture extraction and patch support, plus real-engine
+detection/readiness slices. Real-engine extraction, key validation, decryption,
+and patch-back support are tracked per engine profile; a detector match is not
+an extraction or patching claim. RPG Maker MV/MZ encrypted suffix detection and
+fixture-key validation have shipped as readiness slices, while MV/MZ encrypted
+media decrypt/re-encrypt and broader media localization remain planned follow-up
+work. The current priority is not "plaintext first"; it is a layered access
+pipeline where plaintext is the identity/null-key special case.
 
 Text access is modeled per text-bearing surface:
 
@@ -49,7 +52,7 @@ unsupported unless that support actually exists.
 cargo run -p kaifuu-cli -- asset-inventory fixtures/hello-game --output .tmp/hello-world/asset-inventory.json
 ```
 
-Fixture commands preserve the hello-world file contract:
+Fixture extraction and patch commands preserve the hello-world file contract:
 
 ```sh
 cargo run -p kaifuu-cli -- detect fixtures/hello-game --output .tmp/kaifuu-detect.json
@@ -69,8 +72,8 @@ reports the archive/encryption match. The archive matrix covers KiriKiri/XP3,
 Siglus, RPG Maker MV/MZ encrypted assets, Wolf RPG Editor archives,
 BGI/Ethornell containers, Ren'Py packed inputs, and unknown archive-like
 variants. Matrix rows use aggregate evidence fields and semantic diagnostics;
-they do not claim extraction, decryption, decompilation, patching, or archive
-rebuild support. Detection output does not include LLM-style confidence, local
+they do not claim extraction, decryption, decompilation, patching, image
+replacement, or archive rebuild support. Detection output does not include LLM-style confidence, local
 absolute `gameDir` paths, or private game titles. RPG Maker encrypted asset
 detection counts both MV-style `.rpgmvp`/`.rpgmvm`/`.rpgmvo` files and MZ-style
 `.png_`/`.m4a_`/`.ogg_` files. Marker-only subtype evidence without a primary
