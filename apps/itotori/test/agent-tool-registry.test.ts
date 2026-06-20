@@ -650,7 +650,8 @@ describe("agent and deterministic tool registries", () => {
 
   it("rejects malformed context artifact citation and provenance tool output", async () => {
     const citationResult = contextArtifactRetrievalServiceResult();
-    delete (citationResult.matches[0]?.citations[0] as Record<string, unknown>).citation;
+    delete (firstContextArtifactCitation(citationResult) as unknown as Record<string, unknown>)
+      .citation;
     await expect(
       contextArtifactRuntimeFor(citationResult).runDeterministicToolJob<
         ContextArtifactRetrievalToolInput,
@@ -659,7 +660,9 @@ describe("agent and deterministic tool registries", () => {
     ).rejects.toThrow(/citation is required/);
 
     const provenanceResult = contextArtifactRetrievalServiceResult();
-    delete (provenanceResult.matches[0]?.provenance as Record<string, unknown>).contextArtifactId;
+    delete (
+      firstContextArtifactMatch(provenanceResult).provenance as unknown as Record<string, unknown>
+    ).contextArtifactId;
     await expect(
       contextArtifactRuntimeFor(provenanceResult).runDeterministicToolJob<
         ContextArtifactRetrievalToolInput,
@@ -698,49 +701,61 @@ describe("agent and deterministic tool registries", () => {
       {
         label: "producedByAgent",
         mutate: (output, value) => {
-          (output.matches[0] as unknown as Record<string, unknown>).producedByAgent = value;
+          (
+            firstContextArtifactMatch(output) as unknown as Record<string, unknown>
+          ).producedByAgent = value;
         },
         message: /matches\[0\]\.producedByAgent must match one of schema types string, null/,
       },
       {
         label: "producedByTool",
         mutate: (output, value) => {
-          (output.matches[0] as unknown as Record<string, unknown>).producedByTool = value;
+          (firstContextArtifactMatch(output) as unknown as Record<string, unknown>).producedByTool =
+            value;
         },
         message: /matches\[0\]\.producedByTool must match one of schema types string, null/,
       },
       {
         label: "provenance.producedByAgent",
         mutate: (output, value) => {
-          (output.matches[0]?.provenance as Record<string, unknown>).producedByAgent = value;
+          (
+            firstContextArtifactMatch(output).provenance as unknown as Record<string, unknown>
+          ).producedByAgent = value;
         },
         message: /provenance\.producedByAgent must match one of schema types string, null/,
       },
       {
         label: "provenance.producedByTool",
         mutate: (output, value) => {
-          (output.matches[0]?.provenance as Record<string, unknown>).producedByTool = value;
+          (
+            firstContextArtifactMatch(output).provenance as unknown as Record<string, unknown>
+          ).producedByTool = value;
         },
         message: /provenance\.producedByTool must match one of schema types string, null/,
       },
       {
         label: "invalidatedReason",
         mutate: (output, value) => {
-          (output.matches[0] as unknown as Record<string, unknown>).invalidatedReason = value;
+          (
+            firstContextArtifactMatch(output) as unknown as Record<string, unknown>
+          ).invalidatedReason = value;
         },
         message: /matches\[0\]\.invalidatedReason must match one of schema types string, null/,
       },
       {
         label: "invalidatedAt",
         mutate: (output, value) => {
-          (output.matches[0] as unknown as Record<string, unknown>).invalidatedAt = value;
+          (firstContextArtifactMatch(output) as unknown as Record<string, unknown>).invalidatedAt =
+            value;
         },
         message: /matches\[0\]\.invalidatedAt must match one of schema types string, null/,
       },
       {
         label: "createdByUserId",
         mutate: (output, value) => {
-          (output.matches[0] as unknown as Record<string, unknown>).createdByUserId = value;
+          (
+            firstContextArtifactMatch(output) as unknown as Record<string, unknown>
+          ).createdByUserId = value;
         },
         message: /matches\[0\]\.createdByUserId must match one of schema types string, null/,
       },
@@ -1437,6 +1452,26 @@ function contextArtifactRetrievalServiceResult(): ContextArtifactRetrievalResult
       },
     ],
   };
+}
+
+function firstContextArtifactMatch(
+  output: ContextArtifactRetrievalResult | ContextArtifactRetrievalToolOutput,
+) {
+  const match = output.matches[0];
+  if (match === undefined) {
+    throw new Error("context artifact fixture must include at least one match");
+  }
+  return match;
+}
+
+function firstContextArtifactCitation(
+  output: ContextArtifactRetrievalResult | ContextArtifactRetrievalToolOutput,
+) {
+  const citation = firstContextArtifactMatch(output).citations[0];
+  if (citation === undefined) {
+    throw new Error("context artifact fixture must include at least one citation");
+  }
+  return citation;
 }
 
 function contextArtifactToolJobFixture(): DeterministicToolJobInput<ContextArtifactRetrievalToolInput> {

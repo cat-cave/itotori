@@ -992,21 +992,6 @@ function sourceUnitMissingDiagnostic(
   };
 }
 
-function sourceUnitOutOfScopeDiagnostic(
-  bridgeUnitId: string,
-  index: number,
-  sourceRevisionId: string,
-): ContextArtifactDiagnostic {
-  return {
-    code: contextArtifactDiagnosticCodeValues.sourceUnitOutOfScope,
-    reasonCode: contextArtifactDiagnosticCodeValues.sourceUnitOutOfScope,
-    severity: "error",
-    message: `source unit ${bridgeUnitId} belongs to revision ${sourceRevisionId}`,
-    field: `sourceUnits[${index}].bridgeUnitId`,
-    metadata: { bridgeUnitId, sourceRevisionId },
-  };
-}
-
 function blankQueryDiagnostic(): ContextArtifactDiagnostic {
   return {
     code: contextArtifactDiagnosticCodeValues.blankQuery,
