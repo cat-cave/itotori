@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-012-20260620T014059Z",
+  "generatedAt": "2026-06-20T01:40:59Z",
+  "spec": {
+    "id": "ITOTORI-012",
+    "title": "Context artifact framework",
+    "branch": "spec/itotori-012",
+    "worktree": "/tmp/itotori-spec-itotori-012",
+    "commit": "f662b6e62dfe8185ca4d0dfb3a21f7156d276cfd"
+  },
+  "auditor": {
+    "name": "codex-itotori-012-final-audit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "The repaired context artifact framework has no remaining P0/P1 findings. The final audit verified migration checksum compatibility through a forward 0026 migration, immutable stale citation retention after source-unit deletion, strict context artifact tool output schemas, source-derived permission coverage, DB-backed test enforcement, and clean branch state aside from expected DAG formatting/bookkeeping.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
