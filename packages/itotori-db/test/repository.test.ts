@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { eq, sql } from "drizzle-orm";
@@ -16,6 +17,7 @@ import {
   ItotoriProjectRepository,
   type ItotoriProjectRecord,
 } from "../src/repositories/project-repository.js";
+import { migrate, migrations } from "../src/migrations.js";
 import {
   feedbackContextStatusValues,
   feedbackReportStatusValues,
@@ -3736,6 +3738,71 @@ describe("ItotoriProjectRepository", () => {
     }
   });
 
+  it("upgrades existing context artifact migrations without losing citations on source-unit deletion", async () => {
+    const databaseUrl = requiredDatabaseUrl();
+    const admin = new pg.Pool({ connectionString: databaseUrl });
+    const schemaName = `itotori_context_migration_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+    const schemaUrl = databaseUrlWithSearchPath(databaseUrl, schemaName);
+
+    await admin.query(`create schema ${quoteIdentifier(schemaName)}`);
+    const pool = new pg.Pool({ connectionString: schemaUrl });
+    try {
+      await pool.query(`
+        create table if not exists itotori_schema_migrations (
+          migration_id text primary key,
+          checksum text not null,
+          applied_at timestamptz not null default now()
+        )
+      `);
+
+      const contextArtifactsMigrationIndex = migrations.findIndex(
+        (migration) => migration.id === "0025_context_artifacts",
+      );
+      expect(contextArtifactsMigrationIndex).toBeGreaterThanOrEqual(0);
+      for (const migration of migrations.slice(0, contextArtifactsMigrationIndex + 1)) {
+        const body = migrationSql(migration.file);
+        await pool.query(body);
+        await pool.query(
+          "insert into itotori_schema_migrations (migration_id, checksum) values ($1, $2)",
+          [migration.id, createHash("sha256").update(body).digest("hex")],
+        );
+      }
+
+      expect(await contextArtifactSourceUnitFkCount(pool)).toBe(1);
+      await seedContextArtifactSourceUnitRetentionState(pool);
+
+      await migrate(schemaUrl);
+
+      expect(await contextArtifactSourceUnitFkCount(pool)).toBe(0);
+      await pool.query("delete from itotori_source_units where bridge_unit_id = $1", [
+        "unit-retained-citation",
+      ]);
+
+      const citations = await pool.query<{
+        context_artifact_id: string;
+        bridge_unit_id: string;
+        source_hash: string;
+        citation: string;
+      }>(`
+        select context_artifact_id, bridge_unit_id, source_hash, citation
+        from itotori_context_artifact_source_units
+        where context_artifact_id = 'context-artifact-retained-citation'
+      `);
+      expect(citations.rows).toEqual([
+        {
+          context_artifact_id: "context-artifact-retained-citation",
+          bridge_unit_id: "unit-retained-citation",
+          source_hash: "hash:retained-citation",
+          citation: "scene.010.retained",
+        },
+      ]);
+    } finally {
+      await pool.end();
+      await admin.query(`drop schema ${quoteIdentifier(schemaName)} cascade`);
+      await admin.end();
+    }
+  });
+
   it("backfills legacy hello-world state during the v0.2 migration", async () => {
     const databaseUrl = requiredDatabaseUrl();
     const admin = new pg.Pool({ connectionString: databaseUrl });
@@ -3862,6 +3929,213 @@ function requiredDatabaseUrl(): string {
 function migrationSql(file: string): string {
   const here = dirname(fileURLToPath(import.meta.url));
   return readFileSync(join(here, "..", "migrations", file), "utf8");
+}
+
+async function contextArtifactSourceUnitFkCount(pool: pg.Pool): Promise<number> {
+  const result = await pool.query<{ fk_count: number }>(`
+    select count(*)::int as fk_count
+    from pg_constraint con
+    join pg_class rel on rel.oid = con.conrelid
+    join pg_namespace nsp on nsp.oid = rel.relnamespace
+    join pg_attribute attr
+      on attr.attrelid = rel.oid
+      and attr.attnum = any(con.conkey)
+    where nsp.nspname = current_schema()
+      and rel.relname = 'itotori_context_artifact_source_units'
+      and con.contype = 'f'
+      and attr.attname = 'bridge_unit_id'
+      and con.confrelid = 'itotori_source_units'::regclass
+  `);
+  return Number(result.rows[0]?.fk_count ?? 0);
+}
+
+async function seedContextArtifactSourceUnitRetentionState(pool: pg.Pool): Promise<void> {
+  await pool.query(`
+    insert into itotori_workspaces (workspace_id, name)
+    values ('workspace-retained-citation', 'Retained citation workspace')
+  `);
+  await pool.query(`
+    insert into itotori_projects (
+      project_id,
+      workspace_id,
+      project_key,
+      name,
+      source_locale,
+      status
+    )
+    values (
+      'project-retained-citation',
+      'workspace-retained-citation',
+      'retained-citation',
+      'Retained citation project',
+      'ja-JP',
+      'imported'
+    )
+  `);
+  await pool.query(`
+    insert into itotori_source_revisions (
+      source_revision_id,
+      project_id,
+      revision_kind,
+      value
+    )
+    values (
+      'revision-retained-citation',
+      'project-retained-citation',
+      'bridge_revision',
+      'retained-citation-v1'
+    )
+  `);
+  await pool.query(`
+    insert into itotori_source_bundles (
+      source_bundle_id,
+      project_id,
+      source_bundle_revision_id,
+      bridge_id,
+      schema_version,
+      source_bundle_hash,
+      source_locale,
+      extractor_name,
+      extractor_version,
+      unit_count,
+      asset_count
+    )
+    values (
+      'bundle-retained-citation',
+      'project-retained-citation',
+      'revision-retained-citation',
+      'bridge-retained-citation',
+      '0.2.0',
+      'hash:bundle-retained-citation',
+      'ja-JP',
+      'fixture-extractor',
+      '1.0.0',
+      1,
+      1
+    )
+  `);
+  await pool.query(`
+    insert into itotori_assets (
+      asset_id,
+      project_id,
+      source_bundle_id,
+      source_revision_id,
+      asset_key,
+      asset_kind,
+      source_hash
+    )
+    values (
+      'asset-retained-citation',
+      'project-retained-citation',
+      'bundle-retained-citation',
+      'revision-retained-citation',
+      'scene-010',
+      'script',
+      'hash:asset-retained-citation'
+    )
+  `);
+  await pool.query(`
+    insert into itotori_source_units (
+      bridge_unit_id,
+      project_id,
+      source_bundle_id,
+      source_asset_id,
+      source_revision_id,
+      surface_id,
+      surface_kind,
+      source_unit_key,
+      occurrence_id,
+      source_locale,
+      source_text,
+      source_hash,
+      source_location,
+      context,
+      spans,
+      patch_ref,
+      runtime_expectation
+    )
+    values (
+      'unit-retained-citation',
+      'project-retained-citation',
+      'bundle-retained-citation',
+      'asset-retained-citation',
+      'revision-retained-citation',
+      'scene-010',
+      'dialogue',
+      'scene.010.retained',
+      'occurrence-retained-citation',
+      'ja-JP',
+      'Retained source line',
+      'hash:retained-citation',
+      '{}'::jsonb,
+      '{}'::jsonb,
+      '[]'::jsonb,
+      '{}'::jsonb,
+      '{}'::jsonb
+    )
+  `);
+  await pool.query(`
+    insert into itotori_locale_branches (
+      locale_branch_id,
+      project_id,
+      source_bundle_id,
+      target_locale,
+      branch_name,
+      status
+    )
+    values (
+      'locale-retained-citation',
+      'project-retained-citation',
+      'bundle-retained-citation',
+      'en-US',
+      'English',
+      'active'
+    )
+  `);
+  await pool.query(`
+    insert into itotori_context_artifacts (
+      context_artifact_id,
+      project_id,
+      locale_branch_id,
+      source_revision_id,
+      category,
+      title,
+      normalized_title,
+      body,
+      content_hash,
+      produced_by_tool,
+      producer_version
+    )
+    values (
+      'context-artifact-retained-citation',
+      'project-retained-citation',
+      'locale-retained-citation',
+      'revision-retained-citation',
+      'scene_summary',
+      'Retained citation',
+      'retained citation',
+      'Citation rows must survive source unit removal.',
+      'sha256:retained-citation',
+      'tool.context-artifacts',
+      '1.0.0'
+    )
+  `);
+  await pool.query(`
+    insert into itotori_context_artifact_source_units (
+      context_artifact_id,
+      bridge_unit_id,
+      source_revision_id,
+      source_hash,
+      citation
+    )
+    values (
+      'context-artifact-retained-citation',
+      'unit-retained-citation',
+      'revision-retained-citation',
+      'hash:retained-citation',
+      'scene.010.retained'
+    )
+  `);
 }
 
 async function seedLegacyHelloWorldState(pool: pg.Pool): Promise<void> {

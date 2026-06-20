@@ -59,7 +59,7 @@ export async function migrate(databaseUrl?: string): Promise<void> {
   }, databaseUrl);
 }
 
-const migrations = [
+export const migrations = [
   {
     id: "0001_hello_world",
     file: "0001_hello_world.sql",
@@ -159,6 +159,10 @@ const migrations = [
   {
     id: "0025_context_artifacts",
     file: "0025_context_artifacts.sql",
+  },
+  {
+    id: "0026_context_artifact_source_unit_retention",
+    file: "0026_context_artifact_source_unit_retention.sql",
   },
 ] as const;
 
