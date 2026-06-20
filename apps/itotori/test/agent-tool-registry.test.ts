@@ -3,6 +3,7 @@ import {
   jobIdempotencyPolicyValues,
   jobStatusValues,
   jobTaskTypeValues,
+  type ContextArtifactRetrievalResult,
   type SearchExactToolResult,
   type GlossaryContextReadModel,
   type SemanticGlossarySearchReadModel,
@@ -35,6 +36,9 @@ import {
   searchExactRegistryToolName,
   searchExactTool,
   searchExactToolImplementationHash,
+  contextArtifactRetrievalRegistryToolName,
+  contextArtifactRetrievalTool,
+  contextArtifactRetrievalToolImplementationHash,
   glossaryContextRegistryToolName,
   glossaryContextTool,
   glossaryContextToolImplementationHash,
@@ -49,8 +53,11 @@ import {
   type DeterministicPreExportQaInput,
   type DeterministicPreExportQaOutput,
   type DeterministicToolDefinition,
+  type DeterministicToolJobInput,
   type ProtectedSpanCheckInput,
   type ProtectedSpanCheckOutput,
+  type ContextArtifactRetrievalToolInput,
+  type ContextArtifactRetrievalToolOutput,
   type SearchExactToolInput,
   type SearchExactToolOutput,
   type GlossaryContextToolInput,
@@ -543,6 +550,99 @@ describe("agent and deterministic tool registries", () => {
         outputHash: contextResult.metadata.outputHash,
       }),
     ]);
+  });
+
+  it("registers context artifact retrieval as a typed cited deterministic tool", async () => {
+    const events: TriageEventV02[] = [];
+    const agents = new AgentRegistry();
+    const tools = new DeterministicToolRegistry();
+    const retrieveArtifacts = vi.fn(async () => contextArtifactRetrievalServiceResult());
+    const metadata = tools.register(contextArtifactRetrievalTool({ retrieveArtifacts }));
+
+    expect(metadata).toMatchObject({
+      registryKind: "deterministic_tool",
+      toolName: contextArtifactRetrievalRegistryToolName,
+      toolVersion: "1.0.0",
+      taskKind: "extract",
+      capabilityKey: "tool.context-artifacts",
+      inputSchemaId: "itotori.tool.context-artifacts.input",
+      outputSchemaId: "itotori.tool.context-artifacts.output",
+      reproducibility: {
+        algorithmName: "tool.context-artifacts",
+        algorithmVersion: "1.0.0",
+        implementationHash: contextArtifactRetrievalToolImplementationHash,
+      },
+    });
+
+    const runtime = new AgentToolRuntime(agents, tools, {
+      emit: (event) => {
+        events.push(event);
+      },
+    });
+    const job = {
+      jobKind: "deterministic_tool_job",
+      toolName: contextArtifactRetrievalRegistryToolName,
+      toolVersion: "1.0.0",
+      context: fixtureInvocationContext,
+      input: {
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        categories: ["character_note"],
+        bridgeUnitIds: ["unit-mira"],
+        query: "Mira",
+        limit: 5,
+      },
+    } satisfies DeterministicToolJobInput<ContextArtifactRetrievalToolInput>;
+
+    const result = await runtime.runDeterministicToolJob<
+      ContextArtifactRetrievalToolInput,
+      ContextArtifactRetrievalToolOutput
+    >(job, { verifyReproducible: true });
+
+    expect(retrieveArtifacts).toHaveBeenCalledWith(job.input);
+    expect(result.output).toMatchObject({
+      outputKind: "context_artifact_retrieval",
+      status: "completed",
+      toolName: "tool.context-artifacts",
+      toolVersion: "1.0.0",
+      normalizedQuery: "mira",
+      categories: ["character_note"],
+      matches: [
+        expect.objectContaining({
+          contextArtifactId: "context-artifact-mira",
+          category: "character_note",
+          status: "active",
+          citations: [
+            expect.objectContaining({
+              bridgeUnitId: "unit-mira",
+              citation: "scene.002.mira",
+              createdAt: "2026-06-17T12:00:00.000Z",
+            }),
+          ],
+          provenance: expect.objectContaining({
+            schemaVersion: "itotori.context-artifact.v1",
+            toolName: "tool.context-artifacts",
+            toolVersion: "1.0.0",
+            contextArtifactId: "context-artifact-mira",
+            producedByAgent: "agent.character-notes",
+          }),
+          retrievalReasons: expect.arrayContaining(["source_unit", "exact_title"]),
+        }),
+      ],
+      diagnostics: [],
+    });
+    expect(result.metadata).toMatchObject({
+      runtimeKind: "deterministic_tool",
+      toolName: contextArtifactRetrievalRegistryToolName,
+      verification: { rerunOutputHash: result.metadata.outputHash },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]?.payload).toMatchObject({
+      registryKind: "deterministic_tool_invocation",
+      toolName: contextArtifactRetrievalRegistryToolName,
+      outputHash: result.metadata.outputHash,
+    });
   });
 
   it("validates duplicate protected span raw text as distinct deterministic tool occurrences", async () => {
@@ -1155,6 +1255,69 @@ function exactSearchServiceResult(): SearchExactToolResult {
           occurrenceId: "occurrence-hero",
           sourceHash: "hash:hero",
         },
+      },
+    ],
+  };
+}
+
+function contextArtifactRetrievalServiceResult(): ContextArtifactRetrievalResult {
+  const now = new Date("2026-06-17T12:00:00.000Z");
+  const citation = {
+    contextArtifactId: "context-artifact-mira",
+    bridgeUnitId: "unit-mira",
+    sourceRevisionId: "bridge-context:unit:unit-mira",
+    sourceHash: "hash:mira",
+    citation: "scene.002.mira",
+    metadata: {},
+    createdAt: now,
+  };
+  return {
+    status: "completed",
+    toolName: "tool.context-artifacts",
+    toolVersion: "1.0.0",
+    projectId: "project-context",
+    localeBranchId: "locale-en-us",
+    sourceRevisionId: "bridge-context:bundle-revision",
+    query: "Mira",
+    normalizedQuery: "mira",
+    categories: ["character_note"],
+    diagnostics: [],
+    matches: [
+      {
+        contextArtifactId: "context-artifact-mira",
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        category: "character_note",
+        status: "active",
+        title: "Mira",
+        normalizedTitle: "mira",
+        body: "Mira speaks formally when she is anxious.",
+        data: { speakerLabel: "Mira" },
+        contentHash: "sha256:context-artifact-mira",
+        producedByAgent: "agent.character-notes",
+        producedByTool: null,
+        producerVersion: "1.0.0",
+        provenance: {
+          schemaVersion: "itotori.context-artifact.v1",
+          toolName: "tool.context-artifacts",
+          toolVersion: "1.0.0",
+          contextArtifactId: "context-artifact-mira",
+          category: "character_note",
+          sourceRevisionId: "bridge-context:bundle-revision",
+          producedByAgent: "agent.character-notes",
+          producedByTool: null,
+          producerVersion: "1.0.0",
+        },
+        invalidatedReason: null,
+        invalidatedAt: null,
+        createdByUserId: "local-user",
+        createdAt: now,
+        updatedAt: now,
+        sourceUnits: [citation],
+        citations: [citation],
+        retrievalScore: 51,
+        retrievalReasons: ["source_unit", "exact_title"],
       },
     ],
   };

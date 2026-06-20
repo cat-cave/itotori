@@ -20,6 +20,14 @@ export {
   translationQualityJudgeOutputSchema,
 } from "./examples.js";
 export {
+  contextArtifactRetrievalRegistryToolName,
+  contextArtifactRetrievalTool,
+  contextArtifactRetrievalToolImplementationHash,
+  contextArtifactRetrievalToolInputSchema,
+  contextArtifactRetrievalToolOutput,
+  contextArtifactRetrievalToolOutputSchema,
+} from "./context-artifact-tools.js";
+export {
   searchExactRegistryToolName,
   searchExactTool,
   searchExactToolImplementationHash,
@@ -51,6 +59,11 @@ export type {
   TranslationQualityJudgeInput,
   TranslationQualityJudgeOutput,
 } from "./examples.js";
+export type {
+  ContextArtifactRetrievalToolInput,
+  ContextArtifactRetrievalToolOutput,
+  ContextArtifactRetrievalToolService,
+} from "./context-artifact-tools.js";
 export type {
   SearchExactToolInput,
   SearchExactToolMatchOutput,

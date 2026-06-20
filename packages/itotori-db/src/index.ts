@@ -47,6 +47,8 @@ export {
   catalogSourceValues,
   catalogTranslationPortabilityValues,
   glossaryReviewItemStateValues,
+  contextArtifactCategoryValues,
+  contextArtifactStatusValues,
   exactSearchSourceArtifactTypeValues,
   translationMemoryMatchKindValues,
   translationMemoryReuseStatusValues,
@@ -83,6 +85,8 @@ export type {
   CatalogSourceRecordKind,
   CatalogTranslationPortability,
   GlossaryReviewItemState,
+  ContextArtifactCategory,
+  ContextArtifactStatus,
   ExactSearchSourceArtifactType,
   TranslationMemoryMatchKind,
   TranslationMemoryReuseStatus,
@@ -246,6 +250,30 @@ export type {
   UpsertTerminologyTermResult,
   UpsertGlossaryReviewItemInput,
 } from "./repositories/terminology-repository.js";
+export {
+  ContextArtifactRepositoryError,
+  contextArtifactDiagnosticCodeValues,
+  contextArtifactSchemaVersion,
+  contextArtifactToolName,
+  contextArtifactToolVersion,
+  ItotoriContextArtifactRepository,
+  normalizeContextArtifactText,
+} from "./repositories/context-artifact-repository.js";
+export type {
+  ContextArtifactDiagnostic,
+  ContextArtifactDiagnosticCode,
+  ContextArtifactInvalidationResult,
+  ContextArtifactJsonRecord,
+  ContextArtifactMatch,
+  ContextArtifactRecord,
+  ContextArtifactRetrievalResult,
+  ContextArtifactSourceUnitInput,
+  ContextArtifactSourceUnitRecord,
+  InvalidateContextArtifactsInput,
+  ItotoriContextArtifactRepositoryPort,
+  RetrieveContextArtifactsInput,
+  UpsertContextArtifactInput,
+} from "./repositories/context-artifact-repository.js";
 export {
   exactSearchDiagnosticCodeValues,
   exactSearchToolName,

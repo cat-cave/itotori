@@ -156,6 +156,10 @@ const migrations = [
     id: "0024_exact_search_documents",
     file: "0024_exact_search_documents.sql",
   },
+  {
+    id: "0025_context_artifacts",
+    file: "0025_context_artifacts.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

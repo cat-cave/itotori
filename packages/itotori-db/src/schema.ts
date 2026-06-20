@@ -520,6 +520,27 @@ export const exactSearchSourceArtifactTypeValues = {
 export type ExactSearchSourceArtifactType =
   (typeof exactSearchSourceArtifactTypeValues)[keyof typeof exactSearchSourceArtifactTypeValues];
 
+export const contextArtifactCategoryValues = {
+  sceneSummary: "scene_summary",
+  characterNote: "character_note",
+  routeMap: "route_map",
+  speakerLabel: "speaker_label",
+  terminologyCandidate: "terminology_candidate",
+} as const;
+
+export type ContextArtifactCategory =
+  (typeof contextArtifactCategoryValues)[keyof typeof contextArtifactCategoryValues];
+
+export const contextArtifactStatusValues = {
+  active: "active",
+  stale: "stale",
+  superseded: "superseded",
+  rejected: "rejected",
+} as const;
+
+export type ContextArtifactStatus =
+  (typeof contextArtifactStatusValues)[keyof typeof contextArtifactStatusValues];
+
 export const users = pgTable("itotori_users", {
   userId: text("user_id").primaryKey(),
   displayName: text("display_name").notNull(),
@@ -1722,6 +1743,91 @@ export const exactSearchDocuments = pgTable(
       table.projectId,
       table.localeBranchId,
       table.sourceRevisionId,
+    ),
+  ],
+);
+
+export const contextArtifacts = pgTable(
+  "itotori_context_artifacts",
+  {
+    contextArtifactId: text("context_artifact_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    category: text("category").notNull(),
+    status: text("status").notNull().default(contextArtifactStatusValues.active),
+    title: text("title").notNull(),
+    normalizedTitle: text("normalized_title").notNull(),
+    body: text("body").notNull(),
+    data: jsonb("data")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    contentHash: text("content_hash").notNull(),
+    producedByAgent: text("produced_by_agent"),
+    producedByTool: text("produced_by_tool"),
+    producerVersion: text("producer_version").notNull(),
+    provenance: jsonb("provenance")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    invalidatedReason: text("invalidated_reason"),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    createdByUserId: text("created_by_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_context_artifacts_branch_lookup_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.category,
+      table.status,
+    ),
+    index("itotori_context_artifacts_title_idx").on(table.localeBranchId, table.normalizedTitle),
+    index("itotori_context_artifacts_content_hash_idx").on(
+      table.localeBranchId,
+      table.category,
+      table.contentHash,
+    ),
+  ],
+);
+
+export const contextArtifactSourceUnits = pgTable(
+  "itotori_context_artifact_source_units",
+  {
+    contextArtifactId: text("context_artifact_id")
+      .notNull()
+      .references(() => contextArtifacts.contextArtifactId, { onDelete: "cascade" }),
+    bridgeUnitId: text("bridge_unit_id")
+      .notNull()
+      .references(() => sourceUnits.bridgeUnitId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    sourceHash: text("source_hash").notNull(),
+    citation: text("citation").notNull(),
+    metadata: jsonb("metadata")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.contextArtifactId, table.bridgeUnitId] }),
+    index("itotori_context_artifact_source_units_unit_idx").on(
+      table.bridgeUnitId,
+      table.sourceRevisionId,
+      table.sourceHash,
     ),
   ],
 );
