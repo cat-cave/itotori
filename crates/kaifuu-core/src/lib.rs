@@ -16370,7 +16370,11 @@ fn v02_bridge_units_by_key(
     let mut units_by_key = BTreeMap::new();
     for unit in bridge.units {
         let key = unit.source_unit_key.clone();
-        let asset_ref = unit.patch_ref.asset_id.clone();
+        let asset_ref = unit
+            .source_asset_ref
+            .asset_key
+            .clone()
+            .unwrap_or_else(|| unit.source_asset_ref.asset_id.clone());
         units_by_key.insert(
             key.clone(),
             V02BridgeUnitSummary {

@@ -5217,13 +5217,14 @@ wait
         let report: GoldenRoundTripReport = read_json(&report_path).unwrap();
         assert_eq!(report.status, OperationStatus::Failed);
         assert!(report.failures.iter().any(|failure| {
-            failure.phase == "translated_patch"
+            failure.phase == "translated_source_compatibility"
+                && failure.code == "translated_protected_span_mapping_mismatch"
                 && failure.source_unit_key.as_deref() == Some("hello.scene.001.line.001")
                 && failure
                     .asset_ref
                     .as_deref()
                     .unwrap_or("")
-                    .contains("source.json#hello.scene.001.line.001")
+                    .contains("script/prologue#hello.scene.001.line.001")
         }));
 
         let _ = fs::remove_dir_all(root);
