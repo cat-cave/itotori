@@ -645,6 +645,26 @@ describe("agent and deterministic tool registries", () => {
     });
   });
 
+  it("rejects malformed context artifact citation and provenance tool output", async () => {
+    const citationResult = contextArtifactRetrievalServiceResult();
+    delete (citationResult.matches[0]?.citations[0] as Record<string, unknown>).citation;
+    await expect(
+      contextArtifactRuntimeFor(citationResult).runDeterministicToolJob<
+        ContextArtifactRetrievalToolInput,
+        ContextArtifactRetrievalToolOutput
+      >(contextArtifactToolJobFixture()),
+    ).rejects.toThrow(/citation is required/);
+
+    const provenanceResult = contextArtifactRetrievalServiceResult();
+    delete (provenanceResult.matches[0]?.provenance as Record<string, unknown>).contextArtifactId;
+    await expect(
+      contextArtifactRuntimeFor(provenanceResult).runDeterministicToolJob<
+        ContextArtifactRetrievalToolInput,
+        ContextArtifactRetrievalToolOutput
+      >(contextArtifactToolJobFixture()),
+    ).rejects.toThrow(/provenance\.contextArtifactId is required/);
+  });
+
   it("validates duplicate protected span raw text as distinct deterministic tool occurrences", async () => {
     const agents = new AgentRegistry();
     const tools = new DeterministicToolRegistry();
@@ -1321,6 +1341,31 @@ function contextArtifactRetrievalServiceResult(): ContextArtifactRetrievalResult
       },
     ],
   };
+}
+
+function contextArtifactToolJobFixture(): DeterministicToolJobInput<ContextArtifactRetrievalToolInput> {
+  return {
+    jobKind: "deterministic_tool_job",
+    toolName: contextArtifactRetrievalRegistryToolName,
+    toolVersion: "1.0.0",
+    context: fixtureInvocationContext,
+    input: {
+      projectId: "project-context",
+      localeBranchId: "locale-en-us",
+      sourceRevisionId: "bridge-context:bundle-revision",
+      categories: ["character_note"],
+      bridgeUnitIds: ["unit-mira"],
+      query: "Mira",
+      limit: 5,
+    },
+  };
+}
+
+function contextArtifactRuntimeFor(result: ContextArtifactRetrievalResult): AgentToolRuntime {
+  const agents = new AgentRegistry();
+  const tools = new DeterministicToolRegistry();
+  tools.register(contextArtifactRetrievalTool({ retrieveArtifacts: async () => result }));
+  return new AgentToolRuntime(agents, tools);
 }
 
 function semanticGlossarySearchServiceResult(): SemanticGlossarySearchReadModel {

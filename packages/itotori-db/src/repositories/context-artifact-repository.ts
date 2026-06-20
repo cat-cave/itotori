@@ -16,6 +16,8 @@ import {
 } from "../schema.js";
 import { createUuid7 } from "./event-queue-repository.js";
 
+export { contextArtifactCategoryValues, contextArtifactStatusValues } from "../schema.js";
+
 export const contextArtifactToolName = "tool.context-artifacts";
 export const contextArtifactToolVersion = "1.0.0";
 export const contextArtifactSchemaVersion = "itotori.context-artifact.v1";
@@ -223,11 +225,6 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
       if (row === undefined) {
         return [sourceUnitMissingDiagnostic(sourceUnit.bridgeUnitId, index)];
       }
-      if (row.sourceRevisionId !== input.sourceRevisionId) {
-        return [
-          sourceUnitOutOfScopeDiagnostic(sourceUnit.bridgeUnitId, index, row.sourceRevisionId),
-        ];
-      }
       return [];
     });
     if (sourceDiagnostics.length > 0) {
@@ -359,7 +356,6 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
       projectId: input.projectId,
       localeBranchId: input.localeBranchId,
       includeStale: false,
-      limit: 1000,
     });
     const currentRows = await currentSourceUnitRows(
       this.db,
@@ -421,9 +417,11 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
     if (context.diagnostic !== undefined) {
       return retrievalFailure(input, null, null, [], [context.diagnostic]);
     }
+    const includeStale = input.includeStale ?? false;
     if (
       input.sourceRevisionId !== undefined &&
-      input.sourceRevisionId !== context.value.sourceRevisionId
+      input.sourceRevisionId !== context.value.sourceRevisionId &&
+      !includeStale
     ) {
       return retrievalFailure(
         input,
@@ -451,14 +449,20 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
       ]);
     }
 
+    const outputSourceRevisionId = input.sourceRevisionId ?? context.value.sourceRevisionId;
     const artifactFilter: ArtifactFilter = {
       projectId: input.projectId,
       localeBranchId: input.localeBranchId,
-      sourceRevisionId: context.value.sourceRevisionId,
       categories: categories.values,
-      includeStale: input.includeStale ?? false,
+      includeStale,
       limit: clampLimit(input.limit),
+      normalizedQuery,
     };
+    if (input.sourceRevisionId !== undefined) {
+      artifactFilter.sourceRevisionId = input.sourceRevisionId;
+    } else if (!includeStale) {
+      artifactFilter.sourceRevisionId = context.value.sourceRevisionId;
+    }
     if (input.bridgeUnitIds !== undefined) {
       artifactFilter.bridgeUnitIds = input.bridgeUnitIds;
     }
@@ -481,7 +485,7 @@ export class ItotoriContextArtifactRepository implements ItotoriContextArtifactR
       toolVersion: contextArtifactToolVersion,
       projectId: input.projectId,
       localeBranchId: input.localeBranchId,
-      sourceRevisionId: context.value.sourceRevisionId,
+      sourceRevisionId: outputSourceRevisionId,
       query: input.query ?? null,
       normalizedQuery,
       categories: categories.values,
@@ -565,7 +569,8 @@ type ArtifactFilter = {
   categories?: ContextArtifactCategory[];
   includeStale: boolean;
   bridgeUnitIds?: readonly string[];
-  limit: number;
+  limit?: number;
+  normalizedQuery?: string | null;
 };
 
 async function artifactsWithSources(
@@ -591,8 +596,31 @@ async function artifactsWithSources(
   if (filter.categories !== undefined && filter.categories.length > 0) {
     conditions.push(inArray(contextArtifacts.category, filter.categories));
   }
+  if (filter.bridgeUnitIds !== undefined && filter.bridgeUnitIds.length > 0) {
+    const sourceMatches = await db
+      .select({ contextArtifactId: contextArtifactSourceUnits.contextArtifactId })
+      .from(contextArtifactSourceUnits)
+      .where(inArray(contextArtifactSourceUnits.bridgeUnitId, unique(filter.bridgeUnitIds)));
+    const contextArtifactIds = unique(sourceMatches.map((row) => row.contextArtifactId));
+    if (contextArtifactIds.length === 0) {
+      return [];
+    }
+    conditions.push(inArray(contextArtifacts.contextArtifactId, contextArtifactIds));
+  }
+  if (filter.normalizedQuery !== undefined && filter.normalizedQuery !== null) {
+    conditions.push(sql`(
+      position(${filter.normalizedQuery} in ${contextArtifacts.normalizedTitle}) > 0
+      or position(${filter.normalizedQuery} in lower(${contextArtifacts.body})) > 0
+      or exists (
+        select 1
+        from itotori_context_artifact_source_units casu
+        where casu.context_artifact_id = ${contextArtifacts.contextArtifactId}
+          and position(${filter.normalizedQuery} in lower(casu.citation)) > 0
+      )
+    )`);
+  }
 
-  const rows = await db
+  const query = db
     .select()
     .from(contextArtifacts)
     .where(conditions.length === 0 ? undefined : and(...conditions))
@@ -600,8 +628,8 @@ async function artifactsWithSources(
       asc(contextArtifacts.category),
       asc(contextArtifacts.normalizedTitle),
       asc(contextArtifacts.contextArtifactId),
-    )
-    .limit(filter.limit);
+    );
+  const rows = filter.limit === undefined ? await query : await query.limit(filter.limit);
 
   if (rows.length === 0) {
     return [];
@@ -631,17 +659,9 @@ async function artifactsWithSources(
     }
   }
 
-  const bridgeUnitIds = new Set(filter.bridgeUnitIds ?? []);
-  return rows
-    .map((row) =>
-      contextArtifactRecordFromRow(row, sourceRowsByArtifactId.get(row.contextArtifactId) ?? []),
-    )
-    .filter((artifact) => {
-      if (bridgeUnitIds.size === 0) {
-        return true;
-      }
-      return artifact.sourceUnits.some((source) => bridgeUnitIds.has(source.bridgeUnitId));
-    });
+  return rows.map((row) =>
+    contextArtifactRecordFromRow(row, sourceRowsByArtifactId.get(row.contextArtifactId) ?? []),
+  );
 }
 
 function scoredArtifact(

@@ -56,7 +56,7 @@ ci-itotori:
     just db-wait
     just db-reset
     pnpm --filter @itotori/db typecheck
-    pnpm --filter @itotori/db test
+    pnpm --filter @itotori/db test:db
     pnpm --filter @itotori/db build
     pnpm --filter @itotori/app typecheck
     pnpm --filter @itotori/app test

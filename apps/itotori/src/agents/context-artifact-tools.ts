@@ -34,7 +34,7 @@ export type ContextArtifactRetrievalToolService = {
 
 export const contextArtifactRetrievalRegistryToolName = contextArtifactToolName;
 export const contextArtifactRetrievalToolImplementationHash =
-  "sha256:4a710ea50b3d91f2d4d995174fe0e4520924251473d988e2e8323330e3a14246" satisfies StableJsonHash;
+  "sha256:0d8fe7d513a2dde8d96346519baff54ed51083d173f4a7f0ca9f6e28939472eb" satisfies StableJsonHash;
 
 export const contextArtifactRetrievalToolInputSchema = {
   schemaId: "itotori.tool.context-artifacts.input",
@@ -69,6 +69,76 @@ export const contextArtifactRetrievalToolInputSchema = {
   },
 } satisfies RegistrySchemaDescriptor;
 
+const contextArtifactCategorySchema = {
+  enum: ["scene_summary", "character_note", "route_map", "speaker_label", "terminology_candidate"],
+};
+
+const contextArtifactStatusSchema = {
+  enum: ["active", "stale", "superseded", "rejected"],
+};
+
+const contextArtifactSourceUnitSchema = {
+  type: "object",
+  required: [
+    "contextArtifactId",
+    "bridgeUnitId",
+    "sourceRevisionId",
+    "sourceHash",
+    "citation",
+    "metadata",
+    "createdAt",
+  ],
+  additionalProperties: false,
+  properties: {
+    contextArtifactId: { type: "string", minLength: 1 },
+    bridgeUnitId: { type: "string", minLength: 1 },
+    sourceRevisionId: { type: "string", minLength: 1 },
+    sourceHash: { type: "string", minLength: 1 },
+    citation: { type: "string", minLength: 1 },
+    metadata: { type: "object" },
+    createdAt: { type: "string", minLength: 1 },
+  },
+};
+
+const contextArtifactProvenanceSchema = {
+  type: "object",
+  required: [
+    "schemaVersion",
+    "toolName",
+    "toolVersion",
+    "contextArtifactId",
+    "category",
+    "sourceRevisionId",
+    "producerVersion",
+  ],
+  additionalProperties: true,
+  properties: {
+    schemaVersion: { const: "itotori.context-artifact.v1" },
+    toolName: { const: contextArtifactToolName },
+    toolVersion: { const: contextArtifactToolVersion },
+    contextArtifactId: { type: "string", minLength: 1 },
+    category: contextArtifactCategorySchema,
+    sourceRevisionId: { type: "string", minLength: 1 },
+    producedByAgent: {},
+    producedByTool: {},
+    producerVersion: { type: "string", minLength: 1 },
+  },
+};
+
+const contextArtifactDiagnosticSchema = {
+  type: "object",
+  required: ["code", "reasonCode", "severity", "message"],
+  additionalProperties: true,
+  properties: {
+    code: { type: "string", minLength: 1 },
+    reasonCode: { type: "string", minLength: 1 },
+    severity: { enum: ["error", "warning", "info"] },
+    message: { type: "string", minLength: 1 },
+    field: { type: "string", minLength: 1 },
+    metadata: { type: "object" },
+  },
+};
+
 export const contextArtifactRetrievalToolOutputSchema = {
   schemaId: "itotori.tool.context-artifacts.output",
   schemaVersion: "1.0.0",
@@ -100,37 +170,62 @@ export const contextArtifactRetrievalToolOutputSchema = {
       sourceRevisionId: {},
       query: {},
       normalizedQuery: {},
-      categories: { type: "array", items: { type: "string" } },
+      categories: { type: "array", items: contextArtifactCategorySchema },
       matches: {
         type: "array",
         items: {
           type: "object",
           required: [
             "contextArtifactId",
+            "projectId",
+            "localeBranchId",
+            "sourceRevisionId",
             "category",
             "status",
             "title",
+            "normalizedTitle",
             "body",
+            "data",
+            "contentHash",
+            "producerVersion",
             "citations",
             "provenance",
+            "sourceUnits",
             "retrievalScore",
             "retrievalReasons",
+            "createdAt",
+            "updatedAt",
           ],
-          additionalProperties: true,
+          additionalProperties: false,
           properties: {
             contextArtifactId: { type: "string", minLength: 1 },
-            category: { type: "string", minLength: 1 },
-            status: { type: "string", minLength: 1 },
+            projectId: { type: "string", minLength: 1 },
+            localeBranchId: { type: "string", minLength: 1 },
+            sourceRevisionId: { type: "string", minLength: 1 },
+            category: contextArtifactCategorySchema,
+            status: contextArtifactStatusSchema,
             title: { type: "string", minLength: 1 },
+            normalizedTitle: { type: "string", minLength: 1 },
             body: { type: "string" },
-            citations: { type: "array", items: { type: "object" } },
-            provenance: { type: "object" },
+            data: { type: "object" },
+            contentHash: { type: "string", minLength: 1 },
+            producedByAgent: {},
+            producedByTool: {},
+            producerVersion: { type: "string", minLength: 1 },
+            provenance: contextArtifactProvenanceSchema,
+            invalidatedReason: {},
+            invalidatedAt: {},
+            createdByUserId: {},
+            createdAt: { type: "string", minLength: 1 },
+            updatedAt: { type: "string", minLength: 1 },
+            sourceUnits: { type: "array", items: contextArtifactSourceUnitSchema },
+            citations: { type: "array", minItems: 1, items: contextArtifactSourceUnitSchema },
             retrievalScore: { type: "number" },
-            retrievalReasons: { type: "array", items: { type: "string" } },
+            retrievalReasons: { type: "array", minItems: 1, items: { type: "string" } },
           },
         },
       },
-      diagnostics: { type: "array", items: { type: "object" } },
+      diagnostics: { type: "array", items: contextArtifactDiagnosticSchema },
     },
   },
 } satisfies RegistrySchemaDescriptor;

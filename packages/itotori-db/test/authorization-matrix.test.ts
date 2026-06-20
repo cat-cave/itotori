@@ -9,6 +9,7 @@ import {
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
+import { ItotoriContextArtifactRepository } from "../src/repositories/context-artifact-repository.js";
 import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-search-document-repository.js";
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
@@ -388,6 +389,24 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "exact-search-document-repository.test.ts search.exact coverage",
     (repo) => repo.searchExact(deniedActor, undefined as never),
+  ),
+  contextArtifactGate(
+    "upsertArtifact",
+    "projectImport",
+    "context-artifact-repository.test.ts artifact upsert coverage",
+    (repo) => repo.upsertArtifact(deniedActor, undefined as never),
+  ),
+  contextArtifactGate(
+    "invalidateAffectedArtifacts",
+    "projectImport",
+    "context-artifact-repository.test.ts source invalidation coverage",
+    (repo) => repo.invalidateAffectedArtifacts(deniedActor, undefined as never),
+  ),
+  contextArtifactGate(
+    "retrieveArtifacts",
+    "catalogRead",
+    "context-artifact-repository.test.ts retrieval coverage",
+    (repo) => repo.retrieveArtifacts(deniedActor, undefined as never),
   ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
@@ -770,6 +789,24 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "exact-search-document-repository.test.ts search.exact coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriContextArtifactRepository.upsertArtifact",
+          "requiredPermission": "project.import",
+          "successFixture": "context-artifact-repository.test.ts artifact upsert coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriContextArtifactRepository.invalidateAffectedArtifacts",
+          "requiredPermission": "project.import",
+          "successFixture": "context-artifact-repository.test.ts source invalidation coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriContextArtifactRepository.retrieveArtifacts",
+          "requiredPermission": "catalog.read",
+          "successFixture": "context-artifact-repository.test.ts retrieval coverage",
+        },
       ]
     `);
   });
@@ -977,6 +1014,22 @@ function exactSearchGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriExactSearchDocumentRepository(db)),
+  });
+}
+
+function contextArtifactGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriContextArtifactRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriContextArtifactRepository",
+    sourceFile: "context-artifact-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriContextArtifactRepository(db)),
   });
 }
 

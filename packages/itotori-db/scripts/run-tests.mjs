@@ -8,7 +8,9 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../
 const packageRoot = path.join(repoRoot, "packages/itotori-db");
 const skipReportPath = path.join(repoRoot, ".tmp/itotori-db/no-database-skipped.json");
 const dbTestCommand = "pnpm --filter @itotori/db test";
-const vitestArgs = process.argv.slice(2).filter((arg) => arg !== "--");
+const rawArgs = process.argv.slice(2).filter((arg) => arg !== "--");
+const requireDatabase = rawArgs.includes("--require-database");
+const vitestArgs = rawArgs.filter((arg) => arg !== "--require-database");
 
 runRequiredCommand(
   process.execPath,
@@ -23,6 +25,10 @@ runRequiredCommand(
 );
 
 if (!process.env.DATABASE_URL) {
+  if (requireDatabase) {
+    console.error("itotori db tests require DATABASE_URL for this verification path");
+    process.exit(1);
+  }
   await mkdir(path.dirname(skipReportPath), { recursive: true });
   await writeFile(
     skipReportPath,
