@@ -53,7 +53,7 @@ create index if not exists itotori_context_artifacts_content_hash_idx
 
 create table if not exists itotori_context_artifact_source_units (
   context_artifact_id text not null references itotori_context_artifacts(context_artifact_id) on delete cascade,
-  bridge_unit_id text not null references itotori_source_units(bridge_unit_id) on delete cascade,
+  bridge_unit_id text not null,
   source_revision_id text not null references itotori_source_revisions(source_revision_id) on delete restrict,
   source_hash text not null,
   citation text not null,

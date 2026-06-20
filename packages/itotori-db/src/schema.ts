@@ -1808,9 +1808,7 @@ export const contextArtifactSourceUnits = pgTable(
     contextArtifactId: text("context_artifact_id")
       .notNull()
       .references(() => contextArtifacts.contextArtifactId, { onDelete: "cascade" }),
-    bridgeUnitId: text("bridge_unit_id")
-      .notNull()
-      .references(() => sourceUnits.bridgeUnitId, { onDelete: "cascade" }),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
     sourceRevisionId: text("source_revision_id")
       .notNull()
       .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),

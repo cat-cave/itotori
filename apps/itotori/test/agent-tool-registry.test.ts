@@ -21,6 +21,7 @@ import {
   AgentToolDurableJobAdapter,
   AgentToolRuntime,
   DeterministicToolRegistry,
+  assertRegistrySchemaValue,
   deterministicPreExportQaImplementationHash,
   deterministicPreExportQaJobFixture,
   deterministicPreExportQaOutputFixture,
@@ -39,6 +40,8 @@ import {
   contextArtifactRetrievalRegistryToolName,
   contextArtifactRetrievalTool,
   contextArtifactRetrievalToolImplementationHash,
+  contextArtifactRetrievalToolOutput,
+  contextArtifactRetrievalToolOutputSchema,
   glossaryContextRegistryToolName,
   glossaryContextTool,
   glossaryContextToolImplementationHash,
@@ -663,6 +666,99 @@ describe("agent and deterministic tool registries", () => {
         ContextArtifactRetrievalToolOutput
       >(contextArtifactToolJobFixture()),
     ).rejects.toThrow(/provenance\.contextArtifactId is required/);
+  });
+
+  it("rejects malformed context artifact nullable scalar tool output", async () => {
+    const cases: Array<{
+      label: string;
+      mutate: (output: ContextArtifactRetrievalToolOutput, value: unknown) => void;
+      message: RegExp;
+    }> = [
+      {
+        label: "sourceRevisionId",
+        mutate: (output, value) => {
+          (output as unknown as Record<string, unknown>).sourceRevisionId = value;
+        },
+        message: /sourceRevisionId must match one of schema types string, null/,
+      },
+      {
+        label: "query",
+        mutate: (output, value) => {
+          (output as unknown as Record<string, unknown>).query = value;
+        },
+        message: /query must match one of schema types string, null/,
+      },
+      {
+        label: "normalizedQuery",
+        mutate: (output, value) => {
+          (output as unknown as Record<string, unknown>).normalizedQuery = value;
+        },
+        message: /normalizedQuery must match one of schema types string, null/,
+      },
+      {
+        label: "producedByAgent",
+        mutate: (output, value) => {
+          (output.matches[0] as unknown as Record<string, unknown>).producedByAgent = value;
+        },
+        message: /matches\[0\]\.producedByAgent must match one of schema types string, null/,
+      },
+      {
+        label: "producedByTool",
+        mutate: (output, value) => {
+          (output.matches[0] as unknown as Record<string, unknown>).producedByTool = value;
+        },
+        message: /matches\[0\]\.producedByTool must match one of schema types string, null/,
+      },
+      {
+        label: "provenance.producedByAgent",
+        mutate: (output, value) => {
+          (output.matches[0]?.provenance as Record<string, unknown>).producedByAgent = value;
+        },
+        message: /provenance\.producedByAgent must match one of schema types string, null/,
+      },
+      {
+        label: "provenance.producedByTool",
+        mutate: (output, value) => {
+          (output.matches[0]?.provenance as Record<string, unknown>).producedByTool = value;
+        },
+        message: /provenance\.producedByTool must match one of schema types string, null/,
+      },
+      {
+        label: "invalidatedReason",
+        mutate: (output, value) => {
+          (output.matches[0] as unknown as Record<string, unknown>).invalidatedReason = value;
+        },
+        message: /matches\[0\]\.invalidatedReason must match one of schema types string, null/,
+      },
+      {
+        label: "invalidatedAt",
+        mutate: (output, value) => {
+          (output.matches[0] as unknown as Record<string, unknown>).invalidatedAt = value;
+        },
+        message: /matches\[0\]\.invalidatedAt must match one of schema types string, null/,
+      },
+      {
+        label: "createdByUserId",
+        mutate: (output, value) => {
+          (output.matches[0] as unknown as Record<string, unknown>).createdByUserId = value;
+        },
+        message: /matches\[0\]\.createdByUserId must match one of schema types string, null/,
+      },
+    ];
+
+    for (const testCase of cases) {
+      for (const malformed of [{ bad: testCase.label }, [testCase.label], 123]) {
+        const output = contextArtifactRetrievalToolOutput(contextArtifactRetrievalServiceResult());
+        testCase.mutate(output, malformed);
+        expect(() =>
+          assertRegistrySchemaValue(
+            contextArtifactRetrievalToolOutputSchema,
+            output,
+            "tool.context-artifacts output",
+          ),
+        ).toThrow(testCase.message);
+      }
+    }
   });
 
   it("validates duplicate protected span raw text as distinct deterministic tool occurrences", async () => {

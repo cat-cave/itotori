@@ -687,10 +687,18 @@ function assertJsonSchemaNode(schema: JsonObject, value: JsonValue, label: strin
 
   const schemaType = schema["type"];
   if (schemaType !== undefined) {
-    if (typeof schemaType !== "string") {
-      throw new Error(`${label} schema type must be a string`);
+    if (Array.isArray(schemaType)) {
+      if (schemaType.length === 0 || !schemaType.every((item) => typeof item === "string")) {
+        throw new Error(`${label} schema type array must contain strings`);
+      }
+      if (!schemaType.some((item) => jsonSchemaTypeMatches(item, value))) {
+        throw new Error(`${label} must match one of schema types ${schemaType.join(", ")}`);
+      }
+    } else if (typeof schemaType === "string") {
+      assertJsonSchemaType(schemaType, value, label);
+    } else {
+      throw new Error(`${label} schema type must be a string or string array`);
     }
-    assertJsonSchemaType(schemaType, value, label);
   }
 
   if (
@@ -709,6 +717,31 @@ function assertJsonSchemaNode(schema: JsonObject, value: JsonValue, label: strin
   if (schemaType === "number" || schemaType === "integer") {
     assertJsonNumberSchema(schema, value, label);
   }
+}
+
+function jsonSchemaTypeMatches(type: string, value: JsonValue): boolean {
+  if (type === "object") {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+  if (type === "array") {
+    return Array.isArray(value);
+  }
+  if (type === "string") {
+    return typeof value === "string";
+  }
+  if (type === "number") {
+    return typeof value === "number";
+  }
+  if (type === "integer") {
+    return typeof value === "number" && Number.isInteger(value);
+  }
+  if (type === "boolean") {
+    return typeof value === "boolean";
+  }
+  if (type === "null") {
+    return value === null;
+  }
+  throw new Error(`schema type ${type} is not supported`);
 }
 
 function assertJsonSchemaType(type: string, value: JsonValue, label: string): void {

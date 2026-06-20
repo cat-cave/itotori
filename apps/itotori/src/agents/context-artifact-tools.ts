@@ -77,6 +77,10 @@ const contextArtifactStatusSchema = {
   enum: ["active", "stale", "superseded", "rejected"],
 };
 
+const nullableStringSchema = {
+  type: ["string", "null"],
+};
+
 const contextArtifactSourceUnitSchema = {
   type: "object",
   required: [
@@ -119,8 +123,8 @@ const contextArtifactProvenanceSchema = {
     contextArtifactId: { type: "string", minLength: 1 },
     category: contextArtifactCategorySchema,
     sourceRevisionId: { type: "string", minLength: 1 },
-    producedByAgent: {},
-    producedByTool: {},
+    producedByAgent: nullableStringSchema,
+    producedByTool: nullableStringSchema,
     producerVersion: { type: "string", minLength: 1 },
   },
 };
@@ -167,9 +171,9 @@ export const contextArtifactRetrievalToolOutputSchema = {
       toolVersion: { const: contextArtifactToolVersion },
       projectId: { type: "string", minLength: 1 },
       localeBranchId: { type: "string", minLength: 1 },
-      sourceRevisionId: {},
-      query: {},
-      normalizedQuery: {},
+      sourceRevisionId: nullableStringSchema,
+      query: nullableStringSchema,
+      normalizedQuery: nullableStringSchema,
       categories: { type: "array", items: contextArtifactCategorySchema },
       matches: {
         type: "array",
@@ -209,13 +213,13 @@ export const contextArtifactRetrievalToolOutputSchema = {
             body: { type: "string" },
             data: { type: "object" },
             contentHash: { type: "string", minLength: 1 },
-            producedByAgent: {},
-            producedByTool: {},
+            producedByAgent: nullableStringSchema,
+            producedByTool: nullableStringSchema,
             producerVersion: { type: "string", minLength: 1 },
             provenance: contextArtifactProvenanceSchema,
-            invalidatedReason: {},
-            invalidatedAt: {},
-            createdByUserId: {},
+            invalidatedReason: nullableStringSchema,
+            invalidatedAt: nullableStringSchema,
+            createdByUserId: nullableStringSchema,
             createdAt: { type: "string", minLength: 1 },
             updatedAt: { type: "string", minLength: 1 },
             sourceUnits: { type: "array", items: contextArtifactSourceUnitSchema },

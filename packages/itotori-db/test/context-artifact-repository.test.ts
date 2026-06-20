@@ -238,6 +238,85 @@ describe("ItotoriContextArtifactRepository", () => {
     }
   });
 
+  it("preserves citations when a cited source unit is removed before stale invalidation", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await seedContextProject(context.db);
+      const artifactRepository = new ItotoriContextArtifactRepository(context.db);
+      await artifactRepository.upsertArtifact(localActor, {
+        contextArtifactId: "context-artifact-removed-mira",
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        category: contextArtifactCategoryValues.characterNote,
+        title: "Removed Mira citation",
+        body: "Mira's removed source unit remains inspectable after reimport.",
+        producedByAgent: "agent.character-notes",
+        producerVersion: "1.0.0",
+        provenance: { runId: "run-removed-unit" },
+        sourceUnits: [{ bridgeUnitId: "unit-mira", citation: "scene.002.mira" }],
+      });
+
+      await new ItotoriProjectRepository(context.db).importSourceBundle(
+        localActor,
+        contextProjectFixture({
+          units: [
+            {
+              bridgeUnitId: "unit-opening",
+              sourceUnitKey: "scene.001.opening",
+              occurrenceId: "occurrence-opening",
+              sourceText: "Opening",
+              sourceHash: "hash:opening",
+            },
+            {
+              bridgeUnitId: "unit-route",
+              sourceUnitKey: "scene.003.route",
+              occurrenceId: "occurrence-route",
+              sourceText: "Route split",
+              sourceHash: "hash:route",
+            },
+          ],
+        }),
+      );
+
+      const result = await artifactRepository.retrieveArtifacts(localActor, {
+        projectId: "project-context",
+        localeBranchId: "locale-en-us",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        bridgeUnitIds: ["unit-mira"],
+        includeStale: true,
+      });
+
+      expect(result).toMatchObject({
+        status: "completed",
+        sourceRevisionId: "bridge-context:bundle-revision",
+        matches: [
+          expect.objectContaining({
+            contextArtifactId: "context-artifact-removed-mira",
+            status: contextArtifactStatusValues.stale,
+            invalidatedReason: "source_import",
+            citations: [
+              expect.objectContaining({
+                bridgeUnitId: "unit-mira",
+                sourceRevisionId: "bridge-context:bundle-revision",
+                sourceHash: "hash:mira",
+                citation: "scene.002.mira",
+              }),
+            ],
+            provenance: expect.objectContaining({
+              runId: "run-removed-unit",
+              contextArtifactId: "context-artifact-removed-mira",
+              producedByAgent: "agent.character-notes",
+            }),
+            retrievalReasons: expect.arrayContaining(["source_unit"]),
+          }),
+        ],
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
   it("manually invalidates active artifacts by source unit without an artifact read cap", async () => {
     const context = await isolatedMigratedContext();
     try {
