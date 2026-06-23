@@ -7260,6 +7260,12 @@ fn run_bounded_helper_process(request: BoundedHelperProcessRequest<'_>) -> Helpe
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // Preserve PATH so the helper can resolve system binaries it needs.
+    // Without this, bash on NixOS sets PATH=/no-such-path when launched with a
+    // cleared env, which silently breaks any helper that shells out.
+    if let Ok(path) = std::env::var("PATH") {
+        command.env("PATH", path);
+    }
     configure_helper_process_command(&mut command);
 
     let mut child = match command.spawn() {
@@ -16700,6 +16706,10 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         fs::write(path, script).unwrap();
+        // fsync the file so its contents are flushed before chmod + exec.
+        // Without this, parallel tests under load can hit ETXTBSY when the
+        // kernel sees the file as still being written.
+        fs::File::open(path).unwrap().sync_all().unwrap();
         let mut permissions = fs::metadata(path).unwrap().permissions();
         permissions.set_mode(0o700);
         fs::set_permissions(path, permissions).unwrap();

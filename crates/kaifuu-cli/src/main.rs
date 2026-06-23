@@ -1248,6 +1248,10 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         fs::write(path, script).unwrap();
+        // fsync the file so its contents are flushed before chmod + exec.
+        // Without this, parallel tests under load can hit ETXTBSY when the
+        // kernel sees the file as still being written.
+        fs::File::open(path).unwrap().sync_all().unwrap();
         let mut permissions = fs::metadata(path).unwrap().permissions();
         permissions.set_mode(0o700);
         fs::set_permissions(path, permissions).unwrap();
