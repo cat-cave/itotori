@@ -24,9 +24,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::EvidenceTier;
 
+pub mod audio;
 pub mod errors;
 pub mod text;
 
+pub use audio::{AudioEvent, AudioEventKind, AudioEventSink};
 pub use errors::{SinkError, SinkResult, codes};
 pub use text::{TextLine, TextSurfaceSink};
 

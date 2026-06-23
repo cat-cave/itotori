@@ -35,7 +35,10 @@ pub mod redaction {
     }
 }
 
-pub use sink::{SinkCapability, SinkError, SinkKind, SinkResult, TextLine, TextSurfaceSink};
+pub use sink::{
+    AudioEvent, AudioEventKind, AudioEventSink, SinkCapability, SinkError, SinkKind, SinkResult,
+    TextLine, TextSurfaceSink,
+};
 pub use vfs::{
     AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
     AssetSize, CaseRule, HelperId, IoSummary, MountedVfs, PackageDescriptor, PackageKind,
