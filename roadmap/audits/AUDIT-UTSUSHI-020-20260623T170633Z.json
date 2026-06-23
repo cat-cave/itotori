@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-020-20260623T170633Z",
+  "generatedAt": "2026-06-23T17:06:33Z",
+  "spec": {
+    "id": "UTSUSHI-020",
+    "title": "Runtime VFS and asset package boundary",
+    "branch": "spec/utsushi-020",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-020",
+    "commit": "83ab467"
+  },
+  "auditor": {
+    "name": "utsushi-020-slice-a-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "UTSUSHI-020 Slice A delivers the engine-neutral, read-only runtime VFS substrate as specified. The `utsushi_core::vfs` module exposes `AssetId`, `AssetBytes` (wrapping `bytes::Bytes`), `RuntimeVfs`, `AssetPackage`, `MountedVfs`, `PlaintextDirPackage`, `VfsError` and supporting enums; trait method names and `VfsError` variants are engine-neutral, with no `xp3`/`kirikiri`/`kag`/`rgss`/`rpgmaker`/`json` substrings outside doc comments. The trait surface is path-free (no `std::path::Path` or `&str` paths), and both `RuntimeVfs` and `AssetPackage` are `Send + Sync` and read-only by construction (no `&mut self`, no `Write` returns; the only `&mut self` is `MountedVfs::mount`, which is registration, not a trait method). `PlaintextDirPackage` reads via `std::fs` with no `Command::new` shell-out. `AssetMissing`, `AssetEncrypted`, `AssetHelperGated`, and `AssetOutsidePackage` are distinct variants with distinct `utsushi.vfs.*` codes; `kaifuu_code()` maps them to the shared kaifuu codes. `PackageIo` carries `IoSummary` (not raw `std::io::Error` text). `Display` redaction is verified for every variant by `display_output_contains_no_host_path_substrings`, `every_vfs_error_display_passes_observation_redaction`, and `vfs_error_for_real_host_path_input_does_not_leak_path_into_display` (the last uses a real `tempdir()` so the host path actually contains `/tmp/...`). `AssetPathUnsafe` deliberately drops the engine-supplied `logical` field from `Display` so a host path supplied as a logical cannot leak. `RuntimeRequest` adds the additive `vfs: Option<Arc<dyn RuntimeVfs>>` field with hand-rolled `Debug` and lost `Copy`; no in-tree caller relied on `Copy`. The `codes::ALL` slice plus `semantic_codes_all_registered_in_module_list` test prevents drift between the variant set and the canonical code list, which is a defensible source-of-truth approach in the absence of a centralized utsushi runtime-diagnostic registry. The `vfs_debug` feature gate from the plan is deferred (debug_render currently aliases Display) and is acknowledged in code comments; that is plan-permitted Slice A polish. `utsushi-fixture` is untouched (zero diff under `crates/utsushi-fixture/` between main and HEAD), satisfying the no-regression bar. Verification reruns from the worktree confirm the reported results: `cargo test -p utsushi-core` returns 100 passed / 0 failed / 5 ignored (84 lib + 16 vfs_synthetic_package integration), `cargo test -p utsushi-fixture` returns 22 passed / 0 failed, `cargo fmt --check` is clean, `cargo clippy -p utsushi-core --all-targets -- -D warnings` is clean, and `just schema` passes 124 schema tests. No `cfg(target_os)` was introduced in `packages/itotori-*` or `apps/itotori/`. No P0/P1/P2/P3 findings.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
