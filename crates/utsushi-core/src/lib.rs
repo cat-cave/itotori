@@ -6,12 +6,22 @@ use std::panic::{self, AssertUnwindSafe};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
 use std::str::FromStr;
+use std::sync::Arc;
 use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
+
+pub mod vfs;
+
+pub use vfs::{
+    AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
+    AssetSize, CaseRule, HelperId, IoSummary, MountedVfs, PackageDescriptor, PackageKind,
+    PackageSource, PlaintextDirPackage, RequiredCapability, ResourceBoundKind, RuntimeVfs,
+    TransformKind, TraversalKind, VfsError, VfsResult,
+};
 
 pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -35,10 +45,27 @@ const OBVIOUS_UNMANAGED_ROOT_SENTINELS: &[&str] = &[
     "Assets",
 ];
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone)]
 pub struct RuntimeRequest<'a> {
     pub input_root: &'a Path,
     pub artifact_root: Option<&'a Path>,
+    /// Optional, additive handoff for downstream nodes that consume the
+    /// runtime VFS (UTSUSHI-021/022/023/024/103). Slice A of UTSUSHI-020
+    /// only adds the field so callers can begin to populate it; current
+    /// adapters do not read it. The signature decision for
+    /// `RuntimeAdapter` is deferred to UTSUSHI-103.
+    pub vfs: Option<Arc<dyn RuntimeVfs>>,
+}
+
+impl std::fmt::Debug for RuntimeRequest<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RuntimeRequest")
+            .field("input_root", &self.input_root)
+            .field("artifact_root", &self.artifact_root)
+            .field("vfs", &self.vfs.as_ref().map(|_| "Arc<dyn RuntimeVfs>"))
+            .finish()
+    }
 }
 
 impl<'a> RuntimeRequest<'a> {
@@ -46,11 +73,17 @@ impl<'a> RuntimeRequest<'a> {
         Self {
             input_root,
             artifact_root: None,
+            vfs: None,
         }
     }
 
     pub fn with_artifact_root(mut self, artifact_root: &'a Path) -> Self {
         self.artifact_root = Some(artifact_root);
+        self
+    }
+
+    pub fn with_vfs(mut self, vfs: Arc<dyn RuntimeVfs>) -> Self {
+        self.vfs = Some(vfs);
         self
     }
 }
