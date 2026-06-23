@@ -124,3 +124,59 @@ behavior-only / clean-room. The auditor uses this list verbatim.
 - [x] Tests pass on a host with no rlvm installed. The crate's only dep is `kaifuu-core` plus serde/thiserror.
 - [x] Synthetic fixtures under `crates/kaifuu-reallive/tests/fixtures/` contain no copyrighted RealLive bytes. Every byte is authored from public docs and reproduced by the in-tree regenerator.
 - [ ] If a future worker reads rlvm to confirm a hypothesis, the readiness record's "Reference implementations and docs" entry records that fact with the file path that was consulted and the hypothesis that was confirmed, **without** importing rlvm's expression. (No such read was performed during the KAIFUU-173 implementation slice; the box is left unchecked as a hand-off marker for future contributors.)
+
+## KAIFUU-174 text inventory adapter addendum
+
+- Roadmap node: KAIFUU-174.
+- Crate or module: `crates/kaifuu-reallive` (new `encoding.rs`, `protected_spans.rs`, `inventory.rs`, `gameexe.rs`, `patchback.rs` modules) and `crates/kaifuu-engine-fixture` (`RealLiveProfileDetectorAdapter` trait impl extended; adapter id `kaifuu.reallive` unchanged).
+- Initial support boundary: Scene/SEEN dialogue / speaker / choice slot extraction and length-preserving patch-back, plus Gameexe.ini user-visible key (`#TITLE`, `#WINTITLE`) BridgeUnits and asset-reference catalogue (`#G00*`, `#KOE*`, `#SEEN*`, `#NWK*`, `#OVK*`, `#REGNAME`, `#GAMEEXE_VERSION`).
+- Unsupported / gated boundary: length-changing patch-back (offset-table rewrite + jump-target recalculation deferred to a future node; emits `kaifuu.reallive.patchback_offset_overflow` Fatal), encrypted SEEN.TXT, `.g00` image-overlay text patching, `.koe` / `.ovk` / `.nwk` voice extraction, RealLive runtime / VM replay (UTSUSHI-146).
+- Public fixture ids: `bridge-inventory-001`, `protected-spans-001`, `patchback-identity-001`, `patchback-length-preserving-001`, `patchback-overflow-001`, `unsupported-text-shape-001` (crate-local under `crates/kaifuu-reallive/tests/fixtures/`).
+- Fixture license: synthetic, CC0-1.0. Every byte is reproduced by the per-test synthetic builder; the on-disk bytes are an audit aid.
+- Supported encodings: Shift-JIS (decode + encode via `encoding_rs`).
+- Text surfaces: `dialogue`, `speaker_name`, `choice_label`, `metadata_text` (Gameexe.ini).
+- Patch modes: length-preserving slot replacement only. The `SlotEditLengthPolicy::FixedBudget` variant is wired through the API but always rejected with `kaifuu.reallive.patchback_unsupported_length_policy` Fatal at this slice.
+- Asset inventory surfaces: top-level files (carry forward from KAIFUU-172) plus per-StringSlot asset refs (`.g00`, `.koe`, `.ovk`, `.nwk` by extension) and per-Gameexe-key asset refs (documented catalogue keys only).
+- Semantic capability errors (parser-local namespace, mapped at adapter boundary into `kaifuu_core::SemanticErrorCode`):
+  - `kaifuu.reallive.shift_jis_decode_failure` (Warning).
+  - `kaifuu.reallive.protected_span.unknown_control` (Warning).
+  - `kaifuu.reallive.inventory.unattributed_dialogue` (Warning).
+  - `kaifuu.reallive.inventory.unknown_asset_extension` (Warning).
+  - `kaifuu.reallive.inventory.unknown_gameexe_key` (Warning).
+  - `kaifuu.reallive.unsupported_text_shape` (Warning).
+  - `kaifuu.reallive.patchback_offset_overflow` (Fatal; length-changing edits).
+  - `kaifuu.reallive.patchback_shift_jis_encode_failure` (Fatal; encoder hit `had_unmappable_characters`).
+  - `kaifuu.reallive.patchback_unsupported_length_policy` (Fatal; `FixedBudget` requested).
+  - `kaifuu.reallive.patchback_parser_regression` (Fatal; re-parse self-check failed).
+  - `kaifuu.reallive.patchback_unknown_slot_id` (Fatal; edit references an unknown slot id).
+  - `kaifuu.reallive.patchback_stale_source_hash` (Fatal; expected source hash mismatched).
+  - `kaifuu.reallive.patchback_protected_span_lost` (Fatal; edited text dropped a protected span).
+- Reference implementations and docs:
+  - Haeleth's RLDEV documentation (`https://dev.haeleth.net/rldev.shtml`) — `behavior-only-clean-room`. Used to derive the bounded protected-span catalogue and the bounded Gameexe.ini key catalogue.
+  - rlvm (`https://github.com/eglaysher/rlvm`) — `behavior-only-clean-room`. Not linked, not derived.
+  - `encoding_rs` workspace dep (MIT/Apache-2.0). WHATWG-spec Shift-JIS; not a copy of rlvm or RLDEV code.
+- Parser spike status: completed under KAIFUU-173.
+- Local validation commands:
+  - `cargo test -p kaifuu-reallive`
+  - `cargo test -p kaifuu-engine-fixture`
+  - `cargo test -p kaifuu-core`
+  - `cargo test -p kaifuu-cli`
+  - `cargo fmt --check`
+  - `cargo clippy -p kaifuu-reallive -p kaifuu-engine-fixture --all-targets -- -D warnings`
+- Known gaps (P2/P3 follow-ups):
+  - Length-changing patch-back (offset-table rewrite + jump-target recalculation). Deferred until ALPHA-006 evidence ratifies the rewrite contract.
+  - UTSUSHI-146 — RealLive runtime / VM port.
+  - Encrypted SEEN.TXT (key-profile boundary review).
+  - `.g00` image-overlay text patching, `.koe` / `.ovk` / `.nwk` voice handling.
+  - Real-game Sweetie HD protected-span catalogue expansion (ALPHA-006 evidence-first).
+  - Public-fixture-manifest promotion of the new bridge-inventory / patchback fixtures (crate-local at this slice).
+
+### KAIFUU-174 rlvm clean-room worker checklist
+
+- [x] No `git submodule`, no Cargo dep on rlvm/RLDEV, no vendored rlvm/RLDEV code in `crates/kaifuu-reallive` or `crates/kaifuu-engine-fixture`.
+- [x] No copied opcode tables, control-byte tables, Gameexe.ini key tables, or struct layouts. The protected-span catalogue and Gameexe key catalogue are authored from public RLDEV documentation plus synthetic-fixture bytes.
+- [x] Crate-level provenance comment in `crates/kaifuu-reallive/src/lib.rs` extended with the KAIFUU-174 paragraph. Per-module preambles updated in `encoding.rs`, `protected_spans.rs`, `inventory.rs`, `gameexe.rs`, `patchback.rs`.
+- [x] No `Command::new`, no foreign tool invocation, no helper boundary in the new code. The inventory and patch-back planners are pure functions over `&[u8]`; the adapter owns the filesystem I/O.
+- [x] Tests pass on a host with no rlvm installed. New deps are `encoding_rs`, `sha2`, `thiserror`, `uuid` — all permissive.
+- [x] Synthetic fixtures under `crates/kaifuu-reallive/tests/fixtures/` contain no copyrighted bytes. Every byte is reproduced by the in-tree builder; on-disk and builder output are asserted to match.
+- [ ] If a future worker reads rlvm to confirm a hypothesis at ALPHA-006 (Sweetie HD evidence work), the readiness record records that fact with the file path consulted and the hypothesis confirmed, **without** importing rlvm's expression. (No such read was performed during the KAIFUU-174 implementation slice.)
