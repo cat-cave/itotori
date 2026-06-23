@@ -6358,7 +6358,7 @@
     {
       "id": "ITOTORI-018",
       "title": "Batch planner and context packer",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -6398,7 +6398,10 @@
           "value": "Cost ledger integration test"
         }
       ],
-      "auditFocus": ["Context-window assumptions", "Overlarge batches", "Missing relevant context"]
+      "auditFocus": ["Context-window assumptions", "Overlarge batches", "Missing relevant context"],
+      "owner": "orchestrator",
+      "branch": "spec/itotori-018",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-018"
     },
     {
       "id": "ITOTORI-019",
@@ -10193,7 +10196,7 @@
     {
       "id": "UTSUSHI-024",
       "title": "WASM embed ABI fixture",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10229,7 +10232,10 @@
         "Browser ABI exposing private assets",
         "ABI shaped around one engine",
         "Unsupported capabilities discovered only after silent failure"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-024",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-024"
     },
     {
       "id": "UTSUSHI-025",
@@ -10357,7 +10363,7 @@
     {
       "id": "UTSUSHI-028",
       "title": "Snapshot conformance",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10403,7 +10409,10 @@
         "SnapshotStore resolution returns typed errors, never silently returning a stale or empty payload.",
         "EvidenceRef::StatePath round-trips through the conformance result schema cleanly.",
         "The state-drift conformance check actually fails when the diff is non-empty (negative case asserted)."
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-028",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-028"
     },
     {
       "id": "UTSUSHI-029",
@@ -12850,7 +12859,7 @@
     {
       "id": "KAIFUU-084",
       "title": "Binary patch rollback and no-write preflight harness",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -12882,7 +12891,10 @@
         "Binary patch writes before preflight completes",
         "Rollback missing failed-promotion coverage",
         "PatchResult not tied to transaction states"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/kaifuu-084",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-084"
     },
     {
       "id": "KAIFUU-085",
