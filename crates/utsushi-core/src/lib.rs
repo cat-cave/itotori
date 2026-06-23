@@ -19,6 +19,7 @@ pub mod conformance;
 pub mod embed;
 pub mod input;
 pub mod port;
+pub mod recorder;
 pub mod replay;
 pub mod sink;
 pub mod snapshot;
@@ -60,6 +61,10 @@ pub use port::{
     OPTIONAL_LIFECYCLE_STAGES, PortCapability, PortEnv, PortManifest, PortRequest,
     PortShutdownOutcome, PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES, Runner, RunnerCancellation,
     RunnerObservation, RunnerOutcome,
+};
+pub use recorder::{
+    InMemoryReferenceRecorder, REFERENCE_TRACE_SCHEMA_VERSION, RecordingTextSink,
+    ReferenceRecorder, ReferenceTrace, SourceTag, deterministic_json_bytes,
 };
 pub use replay::{
     REPLAY_LOG_SCHEMA_VERSION, ReplayCursor, ReplayEntry, ReplayLog, ReplayLogBuilder,
