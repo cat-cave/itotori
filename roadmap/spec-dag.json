@@ -2736,7 +2736,7 @@
     {
       "id": "KAIFUU-010",
       "title": "Patch result and verification v0.2",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared", "itotori"],
@@ -2771,10 +2771,7 @@
           "value": "just contract-validate"
         }
       ],
-      "auditFocus": ["Untriageable errors", "Weak failure categories", "Silent partial success"],
-      "owner": "orchestrator",
-      "branch": "spec/kaifuu-010",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-010"
+      "auditFocus": ["Untriageable errors", "Weak failure categories", "Silent partial success"]
     },
     {
       "id": "KAIFUU-011",
@@ -2796,7 +2793,10 @@
         "The smoke report names every primitive operation, input hash, output hash, relocation table update, and rollback state.",
         "A failing primitive aborts before final promotion and records a typed failure category.",
         "The command exercises the shared binary patcher API rather than duplicating primitive behavior in the CLI.",
-        "Unsupported binary layouts return semantic diagnostics before writes."
+        "Unsupported binary layouts return semantic diagnostics before writes.",
+        "RealLive emits PatchResultV02 via a public crate function that converts PatchBackError sequences into structured PatchFailureV02 entries with PATCH_FAILURE_CATEGORIES_V02 mapping.",
+        "Every PatchBackError variant has a documented target in PATCH_FAILURE_CATEGORIES_V02 (not source_incompatible by default).",
+        "RealLive emitter integration test exercises a successful run (passed + touchedAssets + outputHash rollup) and at least one failed run (patch_write_failed)."
       ],
       "verification": [
         {
@@ -2806,12 +2806,19 @@
         {
           "type": "manual",
           "value": "Property-style offset tests"
+        },
+        {
+          "type": "command",
+          "value": "direnv exec /home/trevor/projects/itotori cargo test -p kaifuu-reallive"
         }
       ],
       "auditFocus": [
         "Integration shell hiding new implementation work",
         "Dependency bypass of normalized slices",
-        "Support or readiness overclaim"
+        "Support or readiness overclaim",
+        "PatchBackError variants that silently fall through to a default category",
+        "RealLive emitting v0.1 strings instead of v0.2 failures",
+        "Missing structured attribution at the engine boundary"
       ]
     },
     {
@@ -10145,7 +10152,7 @@
     {
       "id": "UTSUSHI-023",
       "title": "Inspectable state and snapshot primitives",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10181,10 +10188,7 @@
         "Snapshot payloads leaking private data",
         "State diffs too vague to debug",
         "Restore behavior coupled to fixture runtime only"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-023",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-023"
+      ]
     },
     {
       "id": "UTSUSHI-024",
@@ -10312,7 +10316,7 @@
     {
       "id": "UTSUSHI-027",
       "title": "Trace and branch conformance",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10348,10 +10352,7 @@
         "Trace-only evidence overclaiming rendered playback",
         "Branch mismatches hidden as skipped checks",
         "Bridge-unit links missing from conformance output"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-027",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-027"
+      ]
     },
     {
       "id": "UTSUSHI-028",
@@ -10372,7 +10373,10 @@
       "acceptanceCriteria": [
         "A mutated snapshot fixture fails with state-path diagnostics",
         "Snapshot conformance can run without screenshot support",
-        "Snapshot report data avoids raw private asset payloads"
+        "Snapshot report data avoids raw private asset payloads",
+        "`SnapshotStore` trait introduced as the resolution layer for `RuntimeRequest::snapshot: Option<SnapshotRef>`, with typed errors for missing and mismatched ids.",
+        "`EvidenceRef::StatePath { path: String }` variant added on the conformance result enum and populated from `StateDiff::changed_paths()`.",
+        "New conformance check `utsushi.snapshot.state_drift` quotes the drifted `StatePath` verbatim in its `EvidenceRef`."
       ],
       "verification": [
         {
@@ -10382,18 +10386,29 @@
         {
           "type": "command",
           "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core snapshot_conformance"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
         }
       ],
       "auditFocus": [
         "State drift reported too vaguely",
         "Snapshot checks requiring renderer support",
-        "Private data embedded in snapshot reports"
+        "Private data embedded in snapshot reports",
+        "SnapshotStore resolution returns typed errors, never silently returning a stale or empty payload.",
+        "EvidenceRef::StatePath round-trips through the conformance result schema cleanly.",
+        "The state-drift conformance check actually fails when the diff is non-empty (negative case asserted)."
       ]
     },
     {
       "id": "UTSUSHI-029",
       "title": "Capture and recording artifact conformance",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10429,10 +10444,7 @@
         "Host-specific artifact refs",
         "Unsupported capture reported as pass",
         "Evidence tier hidden from reviewers"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-029",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-029"
+      ]
     },
     {
       "id": "UTSUSHI-030",
@@ -21889,6 +21901,304 @@
         "Engine-neutrality of the detection algorithm",
         "Interaction with the BLESS schema drift guard",
         "Correct preservation of Outdated through repeated validation"
+      ]
+    },
+    {
+      "id": "UTSUSHI-166",
+      "status": "planned",
+      "title": "Fixture snapshot adoption (UTSUSHI-023 Slice B)",
+      "priority": "P2",
+      "target": "alpha",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-023"],
+      "summary": "Refactor utsushi-fixture so its runtime adapter implements `Inspectable` + `Restorable` against the UTSUSHI-023 substrate, providing the first non-synthetic snapshot round-trip proof and the canonical reference port that downstream engine crates (UTSUSHI-146 utsushi-reallive) imitate.",
+      "deliverables": [
+        "Inspectable impl on the fixture adapter exposing tick + frame + asset id + metadata",
+        "Restorable impl on the fixture adapter consuming the same paths and declaring metadata.* ignored_by_design",
+        "Integration test crates/utsushi-fixture/tests/snapshot_roundtrip.rs asserting take-mutate-restore-retake byte equality",
+        "Documentation note in the fixture crate root pointing at the in-test FixtureInspectable as the design reference"
+      ],
+      "acceptanceCriteria": [
+        "Fixture adapter passes a snapshot round-trip test against the production surface (not an in-test FixtureInspectable).",
+        "Existing fixture trace, capture, and smoke_validate goldens continue to pass.",
+        "utsushi-cli runtime registry compiles and runs unchanged."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture snapshot_roundtrip"
+        }
+      ],
+      "auditFocus": [
+        "Fixture inspect/restore implementation matches the substrate's Inspectable/Restorable contract verbatim (no silent best-effort branch).",
+        "Round-trip determinism holds against the production fixture surface, not just an in-test stub.",
+        "No regression in existing trace, capture, or smoke_validate goldens."
+      ]
+    },
+    {
+      "id": "UTSUSHI-167",
+      "status": "planned",
+      "title": "Snapshot replay-tail integration test against ReplayLog",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-023"],
+      "summary": "Strengthen the round-trip determinism claim by exercising a real ReplayLog through the snapshot/restore/diff substrate, replacing the placeholder observe() helper in tests/snapshot_round_trip.rs with a log-driven flow that asserts observation-sequence equality through the replay infrastructure.",
+      "deliverables": [
+        "Integration test constructing a ReplayLog with at least two ReplayEntry records",
+        "Test driving the fixture from the log, snapshotting at a known tick, mutating, restoring, and replaying the tail",
+        "Byte-equality assertion on the observation sequence collected through the replay infrastructure"
+      ],
+      "acceptanceCriteria": [
+        "ReplayLog is constructed and driven explicitly (no ad-hoc observation helper).",
+        "Snapshot restore at tick T followed by tail replay produces an observation sequence equal to the pre-mutation from-zero replay tail.",
+        "Test is hermetic — no host paths, no clock side effects, no external fixtures."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core --test snapshot_round_trip"
+        }
+      ],
+      "auditFocus": [
+        "ReplayLog is the actual source of observations (not a stub).",
+        "Tail replay starts at the snapshot's anchor tick, not from zero.",
+        "Observation sequence equality is byte-level, not field-level."
+      ]
+    },
+    {
+      "id": "UTSUSHI-168",
+      "status": "planned",
+      "title": "Direct positive-rejection test for snapshot 16 KiB ceiling",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-023"],
+      "summary": "Add a direct positive-rejection test for `SnapshotError::SnapshotTooLarge` covering the 16 KiB serialized-snapshot ceiling enforcement path in `Snapshot::validate`. The current test surface only asserts that a clean snapshot stays under the ceiling; the rejection branch itself is not directly exercised (the state-tree ceiling test reaches the same JSON-size-rejection mechanism on a sibling path).",
+      "deliverables": [
+        "Unit test under crates/utsushi-core/src/snapshot/snapshot.rs constructing a Snapshot whose serialized form exceeds SNAPSHOT_MAX_SERIALIZED_BYTES",
+        "Assertion that SnapshotError::SnapshotTooLarge is returned with size > ceiling"
+      ],
+      "acceptanceCriteria": [
+        "Test exercises the SnapshotError::SnapshotTooLarge rejection branch in Snapshot::validate directly.",
+        "Constant SNAPSHOT_MAX_SERIALIZED_BYTES is referenced from the test so a future ceiling change updates both the validator and the test together."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core snapshot_validate_rejects_envelope_exceeding_ceiling"
+        }
+      ],
+      "auditFocus": [
+        "Test asserts the rejection branch, not just that a clean snapshot is under the ceiling.",
+        "No clippy / fmt regressions introduced.",
+        "Constant SNAPSHOT_MAX_SERIALIZED_BYTES is referenced from the test."
+      ]
+    },
+    {
+      "id": "UTSUSHI-169",
+      "status": "planned",
+      "title": "MaxMismatchesPerEvent truncation cap for trace conformance",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-027"],
+      "summary": "Add an opt-in per-event truncation cap to `TraceCheckOptions` so production engine-port runs against large traces emit bounded mismatch lists without losing the exhaustive default that UTSUSHI-027's alpha-track fixtures rely on.",
+      "deliverables": [
+        "`TraceCheckOptions.max_mismatches_per_event: Option<NonZeroU32>` (default None preserves current behaviour)",
+        "`TraceMismatchKind::TruncatedPerEvent` typed sentinel that carries the suppressed-count detail",
+        "New stable code `utsushi.conformance.trace_per_event_truncated` registered in `codes::ALL`",
+        "Unit + integration tests for the unbounded and bounded paths"
+      ],
+      "acceptanceCriteria": [
+        "Setting `max_mismatches_per_event = None` reproduces the current exhaustive emission (regression-tested).",
+        "Setting `max_mismatches_per_event = Some(N)` caps per-event emissions at N and appends exactly one `TruncatedPerEvent` sentinel when suppression occurred.",
+        "The new code is in `codes::ALL` and the mod.rs parity test exhaustively covers it."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core conformance::trace_branch"
+        }
+      ],
+      "auditFocus": [
+        "Default-preserving behaviour for existing callers",
+        "Truncation observability via the typed sentinel kind",
+        "Codes-registry parity for the new code"
+      ]
+    },
+    {
+      "id": "UTSUSHI-170",
+      "status": "planned",
+      "title": "Optional bridge-unit-id normalisation modes for trace conformance",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-027"],
+      "summary": "Add an opt-in normalisation mode to bridge-unit-id equality so engine adapters that emit stable UUIDs in different surface forms (uppercase vs lowercase hex) do not trip spurious BridgeUnitDivergent mismatches.",
+      "deliverables": [
+        "`BridgeUnitIdNormalisation` enum with `Exact` (default) and at least one folding variant",
+        "Symmetric application in the per-event comparison loop",
+        "Tests covering exact + folding paths"
+      ],
+      "acceptanceCriteria": [
+        "Default (`Exact`) reproduces UTSUSHI-027's byte-for-byte behaviour.",
+        "`LowercaseHex` folds both sides before comparison; UUIDv7 inputs with case-only differences match.",
+        "The new option is plumbed through the fixture loader (`TraceFixtureOptions`)."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core conformance::trace_branch"
+        }
+      ],
+      "auditFocus": [
+        "Default preservation",
+        "Symmetric normalisation",
+        "Wire-shape impact on the fixture JSON (additive only)"
+      ]
+    },
+    {
+      "id": "UTSUSHI-171",
+      "status": "planned",
+      "title": "Real terminal-bridge-unit-id evidence on branch conformance Pass",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-027"],
+      "summary": "Replace the UTSUSHI-027 placeholder where branch-conformance Pass evidence cites `branch_id` as a `bridge_unit_id` with a real `terminal_bridge_unit_id` field on `GoldenBranch` / `ObservedBranch`, so ingestion can join discovered branches to their terminal bridge units without inferring identity from the discovery key.",
+      "deliverables": [
+        "`terminal_bridge_unit_id: String` field on both golden and observed branch types",
+        "Updated `build_branch_evidence` to cite the new field",
+        "Fixture corpus updated (additive `terminalBridgeUnitId` on every branch)",
+        "Tests asserting the evidence ref carries the terminal id, not the branch id"
+      ],
+      "acceptanceCriteria": [
+        "The new field is required at construction with the shared id-validation rules.",
+        "`BranchCheckResult::Pass.evidence_refs` carries `terminal_bridge_unit_id` values that are distinct from `branch_id` in at least one positive fixture.",
+        "UTSUSHI-030 round-trip parity (when it lands) sees the new field through the JSON wire shape."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core conformance::trace_branch"
+        }
+      ],
+      "auditFocus": [
+        "Schema impact (additive field, no version bump)",
+        "Round-trip parity with UTSUSHI-030 ingestion",
+        "Test coverage for the distinct-id case"
+      ]
+    },
+    {
+      "id": "UTSUSHI-172",
+      "status": "planned",
+      "title": "Typed ConformanceError for inadmissible evidence-refs on trace and branch conformance",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-027"],
+      "summary": "Replace the four call sites in `trace_branch::{trace,branch}::into_conformance_result` that emit `Err(MalformedSemanticCode { code: TRACE_EVIDENCE_TIER_OVERCLAIM })` with a typed `ConformanceError::EvidenceRefNotAdmissibleForProfile` variant whose `semantic_code()` returns the trace-specific overclaim code, so downstream code-based triagers see the diagnostic the plan promised instead of the generic malformed-code bucket.",
+      "deliverables": [
+        "New `ConformanceError::EvidenceRefNotAdmissibleForProfile { profile, evidence_kind }` variant",
+        "`semantic_code()` mapping for the new variant",
+        "All four call sites updated in trace.rs / branch.rs",
+        "Tests covering `.semantic_code()` for the rejection path on both Pass and Fail input to both helpers"
+      ],
+      "acceptanceCriteria": [
+        "Calling `TraceCheckResult::Pass { evidence_refs: vec![FrameArtifactRef{..}] }.into_conformance_result(...)` returns an Err whose `.semantic_code()` is `TRACE_EVIDENCE_TIER_OVERCLAIM`, not `MALFORMED_SEMANTIC_CODE`.",
+        "The same is true for the branch helper.",
+        "`MalformedSemanticCode` is no longer used as a carrier for evidence-ref rejections; it goes back to signalling input-code-shape failures only."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core conformance::trace_branch"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core conformance::result"
+        }
+      ],
+      "auditFocus": [
+        "semantic_code() surface accuracy",
+        "Backward-compatibility of MalformedSemanticCode for its original purpose",
+        "Symmetry across the four call sites"
+      ]
+    },
+    {
+      "id": "KAIFUU-184",
+      "status": "planned",
+      "title": "Persist ingested PatchResultV02 in the itotori project repository",
+      "priority": "P3",
+      "target": "alpha",
+      "projects": ["itotori", "kaifuu"],
+      "parallelGroup": "itotori-core",
+      "dependsOn": ["KAIFUU-010"],
+      "summary": "Add durable storage for PatchResultV02 records ingested via ProjectWorkflow.ingestPatchResult so failures, output hash, and partialWrite disposition survive across CLI invocations and are joinable from the dashboard and finding ledger.",
+      "deliverables": [
+        "ProjectRepository.savePatchResult (or recordPatchResultArtifact) writing patch_result rows keyed by patchResultId",
+        "ingestPatchResult wired to call the new repository method in the same actor transaction as recordFinding",
+        "Dashboard read-model surface exposing patchResult status + failureCategories"
+      ],
+      "acceptanceCriteria": [
+        "After ingestPatchResult, the patch result row is queryable from the DB by patchResultId with status, outputHash, and failureCategories.",
+        "retained_partial finding rows reference a patch_result row that already exists in the same transaction.",
+        "Dashboard exposes patchResult ingestion state by patchResultId."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/itotori test"
+        }
+      ],
+      "auditFocus": [
+        "Silent loss of patch result state between CLI runs",
+        "Finding referencing a patch result that was never persisted",
+        "Dashboard joins that fail because patch_result rows are missing"
+      ]
+    },
+    {
+      "id": "KAIFUU-185",
+      "status": "planned",
+      "title": "Hello-game v0.2 patch-result fixture regenerator",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "kaifuu", "shared"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-010"],
+      "summary": "Replace the hand-rolled deterministic hello-game v0.2 patch-result fixture with a regenerator and CI check that also cascades hashes through the alpha-vertical-proof and public manifest.",
+      "deliverables": [
+        "scripts/regenerate-hello-game-patch-result-v0.2.mjs (or a just-target) that writes the expected/patch-result-v0.2.fr-FR.json from bridge + byte-size table",
+        "Hash cascade through hello-game-alpha-proof-v0.2.fr-FR.json and hello-game.manifest.json",
+        "CI check that the committed fixture matches the regenerator output"
+      ],
+      "acceptanceCriteria": [
+        "Running the regenerator with no source change is a no-op (idempotent).",
+        "A bridge-v0.2.json edit that adds, removes, or rehashes an asset triggers a deterministic update to all three downstream files.",
+        "CI fails if any committed file drifts from the regenerator output."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "direnv exec /home/trevor/projects/itotori just fixtures-validate"
+        }
+      ],
+      "auditFocus": [
+        "Hand-edited fixture drift between expected, alpha-vertical-proof, and public manifest",
+        "Asset count changes that escape the dedup-by-assetId rule",
+        "Output hash rollup hand-calculations that go stale"
       ]
     }
   ]
