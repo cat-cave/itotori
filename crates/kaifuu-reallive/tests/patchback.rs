@@ -10,9 +10,9 @@
 use kaifuu_reallive::{
     PATCHBACK_OFFSET_OVERFLOW_CODE, PATCHBACK_PROTECTED_SPAN_LOST_CODE,
     PATCHBACK_SHIFT_JIS_ENCODE_FAILURE_CODE, PATCHBACK_STALE_SOURCE_HASH_CODE,
-    PATCHBACK_UNKNOWN_SLOT_ID_CODE, PATCHBACK_UNSUPPORTED_LENGTH_POLICY_CODE,
-    PatchBackErrorCode, SlotEdit, SlotEditLengthPolicy, apply_patches, decode_shift_jis_slot,
-    parse_archive, parse_scene,
+    PATCHBACK_UNKNOWN_SLOT_ID_CODE, PATCHBACK_UNSUPPORTED_LENGTH_POLICY_CODE, PatchBackErrorCode,
+    SlotEdit, SlotEditLengthPolicy, apply_patches, decode_shift_jis_slot, parse_archive,
+    parse_scene,
 };
 
 mod synthetic {
@@ -83,9 +83,8 @@ fn fixture_path(name: &str) -> std::path::PathBuf {
 }
 
 fn assert_synthetic_matches_committed(name: &str, expected: &[u8]) {
-    let on_disk = std::fs::read(fixture_path(name).join("SEEN.TXT")).unwrap_or_else(|err| {
-        panic!("fixture {name} read failure: {err}")
-    });
+    let on_disk = std::fs::read(fixture_path(name).join("SEEN.TXT"))
+        .unwrap_or_else(|err| panic!("fixture {name} read failure: {err}"));
     assert_eq!(
         on_disk, expected,
         "committed fixture bytes for {name} drifted from the synthetic builder",
@@ -175,8 +174,8 @@ fn writes_length_preserving_translated_text_into_dialogue_slot_without_corruptin
     assert_eq!(out.len(), archive_bytes.len());
 
     // Bytes outside the edited slot are identical.
-    let slot_start = (index.entries[0].byte_offset
-        + dialogue_slot.byte_offset_within_scene) as usize;
+    let slot_start =
+        (index.entries[0].byte_offset + dialogue_slot.byte_offset_within_scene) as usize;
     let slot_end = slot_start + dialogue_slot.byte_len as usize;
     assert_eq!(out[..slot_start], archive_bytes[..slot_start]);
     assert_eq!(out[slot_end..], archive_bytes[slot_end..]);
@@ -221,8 +220,8 @@ fn preserves_color_ruby_name_choice_control_bytes_through_length_preserving_patc
         expected_source_hash: None,
     }];
     let out = apply_patches(&archive_bytes, &index, &scenes, &edits).expect("patch-back");
-    let slot_start = (index.entries[0].byte_offset
-        + dialogue_slot.byte_offset_within_scene) as usize;
+    let slot_start =
+        (index.entries[0].byte_offset + dialogue_slot.byte_offset_within_scene) as usize;
     let slot_end = slot_start + dialogue_slot.byte_len as usize;
     let new_slot_bytes = &out[slot_start..slot_end];
 
@@ -363,7 +362,7 @@ fn rejects_protected_span_loss_with_kaifuu_reallive_patchback_protected_span_los
     let archive_bytes = synthetic::single_scene_archive(&scene_blob);
     let (index, scenes) = parse_archive_and_scenes(&archive_bytes);
     let scene = &scenes[0];
-    let dialogue_slot = scene.strings.iter().next().expect("slot");
+    let dialogue_slot = scene.strings.first().expect("slot");
     let edits = vec![SlotEdit {
         scene_id: scene.scene_id.as_str().to_string(),
         slot_id: dialogue_slot.slot_id.as_str().to_string(),
@@ -379,7 +378,7 @@ fn rejects_protected_span_loss_with_kaifuu_reallive_patchback_protected_span_los
 
 #[test]
 fn rejects_self_inflicted_parser_regression_with_kaifuu_reallive_patchback_parser_regression_fatal()
- {
+{
     // We deliberately corrupt a slot by encoding text containing the
     // instruction-opener byte 0x23 in a position that the parser will
     // misinterpret as the start of a new instruction. With ASCII '#' in

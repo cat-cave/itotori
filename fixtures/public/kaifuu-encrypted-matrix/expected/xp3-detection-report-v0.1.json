@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1.0",
   "gameDir": "[redacted-local-game-dir]",
-  "status": "matched",
+  "status": "unknown",
   "detections": [
     {
       "adapterId": "kaifuu.fixture",
@@ -230,21 +230,19 @@
     },
     {
       "adapterId": "kaifuu.reallive",
-      "detected": true,
-      "engineFamily": "reallive",
-      "detectedVariant": "reallive-synthetic-triple",
+      "detected": false,
       "evidence": [
         {
           "path": "*.g00",
           "kind": "[REDACTED:kaifuu.secret_redacted]",
-          "status": "matched",
-          "detail": "RealLive .g00 image asset count: 1"
+          "status": "missing",
+          "detail": "RealLive .g00 image asset count: 0"
         },
         {
           "path": "*.ovk|*.koe|*.nwk",
           "kind": "reallive_voice_archive_count",
-          "status": "matched",
-          "detail": "RealLive voice archive extension count: 1"
+          "status": "missing",
+          "detail": "RealLive voice archive extension count: 0"
         },
         {
           "path": "*.pdt",
@@ -261,20 +259,20 @@
         {
           "path": "Gameexe.ini",
           "kind": "reallive_gameexe_ini_keys",
-          "status": "matched",
-          "detail": "Gameexe.ini RealLive keys matched: #GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*"
+          "status": "missing",
+          "detail": "Gameexe.ini missing"
         },
         {
           "path": "SEEN.GAN",
           "kind": "reallive_seen_gan_marker",
-          "status": "matched",
-          "detail": "SEEN.GAN marker matched"
+          "status": "missing",
+          "detail": "SEEN.GAN marker is missing"
         },
         {
           "path": "SEEN.TXT",
           "kind": "reallive_seen_txt_envelope",
-          "status": "matched",
-          "detail": "SEEN.TXT envelope matched"
+          "status": "missing",
+          "detail": "SEEN.TXT envelope is missing"
         },
         {
           "path": "Scene.pck",
@@ -283,32 +281,7 @@
           "detail": "Scene.pck not present"
         }
       ],
-      "requirements": [
-        {
-          "category": "file",
-          "key": "Gameexe.ini",
-          "status": "satisfied",
-          "description": "RealLive Gameexe.ini with at least one RealLive-specific key (#GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*, #SEEN*)",
-          "placeholder": null,
-          "secret": false
-        },
-        {
-          "category": "file",
-          "key": "SEEN.TXT",
-          "status": "satisfied",
-          "description": "RealLive SEEN.TXT envelope (synthetic magic or generic shape)",
-          "placeholder": null,
-          "secret": false
-        },
-        {
-          "category": "platform",
-          "key": "reallive-parser",
-          "status": "unsupported",
-          "description": "Scene/SEEN parser/decompiler boundary is unsupported for KAIFUU-172",
-          "placeholder": null,
-          "secret": false
-        }
-      ],
+      "requirements": [],
       "capabilities": [
         {
           "capability": "asset_inventory",
@@ -506,7 +479,7 @@
   ],
   "archiveDetection": {
     "schemaVersion": "0.1.0",
-    "status": "matched",
+    "status": "unknown",
     "evidencePolicy": "aggregate-only; no raw keys, helper dumps, decrypted text, local paths, or private source filenames are serialized",
     "rows": [
       {
@@ -599,22 +572,22 @@
       {
         "rowId": "reallive-seen-txt",
         "engineFamily": "reallive",
-        "detected": true,
-        "detectedVariant": "reallive-seen-txt-archive",
-        "signals": ["packed"],
+        "detected": false,
+        "detectedVariant": "not-reallive",
+        "signals": [],
         "evidence": [
           {
             "evidenceType": "file_extension",
             "pattern": "*.g00",
-            "status": "matched",
-            "count": 1,
+            "status": "missing",
+            "count": 0,
             "detail": "RealLive .g00 image asset count"
           },
           {
             "evidenceType": "file_extension",
             "pattern": "*.ovk|*.koe|*.nwk",
-            "status": "matched",
-            "count": 1,
+            "status": "missing",
+            "count": 0,
             "detail": "RealLive voice archive extension count"
           },
           {
@@ -627,50 +600,32 @@
           {
             "evidenceType": "file_name",
             "pattern": "Gameexe.ini",
-            "status": "matched",
-            "count": 1,
+            "status": "missing",
+            "count": 0,
             "detail": "RealLive Gameexe.ini configuration manifest marker count"
           },
           {
             "evidenceType": "file_name",
             "pattern": "SEEN.GAN",
-            "status": "matched",
-            "count": 1,
+            "status": "missing",
+            "count": 0,
             "detail": "RealLive SEEN.GAN animation archive marker count"
           },
           {
             "evidenceType": "file_name",
             "pattern": "SEEN.TXT",
-            "status": "matched",
-            "count": 1,
+            "status": "missing",
+            "count": 0,
             "detail": "RealLive SEEN.TXT scene archive marker count"
           }
         ],
         "requirements": [],
-        "diagnostics": [
-          {
-            "code": "kaifuu.unsupported_variant.packed",
-            "signal": "packed",
-            "requiredCapability": "extraction",
-            "supportBoundary": "Kaifuu detects RealLive SEEN.TXT/Gameexe.ini/Scene container signals only; extraction, Scene/SEEN decompilation, voice-archive handling, and patch-back remain outside this matrix row.",
-            "remediation": "use already extracted/plaintext sources or wait for an adapter that claims this container"
-          }
-        ],
+        "diagnostics": [],
         "capabilities": [
           {
             "capability": "detection",
             "status": "supported",
             "limitation": null
-          },
-          {
-            "capability": "extraction",
-            "status": "unsupported",
-            "limitation": "archive/encryption matrix detection is not an extraction support claim"
-          },
-          {
-            "capability": "patching",
-            "status": "unsupported",
-            "limitation": "archive/encryption matrix detection does not rebuild, decrypt, or patch containers"
           }
         ],
         "supportBoundary": "Kaifuu detects RealLive SEEN.TXT/Gameexe.ini/Scene container signals only; extraction, Scene/SEEN decompilation, voice-archive handling, and patch-back remain outside this matrix row."
@@ -870,5 +825,5 @@
       }
     ]
   },
-  "warnings": []
+  "warnings": ["no registered adapter matched this directory"]
 }

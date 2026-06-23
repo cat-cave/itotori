@@ -578,10 +578,7 @@ mod tests {
         let bytes = &[0x05, b'x'][..];
         let report = detect_for(bytes);
         assert_eq!(report.warnings.len(), 1);
-        assert_eq!(
-            report.warnings[0].code,
-            PROTECTED_SPAN_UNKNOWN_CONTROL_CODE
-        );
+        assert_eq!(report.warnings[0].code, PROTECTED_SPAN_UNKNOWN_CONTROL_CODE);
         // The byte is preserved as an UnknownControl span.
         assert_eq!(report.spans.len(), 1);
         match &report.spans[0].kind {

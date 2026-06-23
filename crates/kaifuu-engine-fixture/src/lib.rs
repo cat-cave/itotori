@@ -4201,7 +4201,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             Err(diag) => {
                 return Err(Self::diagnostic_error(Self::parser_failure(
                     Self::detected_variant(state.variant),
-                    &diag.code.as_str(),
+                    diag.code.as_str(),
                     &diag.message,
                 )));
             }
@@ -4211,7 +4211,8 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         for entry in &scene_index.entries {
             let blob = &archive_bytes
                 [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
-            let outcome = kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
+            let outcome =
+                kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
             for diagnostic in &outcome.diagnostics {
                 adapter_warnings.push(kaifuu_core::AdapterWarning {
                     code: diagnostic.code.as_str().to_string(),
@@ -4332,7 +4333,8 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         for entry in &scene_index.entries {
             let blob = &archive_bytes
                 [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
-            let outcome = kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
+            let outcome =
+                kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
             if let Some(scene) = outcome.scene {
                 scenes.push(scene);
             }
@@ -4445,11 +4447,8 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 for entry in &index.entries {
                     let blob = &archive_bytes
                         [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
-                    let outcome = kaifuu_reallive::parse_scene(
-                        blob,
-                        entry.archive_index,
-                        entry.byte_offset,
-                    );
+                    let outcome =
+                        kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
                     if outcome.scene.is_none() {
                         failures.push(Self::unsupported_failure(
                             SemanticErrorCode::UnsupportedLayeredTransform,
@@ -4489,11 +4488,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
 }
 
 impl RealLiveProfileDetectorAdapter {
-    fn parser_failure(
-        variant: &str,
-        diagnostic_code: &str,
-        message: &str,
-    ) -> AdapterFailure {
+    fn parser_failure(variant: &str, diagnostic_code: &str, message: &str) -> AdapterFailure {
         AdapterFailure::semantic(
             AdapterFailureSemanticParams::new(
                 SemanticErrorCode::UnsupportedLayeredTransform,
@@ -7111,8 +7106,7 @@ mod tests {
         ] {
             assert!(
                 capabilities.reports.iter().any(|report| {
-                    report.capability == limited
-                        && report.status == CapabilityStatus::Limited
+                    report.capability == limited && report.status == CapabilityStatus::Limited
                 }),
                 "missing limited capability {limited:?}"
             );

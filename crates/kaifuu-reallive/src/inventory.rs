@@ -21,9 +21,7 @@ use crate::archive::{SceneEntry, SceneIndex};
 use crate::ast::{InstructionKind, Operand, Scene, StringSlotRole};
 use crate::encoding::decode_shift_jis_slot;
 use crate::opcodes::NamedOpcode;
-use crate::protected_spans::{
-    ProtectedSpanKind, RealLiveProtectedSpan, detect_protected_spans,
-};
+use crate::protected_spans::{ProtectedSpanKind, RealLiveProtectedSpan, detect_protected_spans};
 
 /// Stable warning codes for the inventory walk.
 pub const INVENTORY_UNATTRIBUTED_DIALOGUE_CODE: &str =
@@ -104,10 +102,8 @@ pub fn build_scene_inventory(
     let mut asset_assets = Vec::new();
     let mut warnings = Vec::new();
 
-    let scene_by_id: HashMap<&str, &Scene> = scenes
-        .iter()
-        .map(|s| (s.scene_id.as_str(), s))
-        .collect();
+    let scene_by_id: HashMap<&str, &Scene> =
+        scenes.iter().map(|s| (s.scene_id.as_str(), s)).collect();
 
     for entry in &scene_index.entries {
         let Some(scene) = scene_by_id.get(entry.scene_id.as_str()) else {
@@ -159,11 +155,7 @@ fn walk_scene(
                 continue;
             };
             // Resolve the slot.
-            let Some(slot) = scene
-                .strings
-                .iter()
-                .find(|s| s.slot_id == slot_ref.slot_id)
-            else {
+            let Some(slot) = scene.strings.iter().find(|s| s.slot_id == slot_ref.slot_id) else {
                 continue;
             };
 
@@ -197,9 +189,7 @@ fn walk_scene(
                 Some(NamedOpcode::Choice) => ("choice_label", StringSlotRole::Choice),
                 _ => match slot.semantic_role {
                     StringSlotRole::Dialogue => ("dialogue", StringSlotRole::Dialogue),
-                    StringSlotRole::SpeakerName => {
-                        ("speaker_name", StringSlotRole::SpeakerName)
-                    }
+                    StringSlotRole::SpeakerName => ("speaker_name", StringSlotRole::SpeakerName),
                     StringSlotRole::Choice => ("choice_label", StringSlotRole::Choice),
                     StringSlotRole::AssetReference => {
                         ("metadata_text", StringSlotRole::AssetReference)
@@ -288,9 +278,7 @@ fn walk_scene(
                 .collect();
 
             let source_unit_key = slot.slot_id.as_str().to_string();
-            let occurrence_id = format!(
-                "{source_unit_key}#occ-{bridge_index_within_scene:04}"
-            );
+            let occurrence_id = format!("{source_unit_key}#occ-{bridge_index_within_scene:04}");
             bridge_index_within_scene += 1;
 
             let bridge_unit = BridgeUnit {

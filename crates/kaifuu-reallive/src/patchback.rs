@@ -186,10 +186,9 @@ pub fn apply_patches(
         // later offsets. Length-preserving edits do not change offsets,
         // but FixedBudget would; the ordering keeps the algorithm
         // forward-compatible even though we reject FixedBudget below.
-        let mut sorted_edits: Vec<&SlotEdit> = scene_edits.iter().copied().collect();
+        let mut sorted_edits: Vec<&SlotEdit> = scene_edits.to_vec();
         sorted_edits.sort_by(|a, b| {
-            slot_offset_in_scene(scene, &b.slot_id)
-                .cmp(&slot_offset_in_scene(scene, &a.slot_id))
+            slot_offset_in_scene(scene, &b.slot_id).cmp(&slot_offset_in_scene(scene, &a.slot_id))
         });
 
         for edit in sorted_edits {
@@ -313,19 +312,15 @@ fn apply_slot_edit(
 
     // Encode the replacement text. Re-inject the source slot's control
     // bytes in their original positions.
-    let new_bytes = encode_replacement(source_slot_bytes, &edit.replacement_text).map_err(
-        |err| {
+    let new_bytes =
+        encode_replacement(source_slot_bytes, &edit.replacement_text).map_err(|err| {
             PatchBackError::for_slot(
                 PatchBackErrorCode::ShiftJisEncodeFailure,
                 scene.scene_id.as_str(),
                 &edit.slot_id,
-                format!(
-                    "Shift-JIS encode failed for slot {}: {err}",
-                    edit.slot_id
-                ),
+                format!("Shift-JIS encode failed for slot {}: {err}", edit.slot_id),
             )
-        },
-    )?;
+        })?;
 
     // Length-preserving check.
     if new_bytes.len() != source_slot_bytes.len() {
@@ -486,8 +481,8 @@ fn verify_archive_round_trip(
                 ),
             ));
         }
-        let blob =
-            &output[new_entry.byte_offset as usize..(new_entry.byte_offset + new_entry.byte_len) as usize];
+        let blob = &output
+            [new_entry.byte_offset as usize..(new_entry.byte_offset + new_entry.byte_len) as usize];
         let outcome = parse_scene(blob, new_entry.archive_index, new_entry.byte_offset);
         if outcome.scene.is_none() {
             return Err(PatchBackError::new(
@@ -536,10 +531,4 @@ fn verify_archive_round_trip(
         }
     }
     Ok(())
-}
-
-// Helpers for tests.
-#[cfg(test)]
-pub(crate) fn count_protected_spans(bytes: &[u8]) -> usize {
-    count_protected_spans_in_raw(bytes)
 }

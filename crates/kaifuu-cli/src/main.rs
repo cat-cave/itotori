@@ -6022,7 +6022,7 @@ wait
     }
 
     #[test]
-    fn capabilities_cli_lists_reallive_adapter_with_identify_only_support_boundary() {
+    fn capabilities_cli_lists_reallive_adapter_with_kaifuu_174_inventory_support_boundary() {
         let root = temp_dir("public-reallive-capabilities");
         let capabilities_path = root.join("capabilities.json");
         run_cli(&[
@@ -6040,6 +6040,10 @@ wait
             Capability::ProfileGeneration,
             Capability::AssetListing,
             Capability::AssetInventory,
+            Capability::Extraction,
+            Capability::ContainerAccess,
+            Capability::CodecAccess,
+            Capability::PatchBack,
         ] {
             assert!(
                 reallive_caps.reports.iter().any(|report| {
@@ -6048,13 +6052,7 @@ wait
                 "RealLive adapter missing supported {required:?}"
             );
         }
-        for unsupported in [
-            Capability::Extraction,
-            Capability::Patching,
-            Capability::ContainerAccess,
-            Capability::CodecAccess,
-            Capability::RuntimeVm,
-        ] {
+        for unsupported in [Capability::RuntimeVm, Capability::EncryptedInput] {
             assert!(
                 reallive_caps.reports.iter().any(|report| {
                     report.capability == unsupported
@@ -6063,6 +6061,14 @@ wait
                 "RealLive adapter missing unsupported {unsupported:?}"
             );
         }
+        // Patching is Limited per KAIFUU-174 (§3.3).
+        assert!(
+            reallive_caps.reports.iter().any(|report| {
+                report.capability == Capability::Patching
+                    && report.status == CapabilityStatus::Limited
+            }),
+            "RealLive adapter must report Patching as Limited at KAIFUU-174 (length-preserving only)"
+        );
     }
 
     #[test]

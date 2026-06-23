@@ -100,7 +100,9 @@ pub fn parse_gameexe_inventory(bytes: &[u8]) -> GameexeInventoryReport {
 
         // Split the line at the first `=` or whitespace into key/value.
         let (key_bytes, value_bytes) = split_key_value(trimmed);
-        let key = String::from_utf8_lossy(key_bytes).to_string().to_uppercase();
+        let key = String::from_utf8_lossy(key_bytes)
+            .to_string()
+            .to_uppercase();
         let value_decoded = decode_shift_jis_slot(value_bytes).text;
         let value = value_decoded.trim_matches('"').to_string();
 
@@ -199,10 +201,12 @@ mod tests {
         let ini = b"#G00BUF=8\n#KOEPAC=koe.ovk\n";
         let report = parse_gameexe_inventory(ini);
         assert_eq!(report.entries.len(), 2);
-        assert!(report
-            .entries
-            .iter()
-            .all(|e| e.treatment == GameexeKeyTreatment::AssetReference));
+        assert!(
+            report
+                .entries
+                .iter()
+                .all(|e| e.treatment == GameexeKeyTreatment::AssetReference)
+        );
     }
 
     #[test]

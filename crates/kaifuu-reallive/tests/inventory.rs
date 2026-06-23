@@ -4,9 +4,8 @@
 //! bytes; no `/archive/vault/` access.
 
 use kaifuu_reallive::{
-    AssetReferenceKind, ProtectedSpanKind, build_scene_inventory,
-    decode_shift_jis_slot, detect_protected_spans, parse_archive, parse_gameexe_inventory,
-    parse_scene,
+    AssetReferenceKind, ProtectedSpanKind, build_scene_inventory, decode_shift_jis_slot,
+    detect_protected_spans, parse_archive, parse_gameexe_inventory, parse_scene,
 };
 
 mod synthetic {
@@ -121,9 +120,8 @@ fn fixture_path(name: &str) -> std::path::PathBuf {
 }
 
 fn assert_synthetic_matches_committed(name: &str, expected: &[u8]) {
-    let on_disk = std::fs::read(fixture_path(name).join("SEEN.TXT")).unwrap_or_else(|err| {
-        panic!("fixture {name} read failure: {err}")
-    });
+    let on_disk = std::fs::read(fixture_path(name).join("SEEN.TXT"))
+        .unwrap_or_else(|err| panic!("fixture {name} read failure: {err}"));
     assert_eq!(
         on_disk, expected,
         "committed fixture bytes for {name} drifted from the synthetic builder",
@@ -149,15 +147,12 @@ fn extracts_bridge_units_with_kaifuu_173_stable_slot_ids_as_source_unit_keys() {
     let archive_bytes = synthetic::single_scene_archive(&scene_blob);
     assert_synthetic_matches_committed("bridge-inventory-001", &archive_bytes);
     let (index, scene) = parse_first(&archive_bytes);
-    let report = build_scene_inventory(&archive_bytes, &index, &[scene.clone()]);
+    let report = build_scene_inventory(&archive_bytes, &index, std::slice::from_ref(&scene));
 
     // Every bridge unit's source_unit_key must be one of the parsed
     // StringSlot ids.
-    let slot_ids: std::collections::HashSet<&str> = scene
-        .strings
-        .iter()
-        .map(|s| s.slot_id.as_str())
-        .collect();
+    let slot_ids: std::collections::HashSet<&str> =
+        scene.strings.iter().map(|s| s.slot_id.as_str()).collect();
     for unit in &report.bridge_units {
         assert!(
             slot_ids.contains(unit.source_unit_key.as_str()),
@@ -181,7 +176,10 @@ fn source_unit_key_format_pinned_for_bridge_contract() {
             key.starts_with("reallive:scene-"),
             "key {key} missing scene prefix"
         );
-        assert!(key.contains(":str-off-"), "key {key} missing str-off segment");
+        assert!(
+            key.contains(":str-off-"),
+            "key {key} missing str-off segment"
+        );
         assert!(key.contains("-idx"), "key {key} missing slot index");
     }
 }
@@ -193,8 +191,11 @@ fn projects_dialogue_speaker_choice_string_slots_into_text_surface_strings() {
     let (index, scene) = parse_first(&archive_bytes);
     let report = build_scene_inventory(&archive_bytes, &index, &[scene]);
 
-    let surfaces: std::collections::HashSet<&str> =
-        report.bridge_units.iter().map(|u| u.text_surface.as_str()).collect();
+    let surfaces: std::collections::HashSet<&str> = report
+        .bridge_units
+        .iter()
+        .map(|u| u.text_surface.as_str())
+        .collect();
     assert!(surfaces.contains("dialogue"));
     assert!(surfaces.contains("speaker_name"));
     assert!(surfaces.contains("choice_label"));
@@ -207,7 +208,11 @@ fn decodes_shift_jis_text_into_bridge_unit_source_text_for_documented_fixture_by
     let (index, scene) = parse_first(&archive_bytes);
     let report = build_scene_inventory(&archive_bytes, &index, &[scene]);
 
-    let texts: Vec<&str> = report.bridge_units.iter().map(|u| u.source_text.as_str()).collect();
+    let texts: Vec<&str> = report
+        .bridge_units
+        .iter()
+        .map(|u| u.source_text.as_str())
+        .collect();
     assert!(texts.contains(&"Aoi"));
     assert!(texts.contains(&"Hello!"));
     assert!(texts.contains(&"Yes"));
@@ -232,11 +237,13 @@ fn captures_g00_and_koe_asset_references_from_string_slots_and_gameexe_ini() {
         raw_paths.iter().any(|p| p.contains("sample.g00")),
         "expected sample.g00 in {raw_paths:?}"
     );
-    assert!(report
-        .asset_references
-        .assets
-        .iter()
-        .any(|a| a.kind == AssetReferenceKind::Image));
+    assert!(
+        report
+            .asset_references
+            .assets
+            .iter()
+            .any(|a| a.kind == AssetReferenceKind::Image)
+    );
 
     // Gameexe.ini level.
     let ini = b"#WINTITLE=Test\n#KOEPAC=koe.ovk\n";
@@ -247,17 +254,19 @@ fn captures_g00_and_koe_asset_references_from_string_slots_and_gameexe_ini() {
         .filter(|e| e.treatment == kaifuu_reallive::GameexeKeyTreatment::AssetReference)
         .map(|e| e.value.as_str())
         .collect();
-    assert!(asset_refs.iter().any(|v| *v == "koe.ovk"));
+    assert!(asset_refs.contains(&"koe.ovk"));
 }
 
 #[test]
 fn emits_kaifuu_reallive_inventory_unknown_gameexe_key_warning_for_non_catalogue_key() {
     let ini = b"#WEIRDKEY=42\n";
     let report = parse_gameexe_inventory(ini);
-    assert!(report
-        .warnings
-        .iter()
-        .any(|w| w.code == "kaifuu.reallive.inventory.unknown_gameexe_key"));
+    assert!(
+        report
+            .warnings
+            .iter()
+            .any(|w| w.code == "kaifuu.reallive.inventory.unknown_gameexe_key")
+    );
 }
 
 #[test]
@@ -291,12 +300,9 @@ fn produces_byte_identical_bridge_json_across_runs_for_inventory_fixture() {
     // source_unit_key / occurrence_id pair).
     let mut snapshots = Vec::new();
     for _ in 0..3 {
-        let report = build_scene_inventory(&archive_bytes, &index, &[scene.clone()]);
+        let report = build_scene_inventory(&archive_bytes, &index, std::slice::from_ref(&scene));
         let mut value = serde_json::to_value(&report).expect("serialize");
-        if let Some(units) = value
-            .get_mut("bridgeUnits")
-            .and_then(|u| u.as_array_mut())
-        {
+        if let Some(units) = value.get_mut("bridgeUnits").and_then(|u| u.as_array_mut()) {
             for unit in units {
                 if let Some(obj) = unit.as_object_mut() {
                     obj.remove("bridgeUnitId");
@@ -319,7 +325,7 @@ fn detects_color_ruby_name_choice_wait_clear_size_linebreak_control_spans_in_dia
     let archive_bytes = synthetic::single_scene_archive(&scene_blob);
     assert_synthetic_matches_committed("protected-spans-001", &archive_bytes);
     let (index, scene) = parse_first(&archive_bytes);
-    let report = build_scene_inventory(&archive_bytes, &index, &[scene.clone()]);
+    let report = build_scene_inventory(&archive_bytes, &index, std::slice::from_ref(&scene));
 
     // Locate the dialogue bridge unit.
     let dialogue_unit = report
@@ -342,11 +348,8 @@ fn detects_color_ruby_name_choice_wait_clear_size_linebreak_control_spans_in_dia
     let decoded = decode_shift_jis_slot(&raw).text;
     let spans_report = detect_protected_spans(&raw, &decoded);
 
-    let kinds: std::collections::HashSet<&str> = spans_report
-        .spans
-        .iter()
-        .map(|s| s.kind.label())
-        .collect();
+    let kinds: std::collections::HashSet<&str> =
+        spans_report.spans.iter().map(|s| s.kind.label()).collect();
     for expected in [
         "color_code",
         "ruby",

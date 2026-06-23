@@ -295,28 +295,28 @@
         },
         {
           "capability": "asset_text_patching",
-          "status": "unsupported",
-          "limitation": "no RealLive text surfaces are patched by this detector profile"
+          "status": "limited",
+          "limitation": "Scene/SEEN dialogue/speaker/choice slots only; image-overlaid text inside .g00 is not in scope"
         },
         {
           "capability": "codec_access",
-          "status": "unsupported",
-          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "container_access",
-          "status": "unsupported",
-          "limitation": "SEEN.TXT archive parsing is outside the detector profile"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "crypto_access",
           "status": "unsupported",
-          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+          "limitation": "RealLive voice archive obfuscation handling is outside this slice"
         },
         {
           "capability": "delta_patching",
           "status": "unsupported",
-          "limitation": ".kaifuu delta packages do not apply to detector-only RealLive profiles"
+          "limitation": ".kaifuu delta packages do not apply to RealLive at this slice"
         },
         {
           "capability": "detection",
@@ -326,17 +326,22 @@
         {
           "capability": "encrypted_input",
           "status": "unsupported",
-          "limitation": "encrypted payloads (if any) are identified only and are never decrypted by this profile"
+          "limitation": "encrypted SEEN.TXT is out of scope at KAIFUU-174"
         },
         {
           "capability": "extraction",
-          "status": "unsupported",
-          "limitation": "KAIFUU-172 is a RealLive detector/profile fixture only"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "key_profile",
           "status": "unsupported",
-          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+          "limitation": "alpha-vertical RealLive titles do not require user-provided keys; encrypted variants are a separate node"
+        },
+        {
+          "capability": "line_parity_patching",
+          "status": "limited",
+          "limitation": "patch-back is per-slot, not per-line; the KAIFUU-052 line-parity contract is not claimed at this slice"
         },
         {
           "capability": "non_text_surface_extraction",
@@ -345,13 +350,13 @@
         },
         {
           "capability": "patch_back",
-          "status": "unsupported",
-          "limitation": "RealLive patch-back/repack support is outside the detector profile"
+          "status": "supported",
+          "limitation": null
         },
         {
           "capability": "patching",
-          "status": "unsupported",
-          "limitation": "KAIFUU-172 does not patch or rebuild RealLive assets"
+          "status": "limited",
+          "limitation": "length-preserving slot replacement only; length-changing edits return kaifuu.reallive.patchback_offset_overflow Fatal"
         },
         {
           "capability": "profile_generation",
@@ -361,7 +366,12 @@
         {
           "capability": "runtime_vm",
           "status": "unsupported",
-          "limitation": "runtime support belongs to UTSUSHI-146, not this detector fixture"
+          "limitation": "runtime support belongs to UTSUSHI-146, not this slice"
+        },
+        {
+          "capability": "verification",
+          "status": "supported",
+          "limitation": null
         }
       ]
     },
@@ -1120,7 +1130,5 @@
       }
     ]
   },
-  "warnings": [
-    "no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"
-  ]
+  "warnings": ["no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"]
 }
