@@ -17,6 +17,11 @@ use utsushi_core::{
     RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
 };
 
+use browser_detection::{
+    BrowserUnavailabilityReason, ChromiumProbeOutcome, chromium_min_supported_version_string,
+    probe_chromium,
+};
+
 const BROWSER_RUN_ID: &str = "019ed050-0000-7000-8000-000000001000";
 const BROWSER_TRACE_ID: &str = "019ed050-0000-7000-8000-000000002000";
 const BROWSER_CAPTURE_ID: &str = "019ed050-0000-7000-8000-000000003000";
@@ -27,17 +32,6 @@ const BROWSER_OBSERVATION_TEXT_ID: &str = "019ed050-0000-7000-8000-000000007000"
 const BROWSER_OBSERVATION_FRAME_ID: &str = "019ed050-0000-7000-8000-000000007100";
 const BROWSER_VIEWPORT_WIDTH: u32 = 320;
 const BROWSER_VIEWPORT_HEIGHT: u32 = 180;
-
-const BROWSER_CANDIDATES: &[&str] = &[
-    "chromium",
-    "chromium-browser",
-    "google-chrome",
-    "google-chrome-stable",
-    "chrome",
-    "msedge",
-    "microsoft-edge",
-    "brave-browser",
-];
 
 #[derive(Clone, Debug)]
 pub struct BrowserLaunchAdapter {
@@ -68,34 +62,6 @@ impl Default for BrowserLaunchAdapter {
 
 impl RuntimeAdapter for BrowserLaunchAdapter {
     fn descriptor(&self) -> RuntimeAdapterDescriptor {
-        let mut limitations = vec![
-            "Chromium-compatible headless browser launch only; DOM instrumentation and branch control are not implemented in this adapter slice.".to_string(),
-            "Screenshot bytes are ingested through the managed runtime artifact store and reported only by portable artifact URI.".to_string(),
-            "RPG Maker MV/MZ support is limited to deployed browser-style entrypoints such as index.html or www/index.html.".to_string(),
-        ];
-        limitations.push(match self.browser_detection_label() {
-            BrowserDetectionLabel::Configured => {
-                "Browser executable configured explicitly for this adapter instance.".to_string()
-            }
-            BrowserDetectionLabel::ConfiguredUnavailable => {
-                "Configured browser executable is not launchable; update the adapter configuration."
-                    .to_string()
-            }
-            BrowserDetectionLabel::Environment => {
-                "Browser executable configured through UTSUSHI_BROWSER_BIN.".to_string()
-            }
-            BrowserDetectionLabel::EnvironmentUnavailable => {
-                "UTSUSHI_BROWSER_BIN is set but does not resolve to a launchable browser executable."
-                    .to_string()
-            }
-            BrowserDetectionLabel::Path => {
-                "Browser executable can be discovered from PATH.".to_string()
-            }
-            BrowserDetectionLabel::Unavailable => {
-                "No Chromium-compatible browser executable detected; set UTSUSHI_BROWSER_BIN to enable browser launch smoke validation.".to_string()
-            }
-        });
-
         RuntimeAdapterDescriptor {
             name: Self::NAME.to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
@@ -109,7 +75,7 @@ impl RuntimeAdapter for BrowserLaunchAdapter {
             ],
             approximation_tiers: vec![ApproximationTier::LayoutProbe],
             diagnostics: vec![self.browser_host_availability_diagnostic()],
-            limitations,
+            limitations: self.descriptor_limitations(),
         }
     }
 
@@ -288,124 +254,592 @@ impl BrowserLaunchAdapter {
         &self,
         operation: RuntimeOperation,
     ) -> Result<PathBuf, RuntimeHarnessError> {
-        if let Some(program) = &self.browser_program {
-            return Ok(program.clone());
+        match self.probe() {
+            Ok(probe) => Ok(probe.program),
+            Err(reason) => Err(unavailability_harness_error(operation, &reason)),
         }
-        if let Ok(program) = env::var("UTSUSHI_BROWSER_BIN") {
-            if let Some(path) = resolve_program_candidate(&program) {
-                return Ok(path);
-            }
-            return Err(RuntimeHarnessError::new(
-                RuntimeHarnessErrorKind::LaunchFailed,
-                operation,
-                "UTSUSHI_BROWSER_BIN does not point to a launchable browser executable",
-            )
-            .with_detail("capability", "browser_launch")
-            .with_detail("browserSource", "env"));
-        }
-        if let Some(path) = BROWSER_CANDIDATES
-            .iter()
-            .find_map(|candidate| resolve_program_candidate(candidate))
-        {
-            return Ok(path);
-        }
-        Err(RuntimeHarnessError::new(
-            RuntimeHarnessErrorKind::LaunchFailed,
-            operation,
-            "no Chromium-compatible browser executable detected; set UTSUSHI_BROWSER_BIN or install Chromium/Chrome",
-        )
-        .with_detail("capability", "browser_launch")
-        .with_detail("browserSource", "path"))
     }
 
-    fn browser_detection_label(&self) -> BrowserDetectionLabel {
-        if self
-            .browser_program
-            .as_ref()
-            .and_then(|program| resolve_program_candidate(&program.to_string_lossy()))
-            .is_some()
-        {
-            return BrowserDetectionLabel::Configured;
-        }
-        if self.browser_program.is_some() {
-            return BrowserDetectionLabel::ConfiguredUnavailable;
-        }
-        if let Ok(program) = env::var("UTSUSHI_BROWSER_BIN") {
-            if resolve_program_candidate(&program).is_some() {
-                return BrowserDetectionLabel::Environment;
-            }
-            return BrowserDetectionLabel::EnvironmentUnavailable;
-        }
-        if BROWSER_CANDIDATES
-            .iter()
-            .any(|candidate| resolve_program_candidate(candidate).is_some())
-        {
-            return BrowserDetectionLabel::Path;
-        }
-        BrowserDetectionLabel::Unavailable
+    /// Run the bounded Chromium probe with the adapter's configured browser
+    /// path. The probe is intentionally invoked on every descriptor render
+    /// and on every launch so the diagnostic reflects fresh host state
+    /// (environment can change between capability listing and launch).
+    fn probe(&self) -> Result<ChromiumProbeOutcome, BrowserUnavailabilityReason> {
+        probe_chromium(self.browser_program.as_deref())
     }
 
     fn browser_host_availability_diagnostic(&self) -> RuntimeAdapterDiagnostic {
-        let label = self.browser_detection_label();
-        let host_available = label.is_available();
-        let (status, severity, message) = if host_available {
-            (
+        match self.probe() {
+            Ok(probe) => RuntimeAdapterDiagnostic::new(
+                "browser_host_availability",
                 "available",
                 "info",
                 "Chromium-compatible browser host is available for browser launch capture.",
             )
-        } else {
-            (
-                "unavailable",
-                "warning",
-                "No Chromium-compatible browser host is available; capture capability remains adapter-supported but cannot run on this host until UTSUSHI_BROWSER_BIN or PATH provides Chromium/Chrome.",
-            )
-        };
-
-        RuntimeAdapterDiagnostic::new("browser_host_availability", status, severity, message)
             .with_detail("capability", "browser_launch")
-            .with_detail_value("hostAvailable", json!(host_available))
-            .with_detail("browserSource", label.as_str())
+            .with_detail_value("hostAvailable", json!(true))
+            .with_detail("browserSource", probe.source_label())
+            .with_detail("chromiumVersion", probe.version_string())
             .with_detail_value(
                 "requiredFor",
                 json!(["trace", "capture", "smoke_validation"]),
             )
-            .with_detail(
-                "errorCode",
-                if host_available {
-                    "utsushi.browser_host_available"
-                } else {
-                    "utsushi.browser_host_unavailable"
-                },
-            )
-            .with_detail("pathRedaction", "raw_local_paths_omitted")
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum BrowserDetectionLabel {
-    Configured,
-    ConfiguredUnavailable,
-    Environment,
-    EnvironmentUnavailable,
-    Path,
-    Unavailable,
-}
-
-impl BrowserDetectionLabel {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Configured => "configured",
-            Self::ConfiguredUnavailable => "configured_unavailable",
-            Self::Environment => "environment",
-            Self::EnvironmentUnavailable => "environment_unavailable",
-            Self::Path => "path",
-            Self::Unavailable => "unavailable",
+            .with_detail("errorCode", "utsushi.browser.chromium_available")
+            .with_detail("pathRedaction", "raw_local_paths_omitted"),
+            Err(reason) => {
+                let diagnostic = RuntimeAdapterDiagnostic::new(
+                    "browser_host_availability",
+                    "unavailable",
+                    "error",
+                    reason.diagnostic_message(),
+                )
+                .with_detail("capability", "browser_launch")
+                .with_detail_value("hostAvailable", json!(false))
+                .with_detail("browserSource", reason.source_label())
+                .with_detail_value(
+                    "requiredFor",
+                    json!(["trace", "capture", "smoke_validation"]),
+                )
+                .with_detail("errorCode", reason.semantic_code())
+                .with_detail("pathRedaction", "raw_local_paths_omitted");
+                attach_reason_details(diagnostic, &reason)
+            }
         }
     }
 
-    fn is_available(self) -> bool {
-        matches!(self, Self::Configured | Self::Environment | Self::Path)
+    fn descriptor_limitations(&self) -> Vec<String> {
+        let mut limitations = vec![
+            "Chromium-compatible headless browser launch only; DOM instrumentation and branch control are not implemented in this adapter slice.".to_string(),
+            "Screenshot bytes are ingested through the managed runtime artifact store and reported only by portable artifact URI.".to_string(),
+            "RPG Maker MV/MZ support is limited to deployed browser-style entrypoints such as index.html or www/index.html.".to_string(),
+            "Chromium browser launch is required for MV/MZ alpha runtime evidence; supported host environments must provide Chromium on PATH or through UTSUSHI_BROWSER_BIN.".to_string(),
+            format!(
+                "Environmental misconfiguration (missing or incompatible Chromium, version below {min}, unavailable display surface) is a hard error with semantic codes in the utsushi.browser.* namespace.",
+                min = chromium_min_supported_version_string(),
+            ),
+            "Adapter-discovered common install paths are a fallback after PATH lookup and are not guaranteed; operators with custom installs must set UTSUSHI_BROWSER_BIN.".to_string(),
+        ];
+        match self.probe() {
+            Ok(probe) => {
+                limitations.push(format!(
+                    "Browser executable resolved through the adapter probe (source: {source}, version: {version}).",
+                    source = probe.source_label(),
+                    version = probe.version_string(),
+                ));
+            }
+            Err(reason) => limitations.push(format!(
+                "Browser executable unavailable: {message}",
+                message = reason.diagnostic_message(),
+            )),
+        }
+        limitations
+    }
+}
+
+fn unavailability_harness_error(
+    operation: RuntimeOperation,
+    reason: &BrowserUnavailabilityReason,
+) -> RuntimeHarnessError {
+    let kind = reason.harness_error_kind();
+    let mut error = RuntimeHarnessError::new(kind, operation, reason.diagnostic_message())
+        .with_detail("capability", "browser_launch")
+        .with_detail("semanticCode", reason.semantic_code())
+        .with_detail("browserSource", reason.source_label())
+        .with_detail("pathRedaction", "raw_local_paths_omitted");
+    match reason {
+        BrowserUnavailabilityReason::NoBinaryFound {
+            candidates_tried, ..
+        } => {
+            error = error.with_detail("attemptedCandidates", candidates_tried.to_string());
+        }
+        BrowserUnavailabilityReason::VersionMismatch {
+            detected,
+            required_major,
+            ..
+        } => {
+            error = error
+                .with_detail("chromiumVersionDetected", detected.version_string())
+                .with_detail("chromiumVersionRequired", required_major.to_string());
+        }
+        BrowserUnavailabilityReason::DisplayUnavailable {
+            platform, probe, ..
+        } => {
+            error = error
+                .with_detail("platform", *platform)
+                .with_detail("displayProbe", probe.as_str());
+        }
+    }
+    error
+}
+
+fn attach_reason_details(
+    diagnostic: RuntimeAdapterDiagnostic,
+    reason: &BrowserUnavailabilityReason,
+) -> RuntimeAdapterDiagnostic {
+    match reason {
+        BrowserUnavailabilityReason::NoBinaryFound {
+            candidates_tried, ..
+        } => diagnostic.with_detail_value("attemptedCandidates", json!(*candidates_tried)),
+        BrowserUnavailabilityReason::VersionMismatch {
+            detected,
+            required_major,
+            ..
+        } => diagnostic
+            .with_detail("chromiumVersionDetected", detected.version_string())
+            .with_detail_value("chromiumVersionRequired", json!(*required_major)),
+        BrowserUnavailabilityReason::DisplayUnavailable {
+            platform, probe, ..
+        } => diagnostic
+            .with_detail("platform", *platform)
+            .with_detail("displayProbe", probe.as_str()),
+    }
+}
+
+mod browser_detection {
+    //! Bounded Chromium probe used by the browser launch adapter.
+    //!
+    //! UTSUSHI-148 enforces the orchestrator's "no optionality on claimed
+    //! inputs" architectural commitment for MV/MZ alpha: probe outcomes
+    //! categorize environmental misconfiguration with typed semantic codes
+    //! in the engine-neutral `utsushi.browser.*` namespace, never silent
+    //! skips.
+
+    use std::env;
+    use std::fs;
+    use std::path::{Path, PathBuf};
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+
+    use utsushi_core::RuntimeHarnessErrorKind;
+
+    pub(super) const BROWSER_CANDIDATES: &[&str] = &[
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+        "chrome",
+        "msedge",
+        "microsoft-edge",
+        "brave-browser",
+    ];
+
+    #[cfg(target_os = "macos")]
+    pub(super) const BROWSER_PLATFORM_PATHS: &[&str] = &[
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+        "/opt/homebrew/bin/chromium",
+        "/opt/homebrew/bin/google-chrome",
+    ];
+
+    #[cfg(target_os = "windows")]
+    pub(super) const BROWSER_PLATFORM_PATHS: &[&str] = &[];
+
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    pub(super) const BROWSER_PLATFORM_PATHS: &[&str] = &[];
+
+    /// Minimum supported Chromium major version. The 100 floor tracks the
+    /// `--headless=new` flag introduction (Chromium 109 formally, accepted
+    /// from earlier builds; the 100 floor gives a safe margin). The choice
+    /// of a major-version floor (not a full semver match) is documented in
+    /// the descriptor limitation list.
+    pub(super) const CHROMIUM_MIN_SUPPORTED_MAJOR: u32 = 100;
+
+    pub(super) fn chromium_min_supported_version_string() -> &'static str {
+        "100.0.0"
+    }
+
+    /// Bounded version-probe timeout. `<binary> --version` should complete
+    /// in tens of milliseconds; a wedged binary cannot block descriptor
+    /// evaluation longer than this floor.
+    const VERSION_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+    pub(super) enum ChromiumVersion {
+        Parsed {
+            major: u32,
+            minor: u32,
+            patch: u32,
+        },
+        #[default]
+        Unknown,
+    }
+
+    impl ChromiumVersion {
+        pub(super) fn major(self) -> Option<u32> {
+            match self {
+                Self::Parsed { major, .. } => Some(major),
+                Self::Unknown => None,
+            }
+        }
+
+        pub(super) fn version_string(self) -> String {
+            match self {
+                Self::Parsed {
+                    major,
+                    minor,
+                    patch,
+                } => format!("{major}.{minor}.{patch}"),
+                Self::Unknown => "unknown".to_string(),
+            }
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    pub(super) struct ChromiumProbeOutcome {
+        pub(super) program: PathBuf,
+        pub(super) source: BrowserDetectionLabel,
+        pub(super) version: ChromiumVersion,
+    }
+
+    impl ChromiumProbeOutcome {
+        pub(super) fn source_label(&self) -> &'static str {
+            self.source.as_str()
+        }
+
+        pub(super) fn version_string(&self) -> String {
+            self.version.version_string()
+        }
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub(super) enum BrowserUnavailabilityReason {
+        NoBinaryFound {
+            source: BrowserDetectionLabel,
+            candidates_tried: usize,
+        },
+        VersionMismatch {
+            source: BrowserDetectionLabel,
+            detected: ChromiumVersion,
+            required_major: u32,
+        },
+        /// Reserved semantic-code variant; the gate that produces this
+        /// reason (strict display checking) is intentionally not exposed
+        /// in UTSUSHI-148. Tests exercise the variant via
+        /// [`force_display_unavailable`] so the wiring (semantic code,
+        /// harness error kind, diagnostic detail attachment) stays
+        /// live under workspace clippy.
+        #[allow(dead_code)]
+        DisplayUnavailable {
+            source: BrowserDetectionLabel,
+            platform: &'static str,
+            probe: DisplayProbeOutcome,
+        },
+    }
+
+    impl BrowserUnavailabilityReason {
+        pub(super) fn semantic_code(&self) -> &'static str {
+            match self {
+                Self::NoBinaryFound { .. } => "utsushi.browser.chromium_unavailable",
+                Self::VersionMismatch { .. } => "utsushi.browser.chromium_version_mismatch",
+                Self::DisplayUnavailable { .. } => "utsushi.browser.display_unavailable",
+            }
+        }
+
+        pub(super) fn harness_error_kind(&self) -> RuntimeHarnessErrorKind {
+            match self {
+                Self::NoBinaryFound { .. } => RuntimeHarnessErrorKind::ChromiumUnavailable,
+                Self::VersionMismatch { .. } => RuntimeHarnessErrorKind::ChromiumVersionMismatch,
+                Self::DisplayUnavailable { .. } => {
+                    RuntimeHarnessErrorKind::ChromiumDisplayUnavailable
+                }
+            }
+        }
+
+        pub(super) fn source_label(&self) -> &'static str {
+            match self {
+                Self::NoBinaryFound { source, .. }
+                | Self::VersionMismatch { source, .. }
+                | Self::DisplayUnavailable { source, .. } => source.as_str(),
+            }
+        }
+
+        pub(super) fn diagnostic_message(&self) -> String {
+            match self {
+                Self::NoBinaryFound { source, .. } => match source {
+                    BrowserDetectionLabel::ConfiguredUnavailable => {
+                        "Configured browser executable is not launchable; \
+                         update the adapter configuration or install Chromium."
+                            .to_string()
+                    }
+                    BrowserDetectionLabel::EnvironmentUnavailable => {
+                        "UTSUSHI_BROWSER_BIN is set but does not resolve to a launchable Chromium-compatible executable."
+                            .to_string()
+                    }
+                    _ => "No Chromium-compatible browser executable detected; \
+                          install Chromium/Chrome or set UTSUSHI_BROWSER_BIN."
+                        .to_string(),
+                },
+                Self::VersionMismatch {
+                    detected,
+                    required_major,
+                    ..
+                } => format!(
+                    "Detected Chromium {detected} is below the minimum supported major version {required_major}.",
+                    detected = detected.version_string(),
+                ),
+                Self::DisplayUnavailable { platform, .. } => format!(
+                    "No usable display surface detected on {platform} under strict display checking."
+                ),
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    #[allow(dead_code)] // reserved enum; see DisplayUnavailable reason above.
+    pub(super) enum DisplayProbeOutcome {
+        /// Display env vars present (X11/Wayland session). Headless launch
+        /// nonetheless proceeds with `--headless=new --disable-gpu --no-sandbox`.
+        PresentEnv,
+        /// No display env vars present but the adapter operates headlessly,
+        /// so launch is not gated.
+        HeadlessOnly,
+        /// Strict display checking explicitly enabled and no usable surface
+        /// detected. Reserved; not produced in the default UTSUSHI-148 path.
+        UnavailableStrict,
+    }
+
+    impl DisplayProbeOutcome {
+        pub(super) fn as_str(self) -> &'static str {
+            match self {
+                Self::PresentEnv => "present_env",
+                Self::HeadlessOnly => "headless_only",
+                Self::UnavailableStrict => "unavailable_strict",
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub(super) enum BrowserDetectionLabel {
+        Configured,
+        ConfiguredUnavailable,
+        Environment,
+        EnvironmentUnavailable,
+        Path,
+        PlatformPath,
+        Unavailable,
+        VersionUnsupported,
+    }
+
+    impl BrowserDetectionLabel {
+        pub(super) fn as_str(self) -> &'static str {
+            match self {
+                Self::Configured => "configured",
+                Self::ConfiguredUnavailable => "configured_unavailable",
+                Self::Environment => "environment",
+                Self::EnvironmentUnavailable => "environment_unavailable",
+                Self::Path => "path",
+                Self::PlatformPath => "platform_path",
+                Self::Unavailable => "unavailable",
+                Self::VersionUnsupported => "version_unsupported",
+            }
+        }
+    }
+
+    /// Probe the host for a Chromium-compatible launcher and verify its
+    /// reported `--version` is above the minimum supported major. The probe
+    /// is bounded and does not produce runtime evidence.
+    pub(super) fn probe_chromium(
+        configured: Option<&Path>,
+    ) -> Result<ChromiumProbeOutcome, BrowserUnavailabilityReason> {
+        // 1. Resolve a binary candidate against the configured/env/PATH/platform
+        //    order documented in the descriptor limitation list.
+        let (program, source, candidates_tried) = match resolve_binary_candidate(configured) {
+            Some(found) => found,
+            None => {
+                // candidates_tried = configured + env probe + PATH candidates
+                // + platform paths (all attempted unsuccessfully)
+                let tried = 1 // env (if absent it still counts as one slot inspected)
+                    + BROWSER_CANDIDATES.len()
+                    + BROWSER_PLATFORM_PATHS.len();
+                let source = if configured.is_some() {
+                    BrowserDetectionLabel::ConfiguredUnavailable
+                } else if env::var_os("UTSUSHI_BROWSER_BIN").is_some() {
+                    BrowserDetectionLabel::EnvironmentUnavailable
+                } else {
+                    BrowserDetectionLabel::Unavailable
+                };
+                return Err(BrowserUnavailabilityReason::NoBinaryFound {
+                    source,
+                    candidates_tried: tried,
+                });
+            }
+        };
+        let _ = candidates_tried;
+
+        // 2. Bounded version probe.
+        let version = probe_version(&program).unwrap_or(ChromiumVersion::Unknown);
+        if let Some(major) = version.major() {
+            if major < CHROMIUM_MIN_SUPPORTED_MAJOR {
+                return Err(BrowserUnavailabilityReason::VersionMismatch {
+                    source: BrowserDetectionLabel::VersionUnsupported,
+                    detected: version,
+                    required_major: CHROMIUM_MIN_SUPPORTED_MAJOR,
+                });
+            }
+        }
+
+        Ok(ChromiumProbeOutcome {
+            program,
+            source,
+            version,
+        })
+    }
+
+    fn resolve_binary_candidate(
+        configured: Option<&Path>,
+    ) -> Option<(PathBuf, BrowserDetectionLabel, usize)> {
+        if let Some(path) = configured {
+            if is_launchable_file(path) {
+                return Some((path.to_path_buf(), BrowserDetectionLabel::Configured, 1));
+            }
+            return None;
+        }
+        if let Ok(program) = env::var("UTSUSHI_BROWSER_BIN") {
+            return resolve_program_candidate(&program)
+                .map(|path| (path, BrowserDetectionLabel::Environment, 1));
+        }
+        for candidate in BROWSER_CANDIDATES.iter() {
+            if let Some(path) = resolve_program_candidate(candidate) {
+                return Some((path, BrowserDetectionLabel::Path, BROWSER_CANDIDATES.len()));
+            }
+        }
+        for candidate in BROWSER_PLATFORM_PATHS.iter() {
+            if is_launchable_file(Path::new(candidate)) {
+                return Some((
+                    PathBuf::from(*candidate),
+                    BrowserDetectionLabel::PlatformPath,
+                    BROWSER_PLATFORM_PATHS.len(),
+                ));
+            }
+        }
+        None
+    }
+
+    /// Bounded `<binary> --version` probe. Returns `None` on spawn failure,
+    /// non-zero exit, output that does not parse, or timeout.
+    fn probe_version(program: &Path) -> Option<ChromiumVersion> {
+        let mut child = Command::new(program)
+            .arg("--version")
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .ok()?;
+
+        let started = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(_status)) => break,
+                Ok(None) => {
+                    if started.elapsed() >= VERSION_PROBE_TIMEOUT {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return None;
+                    }
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                Err(_) => return None,
+            }
+        }
+
+        let output = child.wait_with_output().ok()?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        parse_chromium_version(stdout.as_ref())
+            .or_else(|| parse_chromium_version(stderr.as_ref()))
+    }
+
+    /// Parse a Chromium-style `--version` output of the form
+    /// `"Chromium 124.0.6367.118 ..."` or `"Google Chrome 124.0.6367.118 ..."`.
+    /// Returns `None` if no dotted-number token is found.
+    pub(super) fn parse_chromium_version(text: &str) -> Option<ChromiumVersion> {
+        for token in text.split_whitespace() {
+            let parts: Vec<&str> = token.split('.').collect();
+            if parts.len() < 2 {
+                continue;
+            }
+            let parsed: Vec<u32> = parts
+                .iter()
+                .map(|part| part.parse::<u32>().ok())
+                .take_while(Option::is_some)
+                .map(Option::unwrap)
+                .collect();
+            if parsed.len() < 2 {
+                continue;
+            }
+            return Some(ChromiumVersion::Parsed {
+                major: parsed[0],
+                minor: parsed[1],
+                patch: parsed.get(2).copied().unwrap_or(0),
+            });
+        }
+        None
+    }
+
+    fn resolve_program_candidate(program: &str) -> Option<PathBuf> {
+        if program.trim().is_empty() {
+            return None;
+        }
+        let path = Path::new(program);
+        if program.contains('/') || program.contains('\\') {
+            return is_launchable_file(path).then(|| path.to_path_buf());
+        }
+        env::var_os("PATH")
+            .into_iter()
+            .flat_map(|path_var| env::split_paths(&path_var).collect::<Vec<_>>())
+            .flat_map(|dir| {
+                executable_names(program)
+                    .into_iter()
+                    .map(move |name| dir.join(name))
+            })
+            .find(|candidate| is_launchable_file(candidate))
+    }
+
+    fn executable_names(program: &str) -> Vec<String> {
+        #[cfg(windows)]
+        {
+            let has_extension = Path::new(program).extension().is_some();
+            if has_extension {
+                return vec![program.to_string()];
+            }
+            return vec![format!("{program}.exe"), program.to_string()];
+        }
+        #[cfg(not(windows))]
+        {
+            vec![program.to_string()]
+        }
+    }
+
+    fn is_launchable_file(path: &Path) -> bool {
+        let Ok(metadata) = fs::metadata(path) else {
+            return false;
+        };
+        if !metadata.is_file() {
+            return false;
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            metadata.permissions().mode() & 0o111 != 0
+        }
+        #[cfg(not(unix))]
+        {
+            true
+        }
+    }
+
+    /// Test-only constructor for the reserved `DisplayUnavailable` variant.
+    /// Production callers never produce this variant; the helper exists so
+    /// downstream tests can assert the semantic code wiring is correct
+    /// without flipping any production gate.
+    #[cfg(test)]
+    pub(super) fn force_display_unavailable() -> BrowserUnavailabilityReason {
+        BrowserUnavailabilityReason::DisplayUnavailable {
+            source: BrowserDetectionLabel::Path,
+            platform: "test",
+            probe: DisplayProbeOutcome::UnavailableStrict,
+        }
     }
 }
 
@@ -512,12 +946,23 @@ impl RuntimeAdapter for NwjsLaunchAdapter {
             version: env!("CARGO_PKG_VERSION").to_string(),
             fidelity_tier: FidelityTier::TraceOnly,
             evidence_tier_ceiling: EvidenceTier::E1,
-            capability_contract: nwjs_unsupported_capability_contract(),
+            capability_contract: nwjs_research_tier_contract(),
             capabilities: vec![],
             approximation_tiers: vec![ApproximationTier::None],
-            diagnostics: vec![],
+            diagnostics: vec![
+                RuntimeAdapterDiagnostic::new(
+                    "research_tier_status",
+                    "unsupported",
+                    "info",
+                    "NW.js launch is research-tier work. It is not part of the MV/MZ alpha capability surface; use BrowserLaunchAdapter for alpha runtime evidence.",
+                )
+                .with_detail("capability", "browser_launch")
+                .with_detail("errorCode", "utsushi.runtime.research_tier_unsupported")
+                .with_detail("runtimeTier", "research")
+                .with_detail("supersededBy", BrowserLaunchAdapter::NAME),
+            ],
             limitations: vec![
-                "NW.js launch/capture is explicitly unsupported in this adapter slice.".to_string(),
+                "NW.js is research-tier and is not advertised as an alpha capability.".to_string(),
                 "RPG Maker MV/MZ desktop packages need a separate bounded NW.js contract for process launch, capture timing, and screenshot extraction before this adapter can claim runtime evidence.".to_string(),
                 "Use the utsushi-browser adapter for public browser-style smoke validation when a Chromium-compatible host is available.".to_string(),
             ],
@@ -525,8 +970,31 @@ impl RuntimeAdapter for NwjsLaunchAdapter {
     }
 
     fn trace(&self, _request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
-        Err("NW.js launch/capture is unsupported by the utsushi-nwjs capability diagnostic".into())
+        Err(nwjs_research_tier_error(RuntimeOperation::Trace).into())
     }
+
+    fn capture(&self, _request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
+        Err(nwjs_research_tier_error(RuntimeOperation::Capture).into())
+    }
+
+    fn smoke_validate(&self, _request: &RuntimeRequest<'_>) -> UtsushiResult<Value> {
+        Err(nwjs_research_tier_error(RuntimeOperation::SmokeValidation).into())
+    }
+}
+
+fn nwjs_research_tier_error(operation: RuntimeOperation) -> RuntimeHarnessError {
+    RuntimeHarnessError::new(
+        RuntimeHarnessErrorKind::ResearchTierUnsupported,
+        operation,
+        "NW.js launch is research-tier work and is not advertised as an alpha capability.",
+    )
+    .with_detail("capability", "browser_launch")
+    .with_detail(
+        "semanticCode",
+        "utsushi.runtime.research_tier_unsupported",
+    )
+    .with_detail("runtimeTier", "research")
+    .with_detail("supersededBy", BrowserLaunchAdapter::NAME)
 }
 
 fn browser_capability_contract() -> RuntimeCapabilityContract {
@@ -538,9 +1006,9 @@ fn browser_capability_contract() -> RuntimeCapabilityContract {
             RuntimeFeatureSupport::partial(
                 RuntimePlaybackFeature::Launch,
                 EvidenceTier::E1,
-                "Launches browser-style runtime entrypoints through a bounded Chromium-compatible process.",
+                "Launches browser-style runtime entrypoints through a bounded Chromium-compatible process. Required for MV/MZ alpha runtime evidence; a supported host environment must provide Chromium.",
                 vec![
-                    "Host must provide Chromium/Chrome or UTSUSHI_BROWSER_BIN.".to_string(),
+                    "Chromium binary is mandatory: PATH lookup or UTSUSHI_BROWSER_BIN. Absence is a hard utsushi.browser.chromium_unavailable error.".to_string(),
                     "Launch is headless and does not yet inject RPG Maker observation hooks."
                         .to_string(),
                 ],
@@ -559,8 +1027,7 @@ fn browser_capability_contract() -> RuntimeCapabilityContract {
                 EvidenceTier::E2,
                 "Captures a headless browser screenshot and stores it through the runtime artifact store.",
                 vec![
-                    "Chromium-compatible --screenshot behavior is required on the host."
-                        .to_string(),
+                    "Chromium-compatible --screenshot behaviour is part of the required launch contract.".to_string(),
                 ],
             ),
             RuntimeFeatureSupport::partial(
@@ -608,13 +1075,14 @@ fn browser_capability_contract() -> RuntimeCapabilityContract {
             ),
         ],
         vec![
-            "Browser support is host-capability dependent and limited to launch/capture smoke validation.".to_string(),
             "No raw local screenshot path is exposed in runtime evidence reports.".to_string(),
+            "Chromium browser launch is required for MV/MZ alpha runtime evidence; supported host environments must provide Chromium on PATH or through UTSUSHI_BROWSER_BIN.".to_string(),
+            "Environmental misconfiguration (missing/incompatible Chromium, unavailable display) is a hard error with semantic codes in the utsushi.browser.* namespace.".to_string(),
         ],
     )
 }
 
-fn nwjs_unsupported_capability_contract() -> RuntimeCapabilityContract {
+fn nwjs_research_tier_contract() -> RuntimeCapabilityContract {
     RuntimeCapabilityContract::new(
         RuntimeCapabilityClass::StaticTrace,
         FidelityTier::TraceOnly,
@@ -622,55 +1090,55 @@ fn nwjs_unsupported_capability_contract() -> RuntimeCapabilityContract {
         vec![
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::Launch,
-                "NW.js launch is unsupported until the harness has a stable NW.js process and capture contract.",
+                "NW.js launch is research-tier; the harness has no stable NW.js process or capture contract.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::TextTrace,
-                "NW.js text tracing requires RPG Maker runtime instrumentation hooks.",
+                "NW.js text tracing is research-tier and requires RPG Maker runtime instrumentation hooks.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::FrameCapture,
-                "NW.js screenshot capture is unsupported in this slice.",
+                "NW.js screenshot capture is research-tier.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::Screenshot,
-                "NW.js screenshot capture is unsupported in this slice.",
+                "NW.js screenshot capture is research-tier.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::BranchDiscovery,
-                "NW.js branch discovery requires runtime instrumentation hooks.",
+                "NW.js branch discovery is research-tier and requires runtime instrumentation hooks.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::Jump,
-                "NW.js jump control requires runtime instrumentation hooks.",
+                "NW.js jump control is research-tier and requires runtime instrumentation hooks.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::Snapshot,
-                "NW.js snapshot support is unsupported in this slice.",
+                "NW.js snapshot support is research-tier.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::Recording,
-                "NW.js recording support is unsupported in this slice.",
+                "NW.js recording support is research-tier.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::InstrumentationHooks,
-                "NW.js instrumentation hooks are not implemented in this slice.",
+                "NW.js instrumentation hooks are research-tier.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::VmStateInspection,
-                "NW.js VM state inspection is unsupported in this slice.",
+                "NW.js VM state inspection is research-tier.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::ReferenceComparison,
-                "NW.js reference-runtime comparison is unsupported in this slice.",
+                "NW.js reference-runtime comparison is research-tier.",
             ),
             RuntimeFeatureSupport::unsupported(
                 RuntimePlaybackFeature::StaticTrace,
-                "NW.js fallback is a capability diagnostic only and does not emit static runtime evidence.",
+                "NW.js fallback is a research-tier capability diagnostic and does not emit static runtime evidence.",
             ),
         ],
         vec![
-            "NW.js is intentionally registered as unsupported so capability output is explicit rather than silently missing.".to_string(),
+            "NW.js is research-tier and not advertised as an alpha capability; capability output reports the research-tier status under utsushi.runtime.research_tier_unsupported.".to_string(),
         ],
     )
 }
@@ -881,59 +1349,6 @@ fn browser_capture_event(
     }))
 }
 
-fn resolve_program_candidate(program: &str) -> Option<PathBuf> {
-    if program.trim().is_empty() {
-        return None;
-    }
-    let path = Path::new(program);
-    if program.contains('/') || program.contains('\\') {
-        return is_launchable_file(path).then(|| path.to_path_buf());
-    }
-    env::var_os("PATH")
-        .into_iter()
-        .flat_map(|path_var| env::split_paths(&path_var).collect::<Vec<_>>())
-        .flat_map(|dir| {
-            executable_names(program)
-                .into_iter()
-                .map(move |name| dir.join(name))
-        })
-        .find(|candidate| is_launchable_file(candidate))
-}
-
-fn executable_names(program: &str) -> Vec<String> {
-    #[cfg(windows)]
-    {
-        let has_extension = Path::new(program).extension().is_some();
-        if has_extension {
-            return vec![program.to_string()];
-        }
-        return vec![format!("{program}.exe"), program.to_string()];
-    }
-    #[cfg(not(windows))]
-    {
-        vec![program.to_string()]
-    }
-}
-
-fn is_launchable_file(path: &Path) -> bool {
-    let Ok(metadata) = fs::metadata(path) else {
-        return false;
-    };
-    if !metadata.is_file() {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-
-        metadata.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1044,7 +1459,7 @@ mod tests {
     }
 
     #[test]
-    fn browser_descriptor_reports_missing_configured_host_without_raw_path() {
+    fn browser_host_diagnostic_emits_error_severity_when_chromium_absent() {
         let root = temp_dir("browser-host-diagnostic");
         let private_missing_browser = root.join("private-browser-bin");
         let adapter = BrowserLaunchAdapter::with_browser_program(private_missing_browser.clone());
@@ -1057,6 +1472,7 @@ mod tests {
             .to_json();
 
         assert_eq!(diagnostic["status"], "unavailable");
+        assert_eq!(diagnostic["severity"], "error");
         assert_eq!(diagnostic["details"]["hostAvailable"], false);
         assert_eq!(
             diagnostic["details"]["browserSource"],
@@ -1068,7 +1484,7 @@ mod tests {
         );
         assert_eq!(
             diagnostic["details"]["errorCode"],
-            "utsushi.browser_host_unavailable"
+            "utsushi.browser.chromium_unavailable"
         );
         let diagnostic_string = serde_json::to_string(&diagnostic).unwrap();
         assert!(!diagnostic_string.contains(root.to_string_lossy().as_ref()));
@@ -1077,17 +1493,93 @@ mod tests {
     }
 
     #[test]
-    fn nwjs_descriptor_is_explicit_unsupported_fallback() {
+    fn browser_descriptor_capability_contract_marks_browser_launch_as_required_for_mv_mz_alpha() {
+        let contract = super::browser_capability_contract();
+        let launch_feature = contract
+            .features
+            .iter()
+            .find(|feature| feature.feature == RuntimePlaybackFeature::Launch)
+            .expect("Launch feature is present");
+        assert!(
+            launch_feature
+                .description
+                .contains("Required for MV/MZ alpha runtime evidence"),
+            "Launch feature description must declare alpha requirement: {description}",
+            description = launch_feature.description,
+        );
+        assert!(
+            launch_feature
+                .limitations
+                .iter()
+                .any(|limitation| limitation.contains("hard utsushi.browser.chromium_unavailable")),
+            "Launch limitations must call out the hard semantic-code outcome: {limitations:?}",
+            limitations = launch_feature.limitations,
+        );
+        assert!(
+            contract.limitations.iter().any(|limitation| {
+                limitation.contains("required for MV/MZ alpha runtime evidence")
+            }),
+            "Contract limitations must declare the MV/MZ alpha requirement: {limitations:?}",
+            limitations = contract.limitations,
+        );
+        assert!(
+            contract.limitations.iter().any(|limitation| {
+                limitation.contains("utsushi.browser.* namespace")
+            }),
+            "Contract limitations must reference the engine-neutral namespace: {limitations:?}",
+            limitations = contract.limitations,
+        );
+    }
+
+    #[test]
+    fn browser_descriptor_omits_when_host_support_exists_optionality_language() {
+        let adapter = BrowserLaunchAdapter::new();
+        let descriptor = adapter.descriptor();
+        let serialized = serde_json::to_string(&json!({
+            "limitations": descriptor.limitations,
+            "capabilityContract": descriptor.capability_contract.to_json(),
+        }))
+        .unwrap();
+        for forbidden in [
+            "when host support exists",
+            "host-capability dependent",
+            "when the host supports",
+        ] {
+            assert!(
+                !serialized.contains(forbidden),
+                "descriptor still carries optionality phrase: {forbidden}",
+            );
+        }
+    }
+
+    #[test]
+    fn nwjs_descriptor_advertises_research_tier_status_diagnostic() {
         let adapter = NwjsLaunchAdapter::new();
         let descriptor = adapter.descriptor();
 
         assert_eq!(descriptor.name, NwjsLaunchAdapter::NAME);
         assert!(descriptor.capabilities.is_empty());
-        assert!(
-            descriptor
-                .limitations
-                .iter()
-                .any(|limitation| limitation.contains("explicitly unsupported"))
+        let research_tier_diagnostics: Vec<_> = descriptor
+            .diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.diagnostic_kind == "research_tier_status")
+            .collect();
+        assert_eq!(
+            research_tier_diagnostics.len(),
+            1,
+            "exactly one research_tier_status diagnostic is required"
+        );
+        let diagnostic = research_tier_diagnostics[0].to_json();
+        assert_eq!(diagnostic["status"], "unsupported");
+        assert_eq!(diagnostic["severity"], "info");
+        assert_eq!(
+            diagnostic["details"]["errorCode"],
+            "utsushi.runtime.research_tier_unsupported"
+        );
+        assert_eq!(diagnostic["details"]["runtimeTier"], "research");
+        assert_eq!(
+            diagnostic["details"]["supersededBy"],
+            BrowserLaunchAdapter::NAME
         );
         assert!(
             descriptor
@@ -1095,6 +1587,21 @@ mod tests {
                 .features
                 .iter()
                 .all(|feature| feature.status == utsushi_core::RuntimeFeatureStatus::Unsupported)
+        );
+    }
+
+    #[test]
+    fn nwjs_descriptor_limitations_mark_research_tier_explicitly() {
+        let adapter = NwjsLaunchAdapter::new();
+        let descriptor = adapter.descriptor();
+        let first_limitation = descriptor.limitations.first().expect("limitations present");
+        assert!(
+            first_limitation.contains("research-tier"),
+            "first limitation must mark research-tier explicitly: {first_limitation}",
+        );
+        assert!(
+            first_limitation.contains("not advertised as an alpha capability"),
+            "first limitation must call out alpha-capability exclusion: {first_limitation}",
         );
     }
 
@@ -1207,11 +1714,18 @@ printf '\211PNG\r\n\032\nutsushi fake browser screenshot\n' > "$screenshot"
         write_browser_smoke_fixture(&root);
         let launched_marker = root.join("launched");
         let launched_marker_arg = shell_quote_path(&launched_marker);
+        // Bounded probe invokes `--version`; that must NOT trip the launched
+        // marker — only a full capture launch (with --screenshot or --dump-dom)
+        // counts as "launched" for the purposes of this assertion.
         let fake_browser = fake_browser(
             &root,
             &format!(
                 r#"#!/bin/sh
 set -eu
+if [ "$1" = "--version" ]; then
+  printf 'Chromium 124.0.6367.118 chromium-headless-shell\n'
+  exit 0
+fi
 printf launched > {launched_marker_arg}
 exit 0
 "#,
@@ -1296,5 +1810,308 @@ exit 0
         assert!(!artifact_path.exists());
         assert!(!artifact_root.join(".staging").exists());
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn browser_run_returns_chromium_unavailable_kind_when_binary_missing() {
+        let root = temp_dir("browser-binary-missing");
+        write_browser_smoke_fixture(&root);
+        let artifact_root = root.join("runtime-artifacts");
+        let bogus = root.join("does-not-exist-browser");
+        let adapter = BrowserLaunchAdapter::with_browser_program(bogus.clone());
+
+        let error = adapter
+            .smoke_validate(&RuntimeRequest::new(&root).with_artifact_root(&artifact_root))
+            .unwrap_err();
+        let harness_error = error.downcast_ref::<RuntimeHarnessError>().unwrap();
+
+        assert_eq!(
+            harness_error.kind,
+            RuntimeHarnessErrorKind::ChromiumUnavailable
+        );
+        assert_eq!(
+            harness_error.code(),
+            "runtime_browser_chromium_unavailable"
+        );
+        let semantic = harness_error
+            .details
+            .iter()
+            .find(|(key, _)| key == "semanticCode")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(semantic, Some("utsushi.browser.chromium_unavailable"));
+        let error_string = serde_json::to_string(&harness_error.to_json()).unwrap();
+        assert!(!error_string.contains(bogus.to_string_lossy().as_ref()));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_run_returns_chromium_unavailable_when_env_browser_bin_broken() {
+        // Scoped env guard: this test sets UTSUSHI_BROWSER_BIN to a bogus
+        // path, asserts the typed semantic outcome, and restores the
+        // previous env value on drop. Tests that read the same env var
+        // must serialize through a single-threaded test runner OR avoid
+        // setting it concurrently; we accept that here as a known
+        // single-test scope.
+        struct EnvGuard {
+            previous: Option<std::ffi::OsString>,
+        }
+        impl EnvGuard {
+            fn set(value: &str) -> Self {
+                let previous = env::var_os("UTSUSHI_BROWSER_BIN");
+                // SAFETY: This is a deliberate, scoped mutation for a test
+                // that does not run concurrently with other UTSUSHI_BROWSER_BIN
+                // consumers.
+                unsafe {
+                    env::set_var("UTSUSHI_BROWSER_BIN", value);
+                }
+                Self { previous }
+            }
+        }
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                // SAFETY: see EnvGuard::set.
+                unsafe {
+                    match &self.previous {
+                        Some(value) => env::set_var("UTSUSHI_BROWSER_BIN", value),
+                        None => env::remove_var("UTSUSHI_BROWSER_BIN"),
+                    }
+                }
+            }
+        }
+
+        let root = temp_dir("browser-env-broken");
+        write_browser_smoke_fixture(&root);
+        let artifact_root = root.join("runtime-artifacts");
+        let bogus = root.join("env-pointed-missing-browser");
+        let _guard = EnvGuard::set(bogus.to_string_lossy().as_ref());
+        let adapter = BrowserLaunchAdapter::new();
+
+        let error = adapter
+            .smoke_validate(&RuntimeRequest::new(&root).with_artifact_root(&artifact_root))
+            .unwrap_err();
+        let harness_error = error.downcast_ref::<RuntimeHarnessError>().unwrap();
+
+        assert_eq!(
+            harness_error.kind,
+            RuntimeHarnessErrorKind::ChromiumUnavailable
+        );
+        let semantic = harness_error
+            .details
+            .iter()
+            .find(|(key, _)| key == "semanticCode")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(semantic, Some("utsushi.browser.chromium_unavailable"));
+        let source = harness_error
+            .details
+            .iter()
+            .find(|(key, _)| key == "browserSource")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(source, Some("environment_unavailable"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_run_returns_chromium_version_mismatch_when_version_too_old() {
+        let root = temp_dir("browser-version-too-old");
+        write_browser_smoke_fixture(&root);
+        let artifact_root = root.join("runtime-artifacts");
+        let fake_browser = fake_browser(
+            &root,
+            r#"#!/bin/sh
+set -eu
+if [ "$1" = "--version" ]; then
+  printf 'Chromium 50.0.2661.102 unknown\n'
+  exit 0
+fi
+exit 0
+"#,
+        );
+        let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
+
+        let error = adapter
+            .smoke_validate(&RuntimeRequest::new(&root).with_artifact_root(&artifact_root))
+            .unwrap_err();
+        let harness_error = error.downcast_ref::<RuntimeHarnessError>().unwrap();
+
+        assert_eq!(
+            harness_error.kind,
+            RuntimeHarnessErrorKind::ChromiumVersionMismatch
+        );
+        assert_eq!(
+            harness_error.code(),
+            "runtime_browser_chromium_version_mismatch"
+        );
+        let semantic = harness_error
+            .details
+            .iter()
+            .find(|(key, _)| key == "semanticCode")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(semantic, Some("utsushi.browser.chromium_version_mismatch"));
+        let detected = harness_error
+            .details
+            .iter()
+            .find(|(key, _)| key == "chromiumVersionDetected")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(detected, Some("50.0.2661"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_descriptor_does_not_invoke_browser_launch_during_version_probe() {
+        let root = temp_dir("browser-probe-only-version");
+        let launch_marker = root.join("launched-non-version");
+        let launch_marker_arg = shell_quote_path(&launch_marker);
+        let fake_browser = fake_browser(
+            &root,
+            &format!(
+                r#"#!/bin/sh
+set -eu
+if [ "$1" = "--version" ]; then
+  printf 'Chromium 124.0.6367.118 chromium-headless-shell\n'
+  exit 0
+fi
+printf launched > {launch_marker_arg}
+exit 0
+"#,
+            ),
+        );
+        let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
+        for _ in 0..3 {
+            let _ = adapter.descriptor();
+        }
+        assert!(
+            !launch_marker.exists(),
+            "descriptor() must only invoke --version on the configured browser"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn browser_descriptor_version_probe_is_bounded_by_timeout() {
+        let root = temp_dir("browser-probe-sleep");
+        let fake_browser = fake_browser(
+            &root,
+            r#"#!/bin/sh
+set -eu
+if [ "$1" = "--version" ]; then
+  sleep 60
+fi
+exit 0
+"#,
+        );
+        let adapter = BrowserLaunchAdapter::with_browser_program(fake_browser);
+
+        let started = std::time::Instant::now();
+        let descriptor = adapter.descriptor();
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < std::time::Duration::from_secs(5),
+            "descriptor() must complete under the bounded probe timeout, took {elapsed:?}",
+        );
+        let diagnostic = descriptor
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.diagnostic_kind == "browser_host_availability")
+            .unwrap()
+            .to_json();
+        // A wedged --version leaves the version Unknown, which still passes
+        // the major-version floor (only mismatches < CHROMIUM_MIN_SUPPORTED_MAJOR
+        // are rejected); the diagnostic must therefore report available with
+        // chromiumVersion == "unknown" so operators can audit the probe.
+        assert_eq!(diagnostic["status"], "available");
+        assert_eq!(diagnostic["details"]["chromiumVersion"], "unknown");
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn nwjs_trace_returns_research_tier_unsupported_semantic_code() {
+        let root = temp_dir("nwjs-trace-research");
+        let adapter = NwjsLaunchAdapter::new();
+        let error = adapter.trace(&RuntimeRequest::new(&root)).unwrap_err();
+        let harness_error = error.downcast_ref::<RuntimeHarnessError>().unwrap();
+        assert_eq!(
+            harness_error.kind,
+            RuntimeHarnessErrorKind::ResearchTierUnsupported
+        );
+        assert_eq!(harness_error.code(), "runtime_research_tier_unsupported");
+        let semantic = harness_error
+            .details
+            .iter()
+            .find(|(key, _)| key == "semanticCode")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(semantic, Some("utsushi.runtime.research_tier_unsupported"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn nwjs_capture_and_smoke_validate_return_research_tier_unsupported() {
+        let root = temp_dir("nwjs-capture-research");
+        let adapter = NwjsLaunchAdapter::new();
+        for op_error in [
+            adapter.capture(&RuntimeRequest::new(&root)).unwrap_err(),
+            adapter
+                .smoke_validate(&RuntimeRequest::new(&root))
+                .unwrap_err(),
+        ] {
+            let harness_error = op_error.downcast_ref::<RuntimeHarnessError>().unwrap();
+            assert_eq!(
+                harness_error.kind,
+                RuntimeHarnessErrorKind::ResearchTierUnsupported
+            );
+            let semantic = harness_error
+                .details
+                .iter()
+                .find(|(key, _)| key == "semanticCode")
+                .map(|(_, value)| value.as_str());
+            assert_eq!(semantic, Some("utsushi.runtime.research_tier_unsupported"));
+        }
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn reserved_display_unavailable_reason_carries_typed_semantic_code() {
+        // Reserved variant smoke. UTSUSHI-148 documents
+        // BrowserUnavailabilityReason::DisplayUnavailable as registered but
+        // not produced in production paths; this test pins the semantic
+        // code, harness error kind, and detail-attachment wiring so a
+        // follow-up node that flips the production gate inherits a working
+        // contract.
+        let reason = super::browser_detection::force_display_unavailable();
+        assert_eq!(reason.semantic_code(), "utsushi.browser.display_unavailable");
+        assert_eq!(
+            reason.harness_error_kind(),
+            RuntimeHarnessErrorKind::ChromiumDisplayUnavailable
+        );
+        let harness =
+            super::unavailability_harness_error(RuntimeOperation::SmokeValidation, &reason);
+        let semantic = harness
+            .details
+            .iter()
+            .find(|(key, _)| key == "semanticCode")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(semantic, Some("utsushi.browser.display_unavailable"));
+        let probe = harness
+            .details
+            .iter()
+            .find(|(key, _)| key == "displayProbe")
+            .map(|(_, value)| value.as_str());
+        assert_eq!(probe, Some("unavailable_strict"));
+    }
+
+    #[test]
+    fn chromium_version_parser_accepts_standard_chromium_strings() {
+        for (input, expected_major) in [
+            ("Chromium 124.0.6367.118 chromium-headless-shell", 124),
+            ("Google Chrome 124.0.6367.118 unknown", 124),
+            ("Brave Browser 1.65.114 Chromium: 124.0.6367.118", 1),
+        ] {
+            let parsed = super::browser_detection::parse_chromium_version(input)
+                .expect("version parses");
+            assert_eq!(parsed.major(), Some(expected_major));
+        }
     }
 }
