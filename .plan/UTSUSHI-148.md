@@ -288,6 +288,7 @@ launch_adapters.rs:374-380), AND as a new `with_detail("semanticCode", ...)`
 on the harness error itself.
 
 This keeps two things separate:
+
 - `errorCode` (legacy field on `RuntimeHarnessError.to_json()`): the typed
   Rust error kind string.
 - `semanticCode` (new detail; also the diagnostic `details.errorCode` value):
@@ -296,13 +297,13 @@ This keeps two things separate:
 
 ### 4.2 Semantic code catalog (engine-neutral)
 
-| Semantic code | When emitted | Detail fields | RuntimeHarnessErrorKind |
-|---|---|---|---|
-| `utsushi.browser.chromium_available` | Probe succeeded (info diagnostic) | `chromiumVersion`, `browserSource` | n/a (diagnostic only) |
-| `utsushi.browser.chromium_unavailable` | No Chromium binary at PATH and no UTSUSHI_BROWSER_BIN, OR explicit config points to non-existent file | `browserSource`, `attemptedCandidates` (count only, not raw names) | `ChromiumUnavailable` |
-| `utsushi.browser.chromium_version_mismatch` | Detected Chromium but version < min supported | `chromiumVersionDetected`, `chromiumVersionRequired` | `ChromiumVersionMismatch` |
-| `utsushi.browser.display_unavailable` | Headless probe of display/DRI failed AND adapter was invoked without explicit headless override | `displayProbe`, `platform` | `ChromiumDisplayUnavailable` |
-| `utsushi.runtime.research_tier_unsupported` | Adapter is research-tier; trace/capture/smoke invoked | `runtimeTier`, `supersededBy` | `ResearchTierUnsupported` |
+| Semantic code                               | When emitted                                                                                          | Detail fields                                                      | RuntimeHarnessErrorKind      |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------------------- |
+| `utsushi.browser.chromium_available`        | Probe succeeded (info diagnostic)                                                                     | `chromiumVersion`, `browserSource`                                 | n/a (diagnostic only)        |
+| `utsushi.browser.chromium_unavailable`      | No Chromium binary at PATH and no UTSUSHI_BROWSER_BIN, OR explicit config points to non-existent file | `browserSource`, `attemptedCandidates` (count only, not raw names) | `ChromiumUnavailable`        |
+| `utsushi.browser.chromium_version_mismatch` | Detected Chromium but version < min supported                                                         | `chromiumVersionDetected`, `chromiumVersionRequired`               | `ChromiumVersionMismatch`    |
+| `utsushi.browser.display_unavailable`       | Headless probe of display/DRI failed AND adapter was invoked without explicit headless override       | `displayProbe`, `platform`                                         | `ChromiumDisplayUnavailable` |
+| `utsushi.runtime.research_tier_unsupported` | Adapter is research-tier; trace/capture/smoke invoked                                                 | `runtimeTier`, `supersededBy`                                      | `ResearchTierUnsupported`    |
 
 Detail fields never include raw local paths — the existing
 `pathRedaction: "raw_local_paths_omitted"` posture (covered by the regression
@@ -579,7 +580,7 @@ The MV/MZ alpha role table row (line 108) currently states the runtime
 evidence bar as `"E1 trace or E2 capture when the probe can launch/capture; report must state limitations"`. Update to:
 
 > `"E1 trace or E2 capture; Chromium browser launch is required and environmental
-> misconfiguration is a hard utsushi.browser.* error; report must state limitations"`.
+misconfiguration is a hard utsushi.browser.* error; report must state limitations"`.
 
 Keep the rest of the row unchanged.
 
@@ -639,7 +640,7 @@ stay; UTSUSHI-148 ADDS tests and updates two existing ones noted below.
 - `browser_run_returns_chromium_unavailable_kind_when_binary_missing()` —
   creates an adapter with `with_browser_program(<bogus path>)`, invokes
   `smoke_validate(...)`, asserts the resulting `RuntimeHarnessError.kind ==
-  RuntimeHarnessErrorKind::ChromiumUnavailable` and the `semanticCode` detail
+RuntimeHarnessErrorKind::ChromiumUnavailable` and the `semanticCode` detail
   equals `"utsushi.browser.chromium_unavailable"`.
 - `browser_run_returns_chromium_unavailable_when_env_browser_bin_broken()` —
   sets `UTSUSHI_BROWSER_BIN` to a nonexistent path via a scoped env guard
@@ -679,7 +680,7 @@ stay; UTSUSHI-148 ADDS tests and updates two existing ones noted below.
   replaces the assertion at lines 485-498 of
   `capabilities_command_reports_browser_host_diagnostic_without_launching_smoke`.
   Asserts `diagnostic["severity"] == "error"` and `details.errorCode ==
-  "utsushi.browser.chromium_unavailable"`.
+"utsushi.browser.chromium_unavailable"`.
 - `capabilities_command_reports_nwjs_as_research_tier()` — new test.
   Registers `NwjsLaunchAdapter`, runs `utsushi capabilities`, asserts the
   NW.js adapter entry has a `research_tier_status` diagnostic with the
