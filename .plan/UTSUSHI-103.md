@@ -289,7 +289,7 @@ pub enum EnvFieldShape {
 ```
 
 `EnvFieldSchema::validate()` rejects schemas whose `shape` is `Path`,
-`LocalPath`, or `Secret`. The runner additionally checks the *value* at
+`LocalPath`, or `Secret`. The runner additionally checks the _value_ at
 launch time and rejects any value that matches `looks_like_local_path()`
 regardless of declared shape, returning
 `EnginePortError::EnvUnredacted { key: &'static str, rule: &'static str }`.
@@ -798,7 +798,7 @@ Slice B is a separate PR that:
   - `fidelity_tier_max = LayoutProbe`, `evidence_tier_max = E2`,
   - `limitations` copied from the current adapter limitations.
 - Keeps the public `FixtureRuntimeAdapter` type as an `EnginePortAdapter<
-  FixtureEnginePort>` so `crates/utsushi-cli/src/main.rs::runtime_registry`
+FixtureEnginePort>` so `crates/utsushi-cli/src/main.rs::runtime_registry`
   continues to compile unchanged.
 - Runs `utsushi_core::port::conformance::run_required_abi(...)` in a
   fixture integration test (`crates/utsushi-fixture/tests/abi_conformance.rs`).
@@ -908,6 +908,7 @@ Bridge to legacy `RuntimeAdapter`:
 - `engine_port_adapter_trace_runs_lifecycle_and_returns_runtime_evidence_report_v02()`.
 
 ### 8.3 Fixture-side test (in Slice B,
+
 `crates/utsushi-fixture/tests/abi_conformance.rs`)
 
 - `fixture_engine_port_passes_required_abi_conformance()` — runs the
@@ -1066,7 +1067,7 @@ pattern (substrate, then fixture adoption).
 Single PR; owns the template substrate:
 
 - `utsushi_core::port::{manifest, trait_, runner, diagnostics,
-  conformance}` modules.
+conformance}` modules.
 - Additive `RuntimeRequest` fields (`cancellation`, `replay_log`,
   `sinks`) plus the two `#[doc(hidden)]` trait stubs.
 - `EnginePortAdapter<P>` bridge in `utsushi_core::port::runner`.

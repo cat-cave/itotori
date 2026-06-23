@@ -14,8 +14,14 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
+pub mod port;
 pub mod vfs;
 
+pub use port::{
+    CapabilityReason, DriftKind, EnginePortError, EnvFieldSchema, EnvFieldShape, LifecycleStage,
+    ManifestError, OPTIONAL_LIFECYCLE_STAGES, PortCapability, PortManifest, PortShutdownOutcome,
+    PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES,
+};
 pub use vfs::{
     AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
     AssetSize, CaseRule, HelperId, IoSummary, MountedVfs, PackageDescriptor, PackageKind,
@@ -2574,7 +2580,11 @@ fn reject_unredacted_local_paths(path: &str, value: &Value) -> UtsushiResult<()>
     }
 }
 
-fn looks_like_local_path(value: &str) -> bool {
+/// Audit predicate used by `EnvFieldSchema::validate_value` and the
+/// observation event redaction filter. Widened from crate-private to
+/// `pub` by UTSUSHI-103 so engine port crates can apply the same
+/// rejection rule when stamping their own diagnostics.
+pub fn looks_like_local_path(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     lower.starts_with("file:")
         || lower.contains("file://")
