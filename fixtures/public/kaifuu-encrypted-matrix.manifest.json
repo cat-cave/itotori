@@ -96,8 +96,8 @@
       "path": "fixtures/public/kaifuu-encrypted-matrix/expected/xp3-unknown-detection-report-v0.1.json",
       "role": "expected-output",
       "mediaType": "application/json",
-      "sha256": "a99d8c6ee8c384f92625baaefb8cb10041d4f6f2251933cdf78f03691d759e5d",
-      "bytes": 29294,
+      "sha256": "57abeb5c394d0a1724037f5dda61a48c556021cdf983d2805b381bf0d2b0172b",
+      "bytes": 29302,
       "redistributable": true
     },
     {
