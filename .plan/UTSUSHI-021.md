@@ -218,13 +218,13 @@ Constraints on the payload:
 
 ### 3.3 Engine coverage table
 
-| Engine                | Variants used                                                  | Recording strategy                                                                    |
-| --------------------- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `utsushi-fixture`     | `Text`, `Choice`, `Advance`                                    | Author-time scripted log; pure unit/integration tests.                                |
-| RPG Maker MV/MZ       | `Text`, `Choice`, `Advance`, `Skip`, `Auto`, `MenuSelect`, `Save`, `Load` | Browser/NW.js observation hooks emit equivalent events at recording time. |
-| RealLive / Siglus     | `Text`, `Choice`, `Advance`, `Skip`, `Auto`                    | Recorded via Siglus instrumentation hook (UTSUSHI-036).                               |
-| KiriKiri / KAG        | `Text`, `Choice`, `Advance`, `Skip`, `Auto`, `MenuSelect`      | KAG-tag observation in instrumentation slice.                                         |
-| Future engines        | `Raw` + targeted lowering once requirements crystallize.       | `Raw` keeps recording lossless without forcing premature variant additions.            |
+| Engine            | Variants used                                                             | Recording strategy                                                          |
+| ----------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| `utsushi-fixture` | `Text`, `Choice`, `Advance`                                               | Author-time scripted log; pure unit/integration tests.                      |
+| RPG Maker MV/MZ   | `Text`, `Choice`, `Advance`, `Skip`, `Auto`, `MenuSelect`, `Save`, `Load` | Browser/NW.js observation hooks emit equivalent events at recording time.   |
+| RealLive / Siglus | `Text`, `Choice`, `Advance`, `Skip`, `Auto`                               | Recorded via Siglus instrumentation hook (UTSUSHI-036).                     |
+| KiriKiri / KAG    | `Text`, `Choice`, `Advance`, `Skip`, `Auto`, `MenuSelect`                 | KAG-tag observation in instrumentation slice.                               |
+| Future engines    | `Raw` + targeted lowering once requirements crystallize.                  | `Raw` keeps recording lossless without forcing premature variant additions. |
 
 ## 4. Deterministic clock model
 
@@ -647,8 +647,8 @@ A new integration test `crates/utsushi-core/tests/replay_determinism.rs`:
   - Build a `RecordingAdapter` that supports only `Text` and `Choice`.
   - Drive it with a log containing a `Pointer` event.
   - Assert the call returns `Err(InputError::UnsupportedKind { kind:
-    "pointer", supported: [Text, Choice], code:
-    "utsushi.input.unsupported_kind" })`.
+"pointer", supported: [Text, Choice], code:
+"utsushi.input.unsupported_kind" })`.
 
 - `fixture_replay_choice_index_out_of_range_returns_invalid_payload()`:
   - Build a prompt with two options, drive a `Choice { index: 5 }`,

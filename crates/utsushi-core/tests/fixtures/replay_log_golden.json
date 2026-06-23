@@ -1,7 +1,5 @@
 {
-  "assetRefs": [
-    "vfs://fixture/intro.txt"
-  ],
+  "assetRefs": ["vfs://fixture/intro.txt"],
   "events": [
     {
       "event": {
