@@ -993,9 +993,15 @@ fn walk(value: &serde_json::Value, out: &mut Vec<String>) {
 
 // ---------------------------------------------------------------------------
 // JSON Schema artifact drift guard. The schema document committed at
-// `roadmap/impl-map.schema.json` must match `build_schema()` byte-for-byte
-// (after pretty-print + trailing newline). Set `BLESS_IMPL_MAP_SCHEMA=1` to
-// regenerate the artifact when intentionally bumping the schema.
+// `roadmap/impl-map.schema.json` must be semantically equal to
+// `build_schema()` — i.e. the parsed JSON Value of the committed file equals
+// the JSON Value emitted by build_schema(). Whitespace/formatting shape is
+// owned by the JS-side formatter (vp/prettier) which inlines short arrays in
+// a way `serde_json::to_string_pretty` does not; comparing parsed Values
+// keeps the drift guard honest about semantic content while letting the
+// formatter own surface shape. Set `BLESS_IMPL_MAP_SCHEMA=1` to regenerate
+// the artifact (pretty-printed) when intentionally bumping the schema; the
+// formatter will reflow it on the next `vp check --fix`.
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -1006,20 +1012,22 @@ fn roadmap_schema_artifact_matches_build_schema_output() {
         .expect("workspace root");
     let path = workspace_root.join("roadmap/impl-map.schema.json");
 
-    let mut emitted = serde_json::to_string_pretty(&build_schema()).expect("serialize schema");
-    emitted.push('\n');
-
     if std::env::var("BLESS_IMPL_MAP_SCHEMA").is_ok() {
+        let mut emitted = serde_json::to_string_pretty(&build_schema()).expect("serialize schema");
+        emitted.push('\n');
         std::fs::write(&path, emitted.as_bytes()).expect("bless schema");
         return;
     }
 
-    let committed = std::fs::read_to_string(&path).expect(
+    let committed_text = std::fs::read_to_string(&path).expect(
         "roadmap/impl-map.schema.json must exist; run with BLESS_IMPL_MAP_SCHEMA=1 to write it",
     );
+    let committed_value: serde_json::Value =
+        serde_json::from_str(&committed_text).expect("parse committed schema as JSON");
+    let emitted_value = build_schema();
     assert_eq!(
-        committed, emitted,
-        "roadmap/impl-map.schema.json drifted from build_schema(); rerun with BLESS_IMPL_MAP_SCHEMA=1"
+        committed_value, emitted_value,
+        "roadmap/impl-map.schema.json drifted from build_schema(); rerun with BLESS_IMPL_MAP_SCHEMA=1 (then `pnpm exec vp check --fix` to reflow)"
     );
 }
 

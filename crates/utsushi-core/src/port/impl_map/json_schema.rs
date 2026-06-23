@@ -221,6 +221,15 @@ pub fn build_schema() -> Value {
             "statusDisclaimer": { "type": "string" },
             "generatedAt": { "type": "string", "minLength": 20 }
         },
+        "allOf": [
+            {
+                "if": {
+                    "required": ["engineFamily"],
+                    "properties": { "engineFamily": { "const": "other" } }
+                },
+                "then": { "required": ["engineFamilyNotes"] }
+            }
+        ],
         "$defs": definitions
     })
 }
