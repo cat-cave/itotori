@@ -1,0 +1,186 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-148-20260623T202217Z",
+  "generatedAt": "2026-06-23T20:22:17Z",
+  "spec": {
+    "id": "UTSUSHI-148",
+    "title": "Browser launch alpha contract tightening (re-audit after F001 closure)",
+    "branch": "main",
+    "worktree": "/home/trevor/projects/itotori",
+    "commit": "7f3d845"
+  },
+  "auditor": {
+    "name": "utsushi-148-browser-launch-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Re-audit of UTSUSHI-148 from main HEAD (7f3d845) after the orchestrator merged spec/utsushi-148 and the formatter fix (f57e2e0) for F001. The original audit (AUDIT-UTSUSHI-148-20260623T195801Z) flagged a single P1 blocker (F001): `just check` failed because `pnpm exec vp check` reported markdown formatting issues in `.plan/UTSUSHI-148.md` and `docs/alpha-localization-project-readiness.md`. Verification from this re-audit: (1) `direnv exec . pnpm exec vp check` -> 'pass: All 535 files are correctly formatted (1319ms, 48 threads); pass: Found no warnings or lint errors in 139 files (210ms, 48 threads)'; (2) `direnv exec . just check` -> exit 0 (full ts:check, vp run, cargo fmt --check, cargo check --workspace all clean); (3) `direnv exec . cargo test -p utsushi-fixture` -> 34 passed, 0 failed; (4) `direnv exec . cargo test -p utsushi-cli` -> 11 passed, 0 failed. F001 is closed. Spot-check of the merge state: commit f57e2e0 ('chore(roadmap): canonical formatting for UTSUSHI-148 docs (vp check --fix)') touched exactly `.plan/UTSUSHI-148.md` (21 lines changed) and `docs/alpha-localization-project-readiness.md` (16 lines changed) — matching the diff stat the original audit reported from `vp check --fix`. The cargo-side acceptance evidence from the initial audit (typed `RuntimeHarnessError` kinds `ChromiumUnavailable` / `ChromiumVersionMismatch` / `ChromiumDisplayUnavailable`, `BrowserUnavailabilityReason::semantic_code` mapping, NW.js demoted to research-tier with empty capabilities vector, `EnvGuard` scoping the `unsafe { env::set_var }` in broken-env tests, descriptor regression test guarding against optionality language) is unchanged — none of those files were touched between the formatter commit and HEAD. F003 (original) and F005 (original) are not relevant to this re-audit's scope (per the assignment, the worker confirmed the CI severity-migration check is no longer needed and `just test` self-bootstrap is being tracked elsewhere). F002 (`--skip-browser` recipe shape) and F003 (strict display checking follow-up using the reserved `DisplayUnavailable` variant) are carried over as P2 follow-ups per the assignment instructions. F004 (probe-caching P3) is dropped from this re-audit to keep the carryover set tight to the explicitly-named items in the assignment. Outcome: `follow_up_only` — completion is allowed, two P2 follow-ups are recorded for future DAG nodes.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 2,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UTSUSHI-148-F001", "UTSUSHI-148-F002"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-148-F001",
+      "severity": "P2",
+      "title": "Public CI `--skip-browser` recipe shape: declared at recipe layer but no implementation lands here",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "docs/subprojects-utsushi.md",
+          "line": 232
+        }
+      ],
+      "description": "Carried over from the initial audit (originally UTSUSHI-148-F002). The updated docs commit (a526ce9) declares: 'Public CI that intentionally lacks Chromium must declare the skip at the recipe layer; the adapter itself does not silently degrade.' This is the correct architectural posture for UTSUSHI-148 (no in-adapter optionality), but no recipe-layer skip mechanism is implemented or wired into any concrete CI lane in this commit set. No CI lane currently gates on browser severity == error, so there is no immediate fallout. Recording as a follow-up so when the first Chromium-less public CI lane is introduced (Linux CI containers without Chromium, or a deliberately bounded CI runner) the recipe-layer skip is designed and shipped before that lane goes green.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Docs commit a526ce9 declares the recipe-layer skip as the operator's responsibility but does not point to an implementation.",
+          "location": {
+            "path": "docs/subprojects-utsushi.md",
+            "line": 232
+          }
+        },
+        {
+          "kind": "command",
+          "detail": "Worker pre-identified this candidate as P2 in their report-back and confirmed no CI lane currently gates on browser severity."
+        }
+      ],
+      "impact": "Once a CI lane that lacks Chromium starts consuming the capability output, today's UTSUSHI-148 behaviour (severity = error, hard runtime failure on launch) becomes a CI-red event. The recipe-layer skip is the orchestrator-approved escape valve but is not implemented. Mid-priority because no such CI lane exists today.",
+      "actionableAcceptanceCriteria": [
+        "Define the `--skip-browser` (or equivalently named) flag on the `utsushi capabilities` or `utsushi smoke` CLI surface that an operator can pass to acknowledge a Chromium-less environment.",
+        "Make the flag explicit (no env-driven implicit skip) and have it emit a clearly labelled `runtime_skip_acknowledged` diagnostic so the report-side cannot be mistaken for a passing alpha claim.",
+        "Document in `docs/subprojects-utsushi.md` exactly which CI lanes are allowed to pass the flag and which are forbidden (MV/MZ alpha claim lanes MUST NOT)."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Recipe-layer `--skip-browser` flag for Chromium-less CI lanes",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-148"],
+          "summary": "Implement the recipe-layer skip mechanism the UTSUSHI-148 docs declare as the operator's escape valve for Chromium-less public CI lanes, so the in-adapter `severity = error` posture stays intact while CI runners that intentionally lack Chromium can pass.",
+          "deliverables": [
+            "`--skip-browser` (or equivalently named) CLI flag on capabilities/smoke surfaces",
+            "Typed `runtime_skip_acknowledged` diagnostic emitted when the flag is set so the report cannot be mistaken for an alpha pass",
+            "Docs update enumerating which CI lanes are allowed to pass the flag"
+          ],
+          "acceptanceCriteria": [
+            "Flag is explicit (no env-driven implicit skip).",
+            "MV/MZ alpha-claim lanes are documented as forbidden from passing the flag.",
+            "Capability report status under the flag is distinguishable from a successful Chromium probe."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-cli"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Skip mechanism must not silently degrade alpha-claim lanes",
+            "Diagnostic shape distinguishes skip from success",
+            "Documentation enumerates allowed and forbidden CI lanes"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-148-F002",
+      "severity": "P2",
+      "title": "Strict display checking: reserved BrowserUnavailabilityReason::DisplayUnavailable variant is wired but never produced in production paths",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+          "line": 522,
+          "symbol": "BrowserUnavailabilityReason::DisplayUnavailable"
+        },
+        {
+          "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+          "line": 836,
+          "symbol": "force_display_unavailable"
+        }
+      ],
+      "description": "Carried over from the initial audit (originally UTSUSHI-148-F003). The `BrowserUnavailabilityReason::DisplayUnavailable` variant carries `#[allow(dead_code)]` because its production producer (a strict display/DRI probe) is intentionally not implemented in UTSUSHI-148. The wiring (semantic code mapping to `utsushi.browser.display_unavailable`, harness error kind mapping to `ChromiumDisplayUnavailable`, diagnostic detail attachment, harness-error detail attachment) IS live and exercised through the `force_display_unavailable()` test helper and the test `reserved_display_unavailable_reason_carries_typed_semantic_code`. The fact that the strict-display-probe gate is reserved is consistent with the plan; the follow-up is the production gate. The reserved variant carries `platform: &'static str` and a `DisplayProbeOutcome` that distinguishes `PresentEnv`, `HeadlessOnly`, and `UnavailableStrict`, but the production code path (`probe_chromium`) currently never returns this variant — `--headless=new --disable-gpu --no-sandbox` is hard-coded into launch args so the adapter operates headlessly regardless of DISPLAY/WAYLAND_DISPLAY env vars.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Reserved variant declared with `#[allow(dead_code)]` and a doc-comment explaining that production paths do not produce it.",
+          "location": {
+            "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+            "line": 522
+          }
+        },
+        {
+          "kind": "test",
+          "detail": "`reserved_display_unavailable_reason_carries_typed_semantic_code` pins the semantic code, harness error kind, and detail-attachment wiring against `force_display_unavailable()`. The production code path (`probe_chromium`) never returns this variant."
+        }
+      ],
+      "impact": "Low/medium: the reserved variant is wired so a follow-up that flips the production gate inherits a working contract, which is exactly the right posture. The strict-display gate itself is not in scope for UTSUSHI-148 alpha. Mid-priority because alpha-environment operators who set up a CI runner with a hardware decoder but a broken DISPLAY may want a structured diagnostic instead of an opaque Chromium launch failure.",
+      "actionableAcceptanceCriteria": [
+        "Decide the activation policy for strict display checking (env-var-gated? always-on under non-Linux? operator-explicit?).",
+        "Implement the production producer that returns `BrowserUnavailabilityReason::DisplayUnavailable { platform, probe }` when the gate fires.",
+        "Remove the `#[allow(dead_code)]` annotation and the test-only `force_display_unavailable` shim.",
+        "Add an integration test that covers the production path under the chosen gate."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Strict display checking: produce DisplayUnavailable variant in production",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-148"],
+          "summary": "Promote the reserved `BrowserUnavailabilityReason::DisplayUnavailable` variant from test-only to a real strict-display probe, so operators of CI runners with broken display surfaces get a typed `utsushi.browser.display_unavailable` outcome instead of an opaque Chromium launch failure.",
+          "deliverables": [
+            "Activation policy for strict display checking documented and chosen",
+            "Production producer for the DisplayUnavailable variant",
+            "Removal of `#[allow(dead_code)]` and the `force_display_unavailable` test shim",
+            "Integration test for the production path"
+          ],
+          "acceptanceCriteria": [
+            "Reserved variant is produced from real probe code under the chosen activation gate.",
+            "Existing UTSUSHI-148 tests continue to pass.",
+            "Typed semantic code `utsushi.browser.display_unavailable` is observable in capability output under the gate."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Gate activation policy must not regress existing CI lanes",
+            "Production producer is reachable under realistic broken-display conditions",
+            "Operator-facing message distinguishes display-broken from binary-missing"
+          ]
+        }
+      }
+    }
+  ]
+}
