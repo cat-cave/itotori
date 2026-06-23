@@ -1,0 +1,199 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-021-20260623T183642Z",
+  "generatedAt": "2026-06-23T18:36:47Z",
+  "spec": {
+    "id": "UTSUSHI-021",
+    "title": "Deterministic input clock and replay log",
+    "branch": "spec/utsushi-021",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-021",
+    "commit": "ae29e4e"
+  },
+  "auditor": {
+    "name": "utsushi-021-determinism-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "UTSUSHI-021 delivers the engine-neutral deterministic input + clock + replay-log substrate as specified. The three new submodules `crates/utsushi-core/src/{input,clock,replay}.rs` introduce `InputEvent`/`InputKind`/`InputError`, `LogicalClock`/`LogicalClockTick`/`ClockOrigin`, and `ReplayLog`/`ReplayLogBuilder`/`ReplayCursor`/`ReplayMetadata` with stable `utsushi.input.*`, `utsushi.clock.*`, and `utsushi.replay.*` semantic codes. Determinism constraints hold by inspection: `grep -rn 'Instant::now\\|rand::\\|thread_id'` and `grep -rn 'std::path'` over the three modules return zero matches; the only engine substring hit is the test name `input_event_raw_records_engine_and_code_without_path_leakage` and a doc comment referencing `reject_unredacted_local_paths` (not a public symbol). `LogicalClock` rejects backtrack via `InputError::ClockBacktrack`, advances monotonically via `tick()`, and exposes `Send + Sync` (asserted by `logical_clock_is_send_and_sync`). `LogicalClockTick` is `#[serde(transparent)] u64`, WASM-portable. `InputEvent` is engine-neutral; unsupported inputs flow through the typed `InputError::UnsupportedKind` enum or the `Raw` variant (verified by `fixture_replay_unsupported_input_surface_typed_unsupported_kind_error`). The replay log is constructed only via `ReplayLogBuilder`, which validates payload shape, tick monotonicity, and redaction (`assert_replay_event_redaction`) before each `record`, and re-walks the full serialized form in `build()`. `ReplayLog::to_json_value` and `ReplayLog::from_json_value` both run `reject_unredacted_local_paths_public` end-to-end and pin `REPLAY_LOG_SCHEMA_VERSION = \"0.1.0-alpha\"`. `RuntimeRequest.replay` is additive (`Option<Arc<ReplayLog>>`), `Debug` redacts contents, and `with_replay` keeps the rest of the request untouched (`runtime_request_replay_field_is_additive_and_shared_via_arc` confirms). `AssetId` gains `serde::{Serialize, Deserialize}` that round-trip through the canonical `vfs://...` string and re-run path validation/NFC normalization on the deserialize side — wire form is stable. `git diff main..HEAD -- crates/utsushi-fixture/` returns zero bytes; `cargo test -p utsushi-fixture` passes 22/22 unchanged. Verification reruns from the worktree: `cargo test -p utsushi-core` returns 162 passed / 0 failed / 5 ignored (120 lib unit tests including 12 input + 7 clock + 16 replay, 11 replay_round_trip integration, 16 vfs_synthetic_package); `cargo test -p utsushi-fixture` returns 22 passed / 0 failed; `cargo clippy -p utsushi-core --all-targets -- -D warnings` is clean; `cargo fmt --check` is clean; `just check` passes (rust toolchain policy, schema validate, spec DAG validate at 526 nodes, ts:typecheck, 124 schema tests). Worker-flagged deviations are reasonable: combining input + clock under one commit is fine because `InputError::ClockBacktrack` necessarily carries `LogicalClockTick`; consolidating integration tests in `replay_round_trip.rs` (11 tests) preserves all the acceptance behaviors the plan listed across two files; replacing the `compile_fail` doctest with the positive `logical_clock_is_send_and_sync` + an explicit no-Default observation is acceptable per the plan's own \"replace with a documentation comment and a runtime substitute\" carve-out. Two non-blocking follow-ups remain: (F001 P2) `ReplayLog::schema_version` and `ReplayLog::metadata` are public fields, so an owned `ReplayLog` can be mutated after `build()` to overwrite `schema_version` or inject a host path into `metadata.source_label` — the wire-side redaction at `to_json_value` still catches it, but the type-system \"read-only after build\" claim from the plan §5.2 and the hard architectural constraint is not enforced; (F002 P3) the wire form mixes case styles (top-level/metadata camelCase via `#[serde(rename_all = \"camelCase\")]` on `ReplayLog`/`ReplayEntry`/`ReplayMetadata`, but `InputEvent::Choice` payload fields emit as `bridge_unit_id` because the enum carries `rename_all = \"snake_case\"` for variant tags and no field-level rename, producing mixed case in the same document — see `replay_log_golden.json` line 24). Neither blocks completion; both are clean follow-up work for UTSUSHI-103 / UTSUSHI-024 to consume the log without surprise.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UTSUSHI-021-F001", "UTSUSHI-021-F002"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-021-F001",
+      "severity": "P2",
+      "title": "ReplayLog public fields permit post-build mutation, breaking the read-only-after-build claim",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/replay.rs",
+          "line": 88,
+          "symbol": "ReplayLog"
+        },
+        {
+          "path": "crates/utsushi-core/src/replay.rs",
+          "line": 62,
+          "symbol": "ReplayMetadata"
+        },
+        {
+          "path": "crates/utsushi-core/src/replay.rs",
+          "line": 80,
+          "symbol": "ReplayEntry"
+        }
+      ],
+      "description": "ReplayLog is defined with `pub schema_version: ReplaySchemaVersion` and `pub metadata: ReplayMetadata` (lines 89-90), and ReplayMetadata exposes every field as `pub` (run_id, adapter_name, adapter_version, clock_origin, seed, source_label). Once `ReplayLogBuilder::build()` returns a `ReplayLog`, any caller holding an owned value can rewrite `log.schema_version = ReplaySchemaVersion(\"9.9.9\".to_string())` or `log.metadata.source_label = Some(\"/home/trevor/secret\".to_string())` without going through any validator. The plan §5.2 states `ReplayLog itself has no public mutators. Recording goes through ReplayLogBuilder::record and then build() consumes the builder. This enforces \"immutable once recorded\" structurally rather than by convention.` The hard architectural constraint also says `Read-only ReplayLog after builder.build()`. The current shape enforces immutability for events/asset_refs (those are private) but not for schema_version or metadata. Impact is bounded today because `ReplayLog::to_json_value` re-runs `reject_unredacted_local_paths_public` and `from_json_value` re-validates `schema_version` against the pinned constant, so a corrupted log fails serialization rather than escaping silently. However, an in-memory adapter pipeline that hands a mutated `ReplayLog` directly to a downstream consumer (without round-tripping through JSON) inherits the un-validated form, which contradicts the substrate's structural-immutability promise and creates a real foot-gun for UTSUSHI-103's runner template and the snapshot work in UTSUSHI-023.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "ReplayLog struct definition exposes schema_version and metadata as public fields; ReplayMetadata exposes every field as public",
+          "location": {
+            "path": "crates/utsushi-core/src/replay.rs",
+            "line": 88
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §5.2 declares the log immutable after build; current type does not enforce that for the top-level metadata or schema version",
+          "location": {
+            "path": ".plan/UTSUSHI-021.md",
+            "line": 378
+          }
+        }
+      ],
+      "impact": "Adapters and runner-template code (UTSUSHI-103) that consume a `ReplayLog` in-memory cannot rely on its post-build invariants without an additional defensive round-trip through `to_json_value`/`from_json_value`. A mutated `metadata.source_label` carrying a host path defeats the redaction guarantee at the in-memory boundary, only catching it again if/when the log is serialized. The substrate's \"structural immutability\" posture is downgraded to \"convention-immutable\".",
+      "actionableAcceptanceCriteria": [
+        "ReplayLog and ReplayMetadata fields are private; access is via accessor methods (e.g., `schema_version()`, `metadata()`, `run_id()`, `adapter_name()`, `source_label()`).",
+        "Field privatization preserves the existing serde wire form (the same `camelCase` keys at the same positions); a regression test asserts the JSON serialization is byte-identical to the checked-in golden after the refactor.",
+        "A unit test asserts the immutability posture: there is no `&mut` method on `ReplayLog` and the public fields cannot be reassigned (compile-fail or no-public-mutator inventory)."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "ReplayLog structural immutability hardening",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-021"],
+          "summary": "Privatize ReplayLog and ReplayMetadata fields behind accessor methods so the substrate's read-only-after-build guarantee is enforced by the type system, not by convention. The serde wire form must not change.",
+          "deliverables": [
+            "Privatize ReplayLog::schema_version and ReplayLog::metadata; expose `schema_version()` and `metadata()` accessors returning `&ReplaySchemaVersion` and `&ReplayMetadata`.",
+            "Privatize every field on ReplayMetadata and expose stable accessor methods (run_id, adapter_name, adapter_version, clock_origin, seed, source_label).",
+            "Update all in-tree call sites (replay.rs unit tests, replay_round_trip.rs integration tests) to use accessors.",
+            "Preserve the existing serde wire form (camelCase keys, same positions) — re-run the golden round-trip test and assert byte-equal JSON."
+          ],
+          "acceptanceCriteria": [
+            "ReplayLog and ReplayMetadata expose no public fields; all reads go through accessor methods.",
+            "The replay_log_golden.json fixture continues to deserialize and re-serialize byte-for-byte equal to the pre-refactor form.",
+            "An immutability inventory test asserts there is no `&mut self` method on ReplayLog and no `pub` field accessible for reassignment."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            },
+            {
+              "type": "command",
+              "value": "cargo clippy -p utsushi-core --all-targets -- -D warnings"
+            }
+          ],
+          "auditFocus": [
+            "ReplayLog or ReplayMetadata fields remaining public.",
+            "Wire-form drift relative to the checked-in golden.",
+            "Missing accessor coverage for any field previously read by the integration tests."
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-021-F002",
+      "severity": "P3",
+      "title": "Replay log wire form mixes camelCase top-level keys with snake_case InputEvent payload fields",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/input.rs",
+          "line": 167,
+          "symbol": "InputEvent"
+        },
+        {
+          "path": "crates/utsushi-core/tests/fixtures/replay_log_golden.json",
+          "line": 24
+        }
+      ],
+      "description": "`ReplayLog`, `ReplayEntry`, and `ReplayMetadata` carry `#[serde(rename_all = \"camelCase\")]`, so the wire form uses `assetRefs`, `schemaVersion`, `clockOrigin`, `runId`, `adapterName`, `adapterVersion`, `sourceLabel`. `InputEvent` carries `#[serde(tag = \"kind\", rename_all = \"snake_case\", deny_unknown_fields)]`; the `rename_all = \"snake_case\"` applies only to the variant tag values, not to the per-variant struct fields. As a result, the same document mixes camelCase top-level / metadata keys and snake_case payload keys: see `crates/utsushi-core/tests/fixtures/replay_log_golden.json` line 24, where the choice event emits `\"bridge_unit_id\"` inside an otherwise camelCase document. The plan §3.2 also depicts `bridge_unit_id` in the Rust source, so this is internally consistent with the source, but it gives the wire form an inconsistent shape that downstream consumers (UTSUSHI-024 WASM ABI, dashboard renderers, conformance check tooling) will need to special-case.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "InputEvent enum uses `rename_all = \"snake_case\"` for variant tags but no field-level rename; the embedded `bridge_unit_id` field stays snake_case while the surrounding document is camelCase",
+          "location": {
+            "path": "crates/utsushi-core/src/input.rs",
+            "line": 168
+          }
+        },
+        {
+          "kind": "fixture",
+          "detail": "replay_log_golden.json line 24 emits `\"bridge_unit_id\": \"intro-unit-7\"` inside a document whose other keys (assetRefs, runId, clockOrigin, sourceLabel, schemaVersion) are camelCase",
+          "location": {
+            "path": "crates/utsushi-core/tests/fixtures/replay_log_golden.json",
+            "line": 24
+          }
+        }
+      ],
+      "impact": "Consumers parsing or rendering the wire form must handle two case conventions in the same document. UTSUSHI-024 (WASM ABI) and the dashboard rendering layer inherit the inconsistency, which complicates schema generation and field-mapping logic. The schema version is pinned at 0.1.0-alpha, so this is the cleanest moment to normalize.",
+      "actionableAcceptanceCriteria": [
+        "Adopt a single case convention across the entire replay-log wire form (recommend camelCase to match metadata and the rest of itotori's JSON shapes).",
+        "Update `crates/utsushi-core/tests/fixtures/replay_log_golden.json` to reflect the chosen convention and bump REPLAY_LOG_SCHEMA_VERSION if any consumer has already begun reading the 0.1.0-alpha form.",
+        "Add a unit test that walks the serialized JSON and asserts every key matches the chosen case convention."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Normalize replay log wire-form case convention",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-021"],
+          "summary": "Pick one case convention (recommend camelCase) for the entire ReplayLog wire form so downstream consumers (UTSUSHI-024 WASM ABI, dashboard, conformance tooling) do not have to handle mixed-case documents.",
+          "deliverables": [
+            "Add `#[serde(rename_all = \"camelCase\")]` (or equivalent per-field renames) to InputEvent variant payloads so `bridge_unit_id` serializes as `bridgeUnitId`.",
+            "Update the checked-in `replay_log_golden.json` fixture to the normalized form.",
+            "Add a unit test that serializes a log containing every variant and asserts every JSON key matches the chosen convention."
+          ],
+          "acceptanceCriteria": [
+            "The serialized replay-log document uses a single case convention across all keys, including InputEvent payload fields.",
+            "REPLAY_LOG_SCHEMA_VERSION is bumped if any external consumer has read the prior form; otherwise the change is in-place under the alpha pin.",
+            "The case-convention assertion test passes against a log that exercises every InputEvent variant."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            }
+          ],
+          "auditFocus": [
+            "Any remaining snake_case key in the serialized form.",
+            "Golden fixture drift relative to the normalized form.",
+            "Missing variant coverage in the case-convention assertion test."
+          ]
+        }
+      }
+    }
+  ]
+}
