@@ -25,6 +25,12 @@ import {
   type PlannedProjectFile,
 } from "./batch-planner/cli.js";
 import type { ProviderFamily } from "./providers/types.js";
+import {
+  resolveSceneSummaryProvider,
+  runCheckSceneSummariesCli,
+  runGenerateSceneSummariesCli,
+  type SceneSummaryCliDependencies,
+} from "./agents/scene-summary/index.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -42,6 +48,16 @@ export type ItotoriCliServices = {
   batchPlanner: {
     loadContext: PlanBatchesContextLoader;
     persist: PlanBatchesPersister;
+  };
+  sceneSummary?: {
+    /**
+     * Construct the per-invocation dependencies (provider, repositories,
+     * actor). Optional so unit suites can omit it.
+     */
+    cliDependencies(provider: ProviderFamily): Promise<SceneSummaryCliDependencies>;
+    defaultModelId: string;
+    defaultProviderFamily: ProviderFamily;
+    defaultContextWindowTokens: number;
   };
 };
 
@@ -98,6 +114,12 @@ export async function runItotoriCliCommand(
       break;
     case "plan-batches":
       await runPlanBatchesHandler(args, dependencies);
+      break;
+    case "generate-scene-summaries":
+      await runGenerateSceneSummariesHandler(args, dependencies);
+      break;
+    case "check-scene-summaries":
+      await runCheckSceneSummariesHandler(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -332,3 +354,95 @@ function asProviderFamily(value: string): ProviderFamily {
   }
   throw new Error(`unknown provider family: ${value}`);
 }
+
+async function runGenerateSceneSummariesHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const projectId = requiredFlag(args, "--project");
+  const localeBranchId = requiredFlag(args, "--locale-branch");
+  const sourceLocale = requiredFlag(args, "--source-locale");
+  const sourceRevisionId = requiredFlag(args, "--source-revision");
+  const modelId = optionalFlag(args, "--model");
+  const providerRaw = optionalFlag(args, "--provider");
+  const sceneId = optionalFlag(args, "--scene-id");
+  const includeStale = args.includes("--include-stale");
+  const dryRun = args.includes("--dry-run");
+  const contextWindowRaw = optionalFlag(args, "--context-window");
+  const maxOutputRaw = optionalFlag(args, "--max-output-tokens");
+
+  await dependencies.withServices(async (services) => {
+    if (!services.sceneSummary) {
+      throw new Error("scene-summary service factory is not configured in this CLI build");
+    }
+    const providerFamily =
+      providerRaw === undefined
+        ? services.sceneSummary.defaultProviderFamily
+        : asProviderFamily(providerRaw);
+    const deps = await services.sceneSummary.cliDependencies(providerFamily);
+    const result = await runGenerateSceneSummariesCli(
+      {
+        projectId,
+        localeBranchId,
+        sourceLocale,
+        sourceRevisionId,
+        modelProfile: {
+          providerFamily,
+          modelId: modelId ?? services.sceneSummary.defaultModelId,
+          contextWindowTokens:
+            contextWindowRaw === undefined
+              ? services.sceneSummary.defaultContextWindowTokens
+              : Number.parseInt(contextWindowRaw, 10),
+          ...(maxOutputRaw === undefined
+            ? {}
+            : { maxOutputTokens: Number.parseInt(maxOutputRaw, 10) }),
+        },
+        ...(sceneId === undefined ? {} : { sceneIdFilter: sceneId }),
+        includeStale,
+        dryRun,
+      },
+      deps,
+    );
+    process.stdout.write(
+      `generated=${result.generatedCount} skipped_fresh=${result.skippedFreshCount}\n`,
+    );
+  });
+}
+
+async function runCheckSceneSummariesHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const projectId = requiredFlag(args, "--project");
+  const localeBranchId = requiredFlag(args, "--locale-branch");
+  const sourceRevisionId = requiredFlag(args, "--source-revision");
+  const markStale = args.includes("--mark-stale");
+  const providerRaw = optionalFlag(args, "--provider");
+
+  await dependencies.withServices(async (services) => {
+    if (!services.sceneSummary) {
+      throw new Error("scene-summary service factory is not configured in this CLI build");
+    }
+    const providerFamily =
+      providerRaw === undefined
+        ? services.sceneSummary.defaultProviderFamily
+        : asProviderFamily(providerRaw);
+    const deps = await services.sceneSummary.cliDependencies(providerFamily);
+    const result = await runCheckSceneSummariesCli(
+      {
+        projectId,
+        localeBranchId,
+        sourceRevisionId,
+        markStale,
+      },
+      deps,
+    );
+    process.stdout.write(
+      `scanned=${result.scannedSummaryCount} drifted=${result.driftedSummaries.length} marked_stale=${result.markedStaleCount}\n`,
+    );
+  });
+}
+
+// Helper used internally during the legacy CLI bridging so unused-import lints
+// pass while the resolveSceneSummaryProvider symbol stays public for embedders.
+export const _internalResolveSceneSummaryProviderForCliHandlers = resolveSceneSummaryProvider;

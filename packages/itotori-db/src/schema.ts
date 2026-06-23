@@ -2890,3 +2890,92 @@ export const translationBatchContextRefs = pgTable(
     index("itotori_translation_batch_context_refs_ref_idx").on(table.refKind, table.refId),
   ],
 );
+
+export const sceneSummaryStatusValues = {
+  fresh: "Fresh",
+  stale: "Stale",
+} as const;
+
+export type SceneSummaryStatus =
+  (typeof sceneSummaryStatusValues)[keyof typeof sceneSummaryStatusValues];
+
+export const sceneSummaryInvalidatedReasonValues = {
+  sourceHashDrift: "source_hash_drift",
+  templateVersionBump: "template_version_bump",
+  manual: "manual",
+} as const;
+
+export type SceneSummaryInvalidatedReason =
+  (typeof sceneSummaryInvalidatedReasonValues)[keyof typeof sceneSummaryInvalidatedReasonValues];
+
+export const sceneSummaries = pgTable(
+  "itotori_scene_summaries",
+  {
+    sceneSummaryId: text("scene_summary_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    sceneId: text("scene_id").notNull(),
+    summaryLocale: text("summary_locale").notNull(),
+    summaryText: text("summary_text").notNull(),
+    modelProviderFamily: text("model_provider_family").notNull(),
+    modelId: text("model_id").notNull(),
+    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
+    modelMaxOutputTokens: integer("model_max_output_tokens"),
+    promptTemplateVersion: text("prompt_template_version").notNull(),
+    promptHash: text("prompt_hash").notNull(),
+    inputTokenEstimate: integer("input_token_estimate").notNull(),
+    completionTokens: integer("completion_tokens").notNull(),
+    status: text("status").notNull(),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    invalidatedReason: text("invalidated_reason"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_scene_summaries_unique_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.sceneId,
+      table.promptTemplateVersion,
+    ),
+    index("itotori_scene_summaries_status_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.status,
+    ),
+    index("itotori_scene_summaries_scene_idx").on(table.sceneId),
+  ],
+);
+
+export const sceneSummaryCitedUnits = pgTable(
+  "itotori_scene_summary_cited_units",
+  {
+    sceneSummaryId: text("scene_summary_id")
+      .notNull()
+      .references(() => sceneSummaries.sceneSummaryId, { onDelete: "cascade" }),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    citedSourceHash: text("cited_source_hash").notNull(),
+    citeOrdinal: integer("cite_ordinal").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.sceneSummaryId, table.bridgeUnitId] }),
+    index("itotori_scene_summary_cited_units_bridge_unit_idx").on(
+      table.bridgeUnitId,
+      table.citedSourceHash,
+    ),
+    index("itotori_scene_summary_cited_units_ordinal_idx").on(
+      table.sceneSummaryId,
+      table.citeOrdinal,
+    ),
+  ],
+);

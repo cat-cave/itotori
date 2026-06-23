@@ -194,11 +194,28 @@ export function categoriesFor(units: ReadonlyArray<PlannerUnit>): Set<string> {
   return categories;
 }
 
+/**
+ * Pick the scene summary to attach to a batch's context pack. Agent-produced
+ * `Fresh` summaries (ITOTORI-013) win over curator-authored context artifacts
+ * for the same `sceneId`; otherwise we fall back to whatever the caller
+ * supplied. This keeps the batch planner's interface unchanged while letting
+ * the scene-summary CLI write into the same lookup map.
+ */
 export function sceneSummaryForGroup(
   sceneSummaries: ReadonlyMap<string, SceneSummaryRef> | undefined,
   sceneId: string | undefined,
+  agentSummaries?: ReadonlyMap<string, SceneSummaryRef> | undefined,
 ): SceneSummaryRef | undefined {
-  if (!sceneSummaries || !sceneId) {
+  if (!sceneId) {
+    return undefined;
+  }
+  if (agentSummaries) {
+    const fromAgent = agentSummaries.get(sceneId);
+    if (fromAgent) {
+      return fromAgent;
+    }
+  }
+  if (!sceneSummaries) {
     return undefined;
   }
   return sceneSummaries.get(sceneId);

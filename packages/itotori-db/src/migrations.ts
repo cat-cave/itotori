@@ -168,6 +168,10 @@ export const migrations = [
     id: "0027_translation_batches",
     file: "0027_translation_batches.sql",
   },
+  {
+    id: "0028_scene_summaries",
+    file: "0028_scene_summaries.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

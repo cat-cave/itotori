@@ -58,6 +58,12 @@ export type PlanBatchesInput = {
   styleGuide?: StyleGuideVersionSnapshot | undefined;
   characterMap?: CharacterMapSnapshot | undefined;
   sceneSummaries?: ReadonlyMap<string, SceneSummaryRef> | undefined;
+  /**
+   * Optional agent-produced scene summary refs keyed by sceneId. When set,
+   * these take precedence over the curator-authored `sceneSummaries` for the
+   * same scene id. Produced by the ITOTORI-013 scene-summary CLI.
+   */
+  agentSceneSummaries?: ReadonlyMap<string, SceneSummaryRef> | undefined;
   translationMemory?: TranslationMemoryQueryFn | undefined;
   modelProfile?: BatchModelProfile | undefined;
   maxTokensOverride?: number | undefined;
@@ -100,7 +106,11 @@ export async function planBatches(input: PlanBatchesInput): Promise<PlanBatchesO
   for (const group of groups) {
     const groupCategories = categoriesFor(group.units);
     const categoryRules = categoryMatchedStyleRules(input.styleGuide, groupCategories);
-    const sceneSummary = sceneSummaryForGroup(input.sceneSummaries, group.sceneId);
+    const sceneSummary = sceneSummaryForGroup(
+      input.sceneSummaries,
+      group.sceneId,
+      input.agentSceneSummaries,
+    );
     const examples = await mineExamples(input.translationMemory, group, priorExampleLimit);
 
     const preludeTokens = computePreludeTokens({

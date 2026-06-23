@@ -239,9 +239,9 @@ in `agent.ts`. Pipeline:
 5. **Populate citations.** `citedUnitIds = units.map(u => u.bridgeUnitId)`
    and `citedUnitHashes = units.map(u => u.sourceHash)` in matching order.
 6. **Construct `SceneSummary`** with `status = "Fresh"`, `generatedAt =
-   (input.now ?? Date.now)().toISOString()`, `summaryLocale =
-   input.sourceLocale`, `promptTemplateVersion =
-   PROMPT_TEMPLATE_VERSION_V1`.
+(input.now ?? Date.now)().toISOString()`, `summaryLocale =
+input.sourceLocale`, `promptTemplateVersion =
+PROMPT_TEMPLATE_VERSION_V1`.
 
 `generateSceneSummaries(inputs: SceneSummaryInput[])` is the batch entry
 point used by the CLI; it sequences `generateSceneSummary` calls one at a
@@ -349,7 +349,7 @@ db-migrate`.
 - `loadSummaryByScene({ projectId, localeBranchId, sourceRevisionId,
 sceneId })` — returns the latest `Fresh` summary for that scene, or the
   newest `Stale` summary if no `Fresh` exists (so reads still find
-  *something* even pre-rerun).
+  _something_ even pre-rerun).
 - `loadSummariesByProject(...)` — list, for staleness scans and CLI status.
 - `markStale({ summaryId, reason })` — sets `status = 'Stale'`,
   `invalidated_at = now()`, `invalidated_reason = reason`. Idempotent.
@@ -482,7 +482,7 @@ DB-backed test:
 Construct a project with `sourceLocale = "ja-JP"` and a target locale
 branch with `targetLocale = "en-US"`. Run the agent. Assert
 `summary.summaryLocale === "ja-JP"`. Then construct an input whose
-`sourceLocale` is the *target* locale by mistake and assert
+`sourceLocale` is the _target_ locale by mistake and assert
 `generateSceneSummary` throws a typed error before invoking the provider.
 
 ### 8.5 Recorded provider replay
@@ -498,7 +498,7 @@ network access (env-gated `OFFLINE=1`) the replay run still produces a
 When the active `PROMPT_TEMPLATE_VERSION` changes (simulated via a
 test-only constant), assert that a saved summary at the old version is
 treated as effectively absent by `loadSummaryByScene` callers that pass
-the new version filter, and that running the agent inserts a *new* row
+the new version filter, and that running the agent inserts a _new_ row
 (unique key in §5.1 includes the version). Existing rows are not
 auto-stale-flagged on a version bump unless the staleness scan is called
 with `reason: "template_version_bump"`.
@@ -560,7 +560,7 @@ exercised in normal CI. Mirrors how existing OpenRouter tests in
    and the `recorded` provider replay path. Live OpenRouter calls are
    opt-in only via `ITOTORI_LIVE_PROVIDER`, matching ADR 0002.
 2. **Citation accuracy.** A summary could cite units that did not actually
-   inform its content. Mitigation: the agent *always* cites the exact
+   inform its content. Mitigation: the agent _always_ cites the exact
    units it was given as input — `citedUnitIds` is the input set, not a
    model self-report. Test 8.2 makes this a property test.
 3. **Prompt template evolution.** Future template changes risk silently
