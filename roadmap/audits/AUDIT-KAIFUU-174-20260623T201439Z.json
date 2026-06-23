@@ -1,0 +1,243 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-174-20260623T201439Z",
+  "generatedAt": "2026-06-23T20:14:39Z",
+  "spec": {
+    "id": "KAIFUU-174",
+    "title": "RealLive AVG32-variant text inventory adapter",
+    "branch": "spec/kaifuu-174",
+    "worktree": "/scratch/worktrees/itotori-spec-kaifuu-174",
+    "commit": "3f781db"
+  },
+  "auditor": {
+    "name": "kaifuu-174-text-inventory-reaudit",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Re-audit of KAIFUU-174 after the F001 repair pair (be8d2d4 manifest refresh + orphan removal, 0c80e2a vp formatter pass, 3f781db re-refresh of the two manifests the formatter touched in goldens). The original P1 verification-gate blocker (KAIFUU-174-F001 — `just fixtures-validate` failed with 8 byte/hash mismatches across 4 manifest entries plus an orphan `fixtures/public/kaifuu-encrypted-matrix/expected/xp3-detection-report-v0.1.json`) is now CLOSED: `just fixtures-validate` from the worktree exits 0 with `validated 14 public fixture manifest(s)`; `find . -name 'xp3-detection-report-v0.1.json' -not -path '*/node_modules/*' -not -path '*/.git/*'` returns zero matches (orphan was `git rm`'d in be8d2d4); on-disk sha256+bytes of the four detection-report goldens (siglus 57ff2777/31879, xp3-unknown 57abeb5c/29302, rpg-maker 41 cbef3ec3/41159, reallive-detector 2f49d5a9/28904) match the values written into the three repaired manifest files at commit 3f781db. Cargo verification re-confirmed against HEAD=3f781db: `cargo test -p kaifuu-cli` 78 passed (0 failed); `cargo test -p kaifuu-reallive` 53 passed across 5 binaries (22+11+11+9+0, 0 failed); `cargo test -p kaifuu-engine-fixture` 59 passed (0 failed). All four KAIFUU-174 acceptance criteria still verify: (1) Scene/SEEN/Gameexe text-slot, protected-markup, and asset-reference inventory still emitted by `kaifuu-reallive::inventory::build_scene_inventory`; (2) bridge schema with stable `reallive:scene-NNNN:str-off-XXXXXXXX-idxNN` `source_unit_key` + `{source_unit_key}#occ-NNNN` `occurrence_id` and the 3-iteration byte-identical-bridge-JSON oracle still passes; (3) Patch-back length-preserving round-trip byte-identical (empty edit list, every-slot-identity, length-preserving translation, color/ruby/name/choice control preservation) plus the documented length-changing rejection still all pass; (4) Engine-generic with zero `sweetie|Sweetie|kotomi|Kotomi` matches across `crates/kaifuu-reallive/`. Hard architectural constraints all still clean: pure Rust, no `rlvm` dep, `source_unit_key` verbatim KAIFUU-173 contract. The repair scope was surgical and bounded: `git diff be8d2d4^..3f781db --stat` shows only manifest hash/byte updates in three `*.manifest.json` files, deletion of the orphan golden, and vp-formatter whitespace deltas in `.plan/KAIFUU-174.md` + the original audit JSON + 2 goldens — no source crate code was touched, no test was modified, no public-fixture data was rewritten. Note: `just check` from the worktree fails on the `apps/runtime-web-review/node_modules/esbuild` missing-binary path because the worktree was not `pnpm install`'d after creation; the same `just check` passes on `main`. This is a worktree-local environment issue, NOT a regression caused by KAIFUU-174 or the repair, and is NOT flagged as a finding. The three P3 follow-ups from the original audit carry over verbatim (length-changing patch-back, Sweetie HD catalogue expansion, bridge_id UUIDv7 reconciliation) as KAIFUU-174-F001/F002/F003 in this re-audit's numbering since they remain valid future-node candidates and were not in scope for the repair worker.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 3
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-174-F001", "KAIFUU-174-F002", "KAIFUU-174-F003"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-174-F001",
+      "severity": "P3",
+      "title": "Length-changing patch-back via offset-table rewrite",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-reallive/src/patchback.rs",
+          "line": 303,
+          "symbol": "apply_slot_edit"
+        },
+        {
+          "path": ".plan/KAIFUU-174.md",
+          "symbol": "§7.2"
+        }
+      ],
+      "description": "KAIFUU-174 implements LengthPreserving patch-back only; `SlotEditLengthPolicy::FixedBudget` returns `kaifuu.reallive.patchback_unsupported_length_policy` Fatal and any length-changing edit returns `kaifuu.reallive.patchback_offset_overflow` Fatal. Real-world Japanese-to-English translation projects routinely produce length-changing text; ALPHA-006 (vault-vertical Sweetie HD slice) will need this. The plan §7.2 disclosed this gap explicitly and pointed at a future node for the offset-table rewrite, jump-target recalculation, and per-game evidence that no other on-disk artifact embeds absolute scene offsets. Carried over from the original audit (was KAIFUU-174-F002, P3) — still valid because the repair pair did not touch patchback.rs.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": ".plan/KAIFUU-174.md §7.2 documents the deferral: 'Decision: KAIFUU-174 implements LengthPreserving only. Edits that change the encoded byte count produce a kaifuu.reallive.patchback_offset_overflow Fatal. ... Offset-table rewrite — defers to a future node. Requires (a) validating no other on-disk artifact (Gameexe.ini, save data, voice archives) embeds absolute scene offsets, (b) handling jump opcodes whose byte ranges shift with scene length, and (c) per-game evidence at ALPHA-006 confirming the rewrite does not break runtime.'"
+        },
+        {
+          "kind": "test",
+          "detail": "rejects_length_changing_edit_with_kaifuu_reallive_patchback_offset_overflow_fatal and rejects_fixed_budget_length_policy_with_kaifuu_reallive_patchback_unsupported_length_policy_fatal pin the current rejection behaviour; still passing on HEAD=3f781db."
+        }
+      ],
+      "impact": "ALPHA-006 vertical work cannot patch text that grows or shrinks under translation; every translated unit must be hand-tuned to the exact source Shift-JIS byte budget, which is impractical for English target output.",
+      "actionableAcceptanceCriteria": [
+        "Drop a follow-up node that implements LengthChanging patch-back via offset-table rewrite, jump-target recalculation, and a re-parse self-check covering shifted byte boundaries.",
+        "Verify no other on-disk artifact (Gameexe.ini save-table refs, voice archives, .g00 image-overlay text) embeds absolute scene byte offsets.",
+        "Land per-game evidence at ALPHA-006 confirming the offset-table rewrite does not break runtime."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "RealLive offset-table-rewrite length-changing patch-back",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "engine-adapters",
+          "dependsOn": ["KAIFUU-174", "ALPHA-006"],
+          "summary": "Implement length-changing patch-back for RealLive Scene/SEEN: offset-table rewrite when any edited scene's total byte length changes, jump-target recalculation for opcodes whose byte ranges shift, and a re-parse self-check that confirms the patched archive remains structurally identical to the source minus the edited slots.",
+          "deliverables": [
+            "kaifuu-reallive::patchback gains a LengthChanging path that rewrites the SEEN.TXT entry table and recomputes per-scene byte_offset/byte_len for every shifted scene.",
+            "Jump-target operand bytes inside Jump/Return opcodes get recomputed when the target scene's offset shifts.",
+            "New fixture patchback-length-changing-001/ exercises a translated text run whose encoded bytes exceed the source slot's byte_len.",
+            "Re-parse self-check confirms the patched archive emits the same SceneIndex shape (sans drifted byte_offset/byte_len) and the same per-scene InstructionKind+StringSlot count."
+          ],
+          "acceptanceCriteria": [
+            "kaifuu-reallive patchback accepts a SlotEdit with LengthChanging policy and produces a byte-different but structurally-equivalent archive that re-parses cleanly.",
+            "Per-game evidence at ALPHA-006 confirms a Sweetie HD title can ship patched bytes that the RealLive runtime accepts without runtime regression.",
+            "Verification: kaifuu-reallive::patchback rejects an edit when the offset-table rewrite would require recomputing a jump target whose absolute resolution is not yet evidenced."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-reallive patchback_length_changing"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-engine-fixture reallive_adapter_patch_round_trips_length_changing_translation"
+            },
+            {
+              "type": "manual",
+              "value": "ALPHA-006 evidence pack: confirm patched SEEN.TXT loads cleanly in a Sweetie HD runtime smoke."
+            }
+          ],
+          "auditFocus": [
+            "Offset-table rewrite corrupting non-edited scene byte ranges.",
+            "Jump-target recalculation missing an opcode that embeds an absolute offset.",
+            "Patched archive parses but the runtime cannot load it (silent corruption)."
+          ]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-174-F002",
+      "severity": "P3",
+      "title": "Sweetie HD protected-span catalogue expansion",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-reallive/src/protected_spans.rs",
+          "line": 33,
+          "symbol": "ProtectedSpanKind"
+        },
+        {
+          "path": ".plan/KAIFUU-174.md",
+          "symbol": "§6.1"
+        }
+      ],
+      "description": "KAIFUU-174 §6.1 disclosed that the bounded 9-kind catalogue + UnknownControl catch-all is sufficient for synthetic fixtures but expected to surface unknown_control warnings against real Sweetie HD bytes. The catalogue expansion is evidence-first: each new kind requires a paired fixture line plus an RLDEV citation. ALPHA-006 will discover the actual shapes; KAIFUU-174 leaves the runway empty by design. Carried over from the original audit (was KAIFUU-174-F003, P3) — still valid because the repair pair did not touch protected_spans.rs.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": ".plan/KAIFUU-174.md §13 (Risks): 'Real-game Sweetie HD will surface protected-span shapes not in the §6 catalogue. Mitigation: Expected. protected_span.unknown_control warning preserves the byte run and ships the BridgeUnit anyway. ALPHA-006 expands the catalogue with paired evidence per byte/shape.'"
+        },
+        {
+          "kind": "file",
+          "detail": "crates/kaifuu-reallive/src/protected_spans.rs declares the bounded ProtectedSpanKind enum with exactly 9 named variants plus UnknownControl; unchanged on HEAD=3f781db."
+        }
+      ],
+      "impact": "ALPHA-006 Sweetie HD translation will surface unknown_control warnings for catalogue-unrecognized control bytes; without expansion, those bytes are preserved but the translator UX sees noisy warnings.",
+      "actionableAcceptanceCriteria": [
+        "When ALPHA-006 evidence surfaces protected-span shapes not in the §6.1 catalogue, drop a follow-up node that adds the new ProtectedSpanKind variants with paired fixture lines and RLDEV citations.",
+        "The follow-up node MUST treat each new kind as an evidence-first addition (one paired fixture line + one public-doc citation per kind).",
+        "Verification: cargo test -p kaifuu-reallive detect_<new_kind>_at_byte_<XX> passes."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "RealLive protected-span catalogue expansion under Sweetie HD evidence",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "engine-adapters",
+          "dependsOn": ["KAIFUU-174", "ALPHA-006"],
+          "summary": "Expand the kaifuu-reallive ProtectedSpanKind catalogue when ALPHA-006 surfaces real-game control-byte shapes outside the bounded 9-kind set; each new kind requires a paired synthetic fixture line plus an RLDEV citation.",
+          "deliverables": [
+            "Per new ProtectedSpanKind variant: one synthetic fixture line, one RLDEV citation in the readiness-record addendum, one test in crates/kaifuu-reallive/tests/protected_spans.rs.",
+            "Update crates/kaifuu-reallive/src/protected_spans.rs catalogue table in the module doc-comment to mirror the new kinds."
+          ],
+          "acceptanceCriteria": [
+            "kaifuu-reallive::detect_protected_spans recognizes each new kind without warnings.",
+            "kaifuu.reallive.protected_span.unknown_control warning rate against the ALPHA-006 evidence pack drops to zero (or to a documented residual)."
+          ],
+          "verification": [
+            { "type": "command", "value": "cargo test -p kaifuu-reallive protected_spans" },
+            {
+              "type": "manual",
+              "value": "ALPHA-006 evidence pack: confirm protected-span unknown_control warning rate against Sweetie HD bytes."
+            }
+          ],
+          "auditFocus": [
+            "Catalogue expansion outpacing per-kind evidence (no silent additions).",
+            "Existing UnknownControl byte-preservation regressing as new kinds are added."
+          ]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-174-F003",
+      "severity": "P3",
+      "title": "BridgeBundle bridge_id UUIDv7 vs deterministic_id convention reconciliation across engine-fixture adapters",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-engine-fixture/src/lib.rs",
+          "symbol": "RealLiveProfileDetectorAdapter::extract"
+        },
+        {
+          "path": ".plan/KAIFUU-174.md",
+          "symbol": "§4.1 'The bridge bundle's bridge_id is a UUIDv7'"
+        }
+      ],
+      "description": "Plan §4.1 specified `bridge_id = UUIDv7`, but the implementation uses `deterministic_id('reallive-bridge', 174)` because adding `uuid` to `crates/kaifuu-engine-fixture/Cargo.toml` would broaden the dep surface there. The deterministic id is consistent with Siglus/XP3 sibling adapters and is preferable for golden-snapshot byte-equality assertions (the kaifuu-cli `detect_cli_reports_reallive_adapter_on_synthetic_fixture` test relies on this). The plan §4.1 deviation should be ratified or the codebase should switch to UUIDv7 across all sibling adapters. Carried over from the original audit (was KAIFUU-174-F004, P3) — still valid because the repair pair did not touch the engine-fixture adapter.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "crates/kaifuu-engine-fixture/Cargo.toml has no `uuid` dep; crates/kaifuu-reallive/Cargo.toml has `uuid.workspace = true`."
+        },
+        {
+          "kind": "diff",
+          "detail": "crates/kaifuu-engine-fixture/src/lib.rs emits `bridge_id: deterministic_id('reallive-bridge', 174)`; this matches the Siglus pattern and the XP3 pattern in the same module; unchanged on HEAD=3f781db."
+        }
+      ],
+      "impact": "Plan §4.1 specifies UUIDv7 but the implementation diverged for consistency reasons; downstream consumers reading the readiness-record addendum may expect UUIDv7 and find deterministic_id instead.",
+      "actionableAcceptanceCriteria": [
+        "Either ratify the deterministic_id choice in docs/kaifuu-adapters/reallive.md (updating the addendum to drop the UUIDv7 claim) and update plan §4.1 to match; OR switch all sibling adapters (Siglus, XP3, fixture, RealLive) to UUIDv7 simultaneously and update the byte-equality golden tests to mask the field.",
+        "The chosen direction MUST be uniform across kaifuu-engine-fixture sibling adapters (Siglus + XP3 + fixture + RealLive)."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Reconcile BridgeBundle bridge_id stability convention across engine-fixture adapters",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "engine-adapters",
+          "dependsOn": ["KAIFUU-174"],
+          "summary": "Either ratify deterministic_id as the bridge_id convention across Siglus/XP3/fixture/RealLive sibling adapters (and update the KAIFUU-174 plan + readiness record to match), or migrate all four to UUIDv7 simultaneously and update the byte-equality golden-snapshot tests to mask the field.",
+          "deliverables": [
+            "Decision recorded in docs/kaifuu-adapters/reallive.md addendum (and Siglus/XP3 equivalents).",
+            "Either all four adapters use deterministic_id (plan §4.1 updated to match) or all four use uuid::Uuid::now_v7 with golden tests masking the field.",
+            "Single PR migrating the four adapters atomically so the convention is uniform."
+          ],
+          "acceptanceCriteria": [
+            "Grep for `deterministic_id\\(.*bridge.*\\)` across kaifuu-engine-fixture returns matches in all four adapters or none.",
+            "Grep for `Uuid::now_v7` against the bridge_id field returns matches in all four adapters or none.",
+            "Plan §4.1 of KAIFUU-174 and the equivalent sections in the Siglus/XP3 readiness records agree with the implementation."
+          ],
+          "verification": [
+            { "type": "command", "value": "cargo test -p kaifuu-engine-fixture" },
+            { "type": "command", "value": "cargo test -p kaifuu-cli" }
+          ],
+          "auditFocus": [
+            "Mixed convention surviving the migration.",
+            "Golden-snapshot tests breaking when UUIDv7 is adopted without the masking update."
+          ]
+        }
+      }
+    }
+  ]
+}
