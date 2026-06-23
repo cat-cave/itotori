@@ -1810,10 +1810,7 @@ function poolsForCompletenessWork(work: CatalogCompletenessPoolWork): CatalogCom
   ) {
     pools.push(catalogCompletenessPoolValues.noEnglish);
   }
-  if (
-    statuses.length === 0 ||
-    statuses.every((status) => status === catalogLanguageStatusValues.unknown)
-  ) {
+  if (statuses.every((status) => status === catalogLanguageStatusValues.unknown)) {
     pools.push(catalogCompletenessPoolValues.unknown);
   }
   return pools;
