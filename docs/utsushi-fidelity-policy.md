@@ -219,6 +219,19 @@ agent-inspectable evidence, a partial or full VM is the expected path. A weak
 wrapper that cannot support the envisioned Itotori workflows must not be treated
 as an adequate substitute just because it is simpler.
 
+Shipped runtime validation is always via a native Utsushi engine port. Existing
+native runtimes (NW.js, browser, Wine) may be used as _launch hosts for
+instrumentation_ when the engine's native form is itself a web or cross-platform
+app — RPG Maker MV/MZ is the canonical example, where browser/NW.js is the
+engine's actual runtime and instrumenting it is instrumenting the engine. They
+are not a substitute for a port when the engine has its own native runtime
+requirement. For engines without cross-platform native runtimes — Siglus,
+RealLive, full KiriKiri, Wolf RPG Editor, and similar — the validation path is a
+Rust or WASM port (siglus_rs, rlvm-equivalent, etc., incorporated as Rust
+dependencies or vendored crates), never a foreign-runtime wrap. Wrapping the
+original Windows binary under Wine and calling its output Utsushi evidence is
+not a valid alpha path for those engines.
+
 ## Alpha Bar
 
 For alpha readiness, Utsushi must support synthetic fixture evidence through E2

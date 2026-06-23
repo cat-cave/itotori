@@ -2693,8 +2693,8 @@
       "id": "KAIFUU-009",
       "title": "KiriKiri KAG plaintext reference adapter",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -3225,12 +3225,12 @@
       "id": "KAIFUU-065",
       "title": "Remote helper execution boundary",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "kaifuu-core",
       "dependsOn": ["KAIFUU-064"],
-      "summary": "Add the optional remote helper boundary for agent-friendly Windows helper hosts with explicit authentication, redaction, timeout, and local-only secret material policies.",
+      "summary": "Capture the dynamic-key-discovery helper boundary as a continuous-tier reference for engines where a specific claimed game proves that static-Rust extraction is insufficient and runtime memory-scanning is required; pure adapters never depend on this.",
       "deliverables": [
         "Remote helper request and response schema",
         "Authentication and host capability policy",
@@ -3253,7 +3253,9 @@
         }
       ],
       "auditFocus": [
-        "Remote helper becoming required for CI",
+        "Dynamic-key helper invoked without a specific claimed game proving static-Rust extraction is insufficient",
+        "Pure Kaifuu adapter depending on the dynamic-key-discovery helper boundary",
+        "Helper boundary advertised as part of any alpha capability claim",
         "Raw key or private path over RPC",
         "Unauthenticated helper execution"
       ]
@@ -3431,7 +3433,7 @@
         "KAIFUU-064",
         "KAIFUU-066"
       ],
-      "summary": "Implement the first Siglus static key helper adapter boundary using fixture stubs and optional local static helper execution, with candidate validation against profile proof data.",
+      "summary": "Implement Siglus static-key discovery via in-process Rust static analysis of game executables (`siglus_static_key_tool`-equivalent logic ported into kaifuu-siglus); validates candidate keys against profile proof data without shelling out.",
       "deliverables": [
         "Siglus static helper capability entry",
         "Fixture stub helper",
@@ -3461,7 +3463,8 @@
       "auditFocus": [
         "Static helper leakage",
         "Invalid key accepted",
-        "Helper called from pure adapter"
+        "Helper called from pure adapter",
+        "Static-key logic shelled out instead of ported"
       ]
     },
     {
@@ -3552,8 +3555,8 @@
       "id": "KAIFUU-072",
       "title": "Profiled KiriKiri XP3 crypt patch smoke command",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-100", "KAIFUU-101", "KAIFUU-102", "KAIFUU-071"],
@@ -3598,8 +3601,8 @@
       "id": "KAIFUU-073",
       "title": "Wolf archive decrypt-patch smoke",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -3950,7 +3953,7 @@
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-095", "KAIFUU-096"],
-      "summary": "Implement an XP3 profile proof command that distinguishes plain XP3, encrypted XP3, helper-required XP3, and unsupported protected-executable cases before archive support claims.",
+      "summary": "Implement an XP3 profile proof command scoped to plain XP3 as the claimed-support concern: classifies plain XP3 (claimed: detect, extract, patch-back), and additionally distinguishes encrypted XP3, helper-required XP3, and unsupported protected-executable cases for routing diagnostics only with no encrypted patch-back claim.",
       "deliverables": [
         "`kaifuu xp3 profile-proof --fixture fixtures/kaifuu/kirikiri/xp3-profile.json` command contract",
         "XP3 profile schema examples for plain, encrypted, helper-required, and unsupported protected executable profiles",
@@ -4029,8 +4032,8 @@
       "id": "KAIFUU-040",
       "title": "Wolf RPG profile and helper-boundary proof command",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-120", "KAIFUU-121"],
@@ -4071,8 +4074,8 @@
       "id": "KAIFUU-041",
       "title": "BGI detector and profile readiness command",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-126", "KAIFUU-127", "KAIFUU-128"],
@@ -4376,7 +4379,7 @@
         "KAIFUU-044",
         "KAIFUU-046"
       ],
-      "summary": "Generate and validate KiriKiri XP3 capability profiles from detector, key-helper, crypt-profile, and archive fixture evidence instead of hand-authored readiness prose.",
+      "summary": "Generate and validate KiriKiri XP3 capability profiles from detector, key-helper, crypt-profile, and archive fixture evidence instead of hand-authored readiness prose. Capability profiles may describe encrypted XP3 variants for routing diagnostics, but only plain XP3 can enter claimed patch-back support; encrypted-variant entries are advertised as research-tier only.",
       "deliverables": [
         "`kaifuu xp3 capability-profile --fixture fixtures/kaifuu/kirikiri/xp3-profile.json` command contract",
         "Capability profile schema examples for plaintext .ks, plain XP3, encrypted XP3, helper-required XP3, protected executable, and universal dump workflows",
@@ -4413,8 +4416,8 @@
       "id": "KAIFUU-055",
       "title": "RPG Maker VX Ace RGSS3 profile and fixture proof",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-011", "KAIFUU-052", "KAIFUU-053", "CATALOG-003"],
@@ -4462,11 +4465,8 @@
       "dependsOn": [
         "KAIFUU-015",
         "KAIFUU-038",
-        "KAIFUU-040",
-        "KAIFUU-041",
         "KAIFUU-052",
         "KAIFUU-053",
-        "KAIFUU-055",
         "KAIFUU-043",
         "KAIFUU-044",
         "KAIFUU-046"
@@ -4759,8 +4759,8 @@
       "id": "KAIFUU-016",
       "title": "TyranoScript null-key adapter",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -4920,8 +4920,8 @@
       "id": "KAIFUU-022",
       "title": "Siglus pure extraction and patching adapter",
       "status": "planned",
-      "priority": "P2",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -8958,7 +8958,7 @@
       "title": "Reference runtime trace and capture recorder",
       "status": "planned",
       "priority": "P3",
-      "target": "continuous",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-014", "UTSUSHI-026", "UTSUSHI-029"],
@@ -9301,7 +9301,7 @@
         "Reports avoid unverifiable public claims",
         "MTL baseline is included",
         "Cost accounting includes model/provider metadata and ledger-derived token/cost estimates",
-        "Private-local results are summarized safely when present",
+        "Public-fixture benchmark decides alpha pass/fail; private-local aggregates are supplementary evidence and never gate the alpha claim or substitute for a missing public result.",
         "The benchmark command can run without private-local corpora by using public fixtures",
         "Readiness output links to benchmark seed selection, provider proof, and quality report artifacts"
       ],
@@ -9331,11 +9331,8 @@
       "parallelGroup": "alpha-integration",
       "dependsOn": [
         "KAIFUU-007",
-        "KAIFUU-016",
         "KAIFUU-054",
-        "KAIFUU-055",
         "KAIFUU-056",
-        "KAIFUU-041",
         "KAIFUU-060",
         "CATALOG-004",
         "ALPHA-000",
@@ -9345,8 +9342,6 @@
         "KAIFUU-039",
         "KAIFUU-068",
         "KAIFUU-070",
-        "KAIFUU-072",
-        "KAIFUU-073",
         "KAIFUU-105"
       ],
       "summary": "Implement a generated engine capability matrix that derives breadth/readiness evidence from adapter registries, readiness profiles, and fixture runs instead of hand-written claims.",
@@ -9429,9 +9424,15 @@
         "UNIV-021",
         "ALPHA-009",
         "CATALOG-061",
-        "KAIFUU-143",
-        "KAIFUU-145",
-        "KAIFUU-065"
+        "UTSUSHI-148",
+        "UTSUSHI-031",
+        "UTSUSHI-032",
+        "UTSUSHI-033",
+        "UTSUSHI-036",
+        "UTSUSHI-037",
+        "UTSUSHI-038",
+        "UTSUSHI-039",
+        "KAIFUU-022"
       ],
       "summary": "Prepare the suite to start a first real localization project with executable install, docs, security, limitation, example, and readiness checks.",
       "deliverables": [
@@ -9481,42 +9482,47 @@
     },
     {
       "id": "ALPHA-006",
-      "title": "First encrypted-profile Kaifuu vertical",
+      "title": "First real-engine end-to-end alpha vertical (Sukara/Oshioki Sweetie HD)",
       "status": "planned",
       "priority": "P1",
       "target": "alpha",
-      "projects": ["suite", "kaifuu", "shared"],
+      "projects": ["suite", "kaifuu", "shared", "utsushi", "itotori"],
       "parallelGroup": "alpha-integration",
       "dependsOn": [
         "KAIFUU-010",
         "KAIFUU-042",
         "KAIFUU-060",
         "KAIFUU-067",
-        "KAIFUU-072",
         "KAIFUU-048",
         "KAIFUU-049",
+        "KAIFUU-071",
         "KAIFUU-074",
         "SHARED-025",
-        "KAIFUU-102",
         "KAIFUU-105",
         "KAIFUU-106",
         "KAIFUU-107",
-        "KAIFUU-144"
+        "KAIFUU-171",
+        "KAIFUU-172",
+        "KAIFUU-173",
+        "KAIFUU-174",
+        "KAIFUU-176",
+        "UTSUSHI-146",
+        "UTSUSHI-147"
       ],
-      "summary": "Prove Kaifuu can run a real encrypted-profile loop through detect, key/profile resolution, extract, trivial patch, verify, and delta apply before the first real localization project begins.",
+      "summary": "Prove Kaifuu+Utsushi can run the full localization chain end-to-end on Sukara's *Oshioki Sweetie HD Remaster + Sweets fandisc* (RealLive engine), sourcing game bytes from the vault-curation catalog at /archive/vault/, through detect -> extract -> key resolution if required by the engine -> decompile -> patch -> verify -> delta-apply -> Utsushi render-validate. No shell-outs to existing tools (GARbro/SiglusExtract/UberWolf/etc.). If dynamic key discovery proves necessary for this title, the bounded helper boundary in KAIFUU-064 is used; if static parsing suffices, no helper infrastructure is invoked.",
       "deliverables": [
-        "Encrypted-profile vertical command",
-        "Public synthetic encrypted XP3 evidence bundle",
-        "Optional private-local validation summary",
-        "README-safe encrypted support summary"
+        "Full real-engine vertical command for the Sukara/Oshioki Sweetie HD + Sweets fandisc title",
+        "Vault-sourced run evidence bundle (read-only access via the itotori vault-source adapter)",
+        "Render-validate redacted public screenshots usable as feedback evidence",
+        "End-to-end run report with detect, extract, key-resolution (if any), decompile, patch, verify, delta-apply, and Utsushi render-validate stage artifacts",
+        "Out-of-profile semantic diagnostics surface"
       ],
       "acceptanceCriteria": [
-        "The vertical runs detect, key/profile resolution, extract, trivial patch, verify, and delta apply for the declared XP3 encrypted-profile fixture",
-        "Public CI uses only synthetic redistributable encrypted fixtures and fixture-only keys",
-        "When private-local XP3 validation is configured, the vertical consumes KAIFUU-102 redacted summaries and KAIFUU-105 claimed-support tuples",
-        "If no private-local inputs are configured, the alpha proof records not_private_validated with the skip artifact id instead of silently implying retail readiness",
-        "Optional private-local owned-game validation can attach redacted aggregate results without raw keys, assets, helper dumps, decrypted text, paths, or story filenames",
-        "Failures inside the declared encrypted support profile are treated as bugs or compatibility regressions, while out-of-profile inputs produce semantic diagnostics"
+        "The full chain succeeds end-to-end on the Sukara/Oshioki Sweetie HD Remaster + Sweets fandisc title using only Kaifuu+Utsushi (no shell-outs to GARbro/SiglusExtract/UberWolf/rlvm/siglus_static_key_tool or any other existing tool)",
+        "Game bytes are sourced exclusively through the itotori vault-source adapter (KAIFUU-176) against /archive/vault/; the vault is read-only for the duration of the run",
+        "If dynamic key discovery proves necessary for this title, the bounded helper boundary in KAIFUU-064 is used; if static parsing suffices, no helper infrastructure is invoked",
+        "Utsushi render-validate produces redacted public screenshots usable as feedback evidence (no private paths, no key material, no untranslated decrypted text dumps)",
+        "Out-of-profile failures emit semantic diagnostics rather than silent skips, and the run report distinguishes in-profile pass, in-profile bug, and out-of-profile diagnostic outcomes"
       ],
       "verification": [
         {
@@ -9533,18 +9539,24 @@
         },
         {
           "type": "command",
+          "value": "cargo test -p utsushi-reallive"
+        },
+        {
+          "type": "command",
           "value": "just check"
         },
         {
           "type": "manual",
-          "value": "Optional private-local encrypted vertical dry-run when corpus exists"
+          "value": "Sukara/Oshioki Sweetie HD vault-sourced end-to-end vertical run review"
         }
       ],
       "auditFocus": [
-        "Readiness profile mistaken for decrypt/patch support",
-        "Private key or asset leakage",
-        "Encrypted patch-back corruption",
-        "Out-of-profile failures mislabeled as bugs"
+        "Shell-out to existing tools (GARbro/SiglusExtract/UberWolf/rlvm/siglus_static_key_tool) hidden as a fallback path",
+        "Vault mutation or write access during a vertical run",
+        "Render-validate screenshots leaking private paths, keys, or untranslated decrypted text",
+        "Out-of-profile failures masquerading as silent skips or as in-profile bugs",
+        "Helper boundary invoked when static parsing would have sufficed for this title",
+        "Vertical claiming generality beyond the Sukara/Oshioki Sweetie HD + Sweets fandisc title"
       ]
     },
     {
@@ -10012,8 +10024,8 @@
       "id": "UTSUSHI-020",
       "title": "Runtime VFS and asset package boundary",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi", "kaifuu"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UTSUSHI-012", "UTSUSHI-004", "KAIFUU-052"],
@@ -10053,8 +10065,8 @@
       "id": "UTSUSHI-021",
       "title": "Deterministic input clock and replay log",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UTSUSHI-020"],
@@ -10090,8 +10102,8 @@
       "id": "UTSUSHI-022",
       "title": "Headless text render and audio sink contracts",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UTSUSHI-020"],
@@ -10131,8 +10143,8 @@
       "id": "UTSUSHI-023",
       "title": "Inspectable state and snapshot primitives",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UTSUSHI-021"],
@@ -10172,8 +10184,8 @@
       "id": "UTSUSHI-024",
       "title": "WASM embed ABI fixture",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
       "dependsOn": ["UTSUSHI-022", "UTSUSHI-023"],
@@ -10213,8 +10225,8 @@
       "id": "UTSUSHI-025",
       "title": "Engine port implementation map validator",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-020"],
@@ -10254,8 +10266,8 @@
       "id": "UTSUSHI-026",
       "title": "Runtime conformance manifest and result schema",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-021"],
@@ -10296,7 +10308,7 @@
       "title": "Trace and branch conformance",
       "status": "planned",
       "priority": "P3",
-      "target": "continuous",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-026"],
@@ -10337,7 +10349,7 @@
       "title": "Snapshot conformance",
       "status": "planned",
       "priority": "P3",
-      "target": "continuous",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-026", "UTSUSHI-023"],
@@ -10374,7 +10386,7 @@
       "title": "Capture and recording artifact conformance",
       "status": "planned",
       "priority": "P3",
-      "target": "continuous",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-026", "UTSUSHI-022"],
@@ -10414,8 +10426,8 @@
       "id": "UTSUSHI-030",
       "title": "Runtime conformance ingestion fixture",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi", "itotori"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-027", "UTSUSHI-028", "UTSUSHI-029", "UTSUSHI-003"],
@@ -10455,8 +10467,8 @@
       "id": "UTSUSHI-031",
       "title": "MV/MZ instrumented runtime smoke",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-006", "UTSUSHI-027", "UTSUSHI-029", "UTSUSHI-102"],
@@ -10496,8 +10508,8 @@
       "id": "UTSUSHI-032",
       "title": "MV/MZ JSON event replay skeleton",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-023", "UTSUSHI-027", "UTSUSHI-025", "KAIFUU-007"],
@@ -10537,8 +10549,8 @@
       "id": "UTSUSHI-033",
       "title": "MV/MZ message and choice command pack",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-032"],
@@ -10575,8 +10587,8 @@
       "id": "UTSUSHI-034",
       "title": "Siglus Rust VM integration smoke",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-035", "UTSUSHI-023", "UTSUSHI-027"],
@@ -10618,8 +10630,8 @@
       "id": "UTSUSHI-035",
       "title": "Siglus Scene and Gameexe parser boundary",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-020", "UTSUSHI-025", "KAIFUU-015", "KAIFUU-050"],
@@ -10659,8 +10671,8 @@
       "id": "UTSUSHI-036",
       "title": "Siglus opcode profile scaffold",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-034", "UTSUSHI-028"],
@@ -10697,8 +10709,8 @@
       "id": "UTSUSHI-037",
       "title": "KAG plaintext parser replay skeleton",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["KAIFUU-009", "UTSUSHI-023", "UTSUSHI-027", "UTSUSHI-025"],
@@ -10738,8 +10750,8 @@
       "id": "UTSUSHI-038",
       "title": "KAG macro and storage subset",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-037"],
@@ -10775,8 +10787,8 @@
       "id": "UTSUSHI-039",
       "title": "KiriKiri XP3 VFS handoff smoke",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-037", "KAIFUU-054"],
@@ -13379,8 +13391,8 @@
       "id": "KAIFUU-100",
       "title": "Profiled XP3 crypt decrypt/extract fixture",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-096", "KAIFUU-098", "KAIFUU-050"],
@@ -13418,8 +13430,8 @@
       "id": "KAIFUU-101",
       "title": "Profiled XP3 trivial patch rebuild and verify",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-100", "KAIFUU-010"],
@@ -13457,8 +13469,8 @@
       "id": "KAIFUU-102",
       "title": "XP3 private-local redacted helper summary",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": ["KAIFUU-067", "KAIFUU-101"],
@@ -13542,11 +13554,8 @@
         "KAIFUU-015",
         "KAIFUU-038",
         "KAIFUU-039",
-        "KAIFUU-040",
-        "KAIFUU-041",
         "KAIFUU-068",
         "KAIFUU-070",
-        "KAIFUU-072",
         "KAIFUU-103",
         "UNIV-016",
         "SHARED-025"
@@ -14083,8 +14092,8 @@
       "id": "KAIFUU-120",
       "title": "Wolf archive and protection detector profile fixtures",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-034", "KAIFUU-035", "KAIFUU-051"],
@@ -14122,8 +14131,8 @@
       "id": "KAIFUU-121",
       "title": "Wolf key and protection helper-boundary fixtures",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-087", "KAIFUU-120"],
@@ -14161,8 +14170,8 @@
       "id": "KAIFUU-126",
       "title": "BGI container and compression detector fixtures",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-034", "KAIFUU-035", "KAIFUU-051"],
@@ -14200,8 +14209,8 @@
       "id": "KAIFUU-127",
       "title": "BGI header and no-header bytecode profile fixtures",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-082", "KAIFUU-126"],
@@ -14239,8 +14248,8 @@
       "id": "KAIFUU-128",
       "title": "BGI encrypted and compressed unknown-variant semantic negatives",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-research",
       "dependsOn": ["KAIFUU-126"],
@@ -14317,7 +14326,7 @@
       "title": "Bridge-linked jump target and replay-log fixture",
       "status": "planned",
       "priority": "P3",
-      "target": "continuous",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-012", "UTSUSHI-021"],
@@ -14355,7 +14364,7 @@
       "title": "Fixture snapshot restore playback smoke",
       "status": "planned",
       "priority": "P3",
-      "target": "continuous",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-012", "UTSUSHI-023", "UTSUSHI-028"],
@@ -14393,7 +14402,7 @@
       "title": "Controlled playback recording metadata smoke",
       "status": "planned",
       "priority": "P3",
-      "target": "continuous",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-012", "UTSUSHI-029"],
@@ -15463,8 +15472,8 @@
       "id": "UTSUSHI-103",
       "status": "planned",
       "title": "Engine-port runner crate template and ABI conformance",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-050", "UTSUSHI-056"],
@@ -16449,8 +16458,8 @@
       "id": "UTSUSHI-120",
       "title": "Runtime substrate facade and conformance release",
       "status": "planned",
-      "priority": "P3",
-      "target": "continuous",
+      "priority": "P1",
+      "target": "alpha",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": [
@@ -18088,8 +18097,8 @@
       "id": "KAIFUU-143",
       "title": "RPG Maker RGSS3 profiled extract-patch smoke",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu", "shared"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -18138,8 +18147,8 @@
       "id": "KAIFUU-144",
       "title": "First private-local XP3 encrypted profile validation gate",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu", "suite"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -18188,8 +18197,8 @@
       "id": "KAIFUU-145",
       "title": "Wolf first encrypted archive smoke",
       "status": "planned",
-      "priority": "P1",
-      "target": "alpha",
+      "priority": "P2",
+      "target": "continuous",
       "projects": ["kaifuu"],
       "parallelGroup": "engine-adapters",
       "dependsOn": [
@@ -20620,6 +20629,375 @@
         "Legacy compatibility policy is explicit",
         "No regression in v0.2 source identity validation",
         "Diagnostics guide patch authors toward safe source identity"
+      ]
+    },
+    {
+      "id": "KAIFUU-171",
+      "title": "Synthetic encrypted-XP3 contract scaffolding fixture",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-095", "KAIFUU-096", "KAIFUU-097", "KAIFUU-098"],
+      "summary": "Exercise the encrypted-XP3 detect/key-resolution/extract/patch/verify/delta-apply contract end-to-end against a synthetic redistributable fixture so the contract surface remains continuously tested in public CI without being the alpha proof itself.",
+      "deliverables": [
+        "Synthetic redistributable encrypted-XP3 contract scaffolding fixture",
+        "End-to-end contract harness exercising detect, key-resolution, extract, patch, verify, and delta-apply against the synthetic fixture",
+        "Public CI integration that runs the scaffolding without private corpora",
+        "Explicit not-a-retail-readiness-claim disclaimer in the harness output"
+      ],
+      "acceptanceCriteria": [
+        "The synthetic fixture is public-redistributable and never embeds real retail-game material",
+        "The harness exercises the full encrypted-XP3 contract surface (detect -> key resolution -> extract -> patch -> verify -> delta apply) end-to-end in public CI",
+        "The harness output declares itself as contract scaffolding and does not claim retail encrypted-XP3 readiness",
+        "Contract drift (missing or changed stage) fails the harness with a semantic diagnostic"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        },
+        {
+          "type": "command",
+          "value": "just fixtures-validate"
+        }
+      ],
+      "auditFocus": [
+        "Synthetic scaffolding misread as retail encrypted-XP3 readiness",
+        "Embedded retail-game material in the synthetic fixture",
+        "Contract stages silently skipped",
+        "Public CI dependency on private corpora"
+      ]
+    },
+    {
+      "id": "KAIFUU-172",
+      "title": "RealLive engine detector",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-006", "KAIFUU-034"],
+      "summary": "Implement a deterministic RealLive engine/variant detector that distinguishes RealLive from Siglus and AVG32 using Scene format, SEEN.TXT/SEEN.GAN/Gameexe.ini signatures, and engine-specific archive markers.",
+      "deliverables": [
+        "Pure-Rust RealLive detector module",
+        "Variant discrimination against Siglus and AVG32 using Scene/SEEN/Gameexe.ini signatures",
+        "Engine-specific archive marker recognition",
+        "Capability report integration via the engine detection CLI"
+      ],
+      "acceptanceCriteria": [
+        "The detector deterministically distinguishes RealLive from Siglus and AVG32 on the declared fixture set",
+        "Detection runs entirely in pure Rust without shelling out to rlvm or any other existing tool",
+        "Ambiguous or unsupported variants emit semantic diagnostics rather than guessing",
+        "rlvm is referenced only as a research anchor (provenance and clean-room notes) and not invoked at runtime"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        },
+        {
+          "type": "manual",
+          "value": "RealLive detector fixture review"
+        }
+      ],
+      "auditFocus": [
+        "RealLive misclassified as Siglus or AVG32",
+        "Shell-out to rlvm or other existing tools",
+        "Ambiguous variants accepted silently",
+        "Clean-room boundary or rlvm provenance gaps"
+      ]
+    },
+    {
+      "id": "KAIFUU-173",
+      "title": "RealLive Scene/SEEN parser-boundary smoke",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-172", "KAIFUU-014", "KAIFUU-052"],
+      "summary": "Pure-Rust RealLive Scene/SEEN parser-boundary smoke proving RLDEV-style instruction recognition, string-slot extraction, and structured AST emission for one fixture-safe RealLive scene.",
+      "deliverables": [
+        "Pure-Rust RealLive Scene/SEEN parser-boundary smoke",
+        "One fixture-safe RealLive scene parsed end-to-end",
+        "RLDEV-style instruction recognition coverage",
+        "Structured AST emission with string-slot extraction"
+      ],
+      "acceptanceCriteria": [
+        "One fixture-safe RealLive scene parses end-to-end and emits a structured AST",
+        "RLDEV-style instructions are recognized with named opcodes, not opaque byte ranges",
+        "String slots are extracted with stable identifiers usable by the bridge schema",
+        "Unrecognized instructions and out-of-profile inputs emit semantic diagnostics rather than silent skips"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-reallive"
+        },
+        {
+          "type": "manual",
+          "value": "RealLive Scene/SEEN parser-boundary smoke review"
+        }
+      ],
+      "auditFocus": [
+        "Instructions decoded as opaque byte ranges",
+        "String-slot identifiers unstable across runs",
+        "Parser-boundary failures hidden as silent skips",
+        "RLDEV provenance or clean-room boundary gaps"
+      ]
+    },
+    {
+      "id": "KAIFUU-174",
+      "title": "RealLive AVG32-variant text inventory adapter",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-172", "KAIFUU-173", "KAIFUU-001", "KAIFUU-021"],
+      "summary": "Pure-Rust Kaifuu adapter that inventories RealLive AVG32-variant text surfaces (Scene/SEEN/Gameexe text slots, protected markup, asset references), extracts to the bridge schema, and supports patch-back through the layered access pipeline. Engine-generic, not game-specific.",
+      "deliverables": [
+        "Pure-Rust Kaifuu RealLive AVG32-variant text inventory adapter",
+        "Bridge-schema extraction of Scene/SEEN/Gameexe text slots and protected markup",
+        "Patch-back support through the layered access pipeline",
+        "Asset-reference inventory output"
+      ],
+      "acceptanceCriteria": [
+        "The adapter inventories Scene/SEEN/Gameexe text slots, protected markup, and asset references for AVG32-variant RealLive titles",
+        "Extraction lands in the bridge schema with stable identifiers and protected-span markup",
+        "Patch-back round-trips through the layered access pipeline without corrupting non-text bytes",
+        "The adapter is engine-generic across AVG32-variant RealLive titles, not specialized to one game"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-reallive"
+        },
+        {
+          "type": "manual",
+          "value": "RealLive AVG32-variant text inventory adapter review"
+        }
+      ],
+      "auditFocus": [
+        "Adapter specialized to one game rather than engine-generic",
+        "Patch-back corrupting non-text bytes",
+        "Protected markup lost or misclassified",
+        "Bridge identifiers unstable across runs"
+      ]
+    },
+    {
+      "id": "KAIFUU-176",
+      "title": "Itotori vault-source localCorpus adapter",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["kaifuu", "itotori"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-001", "CATALOG-065"],
+      "summary": "Implement the cross-project itotori adapter that reads owned-game bytes from /archive/vault/ (vault-curation's content-addressed store): queries catalog.db (works/producers/releases/release_artifacts/facts) to discover claimed-engine games, resolves to content-addressed artifacts/by-sha/<aa>/<bb>/<hash>.7z, extracts on demand into /scratch/itotori/<game-id>/<run-id>/extracted/, cross-checks against embedded _vault/metadata.json, and never modifies the vault. Registers as a localCorpus source. Secrets (.kaifuu/secrets.local/) remain Linux-side, separate from the vault.",
+      "deliverables": [
+        "Itotori vault-source localCorpus adapter crate or module",
+        "catalog.db query layer over works/producers/releases/release_artifacts/facts for claimed-engine discovery",
+        "Content-addressed artifacts/by-sha/<aa>/<bb>/<hash>.7z resolver",
+        "On-demand extraction into /scratch/itotori/<game-id>/<run-id>/extracted/",
+        "Cross-check against embedded _vault/metadata.json",
+        "localCorpus source registration",
+        "Secrets-boundary policy keeping .kaifuu/secrets.local/ Linux-side and outside the vault"
+      ],
+      "acceptanceCriteria": [
+        "The adapter reads from /archive/vault/ exclusively and never modifies the vault for any run",
+        "catalog.db is queried for works/producers/releases/release_artifacts/facts to discover claimed-engine games before resolution",
+        "Artifacts resolve via the content-addressed artifacts/by-sha/<aa>/<bb>/<hash>.7z path layout",
+        "Extraction lands in /scratch/itotori/<game-id>/<run-id>/extracted/ and is cross-checked against embedded _vault/metadata.json",
+        "The adapter registers as a localCorpus source and is consumable by Kaifuu and Itotori runs",
+        "Secrets in .kaifuu/secrets.local/ remain Linux-side and are never read from or written into the vault",
+        "Adapter contract follows docs/itotori-vault-source-adapter.md"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "manual",
+          "value": "Itotori vault-source localCorpus adapter contract review"
+        }
+      ],
+      "auditFocus": [
+        "Vault mutation or write access",
+        "Bypass of catalog.db discovery to read raw vault paths",
+        "Extraction outside /scratch/itotori/<game-id>/<run-id>/extracted/",
+        "Cross-check against _vault/metadata.json skipped",
+        "Secrets read from or written into the vault",
+        "Adapter advertising games not present in catalog.db"
+      ]
+    },
+    {
+      "id": "UTSUSHI-146",
+      "title": "RealLive runtime port (rlvm research anchor)",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": [
+        "UTSUSHI-020",
+        "UTSUSHI-021",
+        "UTSUSHI-022",
+        "UTSUSHI-023",
+        "UTSUSHI-056",
+        "UTSUSHI-103",
+        "UTSUSHI-120"
+      ],
+      "summary": "Pure-Rust RealLive runtime port using rlvm as the research anchor: VFS handoff, Scene/SEEN replay, headless render sink, deterministic clock/input, snapshot primitives. Built on the UTSUSHI substrate facade (UTSUSHI-120). Logic is ported into a new utsushi-reallive crate; rlvm is not invoked as a binary.",
+      "deliverables": [
+        "`utsushi-reallive` crate with pure-Rust RealLive runtime port",
+        "VFS handoff against Kaifuu archive output",
+        "Scene/SEEN replay through the substrate facade",
+        "Headless render sink via UTSUSHI-022",
+        "Deterministic clock/input via UTSUSHI-021",
+        "Snapshot primitives via UTSUSHI-023",
+        "rlvm provenance, license review, and clean-room boundary notes"
+      ],
+      "acceptanceCriteria": [
+        "The runtime port is built on the UTSUSHI-120 substrate facade and does not import substrate internals directly",
+        "Scene/SEEN replay produces deterministic trace and snapshot evidence through Utsushi runtime contracts",
+        "Headless render and deterministic clock/input land through the substrate sinks, not engine-specific shortcuts",
+        "rlvm is referenced only as a research anchor (provenance, license, and clean-room boundary notes) and never invoked as a binary",
+        "Out-of-profile or unsupported scenes emit semantic diagnostics rather than silent skips"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-reallive"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "manual",
+          "value": "RealLive runtime port and rlvm clean-room boundary review"
+        }
+      ],
+      "auditFocus": [
+        "rlvm invoked as a binary instead of being treated as a research anchor",
+        "Substrate internals imported instead of using the UTSUSHI-120 facade",
+        "Engine-specific shortcuts bypassing substrate sinks",
+        "Out-of-profile scenes hidden as silent skips",
+        "rlvm provenance, license, or clean-room boundary gaps"
+      ]
+    },
+    {
+      "id": "UTSUSHI-147",
+      "title": "RealLive/Siglus shared substrate alignment",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-034", "UTSUSHI-120", "UTSUSHI-146"],
+      "summary": "Prove that the Utsushi substrate facade can host both RealLive (UTSUSHI-146) and Siglus (UTSUSHI-034+) ports through one stable API surface; emit conformance evidence that both engines share the same VFS/render/snapshot semantics, enabling the AVG32->RealLive->Siglus lineage to extend the same port scope.",
+      "deliverables": [
+        "Cross-engine conformance fixture covering RealLive and Siglus ports against one substrate API surface",
+        "Conformance evidence that both engines share VFS/render/snapshot semantics",
+        "Substrate API drift regression coverage",
+        "Lineage extension notes capturing the AVG32->RealLive->Siglus port scope"
+      ],
+      "acceptanceCriteria": [
+        "Both RealLive (UTSUSHI-146) and Siglus (UTSUSHI-034+) ports compile and run against the same UTSUSHI-120 substrate facade",
+        "Conformance evidence proves shared VFS, render, and snapshot semantics across both engines without engine-specific facade exceptions",
+        "Substrate API drift between the two engines fails the conformance fixture with a semantic diagnostic",
+        "Lineage extension notes record the AVG32->RealLive->Siglus port-scope reasoning and any boundaries that do not extend"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-reallive"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-siglus"
+        },
+        {
+          "type": "manual",
+          "value": "RealLive/Siglus substrate alignment review"
+        }
+      ],
+      "auditFocus": [
+        "Engine-specific facade exceptions hidden behind shared API claim",
+        "Substrate API drift accepted silently",
+        "Lineage extension claim made without conformance evidence",
+        "VFS/render/snapshot semantics diverging between engines"
+      ]
+    },
+    {
+      "id": "UTSUSHI-148",
+      "title": "Browser launch alpha contract tightening",
+      "status": "planned",
+      "priority": "P1",
+      "target": "alpha",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-050"],
+      "summary": "Succeed the complete UTSUSHI-050 with a contract tightening that removes 'when host support exists' optionality from the browser launch path: Chromium browser launch is required for any MV/MZ alpha claim and must always succeed in supported environments (with environmental misconfiguration treated as a hard error, not a graceful skip); NW.js path is explicitly marked research-tier with an unsupported-diagnostic and removed from alpha capability advertising.",
+      "deliverables": [
+        "Browser launch alpha contract tightening that removes 'when host support exists' optionality",
+        "Chromium browser launch as a required alpha capability for MV/MZ claims",
+        "Environmental misconfiguration treated as a hard error with semantic diagnostics",
+        "NW.js path explicitly marked research-tier and removed from alpha capability advertising"
+      ],
+      "acceptanceCriteria": [
+        "Chromium browser launch is required for any MV/MZ alpha claim and always succeeds in supported environments",
+        "Environmental misconfiguration emits a hard-error semantic diagnostic and is never silently skipped",
+        "NW.js is explicitly marked research-tier with an unsupported-diagnostic and is not advertised as an alpha capability",
+        "MV/MZ alpha capability surface no longer includes 'when host support exists' optionality on the browser launch path"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        },
+        {
+          "type": "manual",
+          "value": "Browser launch alpha contract tightening review"
+        }
+      ],
+      "auditFocus": [
+        "'When host support exists' optionality re-introduced on the browser launch path",
+        "Environmental misconfiguration silently skipped instead of erroring",
+        "NW.js advertised as an alpha capability",
+        "MV/MZ alpha claim made without Chromium browser launch success"
       ]
     }
   ]

@@ -285,6 +285,45 @@ Adapters must not:
 - Dump helper logs, process memory, decrypted scripts, raw retail filenames, or
   absolute paths.
 - Claim protected-engine production support from private-only helper evidence.
+- Shell out to existing extraction or runtime tools (GARbro, KrkrExtract,
+  SiglusExtract, UberWolf, WolfDec, RPG-Maker-MV-Decrypter, BGIKit,
+  VNTranslationTools, etc.) at runtime. Even when a similar piece of logic
+  already exists in one of those tools, that code is consulted as research
+  only; the Kaifuu adapter implements the logic in pure Rust. The native crate
+  is the support boundary — not a wrapper around a third-party binary.
+
+## Per-game evidence-first helper determination
+
+Helper infrastructure is not pre-spec'd speculatively. Before any
+dynamic-key-discovery helper (Wine wrapper, VM-passthrough adapter, mem-scan
+probe, remote Windows transport, etc.) is added for a claimed game, the worker
+must first demonstrate that the in-process static-Rust extraction path is
+genuinely insufficient for that specific game's protected variant.
+
+The default for every claimed game is _no helper needed_. The rule is:
+
+- If pure-Rust static parsing of the game's files and shipped executable yields
+  the keys/profile needed to extract → decrypt → decompile → patch → verify →
+  delta-apply, ship that. The adapter is complete; no helper class beyond
+  `static-parser` is involved.
+- If static parsing genuinely cannot recover what is needed for a specific
+  claimed game's protected variant, record that evidence in the readiness
+  record (what was tried, what was observed, why it is insufficient). Only
+  then does the bounded helper boundary (`KAIFUU-064`) come into play, and
+  only then is the appropriate per-channel adapter (Wine wrapper, local
+  Windows process, remote host, etc.) added — scoped to that game's actual
+  need.
+- A speculative "we might need a mem-scan probe for this engine someday" is
+  not a reason to add helper infrastructure. The engine may have several
+  claimed games where static parsing is sufficient and one where it is not;
+  the helper appears at the point where that one game proves it.
+
+This rule applies even when a similar logic path exists in GARbro,
+KrkrExtract, SiglusExtract, UberWolf, WolfDec, RPG-Maker-MV-Decrypter, BGIKit,
+VNTranslationTools, or any other existing tool. Those tools are consulted as
+research references; their code informs the Rust port. The Kaifuu adapter
+implements the logic itself in pure Rust and never invokes the reference tool
+as a binary at runtime.
 
 ## Remote Windows And Wine Helper Protocol Sketch
 

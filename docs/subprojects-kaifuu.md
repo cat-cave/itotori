@@ -3,6 +3,22 @@
 Kaifuu owns engine detection, inventory, readiness, extraction, patching,
 verification, and `.kaifuu` delta packages.
 
+**Operating commitments.** Three rules govern every Kaifuu adapter, regardless
+of engine family:
+
+- _No shell-outs._ Kaifuu never invokes existing extraction tools (GARbro,
+  KrkrExtract, SiglusExtract, UberWolf, WolfDec, RPG-Maker-MV-Decrypter, BGIKit,
+  VNTranslationTools, etc.) as binaries at runtime. Their logic is ported into
+  native Rust crates. Existing tools may be cited as research references in
+  documentation; the code never depends on them.
+- _End-to-end for claimed engines._ An engine variant enters claimed-support
+  only when detect, extract, decrypt (if needed), decompile, patch, verify, and
+  delta-apply all work on real owned inputs. Anything less is research-tier.
+- _Cross-OS._ Kaifuu runs natively on Linux, macOS, and Windows. Platform-
+  specific helper channels (Wine wrappers, VM passthrough, etc.) are device-
+  specific implementations of a cross-OS trait — never baked into the core
+  extraction or patching paths.
+
 The scaffold implements fixture extraction and patch support, plus real-engine
 detection/readiness slices. Real-engine extraction, key validation, decryption,
 and patch-back support are tracked per engine profile; a detector match is not

@@ -221,21 +221,33 @@ declarations.
 
 ## Helper Classes
 
-Kaifuu should support multiple helper classes behind one structured result
-contract:
+Kaifuu collapses prior helper variants into three classes behind one structured
+result contract. Earlier drafts split out "Wine/local Windows helper" and
+"Remote Windows helper" as separate classes; those were transport
+implementations of the same dynamic-mem-scan capability and are no longer top-
+level classes. Per-channel transport adapters (Wine, local Windows process,
+remote Windows host) are added only when a specific claimed game proves the
+need.
 
-- **Static parser**: reads project files or executables directly and extracts or
-  validates key candidates when the format is known.
-- **Known-key database import**: imports local/community key entries into local
-  secret storage, recording source metadata without publishing the key.
-- **Wine/local Windows helper**: runs engine-specific helper code beside the
-  owned game to produce a redacted key-profile result.
-- **Remote Windows helper**: optionally lets a Linux/macOS development agent
-  request a local network Windows host to run a helper and return structured
-  redacted evidence. This belongs to continuous helper expansion unless a later
-  DAG node makes an exact remote workflow alpha-blocking.
-- **Manual key entry**: lets the user provide a known key and validates it
-  against local assets before pure adapters consume it.
+- **static-parser** (the default path): in-process Rust static analysis of game
+  files and executables. Reads project files or shipped binaries directly and
+  extracts or validates key candidates when the format is known. This is what
+  every claimed engine starts with; no helper infrastructure beyond pure Rust is
+  required.
+- **known-key-import**: manual or local-database known-key import into the
+  secret store. Imports local or community key entries (and accepts manual key
+  entry from the user) into local secret storage, recording source metadata
+  without publishing the key. Validates the imported key against local assets
+  before pure adapters consume it.
+- **dynamic-mem-scan**: runtime memory scanning of a running protected process,
+  used only when static analysis is genuinely insufficient for a specific game's
+  protected variant. Engine- and game-specific evidence is required before
+  adding this for a claimed game (see the per-game evidence-first rule in the
+  [engine playbook](kaifuu-engine-playbook.md)). Execution is bounded under
+  KAIFUU-064. Cross-OS coverage is provided through per-channel adapters (Wine
+  wrapper, local Windows process, remote Windows host, VM passthrough, etc.)
+  that implement a shared trait — each adapter is added only when a specific
+  claimed game proves need, never pre-spec'd.
 
 All helper outputs must be schema-validated, redacted before persistence, and
 safe to include in aggregate readiness reports.
@@ -344,6 +356,12 @@ missing refs, wrong engine profile ids, source-hash mismatches, or any raw key
 serialization before invoking helper logic.
 
 ## 2026 Research Snapshot
+
+**These tools are _research references only_.** Kaifuu does not invoke any of
+them at runtime; their logic is ported into native Rust crates. The table below
+records observed behavior and Kaifuu implications so adapter workers can study
+the formats and validate their Rust ports against tool output — not so adapters
+can shell out.
 
 Current tooling points to several different key-discovery mechanisms. Kaifuu
 should model each as evidence and helper capability, not collapse them into a
@@ -476,6 +494,11 @@ hash-list hash, engine family counts, key-profile ids, redacted proof hashes,
 tool versions, and command lines.
 
 ## Reference Anchors
+
+These tools are _research references only_. Kaifuu does not invoke any of them
+at runtime; their logic is ported into native Rust crates. The links exist so
+adapter workers can read their source for format understanding and behavior
+validation, not so the project can depend on them as binaries.
 
 - GARbro: <https://github.com/morkt/GARbro>
 - GARbro KiriKiri XP3 implementation: <https://github.com/morkt/GARbro/blob/master/ArcFormats/KiriKiri/ArcXP3.cs>

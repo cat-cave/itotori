@@ -55,6 +55,23 @@ useful enough to justify a port. Utsushi roadmap specs are implementable
 engine-port slices, not feasibility reports or decisions about whether runtime
 work should exist.
 
+### Native ports are co-equal product
+
+Native and WASM Utsushi engine ports are co-equal product to Kaifuu adapters,
+not optional polish layered on top of a real-runtime wrapper. The shipped
+validation path for any engine is always a native Utsushi port (Rust, or
+Rust-compiled-to-WASM for browser review). That is what users, agents, and CI
+exercise.
+
+Reference-capture from external runtimes (NW.js, browser, Wine, a vendor VM)
+remains useful, but only as a _developer-time porting aid_: during port
+development the worker can drive the original runtime to produce reference
+traces and frames against which the Rust/WASM port's output is validated. Those
+captured references are inputs to the port's conformance tests; they are not a
+shipped validation path. A configuration that ships "wrap the original runtime
+and call it Utsushi evidence" is not a port — it is a stopgap, and an engine in
+that state is not yet claimed-support.
+
 ## Runtime Strategy Bar
 
 Every real-engine runtime adapter should be classified by the strongest control

@@ -52,7 +52,49 @@ The product loop is:
 
 ## Alpha Engine And Readiness Set
 
-The alpha engine/readiness set is fixed below. Text access is a layered
+### First real-engine vertical
+
+The first real-engine end-to-end vertical is Sukara's _Oshioki Sweetie HD
+Remaster + Sweets fandisc_ (RealLive engine), sourced from the vault-curation
+catalog at `/archive/vault/`. That vertical is what proves the suite on real
+owned content: detect, extract, decrypt, decompile, patch, verify, delta-apply,
+and Utsushi runtime evidence through a native RealLive port.
+
+Synthetic encrypted-XP3 work continues as CI scaffolding under `KAIFUU-171` and
+remains useful for redaction tests, schema validation, helper-unavailable
+diagnostics, and contract proofs that do not require shipping a real-game
+artifact through public CI. It is no longer the alpha proof. References below
+to a "synthetic encrypted-XP3 vertical" should be read as CI scaffolding, not as
+the alpha milestone.
+
+### Claimed-support engine families for alpha
+
+Alpha claimed-support engines (end-to-end, by the operating commitments in
+[subprojects-kaifuu.md](subprojects-kaifuu.md)) are:
+
+- **SiglusEngine + RealLive** — single Rust port scope. RealLive carries the
+  first real-engine vertical; Siglus shares the port substrate.
+- **RPG Maker MV/MZ** — JSON-text adapter plus encrypted asset decrypt/replace,
+  with browser/NW.js instrumentation as the runtime path (the engine's own
+  runtime is a web app).
+- **Plain XP3 + KAG plaintext** — the unencrypted KiriKiri case as the
+  null-key/identity-container slice of the layered pipeline.
+
+The following engines are **not claimed for alpha**. They remain in the roadmap
+as research-tier or continuous work; readiness records, detector matrices, and
+fixture work may exist, but no end-to-end support claim is made for the alpha
+milestone:
+
+- Ren'Py
+- Wolf RPG Editor
+- BGI/Ethornell
+- RPG Maker VX Ace / RGSS3
+- TyranoScript
+- Unity (and Unreal, Godot)
+- Encrypted krkrz and TJS-heavy KiriKiri variants beyond plain XP3 + KAG
+  plaintext
+
+The alpha engine/readiness set table below is fixed. Text access is a layered
 reversible pipeline. Plaintext engines are not a separate architecture; they are
 the identity/null-key case of container, crypto, and codec stages. Alpha
 evidence must therefore include both positive adapter support and readiness
