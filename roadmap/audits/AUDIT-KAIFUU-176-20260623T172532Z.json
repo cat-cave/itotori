@@ -27,11 +27,7 @@
   "orchestration": {
     "completionDecision": "complete_allowed",
     "blockingFindingIds": [],
-    "followUpFindingIds": [
-      "KAIFUU-176-F001",
-      "KAIFUU-176-F002",
-      "KAIFUU-176-F003"
-    ]
+    "followUpFindingIds": ["KAIFUU-176-F001", "KAIFUU-176-F002", "KAIFUU-176-F003"]
   },
   "findings": [
     {
