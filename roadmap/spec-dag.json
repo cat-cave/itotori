@@ -10224,7 +10224,7 @@
     {
       "id": "UTSUSHI-025",
       "title": "Engine port implementation map validator",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10260,12 +10260,15 @@
         "Validated report becoming a decision node",
         "Unstructured engine notes accepted as coverage",
         "Missing fixture provenance"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-025",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-025"
     },
     {
       "id": "UTSUSHI-026",
       "title": "Runtime conformance manifest and result schema",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10301,7 +10304,10 @@
         "Skipped features hidden as passing checks",
         "Schema coupled to one engine",
         "Unsupported features reported without semantic reason codes"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-026",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-026"
     },
     {
       "id": "UTSUSHI-027",
@@ -20763,7 +20769,7 @@
     {
       "id": "KAIFUU-174",
       "title": "RealLive AVG32-variant text inventory adapter",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -20801,7 +20807,10 @@
         "Patch-back corrupting non-text bytes",
         "Protected markup lost or misclassified",
         "Bridge identifiers unstable across runs"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/kaifuu-174",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-174"
     },
     {
       "id": "KAIFUU-176",
@@ -20960,7 +20969,7 @@
     {
       "id": "UTSUSHI-148",
       "title": "Browser launch alpha contract tightening",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -20998,7 +21007,10 @@
         "Environmental misconfiguration silently skipped instead of erroring",
         "NW.js advertised as an alpha capability",
         "MV/MZ alpha claim made without Chromium browser launch success"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-148",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-148"
     },
     {
       "id": "KAIFUU-177",
