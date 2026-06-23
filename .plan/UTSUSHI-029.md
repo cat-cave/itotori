@@ -39,7 +39,7 @@ Acceptance-criterion-driven shape:
 2. **Missing capture support is reported as unsupported, not a parity
    failure.** When an adapter's manifest does NOT declare `FrameCapture`
    or `RecordingCapture`, the runner emits `ResultOutcome::Unsupported {
-   semantic_code: "utsushi.conformance.frame_capture_unsupported", … }`
+semantic_code: "utsushi.conformance.frame_capture_unsupported", … }`
    (or the recording analogue) with `declared_in_manifest = false`. The
    validator rejects any attempt to dress a missing-support case up as
    `Fail` with a rendering-parity excuse.
@@ -338,9 +338,9 @@ frames (screenshots and standalone frame captures); the recording check
 covers the composite stream. Keeping them as two structs lets the
 acceptance criteria stay sharp:
 
-- A check that fails on the frame side is a *frame* failure, with a
+- A check that fails on the frame side is a _frame_ failure, with a
   frame-specific semantic code.
-- A check that fails on the recording side is a *recording* failure,
+- A check that fails on the recording side is a _recording_ failure,
   with a recording-specific code.
 
 Combining them into one struct would either (a) force the runner to
@@ -354,7 +354,7 @@ Each check struct has a `run(&self) -> ResultOutcome` method that:
 1. Calls the check's `validate()`.
 2. On `Ok`, returns
    `ResultOutcome::Pass { evidence_tier: <profile ceiling, or the
-   recording's claimed tier, whichever is lower> }`.
+recording's claimed tier, whichever is lower> }`.
 3. On `Err`, returns `ResultOutcome::Fail { semantic_code, detail }`
    where `semantic_code` is one of this slice's `utsushi.conformance.*`
    codes and `detail` is a short, public-string description (no host
@@ -373,14 +373,14 @@ from UTSUSHI-025) that the check struct does not know about.
 Existing `EvidenceRef` variants already cover everything this slice
 needs:
 
-| Capture/recording datum   | Existing `EvidenceRef` variant                                |
-| ------------------------- | -------------------------------------------------------------- |
-| Frame bytes URI           | `RuntimeArtifact { kind: FrameCapture, uri, artifact_id }`     |
-| Screenshot bytes URI      | `RuntimeArtifact { kind: Screenshot, uri, artifact_id }`       |
-| Recording bytes URI       | `RuntimeArtifact { kind: Recording, uri, artifact_id }`        |
-| Sink-level frame id       | `FrameArtifactRef { frame_id }`                                |
-| Bridge-unit linkage       | `BridgeUnit { bridge_unit_id }`                                |
-| Impl-map fixture id       | `ImplMapFixture { fixture_id }` (UTSUSHI-025 cross-reference)  |
+| Capture/recording datum | Existing `EvidenceRef` variant                                |
+| ----------------------- | ------------------------------------------------------------- |
+| Frame bytes URI         | `RuntimeArtifact { kind: FrameCapture, uri, artifact_id }`    |
+| Screenshot bytes URI    | `RuntimeArtifact { kind: Screenshot, uri, artifact_id }`      |
+| Recording bytes URI     | `RuntimeArtifact { kind: Recording, uri, artifact_id }`       |
+| Sink-level frame id     | `FrameArtifactRef { frame_id }`                               |
+| Bridge-unit linkage     | `BridgeUnit { bridge_unit_id }`                               |
+| Impl-map fixture id     | `ImplMapFixture { fixture_id }` (UTSUSHI-025 cross-reference) |
 
 Audio events have no evidence ref of their own in UTSUSHI-026; the
 recording check captures the audio side through `audio_event_count`
@@ -405,7 +405,7 @@ ConformanceError>`:
    `FrameTierFloorBelowSinkFloor { floor }`, code
    `utsushi.conformance.frame_tier_floor_below_sink_floor`.
 4. `self.expected_tier_floor <= ProfileId::FrameCapture
-   .evidence_tier_ceiling()` (E2 today). Failure:
+.evidence_tier_ceiling()` (E2 today). Failure:
    `FrameTierFloorAboveProfileCeiling { floor, ceiling }`, code
    `utsushi.conformance.frame_tier_floor_above_profile_ceiling`.
 5. `self.observed_artifacts.len()` falls in
@@ -424,7 +424,7 @@ ConformanceError>`:
      `utsushi.conformance.frame_evidence_tier_below_floor`.
    - `evidence_tier <= SinkKind::FrameArtifact.evidence_tier_ceiling()`
      (E4). Failure: `FrameEvidenceTierAboveSinkCeiling { frame_id,
-     observed, ceiling }`, code
+observed, ceiling }`, code
      `utsushi.conformance.frame_evidence_tier_above_sink_ceiling`. This
      is the recording_evidence_tier_overclaim hard constraint, on the
      frame side.
@@ -460,7 +460,7 @@ ConformanceError>`:
    UTSUSHI-026). Failure: `RecordingIdMalformed { reason }`, code
    `utsushi.conformance.recording_id_malformed`.
 5. `RecordingMetadata::evidence_tier <= ProfileId::RecordingCapture
-   .evidence_tier_ceiling()` (E2 today). Failure:
+.evidence_tier_ceiling()` (E2 today). Failure:
    `RecordingEvidenceTierOverclaim { observed, ceiling }`, code
    `utsushi.conformance.recording_evidence_tier_overclaim`. This is the
    `recording_evidence_tier_overclaim` hard-constraint code.
@@ -493,7 +493,7 @@ The recording carries an `audio_event_count` integer but no per-event
 URIs. This matches the UTSUSHI-022 `AudioEvent` posture (E0 ceiling,
 metadata only). The validator does **not** introduce an audio-tier
 field on `RecordingMetadata`; instead, it enforces that the recording's
-declared `evidence_tier` is the *frame*-tier and a separate
+declared `evidence_tier` is the _frame_-tier and a separate
 `audio_event_count == 0 || sink_kind_audio_event_ceiling <= E0` guard
 holds. Since `SinkKind::AudioEvent.evidence_tier_ceiling()` is **always**
 `E0` (pinned by the UTSUSHI-022 audit test), the guard is structurally
@@ -515,12 +515,12 @@ calling the check at all:
 2. **Adapter manifest does NOT declare `FrameCapture`**: the runner
    does NOT call the check at all. Instead, it emits
    `ResultOutcome::Unsupported { semantic_code:
-   "utsushi.conformance.frame_capture_unsupported",
-   declared_in_manifest: false }`. The recording-side analogue uses
+"utsushi.conformance.frame_capture_unsupported",
+declared_in_manifest: false }`. The recording-side analogue uses
    `utsushi.conformance.recording_capture_unsupported`.
 3. **Adapter manifest declares `FrameCapture` as `Unsupported`
    capability through the sink layer** (i.e. `FrameArtifactSink::capability()
-   == Unsupported`): the UTSUSHI-026 manifest validator already rejects
+== Unsupported`): the UTSUSHI-026 manifest validator already rejects
    this combination at registration time
    (`MissingSubsystem`). UTSUSHI-029 does not need to re-check it.
 
@@ -528,7 +528,7 @@ The audit-focus item "unsupported reported as fail with parity excuse"
 is structurally blocked: the runner cannot route a `Fail` outcome from
 "capture not supported" because the runner has no check struct to call
 in case 2, and case 1 produces a check-internal `FrameCaptureNoArtifacts`
-code that is *explicitly not* a parity code (it names the missing
+code that is _explicitly not_ a parity code (it names the missing
 artifacts).
 
 ## 5. Semantic codes
@@ -647,7 +647,7 @@ posture.
   `evidence_tier = E2`, `artifact_kind = "frame_capture"`.
 - URIs constructed through
   `runtime_artifact_uri("synthetic-run",
-  RuntimeArtifactKind::FrameCapture, "frame-0xx")`.
+RuntimeArtifactKind::FrameCapture, "frame-0xx")`.
 - `expected_tier_floor = E2`, `expected_count_range = { min: 1, max: 8 }`.
 - `validate()` returns `Ok(())`.
 - `run()` returns `ResultOutcome::Pass { evidence_tier: E2 }`.
@@ -671,8 +671,8 @@ posture.
 - Returns a `ConformanceResult` envelope (not a check struct, because
   the unsupported path bypasses the check) with
   `ResultOutcome::Unsupported { semantic_code:
-  "utsushi.conformance.frame_capture_unsupported",
-  declared_in_manifest: false }`.
+"utsushi.conformance.frame_capture_unsupported",
+declared_in_manifest: false }`.
 - The companion manifest does NOT declare `FrameCapture`; the
   cross-validation against the manifest succeeds.
 
@@ -698,7 +698,7 @@ posture.
   `Err(ConformanceError::RecordingEvidenceTierOverclaim { … })` with
   semantic code `utsushi.conformance.recording_evidence_tier_overclaim`.
 - `run()` returns `ResultOutcome::Fail { semantic_code:
-  "utsushi.conformance.recording_evidence_tier_overclaim", detail: ... }`.
+"utsushi.conformance.recording_evidence_tier_overclaim", detail: ... }`.
 
 ### 6.6 Cross-validation fixture
 
@@ -881,11 +881,11 @@ recorded in §2 above keeps both slices off shared structural surfaces
 
 ### 9.5 Audit-focus checklist
 
-| Audit focus                                            | Structural defense                                                                |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| Host-specific artifact refs                            | Every URI passes `validate_runtime_artifact_uri`; fixture 6.4 pins both layers.   |
-| Unsupported capture reported as pass                   | Runner emits `Unsupported` outcome (never Pass) when manifest lacks the profile; `FrameCaptureNoArtifacts` blocks empty-Pass at validation. |
-| Evidence tier hidden from reviewers                    | Tier is a required field on `FrameArtifactRef`, `RecordingMetadata`, and every Pass outcome; serde never skips it (no `skip_serializing_if`). |
+| Audit focus                          | Structural defense                                                                                                                            |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Host-specific artifact refs          | Every URI passes `validate_runtime_artifact_uri`; fixture 6.4 pins both layers.                                                               |
+| Unsupported capture reported as pass | Runner emits `Unsupported` outcome (never Pass) when manifest lacks the profile; `FrameCaptureNoArtifacts` blocks empty-Pass at validation.   |
+| Evidence tier hidden from reviewers  | Tier is a required field on `FrameArtifactRef`, `RecordingMetadata`, and every Pass outcome; serde never skips it (no `skip_serializing_if`). |
 
 ## 10. Out of scope
 
@@ -920,7 +920,7 @@ recorded in §2 above keeps both slices off shared structural surfaces
 - **Reference-runtime evidence (`ConformanceReport` artifact kind)**.
   This slice consumes `RuntimeArtifactKind::Screenshot`,
   `::FrameCapture`, and `::Recording`. The
-  `RuntimeArtifactKind::ConformanceReport` artifact is the *output* of a
+  `RuntimeArtifactKind::ConformanceReport` artifact is the _output_ of a
   conformance run (a higher-level artifact); produced by UTSUSHI-030
   ingestion.
 
