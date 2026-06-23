@@ -31,6 +31,7 @@ pub mod diagnostics;
 pub mod fixtures;
 pub mod manifest;
 pub mod result;
+pub mod trace_branch;
 
 pub use diagnostics::ConformanceError;
 pub use manifest::{

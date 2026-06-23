@@ -1,0 +1,67 @@
+{
+  "adapterId": "utsushi-synthetic",
+  "goldenTrace": [
+    {
+      "eventId": "g-001",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000101",
+      "text": "Hello",
+      "orderIndex": 0
+    },
+    {
+      "eventId": "g-002",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000102",
+      "text": "Greetings traveller",
+      "orderIndex": 1
+    },
+    {
+      "eventId": "g-003",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000103",
+      "text": "What brings you here",
+      "orderIndex": 2
+    },
+    {
+      "eventId": "g-004",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000104",
+      "text": "A simple question",
+      "orderIndex": 3
+    },
+    {
+      "eventId": "g-005",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000105",
+      "text": "And we conclude",
+      "orderIndex": 4
+    }
+  ],
+  "observedTrace": [
+    {
+      "eventId": "o-001",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000101",
+      "text": "Hello",
+      "orderIndex": 0
+    },
+    {
+      "eventId": "o-002",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000102",
+      "text": "Greetings traveller",
+      "orderIndex": 1
+    },
+    {
+      "eventId": "o-003",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000103",
+      "text": "DIVERGED TEXT",
+      "orderIndex": 2
+    },
+    {
+      "eventId": "o-004",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000104",
+      "text": "A simple question",
+      "orderIndex": 3
+    },
+    {
+      "eventId": "o-005",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000105",
+      "text": "And we conclude",
+      "orderIndex": 4
+    }
+  ]
+}

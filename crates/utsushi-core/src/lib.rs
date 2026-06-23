@@ -29,6 +29,12 @@ pub use conformance::{
     ConformanceProfile, ConformanceResult, EvidenceRef, ProfileExtension, ProfileId, ResultOutcome,
     SubsystemRequirement, cross_validate_conformance_manifest_against_port_manifest,
     cross_validate_results_against_manifest,
+    trace_branch::{
+        BranchCheckOptions, BranchCheckResult, BranchConformanceCheck, BranchMismatch,
+        BranchMismatchKind, GoldenBranch, GoldenTextEvent, ObservedBranch, ObservedTextEvent,
+        TextNormalisation, TraceCheckOptions, TraceCheckResult, TraceConformanceCheck,
+        TraceMismatch, TraceMismatchKind,
+    },
 };
 pub use input::{
     CLOCK_BACKTRACK_CODE, ChoiceIndex, INPUT_INVALID_PAYLOAD_CODE, INPUT_UNSUPPORTED_KIND_CODE,

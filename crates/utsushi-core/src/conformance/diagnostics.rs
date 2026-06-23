@@ -41,6 +41,21 @@ pub mod codes {
     pub const ADAPTER_ID_MISMATCH: &str = "utsushi.conformance.adapter_id_mismatch";
     pub const PASS_ABOVE_MANIFEST_CEILING: &str = "utsushi.conformance.pass_above_manifest_ceiling";
 
+    // UTSUSHI-027 — trace and branch conformance codes.
+    pub const TRACE_TEXT_MISMATCH: &str = "utsushi.conformance.trace_text_mismatch";
+    pub const TRACE_ORDER_MISMATCH: &str = "utsushi.conformance.trace_order_mismatch";
+    pub const TRACE_SPEAKER_MISMATCH: &str = "utsushi.conformance.trace_speaker_mismatch";
+    pub const TRACE_EVENT_MISSING: &str = "utsushi.conformance.trace_event_missing";
+    pub const TRACE_EVENT_UNEXPECTED: &str = "utsushi.conformance.trace_event_unexpected";
+    pub const BRIDGE_UNIT_UNLINKED: &str = "utsushi.conformance.bridge_unit_unlinked";
+    pub const BRIDGE_UNIT_DIVERGENT: &str = "utsushi.conformance.bridge_unit_divergent";
+    pub const BRANCH_MISSING: &str = "utsushi.conformance.branch_missing";
+    pub const BRANCH_UNEXPECTED: &str = "utsushi.conformance.branch_unexpected";
+    pub const BRANCH_CHOICE_PATH_MISMATCH: &str = "utsushi.conformance.branch_choice_path_mismatch";
+    pub const BRANCH_OUTCOME_MISMATCH: &str = "utsushi.conformance.branch_outcome_mismatch";
+    pub const TRACE_EVIDENCE_TIER_OVERCLAIM: &str =
+        "utsushi.conformance.trace_evidence_tier_overclaim";
+
     /// Full set of stable conformance semantic codes. Conformance
     /// schemas that gate runtime diagnostics by allowed-code list
     /// include each of these.
@@ -66,6 +81,18 @@ pub mod codes {
         PROFILE_NOT_REPORTED,
         ADAPTER_ID_MISMATCH,
         PASS_ABOVE_MANIFEST_CEILING,
+        TRACE_TEXT_MISMATCH,
+        TRACE_ORDER_MISMATCH,
+        TRACE_SPEAKER_MISMATCH,
+        TRACE_EVENT_MISSING,
+        TRACE_EVENT_UNEXPECTED,
+        BRIDGE_UNIT_UNLINKED,
+        BRIDGE_UNIT_DIVERGENT,
+        BRANCH_MISSING,
+        BRANCH_UNEXPECTED,
+        BRANCH_CHOICE_PATH_MISMATCH,
+        BRANCH_OUTCOME_MISMATCH,
+        TRACE_EVIDENCE_TIER_OVERCLAIM,
     ];
 }
 
