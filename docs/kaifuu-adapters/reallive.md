@@ -82,3 +82,45 @@ behavior-only / clean-room. The auditor uses this list verbatim.
 - [x] Detector tests pass on a host with **no** rlvm installed. The detector exercises only filesystem I/O and a small in-memory FSM; no helper binary is launched.
 - [x] Synthetic fixtures contain no copyrighted RealLive bytes — no real scenes, no real Gameexe.ini values from any owned title. The synthetic SEEN.TXT envelope uses the placeholder magic `SEEN\x01` plus a 1-entry table; the synthetic Gameexe.ini begins with `# RealLive Gameexe.ini fixture` and includes only documented key prefixes.
 - [ ] If a future worker reads rlvm to confirm a hypothesis, the readiness record's "Reference implementations and docs" entry records that fact with the file path that was consulted and the hypothesis that was confirmed, **without** importing rlvm's expression. (No such read was performed during the KAIFUU-172 implementation slice; the box is left unchecked as a hand-off marker for future contributors.)
+
+## KAIFUU-173 parser-boundary smoke addendum
+
+- Roadmap node: KAIFUU-173 (Scene/SEEN parser-boundary smoke).
+- Crate or module: `kaifuu-reallive` (new workspace member at `crates/kaifuu-reallive/`). Library-only — no `EngineAdapter` impl. Public surface: `parse_archive`, `parse_scene`, AST types (`Scene`, `Instruction`, `StringSlot`, `ParseOutcome`, `ParseDiagnostic`), bounded `NamedOpcode` catalogue, and the `semantic_error_code_for_parser_diagnostic` mapping helper.
+- Initial support boundary (parser scope): smoke — single fixture-safe scene per archive, eight named opcodes (`TextDisplay`, `SetSpeaker`, `Choice`, `SetVar`, `Jump`, `Return`, `ClearScreen`, `Pause`), and a documented synthetic instruction shape (opener `0x23`, opcode byte, operand-count byte, then `i`/`s`/`l` operand tags). Unrecognized opener bytes and opcodes emit `kaifuu.reallive.unrecognized_instruction` warnings paired with an `Unrecognized` AST node carrying the raw opener — never silent skip.
+- Unsupported or gated boundary at this slice: real-game variability beyond the synthetic fixture (per-scene headers, real-game-only operand shapes, the long tail of RealLive opcodes); Shift-JIS decode (KAIFUU-174 codec stage); encrypted SEEN.TXT (future node); patch-back (KAIFUU-174); jump resolution / scene-graph linking / expression evaluation / VM execution (UTSUSHI-146); CLI inventory subcommand (KAIFUU-174). All emit `kaifuu.unsupported_layered_transform` or stay outside the parser surface entirely.
+- Public fixture ids: `smoke-scene-001`, `truncated-scene-001`, `unknown-opcode-001` (crate-local under `crates/kaifuu-reallive/tests/fixtures/`; **not** promoted to `fixtures/public/manifest.schema.json` per §9.2 of the plan — KAIFUU-174 may promote them when bridge-bundle goldens land).
+- Public fixture source class: synthetic.
+- Fixture generation or source URL: bytes are authored from public format archaeology (Haeleth's RLDEV documentation) plus the documented in-crate bytecode shape; reproduced by `cargo run -p kaifuu-reallive --example regenerate_fixtures`. Tests assert the on-disk bytes match the in-test synthetic builder so drift is caught at CI time.
+- Fixture license and attribution: synthetic, CC0-1.0. No retail bytes, no `/archive/vault/` access in KAIFUU-173.
+- Semantic capability errors (parser-local, new in KAIFUU-173):
+  - `kaifuu.reallive.invalid_archive_envelope` (Fatal; maps to `kaifuu.unknown_engine_variant` at the KAIFUU-174 adapter boundary).
+  - `kaifuu.reallive.truncated_scene` (Fatal; maps to `kaifuu.unknown_engine_variant`).
+  - `kaifuu.reallive.truncated_instruction` (Fatal; maps to `kaifuu.unsupported_layered_transform`).
+  - `kaifuu.reallive.unrecognized_instruction` (Warning; recoverable — surfaces in inventory only).
+  - `kaifuu.reallive.unrecognized_operand_shape` (Warning; recoverable).
+  - `kaifuu.reallive.invalid_string_slot` (Warning; maps to `kaifuu.unsupported_layered_transform`).
+  - `kaifuu.reallive.out_of_profile_input` (Fatal; maps to `kaifuu.unsupported_engine_variant`).
+- Parser spike status: completed under KAIFUU-173. Spike outcome rolled directly into the smoke fixtures (no separate spike artifact).
+- Local validation commands:
+  - `cargo test -p kaifuu-reallive`
+  - `cargo test -p kaifuu-core` (no regression; the parser does not modify the core surface)
+  - `cargo fmt --check`
+  - `cargo clippy -p kaifuu-reallive --all-targets -- -D warnings`
+  - `just check`
+- CI validation commands: same as local.
+- Known gaps (P2/P3 follow-ups):
+  - KAIFUU-174 — text inventory adapter (Scene/SEEN/Gameexe text slots, Shift-JIS decode, protected markup, asset references, patch-back, `EncodedStringSlot` projection from the parser AST).
+  - UTSUSHI-146 — native RealLive runtime port (opcode execution semantics, jump resolution, VM port).
+  - Real-game opcode-coverage discovery at ALPHA-006 — expansion of the named-opcode catalogue follows the per-game evidence-first rule (each new opcode requires a paired synthetic fixture).
+  - Offset-map / logical-id layer for patch-back-stability (the byte-position-derived string-slot ids in this slice are intentionally physical-position ids; the logical layer is KAIFUU-174's offset-map scope).
+
+### KAIFUU-173 rlvm clean-room worker checklist
+
+- [x] No `git submodule`, no Cargo dep, no vendored `rlvm` / RLDEV code in `crates/kaifuu-reallive`. Verified by `grep rlvm Cargo.toml Cargo.lock crates/*/Cargo.toml` returning zero matches.
+- [x] No copied opcode tables, lookup constants, or struct layouts in `crates/kaifuu-reallive`. The eight-opcode catalogue and the `i`/`s`/`l` operand-tag set are authored from public RLDEV documentation plus synthetic-fixture bytes; byte values were chosen for fixture readability, not copied from rlvm.
+- [x] Crate-level provenance comment is present at the top of `crates/kaifuu-reallive/src/lib.rs` and is mirrored as the module preamble across `archive.rs`, `ast.rs`, `diagnostics.rs`, `opcodes.rs`, `parser.rs`, `strings.rs`.
+- [x] No `Command::new`, no foreign tool invocation, no helper boundary in this crate. The parser is a pure function over `&[u8]`.
+- [x] Tests pass on a host with no rlvm installed. The crate's only dep is `kaifuu-core` plus serde/thiserror.
+- [x] Synthetic fixtures under `crates/kaifuu-reallive/tests/fixtures/` contain no copyrighted RealLive bytes. Every byte is authored from public docs and reproduced by the in-tree regenerator.
+- [ ] If a future worker reads rlvm to confirm a hypothesis, the readiness record's "Reference implementations and docs" entry records that fact with the file path that was consulted and the hypothesis that was confirmed, **without** importing rlvm's expression. (No such read was performed during the KAIFUU-173 implementation slice; the box is left unchecked as a hand-off marker for future contributors.)
