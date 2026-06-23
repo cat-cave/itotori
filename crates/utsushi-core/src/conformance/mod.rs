@@ -27,12 +27,18 @@
 
 use serde::{Deserialize, Serialize};
 
+pub mod capture_recording;
 pub mod diagnostics;
 pub mod fixtures;
 pub mod manifest;
 pub mod result;
 pub mod trace_branch;
 
+pub use capture_recording::{
+    ArtifactCountRange, CaptureCheckSummary, DurationRangeMs, FrameArtifactRef,
+    FrameCaptureConformanceCheck, RecordingCheckSummary, RecordingConformanceCheck,
+    RecordingMetadata, unsupported_frame_capture_result, unsupported_recording_capture_result,
+};
 pub use diagnostics::ConformanceError;
 pub use manifest::{
     ConformanceAbiVersion, ConformanceManifest, ConformanceProfile, ProfileExtension,

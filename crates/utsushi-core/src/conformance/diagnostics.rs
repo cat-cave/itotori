@@ -56,10 +56,28 @@ pub mod codes {
     pub const TRACE_EVIDENCE_TIER_OVERCLAIM: &str =
         "utsushi.conformance.trace_evidence_tier_overclaim";
 
+    // ---- UTSUSHI-029: capture/recording codes. Source of truth is
+    // `super::super::capture_recording::codes`; re-export here so legacy
+    // dotted paths continue to resolve and so the unified `ALL` slice
+    // can name each entry locally. ----
+    pub use super::super::capture_recording::codes::{
+        ARTIFACT_COUNT_RANGE_MALFORMED, CAPTURE_CHECK_PROFILE_MISMATCH, DURATION_RANGE_MALFORMED,
+        FRAME_ARTIFACT_COUNT_OUT_OF_RANGE, FRAME_ARTIFACT_HOST_PATH,
+        FRAME_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST, FRAME_CAPTURE_NO_ARTIFACTS,
+        FRAME_CAPTURE_UNSUPPORTED, FRAME_EVIDENCE_TIER_ABOVE_SINK_CEILING,
+        FRAME_EVIDENCE_TIER_BELOW_FLOOR, FRAME_SEQUENCE_DUPLICATE, FRAME_SEQUENCE_UNORDERED,
+        FRAME_TIER_FLOOR_ABOVE_PROFILE_CEILING, FRAME_TIER_FLOOR_BELOW_SINK_FLOOR,
+        RECORDING_ARTIFACT_HOST_PATH, RECORDING_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST,
+        RECORDING_CAPTURE_UNSUPPORTED, RECORDING_CONTAINER_DUPLICATED, RECORDING_CONTAINER_MISSING,
+        RECORDING_DURATION_OUT_OF_RANGE, RECORDING_EVENT_COUNT_OUT_OF_RANGE,
+        RECORDING_EVIDENCE_TIER_OVERCLAIM, RECORDING_FRAME_COUNT_MISMATCH, RECORDING_ID_MALFORMED,
+    };
+
     /// Full set of stable conformance semantic codes. Conformance
     /// schemas that gate runtime diagnostics by allowed-code list
     /// include each of these.
     pub const ALL: &[&str] = &[
+        // UTSUSHI-026 substrate (manifest + result envelope).
         UNSUPPORTED_SCHEMA_VERSION,
         ADAPTER_ID_MALFORMED,
         UNKNOWN_ABI_VERSION,
@@ -81,6 +99,7 @@ pub mod codes {
         PROFILE_NOT_REPORTED,
         ADAPTER_ID_MISMATCH,
         PASS_ABOVE_MANIFEST_CEILING,
+        // UTSUSHI-027 trace/branch.
         TRACE_TEXT_MISMATCH,
         TRACE_ORDER_MISMATCH,
         TRACE_SPEAKER_MISMATCH,
@@ -93,6 +112,31 @@ pub mod codes {
         BRANCH_CHOICE_PATH_MISMATCH,
         BRANCH_OUTCOME_MISMATCH,
         TRACE_EVIDENCE_TIER_OVERCLAIM,
+        // UTSUSHI-029 capture/recording.
+        FRAME_CAPTURE_UNSUPPORTED,
+        RECORDING_CAPTURE_UNSUPPORTED,
+        FRAME_CAPTURE_NO_ARTIFACTS,
+        FRAME_ARTIFACT_HOST_PATH,
+        RECORDING_ARTIFACT_HOST_PATH,
+        RECORDING_EVIDENCE_TIER_OVERCLAIM,
+        FRAME_EVIDENCE_TIER_BELOW_FLOOR,
+        FRAME_EVIDENCE_TIER_ABOVE_SINK_CEILING,
+        CAPTURE_CHECK_PROFILE_MISMATCH,
+        ARTIFACT_COUNT_RANGE_MALFORMED,
+        DURATION_RANGE_MALFORMED,
+        FRAME_TIER_FLOOR_BELOW_SINK_FLOOR,
+        FRAME_TIER_FLOOR_ABOVE_PROFILE_CEILING,
+        FRAME_ARTIFACT_COUNT_OUT_OF_RANGE,
+        FRAME_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST,
+        FRAME_SEQUENCE_UNORDERED,
+        FRAME_SEQUENCE_DUPLICATE,
+        RECORDING_ID_MALFORMED,
+        RECORDING_CONTAINER_MISSING,
+        RECORDING_CONTAINER_DUPLICATED,
+        RECORDING_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST,
+        RECORDING_FRAME_COUNT_MISMATCH,
+        RECORDING_DURATION_OUT_OF_RANGE,
+        RECORDING_EVENT_COUNT_OUT_OF_RANGE,
     ];
 }
 
@@ -172,6 +216,78 @@ pub enum ConformanceError {
         claimed: EvidenceTier,
         ceiling: EvidenceTier,
     },
+    // ---- UTSUSHI-029 capture/recording variants (additive). ----
+    /// Capture or recording check carried a profile id that does not
+    /// match the check kind.
+    CaptureCheckProfileMismatch {
+        observed: ProfileId,
+        expected: ProfileId,
+    },
+    /// `ArtifactCountRange { min, max }` had `min > max` or `max`
+    /// exceeded the soft ceiling.
+    ArtifactCountRangeMalformed { min: u32, max: u32 },
+    /// `DurationRangeMs { min, max }` had `min > max`.
+    DurationRangeMalformed { min: u64, max: u64 },
+    /// Capture check declared a tier floor below the
+    /// `SinkKind::FrameArtifact` floor of E2.
+    FrameTierFloorBelowSinkFloor { floor: EvidenceTier },
+    /// Capture check declared a tier floor above the
+    /// `ProfileId::FrameCapture` ceiling.
+    FrameTierFloorAboveProfileCeiling {
+        floor: EvidenceTier,
+        ceiling: EvidenceTier,
+    },
+    /// Observed frame count fell outside the expected range.
+    FrameArtifactCountOutOfRange { observed: u32, min: u32, max: u32 },
+    /// Capture check declared `min == 0` (zero-floor pass forbidden).
+    FrameCaptureNoArtifacts { declared_min: u32 },
+    /// A frame's evidence tier sat below the configured floor.
+    FrameEvidenceTierBelowFloor {
+        frame_id: String,
+        observed: EvidenceTier,
+        floor: EvidenceTier,
+    },
+    /// A frame's evidence tier sat above the
+    /// `SinkKind::FrameArtifact` ceiling of E4.
+    FrameEvidenceTierAboveSinkCeiling {
+        frame_id: String,
+        observed: EvidenceTier,
+        ceiling: EvidenceTier,
+    },
+    /// A frame artifact ref failed the portable-URI validator.
+    FrameArtifactHostPath { frame_id: String, reason: String },
+    /// A frame artifact's `artifact_kind` was outside the
+    /// `["screenshot", "frame_capture"]` allow list.
+    FrameArtifactKindOutsideAllowList { frame_id: String, kind: String },
+    /// Frame sequencing was not strictly ascending on `frame_index`.
+    FrameSequenceUnordered { previous: u64, current: u64 },
+    /// Two frames shared the same `frame_index`.
+    FrameSequenceDuplicate { frame_index: u64 },
+    /// Recording id was empty, whitespace-laden, or path-shaped.
+    RecordingIdMalformed { reason: String },
+    /// Recording metadata claimed an evidence tier above the
+    /// `ProfileId::RecordingCapture` ceiling.
+    RecordingEvidenceTierOverclaim {
+        observed: EvidenceTier,
+        ceiling: EvidenceTier,
+    },
+    /// Recording artifact set did not include the recording container ref.
+    RecordingContainerMissing,
+    /// Recording artifact set carried more than one recording container ref.
+    RecordingContainerDuplicated { count: u32 },
+    /// A recording artifact's `artifact_kind` was outside the
+    /// `["recording", "frame_capture"]` allow list.
+    RecordingArtifactKindOutsideAllowList { kind: String },
+    /// A recording artifact ref failed the portable-URI validator.
+    RecordingArtifactHostPath { reason: String },
+    /// Recording `frame_count` did not equal the count of frame-capture
+    /// artifact refs.
+    RecordingFrameCountMismatch { declared: u32, actual: u32 },
+    /// Recording `duration_ms` sat outside `expected_duration_range`.
+    RecordingDurationOutOfRange { observed: u64, min: u64, max: u64 },
+    /// Recording event count (`frame_count + audio_event_count`) sat
+    /// outside `expected_event_count_range`.
+    RecordingEventCountOutOfRange { observed: u32, min: u32, max: u32 },
 }
 
 impl ConformanceError {
@@ -203,6 +319,36 @@ impl ConformanceError {
             Self::ProfileNotReported { .. } => codes::PROFILE_NOT_REPORTED,
             Self::AdapterIdMismatch { .. } => codes::ADAPTER_ID_MISMATCH,
             Self::PassAboveManifestCeiling { .. } => codes::PASS_ABOVE_MANIFEST_CEILING,
+            Self::CaptureCheckProfileMismatch { .. } => codes::CAPTURE_CHECK_PROFILE_MISMATCH,
+            Self::ArtifactCountRangeMalformed { .. } => codes::ARTIFACT_COUNT_RANGE_MALFORMED,
+            Self::DurationRangeMalformed { .. } => codes::DURATION_RANGE_MALFORMED,
+            Self::FrameTierFloorBelowSinkFloor { .. } => codes::FRAME_TIER_FLOOR_BELOW_SINK_FLOOR,
+            Self::FrameTierFloorAboveProfileCeiling { .. } => {
+                codes::FRAME_TIER_FLOOR_ABOVE_PROFILE_CEILING
+            }
+            Self::FrameArtifactCountOutOfRange { .. } => codes::FRAME_ARTIFACT_COUNT_OUT_OF_RANGE,
+            Self::FrameCaptureNoArtifacts { .. } => codes::FRAME_CAPTURE_NO_ARTIFACTS,
+            Self::FrameEvidenceTierBelowFloor { .. } => codes::FRAME_EVIDENCE_TIER_BELOW_FLOOR,
+            Self::FrameEvidenceTierAboveSinkCeiling { .. } => {
+                codes::FRAME_EVIDENCE_TIER_ABOVE_SINK_CEILING
+            }
+            Self::FrameArtifactHostPath { .. } => codes::FRAME_ARTIFACT_HOST_PATH,
+            Self::FrameArtifactKindOutsideAllowList { .. } => {
+                codes::FRAME_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST
+            }
+            Self::FrameSequenceUnordered { .. } => codes::FRAME_SEQUENCE_UNORDERED,
+            Self::FrameSequenceDuplicate { .. } => codes::FRAME_SEQUENCE_DUPLICATE,
+            Self::RecordingIdMalformed { .. } => codes::RECORDING_ID_MALFORMED,
+            Self::RecordingEvidenceTierOverclaim { .. } => codes::RECORDING_EVIDENCE_TIER_OVERCLAIM,
+            Self::RecordingContainerMissing => codes::RECORDING_CONTAINER_MISSING,
+            Self::RecordingContainerDuplicated { .. } => codes::RECORDING_CONTAINER_DUPLICATED,
+            Self::RecordingArtifactKindOutsideAllowList { .. } => {
+                codes::RECORDING_ARTIFACT_KIND_OUTSIDE_ALLOW_LIST
+            }
+            Self::RecordingArtifactHostPath { .. } => codes::RECORDING_ARTIFACT_HOST_PATH,
+            Self::RecordingFrameCountMismatch { .. } => codes::RECORDING_FRAME_COUNT_MISMATCH,
+            Self::RecordingDurationOutOfRange { .. } => codes::RECORDING_DURATION_OUT_OF_RANGE,
+            Self::RecordingEventCountOutOfRange { .. } => codes::RECORDING_EVENT_COUNT_OUT_OF_RANGE,
         }
     }
 }
@@ -303,6 +449,93 @@ impl fmt::Display for ConformanceError {
                 claimed.as_str(),
                 ceiling.as_str()
             ),
+            Self::CaptureCheckProfileMismatch { observed, expected } => write!(
+                formatter,
+                "{code}: observed={} expected={}",
+                observed.as_str(),
+                expected.as_str()
+            ),
+            Self::ArtifactCountRangeMalformed { min, max } => {
+                write!(formatter, "{code}: min={min} max={max}")
+            }
+            Self::DurationRangeMalformed { min, max } => {
+                write!(formatter, "{code}: min={min} max={max}")
+            }
+            Self::FrameTierFloorBelowSinkFloor { floor } => {
+                write!(formatter, "{code}: floor={}", floor.as_str())
+            }
+            Self::FrameTierFloorAboveProfileCeiling { floor, ceiling } => write!(
+                formatter,
+                "{code}: floor={} ceiling={}",
+                floor.as_str(),
+                ceiling.as_str()
+            ),
+            Self::FrameArtifactCountOutOfRange { observed, min, max } => {
+                write!(formatter, "{code}: observed={observed} min={min} max={max}")
+            }
+            Self::FrameCaptureNoArtifacts { declared_min } => {
+                write!(formatter, "{code}: declared_min={declared_min}")
+            }
+            Self::FrameEvidenceTierBelowFloor {
+                frame_id,
+                observed,
+                floor,
+            } => write!(
+                formatter,
+                "{code}: frame_id={frame_id} observed={} floor={}",
+                observed.as_str(),
+                floor.as_str()
+            ),
+            Self::FrameEvidenceTierAboveSinkCeiling {
+                frame_id,
+                observed,
+                ceiling,
+            } => write!(
+                formatter,
+                "{code}: frame_id={frame_id} observed={} ceiling={}",
+                observed.as_str(),
+                ceiling.as_str()
+            ),
+            Self::FrameArtifactHostPath { frame_id, reason } => {
+                write!(formatter, "{code}: frame_id={frame_id} reason={reason}")
+            }
+            Self::FrameArtifactKindOutsideAllowList { frame_id, kind } => {
+                write!(formatter, "{code}: frame_id={frame_id} kind={kind}")
+            }
+            Self::FrameSequenceUnordered { previous, current } => {
+                write!(formatter, "{code}: previous={previous} current={current}")
+            }
+            Self::FrameSequenceDuplicate { frame_index } => {
+                write!(formatter, "{code}: frame_index={frame_index}")
+            }
+            Self::RecordingIdMalformed { reason } => write!(formatter, "{code}: reason={reason}"),
+            Self::RecordingEvidenceTierOverclaim { observed, ceiling } => write!(
+                formatter,
+                "{code}: observed={} ceiling={}",
+                observed.as_str(),
+                ceiling.as_str()
+            ),
+            Self::RecordingContainerMissing => {
+                write!(formatter, "{code}: no recording-kind artifact ref present")
+            }
+            Self::RecordingContainerDuplicated { count } => {
+                write!(formatter, "{code}: count={count}")
+            }
+            Self::RecordingArtifactKindOutsideAllowList { kind } => {
+                write!(formatter, "{code}: kind={kind}")
+            }
+            Self::RecordingArtifactHostPath { reason } => {
+                write!(formatter, "{code}: reason={reason}")
+            }
+            Self::RecordingFrameCountMismatch { declared, actual } => {
+                write!(formatter, "{code}: declared={declared} actual={actual}")
+            }
+            Self::RecordingDurationOutOfRange { observed, min, max } => {
+                write!(formatter, "{code}: observed={observed} min={min} max={max}")
+            }
+            Self::RecordingEventCountOutOfRange { observed, min, max } => {
+                write!(formatter, "{code}: observed={observed} min={min} max={max}")
+            }
         }
     }
 }
@@ -387,6 +620,80 @@ mod tests {
                 profile: ProfileId::TextTrace,
                 claimed: EvidenceTier::E1,
                 ceiling: EvidenceTier::E0,
+            },
+            ConformanceError::CaptureCheckProfileMismatch {
+                observed: ProfileId::TextTrace,
+                expected: ProfileId::FrameCapture,
+            },
+            ConformanceError::ArtifactCountRangeMalformed { min: 5, max: 1 },
+            ConformanceError::DurationRangeMalformed {
+                min: 1_000,
+                max: 500,
+            },
+            ConformanceError::FrameTierFloorBelowSinkFloor {
+                floor: EvidenceTier::E1,
+            },
+            ConformanceError::FrameTierFloorAboveProfileCeiling {
+                floor: EvidenceTier::E3,
+                ceiling: EvidenceTier::E2,
+            },
+            ConformanceError::FrameArtifactCountOutOfRange {
+                observed: 0,
+                min: 1,
+                max: 8,
+            },
+            ConformanceError::FrameCaptureNoArtifacts { declared_min: 0 },
+            ConformanceError::FrameEvidenceTierBelowFloor {
+                frame_id: "frame-0001".to_string(),
+                observed: EvidenceTier::E0,
+                floor: EvidenceTier::E2,
+            },
+            ConformanceError::FrameEvidenceTierAboveSinkCeiling {
+                frame_id: "frame-0002".to_string(),
+                observed: EvidenceTier::E4,
+                ceiling: EvidenceTier::E4,
+            },
+            ConformanceError::FrameArtifactHostPath {
+                frame_id: "frame-0003".to_string(),
+                reason: "uri not under managed root".to_string(),
+            },
+            ConformanceError::FrameArtifactKindOutsideAllowList {
+                frame_id: "frame-0004".to_string(),
+                kind: "recording".to_string(),
+            },
+            ConformanceError::FrameSequenceUnordered {
+                previous: 2,
+                current: 1,
+            },
+            ConformanceError::FrameSequenceDuplicate { frame_index: 1 },
+            ConformanceError::RecordingIdMalformed {
+                reason: "whitespace inside id".to_string(),
+            },
+            ConformanceError::RecordingEvidenceTierOverclaim {
+                observed: EvidenceTier::E4,
+                ceiling: EvidenceTier::E2,
+            },
+            ConformanceError::RecordingContainerMissing,
+            ConformanceError::RecordingContainerDuplicated { count: 2 },
+            ConformanceError::RecordingArtifactKindOutsideAllowList {
+                kind: "trace_log".to_string(),
+            },
+            ConformanceError::RecordingArtifactHostPath {
+                reason: "uri not under managed root".to_string(),
+            },
+            ConformanceError::RecordingFrameCountMismatch {
+                declared: 3,
+                actual: 2,
+            },
+            ConformanceError::RecordingDurationOutOfRange {
+                observed: 500,
+                min: 1_000,
+                max: 2_000,
+            },
+            ConformanceError::RecordingEventCountOutOfRange {
+                observed: 1,
+                min: 5,
+                max: 10,
             },
         ]
     }
