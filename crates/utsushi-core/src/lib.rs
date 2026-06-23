@@ -17,6 +17,7 @@ use serde_json::{Map, Value};
 pub mod clock;
 pub mod input;
 pub mod replay;
+pub mod sink;
 pub mod vfs;
 
 pub use clock::{ClockOrigin, LogicalClock, LogicalClockTick};
@@ -29,6 +30,28 @@ pub use replay::{
     REPLAY_LOG_SCHEMA_VERSION, ReplayCursor, ReplayEntry, ReplayLog, ReplayLogBuilder,
     ReplayMetadata, ReplaySchemaVersion,
 };
+pub use sink::{
+    AudioEvent, AudioEventKind, AudioEventSink, FrameArtifact, FrameArtifactSink, SinkCapability,
+    SinkCapabilitySummary, SinkError, SinkKind, SinkResult, SinkSet, TextLine, TextSurfaceSink,
+};
+
+/// Re-exports for the local-path redaction filter. The helper itself is a
+/// crate-private utility used by observation-hook validators and by the sink
+/// payload tests (see UTSUSHI-022). The re-export keeps the public surface
+/// narrow — only the `reject_unredacted_local_paths` entry point is exposed
+/// — so cross-crate consumers can run the same filter on their own sink
+/// emissions without grabbing the rest of the helper module.
+pub mod redaction {
+    use crate::UtsushiResult;
+    use serde_json::Value;
+
+    /// Reject local-path-shaped strings anywhere inside a serialized payload.
+    /// Returns the offending JSON path on failure (e.g.
+    /// `"textLine.speaker"`).
+    pub fn reject_unredacted_local_paths(path: &str, value: &Value) -> UtsushiResult<()> {
+        super::reject_unredacted_local_paths(path, value)
+    }
+}
 pub use vfs::{
     AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
     AssetSize, CaseRule, HelperId, IoSummary, MountedVfs, PackageDescriptor, PackageKind,
@@ -86,6 +109,12 @@ pub struct RuntimeRequest<'a> {
     /// `Arc<ReplayLog>` keeps cloning cheap when the runner shares the log
     /// across multiple adapter invocations.
     pub replay: Option<Arc<ReplayLog>>,
+    /// Optional, additive handoff for adapters that emit into the
+    /// UTSUSHI-022 headless sink contracts. Adapters that do not consume
+    /// sinks ignore the field; the existing `RuntimeRequest::new` call
+    /// sites stay valid because the field defaults to `None`. The signature
+    /// decision for `RuntimeAdapter` is deferred to UTSUSHI-103.
+    pub sinks: Option<SinkSet>,
 }
 
 impl std::fmt::Debug for RuntimeRequest<'_> {
@@ -96,6 +125,14 @@ impl std::fmt::Debug for RuntimeRequest<'_> {
             .field("artifact_root", &self.artifact_root)
             .field("vfs", &self.vfs.as_ref().map(|_| "Arc<dyn RuntimeVfs>"))
             .field("replay", &self.replay.as_ref().map(|_| "Arc<ReplayLog>"))
+            .field(
+                "sinks",
+                &if self.sinks.is_some() {
+                    "<present>"
+                } else {
+                    "<absent>"
+                },
+            )
             .finish()
     }
 }
@@ -107,6 +144,7 @@ impl<'a> RuntimeRequest<'a> {
             artifact_root: None,
             vfs: None,
             replay: None,
+            sinks: None,
         }
     }
 
@@ -122,6 +160,11 @@ impl<'a> RuntimeRequest<'a> {
 
     pub fn with_replay(mut self, replay: Arc<ReplayLog>) -> Self {
         self.replay = Some(replay);
+        self
+    }
+
+    pub fn with_sinks(mut self, sinks: SinkSet) -> Self {
+        self.sinks = Some(sinks);
         self
     }
 }

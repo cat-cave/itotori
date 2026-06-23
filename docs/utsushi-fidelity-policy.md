@@ -76,6 +76,68 @@ a Chromium-compatible launch host. Diagnostics must describe source categories
 such as `environment`, `path`, or `configured_unavailable`; they must not expose
 the resolved executable path or other raw private local paths.
 
+## Sink Tier Rules
+
+Utsushi runtime ports emit observed evidence into three headless sink contracts
+defined in `utsushi_core::sink` (UTSUSHI-022). Each sink kind has a fixed
+evidence-tier ceiling that is independent of the adapter's `evidenceTier`
+ceiling — a powerful adapter emitting into the text sink still only produces
+text-tier evidence. Per-sink ceiling violations surface as the stable semantic
+code `utsushi.sink.evidence_tier_mismatch`; adapters that cannot serve a sink
+kind return `utsushi.sink.unsupported_kind` rather than silently dropping.
+
+### Text surface sink
+
+Emissions describe the runtime-observed text for a bridge unit. The maximum
+claim is **E1 trace-reachable**: the runtime emitted this string, the adapter
+assumptions hold, and the bridge unit linkage is valid. Text-only adapters
+(synthetic JSON, RealLive Scene strings, RPG Maker MV/MZ JS DOM when not
+capturing) operate at E1. A text emission MUST NOT be summarized as "rendered"
+or "captured" in any report; only the per-sink ceiling applies. Reports MAY
+serialize the optional `bridgeRef` and `sourceAsset` fields when they are
+present, but neither field promotes the emission above the E1 ceiling.
+
+### Frame artifact sink
+
+Emissions describe a captured frame as a portable artifact reference. The
+minimum claim is **E2 captured**; the sink rejects E0/E1 frame refs as
+`utsushi.sink.evidence_tier_mismatch`. An adapter that supports replay review
+with annotated frames MAY emit E3 artifacts; an adapter that claims reference
+fidelity MAY emit E4 artifacts but only when its descriptor declares
+`reference_fidelity` and the capability contract includes
+`ReferenceComparison`. A frame artifact ref whose URI fails
+`validate_runtime_artifact_uri`, or whose `artifact_kind` is outside the
+allow-list (`screenshot`, `frame_capture`, `recording`), surfaces as
+`utsushi.sink.artifact_policy` and the report MUST surface the failure as a
+runtime finding, not as a missing artifact. Frame bytes never pass through
+the sink — they live behind `RuntimeArtifactRoot::write_bytes`, and the sink
+only announces the resulting `ObservationArtifactRef`.
+
+### Audio event sink
+
+Emissions describe audio events as inspectable metadata. The maximum claim is
+**E0 metadata**: a marker that an audio cue, BGM start, SE fire, or voice line
+was triggered, plus optional VFS-shaped asset id and bridge linkage. The sink
+does NOT accept audio bytes, sample rates, durations, or mix levels — the
+payload type has no field that could carry them. Audio metadata MUST NOT be
+promoted to E1 trace or higher; an adapter wanting to claim audio playback
+fidelity must introduce a new sink in a future node, and the audio event sink
+is not that surface.
+
+### Unsupported sink kinds
+
+An adapter that cannot serve a sink kind (e.g. a text-only adapter receiving an
+audio event) returns `utsushi.sink.unsupported_kind`. Silent drop is forbidden
+by contract. A runtime evidence report that lists `utsushi.sink.unsupported_kind`
+MUST NOT be promoted to a higher tier on the basis of "no audio events found."
+
+### Soft budget exhaustion
+
+The sink module reserves `utsushi.sink.budget_exhausted` for the soft-budget
+hook described under "Artifact Limits" below. UTSUSHI-022 defines the diagnostic
+without wiring it into a production hook; UTSUSHI-029 will route it from
+`RuntimeArtifactRoot::write_bytes` once an artifact-budget tracker exists.
+
 ## Runtime Environment Matrix
 
 | Environment          | Purpose                                           | Alpha status             | Notes                                                                                    |

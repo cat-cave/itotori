@@ -180,7 +180,7 @@ impl<'de> serde::Deserialize<'de> for AssetId {
     where
         D: serde::Deserializer<'de>,
     {
-        let raw = <String as serde::Deserialize>::deserialize(deserializer)?;
+        let raw = String::deserialize(deserializer)?;
         Self::parse(&raw).map_err(serde::de::Error::custom)
     }
 }
