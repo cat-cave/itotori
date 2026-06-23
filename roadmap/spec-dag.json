@@ -10064,7 +10064,7 @@
     {
       "id": "UTSUSHI-021",
       "title": "Deterministic input clock and replay log",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10096,15 +10096,12 @@
         "Nondeterministic replay state",
         "Unsupported inputs hidden as successful replay",
         "Replay logs that cannot drive future runtime ports"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-021",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-021"
+      ]
     },
     {
       "id": "UTSUSHI-022",
       "title": "Headless text render and audio sink contracts",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10140,10 +10137,7 @@
         "Text evidence overclaiming rendered output",
         "Screenshot refs bypassing artifact policy",
         "Audio metadata treated as playback fidelity"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-022",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-022"
+      ]
     },
     {
       "id": "UTSUSHI-023",
@@ -15476,7 +15470,7 @@
     },
     {
       "id": "UTSUSHI-103",
-      "status": "in_progress",
+      "status": "complete",
       "title": "Engine-port runner crate template and ABI conformance",
       "priority": "P1",
       "target": "alpha",
@@ -15509,10 +15503,7 @@
         "Engine ports bypassing shared lifecycle controls",
         "ABI drift between ports",
         "Private environment leakage through manifests"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-103",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-103"
+      ]
     },
     {
       "id": "UTSUSHI-104",
@@ -20729,7 +20720,7 @@
     {
       "id": "KAIFUU-173",
       "title": "RealLive Scene/SEEN parser-boundary smoke",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -20767,10 +20758,7 @@
         "String-slot identifiers unstable across runs",
         "Parser-boundary failures hidden as silent skips",
         "RLDEV provenance or clean-room boundary gaps"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/kaifuu-173",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-173"
+      ]
     },
     {
       "id": "KAIFUU-174",
@@ -21162,6 +21150,296 @@
         "Confirm aggregate-evidence log contains only redacted labels and signal presence/absence rows; no retail bytes leak.",
         "Confirm Siglus-overlap and AVG32-lineage rejections still hold against the updated FSM via the existing synthetic negatives.",
         "Confirm any new synthetic positive fixture explicitly models the evidence class (e.g. #REGNAME + .g00 corroborator, no #GAMEEXE_VERSION) that justified the FSM extension."
+      ]
+    },
+    {
+      "id": "UTSUSHI-149",
+      "status": "planned",
+      "title": "ReplayLog structural immutability hardening",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-021"],
+      "summary": "Privatize ReplayLog and ReplayMetadata fields behind accessor methods so the substrate's read-only-after-build guarantee is enforced by the type system, not by convention. The serde wire form must not change.",
+      "deliverables": [
+        "Privatize ReplayLog::schema_version and ReplayLog::metadata; expose `schema_version()` and `metadata()` accessors returning `&ReplaySchemaVersion` and `&ReplayMetadata`.",
+        "Privatize every field on ReplayMetadata and expose stable accessor methods (run_id, adapter_name, adapter_version, clock_origin, seed, source_label).",
+        "Update all in-tree call sites (replay.rs unit tests, replay_round_trip.rs integration tests) to use accessors.",
+        "Preserve the existing serde wire form (camelCase keys, same positions) — re-run the golden round-trip test and assert byte-equal JSON."
+      ],
+      "acceptanceCriteria": [
+        "ReplayLog and ReplayMetadata expose no public fields; all reads go through accessor methods.",
+        "The replay_log_golden.json fixture continues to deserialize and re-serialize byte-for-byte equal to the pre-refactor form.",
+        "An immutability inventory test asserts there is no `&mut self` method on ReplayLog and no `pub` field accessible for reassignment."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo clippy -p utsushi-core --all-targets -- -D warnings"
+        }
+      ],
+      "auditFocus": [
+        "ReplayLog or ReplayMetadata fields remaining public.",
+        "Wire-form drift relative to the checked-in golden.",
+        "Missing accessor coverage for any field previously read by the integration tests."
+      ]
+    },
+    {
+      "id": "UTSUSHI-150",
+      "status": "planned",
+      "title": "Normalize replay log wire-form case convention",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-021"],
+      "summary": "Pick one case convention (recommend camelCase) for the entire ReplayLog wire form so downstream consumers (UTSUSHI-024 WASM ABI, dashboard, conformance tooling) do not have to handle mixed-case documents.",
+      "deliverables": [
+        "Add `#[serde(rename_all = \"camelCase\")]` (or equivalent per-field renames) to InputEvent variant payloads so `bridge_unit_id` serializes as `bridgeUnitId`.",
+        "Update the checked-in `replay_log_golden.json` fixture to the normalized form.",
+        "Add a unit test that serializes a log containing every variant and asserts every JSON key matches the chosen convention."
+      ],
+      "acceptanceCriteria": [
+        "The serialized replay-log document uses a single case convention across all keys, including InputEvent payload fields.",
+        "REPLAY_LOG_SCHEMA_VERSION is bumped if any external consumer has read the prior form; otherwise the change is in-place under the alpha pin.",
+        "The case-convention assertion test passes against a log that exercises every InputEvent variant."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        }
+      ],
+      "auditFocus": [
+        "Any remaining snake_case key in the serialized form.",
+        "Golden fixture drift relative to the normalized form.",
+        "Missing variant coverage in the case-convention assertion test."
+      ]
+    },
+    {
+      "id": "UTSUSHI-151",
+      "status": "planned",
+      "title": "Wire SinkError::BudgetExhausted into the runtime artifact root budget hook",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-022", "UTSUSHI-029"],
+      "summary": "Route the soft artifact-budget violation surface from RuntimeArtifactRoot::write_bytes (or its delegate budget tracker) to SinkError::BudgetExhausted so the diagnostic is reachable from a real adapter path rather than only the cfg(test) injection point.",
+      "deliverables": [
+        "Production budget tracker on RuntimeArtifactRoot::write_bytes returning utsushi.sink.budget_exhausted",
+        "Adapter-side propagation so FrameArtifactSink::emit_frame surfaces BudgetExhausted instead of ArtifactPolicy when bytes exceed the cap",
+        "Removal or repurposing of the cfg(test) inject_budget_exhaustion helper"
+      ],
+      "acceptanceCriteria": [
+        "A real adapter writing more bytes than the configured soft budget receives SinkError::BudgetExhausted with the correct sink and budget label.",
+        "The semantic code utsushi.sink.budget_exhausted is reachable without using cfg(test) helpers.",
+        "The fidelity policy artifactLimits table cites the wire-up location and the test that exercises it."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        }
+      ],
+      "auditFocus": [
+        "Production reachability of SinkError::BudgetExhausted",
+        "No silent drop of budget-exhausted emissions",
+        "Soft budget enforcement matches docs/utsushi-fidelity-policy.md artifactLimits"
+      ]
+    },
+    {
+      "id": "UTSUSHI-152",
+      "status": "planned",
+      "title": "Descriptor and SinkSet evidence-tier cross-check",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-022", "UTSUSHI-026"],
+      "summary": "Add the planned runtime-time cross-check that prevents an adapter with an E1 overall evidence_tier_ceiling from registering a Supported-E2 FrameArtifactSink, closing the structural loophole the per-sink ceiling alone does not cover.",
+      "deliverables": [
+        "Cross-check validator (descriptor- or SinkSet-side) that compares the adapter's overall evidence_tier_ceiling against each registered sink's Supported ceiling",
+        "Stable semantic code under utsushi.sink.* (e.g. utsushi.sink.descriptor_ceiling_below_sink) wired through SinkError or a sibling diagnostic enum",
+        "Test coverage including the E1-adapter / E2-frame-sink mismatch case and the matching-ceiling baseline"
+      ],
+      "acceptanceCriteria": [
+        "An adapter whose overall evidence_tier_ceiling is below any registered sink's Supported ceiling fails registration or surfaces a typed diagnostic at SinkSet::capabilities-time.",
+        "The conformance manifest from UTSUSHI-026 references the cross-check rule.",
+        "All existing tests in utsushi-core continue to pass without modification."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "Descriptor and sink capability consistency",
+        "No silent acceptance of over-claimed sink ceilings",
+        "Conformance manifest references the cross-check"
+      ]
+    },
+    {
+      "id": "UTSUSHI-153",
+      "status": "planned",
+      "title": "Voice-subtitle sync AudioEventKind taxonomy extension",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-022"],
+      "summary": "Extend AudioEventKind with the voice-subtitle sync shape (or document that VoicePlay+bridge_ref already covers it) once the first runtime port emits voiced dialogue tied to a subtitle bridge unit.",
+      "deliverables": [
+        "AudioEventKind taxonomy update (either a new variant with snake_case serde mapping plus as_str arm, or an inline doc-comment recording that VoicePlay+bridge_ref is sufficient)",
+        "Acceptance test exercising the chosen shape against a voiced-line bridge unit",
+        "Fidelity policy audio section updated to reflect the taxonomy outcome"
+      ],
+      "acceptanceCriteria": [
+        "Downstream conformance can distinguish a voiced line tied to a subtitle from a generic VoicePlay marker (either via the existing bridge_ref shape or via a new variant).",
+        "All existing audio sink tests continue to pass.",
+        "No engine-specific opcode or shape leaks into the taxonomy."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        }
+      ],
+      "auditFocus": [
+        "Engine-neutral voice/subtitle taxonomy",
+        "No engine opcode leakage into AudioEventKind",
+        "Audio event sink remains E0-capped"
+      ]
+    },
+    {
+      "id": "UTSUSHI-154",
+      "status": "planned",
+      "title": "Fixture engine port adoption (UTSUSHI-103 Slice B)",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-103"],
+      "summary": "Refactor utsushi-fixture so FixtureRuntimeAdapter is built on the UTSUSHI-103 EnginePort substrate, providing the first non-synthetic conformance proof and the canonical reference port that downstream engine crates (UTSUSHI-146, UTSUSHI-031..039) imitate.",
+      "deliverables": [
+        "FixtureEnginePort struct implementing EnginePort with a const MANIFEST",
+        "FixtureRuntimeAdapter as EnginePortAdapter<FixtureEnginePort> (alias or thin newtype)",
+        "crates/utsushi-fixture/tests/abi_conformance.rs running run_required_abi",
+        "Round-trip test confirming descriptor fields derive from the manifest"
+      ],
+      "acceptanceCriteria": [
+        "FixtureEnginePort passes the ABI conformance harness for launch, observation envelope emission, cancellation, artifact-root usage, and shutdown idempotence.",
+        "utsushi-cli runtime registry compiles and runs unchanged.",
+        "Existing fixture trace, capture, and smoke_validate goldens continue to pass."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Behavior parity with the pre-Slice-B fixture adapter",
+        "Conformance harness coverage of the real (non-synthetic) port",
+        "Descriptor drift between manifest and RuntimeAdapterDescriptor"
+      ]
+    },
+    {
+      "id": "UTSUSHI-155",
+      "status": "planned",
+      "title": "Managed RuntimeArtifactRoot on RuntimeRequest for engine-port bridge",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-103"],
+      "summary": "Widen RuntimeRequest to carry the managed RuntimeArtifactRoot (not just an Option<&Path>) so EnginePortAdapter can hydrate PortRequest::artifact_root and the runner's artifact-root containment check fires on every legacy-adapter-driven capture.",
+      "deliverables": [
+        "Additive RuntimeRequest field that carries Option<&RuntimeArtifactRoot> (or an equivalent typed handle)",
+        "EnginePortAdapter::run_lifecycle hydrates PortRequest::artifact_root from the new field",
+        "Slice A inline TODO comment removed from crates/utsushi-core/src/port/mod.rs",
+        "New test: EnginePortAdapter::capture rejects an out-of-root artifact URI with ArtifactRootViolation"
+      ],
+      "acceptanceCriteria": [
+        "EnginePortAdapter-driven capture passes the runner's ensure_capture_within_root check when the legacy RuntimeRequest supplies the managed root.",
+        "Existing callers that supply only Option<&Path> continue to compile.",
+        "Adapter-driven capture writing outside the managed root is rejected with EnginePortError::ArtifactRootViolation."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Artifact-root containment via the legacy adapter surface",
+        "Additive RuntimeRequest evolution under concurrent specs",
+        "Behavioural parity between direct Runner calls and EnginePortAdapter calls"
+      ]
+    },
+    {
+      "id": "UTSUSHI-156",
+      "status": "planned",
+      "title": "Typed diagnostic for EnginePortAdapter branch-discovery rejection",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-103"],
+      "summary": "Replace EnginePortAdapter::run_lifecycle's stringly-typed BranchDiscovery rejection with either the existing unsupported_operation helper or a typed AdapterOperationUnsupported variant on EnginePortError so downstream code can match structurally.",
+      "deliverables": [
+        "Typed rejection path for BranchDiscovery in EnginePortAdapter::run_lifecycle",
+        "Regression test verifying the typed shape and redacted Display"
+      ],
+      "acceptanceCriteria": [
+        "EnginePortAdapter-driven discover_branches returns a typed rejection that downstream code can match without substring-parsing.",
+        "Display of the rejection passes looks_like_local_path.",
+        "Existing engine_port and utsushi-fixture tests continue to pass."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        }
+      ],
+      "auditFocus": [
+        "ABI drift between ports (typed vs stringly-typed rejections)",
+        "Diagnostic redaction (looks_like_local_path) on adapter-level rejections",
+        "Downstream registry behavior when an operation is unsupported"
       ]
     }
   ]
