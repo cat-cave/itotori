@@ -1,4 +1,5 @@
-//! Pure-Rust RealLive Scene/SEEN parser-boundary smoke (KAIFUU-173).
+//! Pure-Rust RealLive Scene/SEEN parser-boundary smoke (KAIFUU-173) and
+//! text inventory adapter (KAIFUU-174).
 //!
 //! Clean-room provenance:
 //! - All RealLive format observations are derived from publicly archived
@@ -14,12 +15,15 @@
 //!   If a hypothesis about RealLive's format was confirmed by reading
 //!   rlvm, the hypothesis is re-derived and re-tested against the
 //!   synthetic fixture bytes before being encoded here.
-//! - The KAIFUU-173 parser is identify+decode only at the smoke scope.
-//!   Patch-back, runtime execution, jump resolution, scene-graph linking,
-//!   Shift-JIS codec, encrypted SEEN.TXT, and full opcode coverage are
-//!   out of scope (see KAIFUU-174 and UTSUSHI-146).
+//! - KAIFUU-174 adds Shift-JIS decode/encode via `encoding_rs` (WHATWG-
+//!   spec implementation, not a copy of rlvm or RLDEV), a bounded
+//!   protected-span catalogue derived from public RLDEV documentation,
+//!   and length-preserving patch-back. Offset-table rewriting and
+//!   jump-target recalculation are not implemented; length-changing edits
+//!   emit `kaifuu.reallive.patchback_offset_overflow` Fatal.
 //! - No `Command::new`, no Wine, no Windows helper, no remote helper.
-//!   The parser is a pure function over `&[u8]`.
+//!   This crate is a pure function over `&[u8]`; the adapter (in
+//!   `kaifuu-engine-fixture`) owns the filesystem I/O.
 //!
 //! # Surface
 //!
@@ -100,8 +104,13 @@
 mod archive;
 mod ast;
 mod diagnostics;
+pub mod encoding;
+pub mod gameexe;
+pub mod inventory;
 mod opcodes;
 mod parser;
+pub mod patchback;
+pub mod protected_spans;
 mod strings;
 
 pub use archive::{SceneEntry, SceneId, SceneIndex, parse_archive};
@@ -112,5 +121,30 @@ pub use ast::{
 pub use diagnostics::{
     ParseDiagnostic, ParseDiagnosticCode, semantic_error_code_for_parser_diagnostic,
 };
+pub use encoding::{
+    SHIFT_JIS_DECODE_FAILURE_CODE, ShiftJisDecode, ShiftJisDecodeDiagnostic, ShiftJisEncodeError,
+    decode_shift_jis_slot, encode_shift_jis_slot, slice_control_bytes,
+};
+pub use gameexe::{
+    GameexeIniDiagnostic, GameexeInventoryEntry, GameexeInventoryReport, GameexeKeyTreatment,
+    UNKNOWN_GAMEEXE_KEY_CODE, parse_gameexe_inventory,
+};
+pub use inventory::{
+    AssetReference, AssetReferenceInventory, AssetReferenceKind,
+    INVENTORY_UNATTRIBUTED_DIALOGUE_CODE, INVENTORY_UNKNOWN_ASSET_EXTENSION_CODE,
+    INVENTORY_UNSUPPORTED_TEXT_SHAPE_CODE, InventoryReport, InventoryWarning, InventoryWarningCode,
+    build_scene_inventory,
+};
 pub use opcodes::NamedOpcode;
 pub use parser::parse_scene;
+pub use patchback::{
+    PATCHBACK_OFFSET_OVERFLOW_CODE, PATCHBACK_PARSER_REGRESSION_CODE,
+    PATCHBACK_PROTECTED_SPAN_LOST_CODE, PATCHBACK_SHIFT_JIS_ENCODE_FAILURE_CODE,
+    PATCHBACK_STALE_SOURCE_HASH_CODE, PATCHBACK_UNKNOWN_SLOT_ID_CODE,
+    PATCHBACK_UNSUPPORTED_LENGTH_POLICY_CODE, PatchBackError, PatchBackErrorCode, PatchBackPlan,
+    SlotEdit, SlotEditLengthPolicy, apply_patches,
+};
+pub use protected_spans::{
+    PROTECTED_SPAN_UNKNOWN_CONTROL_CODE, ProtectedSpanKind, ProtectedSpanReport,
+    ProtectedSpanWarning, RealLiveProtectedSpan, detect_protected_spans,
+};
