@@ -10224,7 +10224,7 @@
     {
       "id": "UTSUSHI-025",
       "title": "Engine port implementation map validator",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10260,15 +10260,12 @@
         "Validated report becoming a decision node",
         "Unstructured engine notes accepted as coverage",
         "Missing fixture provenance"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-025",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-025"
+      ]
     },
     {
       "id": "UTSUSHI-026",
       "title": "Runtime conformance manifest and result schema",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10304,10 +10301,7 @@
         "Skipped features hidden as passing checks",
         "Schema coupled to one engine",
         "Unsupported features reported without semantic reason codes"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-026",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-026"
+      ]
     },
     {
       "id": "UTSUSHI-027",
@@ -10447,7 +10441,10 @@
       "acceptanceCriteria": [
         "Itotori ingests conformance reports while preserving adapter evidence tier and fidelity tier separately",
         "Skipped and unsupported conformance checks remain queryable and cannot inflate readiness metrics",
-        "Dashboard fixtures can display conformance evidence without exposing raw local artifact paths"
+        "Dashboard fixtures can display conformance evidence without exposing raw local artifact paths",
+        "Typed TypeScript validators `assertConformanceManifestV02` and `assertConformanceResultV02` ship alongside the existing v0.2 contract validators, using the same wire shape as crates/utsushi-core/src/conformance/{manifest,result}.rs.",
+        "The seven UTSUSHI-026 negative fixtures and two positive fixtures are imported into the TS test suite so cross-validator drift is detected at CI time.",
+        "The schema.test.ts:2666 smoke test is replaced with the typed validator calls."
       ],
       "verification": [
         {
@@ -10461,12 +10458,19 @@
         {
           "type": "manual",
           "value": "Itotori conformance ingestion review"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
         }
       ],
       "auditFocus": [
         "Evidence tier inflation during ingestion",
         "Skipped checks hidden from dashboard queries",
-        "Artifact path leakage"
+        "Artifact path leakage",
+        "Cross-validator wire-shape parity",
+        "Negative fixture drift detection",
+        "Conformance manifest/result reachable from non-Rust consumers"
       ]
     },
     {
@@ -20769,7 +20773,7 @@
     {
       "id": "KAIFUU-174",
       "title": "RealLive AVG32-variant text inventory adapter",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -20807,10 +20811,7 @@
         "Patch-back corrupting non-text bytes",
         "Protected markup lost or misclassified",
         "Bridge identifiers unstable across runs"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/kaifuu-174",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-174"
+      ]
     },
     {
       "id": "KAIFUU-176",
@@ -20969,7 +20970,7 @@
     {
       "id": "UTSUSHI-148",
       "title": "Browser launch alpha contract tightening",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21007,10 +21008,7 @@
         "Environmental misconfiguration silently skipped instead of erroring",
         "NW.js advertised as an alpha capability",
         "MV/MZ alpha claim made without Chromium browser launch success"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-148",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-148"
+      ]
     },
     {
       "id": "KAIFUU-177",
@@ -21452,6 +21450,433 @@
         "ABI drift between ports (typed vs stringly-typed rejections)",
         "Diagnostic redaction (looks_like_local_path) on adapter-level rejections",
         "Downstream registry behavior when an operation is unsupported"
+      ]
+    },
+    {
+      "id": "UTSUSHI-157",
+      "status": "planned",
+      "title": "Resolve the inert conformance-fixtures feature flag drift",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-026"],
+      "summary": "Either remove the inert conformance-fixtures Cargo feature or actually gate the synthetic builders behind it, so the plan and the shipped crate agree.",
+      "deliverables": [
+        "One of: removal of `conformance-fixtures = []` from Cargo.toml plus doc update, OR `cfg` gating of the synthetic builders plus a downstream consumer that lists the feature under dev-dependencies",
+        "Updated plan section or follow-up note documenting the decision"
+      ],
+      "acceptanceCriteria": [
+        "No `Cargo.toml` feature declaration exists without at least one `#[cfg(feature = ...)]` reference in the crate.",
+        "All existing utsushi-core tests continue to pass under the default feature set.",
+        "If gating is chosen, the first downstream consumer (UTSUSHI-027/028/029) lists the feature explicitly under `[dev-dependencies]`."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo check -p utsushi-core --no-default-features"
+        }
+      ],
+      "auditFocus": [
+        "Plan-vs-shipped feature flag agreement",
+        "No inert Cargo features",
+        "Cross-crate test consumer handshake works as documented"
+      ]
+    },
+    {
+      "id": "UTSUSHI-158",
+      "status": "planned",
+      "title": "Pin the forward-compat strategy for unknown ProfileId",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-026"],
+      "summary": "Resolve the open forward-compat question on ProfileId so a future profile addition does not regress through a generic serde parse error instead of a typed utsushi.conformance.* diagnostic.",
+      "deliverables": [
+        "A decision (strict-with-typed-error or Unknown-variant-with-pin) recorded in a plan section or ADR",
+        "Implementation of the chosen path with a unit test exercising the unknown-variant case",
+        "If a new code is added (e.g. utsushi.conformance.unknown_profile_id), registration in codes::ALL"
+      ],
+      "acceptanceCriteria": [
+        "A manifest or result JSON carrying an unknown profile id surfaces an utsushi.conformance.* coded error, not a generic serde \"unknown variant\".",
+        "Existing tests in utsushi-core continue to pass.",
+        "The chosen strategy is documented in the plan."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "command",
+          "value": "just schema"
+        }
+      ],
+      "auditFocus": [
+        "No silent-omission of unknown profile ids",
+        "Diagnostic surface uniformity (utsushi.conformance.* over generic serde errors)",
+        "Forward-compat with future profile additions documented"
+      ]
+    },
+    {
+      "id": "UTSUSHI-159",
+      "status": "planned",
+      "title": "Audio-event conformance profile (port-driven)",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-026", "UTSUSHI-022"],
+      "summary": "Extend the conformance profile catalog with an audio-event variant once the first port emits audio fidelity claims, or document that voiced lines route through TextTrace + bridge_ref.",
+      "deliverables": [
+        "ProfileId::AudioTrace variant with E0 ceiling and AudioSink subsystem, OR an inline doc-comment recording that TextTrace + bridge_ref is sufficient",
+        "Schema version pin bump per plan §10.2 if a new variant is added",
+        "Negative-fixture coverage for the new variant"
+      ],
+      "acceptanceCriteria": [
+        "Adapters that promise audio fidelity can declare it in the conformance manifest with a typed profile id.",
+        "All existing conformance tests continue to pass.",
+        "The schema version pin reflects the addition."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        }
+      ],
+      "auditFocus": [
+        "Engine-neutral audio profile taxonomy",
+        "Audio-event sink remains E0-capped",
+        "Schema version pin bump on additive variants"
+      ]
+    },
+    {
+      "id": "UTSUSHI-160",
+      "status": "planned",
+      "title": "First production engine port consumes ConformanceManifest",
+      "priority": "P3",
+      "target": "alpha",
+      "projects": ["utsushi"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["UTSUSHI-026"],
+      "summary": "Drive the conformance substrate through a real engine port's registration and conformance run so the contract proves itself against a non-synthetic adapter.",
+      "deliverables": [
+        "A real engine port (the first of UTSUSHI-027/028/029 to land) wires a ConformanceManifest at registration",
+        "An integration test in that port's crate calls cross_validate_results_against_manifest with a real result set",
+        "Any audit observations from the port crate are tracked as separate findings, not as UTSUSHI-026 regressions"
+      ],
+      "acceptanceCriteria": [
+        "A non-synthetic adapter id appears in a checked-in ConformanceManifest.",
+        "cross_validate_results_against_manifest accepts the real result set.",
+        "Any cross-substrate drift is captured as a follow-up audit on the port crate."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core"
+        },
+        {
+          "type": "manual",
+          "value": "Review the new port crate's conformance manifest and result fixtures for engine-neutrality."
+        }
+      ],
+      "auditFocus": [
+        "Real adapter id in a real ConformanceManifest",
+        "Substrate-vs-port drift detection",
+        "No engine-specific substrings leak through the port's conformance surface"
+      ]
+    },
+    {
+      "id": "UTSUSHI-161",
+      "status": "planned",
+      "title": "Recipe-layer `--skip-browser` flag for Chromium-less CI lanes",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-148"],
+      "summary": "Implement the recipe-layer skip mechanism the UTSUSHI-148 docs declare as the operator's escape valve for Chromium-less public CI lanes, so the in-adapter `severity = error` posture stays intact while CI runners that intentionally lack Chromium can pass.",
+      "deliverables": [
+        "`--skip-browser` (or equivalently named) CLI flag on capabilities/smoke surfaces",
+        "Typed `runtime_skip_acknowledged` diagnostic emitted when the flag is set so the report cannot be mistaken for an alpha pass",
+        "Docs update enumerating which CI lanes are allowed to pass the flag"
+      ],
+      "acceptanceCriteria": [
+        "Flag is explicit (no env-driven implicit skip).",
+        "MV/MZ alpha-claim lanes are documented as forbidden from passing the flag.",
+        "Capability report status under the flag is distinguishable from a successful Chromium probe."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-cli"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Skip mechanism must not silently degrade alpha-claim lanes",
+        "Diagnostic shape distinguishes skip from success",
+        "Documentation enumerates allowed and forbidden CI lanes"
+      ]
+    },
+    {
+      "id": "UTSUSHI-162",
+      "status": "planned",
+      "title": "Strict display checking: produce DisplayUnavailable variant in production",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-148"],
+      "summary": "Promote the reserved `BrowserUnavailabilityReason::DisplayUnavailable` variant from test-only to a real strict-display probe, so operators of CI runners with broken display surfaces get a typed `utsushi.browser.display_unavailable` outcome instead of an opaque Chromium launch failure.",
+      "deliverables": [
+        "Activation policy for strict display checking documented and chosen",
+        "Production producer for the DisplayUnavailable variant",
+        "Removal of `#[allow(dead_code)]` and the `force_display_unavailable` test shim",
+        "Integration test for the production path"
+      ],
+      "acceptanceCriteria": [
+        "Reserved variant is produced from real probe code under the chosen activation gate.",
+        "Existing UTSUSHI-148 tests continue to pass.",
+        "Typed semantic code `utsushi.browser.display_unavailable` is observable in capability output under the gate."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-fixture"
+        },
+        {
+          "type": "command",
+          "value": "just check"
+        }
+      ],
+      "auditFocus": [
+        "Gate activation policy must not regress existing CI lanes",
+        "Production producer is reachable under realistic broken-display conditions",
+        "Operator-facing message distinguishes display-broken from binary-missing"
+      ]
+    },
+    {
+      "id": "KAIFUU-181",
+      "status": "planned",
+      "title": "RealLive offset-table-rewrite length-changing patch-back",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-174", "ALPHA-006"],
+      "summary": "Implement length-changing patch-back for RealLive Scene/SEEN: offset-table rewrite when any edited scene's total byte length changes, jump-target recalculation for opcodes whose byte ranges shift, and a re-parse self-check that confirms the patched archive remains structurally identical to the source minus the edited slots.",
+      "deliverables": [
+        "kaifuu-reallive::patchback gains a LengthChanging path that rewrites the SEEN.TXT entry table and recomputes per-scene byte_offset/byte_len for every shifted scene.",
+        "Jump-target operand bytes inside Jump/Return opcodes get recomputed when the target scene's offset shifts.",
+        "New fixture patchback-length-changing-001/ exercises a translated text run whose encoded bytes exceed the source slot's byte_len.",
+        "Re-parse self-check confirms the patched archive emits the same SceneIndex shape (sans drifted byte_offset/byte_len) and the same per-scene InstructionKind+StringSlot count."
+      ],
+      "acceptanceCriteria": [
+        "kaifuu-reallive patchback accepts a SlotEdit with LengthChanging policy and produces a byte-different but structurally-equivalent archive that re-parses cleanly.",
+        "Per-game evidence at ALPHA-006 confirms a Sweetie HD title can ship patched bytes that the RealLive runtime accepts without runtime regression.",
+        "Verification: kaifuu-reallive::patchback rejects an edit when the offset-table rewrite would require recomputing a jump target whose absolute resolution is not yet evidenced."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-reallive patchback_length_changing"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-engine-fixture reallive_adapter_patch_round_trips_length_changing_translation"
+        },
+        {
+          "type": "manual",
+          "value": "ALPHA-006 evidence pack: confirm patched SEEN.TXT loads cleanly in a Sweetie HD runtime smoke."
+        }
+      ],
+      "auditFocus": [
+        "Offset-table rewrite corrupting non-edited scene byte ranges.",
+        "Jump-target recalculation missing an opcode that embeds an absolute offset.",
+        "Patched archive parses but the runtime cannot load it (silent corruption)."
+      ]
+    },
+    {
+      "id": "KAIFUU-182",
+      "status": "planned",
+      "title": "RealLive protected-span catalogue expansion under Sweetie HD evidence",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-174", "ALPHA-006"],
+      "summary": "Expand the kaifuu-reallive ProtectedSpanKind catalogue when ALPHA-006 surfaces real-game control-byte shapes outside the bounded 9-kind set; each new kind requires a paired synthetic fixture line plus an RLDEV citation.",
+      "deliverables": [
+        "Per new ProtectedSpanKind variant: one synthetic fixture line, one RLDEV citation in the readiness-record addendum, one test in crates/kaifuu-reallive/tests/protected_spans.rs.",
+        "Update crates/kaifuu-reallive/src/protected_spans.rs catalogue table in the module doc-comment to mirror the new kinds."
+      ],
+      "acceptanceCriteria": [
+        "kaifuu-reallive::detect_protected_spans recognizes each new kind without warnings.",
+        "kaifuu.reallive.protected_span.unknown_control warning rate against the ALPHA-006 evidence pack drops to zero (or to a documented residual)."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-reallive protected_spans"
+        },
+        {
+          "type": "manual",
+          "value": "ALPHA-006 evidence pack: confirm protected-span unknown_control warning rate against Sweetie HD bytes."
+        }
+      ],
+      "auditFocus": [
+        "Catalogue expansion outpacing per-kind evidence (no silent additions).",
+        "Existing UnknownControl byte-preservation regressing as new kinds are added."
+      ]
+    },
+    {
+      "id": "KAIFUU-183",
+      "status": "planned",
+      "title": "Reconcile BridgeBundle bridge_id stability convention across engine-fixture adapters",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-adapters",
+      "dependsOn": ["KAIFUU-174"],
+      "summary": "Either ratify deterministic_id as the bridge_id convention across Siglus/XP3/fixture/RealLive sibling adapters (and update the KAIFUU-174 plan + readiness record to match), or migrate all four to UUIDv7 simultaneously and update the byte-equality golden-snapshot tests to mask the field.",
+      "deliverables": [
+        "Decision recorded in docs/kaifuu-adapters/reallive.md addendum (and Siglus/XP3 equivalents).",
+        "Either all four adapters use deterministic_id (plan §4.1 updated to match) or all four use uuid::Uuid::now_v7 with golden tests masking the field.",
+        "Single PR migrating the four adapters atomically so the convention is uniform."
+      ],
+      "acceptanceCriteria": [
+        "Grep for `deterministic_id\\(.*bridge.*\\)` across kaifuu-engine-fixture returns matches in all four adapters or none.",
+        "Grep for `Uuid::now_v7` against the bridge_id field returns matches in all four adapters or none.",
+        "Plan §4.1 of KAIFUU-174 and the equivalent sections in the Siglus/XP3 readiness records agree with the implementation."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-engine-fixture"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        }
+      ],
+      "auditFocus": [
+        "Mixed convention surviving the migration.",
+        "Golden-snapshot tests breaking when UUIDv7 is adopted without the masking update."
+      ]
+    },
+    {
+      "id": "UTSUSHI-163",
+      "status": "planned",
+      "title": "Tighter EvidenceRef locator shape for Fixture / Doc / ReferenceImplAnchor",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-025"],
+      "summary": "Constrain EvidenceRef locator validation to require known root prefixes (`fixtures/`, `docs/`) for Fixture / Doc kinds and a colon-anchored URI shape for ReferenceImplAnchor, so audit-channel triage of research evidence-refs is mechanical instead of human.",
+      "deliverables": [
+        "Tightened is_evidence_locator_valid branches for Fixture, Doc, ReferenceImplAnchor",
+        "Three new negative-shape tests and one positive-shape test per kind",
+        "Updated JSON Schema artifact (re-blessed via BLESS_IMPL_MAP_SCHEMA) reflecting the tighter shape",
+        "Positive fixture corpus updated if needed to satisfy the new shape"
+      ],
+      "acceptanceCriteria": [
+        "Evidence-ref locators that point outside `fixtures/` (Fixture) or `docs/` (Doc) are rejected with ImplMapError::ResearchEvidenceLocatorMalformed.",
+        "ReferenceImplAnchor locators that are neither http(s):// URLs nor `<scheme>:<path>:<token>` triples are rejected.",
+        "JSON Schema mirrors the Rust validator's per-kind shape and the BLESS-gated drift guard passes."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core impl_map"
+        },
+        {
+          "type": "command",
+          "value": "just impl-map-schema-validate"
+        }
+      ],
+      "auditFocus": [
+        "Triage-cost of evidence-ref locators",
+        "Engine-neutrality (the tightened shape must not encode per-engine paths)",
+        "Schema parity with the Rust validator"
+      ]
+    },
+    {
+      "id": "UTSUSHI-164",
+      "status": "planned",
+      "title": "Single-source EngineFamily -> manifest-id prefix vocabulary",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-025"],
+      "summary": "Replace validator.rs's hard-coded engine_family_manifest_prefix `match` with a single source of truth (an associated method on EngineFamily) so adding a variant is a compile-time exhaustive-match obligation and the cross-validator cannot silently drift from the wire-name vocabulary.",
+      "deliverables": [
+        "EngineFamily::manifest_id_prefix(self) -> Option<&'static str> associated method (or equivalent const slice keyed off the enum)",
+        "validate_against_manifest calls the new method instead of the local helper",
+        "Exhaustive round-trip test over every EngineFamily variant"
+      ],
+      "acceptanceCriteria": [
+        "Adding a new EngineFamily variant produces a compile error until the prefix surface is updated.",
+        "validate_impl_map_against_manifest behavior is unchanged for the current variants.",
+        "The engine_family_manifest_prefix helper in validator.rs is removed or trivially delegates."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core impl_map"
+        },
+        {
+          "type": "command",
+          "value": "cargo check --workspace"
+        }
+      ],
+      "auditFocus": [
+        "Single source of truth between EngineFamily and manifest-id grammar",
+        "Cross-validator behaviour parity across the refactor",
+        "Compile-time exhaustiveness for future engine families"
+      ]
+    },
+    {
+      "id": "UTSUSHI-165",
+      "status": "planned",
+      "title": "Outdated-detection algorithm for implementation-map status",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi"],
+      "parallelGroup": "utsushi-core",
+      "dependsOn": ["UTSUSHI-025"],
+      "summary": "Land an engine-neutral outdated-detection algorithm that flips a previously-Validated implementation map to Status::Outdated when its declared schemaVersion or referenced PortManifest version drifts from the live values, completing the Draft/Validated/Outdated typestate cycle UTSUSHI-025 ships as a variant.",
+      "deliverables": [
+        "An is_outdated(&map, &PortManifest, &str /* schema_version */) -> bool helper in utsushi_core::port::impl_map",
+        "Integration with at least one engine-port consumer (the first to land in UTSUSHI-031..039 or UTSUSHI-146) so the algorithm is exercised against a real port",
+        "Tests covering schema-version drift, manifest-version drift, and the no-drift case"
+      ],
+      "acceptanceCriteria": [
+        "Maps with a schemaVersion older than IMPL_MAP_SCHEMA_VERSION (within the same major) are flagged Outdated.",
+        "Maps whose PortManifest::version differs from a recorded baseline are flagged Outdated.",
+        "Validated maps with no drift remain Validated.",
+        "Outdated maps preserve their Outdated status through re-validation."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p utsushi-core impl_map"
+        }
+      ],
+      "auditFocus": [
+        "Engine-neutrality of the detection algorithm",
+        "Interaction with the BLESS schema drift guard",
+        "Correct preservation of Outdated through repeated validation"
       ]
     }
   ]
