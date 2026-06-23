@@ -119,6 +119,27 @@ pub const SEMANTIC_PATCH_RESULT_INCOMPATIBLE_SOURCE_CATEGORY_REQUIRED: &str =
     "kaifuu.patch_result.incompatible_source_category_required";
 pub const SEMANTIC_PATCH_RESULT_ROLLBACK_DIAGNOSTIC_REQUIRED: &str =
     "kaifuu.patch_result.rollback_diagnostic_required";
+pub const SEMANTIC_PATCH_TRANSACTION_BYTE_BUDGET_EXCEEDED: &str =
+    "kaifuu.patch_transaction.byte_budget_exceeded";
+pub const SEMANTIC_PATCH_TRANSACTION_SOURCE_MISSING: &str =
+    "kaifuu.patch_transaction.source_missing";
+pub const SEMANTIC_PATCH_TRANSACTION_RELOCATION_UNSUPPORTED: &str =
+    "kaifuu.patch_transaction.relocation_unsupported";
+pub const SEMANTIC_PATCH_TRANSACTION_EXPECTED_OUTPUT_HASH_MALFORMED: &str =
+    "kaifuu.patch_transaction.expected_output_hash_malformed";
+pub const SEMANTIC_PATCH_TRANSACTION_STAGED_WRITE_FAILED: &str =
+    "kaifuu.patch_transaction.staged_write_failed";
+pub const SEMANTIC_PATCH_TRANSACTION_STAGED_COLLISION: &str =
+    "kaifuu.patch_transaction.staged_collision";
+pub const SEMANTIC_PATCH_TRANSACTION_STAGED_READ_FAILED: &str =
+    "kaifuu.patch_transaction.staged_read_failed";
+pub const SEMANTIC_PATCH_TRANSACTION_PROMOTE_FAILED: &str =
+    "kaifuu.patch_transaction.promote_failed";
+pub const SEMANTIC_PATCH_TRANSACTION_STAGED_VERIFY_ROLLED_BACK: &str =
+    "kaifuu.patch_transaction.staged_verify_rolled_back";
+pub const SEMANTIC_PATCH_TRANSACTION_PROMOTE_ROLLED_BACK: &str =
+    "kaifuu.patch_transaction.promote_rolled_back";
+pub const SEMANTIC_PATCH_TRANSACTION_CANCELLED: &str = "kaifuu.patch_transaction.cancelled";
 pub const STRING_SLOT_OVERFLOW: &str = "kaifuu.string_slot.overflow";
 pub const STRING_SLOT_INVALID_ENCODING: &str = "kaifuu.string_slot.invalid_encoding";
 pub const STRING_SLOT_TERMINATOR_LOSS: &str = "kaifuu.string_slot.terminator_loss";
@@ -135,6 +156,13 @@ pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 
 pub mod contracts;
 mod offset_map;
+pub mod patch_transaction;
+
+pub use patch_transaction::{
+    DiagnosticSeverity, PatchTransaction, PatchTransactionConfig, PatchTransactionError,
+    PatchTransactionOutcome, PreflightCheck, PreflightReport, StagedPatchPayload,
+    TransactionDiagnostic, TransactionFailureCategory, TransactionState,
+};
 
 pub use offset_map::{
     ByteSpan, EncodedStringSlot, EncodedStringSlotDiagnostic, EncodedStringSlotLayout,

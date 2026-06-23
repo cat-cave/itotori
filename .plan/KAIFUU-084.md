@@ -1,29 +1,29 @@
 # KAIFUU-084 — Binary patch rollback and no-write preflight harness — Implementation Plan
 
-| Field           | Value                                        |
-| --------------- | -------------------------------------------- |
-| DAG node        | `KAIFUU-084`                                 |
+| Field           | Value                                                |
+| --------------- | ---------------------------------------------------- |
+| DAG node        | `KAIFUU-084`                                         |
 | Title           | Binary patch rollback and no-write preflight harness |
-| Branch          | `spec/kaifuu-084`                            |
-| Worktree        | `/scratch/worktrees/itotori-spec-kaifuu-084` |
-| Plan author     | planning worker (orchestrator-spawned)       |
-| Plan date       | 2026-06-23                                   |
-| Output file     | `.plan/KAIFUU-084.md` (this file)            |
-| Plan-only slice | No feature code lands from this plan.        |
+| Branch          | `spec/kaifuu-084`                                    |
+| Worktree        | `/scratch/worktrees/itotori-spec-kaifuu-084`         |
+| Plan author     | planning worker (orchestrator-spawned)               |
+| Plan date       | 2026-06-23                                           |
+| Output file     | `.plan/KAIFUU-084.md` (this file)                    |
+| Plan-only slice | No feature code lands from this plan.                |
 
 ---
 
 ## 0. Evidence Map
 
-| Surface | State today | KAIFUU-084 change |
-| ------- | ----------- | ----------------- |
-| `crates/kaifuu-core/src/lib.rs` `EngineAdapter::patch_preflight` (line 162) and `EngineAdapter::patch` (line 165) | Two-stage hook exists: `patch_preflight` defaults to `PatchResult::preflight_pass(...)` and `patch` does the writes. No shared harness enforces "preflight first / no irreversible write on fail." Each adapter is on its own honor system. | Add a shared engine-neutral transaction harness in a new submodule `patch_transaction` that drives both stages, runs all five preflight checks, then stages-verifies-promotes, with deterministic rollback. The trait surface is **unchanged**; adapters opt into the harness by calling it from inside `patch`. |
-| `crates/kaifuu-core/src/lib.rs` `PatchResult` (line 13281) | v0.1 in-Rust shape with `schema_version`, `patch_result_id`, `patch_export_id`, `status` (`Passed`/`Failed`), `output_hash`, `failures: Vec<AdapterFailure>`. **Not** v0.2; v0.2 is the JSON contract validated in `contracts.rs`. | The harness emits a v0.2-shaped JSON `serde_json::Value` alongside the existing `PatchResult` (which legacy callers keep using). v0.2 emission is the canonical KAIFUU-010 contract. No in-Rust struct renaming — the harness produces JSON validated by `validate_patch_result_v02`. |
-| `crates/kaifuu-core/src/contracts.rs` `PATCH_FAILURE_CATEGORIES_V02` (line 71) | Six categories: `source_incompatible`, `patch_write_failed`, `protected_span_violation`, `asset_missing`, `adapter_unsupported`, `output_hash_mismatch`. | Harness chooses category per failure point — table in §3.4. |
-| `crates/kaifuu-core/src/contracts.rs` `PATCH_PARTIAL_WRITE_DISPOSITIONS_V02` (line 80) | `rolled_back`, `cleaned_up`, `retained_partial`. | Harness disposition: every harness failure emits `partialWrite` with `disposition: "rolled_back"` (preflight, verify, promote) or `cleaned_up` (cancellation). `retained_partial` is **never** emitted by this harness — it stays available for adapter-specific paths that bypass the harness. |
-| `crates/kaifuu-reallive/src/patchback.rs` `apply_patches` (line 137) | Length-preserving in-memory transform: takes `archive_bytes: &[u8]`, returns `Result<Vec<u8>, PatchBackError>`. Does the byte transform but does not write to disk; no staging, no rollback (in-memory only). Failure modes already emit typed `PatchBackErrorCode` values (mapping table from KAIFUU-010 §6). | KAIFUU-084 does **not** rewrite `apply_patches`. It exposes a `PatchTransaction` API that a caller (KAIFUU-011 or RealLive `patch` impl) wraps around `apply_patches`. The harness handles the write-to-disk, staging, and rollback; `apply_patches` stays in-memory and engine-specific. |
-| `crates/kaifuu-engine-fixture/src/lib.rs` | Reference adapter (single-file). Has its own `patch` flow that writes a synthesized output, currently without staged-write isolation. | The harness is a `pub` module on `kaifuu-core`; fixture adapter is the **first integration test consumer** (positive happy path + simulated rename failure). |
-| `docs/subprojects-kaifuu.md`, `docs/testing-standard.md` | Document v0.2 patch result and golden flow. | Append a short subsection in `docs/subprojects-kaifuu.md` describing the transaction state machine, staging path, and rollback rules so future engines find the harness via docs. `docs/testing-standard.md` unchanged. |
+| Surface                                                                                                           | State today                                                                                                                                                                                                                                                                                                    | KAIFUU-084 change                                                                                                                                                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crates/kaifuu-core/src/lib.rs` `EngineAdapter::patch_preflight` (line 162) and `EngineAdapter::patch` (line 165) | Two-stage hook exists: `patch_preflight` defaults to `PatchResult::preflight_pass(...)` and `patch` does the writes. No shared harness enforces "preflight first / no irreversible write on fail." Each adapter is on its own honor system.                                                                    | Add a shared engine-neutral transaction harness in a new submodule `patch_transaction` that drives both stages, runs all five preflight checks, then stages-verifies-promotes, with deterministic rollback. The trait surface is **unchanged**; adapters opt into the harness by calling it from inside `patch`. |
+| `crates/kaifuu-core/src/lib.rs` `PatchResult` (line 13281)                                                        | v0.1 in-Rust shape with `schema_version`, `patch_result_id`, `patch_export_id`, `status` (`Passed`/`Failed`), `output_hash`, `failures: Vec<AdapterFailure>`. **Not** v0.2; v0.2 is the JSON contract validated in `contracts.rs`.                                                                             | The harness emits a v0.2-shaped JSON `serde_json::Value` alongside the existing `PatchResult` (which legacy callers keep using). v0.2 emission is the canonical KAIFUU-010 contract. No in-Rust struct renaming — the harness produces JSON validated by `validate_patch_result_v02`.                            |
+| `crates/kaifuu-core/src/contracts.rs` `PATCH_FAILURE_CATEGORIES_V02` (line 71)                                    | Six categories: `source_incompatible`, `patch_write_failed`, `protected_span_violation`, `asset_missing`, `adapter_unsupported`, `output_hash_mismatch`.                                                                                                                                                       | Harness chooses category per failure point — table in §3.4.                                                                                                                                                                                                                                                      |
+| `crates/kaifuu-core/src/contracts.rs` `PATCH_PARTIAL_WRITE_DISPOSITIONS_V02` (line 80)                            | `rolled_back`, `cleaned_up`, `retained_partial`.                                                                                                                                                                                                                                                               | Harness disposition: every harness failure emits `partialWrite` with `disposition: "rolled_back"` (preflight, verify, promote) or `cleaned_up` (cancellation). `retained_partial` is **never** emitted by this harness — it stays available for adapter-specific paths that bypass the harness.                  |
+| `crates/kaifuu-reallive/src/patchback.rs` `apply_patches` (line 137)                                              | Length-preserving in-memory transform: takes `archive_bytes: &[u8]`, returns `Result<Vec<u8>, PatchBackError>`. Does the byte transform but does not write to disk; no staging, no rollback (in-memory only). Failure modes already emit typed `PatchBackErrorCode` values (mapping table from KAIFUU-010 §6). | KAIFUU-084 does **not** rewrite `apply_patches`. It exposes a `PatchTransaction` API that a caller (KAIFUU-011 or RealLive `patch` impl) wraps around `apply_patches`. The harness handles the write-to-disk, staging, and rollback; `apply_patches` stays in-memory and engine-specific.                        |
+| `crates/kaifuu-engine-fixture/src/lib.rs`                                                                         | Reference adapter (single-file). Has its own `patch` flow that writes a synthesized output, currently without staged-write isolation.                                                                                                                                                                          | The harness is a `pub` module on `kaifuu-core`; fixture adapter is the **first integration test consumer** (positive happy path + simulated rename failure).                                                                                                                                                     |
+| `docs/subprojects-kaifuu.md`, `docs/testing-standard.md`                                                          | Document v0.2 patch result and golden flow.                                                                                                                                                                                                                                                                    | Append a short subsection in `docs/subprojects-kaifuu.md` describing the transaction state machine, staging path, and rollback rules so future engines find the harness via docs. `docs/testing-standard.md` unchanged.                                                                                          |
 
 The plan below is bounded by these rows.
 
@@ -219,20 +219,20 @@ Steps:
 
 Single source of truth for which v0.2 category each harness failure carries:
 
-| Failure point | `TransactionFailureCategory` | v0.2 `category` | `diagnosticCode` |
-| ------------- | ---------------------------- | --------------- | ---------------- |
-| Transform support | `AdapterUnsupported` | `adapter_unsupported` | `kaifuu.unsupported_layered_transform` |
-| Byte budget | `PatchWriteFailed` | `patch_write_failed` | `kaifuu.patch_transaction.byte_budget_exceeded` |
-| Source file missing | `AssetMissing` | `asset_missing` | `kaifuu.patch_transaction.source_missing` |
-| Source hash mismatch | `SourceIncompatible` | `source_incompatible` | `kaifuu.patch_result.source_incompatible` |
-| Relocation (non-identity length) | `AdapterUnsupported` | `adapter_unsupported` | `kaifuu.patch_transaction.relocation_unsupported` |
-| Expected-output-hash malformed | `OutputHashMismatch` | `output_hash_mismatch` | `kaifuu.patch_transaction.expected_output_hash_malformed` |
-| Stage write I/O fail | `PatchWriteFailed` | `patch_write_failed` | `kaifuu.patch_transaction.staged_write_failed` |
-| Staged collision | `PatchWriteFailed` | `patch_write_failed` | `kaifuu.patch_transaction.staged_collision` |
-| Staged read fail | `PatchWriteFailed` | `patch_write_failed` | `kaifuu.patch_transaction.staged_read_failed` |
-| Verify hash mismatch | `OutputHashMismatch` | `output_hash_mismatch` | `kaifuu.patch_result.output_hash_drift` |
-| Promote rename fail | `PatchWriteFailed` | `patch_write_failed` | `kaifuu.patch_transaction.promote_failed` |
-| Cancelled | `PatchWriteFailed` | `patch_write_failed` | `kaifuu.patch_transaction.cancelled` |
+| Failure point                    | `TransactionFailureCategory` | v0.2 `category`        | `diagnosticCode`                                          |
+| -------------------------------- | ---------------------------- | ---------------------- | --------------------------------------------------------- |
+| Transform support                | `AdapterUnsupported`         | `adapter_unsupported`  | `kaifuu.unsupported_layered_transform`                    |
+| Byte budget                      | `PatchWriteFailed`           | `patch_write_failed`   | `kaifuu.patch_transaction.byte_budget_exceeded`           |
+| Source file missing              | `AssetMissing`               | `asset_missing`        | `kaifuu.patch_transaction.source_missing`                 |
+| Source hash mismatch             | `SourceIncompatible`         | `source_incompatible`  | `kaifuu.patch_result.source_incompatible`                 |
+| Relocation (non-identity length) | `AdapterUnsupported`         | `adapter_unsupported`  | `kaifuu.patch_transaction.relocation_unsupported`         |
+| Expected-output-hash malformed   | `OutputHashMismatch`         | `output_hash_mismatch` | `kaifuu.patch_transaction.expected_output_hash_malformed` |
+| Stage write I/O fail             | `PatchWriteFailed`           | `patch_write_failed`   | `kaifuu.patch_transaction.staged_write_failed`            |
+| Staged collision                 | `PatchWriteFailed`           | `patch_write_failed`   | `kaifuu.patch_transaction.staged_collision`               |
+| Staged read fail                 | `PatchWriteFailed`           | `patch_write_failed`   | `kaifuu.patch_transaction.staged_read_failed`             |
+| Verify hash mismatch             | `OutputHashMismatch`         | `output_hash_mismatch` | `kaifuu.patch_result.output_hash_drift`                   |
+| Promote rename fail              | `PatchWriteFailed`           | `patch_write_failed`   | `kaifuu.patch_transaction.promote_failed`                 |
+| Cancelled                        | `PatchWriteFailed`           | `patch_write_failed`   | `kaifuu.patch_transaction.cancelled`                      |
 
 (Cancelled uses `patch_write_failed` because the only allowed v0.2 categories are the six in `PATCH_FAILURE_CATEGORIES_V02`. No new category is introduced.)
 
@@ -530,8 +530,8 @@ just test                                      # full sweep
 
 **One worker, single Rust slice.** The harness lives in one new file (`patch_transaction.rs`), adds ~12 semantic constants to `lib.rs`, and one documentation subsection. Estimated effort: ~1 day.
 
-| Slice | Surfaces | Effort |
-| ----- | -------- | ------ |
+| Slice        | Surfaces                                                                                                                                                                                                                                                  | Effort |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | **A (Rust)** | `crates/kaifuu-core/src/patch_transaction.rs` (new), `crates/kaifuu-core/src/lib.rs` (semantic constants + `pub mod patch_transaction;`), `crates/kaifuu-core/Cargo.toml` (`[dev-dependencies] tempfile`), `docs/subprojects-kaifuu.md` (one subsection). | ~1 day |
 
 No TS-side change. No Itotori-side change. No RealLive change. The harness is engine-neutral and consumer-free in this slice; KAIFUU-011 is the first consumer.

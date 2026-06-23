@@ -135,3 +135,52 @@ door for adapters that physically cannot roll back; Itotori ingestion treats
 that disposition as a P0 finding requirement. Disjointness of the
 `writtenAssetIds` and `skippedAssetIds` sets, fully covering
 `attemptedAssetIds`, is enforced on both TS and Rust sides.
+
+### Patch transaction harness (KAIFUU-084)
+
+Engine adapters write patched bytes through the
+`kaifuu_core::patch_transaction::PatchTransaction` harness. The harness runs a
+fixed five-check preflight before any byte hits disk, then drives a
+stage → verify → promote pipeline with deterministic rollback. The five
+preflight checks fire in a single pass (every blocker is reported, not just
+the first):
+
+1. Transform support — every entry in the caller's `required_transforms` list
+   must appear under `AdapterCapabilities.access_contract.patch` as a
+   supported surface, container, crypto, codec, or patch-back transform.
+2. Byte budget — the caller's `expected_payload_len` must not exceed
+   `byte_budget`.
+3. Source bytes — the existing file at `output_path` is read and its sha256
+   must equal `expected_source_hash`. Missing files surface as
+   `asset_missing`; drift surfaces as `source_incompatible`.
+4. Identity relocation — the harness enforces length-preservation:
+   `expected_payload_len` must equal the on-disk source length. Non-identity
+   relocation is rejected as `adapter_unsupported`; engines that need
+   length-changing patches must layer offset-table rewriting on top before
+   calling the harness.
+5. Output-hash format — `expected_output_hash` must match
+   `^sha256:[0-9a-f]{64}$`.
+
+Staged writes live at `<output_dir>/.staging/<asset_id>-<run_id>.tmp` and use
+`O_CREAT | O_EXCL` so two concurrent runs with the same run id cannot corrupt
+each other (the second one fails fast with `staged_collision`). Verify
+re-reads the staged bytes and re-hashes them; mismatch deletes the staging
+file and leaves `output_path` untouched. Promote performs an atomic
+`fs::rename` of the staged file over `output_path` — on POSIX this is atomic
+within the same filesystem (the staging directory is a sibling under
+`output_path.parent()`, so cross-filesystem moves are impossible by
+construction). A rename failure rolls back by deleting the staging file; the
+original output file is untouched because rename only swaps on success.
+
+Every harness outcome — success, preflight failure, verify failure, promote
+failure, and cancellation — emits a v0.2 PatchResult JSON via
+`PatchTransactionOutcome.patch_result_v02`. In debug builds the harness
+asserts that JSON passes `validate_patch_result_v02` before returning. Each
+failure carries the six v0.2 fields (asset id, bridge unit id, adapter id,
+command, diagnostic code, cause) so downstream ingestion never silently
+loses context. The harness never emits `retained_partial`; pre-promote
+failures use `rolled_back` and explicit cancellation uses `cleaned_up`.
+
+The harness is engine-neutral; `crates/kaifuu-reallive/src/patchback.rs` is
+unchanged. KAIFUU-011 is the first consumer that wires the harness into the
+binary patcher CLI.
