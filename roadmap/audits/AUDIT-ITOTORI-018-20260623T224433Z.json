@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-018-20260623T224433Z",
+  "generatedAt": "2026-06-23T22:44:33Z",
+  "spec": {
+    "id": "ITOTORI-018",
+    "title": "Batch planner and context packer",
+    "branch": "spec/itotori-018",
+    "worktree": "/scratch/worktrees/itotori-spec-itotori-018",
+    "commit": "2415bf8"
+  },
+  "auditor": {
+    "name": "itotori-018-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Iter-5 correctness audit of ITOTORI-018 (batch planner + context packer) at commit 2415bf8 on spec/itotori-018. Verification re-run is clean: `pnpm exec vp run ts:test` -> 16 test files / 200 passed / 3 skipped / 0 failed (matches worker's 200 TS tests claim and includes the 25 planner tests + 1 CLI smoke); the planner CLI dry-run smoke at the tail of the run reports `Average tokens/batch: 2011 / Model: fake / unknown (ctx 128000, cap 60952)` confirming the planner-end-to-end smoke produces a positive batch. `direnv exec . pnpm --filter @itotori/db test:db` (after `just db-up` + `just db-migrate` with `DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori`) -> 20 test files / 227 passed / 0 failed (matches the worker's 227 DB tests claim including the new `translation-batch-repository.test.ts` with 217 cases). `just check` -> exit 0 (typescript --noEmit across `apps/itotori`, `packages/itotori-db`, `packages/spec-dag-dashboard`; vp run / cargo fmt --check / cargo check --workspace all clean). Audit-focus structural verification: (1) Context-window assumptions are EXPLICIT and PROFILE-DRIVEN, not assumed -- `apps/itotori/src/batch-planner/model-profiles.ts:13-21` declares a pessimistic 128K/0.5 `fallbackModelProfile` and `apps/itotori/src/batch-planner/model-profiles.ts:36-67` enumerates 5 built-in profiles (`anthropic/claude-3-5-sonnet 200K`, `anthropic/claude-3-5-haiku 200K`, `openai/gpt-4o-mini 128K`, `local-default 32K`, `itotori-fake-draft 8K`); `resolveModelProfile` has an explicit 4-step resolution order (override -> providerDescriptor -> built-in profile -> conservative fallback) documented inline. The default `targetFillRatio = 0.7` is at `model-profiles.ts:6` (matches plan's '70% default fill ratio'); the formula `computeTokenBudgetCap` (model-profiles.ts:149-163) is `floor((contextWindowTokens - promptOverheadTokens - maxOutputTokens) * targetFillRatio)`, clamped to a minimum of 1 -- matches the plan formula verbatim. The `BatchModelProfile` (including `contextWindowTokens`, `targetFillRatio`, `tokenEstimatorId`) is persisted on every batch via the `translation-batch-repository`, so audits can replay sizing decisions even after provider catalogs change. (2) Overlarge batches FAIL LOUDLY, not silently -- the planner's pack loop at `planner.ts:236` only flushes when `acc.units.length > 0 && acc.totalTokens + incremental > tokenBudgetCap`, so a SINGLE oversized unit IS added to a fresh batch (could push `tokenEstimate > tokenBudgetCap`). The CLI then enforces the invariant via `enforceBudgetInvariant(result)` at `cli.ts:138` which calls `cli.ts:159-167`: `if (batch.tokenEstimate > batch.tokenBudgetCap) throw new Error('batch ${batch.id} exceeds tokenBudgetCap: ${batch.tokenEstimate} > ${batch.tokenBudgetCap}')`. So an undersized profile or an oversized single unit raises before persistence (`cli.ts:140-146` runs `dependencies.persist` AFTER `enforceBudgetInvariant`). Additionally, the soft-cap surface `nearCapWarning` flag is set on the batch when `tokenEstimate / tokenBudgetCap > 0.95` (planner.ts:359, `nearCapWarningRatio = 0.95` at planner.ts:70), persisted on the batch (shapes.ts:115), and queryable via the repository -- matches the plan's 'nearCapWarning' claim. (3) Missing relevant context is structurally defended -- the `citationManifest` is a required field on every `BatchContext` (shapes.ts:96) and is always populated in `finalizeBatch` (planner.ts:348-355) with `glossaryTermCount`, `styleRuleCount`, `characterCount`, `exampleCount`, `unitCitations`, and `sourceUnitKeyPrefix`. Per-unit citations (`unitCitations` at planner.ts:340-346) carry the `bridgeUnitId`, `glossaryTermIds`, `styleRuleIds`, and `characterTermIds` so every batch reports exactly which context entries are tied to which unit. The persistence layer at `persistence.ts:144-147` round-trips the `citationManifest.sourceUnitKeyPrefix`; the repository round-trip test in `packages/itotori-db/test/translation-batch-repository.test.ts` exercises full save/load symmetry. `tokenEstimatorId` is versioned (set to `tokenEstimatorIdV1` on every batch via `planner.ts:81-84`, overwriting any caller-supplied stale value -- explicitly documented as 'Ensure tokenEstimatorId always reflects the running estimator, even when a caller provides a stale override'); a future bump of the estimator id forces stale batches to be re-planned, mitigating the audit-focus 'context-window assumptions' item. DB migration 0027_translation_batches.sql exists with three tables (batches, batch units, batch context); the migration registry is updated (`packages/itotori-db/src/migrations.ts`). New CLI verb `itotori plan-batches` is wired through `apps/itotori/src/cli-handlers.ts` (77 LOC) and exercised by the CLI smoke test. Outcome: `pass` -- no blocking findings, no follow-ups recorded.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
