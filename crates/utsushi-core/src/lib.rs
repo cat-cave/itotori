@@ -14,8 +14,16 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
+pub mod clock;
+pub mod input;
 pub mod vfs;
 
+pub use clock::{ClockOrigin, LogicalClock, LogicalClockTick};
+pub use input::{
+    CLOCK_BACKTRACK_CODE, ChoiceIndex, INPUT_INVALID_PAYLOAD_CODE, INPUT_UNSUPPORTED_KIND_CODE,
+    InputError, InputEvent, InputKind, MenuTarget, PointerButton, REPLAY_NON_MONOTONIC_TICK_CODE,
+    REPLAY_REDACTION_VIOLATION_CODE, REPLAY_UNSUPPORTED_SCHEMA_VERSION_CODE, RawInputCode,
+};
 pub use vfs::{
     AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
     AssetSize, CaseRule, HelperId, IoSummary, MountedVfs, PackageDescriptor, PackageKind,
