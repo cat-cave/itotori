@@ -18,9 +18,10 @@ pub mod port;
 pub mod vfs;
 
 pub use port::{
-    CapabilityReason, DriftKind, EnginePortError, EnvFieldSchema, EnvFieldShape, LifecycleStage,
-    ManifestError, OPTIONAL_LIFECYCLE_STAGES, PortCapability, PortManifest, PortShutdownOutcome,
-    PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES,
+    CapabilityReason, CaptureOutcome, DriftKind, EnginePort, EnginePortError, EnvFieldSchema,
+    EnvFieldShape, LifecycleStage, ManifestError, MomentId, OPTIONAL_LIFECYCLE_STAGES,
+    PortCapability, PortEnv, PortManifest, PortRequest, PortShutdownOutcome, PortShutdownStatus,
+    REQUIRED_LIFECYCLE_STAGES, RunnerCancellation,
 };
 pub use vfs::{
     AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
