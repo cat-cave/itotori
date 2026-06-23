@@ -54,6 +54,7 @@ pub mod redaction;
 #[allow(clippy::module_inception)]
 pub mod snapshot;
 pub mod state;
+pub mod store;
 
 pub use diagnostics::SnapshotError;
 pub use diff::{StateChange, StateChangeKind, StateDiff, diff_snapshots};
@@ -68,3 +69,4 @@ pub use state::{
     MAX_STATE_PATH_SEGMENTS, STATE_TREE_MAX_SERIALIZED_BYTES, StateNamespace, StatePath, StateTree,
     StateValue,
 };
+pub use store::{InMemorySnapshotStore, SnapshotStore, SnapshotStoreError};

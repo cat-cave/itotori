@@ -105,6 +105,16 @@ pub enum EvidenceRef {
     /// `ObservationBridgeRef`.
     #[serde(rename = "bridgeUnit", rename_all = "camelCase")]
     BridgeUnit { bridge_unit_id: String },
+
+    /// Reference to a [`crate::StatePath`] quoted verbatim from a
+    /// snapshot diff. Additive variant introduced by UTSUSHI-028. The
+    /// `path` string is the canonical wire form returned by
+    /// [`crate::StatePath::as_str`] (already lowercase ASCII with `.`
+    /// segment separators; the snapshot substrate enforces this at parse
+    /// time). The wire shape is
+    /// `{ "artifactKind": "statePath", "path": "<state path>" }`.
+    #[serde(rename = "statePath", rename_all = "camelCase")]
+    StatePath { path: String },
 }
 
 impl EvidenceRef {
@@ -135,6 +145,42 @@ impl EvidenceRef {
             }
             Self::BridgeUnit { bridge_unit_id } => {
                 validate_id_string("bridge_unit", "bridge_unit_id", bridge_unit_id)
+            }
+            Self::StatePath { path } => {
+                if path.is_empty() {
+                    return Err(ConformanceError::EvidenceRefInvalid {
+                        artifact_kind: "state_path",
+                        reason: "path is empty".to_string(),
+                    });
+                }
+                if path.chars().any(char::is_whitespace) {
+                    return Err(ConformanceError::EvidenceRefInvalid {
+                        artifact_kind: "state_path",
+                        reason: "path contains whitespace".to_string(),
+                    });
+                }
+                // Defense in depth: also block local-path-shaped inputs
+                // before delegating to the substrate parser. The parser
+                // already rejects them, but the EvidenceRef::validate
+                // contract is the single seam the conformance layer
+                // trusts.
+                if looks_like_local_path(path) {
+                    return Err(ConformanceError::EvidenceRefInvalid {
+                        artifact_kind: "state_path",
+                        reason: "path looks like a local path".to_string(),
+                    });
+                }
+                // Reuse the UTSUSHI-023 parser so the conformance layer
+                // cannot accept any string the substrate would have
+                // rejected. The parser enforces the namespace allow
+                // list, the segment shape, and the byte ceiling.
+                crate::StatePath::parse(path).map_err(|err| {
+                    ConformanceError::EvidenceRefInvalid {
+                        artifact_kind: "state_path",
+                        reason: err.to_string(),
+                    }
+                })?;
+                Ok(())
             }
         }
     }
@@ -744,5 +790,177 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    // ---- UTSUSHI-028: EvidenceRef::StatePath ----
+
+    #[test]
+    fn evidence_ref_state_path_round_trips_through_serde_json() {
+        let evidence = EvidenceRef::StatePath {
+            path: "port.frame".to_string(),
+        };
+        let value = serde_json::to_value(&evidence).expect("serializes");
+        let restored: EvidenceRef = serde_json::from_value(value).expect("deserializes");
+        assert_eq!(restored, evidence);
+    }
+
+    #[test]
+    fn evidence_ref_state_path_serializes_as_artifact_kind_camel_case_state_path() {
+        let evidence = EvidenceRef::StatePath {
+            path: "port.frame".to_string(),
+        };
+        let value = serde_json::to_value(&evidence).expect("serializes");
+        let object = value.as_object().expect("object");
+        assert_eq!(
+            object.get("artifactKind").and_then(|v| v.as_str()),
+            Some("statePath"),
+            "wire tag must be camelCase statePath: {value:?}"
+        );
+        assert_eq!(
+            object.get("path").and_then(|v| v.as_str()),
+            Some("port.frame"),
+            "path field preserved verbatim: {value:?}"
+        );
+    }
+
+    #[test]
+    fn evidence_ref_state_path_validate_accepts_canonical_path() {
+        EvidenceRef::StatePath {
+            path: "port.frame".to_string(),
+        }
+        .validate()
+        .expect("validates");
+    }
+
+    #[test]
+    fn evidence_ref_state_path_validate_rejects_empty_path() {
+        let err = EvidenceRef::StatePath {
+            path: String::new(),
+        }
+        .validate()
+        .expect_err("empty");
+        assert!(matches!(
+            err,
+            ConformanceError::EvidenceRefInvalid {
+                artifact_kind: "state_path",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn evidence_ref_state_path_validate_rejects_path_with_whitespace() {
+        let err = EvidenceRef::StatePath {
+            path: "port frame".to_string(),
+        }
+        .validate()
+        .expect_err("whitespace");
+        assert!(matches!(
+            err,
+            ConformanceError::EvidenceRefInvalid {
+                artifact_kind: "state_path",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn evidence_ref_state_path_validate_rejects_path_that_looks_like_local_path() {
+        let err = EvidenceRef::StatePath {
+            path: "/home/user/leak".to_string(),
+        }
+        .validate()
+        .expect_err("local path");
+        assert!(matches!(
+            err,
+            ConformanceError::EvidenceRefInvalid {
+                artifact_kind: "state_path",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn evidence_ref_state_path_validate_rejects_path_with_unknown_namespace() {
+        let err = EvidenceRef::StatePath {
+            path: "unknown.frame".to_string(),
+        }
+        .validate()
+        .expect_err("unknown namespace");
+        assert!(matches!(
+            err,
+            ConformanceError::EvidenceRefInvalid {
+                artifact_kind: "state_path",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn evidence_ref_state_path_validate_rejects_path_with_uppercase_segment() {
+        let err = EvidenceRef::StatePath {
+            path: "Port.frame".to_string(),
+        }
+        .validate()
+        .expect_err("uppercase");
+        assert!(matches!(
+            err,
+            ConformanceError::EvidenceRefInvalid {
+                artifact_kind: "state_path",
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn every_existing_evidence_ref_variant_still_round_trips_through_serde() {
+        // Belt-and-suspenders: the additive variant must not perturb
+        // the existing variants' wire shape.
+        let uri = crate::runtime_artifact_uri(
+            "synthetic-run",
+            crate::RuntimeArtifactKind::TraceLog,
+            "trace-001",
+        )
+        .expect("uri");
+        let variants = vec![
+            EvidenceRef::RuntimeArtifact {
+                kind: crate::RuntimeArtifactKind::TraceLog,
+                uri,
+                artifact_id: Some("trace-001".to_string()),
+            },
+            EvidenceRef::TextLine {
+                line_id: "trace-line-001".to_string(),
+            },
+            EvidenceRef::FrameArtifactRef {
+                frame_id: "frame-0001".to_string(),
+            },
+            EvidenceRef::ReplayLogRef {
+                run_id: "run-001".to_string(),
+            },
+            EvidenceRef::ImplMapFixture {
+                fixture_id: "fixture-a".to_string(),
+            },
+            EvidenceRef::BridgeUnit {
+                bridge_unit_id: "bridge-unit-001".to_string(),
+            },
+        ];
+        for variant in variants {
+            let value = serde_json::to_value(&variant).expect("serializes");
+            let restored: EvidenceRef = serde_json::from_value(value).expect("deserializes");
+            assert_eq!(restored, variant);
+            variant.validate().expect("validates");
+        }
+    }
+
+    #[test]
+    fn result_pass_with_state_path_evidence_validates() {
+        let result = ConformanceResult {
+            profile_id: ProfileId::SnapshotRestore,
+            evidence: vec![EvidenceRef::StatePath {
+                path: "port.frame".to_string(),
+            }],
+            ..baseline_pass_result()
+        };
+        result.validate().expect("validates");
     }
 }

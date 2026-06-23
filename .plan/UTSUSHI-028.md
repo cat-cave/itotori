@@ -66,7 +66,7 @@ Acceptance-criterion-driven shape (mirrored from the DAG):
 ### Hard architectural constraints
 
 - `SnapshotStore` has typed errors only: no `Result<Option<Snapshot>,
-  _>`, no `Result<Snapshot, ()>`, no silent fallback. Variants:
+_>`, no `Result<Snapshot, ()>`, no silent fallback. Variants:
   `NotFound`, `MismatchedSchemaVersion`, `InvalidSnapshotRef`,
   `InspectableIdMismatch`, `StoreUnavailable`.
 - `EvidenceRef::StatePath` is **additive** — UTSUSHI-027 and
@@ -112,7 +112,7 @@ controlled-playback. Justification:
   `Snapshot`, `SnapshotError`, the `Inspectable`/`Restorable` traits,
   and the schema version pin. A resolver of `SnapshotRef → Snapshot`
   belongs here on cohesion.
-- Conformance is a *downstream consumer* — the check struct in
+- Conformance is a _downstream consumer_ — the check struct in
   `conformance::snapshot_check` borrows a `&dyn SnapshotStore` rather
   than re-implementing resolution. This keeps the conformance crate
   surface minimal and avoids a cycle (no `conformance` → `snapshot` →
@@ -273,13 +273,13 @@ pub enum SnapshotStoreError {
 
 Each variant maps to a stable code (§7):
 
-| Variant                     | Code                                                 |
-| --------------------------- | ---------------------------------------------------- |
-| `NotFound`                  | `utsushi.snapshot.store_not_found`                   |
-| `MismatchedSchemaVersion`   | `utsushi.snapshot.store_mismatched_schema_version`   |
-| `InvalidSnapshotRef`        | `utsushi.snapshot.store_invalid_snapshot_ref`        |
-| `InspectableIdMismatch`     | `utsushi.snapshot.store_inspectable_id_mismatch`     |
-| `StoreUnavailable`          | `utsushi.snapshot.store_unavailable`                 |
+| Variant                   | Code                                               |
+| ------------------------- | -------------------------------------------------- |
+| `NotFound`                | `utsushi.snapshot.store_not_found`                 |
+| `MismatchedSchemaVersion` | `utsushi.snapshot.store_mismatched_schema_version` |
+| `InvalidSnapshotRef`      | `utsushi.snapshot.store_invalid_snapshot_ref`      |
+| `InspectableIdMismatch`   | `utsushi.snapshot.store_inspectable_id_mismatch`   |
+| `StoreUnavailable`        | `utsushi.snapshot.store_unavailable`               |
 
 `SnapshotStoreError` implements `std::error::Error`, `Display` (uses
 the semantic code as prefix), and exposes `semantic_code(&self) ->
@@ -338,11 +338,11 @@ The variant is appended to the existing `EvidenceRef` enum in
 ```
 
 > Note on tag value: the brief specifies `{ kind: "state_path", path:
-> "..." }` (snake_case `kind`). The existing `EvidenceRef` enum uses
+"..." }` (snake_case `kind`). The existing `EvidenceRef` enum uses
 > `artifactKind` as the tag name and `camelCase` for variant tags
 > (e.g. `"runtimeArtifact"`, `"frameArtifactRef"`). This slice
 > **conforms to the existing enum's serde shape** — `artifactKind:
-> "statePath"` — because changing the tag name or per-variant casing
+"statePath"` — because changing the tag name or per-variant casing
 > rule for one variant breaks the wire format for the other five
 > variants. The brief's snake_case shape is reflected in the **semantic
 > code** (`utsushi.snapshot.state_drift`) and in the conformance check
@@ -447,27 +447,27 @@ ConformanceError>`:
 
 1. `self.profile == ProfileId::SnapshotRestore`. Failure:
    `ConformanceError::SnapshotCheckProfileMismatch { observed,
-   expected }`, code
+expected }`, code
    `utsushi.conformance.snapshot_check_profile_mismatch`.
 2. `self.baseline.validate()` succeeds (delegates to
    `SnapshotRef::validate` from UTSUSHI-023). Failure: wrap as
    `ConformanceError::SnapshotRefInvalid { side: "baseline", reason:
-   err.to_string() }`, code
+err.to_string() }`, code
    `utsushi.conformance.snapshot_ref_invalid`.
 3. `self.observed.validate()` succeeds. Failure: same code, `side:
-   "observed"`.
+"observed"`.
 4. `self.baseline.inspectable_id == self.observed.inspectable_id`.
    Failure:
    `ConformanceError::SnapshotInspectableIdMismatch { baseline,
-   observed }`, code
+observed }`, code
    `utsushi.conformance.snapshot_inspectable_id_mismatch`. Diffing
    snapshots from different inspectable surfaces is meaningless;
    `StateDiff` itself rejects this at runtime, but the check rejects
    it at validate time so the negative diagnostic is sharp.
 5. `self.expected_tier <=
-   ProfileId::SnapshotRestore.evidence_tier_ceiling()` (E1). Failure:
+ProfileId::SnapshotRestore.evidence_tier_ceiling()` (E1). Failure:
    `ConformanceError::SnapshotEvidenceTierOverclaim { observed,
-   ceiling }`, code
+ceiling }`, code
    `utsushi.conformance.snapshot_evidence_tier_overclaim`.
 
 ### 5.3 `run()` helper
@@ -558,7 +558,7 @@ The runner is responsible for wrapping the `ResultOutcome` into a
 
 - On `Pass`: the runner inserts a single
   `EvidenceRef::StatePath { path: <one canonical path the runner
-  considers load-bearing for the slice> }` so the
+considers load-bearing for the slice> }` so the
   `pass_without_evidence` validator from UTSUSHI-026 accepts the
   payload. The check struct exposes
   `pass_evidence_for(&Snapshot) -> EvidenceRef` returning the
@@ -580,13 +580,13 @@ calling the check:
 1. **Adapter manifest declares `SnapshotRestore` but the store
    returns `NotFound` for either ref**: the runner constructs the
    check normally; `run` returns `Fail { semantic_code:
-   "utsushi.snapshot.store_not_found", detail }`. This is the
+"utsushi.snapshot.store_not_found", detail }`. This is the
    "never silently returning a stale or empty payload" defense.
 2. **Adapter manifest does NOT declare `SnapshotRestore`**: the
    runner does NOT call the check. Instead, it emits
    `ResultOutcome::Unsupported { semantic_code:
-   "utsushi.conformance.snapshot_restore_unsupported",
-   declared_in_manifest: false }`. The helper
+"utsushi.conformance.snapshot_restore_unsupported",
+declared_in_manifest: false }`. The helper
    `unsupported_snapshot_restore_result()` mirrors the
    `unsupported_frame_capture_result()` pattern from UTSUSHI-029 §
    mod.rs.
@@ -627,7 +627,7 @@ matching the UTSUSHI-026 / UTSUSHI-029 fixtures posture.
 - Returns a `SnapshotConformanceCheck` with:
   - `profile: ProfileId::SnapshotRestore`,
   - `baseline: SnapshotRef { snapshot_id: "snap-baseline-001",
-    inspectable_id: "utsushi-fixture", evidence_tier: E1 }`,
+inspectable_id: "utsushi-fixture", evidence_tier: E1 }`,
   - `observed: SnapshotRef { snapshot_id: "snap-observed-001", ... }`,
   - `expected_tier: E1`.
 - `run(&store)` returns `ResultOutcome::Pass { evidence_tier: E1 }`.
@@ -639,11 +639,11 @@ matching the UTSUSHI-026 / UTSUSHI-029 fixtures posture.
 - Same shape as 6.1 but the observed snapshot has `port.frame`
   changed from `Uint { value: 1 }` to `Uint { value: 99 }`.
 - `run(&store)` returns `ResultOutcome::Fail { semantic_code:
-  "utsushi.snapshot.state_drift", detail: "snapshot drift: 1 path(s)
-  differ" }`.
+"utsushi.snapshot.state_drift", detail: "snapshot drift: 1 path(s)
+differ" }`.
 - `SnapshotConformanceCheck::state_path_evidence_from_diff(&diff)`
   returns `vec![EvidenceRef::StatePath { path: "port.frame"
-  .to_string() }]`. The runner builds the
+.to_string() }]`. The runner builds the
   `ConformanceResult::evidence` vec from this; the result envelope
   validates clean.
 - **This is the audit-focus negative case** — the test
@@ -667,7 +667,7 @@ matching the UTSUSHI-026 / UTSUSHI-029 fixtures posture.
 - The store contains only the observed snapshot. The check's `baseline`
   ref points at `snap-baseline-001`, which is not in the store.
 - `run(&store)` returns `ResultOutcome::Fail { semantic_code:
-  "utsushi.snapshot.store_not_found", detail: "baseline: ..." }`.
+"utsushi.snapshot.store_not_found", detail: "baseline: ..." }`.
 
 ### 6.5 Mismatched schema version → typed Fail
 
@@ -683,14 +683,14 @@ matching the UTSUSHI-026 / UTSUSHI-029 fixtures posture.
   observed-side resolve. The fixture returns the check struct + the
   stale store.
 - `run(&stale_store)` returns `ResultOutcome::Fail { semantic_code:
-  "utsushi.snapshot.store_mismatched_schema_version", ... }`.
+"utsushi.snapshot.store_mismatched_schema_version", ... }`.
 
 ### 6.6 Inspectable id mismatch on ref → reject at validate
 
 `synthetic_snapshot_check_with_mismatched_inspectable_ids()`:
 
 - `baseline.inspectable_id = "port-a"`, `observed.inspectable_id =
-  "port-b"`.
+"port-b"`.
 - `validate()` returns
   `Err(ConformanceError::SnapshotInspectableIdMismatch { ... })`,
   code `utsushi.conformance.snapshot_inspectable_id_mismatch`. The
@@ -711,8 +711,8 @@ matching the UTSUSHI-026 / UTSUSHI-029 fixtures posture.
 
 - Returns a `ConformanceResult` envelope (not a check struct) with
   `ResultOutcome::Unsupported { semantic_code:
-  "utsushi.conformance.snapshot_restore_unsupported",
-  declared_in_manifest: false }`.
+"utsushi.conformance.snapshot_restore_unsupported",
+declared_in_manifest: false }`.
 - The companion manifest does NOT declare `SnapshotRestore`; the
   cross-validation against the manifest succeeds.
 
@@ -743,8 +743,8 @@ store-side codes) in
 new `utsushi.conformance.snapshot_*` codes; this slice ships **7**
 conformance-side codes plus **5** snapshot-store codes plus
 `utsushi.snapshot.state_drift` (the state-drift code is registered
-under the `utsushi.snapshot.*` namespace because the *evidence* is a
-state-drift report from the substrate, even though the *outcome* is a
+under the `utsushi.snapshot.*` namespace because the _evidence_ is a
+state-drift report from the substrate, even though the _outcome_ is a
 conformance Fail).
 
 ### 7.1 New `utsushi.conformance.snapshot_*` codes (7)
@@ -990,14 +990,14 @@ file, additive tests):
 
 ### 8.8 Audit-focus checklist mapping
 
-| Audit focus                                                          | Test that pins it                                                                                            |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| State drift reported too vaguely                                     | `snapshot_conformance_check_fails_with_state_path_evidence_when_baseline_differs_from_observed` (§8.3, §8.7) |
-| Snapshot checks requiring renderer support                           | `snapshot_restore_profile_required_subsystems_does_not_include_frame_sink_or_artifact_store` (§8.3)          |
-| Private data embedded in snapshot reports                            | `snapshot_conformance_check_serialized_form_passes_reject_unredacted_local_paths` (§8.3)                     |
-| SnapshotStore typed errors, never silent stale / empty               | `in_memory_snapshot_store_resolve_returns_not_found_when_id_absent` + property test in §8.3                  |
-| EvidenceRef::StatePath round-trips cleanly                           | `evidence_ref_state_path_round_trips_through_serde_json` (§8.2) + §8.3 envelope test                         |
-| State-drift check actually fails on non-empty diff (negative case)   | `snapshot_conformance_check_fails_when_state_diff_is_non_empty` (§8.3)                                       |
+| Audit focus                                                        | Test that pins it                                                                                            |
+| ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| State drift reported too vaguely                                   | `snapshot_conformance_check_fails_with_state_path_evidence_when_baseline_differs_from_observed` (§8.3, §8.7) |
+| Snapshot checks requiring renderer support                         | `snapshot_restore_profile_required_subsystems_does_not_include_frame_sink_or_artifact_store` (§8.3)          |
+| Private data embedded in snapshot reports                          | `snapshot_conformance_check_serialized_form_passes_reject_unredacted_local_paths` (§8.3)                     |
+| SnapshotStore typed errors, never silent stale / empty             | `in_memory_snapshot_store_resolve_returns_not_found_when_id_absent` + property test in §8.3                  |
+| EvidenceRef::StatePath round-trips cleanly                         | `evidence_ref_state_path_round_trips_through_serde_json` (§8.2) + §8.3 envelope test                         |
+| State-drift check actually fails on non-empty diff (negative case) | `snapshot_conformance_check_fails_when_state_diff_is_non_empty` (§8.3)                                       |
 
 ## 9. Verification commands
 
@@ -1049,7 +1049,7 @@ referenced from `docs/conformance/README.md` (one-line addition).
 ### 11.1 SnapshotStore production wiring deferred to engine ports
 
 The slice ships only the `InMemorySnapshotStore` sample. Real engine
-ports (UTSUSHI-103 sibling work, KAIFUU-* engine ports) will implement
+ports (UTSUSHI-103 sibling work, KAIFUU-\* engine ports) will implement
 the trait against their own backing stores (artifact bundles,
 controlled-playback session logs). Risk: a port that violates the
 trait's typed-error contract (e.g. returns
@@ -1190,8 +1190,9 @@ self-contained inside:
 
 No cross-crate changes; no schema-package changes; no new workspace
 member. Estimated diff size: ~1,400 LOC (≈700 production + ≈700 tests
-+ fixtures), well inside a single-worker scope per the UTSUSHI-022 /
-UTSUSHI-026 / UTSUSHI-029 precedent.
+
+- fixtures), well inside a single-worker scope per the UTSUSHI-022 /
+  UTSUSHI-026 / UTSUSHI-029 precedent.
 
 ## 14. Coordination summary
 

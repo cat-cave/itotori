@@ -43,7 +43,7 @@ impl SnapshotSchemaVersion {
 
 /// Stable snapshot id. The wire form is a non-empty lowercase ASCII
 /// string of `[a-z0-9-]` no longer than `MAX_SNAPSHOT_ID_BYTES`.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SnapshotId(String);
 

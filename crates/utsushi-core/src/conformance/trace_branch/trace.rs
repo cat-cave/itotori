@@ -510,6 +510,10 @@ pub fn accepts_text_trace_evidence(evidence: &EvidenceRef) -> bool {
         | EvidenceRef::ReplayLogRef { .. }
         | EvidenceRef::ImplMapFixture { .. } => true,
         EvidenceRef::FrameArtifactRef { .. } => false,
+        // `EvidenceRef::StatePath` (UTSUSHI-028) belongs to the
+        // snapshot-restore profile only; rejecting it here keeps the
+        // text-trace evidence filter narrow.
+        EvidenceRef::StatePath { .. } => false,
         EvidenceRef::RuntimeArtifact { kind, .. } => matches!(
             kind,
             RuntimeArtifactKind::TraceLog | RuntimeArtifactKind::ConformanceReport

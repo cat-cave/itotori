@@ -32,6 +32,7 @@ pub mod diagnostics;
 pub mod fixtures;
 pub mod manifest;
 pub mod result;
+pub mod snapshot_check;
 pub mod trace_branch;
 
 pub use capture_recording::{
@@ -45,11 +46,18 @@ pub use manifest::{
     SubsystemRequirement,
 };
 pub use result::{ConformanceResult, EvidenceRef, ResultOutcome};
+pub use snapshot_check::{SnapshotConformanceCheck, unsupported_snapshot_restore_result};
 
 use crate::{EvidenceTier, port::PortManifest};
 
 /// Schema version pin for the runtime conformance contract.
-pub const CONFORMANCE_SCHEMA_VERSION: &str = "0.1.0-alpha";
+///
+/// Bumped to `0.2.0-alpha` by UTSUSHI-028 for the additive
+/// [`result::EvidenceRef::StatePath`] enum variant. The minor bump (not a
+/// patch bump) reflects the additive enum variant: forward-compatible
+/// for readers, but exhaustive-match downstream consumers must add the
+/// new arm.
+pub const CONFORMANCE_SCHEMA_VERSION: &str = "0.2.0-alpha";
 
 /// Stable conformance profile identifier. The set is fixed at six
 /// variants in this slice (plan §10.2); adding a profile is additive

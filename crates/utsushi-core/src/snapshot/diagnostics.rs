@@ -37,6 +37,15 @@ pub mod codes {
     pub const EMPTY_STATE_TREE: &str = "utsushi.snapshot.empty_state_tree";
     pub const SERIALIZATION_FAILURE: &str = "utsushi.snapshot.serialization_failure";
 
+    // ---- UTSUSHI-028 additive store + state-drift codes. Source of
+    // truth is `super::super::store::codes`; re-export here so legacy
+    // dotted paths continue to resolve and so the unified `ALL` slice
+    // can name each entry locally. ----
+    pub use super::super::store::codes::{
+        STATE_DRIFT, STORE_INSPECTABLE_ID_MISMATCH, STORE_INVALID_SNAPSHOT_REF,
+        STORE_MISMATCHED_SCHEMA_VERSION, STORE_NOT_FOUND, STORE_UNAVAILABLE,
+    };
+
     /// Full set of stable Utsushi snapshot semantic codes. Conformance
     /// schemas that gate runtime diagnostics by allowed-code list
     /// include each of these.
@@ -61,6 +70,13 @@ pub mod codes {
         INVALID_GENERATED_AT,
         EMPTY_STATE_TREE,
         SERIALIZATION_FAILURE,
+        // UTSUSHI-028 store + state-drift additions.
+        STORE_NOT_FOUND,
+        STORE_MISMATCHED_SCHEMA_VERSION,
+        STORE_INVALID_SNAPSHOT_REF,
+        STORE_INSPECTABLE_ID_MISMATCH,
+        STORE_UNAVAILABLE,
+        STATE_DRIFT,
     ];
 }
 

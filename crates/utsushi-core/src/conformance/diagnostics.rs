@@ -73,6 +73,16 @@ pub mod codes {
         RECORDING_EVIDENCE_TIER_OVERCLAIM, RECORDING_FRAME_COUNT_MISMATCH, RECORDING_ID_MALFORMED,
     };
 
+    // ---- UTSUSHI-028: snapshot conformance codes. Source of truth is
+    // `super::super::snapshot_check::codes`; re-export here so legacy
+    // dotted paths continue to resolve and so the unified `ALL` slice
+    // can name each entry locally. ----
+    pub use super::super::snapshot_check::codes::{
+        SNAPSHOT_CHECK_PROFILE_MISMATCH, SNAPSHOT_DIFF_INSPECTABLE_ID_MISMATCH,
+        SNAPSHOT_EVIDENCE_TIER_OVERCLAIM, SNAPSHOT_INSPECTABLE_ID_MISMATCH, SNAPSHOT_REF_INVALID,
+        SNAPSHOT_RESOLUTION_FAILED, SNAPSHOT_RESTORE_UNSUPPORTED,
+    };
+
     /// Full set of stable conformance semantic codes. Conformance
     /// schemas that gate runtime diagnostics by allowed-code list
     /// include each of these.
@@ -137,6 +147,14 @@ pub mod codes {
         RECORDING_FRAME_COUNT_MISMATCH,
         RECORDING_DURATION_OUT_OF_RANGE,
         RECORDING_EVENT_COUNT_OUT_OF_RANGE,
+        // UTSUSHI-028 snapshot conformance.
+        SNAPSHOT_RESTORE_UNSUPPORTED,
+        SNAPSHOT_CHECK_PROFILE_MISMATCH,
+        SNAPSHOT_REF_INVALID,
+        SNAPSHOT_INSPECTABLE_ID_MISMATCH,
+        SNAPSHOT_EVIDENCE_TIER_OVERCLAIM,
+        SNAPSHOT_DIFF_INSPECTABLE_ID_MISMATCH,
+        SNAPSHOT_RESOLUTION_FAILED,
     ];
 }
 
@@ -288,6 +306,26 @@ pub enum ConformanceError {
     /// Recording event count (`frame_count + audio_event_count`) sat
     /// outside `expected_event_count_range`.
     RecordingEventCountOutOfRange { observed: u32, min: u32, max: u32 },
+    // ---- UTSUSHI-028 snapshot conformance variants (additive). ----
+    /// Snapshot conformance check carried a profile id other than
+    /// [`ProfileId::SnapshotRestore`].
+    SnapshotCheckProfileMismatch {
+        observed: ProfileId,
+        expected: ProfileId,
+    },
+    /// `SnapshotRef::validate` rejected the baseline or observed ref on
+    /// the snapshot conformance check.
+    SnapshotRefInvalid { side: &'static str, reason: String },
+    /// Baseline and observed `SnapshotRef`s on the snapshot conformance
+    /// check disagreed on `inspectable_id` — diffing snapshots from
+    /// different inspectable surfaces is meaningless.
+    SnapshotInspectableIdMismatch { baseline: String, observed: String },
+    /// Snapshot conformance check declared `expected_tier` above the
+    /// [`ProfileId::SnapshotRestore`] ceiling.
+    SnapshotEvidenceTierOverclaim {
+        observed: EvidenceTier,
+        ceiling: EvidenceTier,
+    },
 }
 
 impl ConformanceError {
@@ -349,6 +387,10 @@ impl ConformanceError {
             Self::RecordingFrameCountMismatch { .. } => codes::RECORDING_FRAME_COUNT_MISMATCH,
             Self::RecordingDurationOutOfRange { .. } => codes::RECORDING_DURATION_OUT_OF_RANGE,
             Self::RecordingEventCountOutOfRange { .. } => codes::RECORDING_EVENT_COUNT_OUT_OF_RANGE,
+            Self::SnapshotCheckProfileMismatch { .. } => codes::SNAPSHOT_CHECK_PROFILE_MISMATCH,
+            Self::SnapshotRefInvalid { .. } => codes::SNAPSHOT_REF_INVALID,
+            Self::SnapshotInspectableIdMismatch { .. } => codes::SNAPSHOT_INSPECTABLE_ID_MISMATCH,
+            Self::SnapshotEvidenceTierOverclaim { .. } => codes::SNAPSHOT_EVIDENCE_TIER_OVERCLAIM,
         }
     }
 }
@@ -536,6 +578,24 @@ impl fmt::Display for ConformanceError {
             Self::RecordingEventCountOutOfRange { observed, min, max } => {
                 write!(formatter, "{code}: observed={observed} min={min} max={max}")
             }
+            Self::SnapshotCheckProfileMismatch { observed, expected } => write!(
+                formatter,
+                "{code}: observed={} expected={}",
+                observed.as_str(),
+                expected.as_str()
+            ),
+            Self::SnapshotRefInvalid { side, reason } => {
+                write!(formatter, "{code}: side={side} reason={reason}")
+            }
+            Self::SnapshotInspectableIdMismatch { baseline, observed } => {
+                write!(formatter, "{code}: baseline={baseline} observed={observed}")
+            }
+            Self::SnapshotEvidenceTierOverclaim { observed, ceiling } => write!(
+                formatter,
+                "{code}: observed={} ceiling={}",
+                observed.as_str(),
+                ceiling.as_str()
+            ),
         }
     }
 }
@@ -550,7 +610,7 @@ mod tests {
         vec![
             ConformanceError::UnsupportedSchemaVersion {
                 observed: "0.0.0".to_string(),
-                expected: "0.1.0-alpha",
+                expected: "0.2.0-alpha",
             },
             ConformanceError::AdapterIdMalformed {
                 id: "Bad-Id".to_string(),
@@ -694,6 +754,22 @@ mod tests {
                 observed: 1,
                 min: 5,
                 max: 10,
+            },
+            ConformanceError::SnapshotCheckProfileMismatch {
+                observed: ProfileId::TextTrace,
+                expected: ProfileId::SnapshotRestore,
+            },
+            ConformanceError::SnapshotRefInvalid {
+                side: "baseline",
+                reason: "malformed snapshot id".to_string(),
+            },
+            ConformanceError::SnapshotInspectableIdMismatch {
+                baseline: "port-a".to_string(),
+                observed: "port-b".to_string(),
+            },
+            ConformanceError::SnapshotEvidenceTierOverclaim {
+                observed: EvidenceTier::E2,
+                ceiling: EvidenceTier::E1,
             },
         ]
     }

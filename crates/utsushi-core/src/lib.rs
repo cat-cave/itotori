@@ -30,7 +30,7 @@ pub use conformance::{
     ConformanceError, ConformanceManifest, ConformanceProfile, ConformanceResult, DurationRangeMs,
     EvidenceRef, FrameArtifactRef as CaptureFrameArtifactRef, FrameCaptureConformanceCheck,
     ProfileExtension, ProfileId, RecordingCheckSummary, RecordingConformanceCheck,
-    RecordingMetadata, ResultOutcome, SubsystemRequirement,
+    RecordingMetadata, ResultOutcome, SnapshotConformanceCheck, SubsystemRequirement,
     cross_validate_conformance_manifest_against_port_manifest,
     cross_validate_results_against_manifest,
     trace_branch::{
@@ -40,6 +40,7 @@ pub use conformance::{
         TraceMismatch, TraceMismatchKind,
     },
     unsupported_frame_capture_result, unsupported_recording_capture_result,
+    unsupported_snapshot_restore_result,
 };
 pub use embed::{
     EMBED_MAX_ARTIFACT_REFS, EMBED_MAX_CAPABILITIES, EMBED_SCHEMA_VERSION,
@@ -69,12 +70,13 @@ pub use sink::{
     SinkCapabilitySummary, SinkError, SinkKind, SinkResult, SinkSet, TextLine, TextSurfaceSink,
 };
 pub use snapshot::{
-    BYTES_HASH_HEX_LEN, BYTES_SAMPLE_HEX_LEN, BytesValue, Inspectable, MAX_STATE_PATH_BYTES,
-    MAX_STATE_PATH_SEGMENTS, Restorable, RestoreReport, SNAPSHOT_EVIDENCE_TIER_CEILING,
-    SNAPSHOT_MAX_SERIALIZED_BYTES, SNAPSHOT_SCHEMA_VERSION, STATE_TREE_MAX_SERIALIZED_BYTES,
-    Snapshot, SnapshotError, SnapshotId, SnapshotRef, SnapshotRequest, SnapshotSchemaVersion,
-    StateChange, StateChangeKind, StateDiff, StateNamespace, StatePath, StateTree, StateValue,
-    diff_snapshots, restore_snapshot, take_snapshot,
+    BYTES_HASH_HEX_LEN, BYTES_SAMPLE_HEX_LEN, BytesValue, InMemorySnapshotStore, Inspectable,
+    MAX_STATE_PATH_BYTES, MAX_STATE_PATH_SEGMENTS, Restorable, RestoreReport,
+    SNAPSHOT_EVIDENCE_TIER_CEILING, SNAPSHOT_MAX_SERIALIZED_BYTES, SNAPSHOT_SCHEMA_VERSION,
+    STATE_TREE_MAX_SERIALIZED_BYTES, Snapshot, SnapshotError, SnapshotId, SnapshotRef,
+    SnapshotRequest, SnapshotSchemaVersion, SnapshotStore, SnapshotStoreError, StateChange,
+    StateChangeKind, StateDiff, StateNamespace, StatePath, StateTree, StateValue, diff_snapshots,
+    restore_snapshot, take_snapshot,
 };
 
 /// Re-exports for the local-path redaction filter. The helper itself is a
@@ -162,10 +164,14 @@ pub struct RuntimeRequest<'a> {
     /// Optional snapshot anchor (UTSUSHI-023). When `Some`, the runner is
     /// being asked to restore the snapshot at `start` and replay from the
     /// matching anchor. The reference is intentionally lightweight
-    /// (id-only, no payload); the full `Snapshot` is resolved by the
-    /// runner from the supplied store or test fixture. Adapters that do
-    /// not consume snapshots ignore the field. The signature decision
-    /// for a `SnapshotStore` trait is deferred to UTSUSHI-028.
+    /// (id-only, no payload); the full [`Snapshot`] is resolved by the
+    /// runner through the [`SnapshotStore`] trait (UTSUSHI-028). The
+    /// trait has typed errors only — `NotFound`,
+    /// `MismatchedSchemaVersion`, `InvalidSnapshotRef`,
+    /// `InspectableIdMismatch`, `StoreUnavailable` — so an adapter
+    /// receiving this field can rely on the runner having resolved the
+    /// ref through a single audit seam. Adapters that do not consume
+    /// snapshots ignore the field.
     pub snapshot: Option<SnapshotRef>,
 }
 

@@ -413,6 +413,9 @@ pub fn accepts_branch_capture_evidence(evidence: &EvidenceRef) -> bool {
         | EvidenceRef::ReplayLogRef { .. }
         | EvidenceRef::ImplMapFixture { .. } => true,
         EvidenceRef::FrameArtifactRef { .. } => false,
+        // `EvidenceRef::StatePath` (UTSUSHI-028) belongs to the
+        // snapshot-restore profile only.
+        EvidenceRef::StatePath { .. } => false,
         EvidenceRef::RuntimeArtifact { kind, .. } => matches!(
             kind,
             RuntimeArtifactKind::TraceLog | RuntimeArtifactKind::ConformanceReport
