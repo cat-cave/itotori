@@ -1,0 +1,131 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-172-20260623T173628Z",
+  "generatedAt": "2026-06-23T17:36:28Z",
+  "spec": {
+    "id": "KAIFUU-172",
+    "title": "RealLive engine detector",
+    "branch": "spec/kaifuu-172",
+    "worktree": "/scratch/worktrees/itotori-spec-kaifuu-172",
+    "commit": "2aebe7b"
+  },
+  "auditor": {
+    "name": "kaifuu-172-reallive-detector-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "RealLive detector lands cleanly across all four acceptance criteria. The detector deterministically distinguishes RealLive from Siglus and AVG32 on the declared fixtures (covered by rejects_reallive_when_siglus_scene_pck_co_present_with_ambiguous_engine_variant_error, rejects_reallive_when_gameexe_dat_co_present_with_ambiguous_engine_variant_error, rejects_reallive_on_avg32_pdt_layout_with_unsupported_engine_variant_error, does_not_detect_reallive_on_siglus_only_fixture_without_misclassifying, and does_not_detect_reallive_on_xp3_fixture_without_misclassifying). Detection is pure Rust: no Command::new appears in crates/kaifuu-engine-fixture/ or in the new detect_reallive matrix row in crates/kaifuu-core/src/lib.rs (the only Command::new hit in kaifuu-core is the pre-existing helper-registry runner at line 7380, not detector code). Ambiguous and unsupported states emit kaifuu.ambiguous_engine_variant and kaifuu.unsupported_engine_variant respectively, with detected=false; envelope-invalid and named-marker-only states emit kaifuu.unknown_engine_variant. rlvm is referenced only as a research anchor: zero matches for `rlvm` across Cargo.toml/Cargo.lock/crates/*/Cargo.toml; all source mentions live in clean-room provenance comments (module-level lib.rs, inline block above RealLiveProfileDetectorAdapter, detect_reallive row comment, and docs/kaifuu-adapters/reallive.md worker checklist). Capabilities report ships Detection/ProfileGeneration/AssetListing/AssetInventory as Supported and every other capability (Extraction, Patching, ContainerAccess, CryptoAccess, CodecAccess, PatchBack, KeyProfile, RuntimeVm, EncryptedInput, AssetTextPatching, DeltaPatching, NonTextSurfaceExtraction) as Unsupported. Worker deviations are all defensible: (1) readiness record at docs/kaifuu-adapters/reallive.md matches plan section 6 explicit recommendation; (2) matrix row uses UnknownVariant for ambiguous/unsupported diagnostic signals, consistent with the BGI/Ethornell pattern of using UnknownVariant when shape is identified but variant cannot be positively classified; (3) golden updates to KAIFUU-095 (xp3-unknown) and KAIFUU-rpg-maker public-fixture detection reports are strictly additive (only a new kaifuu.reallive adapter row with detected=false appears; no pre-existing row content changed; manifest hashes refreshed). Verification: cargo test -p kaifuu-engine-fixture: 54 passed / 0 failed; cargo test -p kaifuu-core: 1 lib + 2 doctest passed / 0 failed; cargo test -p kaifuu-cli: 78 passed / 0 failed; just check: full workspace clean (cargo fmt --check, cargo check --workspace, tsc --noEmit suites all green). One P2 follow-up is emitted for the worker-flagged ALPHA-006 live-corpus calibration concern (very-early RealLive titles that omit #GAMEEXE_VERSION). The readiness record mention is informational; a discrete DAG node is the proper instrument for surfacing concrete real-game false-negative evidence after ALPHA-006 ships, because such evidence may require signal-catalog adjustments that should not silently re-enter under the KAIFUU-172 banner.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-172-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-172-F001",
+      "severity": "P2",
+      "title": "RealLive detector live-corpus calibration follow-up",
+      "category": "acceptance_criteria",
+      "locations": [
+        {
+          "path": "crates/kaifuu-engine-fixture/src/lib.rs",
+          "symbol": "RealLiveProfileDetectorAdapter::resolve_variant"
+        },
+        {
+          "path": "docs/kaifuu-adapters/reallive.md",
+          "line": 69
+        }
+      ],
+      "description": "The detector's positive-identification leg requires at least one of {#GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*, #SEEN*} to appear in Gameexe.ini alongside a valid SEEN.TXT envelope. The worker and readiness record both note that very-early RealLive titles (Kanon-era) may omit #GAMEEXE_VERSION and ship only #REGNAME plus .g00 corroborators, which the current key catalogue does cover but has not been validated against retail bytes. This is an expected and accepted ALPHA-006 calibration concern, not a defect: KAIFUU-172 deliberately shipped without retail bytes per the plan-of-record decision to defer false-negative surfacing to ALPHA-006. A dedicated follow-up node lets ALPHA-006 surface concrete evidence (real game directories that the detector misses) and feeds any signal-catalog adjustment back through a discrete spec rather than silently re-entering the KAIFUU-172 scope.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "REALLIVE_GAMEEXE_INI_KEY_PREFIXES enumerates eleven public-archaeology key prefixes; all are derived from Haeleth's RLDEV site and observed in synthetic fixtures only. No retail RealLive Gameexe.ini bytes were exercised at the KAIFUU-172 slice.",
+          "location": {
+            "path": "crates/kaifuu-engine-fixture/src/lib.rs",
+            "line": 94
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Readiness record explicitly calls out 'Real-game false-negative discovery for very early RealLive titles (Kanon-era ...) — reopened as a new node only after ALPHA-006 surfaces concrete evidence.'",
+          "location": {
+            "path": "docs/kaifuu-adapters/reallive.md",
+            "line": 69
+          }
+        },
+        {
+          "kind": "manual",
+          "detail": "Plan-of-record decision #1 explicitly chose to ship the signal catalog as-is and let ALPHA-006 surface false negatives. The follow-up node operationalizes that decision."
+        }
+      ],
+      "impact": "Without a tracked follow-up, any real-game false-negative discovered at ALPHA-006 risks either silent re-entry into KAIFUU-172 (loss of audit trail) or being lost in alpha-vertical triage. A discrete node provides the correct scoping boundary and forces evidence-first calibration changes to land under their own spec.",
+      "actionableAcceptanceCriteria": [
+        "ALPHA-006 vertical adapter runs the KAIFUU-172 detector against the Sweetie HD Remaster + Sweets fandisc directories and a small calibration cohort of additional owned RealLive titles spanning the Kanon-era through Little Busters-era release window.",
+        "Any title that fails to detect (detected=false despite being a genuine RealLive layout) is captured as a redacted aggregate evidence note (title label + which signals were observed and which were missing); no retail bytes leave private-local.",
+        "If at least one title fails on the absence of #GAMEEXE_VERSION while presenting #REGNAME and .g00 corroborators, the follow-up extends the FSM's positive-identification leg to accept #REGNAME + at least one corroborator (.g00 count > 0 or .ovk/.koe/.nwk count > 0) without requiring #GAMEEXE_VERSION, gated on no Siglus markers and no .PDT presence.",
+        "Synthetic fixture suite is extended with at least one new positive case mirroring the early-RealLive layout; the regression test asserts detected=true on the new fixture and continues to assert no false positive on the existing negative cases.",
+        "Readiness record updates the 'Reference implementations and docs' and 'Real-game false-negative discovery' lines with the concrete evidence collected at ALPHA-006."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "RealLive detector live-corpus calibration follow-up",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "engine-research",
+          "dependsOn": ["KAIFUU-172", "ALPHA-006"],
+          "summary": "Calibrate the KAIFUU-172 RealLive detector against real-game corpora once ALPHA-006 lands. Use redacted aggregate evidence from owned RealLive titles to surface any false-negative classes the synthetic fixture suite cannot cover (notably early titles that omit #GAMEEXE_VERSION), then land the signal-catalog adjustments under this discrete spec rather than reopening KAIFUU-172.",
+          "deliverables": [
+            "ALPHA-006 vertical adapter invocation of the KAIFUU-172 detector against the alpha-set retail RealLive directories.",
+            "Aggregate evidence log (title labels + observed/missing signals only; no retail bytes) captured under the kaifuu engine-research private-local namespace.",
+            "If evidence justifies it: an FSM extension and one or more new synthetic fixtures covering the discovered false-negative class, plus regression assertions that the existing negatives still reject.",
+            "Updates to docs/kaifuu-adapters/reallive.md reflecting the calibration outcomes and the resolution of the 'real-game false-negative discovery' open item."
+          ],
+          "acceptanceCriteria": [
+            "The KAIFUU-172 detector is exercised against the ALPHA-006 alpha-set RealLive directories without shelling out, vendoring rlvm, or relaxing the clean-room posture.",
+            "Every detected false-negative class is captured as redacted aggregate evidence (title label + signal presence/absence) before any FSM change is proposed.",
+            "Any FSM extension preserves the existing Siglus-overlap and AVG32-lineage rejections; synthetic regression tests assert no misclassification reappears.",
+            "Readiness record at docs/kaifuu-adapters/reallive.md closes the 'real-game false-negative discovery' open item or restates it with concrete evidence."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-engine-fixture"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli"
+            },
+            {
+              "type": "manual",
+              "value": "Review the redacted aggregate-evidence log for the ALPHA-006 alpha-set RealLive titles and confirm any FSM extension is justified by per-title evidence."
+            }
+          ],
+          "auditFocus": [
+            "Confirm no rlvm code, headers, or Cargo dependency was added during calibration; clean-room posture preserved.",
+            "Confirm aggregate-evidence log contains only redacted labels and signal presence/absence rows; no retail bytes leak.",
+            "Confirm Siglus-overlap and AVG32-lineage rejections still hold against the updated FSM via the existing synthetic negatives.",
+            "Confirm any new synthetic positive fixture explicitly models the evidence class (e.g. #REGNAME + .g00 corroborator, no #GAMEEXE_VERSION) that justified the FSM extension."
+          ]
+        }
+      }
+    }
+  ]
+}
