@@ -1,0 +1,104 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-024-20260623T224433Z",
+  "generatedAt": "2026-06-23T22:44:33Z",
+  "spec": {
+    "id": "UTSUSHI-024",
+    "title": "WASM embed ABI fixture",
+    "branch": "spec/utsushi-024",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-024",
+    "commit": "b488873"
+  },
+  "auditor": {
+    "name": "utsushi-024-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Iter-5 correctness audit of UTSUSHI-024 (WASM embed ABI fixture) at commit b488873 on spec/utsushi-024. Verification re-run is clean: `cargo test -p utsushi-core` -> 549 passed / 0 failed (matches worker's claim); the 7 embed integration tests (fixture_state, redaction) and the lib-internal embed unit tests pass. `cargo test -p utsushi-fixture` -> 22 passed / 0 failed (no regression). `just check` -> exit 0 (fmt, clippy, schema lint, ts:typecheck, spec DAG validate all clean). The new `utsushi_core::embed` substrate (capability, state, artifact, redaction, diagnostics) lives at `crates/utsushi-core/src/embed/` exactly as planned; `EMBED_SCHEMA_VERSION = \"0.1.0-alpha\"` pinned; the 15 `utsushi.embed.*` semantic codes are registered in `codes::ALL` and round-trip through the `every_embed_error_variant_returns_a_code_in_codes_all` test. Audit-focus structural verification: (1) `grep -rni 'xp3|kirikiri|kag|rgss|rpgmaker|reallive|siglus' crates/utsushi-core/src/embed/` returns ONE hit at `diagnostics.rs:224` -- inside the test-only `variants()` helper, where `\"reallive\"` is used as the `snapshot` adapter id in an `EmbedError::SnapshotAdapterIdMismatch` fixture (testing cross-adapter rejection). This is not on the ABI surface; nothing in the production code paths, fixtures (`embed_state_golden.json`), or TS embed module (`apps/runtime-web-review/src/embed.ts`) carries any engine-specific token. The capability enum (`EmbedCapabilityId: State, Trace, Snapshot, ArtifactRefs, DeterministicFixture`) is shaped around the ABI's observable surface, not around any one engine. (2) Private-asset structural defense: `EmbedArtifactRef.uri` runs `validate_runtime_artifact_uri` (rejects host paths, drive letters, `file:`/`data:`/`blob:`, traversal); host paths and raw asset bytes are structurally impossible to serialize through the ABI; the 4-layer redaction (per-field validators, `EmbedState::validate`, `EmbedTrace::validate`, `embed_capabilities()`) is implemented; the integration test `embed_dom_never_contains_host_path_shapes` (in `apps/runtime-web-review/test/embed.test.ts`) is the load-bearing TS-side assertion. (3) Capabilities are visible pre-playback: the substrate has no `tick` verb in this slice; `embed_capabilities()` and `embed_state()` are read-only, and the typed accessors (`trace()`, `current_snapshot()`, `artifact_refs()`) return `EmbedError::CapabilityNotSupported` when the relevant capability is `Unsupported`, exactly as required by the audit-focus item. F001 is a P3 cleanup: the test fixture string `\"reallive\"` at `diagnostics.rs:224` is engine-evocative and could be replaced with an engine-neutral string like `\"other-adapter\"` to keep the audit-focus posture strict; non-blocking because it is in test data only. Outcome: `follow_up_only` -- completion allowed, one P3 follow-up recorded.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UTSUSHI-024-F001"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-024-F001",
+      "severity": "P3",
+      "title": "Test-only fixture uses engine-evocative string `\"reallive\"` for cross-adapter snapshot id",
+      "category": "test",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/embed/diagnostics.rs",
+          "line": 224,
+          "symbol": "EmbedError::SnapshotAdapterIdMismatch test fixture"
+        }
+      ],
+      "description": "The diagnostics test module constructs a `EmbedError::SnapshotAdapterIdMismatch { envelope: \"utsushi-fixture\", snapshot: \"reallive\" }` fixture to exercise the snapshot/adapter-id mismatch path. The string `\"reallive\"` references an engine subproject by name in test data inside the engine-neutral `utsushi_core::embed` module. The ABI surface itself is engine-neutral (the audit-focus posture holds: capability enum, state envelope, artifact refs, and redaction all carry no engine tokens), but a `grep -rni 'reallive' crates/utsushi-core/src/embed/` hit is the only positive return on the audit-focus engine-name scan, and a future engine-port may want to mirror this fixture against a different engine adapter, creating a discoverability gap when readers grep for engine-specific code. Replacing `\"reallive\"` with an engine-neutral string (e.g. `\"other-adapter\"` or `\"utsushi-fixture-b\"`) keeps the audit-focus posture strict end-to-end without changing any runtime behaviour.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "`grep -rni 'xp3|kirikiri|kag|rgss|rpgmaker|reallive|siglus' crates/utsushi-core/src/embed/` returns exactly one hit: `crates/utsushi-core/src/embed/diagnostics.rs:224: snapshot: \"reallive\".to_string(),`. Production code paths, the embed_state_golden.json fixture, and the TS embed module are clean."
+        },
+        {
+          "kind": "file",
+          "detail": "The hit is inside `#[cfg(test)] mod tests { fn variants() -> Vec<EmbedError> { ... } }` at lines 200-255 -- never reached by any production code path, never serialized into a fixture, never crosses the ABI.",
+          "location": {
+            "path": "crates/utsushi-core/src/embed/diagnostics.rs",
+            "line": 222
+          }
+        }
+      ],
+      "impact": "Cosmetic/discoverability only. Audit-focus grep posture is undermined by a test-data string. No runtime behaviour or ABI shape is affected. Replacing the string is a one-line edit; the test still exercises the cross-adapter rejection path.",
+      "actionableAcceptanceCriteria": [
+        "Replace `\"reallive\"` at `crates/utsushi-core/src/embed/diagnostics.rs:224` with an engine-neutral string such as `\"other-adapter\"` or `\"utsushi-fixture-b\"`.",
+        "Re-run `cargo test -p utsushi-core embed::diagnostics` and confirm the variant set still round-trips and the codes::ALL coverage test still passes.",
+        "Re-run `grep -rni 'xp3|kirikiri|kag|rgss|rpgmaker|reallive|siglus' crates/utsushi-core/src/embed/` and confirm the result is empty."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Engine-neutralize UTSUSHI-024 embed diagnostics test fixture",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-024"],
+          "summary": "Replace the engine-evocative `\"reallive\"` string in the `EmbedError::SnapshotAdapterIdMismatch` test fixture at `crates/utsushi-core/src/embed/diagnostics.rs:224` with an engine-neutral string so the audit-focus grep `'xp3|kirikiri|kag|rgss|rpgmaker|reallive|siglus'` returns empty across the whole embed module.",
+          "deliverables": [
+            "One-line edit replacing `\"reallive\"` in the diagnostics test fixture with `\"other-adapter\"` (or equivalent engine-neutral string).",
+            "Confirmation grep run in the audit report verifying zero hits across `crates/utsushi-core/src/embed/`."
+          ],
+          "acceptanceCriteria": [
+            "The audit-focus grep returns zero hits across `crates/utsushi-core/src/embed/`.",
+            "`cargo test -p utsushi-core embed::diagnostics` continues to pass."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            },
+            {
+              "type": "command",
+              "value": "grep -rni 'xp3|kirikiri|kag|rgss|rpgmaker|reallive|siglus' crates/utsushi-core/src/embed/"
+            }
+          ],
+          "auditFocus": [
+            "Embed module must not reference any engine subproject by name, even in test data.",
+            "Audit-focus grep posture stays strict end-to-end."
+          ]
+        }
+      }
+    }
+  ]
+}
