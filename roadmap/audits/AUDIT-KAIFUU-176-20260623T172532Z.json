@@ -1,0 +1,277 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-176-20260623T172532Z",
+  "generatedAt": "2026-06-23T17:25:32Z",
+  "spec": {
+    "id": "KAIFUU-176",
+    "title": "Itotori vault-source localCorpus adapter",
+    "branch": "spec/kaifuu-176",
+    "worktree": "/scratch/worktrees/itotori-spec-kaifuu-176",
+    "commit": "848cade"
+  },
+  "auditor": {
+    "name": "kaifuu-176-vault-source-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "The kaifuu-vault-source crate implements the read-only vault-source adapter contract end-to-end. All seven acceptance criteria are satisfied and every auditFocus item is exercised by tests: a tempdir-scoped synthetic vault is built per test, an mtime snapshot of <vault-root> before and after a materialize call confirms no write occurs (extraction_test.rs:78), the by-name/ decoy subtree is verified unchanged after a successful by-sha resolution (resolution_test.rs:56), path-traversal entries are rejected before any byte is written via validate_entry_name + post-join strict-prefix check (extraction.rs:90-110, 179-219), _vault/metadata.json is read first post-extraction by read_and_validate (metadata.rs:127, source.rs:332-333), and discovery is gated entirely through catalog queries (discovery.rs). Architectural constraints all hold: no Command::new, no by-name/ reads, no secrets.local references in src/, mode=ro SQLite open with OPEN_READ_ONLY|OPEN_URI (catalog.rs:25-29), SUPPORTED_SCHEMA_VERSION=1 hard-pinned (error.rs:46), no cfg(target_os) introduced in packages/itotori-* or apps/itotori/, the only env reads are ITOTORI_VAULT_ROOT and ITOTORI_SCRATCH_ROOT via env::var (config.rs:69,82). Verification re-run: cargo test -p kaifuu-vault-source 56/56 pass; cargo test -p kaifuu-core 152+1+2 = 155/155 pass. The orchestrator's declared deviations are all defensible: sha2 0.10 is the ecosystem-stable release; sevenz-rust2 with compress feature is required so the in-tree fixture builds the seven 7z archives at test-time (no committed binaries); jsonschema default-features=false drops HTTP/TLS as intended; materialize_by_sha is a dedicated trait method which is type-cleaner than channeling sha through materialize and still emits the bypass finding (source.rs:388, findings.rs:33); MaterializeResult.retention_policy threading lets release(&result, outcome) reuse the same policy without re-supplying it. The synthetic hash-mismatch fixture's marker.txt byte (tests/common/mod.rs:368) is a fixture-only mechanism to derive a distinct by-sha path from GOOD_PRIMARY and is not a contract bend. Three legitimate follow-up nodes are emitted as P2 findings: kaifuu-cli triage subcommand, vault-curation schema-version compat handshake doc, and a scratch GC / quota helper.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 3,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "KAIFUU-176-F001",
+      "KAIFUU-176-F002",
+      "KAIFUU-176-F003"
+    ]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-176-F001",
+      "severity": "P2",
+      "title": "kaifuu-cli subcommand for LocalCorpusSource discover/materialize triage",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "crates/kaifuu-vault-source/src/source.rs",
+          "line": 94,
+          "symbol": "LocalCorpusSource"
+        },
+        {
+          "path": "crates/kaifuu-cli",
+          "symbol": "(no subcommand wired)"
+        }
+      ],
+      "description": "The vault-source adapter exposes LocalCorpusSource::discover, materialize, materialize_by_sha, release, and capabilities as a pure Rust API, but kaifuu-cli has no subcommand for an operator to drive these calls. The plan explicitly defers cli wiring to a follow-up (.plan/KAIFUU-176.md §7 'kaifuu-cli (a new subcommand or a flag on existing commands — out of scope here; tracked as a follow-up node)'). Operators currently have no command-line surface to inspect the capability report, run an ad-hoc discovery against /archive/vault/, or materialize an artifact for triage when a Kaifuu integration test fails.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Plan explicitly defers cli wiring",
+          "location": {
+            "path": ".plan/KAIFUU-176.md",
+            "line": 415
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Trait surface ready for cli consumption",
+          "location": {
+            "path": "crates/kaifuu-vault-source/src/source.rs",
+            "line": 94,
+            "symbol": "LocalCorpusSource"
+          }
+        }
+      ],
+      "impact": "Operator triage of vault-source failures (resolution, extraction, cross-check disagreements) currently requires writing a Rust harness; routine workflows like 'show me capabilities for /archive/vault/' or 'materialize release 12345 with KeepAll' are not first-class.",
+      "actionableAcceptanceCriteria": [
+        "kaifuu-cli gains a `vault` subcommand group exposing discover (by external-id, engine-claim, release-id), materialize (with retention policy + selection flags), materialize-by-sha, and capabilities.",
+        "Output is structured (JSON option) so it can pipe into downstream operator tooling.",
+        "Subcommand returns non-zero exit on any VaultSourceError and prints the semantic_code() string for telemetry."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "kaifuu-cli vault-source operator subcommand",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "tooling",
+          "dependsOn": ["KAIFUU-176"],
+          "summary": "Expose the kaifuu-vault-source LocalCorpusSource trait via a `kaifuu vault` subcommand group so operators can run discover, materialize, materialize-by-sha, and capabilities against /archive/vault/ from the command line without writing Rust.",
+          "deliverables": [
+            "New `vault` subcommand group in crates/kaifuu-cli wiring LocalCorpusRegistry + VaultSource",
+            "Operator-facing flags for retention policy, artifact selection, run id override, and ITOTORI_VAULT_ROOT pass-through",
+            "Structured JSON output mode that surfaces VaultSourceError::semantic_code()"
+          ],
+          "acceptanceCriteria": [
+            "`kaifuu vault capabilities` prints the LocalCorpusCapabilityReport for the configured vault root in both human and JSON modes.",
+            "`kaifuu vault discover --engine kirikiri` returns the discovered release ids exactly as VaultSource::discover does.",
+            "`kaifuu vault materialize <release-id>` and `kaifuu vault materialize-by-sha <sha>` succeed against a synthetic fixture and surface VaultSourceError variants with their semantic codes on failure.",
+            "Exit code is non-zero on any VaultSourceError; semantic_code is included in the structured output."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-vault-source"
+            }
+          ],
+          "auditFocus": [
+            "No write to the vault from the cli path; cli inherits the adapter's read-only contract.",
+            "Secrets boundary preserved; no .kaifuu/secrets.local/ reads.",
+            "Structured output is stable enough for downstream operator dashboards."
+          ]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-176-F002",
+      "severity": "P2",
+      "title": "vault-curation / itotori catalog schema-version compat handshake document",
+      "category": "documentation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-vault-source/src/error.rs",
+          "line": 46,
+          "symbol": "SUPPORTED_SCHEMA_VERSION"
+        },
+        {
+          "path": "docs/itotori-vault-source-adapter.md"
+        }
+      ],
+      "description": "The adapter hard-pins SUPPORTED_SCHEMA_VERSION = 1 (kaifuu-vault-source/src/error.rs:46) and raises CatalogSchemaUnsupported when the observed version drifts (catalog.rs:48-54). The vault-curation project owns schema.sql and may advance the version independently. There is no document describing the supported-version handshake: which itotori release supports which vault catalog schema versions, what each version added, what is required of vault-curation when bumping the version, and what the upgrade path looks like for itotori consumers when vault-curation advances first. The plan flags this as Risk #2 (.plan/KAIFUU-176.md §12).",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Hard pin in source",
+          "location": {
+            "path": "crates/kaifuu-vault-source/src/error.rs",
+            "line": 46
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan calls out the compat-handshake gap",
+          "location": {
+            "path": ".plan/KAIFUU-176.md",
+            "line": 720
+          }
+        }
+      ],
+      "impact": "Without a documented handshake, a vault-curation schema bump can silently break every itotori run (every materialize call returns CatalogSchemaUnsupported) without operators having a clear migration story; vault-curation has no checklist for what they owe itotori when bumping the version.",
+      "actionableAcceptanceCriteria": [
+        "A docs/itotori-vault-source-adapter.md appendix (or sibling doc) lists every catalog schema version itotori supports and what each adds.",
+        "The doc describes the bump protocol: vault-curation must announce a new version before publishing it; itotori must bump SUPPORTED_SCHEMA_VERSION in a follow-up spec.",
+        "The doc cites the failure-mode error semantic code (kaifuu.vault.catalog_schema_unsupported) and the exact upgrade steps for operators on schema drift."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "vault-curation / itotori catalog schema-version compat handshake doc",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori", "kaifuu", "shared"],
+          "parallelGroup": "contracts",
+          "dependsOn": ["KAIFUU-176"],
+          "summary": "Add a compat-handshake appendix to docs/itotori-vault-source-adapter.md (or a sibling doc) that pins the supported-schema-version matrix between vault-curation and itotori, describes the bump protocol, and gives operators a remediation path when CatalogSchemaUnsupported fires.",
+          "deliverables": [
+            "Appendix listing every catalog schema version itotori supports, what each version added, and which itotori release introduced support",
+            "Bump-protocol section describing the announce / land / consume sequence between vault-curation and itotori",
+            "Operator remediation note tying kaifuu.vault.catalog_schema_unsupported to the upgrade steps"
+          ],
+          "acceptanceCriteria": [
+            "Supported-version matrix exists and matches SUPPORTED_SCHEMA_VERSION in kaifuu-vault-source/src/error.rs.",
+            "Bump-protocol section names both projects' owners and the bump checklist.",
+            "Operator remediation note cross-links to the Failure Modes table entry for CatalogSchemaUnsupported."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "rg -n 'SUPPORTED_SCHEMA_VERSION' crates/kaifuu-vault-source/src/ docs/"
+            },
+            {
+              "type": "manual",
+              "value": "Doc reviewed against current SUPPORTED_SCHEMA_VERSION and against /archive/vault/schema.sql's schema_version table."
+            }
+          ],
+          "auditFocus": [
+            "Supported-version matrix kept in sync with the source pin.",
+            "Bump protocol does not introduce a path where itotori silently accepts an unknown schema.",
+            "Cross-links are consistent with the Failure Modes table."
+          ]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-176-F003",
+      "severity": "P2",
+      "title": "Scratch garbage-collection / quota helper for /scratch/itotori/",
+      "category": "ux",
+      "locations": [
+        {
+          "path": "crates/kaifuu-vault-source/src/retention.rs"
+        },
+        {
+          "path": "crates/kaifuu-vault-source/src/config.rs",
+          "line": 35,
+          "symbol": "RetentionPolicy::KeepExtractedForGame"
+        }
+      ],
+      "description": "RetentionPolicy::KeepExtractedForGame and RetentionPolicy::KeepAll allow extracted trees to accumulate under /scratch/itotori/<game-id>/ across runs. The adapter intentionally does not GC; the README directs operators to manage cleanup. With multiple games and KeepExtractedForGame, the scratch root will grow without bound. There is no helper to inventory scratch usage, prune by least-recently-used, or enforce a quota. The plan flags this as Risk #4 (.plan/KAIFUU-176.md §12) and out-of-scope for this slice.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Plan identifies scratch pressure under keep-extracted-for-game and explicitly defers GC",
+          "location": {
+            "path": ".plan/KAIFUU-176.md",
+            "line": 734
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "RetentionPolicy::KeepExtractedForGame variant",
+          "location": {
+            "path": "crates/kaifuu-vault-source/src/config.rs",
+            "line": 45
+          }
+        }
+      ],
+      "impact": "Long-lived itotori hosts running KeepExtractedForGame will eventually fill /scratch/itotori/ with no operator-friendly way to inventory or prune. Production runs can silently stall on ScratchUnwritable without a remediation tool ready to hand.",
+      "actionableAcceptanceCriteria": [
+        "A scratch-inventory subcommand (likely under `kaifuu vault scratch`) lists per-game-id extracted trees with sizes and last-used timestamps.",
+        "A scratch-prune mode supports either a quota (`--max-bytes`) or an LRU horizon (`--older-than`) and prints what it would remove with `--dry-run`.",
+        "Prune respects the read-only vault contract: it touches only paths under <scratch-root>, never under <vault-root>."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Scratch GC / quota helper for vault-source scratch root",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu", "itotori"],
+          "parallelGroup": "tooling",
+          "dependsOn": ["KAIFUU-176"],
+          "summary": "Add a scratch-inventory and prune helper (in kaifuu-vault-source or kaifuu-cli) for /scratch/itotori/<game-id>/ so operators can enforce a quota or LRU horizon without manual rm -rf, addressing the KeepExtractedForGame growth risk surfaced in the KAIFUU-176 plan.",
+          "deliverables": [
+            "Scratch-inventory function that walks <scratch-root>/<game-id>/ and reports size + last-used per game",
+            "Prune mode supporting --max-bytes quota and --older-than LRU horizon with --dry-run",
+            "kaifuu-cli surface (or library function with documented call shape) for operator use"
+          ],
+          "acceptanceCriteria": [
+            "Inventory output is deterministic and machine-parseable (JSON option).",
+            "Prune respects the read-only vault contract: only paths under <scratch-root> are touched.",
+            "Prune skips the active per-run directory of any concurrent materialize call (documented invariant; tests cover the safety check)."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-vault-source scratch"
+            }
+          ],
+          "auditFocus": [
+            "Prune never touches <vault-root>.",
+            "Prune does not race with an active materialize call's run-id directory.",
+            "Inventory size accounting matches du -sb to within a documented tolerance."
+          ]
+        }
+      }
+    }
+  ]
+}
