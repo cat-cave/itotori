@@ -32,19 +32,19 @@ and uncommitted files are not durable state.
 Use the uppercase DAG id in text and lower-case id in branch and worktree names.
 The slug format is `[a-z0-9]+(-[a-z0-9]+)*`.
 
-| Purpose                        | Branch                                      | Worktree                                                 |
-| ------------------------------ | ------------------------------------------- | -------------------------------------------------------- |
-| Primary spec work              | `spec/<node-id-lower>`                      | `/tmp/itotori-spec-<node-id-lower>`                      |
-| Disjoint implementation worker | `worker/<node-id-lower>-<scope-slug>`       | `/tmp/itotori-worker-<node-id-lower>-<scope-slug>`       |
-| Blocking repair worker         | `repair/<node-id-lower>-<finding-id-lower>` | `/tmp/itotori-repair-<node-id-lower>-<finding-id-lower>` |
-| Read-only audit lane           | detached from `spec/<node-id-lower>`        | `/tmp/itotori-audit-<node-id-lower>-<lane-slug>`         |
+| Purpose                        | Branch                                      | Worktree                                                               |
+| ------------------------------ | ------------------------------------------- | ---------------------------------------------------------------------- |
+| Primary spec work              | `spec/<node-id-lower>`                      | `/scratch/worktrees/itotori-spec-<node-id-lower>`                      |
+| Disjoint implementation worker | `worker/<node-id-lower>-<scope-slug>`       | `/scratch/worktrees/itotori-worker-<node-id-lower>-<scope-slug>`       |
+| Blocking repair worker         | `repair/<node-id-lower>-<finding-id-lower>` | `/scratch/worktrees/itotori-repair-<node-id-lower>-<finding-id-lower>` |
+| Read-only audit lane           | detached from `spec/<node-id-lower>`        | `/scratch/worktrees/itotori-audit-<node-id-lower>-<lane-slug>`         |
 
 Example for `UNIV-003`:
 
 ```sh
-git worktree add -b spec/univ-003 /tmp/itotori-spec-univ-003 main
-git worktree add -b worker/univ-003-docs-index /tmp/itotori-worker-univ-003-docs-index spec/univ-003
-git worktree add --detach /tmp/itotori-audit-univ-003-docs spec/univ-003
+git worktree add -b spec/univ-003 /scratch/worktrees/itotori-spec-univ-003 main
+git worktree add -b worker/univ-003-docs-index /scratch/worktrees/itotori-worker-univ-003-docs-index spec/univ-003
+git worktree add --detach /scratch/worktrees/itotori-audit-univ-003-docs spec/univ-003
 ```
 
 Do not add random suffixes to resolve collisions. If the canonical branch or
@@ -116,8 +116,8 @@ git log --oneline main..spec/univ-003
 If a worktree exists, inspect it from outside before reusing or deleting it:
 
 ```sh
-safe_worktree_status /tmp/itotori-spec-univ-003
-git -C /tmp/itotori-spec-univ-003 branch --show-current
+safe_worktree_status /scratch/worktrees/itotori-spec-univ-003
+git -C /scratch/worktrees/itotori-spec-univ-003 branch --show-current
 ```
 
 If any command shows uncommitted, untracked, or unknown state, stop and assign
@@ -135,7 +135,11 @@ node scripts/spec-dag.mjs worktree UNIV-003 --apply
 
 `claim` is the concurrency gate. With `--apply`, it creates
 `/tmp/itotori-spec-dag-claims/<repo-hash>/<NODE-ID>.json` with atomic file
-creation before updating `roadmap/spec-dag.json`. The repo hash is derived from
+creation before updating `roadmap/spec-dag.json`. Lock files live in `/tmp`
+(not `/scratch/worktrees/`) because they are ephemeral coordination metadata
+that must not survive reboots — a stale lock from before a crash is
+misleading; `--force-stale` recovery handles intentional resurrection. The
+repo hash is derived from
 `git rev-parse --git-common-dir`, so worktrees for the same repository share the
 same lock namespace. If another process already created the lock, the second
 claim fails instead of racing to write `in_progress` metadata. The lock is a
@@ -205,7 +209,7 @@ suffixes for branch or path collisions.
    ```sh
    git switch main
    git pull --ff-only
-   git worktree add -b spec/univ-003 /tmp/itotori-spec-univ-003 main
+   git worktree add -b spec/univ-003 /scratch/worktrees/itotori-spec-univ-003 main
    ```
 
 7. In the new worktree, claim the node with the lifecycle CLI. Dry-run first:
@@ -230,7 +234,7 @@ suffixes for branch or path collisions.
      "status": "in_progress",
      "owner": "Worker UNIV-003",
      "branch": "spec/univ-003",
-     "worktree": "/tmp/itotori-spec-univ-003"
+     "worktree": "/scratch/worktrees/itotori-spec-univ-003"
    }
    ```
 
@@ -241,9 +245,9 @@ suffixes for branch or path collisions.
 9. Commit the claim metadata before planning, implementation, or delegation:
 
    ```sh
-   git -C /tmp/itotori-spec-univ-003 diff --check
-   git -C /tmp/itotori-spec-univ-003 add roadmap/spec-dag.json
-   git -C /tmp/itotori-spec-univ-003 commit -m "chore(roadmap): claim UNIV-003"
+   git -C /scratch/worktrees/itotori-spec-univ-003 diff --check
+   git -C /scratch/worktrees/itotori-spec-univ-003 add roadmap/spec-dag.json
+   git -C /scratch/worktrees/itotori-spec-univ-003 commit -m "chore(roadmap): claim UNIV-003"
    ```
 
    When coordination happens through a shared remote or protected integration
@@ -296,7 +300,7 @@ Audit reads the spec branch after implementation and before merge. Use detached
 audit worktrees when auditors need an isolated checkout:
 
 ```sh
-git worktree add --detach /tmp/itotori-audit-univ-003-docs spec/univ-003
+git worktree add --detach /scratch/worktrees/itotori-audit-univ-003-docs spec/univ-003
 ```
 
 Auditors inspect:
@@ -421,7 +425,7 @@ Blocked state requires two durable records:
      "blockedBy": "human:maintainer",
      "owner": "Worker UNIV-003",
      "branch": "spec/univ-003",
-     "worktree": "/tmp/itotori-spec-univ-003"
+     "worktree": "/scratch/worktrees/itotori-spec-univ-003"
    }
    ```
 
@@ -458,8 +462,8 @@ For a merged spec branch:
 
 ```sh
 git branch --merged main --list 'spec/univ-003'
-safe_worktree_status /tmp/itotori-spec-univ-003
-git worktree remove /tmp/itotori-spec-univ-003
+safe_worktree_status /scratch/worktrees/itotori-spec-univ-003
+git worktree remove /scratch/worktrees/itotori-spec-univ-003
 git worktree prune
 git branch --delete spec/univ-003
 ```
@@ -467,8 +471,8 @@ git branch --delete spec/univ-003
 For detached audit worktrees:
 
 ```sh
-safe_worktree_status /tmp/itotori-audit-univ-003-docs
-git worktree remove /tmp/itotori-audit-univ-003-docs
+safe_worktree_status /scratch/worktrees/itotori-audit-univ-003-docs
+git worktree remove /scratch/worktrees/itotori-audit-univ-003-docs
 git worktree prune
 ```
 
@@ -493,9 +497,9 @@ just roadmap-ready
 node scripts/spec-dag.mjs show UNIV-003
 git branch --list 'spec/univ-003'
 git worktree list --porcelain
-git -C /tmp/itotori-spec-univ-003 branch --show-current
-safe_worktree_status /tmp/itotori-spec-univ-003
-safe_worktree_diff_names /tmp/itotori-spec-univ-003 main...spec/univ-003
+git -C /scratch/worktrees/itotori-spec-univ-003 branch --show-current
+safe_worktree_status /scratch/worktrees/itotori-spec-univ-003
+safe_worktree_diff_names /scratch/worktrees/itotori-spec-univ-003 main...spec/univ-003
 ```
 
 The dry-run passes when the node state, branch name, worktree path, status, and

@@ -28,7 +28,7 @@ test("atomic claim locks prevent two agents claiming the same node", () => {
     nodeId: "UNIV-009",
     owner: "agent-a",
     branch: "spec/univ-009",
-    worktree: "/tmp/itotori-spec-univ-009",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009",
     now: new Date("2026-06-16T12:00:00Z"),
   });
 
@@ -41,7 +41,7 @@ test("atomic claim locks prevent two agents claiming the same node", () => {
         nodeId: "UNIV-009",
         owner: "agent-b",
         branch: "spec/univ-009-b",
-        worktree: "/tmp/itotori-spec-univ-009-b",
+        worktree: "/scratch/worktrees/itotori-spec-univ-009-b",
         now: new Date("2026-06-16T12:00:01Z"),
       }),
     /claim lock already exists/,
@@ -65,7 +65,7 @@ test("force-stale recovers an expired matching claim lock and DAG claim", () => 
     nodeId: "UNIV-009",
     owner: "agent-a",
     branch: "spec/univ-009",
-    worktree: "/tmp/itotori-spec-univ-009",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009",
     now: new Date("2026-06-16T12:00:00Z"),
     staleAfterHours: 1,
   });
@@ -76,7 +76,7 @@ test("force-stale recovers an expired matching claim lock and DAG claim", () => 
     nodeId: "UNIV-009",
     owner: "agent-b",
     branch: "spec/univ-009-b",
-    worktree: "/tmp/itotori-spec-univ-009-b",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009-b",
     now: new Date("2026-06-16T14:00:00Z"),
     forceStale: true,
     staleAfterHours: 1,
@@ -103,7 +103,7 @@ test("force-stale refuses fresh locks", () => {
     nodeId: "UNIV-009",
     owner: "agent-a",
     branch: "spec/univ-009",
-    worktree: "/tmp/itotori-spec-univ-009",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009",
     now: new Date("2026-06-16T12:00:00Z"),
     staleAfterHours: 1,
   });
@@ -116,7 +116,7 @@ test("force-stale refuses fresh locks", () => {
         nodeId: "UNIV-009",
         owner: "agent-b",
         branch: "spec/univ-009-b",
-        worktree: "/tmp/itotori-spec-univ-009-b",
+        worktree: "/scratch/worktrees/itotori-spec-univ-009-b",
         now: new Date("2026-06-16T12:30:00Z"),
         forceStale: true,
         staleAfterHours: 1,
@@ -137,7 +137,7 @@ test("force-stale refuses to remove a stale lock when DAG ownership differs", ()
     nodeId: "UNIV-009",
     owner: "agent-a",
     branch: "spec/univ-009",
-    worktree: "/tmp/itotori-spec-univ-009",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009",
     now: new Date("2026-06-16T12:00:00Z"),
     staleAfterHours: 1,
   });
@@ -153,7 +153,7 @@ test("force-stale refuses to remove a stale lock when DAG ownership differs", ()
         nodeId: "UNIV-009",
         owner: "agent-b",
         branch: "spec/univ-009-b",
-        worktree: "/tmp/itotori-spec-univ-009-b",
+        worktree: "/scratch/worktrees/itotori-spec-univ-009-b",
         now: new Date("2026-06-16T14:00:00Z"),
         forceStale: true,
         staleAfterHours: 1,
@@ -175,7 +175,7 @@ test("claim release removes a matching lock and clears active DAG claim fields",
     nodeId: "UNIV-009",
     owner: "agent-a",
     branch: "spec/univ-009",
-    worktree: "/tmp/itotori-spec-univ-009",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009",
     now: new Date("2026-06-16T12:00:00Z"),
   });
 
@@ -185,7 +185,7 @@ test("claim release removes a matching lock and clears active DAG claim fields",
     nodeId: "UNIV-009",
     owner: "agent-a",
     branch: "spec/univ-009",
-    worktree: "/tmp/itotori-spec-univ-009",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009",
   });
 
   assert.equal(release.lockReleased, true);
@@ -211,7 +211,7 @@ test("completion removes the completed node claim lock", () => {
     nodeId: "UNIV-009",
     owner: "agent-a",
     branch: "spec/univ-009",
-    worktree: "/tmp/itotori-spec-univ-009",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009",
     now: new Date("2026-06-16T12:00:00Z"),
   });
   const dag = JSON.parse(readFileSync(dagPath, "utf8"));
@@ -240,7 +240,7 @@ test("completion refuses in_progress nodes with incomplete dependencies", () => 
     status: "in_progress",
     owner: "agent-a",
     branch: "spec/univ-010",
-    worktree: "/tmp/itotori-spec-univ-010",
+    worktree: "/scratch/worktrees/itotori-spec-univ-010",
   });
   writeFileSync(dagPath, `${JSON.stringify(dag, null, 2)}\n`);
   writeClaimLock(lockDir, node);
@@ -286,7 +286,7 @@ test("completion validates the hypothetical DAG before writing or retiring the l
     status: "in_progress",
     owner: "agent-a",
     branch: "spec/univ-009",
-    worktree: "/tmp/itotori-spec-univ-009",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009",
   });
   writeFileSync(dagPath, `${JSON.stringify(dag, null, 2)}\n`);
   writeClaimLock(
@@ -474,7 +474,7 @@ test("P0 and P1 audit findings keep the node in blocked repair state", () => {
     status: "in_progress",
     owner: "agent-a",
     branch: "spec/univ-009",
-    worktree: "/tmp/itotori-spec-univ-009",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009",
   });
   const report = sampleAuditReport({
     findings: [blockingFinding("UNIV-009-F001", "P1")],
@@ -490,7 +490,7 @@ test("P0 and P1 audit findings keep the node in blocked repair state", () => {
   assert.equal(plan.nodePatch.blockedBy, "audit:AUDIT-UNIV-009-20260616T120000Z");
   assert.match(plan.nodePatch.statusReason, /UNIV-009-F001/);
   assert.equal(plan.nodePatch.branch, "spec/univ-009");
-  assert.equal(plan.nodePatch.worktree, "/tmp/itotori-spec-univ-009");
+  assert.equal(plan.nodePatch.worktree, "/scratch/worktrees/itotori-spec-univ-009");
 });
 
 test("P2 and P3 audit findings generate draft follow-up payloads without hand-copying", () => {
@@ -529,7 +529,7 @@ test("completion bookkeeping refuses unrecorded P2/P3 follow-ups", () => {
     status: "in_progress",
     owner: "agent-a",
     branch: "spec/univ-009",
-    worktree: "/tmp/itotori-spec-univ-009",
+    worktree: "/scratch/worktrees/itotori-spec-univ-009",
   });
   const report = sampleAuditReport({
     findings: [draftFinding("UNIV-009-F002", "P2")],
@@ -678,7 +678,7 @@ function sampleAuditReportForNode(node) {
       id: node.id,
       title: node.title,
       branch: `spec/${node.id.toLowerCase()}`,
-      worktree: `/tmp/itotori-spec-${node.id.toLowerCase()}`,
+      worktree: `/scratch/worktrees/itotori-spec-${node.id.toLowerCase()}`,
     },
   };
 }
@@ -693,7 +693,7 @@ function sampleAuditReport(overrides = {}) {
       id: "UNIV-009",
       title: "Orchestrator lifecycle CLI",
       branch: "spec/univ-009",
-      worktree: "/tmp/itotori-spec-univ-009",
+      worktree: "/scratch/worktrees/itotori-spec-univ-009",
     },
     auditor: {
       name: "unit-test-audit",

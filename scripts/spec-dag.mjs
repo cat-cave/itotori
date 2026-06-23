@@ -1561,7 +1561,7 @@ Completion --apply retires the completed node's lock after the DAG write.
 Options:
   --owner OWNER       required stable owner string
   --branch BRANCH     default: spec/<node-id-lower>
-  --worktree PATH     default: /tmp/itotori-spec-<node-id-lower>
+  --worktree PATH     default: /scratch/worktrees/itotori-spec-<node-id-lower>
   --lock-dir DIR      default: /tmp/itotori-spec-dag-claims/<repo-hash>
   --release           explicitly release a matching claim lock and DAG claim
   --force-stale       recover an expired stale lock before claiming
@@ -1617,7 +1617,7 @@ prints the command sequence only. With --apply it runs git worktree add.
 Options:
   --base REF           default: main
   --branch BRANCH      default: spec/<node-id-lower>
-  --worktree PATH      default: /tmp/itotori-spec-<node-id-lower>
+  --worktree PATH      default: /scratch/worktrees/itotori-spec-<node-id-lower>
   --dry-run            explicit non-mutating mode
   --apply              run git worktree add
   --json               render machine-readable output`);

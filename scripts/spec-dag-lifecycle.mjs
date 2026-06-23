@@ -20,7 +20,7 @@ export function defaultBranchForNode(nodeId) {
 }
 
 export function defaultWorktreeForNode(nodeId) {
-  return `/tmp/itotori-spec-${nodeId.toLowerCase()}`;
+  return `/scratch/worktrees/itotori-spec-${nodeId.toLowerCase()}`;
 }
 
 export function defaultClaimLockPath(lockDir, nodeId) {
