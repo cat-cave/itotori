@@ -1,4 +1,5 @@
 import {
+  EngineCapabilityReportRepository,
   ItotoriFeedbackRepository,
   ItotoriExactSearchDocumentRepository,
   ItotoriCatalogExactExternalIdLinkerService,
@@ -34,6 +35,10 @@ import {
   type StyleGuideFixtureFlowInput,
   type StyleGuideFixtureFlowResult,
 } from "@itotori/db";
+import {
+  EngineCapabilityReportService,
+  type EngineCapabilityReportPort,
+} from "./engine-capability-report.js";
 import { persistBatches } from "../batch-planner/index.js";
 import type {
   PlanBatchesContextLoader,
@@ -84,6 +89,7 @@ export type ItotoriApplicationServices = {
     loadContext: PlanBatchesContextLoader;
     persist: PlanBatchesPersister;
   };
+  engineCapabilityReports: EngineCapabilityReportPort;
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -205,6 +211,7 @@ export async function withDatabaseItotoriServices<T>(
       translationMemoryRepository,
     );
     const translationBatchRepository = new ItotoriTranslationBatchRepository(context.db);
+    const engineCapabilityReportRepository = new EngineCapabilityReportRepository(context.db);
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -252,6 +259,10 @@ export async function withDatabaseItotoriServices<T>(
           await persistBatches(translationBatchRepository, localUserActor, batches, identity);
         },
       },
+      engineCapabilityReports: new EngineCapabilityReportService(
+        engineCapabilityReportRepository,
+        localUserActor,
+      ),
     });
   } finally {
     await context.close();

@@ -7,6 +7,7 @@ import {
   type Permission,
 } from "../src/authorization.js";
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
+import { EngineCapabilityReportRepository } from "../src/repositories/engine-capability-report-repository.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import { ItotoriContextArtifactRepository } from "../src/repositories/context-artifact-repository.js";
@@ -427,6 +428,19 @@ const repositoryPermissionGateMatrix = [
     "translation-batch-repository.test.ts load-by-id coverage",
     (repo) => repo.loadBatchById(deniedActor, "batch-id"),
   ),
+  engineCapabilityReportGate(
+    "writeMatrix",
+    "projectImport",
+    "engine-capability-report-repository.test.ts write matrix coverage",
+    (repo) =>
+      repo.writeMatrix(deniedActor, {
+        adapterId: "kaifuu.test",
+        identify: { kind: "supported" },
+        inventory: { kind: "supported" },
+        extract: { kind: "supported" },
+        patch: { kind: "supported" },
+      }),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -844,6 +858,12 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "translation-batch-repository.test.ts load-by-id coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "EngineCapabilityReportRepository.writeMatrix",
+          "requiredPermission": "project.import",
+          "successFixture": "engine-capability-report-repository.test.ts write matrix coverage",
+        },
       ]
     `);
   });
@@ -1083,6 +1103,22 @@ function translationBatchGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriTranslationBatchRepository(db)),
+  });
+}
+
+function engineCapabilityReportGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: EngineCapabilityReportRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "EngineCapabilityReportRepository",
+    sourceFile: "engine-capability-report-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new EngineCapabilityReportRepository(db)),
   });
 }
 

@@ -223,6 +223,44 @@ New adapters plug into the same architecture as the fixture adapter:
   substitution, video editing, archive rebuilds, and binary relocation remain
   unsupported unless tested and documented for the exact fixture profile.
 
+## Capability Ladder (KAIFUU-053)
+
+Every adapter declares an `AdapterCapabilityMatrix` over the four-rung ladder
+`Identify < Inventory < Extract < Patch`. The ladder is a typed query surface
+above the granular `Capability` reports — consumers gate against
+`AdapterRegistry::adapters_supporting(level)` so recognition does not imply
+usability.
+
+Rules every adapter author follows:
+
+- Declare `level_matrix` explicitly via
+  `AdapterCapabilities::with_level_matrix`. The default
+  `derive_from_reports` mapping is conservative and is a safety net, not a
+  substitute for the explicit declaration.
+- Use `CapabilityLevelStatus::supported()` only when the rung works without
+  caveats; use `partial([…])` (non-empty limitations) when it works with
+  documented gaps; use `unsupported(reason)` when the rung is not implemented.
+- Detector-only adapters declare
+  `AdapterCapabilityMatrix::identify_only(adapter_id, reason)` — `Identify`
+  Supported, every higher rung `Unsupported` with the same reason. This is
+  what acceptance criterion 2 of KAIFUU-053 requires: identifying that an
+  engine exists does not imply the adapter can extract or patch it.
+- The declared matrix must never claim more than the per-`Capability` reports
+  support. `AdapterCapabilities::normalize` enforces this with a
+  `debug_assert!`; tests that hit `with_level_matrix` will fail loudly if a
+  detector tries to over-claim.
+- Strict gate: `adapters_supporting(level)` counts only `Supported`. `Partial`
+  and `Unsupported` are excluded by design. If a consumer wants "at least
+  level X", use `adapters_at_least(level)`.
+
+The four-rung ladder is closed and versioned with the schema. Adding a fifth
+rung (e.g. round-trip verify) requires a coordinated Rust + TS + DB schema
+bump: extend `CapabilityLevel`, the
+`packages/localization-bridge-schema/src/index.ts` `CAPABILITY_LEVELS_V02`
+constant, and the Postgres `capability_level_enum` in a new migration. The
+CHECK constraint in `0028_engine_capability_reports.sql` documents the
+status-kind discriminator that must stay in lockstep.
+
 ## Semantic Error Code Rules
 
 Unsupported capabilities must fail with structured semantic errors instead of

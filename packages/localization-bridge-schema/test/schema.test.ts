@@ -2,11 +2,16 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  type AdapterCapabilityMatrixV02,
+  adapterMatrixSupports,
+  adapterMatrixSupportsAtLeast,
+  assertAdapterCapabilityMatrixV02,
   assertAlphaVerticalProofManifestV02,
   assertAssetPolicyBundleV02,
   assertBridgeBundle,
   assertBridgeBundleV02,
   assertBenchmarkReportV02,
+  assertCapabilityLevelStatusV02,
   assertContractCompatibilityReportV02,
   assertContractFixtureManifestV02,
   assertContractFixtureV02,
@@ -2930,5 +2935,78 @@ describe("localization bridge schema guards", () => {
         approximations: [],
       }),
     ).not.toThrow();
+  });
+
+  // KAIFUU-053 capability ladder coverage. Mirrors the Rust round-trip and
+  // strict-gate tests in `crates/kaifuu-core/src/registry/capability.rs`.
+  it("accepts capability matrices that exercise supported / partial / unsupported branches", () => {
+    const matrix: AdapterCapabilityMatrixV02 = {
+      adapterId: "kaifuu.example",
+      identify: { kind: "supported" },
+      inventory: { kind: "partial", limitations: ["incomplete index"] },
+      extract: { kind: "partial", limitations: ["only some surfaces"] },
+      patch: { kind: "unsupported", reason: "no patch path yet" },
+    };
+    expect(() => assertAdapterCapabilityMatrixV02(matrix)).not.toThrow();
+    // Strict gate: Partial does NOT count as Supported.
+    expect(adapterMatrixSupports(matrix, "identify")).toBe(true);
+    expect(adapterMatrixSupports(matrix, "inventory")).toBe(false);
+    expect(adapterMatrixSupports(matrix, "extract")).toBe(false);
+    expect(adapterMatrixSupports(matrix, "patch")).toBe(false);
+    expect(adapterMatrixSupportsAtLeast(matrix, "identify")).toBe(true);
+    expect(adapterMatrixSupportsAtLeast(matrix, "inventory")).toBe(false);
+  });
+
+  it("rejects supported status carrying a reason or limitations", () => {
+    expect(() =>
+      assertCapabilityLevelStatusV02(
+        { kind: "supported", reason: "should not appear" },
+        "CapabilityLevelStatusV02",
+      ),
+    ).toThrow();
+    expect(() =>
+      assertCapabilityLevelStatusV02(
+        { kind: "supported", limitations: ["should not appear"] },
+        "CapabilityLevelStatusV02",
+      ),
+    ).toThrow();
+  });
+
+  it("rejects partial status without limitations or with empty list", () => {
+    expect(() =>
+      assertCapabilityLevelStatusV02({ kind: "partial" }, "CapabilityLevelStatusV02"),
+    ).toThrow();
+    expect(() =>
+      assertCapabilityLevelStatusV02(
+        { kind: "partial", limitations: [] },
+        "CapabilityLevelStatusV02",
+      ),
+    ).toThrow();
+  });
+
+  it("rejects unsupported status without a reason", () => {
+    expect(() =>
+      assertCapabilityLevelStatusV02({ kind: "unsupported" }, "CapabilityLevelStatusV02"),
+    ).toThrow();
+    expect(() =>
+      assertCapabilityLevelStatusV02(
+        { kind: "unsupported", reason: "" },
+        "CapabilityLevelStatusV02",
+      ),
+    ).toThrow();
+  });
+
+  it("identify-only matrix gates higher rungs for itotori consumers", () => {
+    const matrix: AdapterCapabilityMatrixV02 = {
+      adapterId: "kaifuu.identify_only",
+      identify: { kind: "supported" },
+      inventory: { kind: "unsupported", reason: "detector-only fixture" },
+      extract: { kind: "unsupported", reason: "detector-only fixture" },
+      patch: { kind: "unsupported", reason: "detector-only fixture" },
+    };
+    expect(() => assertAdapterCapabilityMatrixV02(matrix)).not.toThrow();
+    expect(adapterMatrixSupports(matrix, "identify")).toBe(true);
+    expect(adapterMatrixSupports(matrix, "extract")).toBe(false);
+    expect(adapterMatrixSupports(matrix, "patch")).toBe(false);
   });
 });

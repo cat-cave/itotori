@@ -499,6 +499,17 @@ export type {
   CatalogRecordedStorefrontResponse,
   CatalogRecordedStorefrontSource,
 } from "./services/catalog-recorded-importers.js";
+export {
+  EngineCapabilityReportRepository,
+  EngineCapabilityReportShapeError,
+} from "./repositories/engine-capability-report-repository.js";
+export type {
+  AdapterCapabilityMatrixRecord,
+  CapabilityLevelStatusInput,
+  EngineCapabilityReportRow,
+} from "./repositories/engine-capability-report-repository.js";
+export { capabilityLevelValues, capabilityLevelStatusKindValues } from "./schema.js";
+export type { CapabilityLevel, CapabilityLevelStatusKind } from "./schema.js";
 export { ItotoriTranslationBatchRepository } from "./repositories/translation-batch-repository.js";
 export type {
   ItotoriTranslationBatchRepositoryPort,

@@ -2890,3 +2890,51 @@ export const translationBatchContextRefs = pgTable(
     index("itotori_translation_batch_context_refs_ref_idx").on(table.refKind, table.refId),
   ],
 );
+
+// KAIFUU-053: capability-leveled engine detector registry persistence.
+// The Postgres enums (`capability_level_enum`,
+// `capability_level_status_kind`) are created in migration
+// 0028_engine_capability_reports.sql. The CHECK constraint in that
+// migration mirrors the Rust `CapabilityLevelStatus` discriminator and
+// the TS `assertCapabilityLevelStatusV02` guard, so the application can
+// safely write any value the typed surface accepts.
+export const capabilityLevelValues = {
+  identify: "identify",
+  inventory: "inventory",
+  extract: "extract",
+  patch: "patch",
+} as const;
+
+export type CapabilityLevel = (typeof capabilityLevelValues)[keyof typeof capabilityLevelValues];
+
+export const capabilityLevelStatusKindValues = {
+  supported: "supported",
+  partial: "partial",
+  unsupported: "unsupported",
+} as const;
+
+export type CapabilityLevelStatusKind =
+  (typeof capabilityLevelStatusKindValues)[keyof typeof capabilityLevelStatusKindValues];
+
+export const engineCapabilityReports = pgTable(
+  "itotori_engine_capability_reports",
+  {
+    engineCapabilityReportId: text("engine_capability_report_id").primaryKey(),
+    adapterId: text("adapter_id").notNull(),
+    level: text("level").$type<CapabilityLevel>().notNull(),
+    statusKind: text("status_kind").$type<CapabilityLevelStatusKind>().notNull(),
+    limitations: jsonb("limitations")
+      .$type<string[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    reason: text("reason"),
+    reportedAt: timestamp("reported_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    // The UNIQUE (adapter_id, level) constraint is emitted by migration
+    // 0028; the same-named secondary indexes mirror the migration but are
+    // recorded here for ORM introspection.
+    index("itotori_engine_capability_reports_adapter_idx").on(table.adapterId),
+    index("itotori_engine_capability_reports_level_idx").on(table.level, table.statusKind),
+  ],
+);

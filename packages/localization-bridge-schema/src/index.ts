@@ -171,6 +171,65 @@ export type RuntimePlaybackFeatureV02 = (typeof RUNTIME_PLAYBACK_FEATURES_V02)[n
 export const RUNTIME_FEATURE_STATUSES_V02 = ["supported", "partial", "unsupported"] as const;
 export type RuntimeFeatureStatusV02 = (typeof RUNTIME_FEATURE_STATUSES_V02)[number];
 
+// KAIFUU-053: capability-leveled engine detector registry.
+//
+// The 4-rung ladder consumers gate against. Identifying that an adapter
+// exists (`identify`) does NOT imply usability for inventory / extract /
+// patch — the matrix uses a tagged-union status per rung and consumers
+// must opt in to the rung they need.
+//
+// Mirrors `kaifuu_core::CapabilityLevel` /
+// `kaifuu_core::CapabilityLevelStatus` /
+// `kaifuu_core::AdapterCapabilityMatrix`.
+export const CAPABILITY_LEVELS_V02 = ["identify", "inventory", "extract", "patch"] as const;
+export type CapabilityLevelV02 = (typeof CAPABILITY_LEVELS_V02)[number];
+
+export const CAPABILITY_LEVEL_STATUS_KINDS_V02 = ["supported", "partial", "unsupported"] as const;
+export type CapabilityLevelStatusKindV02 = (typeof CAPABILITY_LEVEL_STATUS_KINDS_V02)[number];
+
+export type CapabilityLevelStatusV02 =
+  | { kind: "supported" }
+  | { kind: "partial"; limitations: string[] }
+  | { kind: "unsupported"; reason: string };
+
+export type AdapterCapabilityMatrixV02 = {
+  adapterId: string;
+  identify: CapabilityLevelStatusV02;
+  inventory: CapabilityLevelStatusV02;
+  extract: CapabilityLevelStatusV02;
+  patch: CapabilityLevelStatusV02;
+};
+
+/**
+ * True iff the matrix declares `Supported` at `level`. Partial does NOT
+ * count — that is the whole point of KAIFUU-053's strict gate.
+ */
+export function adapterMatrixSupports(
+  matrix: AdapterCapabilityMatrixV02,
+  level: CapabilityLevelV02,
+): boolean {
+  return matrix[level].kind === "supported";
+}
+
+/**
+ * True iff every rung at or below `level` is `Supported`.
+ */
+export function adapterMatrixSupportsAtLeast(
+  matrix: AdapterCapabilityMatrixV02,
+  level: CapabilityLevelV02,
+): boolean {
+  const rank: Record<CapabilityLevelV02, number> = {
+    identify: 0,
+    inventory: 1,
+    extract: 2,
+    patch: 3,
+  };
+  const max = rank[level];
+  return CAPABILITY_LEVELS_V02.filter((rung) => rank[rung] <= max).every(
+    (rung) => matrix[rung].kind === "supported",
+  );
+}
+
 export const OBSERVATION_HOOK_SCHEMA_VERSION = "0.1.0-alpha" as const;
 export const OBSERVATION_HOOK_EVENT_KINDS = [
   "text",
@@ -3189,6 +3248,70 @@ export function assertContractCompatibilityReportV02(
     );
   }
   assertStringArray(report.notes, "ContractCompatibilityReportV02.notes");
+}
+
+/**
+ * KAIFUU-053: validate a per-rung {@link CapabilityLevelStatusV02}.
+ *
+ * Enforces the same shape the Postgres CHECK constraint guards in
+ * migration `0028_engine_capability_reports.sql`:
+ *
+ * - `supported`: no `limitations`, no `reason`.
+ * - `partial`: `limitations` non-empty string array; no `reason`.
+ * - `unsupported`: `reason` non-empty string; no `limitations`.
+ */
+export function assertCapabilityLevelStatusV02(
+  value: unknown,
+  label: string,
+): asserts value is CapabilityLevelStatusV02 {
+  const record = asRecord(value, label);
+  assertEnum(record.kind, CAPABILITY_LEVEL_STATUS_KINDS_V02, `${label}.kind`);
+  switch (record.kind) {
+    case "supported":
+      if ("limitations" in record) {
+        throw new Error(`${label}.limitations must not be present when kind is supported`);
+      }
+      if ("reason" in record) {
+        throw new Error(`${label}.reason must not be present when kind is supported`);
+      }
+      return;
+    case "partial": {
+      assertStringArray(record.limitations, `${label}.limitations`);
+      const limitations = record.limitations as string[];
+      if (limitations.length === 0) {
+        throw new Error(
+          `${label}.limitations must contain at least one entry when kind is partial`,
+        );
+      }
+      if ("reason" in record) {
+        throw new Error(`${label}.reason must not be present when kind is partial`);
+      }
+      return;
+    }
+    case "unsupported": {
+      assertString(record.reason, `${label}.reason`);
+      if ((record.reason as string).trim().length === 0) {
+        throw new Error(`${label}.reason must not be empty when kind is unsupported`);
+      }
+      if ("limitations" in record) {
+        throw new Error(`${label}.limitations must not be present when kind is unsupported`);
+      }
+      return;
+    }
+  }
+}
+
+/**
+ * KAIFUU-053: validate an {@link AdapterCapabilityMatrixV02} fixture.
+ */
+export function assertAdapterCapabilityMatrixV02(
+  value: unknown,
+): asserts value is AdapterCapabilityMatrixV02 {
+  const record = asRecord(value, "AdapterCapabilityMatrixV02");
+  assertString(record.adapterId, "AdapterCapabilityMatrixV02.adapterId");
+  for (const level of CAPABILITY_LEVELS_V02) {
+    assertCapabilityLevelStatusV02(record[level], `AdapterCapabilityMatrixV02.${level}`);
+  }
 }
 
 export function assertContractFixtureV02(kind: string, value: unknown): void {

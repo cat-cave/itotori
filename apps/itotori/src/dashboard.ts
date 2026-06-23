@@ -1119,3 +1119,100 @@ function dashboardStyles(): string {
     </style>
   `;
 }
+
+// KAIFUU-053: dashboard surface for the capability-leveled engine
+// detector registry. Renders one row per adapter with an "Identified
+// only" badge when extract is not Supported, plus per-rung typed
+// statuses so consumers can distinguish identification from usability
+// (acceptance criterion 3). The renderer is pure / dependency-free so
+// it can be unit-tested without the DOM.
+export type EngineCapabilityRow = {
+  adapterId: string;
+  badge: "supported" | "partial" | "unsupported" | "identify_only" | "unknown";
+  identify: {
+    kind: "supported" | "partial" | "unsupported";
+    reason?: string;
+    limitations?: string[];
+  };
+  inventory: {
+    kind: "supported" | "partial" | "unsupported";
+    reason?: string;
+    limitations?: string[];
+  };
+  extract: {
+    kind: "supported" | "partial" | "unsupported";
+    reason?: string;
+    limitations?: string[];
+  };
+  patch: { kind: "supported" | "partial" | "unsupported"; reason?: string; limitations?: string[] };
+};
+
+export function renderEngineCapabilityRows(rows: ReadonlyArray<EngineCapabilityRow>): string {
+  if (rows.length === 0) {
+    return panel(
+      "engine-capabilities",
+      "Engine adapters",
+      emptyText("No engine capability reports recorded yet."),
+    );
+  }
+  const body = rows
+    .map(
+      (row) => `
+        <tr>
+          <td>${escapeHtml(row.adapterId)}</td>
+          <td>${engineBadge(row.badge)}</td>
+          <td>${renderEngineStatus(row.identify)}</td>
+          <td>${renderEngineStatus(row.inventory)}</td>
+          <td>${renderEngineStatus(row.extract)}</td>
+          <td>${renderEngineStatus(row.patch)}</td>
+        </tr>
+      `,
+    )
+    .join("");
+  return panel(
+    "engine-capabilities",
+    "Engine adapters",
+    `
+      <table>
+        <thead>
+          <tr>
+            <th>Adapter</th>
+            <th>Badge</th>
+            <th>Identify</th>
+            <th>Inventory</th>
+            <th>Extract</th>
+            <th>Patch</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    `,
+  );
+}
+
+function engineBadge(badge: EngineCapabilityRow["badge"]): string {
+  const labels: Record<EngineCapabilityRow["badge"], { text: string; tone: string }> = {
+    supported: { text: "Supported", tone: "neutral" },
+    partial: { text: "Partial extract", tone: "neutral" },
+    identify_only: { text: "Identified only", tone: "critical" },
+    unsupported: { text: "Unsupported", tone: "critical" },
+    unknown: { text: "Unknown", tone: "neutral" },
+  };
+  const { text, tone } = labels[badge];
+  return `<span class="badge badge-${tone}">${escapeHtml(text)}</span>`;
+}
+
+function renderEngineStatus(status: EngineCapabilityRow["identify"]): string {
+  switch (status.kind) {
+    case "supported":
+      return `<span class="badge badge-neutral">Supported</span>`;
+    case "partial": {
+      const detail = (status.limitations ?? []).join("; ");
+      return `<span class="badge badge-neutral" title="${escapeHtml(detail)}">Partial</span>`;
+    }
+    case "unsupported": {
+      const detail = status.reason ?? "";
+      return `<span class="badge badge-critical" title="${escapeHtml(detail)}">Unsupported</span>`;
+    }
+  }
+}
