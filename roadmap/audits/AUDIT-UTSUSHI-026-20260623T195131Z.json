@@ -1,0 +1,387 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-026-20260623T195131Z",
+  "generatedAt": "2026-06-23T19:51:34Z",
+  "spec": {
+    "id": "UTSUSHI-026",
+    "title": "Runtime conformance manifest and result schema",
+    "branch": "spec/utsushi-026",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-026",
+    "commit": "e081b7e"
+  },
+  "auditor": {
+    "name": "utsushi-026-conformance-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "UTSUSHI-026 ships the runtime conformance contract specified in plan §3–§10. The new `utsushi_core::conformance` module exposes `ConformanceManifest`, `ConformanceResult`, the typed `ProfileId` enum (six canonical kebab-case variants: text-trace, branch-capture, snapshot-restore, frame-capture, recording-capture, deterministic-replay), the tagged `ResultOutcome` (Pass / Fail / Skip / Unsupported), `EvidenceRef`, and the `cross_validate_results_against_manifest` / `cross_validate_conformance_manifest_against_port_manifest` join helpers. All hard architectural constraints are upheld structurally. Skipped != Pass is enforced as separate enum variants in `ResultOutcome` (result.rs:173-203); a `Skip` outcome for a manifest-declared profile is rejected as `ConformanceError::DeclaredProfileSkipped` (mod.rs:192-198), exercised by the integration test `cross_validate_rejects_declared_profile_reported_as_skip` (conformance_cross_validation.rs:76-87). Unsupported with `declared_in_manifest = true` is an immediate result-validate reject as `DeclaredProfileReportedAsUnsupported` (result.rs:281-291), covered by the unit test `result_validate_rejects_unsupported_when_declared_in_manifest_true` (result.rs:658-665) and the JSON fixture test `negative_fixture_unsupported_declared_in_manifest_true_from_json_value_rejects` (conformance_fixtures.rs:114-126). The symmetric false-claim case (declared_in_manifest=true on an undeclared profile) is also caught at result-validate, documented in cross_validate_rejects_undeclared_profile_with_unsupported_declared_in_manifest_true. Pass requires non-empty evidence — `ConformanceResult::validate` returns `PassWithoutEvidence` when the vec is empty (result.rs:254-259); exercised by `result_validate_rejects_pass_without_evidence` (result.rs:619-626) and the JSON fixture `negative_fixture_pass_without_evidence.json`. Manual count of `utsushi.conformance.*` codes in `diagnostics.rs` gives 21 constants declared and 21 entries in `codes::ALL`; the test `every_conformance_error_variant_returns_a_code_in_codes_all` (diagnostics.rs:367-382) walks each of the 21 `ConformanceError` variants, asserts membership in `codes::ALL`, and asserts no duplicates. Engine-neutrality grep across `crates/utsushi-core/src/conformance/` for `xp3|kirikiri|kag|rgss|rpgmaker|reallive|siglus` returns four matches, all benign: two doc-comment references (mod.rs:54 refers to UTSUSHI-027 bridge linkage, the substring `kag` matching inside `linkage`; fixtures.rs:6 lists XP3/KAG/RGSS3 as engines the synthetic builders explicitly do NOT name), one false positive inside a doc comment for `bridge_unit` (result.rs:103), and one negative test in result.rs:651 that asserts `rgss3.script.unknown_opcode` is rejected as a `MalformedSemanticCode` — i.e. the substring appears only as an example of what the validator rejects. No engine-specific substring leaks into a field name, variant, or wire shape. Declarative invariant: an adapter must publish `ConformanceManifest` before any result is validated; `cross_validate_results_against_manifest` calls `manifest.validate()` first, then walks results, then enforces every declared profile reported (`ProfileNotReported`) and every reported-but-not-declared profile rejected (`ProfileNotDeclared`). `Pass.evidence_tier` is bounded by both the result-side per-`ProfileId` ceiling (`profile_id.evidence_tier_ceiling()`) and the manifest-side per-profile ceiling (`PassAboveManifestCeiling`). `kaifuu.*` codes are accepted under `Fail` / `Skip` / `Unsupported` via the namespaced regex `^(utsushi|kaifuu)\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$`; structurally precluded from `Pass` because that variant carries only `evidence_tier`. EvidenceRef bridges UTSUSHI-025 via string-keyed `ImplMapFixture { fixture_id }` (one-way, no Rust type coupling); validated for non-empty, no-whitespace, no-local-path-substring through `validate_id_string` (result.rs:143-167). Verification re-runs from the worktree all pass: `cargo test -p utsushi-core` reports 7 test suites (lib 237 passed / 5 ignored, conformance_cross_validation 10 passed, conformance_fixtures 9 passed, engine_port 15 passed, replay_round_trip 11 passed, sink_contracts 3 passed, vfs_synthetic_package 16 passed; total 301 tests across the crate, of which 70 are new for UTSUSHI-026 per worker report); `cargo test -p utsushi-fixture` 22 passed; `just schema` 125 tests passed across 2 TS files with no regressions to existing tests (the new UTSUSHI-026 smoke at schema.test.ts:2666 is additive and reuses the existing `conformance_fixture` reference comparison kind without schema change); `just check` exits 0 with `cargo fmt --check` clean and `cargo check --workspace` clean. Deviations from plan: (1) `fixtures.rs` is unconditionally `pub` rather than `cfg(any(test, feature = \"conformance-fixtures\"))` — the worker chose this so in-crate integration tests can use the synthetic builders without a feature pin; the `conformance-fixtures` feature is preserved in Cargo.toml as a documented opt-in marker but is currently inert (no `#[cfg]` references it). The trade-off is acceptable because the builders ship engine-neutral synthetic data only and the feature would have added a Cargo flag with no behavior. Tracked as F001. (2) `RuntimeArtifactKind` serde is inlined in conformance/result.rs (`serialize_runtime_artifact_kind` / `deserialize_runtime_artifact_kind`) instead of deriving Serialize/Deserialize at lib.rs:200 to avoid collision with UTSUSHI-148 — sound choice; the wire shape stays the same `snake_case` string `artifact_kind()` already returns. (3) `Unsupported{declared_in_manifest:true}` is rejected immediately at result-validate (rather than only at cross-validate), which the worker notes is a stricter-than-planned semantics; the constraint says \"Unsupported with declared_in_manifest=true is rejected\", and the result-validate rejection is the structurally honest place for it because the result payload's own self-claim of \"declared\" is a lie the result schema can detect alone. The four worker-pre-identified follow-up candidates are accepted as written: forward-compat lenient unknown-profile-id (P2, tracked as F002), TypeScript schema mirror owned by UTSUSHI-030 (P2, tracked as F003), audio-event conformance profile (P3, tracked as F004), first production engine port consuming `ConformanceManifest` (P3, tracked as F005). Outcome: follow_up_only with five non-blocking follow-ups (1×P2 inert feature flag cleanup, 2×P2 deferred work owned elsewhere, 2×P3 future port-driven extensions).",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 3,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "UTSUSHI-026-F001",
+      "UTSUSHI-026-F002",
+      "UTSUSHI-026-F003",
+      "UTSUSHI-026-F004",
+      "UTSUSHI-026-F005"
+    ]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-026-F001",
+      "severity": "P2",
+      "title": "Either gate fixtures.rs on the conformance-fixtures feature or remove the inert feature flag",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/Cargo.toml",
+          "line": 14,
+          "symbol": "conformance-fixtures"
+        },
+        {
+          "path": "crates/utsushi-core/src/conformance/fixtures.rs",
+          "line": 9,
+          "symbol": "module-level doc"
+        }
+      ],
+      "description": "Plan §2.1 specified `fixtures.rs` would be gated on `cfg(any(test, feature = \"conformance-fixtures\"))` so downstream test crates could opt in via dev-dep. The worker chose to leave the builders unconditionally `pub` so in-crate integration tests (cargo test -p utsushi-core) can reach them without a feature pin. This is a defensible simplification — the synthetic builders contain only engine-neutral, deterministic data with no host paths or coupling to private surfaces — but it leaves the `conformance-fixtures = []` feature in Cargo.toml inert: no `#[cfg(feature = \"conformance-fixtures\")]` exists anywhere in the crate, so the feature is purely documentation. The module-level doc (fixtures.rs:9-14) and Cargo.toml comment (Cargo.toml:9-13) both call it a \"documented opt-in marker\" but the marker is unobservable. Either remove the feature (one-line Cargo.toml cleanup) or actually gate the four synthetic constructors plus `SYNTHETIC_ADAPTER_ID` plus `normalize_recorded_at` behind `cfg(any(test, feature = \"conformance-fixtures\"))` and re-export them from the crate root only under that gate. The plan's stated rationale (cross-crate test consumers ask for an explicit dev-dep handshake) only matters once UTSUSHI-027/028/029 actually consume them; if they end up consuming via `[dev-dependencies] utsushi-core = { ... }` without features, the gate buys nothing.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "`crates/utsushi-core/Cargo.toml:8-14` declares `conformance-fixtures = []` with a comment calling it a \"documented opt-in marker\"."
+        },
+        {
+          "kind": "file",
+          "detail": "`crates/utsushi-core/src/conformance/fixtures.rs:9-14` documents the deviation: \"constructors are exposed unconditionally so the in-crate integration tests reach them without a feature pin\"."
+        },
+        {
+          "kind": "command",
+          "detail": "`grep -rn 'conformance-fixtures' crates/` finds three hits: the Cargo.toml declaration, the module doc, and the plan section. Zero `#[cfg(feature = ...)]` references."
+        }
+      ],
+      "impact": "Cosmetic / orchestration only. An inert feature flag is a small drift between the plan and the shipped crate; future readers (and UTSUSHI-027/028/029 implementors) may believe a `--features conformance-fixtures` flag is required for cross-crate consumption when it is not. No runtime impact; no test impact.",
+      "actionableAcceptanceCriteria": [
+        "Either remove the `conformance-fixtures = []` feature line from `crates/utsushi-core/Cargo.toml` and update the `fixtures.rs` module doc accordingly, OR add `#[cfg(any(test, feature = \"conformance-fixtures\"))]` to the synthetic builders plus `SYNTHETIC_ADAPTER_ID` and `normalize_recorded_at`, and verify `cargo test -p utsushi-core --features conformance-fixtures` and the default `cargo test -p utsushi-core` both pass.",
+        "The decision is documented in the plan or a follow-up ADR so the UTSUSHI-027/028/029 integration tests know the right invocation shape.",
+        "If gating is chosen, the cross-crate consumer (the first of UTSUSHI-027/028/029 to land) demonstrates the handshake by listing `utsushi-core = { ..., features = [\"conformance-fixtures\"] }` under `[dev-dependencies]`."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Resolve the inert conformance-fixtures feature flag drift",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-026"],
+          "summary": "Either remove the inert conformance-fixtures Cargo feature or actually gate the synthetic builders behind it, so the plan and the shipped crate agree.",
+          "deliverables": [
+            "One of: removal of `conformance-fixtures = []` from Cargo.toml plus doc update, OR `cfg` gating of the synthetic builders plus a downstream consumer that lists the feature under dev-dependencies",
+            "Updated plan section or follow-up note documenting the decision"
+          ],
+          "acceptanceCriteria": [
+            "No `Cargo.toml` feature declaration exists without at least one `#[cfg(feature = ...)]` reference in the crate.",
+            "All existing utsushi-core tests continue to pass under the default feature set.",
+            "If gating is chosen, the first downstream consumer (UTSUSHI-027/028/029) lists the feature explicitly under `[dev-dependencies]`."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            },
+            {
+              "type": "command",
+              "value": "cargo check -p utsushi-core --no-default-features"
+            }
+          ],
+          "auditFocus": [
+            "Plan-vs-shipped feature flag agreement",
+            "No inert Cargo features",
+            "Cross-crate test consumer handshake works as documented"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-026-F002",
+      "severity": "P2",
+      "title": "Decide forward-compat policy for unknown ProfileId on deserialize",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/conformance/mod.rs",
+          "line": 50,
+          "symbol": "ProfileId"
+        }
+      ],
+      "description": "`ProfileId` is a closed kebab-case enum with six variants. `serde(rename_all = \"kebab-case\")` makes the wire shape strict: a JSON document that uses a profile id not in the enum (e.g. a future `audio-trace` from UTSUSHI-026.A.1) fails `serde_json::from_value` before any conformance-aware error can fire, and the resulting error is a generic serde \"unknown variant\" message — not an `utsushi.conformance.*` semantic code. This is acceptable for the alpha slice (the plan §10.2 fixes the set at six and says adding one is additive plus a schema-version bump) but the forward-compat story should be a deliberate choice rather than a side effect of serde's default. Two options: (a) keep strict closed-set rejection but route the error through a typed `ConformanceError::UnknownProfileId` so the diagnostic surface is uniform, or (b) add an `Unknown { wire_id: String }` variant guarded by the schema version pin so old runners produce a typed diagnostic instead of a parse failure when a newer manifest is presented. The plan footnote in §10.2 explicitly defers this; the audit recommends pinning the choice before UTSUSHI-027 onboards a second profile id.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "`crates/utsushi-core/src/conformance/mod.rs:50-71` defines `ProfileId` as a closed serde enum with no `#[serde(other)]` fallback."
+        },
+        {
+          "kind": "file",
+          "detail": "`plan §10.2` lists six profile ids and says \"adding a profile is additive (new enum variant + schema version bump)\". The wire-error shape when an old runner sees a new id is not specified."
+        }
+      ],
+      "impact": "Cross-version interop. A v0.2.0-alpha runner reading a v0.3.0 manifest with a new profile id fails at parse with a generic serde error, not an `utsushi.conformance.*` code. Downstream allowed-code validators (UTSUSHI-022 precedent) cannot route the diagnostic. The cost of fixing this once a real new profile lands is small (one variant + one match arm + one cross-validation rule); fixing it before then closes the door on the kind of silent-skip bug the conformance contract is specifically designed to prevent.",
+      "actionableAcceptanceCriteria": [
+        "Choose between (a) strict closed-set with a typed `ConformanceError::UnknownProfileId { wire_id }` surfaced via a custom serde Visitor, or (b) `ProfileId::Unknown { wire_id: String }` variant guarded by schema version and forbidden from `ConformanceManifest::supported_profiles`.",
+        "If (a) is chosen, the unknown-variant error path emits `utsushi.conformance.unknown_profile_id` (added to `codes::ALL`) and a unit test exercises it.",
+        "If (b) is chosen, `ConformanceManifest::validate` rejects `Unknown` in `supported_profiles` and a unit test covers a result whose `profile_id` is `Unknown`.",
+        "The plan (or a follow-up plan note) documents the choice."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Pin the forward-compat strategy for unknown ProfileId",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-026"],
+          "summary": "Resolve the open forward-compat question on ProfileId so a future profile addition does not regress through a generic serde parse error instead of a typed utsushi.conformance.* diagnostic.",
+          "deliverables": [
+            "A decision (strict-with-typed-error or Unknown-variant-with-pin) recorded in a plan section or ADR",
+            "Implementation of the chosen path with a unit test exercising the unknown-variant case",
+            "If a new code is added (e.g. utsushi.conformance.unknown_profile_id), registration in codes::ALL"
+          ],
+          "acceptanceCriteria": [
+            "A manifest or result JSON carrying an unknown profile id surfaces an utsushi.conformance.* coded error, not a generic serde \"unknown variant\".",
+            "Existing tests in utsushi-core continue to pass.",
+            "The chosen strategy is documented in the plan."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            },
+            {
+              "type": "command",
+              "value": "just schema"
+            }
+          ],
+          "auditFocus": [
+            "No silent-omission of unknown profile ids",
+            "Diagnostic surface uniformity (utsushi.conformance.* over generic serde errors)",
+            "Forward-compat with future profile additions documented"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-026-F003",
+      "severity": "P2",
+      "title": "TypeScript ConformanceManifest / ConformanceResult schema mirror owned by UTSUSHI-030",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/localization-bridge-schema/test/schema.test.ts",
+          "line": 2666,
+          "symbol": "UTSUSHI-026 smoke test"
+        },
+        {
+          "path": ".plan/UTSUSHI-026.md",
+          "line": 1
+        }
+      ],
+      "description": "The plan §12.6 and the inline comment at schema.test.ts:2666-2672 both defer the TypeScript mirror to UTSUSHI-030. The Rust-side wire format is camelCase JSON pinned by `schemaVersion = \"0.1.0-alpha\"`; the existing v0.2 `reference_comparison` artifact kind already accommodates a conformance report as a runtime evidence reference (`conformance_fixture` comparisonKind, demonstrated in the new smoke test, which makes the existing TS schema sufficient for the trace-only fidelity path). For higher-fidelity ports that will produce a stream of conformance results during a run, a typed TypeScript validator pair (`assertConformanceManifest`, `assertConformanceResult`) backed by the same canonical wire shape needs to land. The smoke test is the placeholder; UTSUSHI-030 must turn it into a typed assertion against the manifest/result wire shapes plus exhaustive negative fixtures mirroring the seven `tests/fixtures/conformance/negative_fixture_*.json` files committed in this slice.",
+      "evidence": [
+        {
+          "kind": "test",
+          "detail": "`packages/localization-bridge-schema/test/schema.test.ts:2666-2698` adds a single smoke test that proves the existing v0.2 reference_comparison shape accommodates a conformance report URI through the artifact root, with an inline comment naming UTSUSHI-030 as the owner of the typed mirror."
+        },
+        {
+          "kind": "file",
+          "detail": "`.plan/UTSUSHI-026.md §12.6` defers the TypeScript mirror to UTSUSHI-030 explicitly."
+        },
+        {
+          "kind": "fixture",
+          "detail": "The seven negative_fixture_*.json files committed under `crates/utsushi-core/tests/fixtures/conformance/` are the canonical input set the TS mirror will share."
+        }
+      ],
+      "impact": "Workspace coupling. Until UTSUSHI-030 lands, the TS-side bridge schema cannot validate a `ConformanceManifest` or `ConformanceResult` directly — it can only validate a `reference_comparison` runtime artifact reference. A non-Rust adapter or a UI surface that wants to display per-profile pass/fail breakdowns must round-trip through a Rust validator. No alpha-blocking impact; the smoke test confirms the substrate is forward-compatible.",
+      "actionableAcceptanceCriteria": [
+        "`packages/localization-bridge-schema` exports `assertConformanceManifestV02` and `assertConformanceResultV02` validators with the same wire-shape semantics as `crates/utsushi-core/src/conformance/{manifest,result}.rs`.",
+        "The seven negative_fixture_*.json files (and the two positive ones) are linked from the TS test suite so cross-validator drift is caught at CI time.",
+        "The smoke test at schema.test.ts:2666 is replaced with the typed validator call once it lands."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-030",
+          "acceptanceCriteria": [
+            "Typed TypeScript validators `assertConformanceManifestV02` and `assertConformanceResultV02` ship alongside the existing v0.2 contract validators, using the same wire shape as crates/utsushi-core/src/conformance/{manifest,result}.rs.",
+            "The seven UTSUSHI-026 negative fixtures and two positive fixtures are imported into the TS test suite so cross-validator drift is detected at CI time.",
+            "The schema.test.ts:2666 smoke test is replaced with the typed validator calls."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "just schema"
+            }
+          ],
+          "auditFocus": [
+            "Cross-validator wire-shape parity",
+            "Negative fixture drift detection",
+            "Conformance manifest/result reachable from non-Rust consumers"
+          ],
+          "notes": "UTSUSHI-026 ships only the Rust substrate plus a one-line TS smoke. The typed TS mirror is the second half of the contract and belongs to UTSUSHI-030."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-026-F004",
+      "severity": "P3",
+      "title": "Audio-event conformance profile deferred until the first port emits one",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/conformance/mod.rs",
+          "line": 50,
+          "symbol": "ProfileId"
+        },
+        {
+          "path": "crates/utsushi-core/src/conformance/manifest.rs",
+          "line": 32,
+          "symbol": "SubsystemRequirement::AudioSink"
+        }
+      ],
+      "description": "The six canonical profiles cover text trace, branch capture, snapshot restore, frame capture, recording capture, and deterministic replay. `SubsystemRequirement::AudioSink` is declared (manifest.rs:46) but is not required by any `ProfileId`. UTSUSHI-022 ships `AudioEventSink` with an E0 ceiling and a structural ban on raw audio bytes; the first port that needs an audio-fidelity guarantee (a voiced-line bridge unit, a BGM ducking probe, an SFX cue timing test) will want a typed `AudioTrace` or `AudioEvents` profile id so adapters can declare \"I will emit a deterministic audio event stream\" before a run. Adding the variant is additive (one new `ProfileId`, one new `required_subsystems` mapping, one new `evidence_tier_ceiling` row at E0, plus a schema version bump per plan §10.2). Defer until the first audio-touching port surfaces a concrete demand so the variant is shaped by a real adapter rather than speculatively spec'd.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "`crates/utsushi-core/src/conformance/manifest.rs:32-51` declares `SubsystemRequirement::AudioSink` but no `ProfileId` references it (mod.rs:98-117)."
+        },
+        {
+          "kind": "file",
+          "detail": "`.plan/UTSUSHI-026.md` lists six profiles in §10.2 and explicitly does not include an audio variant."
+        }
+      ],
+      "impact": "Low. Adapters that produce audio events today have nowhere to declare them in the conformance manifest, so their AudioEventSink output is not covered by a per-profile pass/skip/unsupported breakdown — it sits below the conformance contract until a variant is added. No alpha-blocking impact because no current adapter promises audio fidelity.",
+      "actionableAcceptanceCriteria": [
+        "The first port that exercises voiced lines or audio event timing drives a profile shape decision: either a typed `ProfileId::AudioTrace` variant with `evidence_tier_ceiling = E0` and `required_subsystems = [AudioSink]`, or a documented decision that voiced lines route through `TextTrace` plus `bridge_ref` (consistent with UTSUSHI-022 F003).",
+        "If a new variant is added, the schema version pin is bumped per plan §10.2 and the negative-fixture set is extended to cover the new variant.",
+        "The plan or a follow-up note records the decision."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Audio-event conformance profile (port-driven)",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-026", "UTSUSHI-022"],
+          "summary": "Extend the conformance profile catalog with an audio-event variant once the first port emits audio fidelity claims, or document that voiced lines route through TextTrace + bridge_ref.",
+          "deliverables": [
+            "ProfileId::AudioTrace variant with E0 ceiling and AudioSink subsystem, OR an inline doc-comment recording that TextTrace + bridge_ref is sufficient",
+            "Schema version pin bump per plan §10.2 if a new variant is added",
+            "Negative-fixture coverage for the new variant"
+          ],
+          "acceptanceCriteria": [
+            "Adapters that promise audio fidelity can declare it in the conformance manifest with a typed profile id.",
+            "All existing conformance tests continue to pass.",
+            "The schema version pin reflects the addition."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            }
+          ],
+          "auditFocus": [
+            "Engine-neutral audio profile taxonomy",
+            "Audio-event sink remains E0-capped",
+            "Schema version pin bump on additive variants"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-026-F005",
+      "severity": "P3",
+      "title": "First production engine port consuming ConformanceManifest",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/conformance/mod.rs",
+          "line": 27
+        }
+      ],
+      "description": "The conformance substrate ships today with synthetic adapter id `utsushi-synthetic` and zero production engine ports consuming it. The contract proves itself only when a real engine port (likely the first UTSUSHI-027/028/029 port that lands) declares a `ConformanceManifest` at registration, drives a real conformance run, and emits a real `ConformanceResult` set that the cross-validator accepts. The plan §11 and §13 both flag this as the first integration test for the substrate. Defer until the first port lands — the substrate is the contract, and the port is the proof.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "`crates/utsushi-core/src/conformance/fixtures.rs:22-23` pins the only adapter id used in the slice as `utsushi-synthetic`; no production port references the conformance module yet."
+        },
+        {
+          "kind": "file",
+          "detail": "`.plan/UTSUSHI-026.md §13` lists the first production port consumption as a follow-up worklog item."
+        }
+      ],
+      "impact": "Low. The substrate's correctness is exercised by 70 new tests in this slice (51 lib unit + 10 cross-validation + 9 fixture round-trip), but a real engine port surfacing real subsystem and tier claims would catch any drift between the contract's expectations and an adapter's actual behavior. No alpha-blocking impact because the substrate is engine-neutral by design and the synthetic fixtures cover the full join rule matrix.",
+      "actionableAcceptanceCriteria": [
+        "The first engine port (likely the first of UTSUSHI-027/028/029 to land) declares a `ConformanceManifest` at registration with at least one profile.",
+        "An integration test in that port's crate calls `cross_validate_results_against_manifest` with a real result set and asserts success.",
+        "Any drift between the substrate's expectations and the port's behavior is captured as a follow-up audit on the port crate, not on UTSUSHI-026."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "First production engine port consumes ConformanceManifest",
+          "priority": "P3",
+          "target": "alpha",
+          "projects": ["utsushi"],
+          "parallelGroup": "engine-adapters",
+          "dependsOn": ["UTSUSHI-026"],
+          "summary": "Drive the conformance substrate through a real engine port's registration and conformance run so the contract proves itself against a non-synthetic adapter.",
+          "deliverables": [
+            "A real engine port (the first of UTSUSHI-027/028/029 to land) wires a ConformanceManifest at registration",
+            "An integration test in that port's crate calls cross_validate_results_against_manifest with a real result set",
+            "Any audit observations from the port crate are tracked as separate findings, not as UTSUSHI-026 regressions"
+          ],
+          "acceptanceCriteria": [
+            "A non-synthetic adapter id appears in a checked-in ConformanceManifest.",
+            "cross_validate_results_against_manifest accepts the real result set.",
+            "Any cross-substrate drift is captured as a follow-up audit on the port crate."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            },
+            {
+              "type": "manual",
+              "value": "Review the new port crate's conformance manifest and result fixtures for engine-neutrality."
+            }
+          ],
+          "auditFocus": [
+            "Real adapter id in a real ConformanceManifest",
+            "Substrate-vs-port drift detection",
+            "No engine-specific substrings leak through the port's conformance surface"
+          ]
+        }
+      }
+    }
+  ]
+}
