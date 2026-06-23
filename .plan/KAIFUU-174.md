@@ -1,16 +1,16 @@
 # KAIFUU-174 Implementation Plan — RealLive AVG32-variant text inventory adapter
 
-| Field    | Value                                                                                                                                                          |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Node id  | KAIFUU-174                                                                                                                                                     |
-| Title    | RealLive AVG32-variant text inventory adapter                                                                                                                  |
-| Branch   | `spec/kaifuu-174`                                                                                                                                              |
-| Worktree | `/scratch/worktrees/itotori-spec-kaifuu-174`                                                                                                                   |
-| Author   | orchestrator (planner)                                                                                                                                         |
-| Date     | 2026-06-23                                                                                                                                                     |
-| Status   | planning — implementation worker not yet dispatched                                                                                                            |
-| Depends  | KAIFUU-014 (bridge schema / secret-ref boundary), KAIFUU-052 (layered text access pipeline), KAIFUU-172 (RealLive detector), KAIFUU-173 (Scene/SEEN parser)    |
-| Unblocks | UTSUSHI-146 (native RealLive runtime port), ALPHA-006 (vault-vertical Sweetie HD slice)                                                                        |
+| Field    | Value                                                                                                                                                       |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Node id  | KAIFUU-174                                                                                                                                                  |
+| Title    | RealLive AVG32-variant text inventory adapter                                                                                                               |
+| Branch   | `spec/kaifuu-174`                                                                                                                                           |
+| Worktree | `/scratch/worktrees/itotori-spec-kaifuu-174`                                                                                                                |
+| Author   | orchestrator (planner)                                                                                                                                      |
+| Date     | 2026-06-23                                                                                                                                                  |
+| Status   | planning — implementation worker not yet dispatched                                                                                                         |
+| Depends  | KAIFUU-014 (bridge schema / secret-ref boundary), KAIFUU-052 (layered text access pipeline), KAIFUU-172 (RealLive detector), KAIFUU-173 (Scene/SEEN parser) |
+| Unblocks | UTSUSHI-146 (native RealLive runtime port), ALPHA-006 (vault-vertical Sweetie HD slice)                                                                     |
 
 This plan is **planning only**. No Rust feature code is included; illustrative
 sketches use `// pseudo-code` comments. The implementation worker must follow
@@ -82,7 +82,7 @@ Rationale:
   hand-curated common-case hiragana/katakana/kanji set). It is documented as a
   **preflight** helper; the same module's `encode_string` returns
   `Err("character U+XXXX is not representable by the supported Shift-JIS
-  preflight table")` for any character outside that table. Driving an inventory
+preflight table")` for any character outside that table. Driving an inventory
   adapter that has to round-trip arbitrary Scene/SEEN bytes through that table
   is out-of-scope for a real-shape RealLive title and will produce false
   failures on common kanji.
@@ -288,19 +288,19 @@ Rename / boundary update:
 The seven `EngineAdapter` methods are wired as follows (cross-checked against
 the existing impl at `crates/kaifuu-engine-fixture/src/lib.rs:3933-4214`):
 
-| Method            | KAIFUU-172 status      | KAIFUU-174 change                                                                                                                                                                                                                                                                                                                                              |
-| ----------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`              | unchanged              | unchanged                                                                                                                                                                                                                                                                                                                                                      |
-| `name`            | detector phrasing      | updated to reflect inventory + patch-back surface (§3.1)                                                                                                                                                                                                                                                                                                       |
+| Method            | KAIFUU-172 status      | KAIFUU-174 change                                                                                                                                                                                                                                                                                                                                                |
+| ----------------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`              | unchanged              | unchanged                                                                                                                                                                                                                                                                                                                                                        |
+| `name`            | detector phrasing      | updated to reflect inventory + patch-back surface (§3.1)                                                                                                                                                                                                                                                                                                         |
 | `capabilities`    | identify+inventory     | extract, patching, container_access, codec_access, patch_back, asset_text_patching → flip from `Unsupported` to `Supported` (Scene/SEEN + Gameexe surfaces) or `Limited` (asset_inventory broadens to include `.g00`/`.koe`/`.ovk` refs but does NOT claim asset extraction). Runtime VM, EncryptedInput, KeyProfile, DeltaPatching stay `Unsupported`. See §3.3 |
-| `detect`          | KAIFUU-172 detector    | unchanged (still uses `inspect`)                                                                                                                                                                                                                                                                                                                               |
-| `profile`         | KAIFUU-172 profile     | minor update: profile.assets gains SEEN.TXT as `AssetKind::Script` with `text_surfaces = [Dialogue, SpeakerName, ChoiceLabel]`; Gameexe.ini gains as `AssetKind::Metadata` with `text_surfaces = [UiLabel, MetadataText]`                                                                                                                                       |
-| `list_assets`     | KAIFUU-172 stub        | populates the same per-asset profiles                                                                                                                                                                                                                                                                                                                          |
-| `asset_inventory` | KAIFUU-172 stub        | gains `AssetInventorySurface` entries for the Scene/SEEN dialogue/speaker/choice surfaces and the Gameexe.ini metadata surface; cites `.g00`/`.koe`/`.ovk` asset refs from the inventory walk                                                                                                                                                                   |
-| `extract`         | returns parser failure | walks SEEN.TXT via `parse_archive` + `parse_scene` (KAIFUU-173 surface), runs `inventory::build_scene_inventory`, runs `parse_gameexe_inventory`, projects into a `BridgeBundle` (see §4)                                                                                                                                                                       |
-| `patch_preflight` | always unsupported     | runs `EncodedStringSlot::preflight` against every `EncodedStringSlot` derived from the inventory, returning the preflight report inside `PatchResult`                                                                                                                                                                                                          |
-| `patch`           | always unsupported     | reads SEEN.TXT bytes, builds the `SlotEdit` list from the `PatchExport`, calls `patchback::apply_patches`, writes the patched SEEN.TXT atomically into `output_dir`. Gameexe.ini edits route through the loose-file Shift-JIS writer.                                                                                                                           |
-| `verify`          | always failed          | re-runs `parse_archive` + `parse_scene` against the patched bytes, asserts the AST shape matches modulo edited slot bytes, returns `OperationStatus::Success` when the round-trip closes                                                                                                                                                                        |
+| `detect`          | KAIFUU-172 detector    | unchanged (still uses `inspect`)                                                                                                                                                                                                                                                                                                                                 |
+| `profile`         | KAIFUU-172 profile     | minor update: profile.assets gains SEEN.TXT as `AssetKind::Script` with `text_surfaces = [Dialogue, SpeakerName, ChoiceLabel]`; Gameexe.ini gains as `AssetKind::Metadata` with `text_surfaces = [UiLabel, MetadataText]`                                                                                                                                        |
+| `list_assets`     | KAIFUU-172 stub        | populates the same per-asset profiles                                                                                                                                                                                                                                                                                                                            |
+| `asset_inventory` | KAIFUU-172 stub        | gains `AssetInventorySurface` entries for the Scene/SEEN dialogue/speaker/choice surfaces and the Gameexe.ini metadata surface; cites `.g00`/`.koe`/`.ovk` asset refs from the inventory walk                                                                                                                                                                    |
+| `extract`         | returns parser failure | walks SEEN.TXT via `parse_archive` + `parse_scene` (KAIFUU-173 surface), runs `inventory::build_scene_inventory`, runs `parse_gameexe_inventory`, projects into a `BridgeBundle` (see §4)                                                                                                                                                                        |
+| `patch_preflight` | always unsupported     | runs `EncodedStringSlot::preflight` against every `EncodedStringSlot` derived from the inventory, returning the preflight report inside `PatchResult`                                                                                                                                                                                                            |
+| `patch`           | always unsupported     | reads SEEN.TXT bytes, builds the `SlotEdit` list from the `PatchExport`, calls `patchback::apply_patches`, writes the patched SEEN.TXT atomically into `output_dir`. Gameexe.ini edits route through the loose-file Shift-JIS writer.                                                                                                                            |
+| `verify`          | always failed          | re-runs `parse_archive` + `parse_scene` against the patched bytes, asserts the AST shape matches modulo edited slot bytes, returns `OperationStatus::Success` when the round-trip closes                                                                                                                                                                         |
 
 ### 3.3 Capability declarations
 
@@ -388,18 +388,18 @@ The KAIFUU-173 parser produces `SceneIndex` + per-scene `Scene` (with
 
 Per `StringSlot` in each scene's `strings` vector:
 
-| Field                          | Source                                                                                                                                                                            |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `BridgeUnit.bridge_unit_id`    | UUIDv7 generated by the adapter at extract time (matches the existing `BridgeBundle` shape; not stable across runs by design — `source_unit_key` is the stable id)                |
-| `BridgeUnit.source_unit_key`   | `StringSlot.slot_id.as_str()` — verbatim KAIFUU-173 id (e.g. `reallive:scene-0000:str-off-0000001a-idx00`). Format-pinned by a test in `kaifuu-reallive/tests/inventory.rs` (§11) |
-| `BridgeUnit.occurrence_id`     | `format!("{source_unit_key}#occ-{slot_index_within_scene:04}")` — stable position-derived id                                                                                      |
-| `BridgeUnit.source_hash`       | `sha256(raw_bytes)` of the Shift-JIS bytes (not the decoded text), upper-hex                                                                                                       |
-| `BridgeUnit.source_locale`     | `"ja-JP"` (RealLive Scene/SEEN is Japanese; locale string is locked, audited by a test)                                                                                            |
-| `BridgeUnit.source_text`       | Shift-JIS decoded string (see §5)                                                                                                                                                  |
-| `BridgeUnit.speaker`           | the previous `SetSpeaker` opcode's StringSlot decoded text, if any; otherwise `""` (and a `kaifuu.reallive.inventory.unattributed_dialogue` warning if the slot is `Dialogue`)    |
-| `BridgeUnit.text_surface`      | mapped from `StringSlotRole`: `Dialogue→"dialogue"`, `SpeakerName→"speaker_name"`, `Choice→"choice_label"`, `AssetReference→"metadata_text"`, `Unknown→"dialogue"` (with warning) |
-| `BridgeUnit.protected_spans`   | output of `protected_spans::detect_protected_spans` against `source_text` (§6); each span carries `(kind, raw, start, end, preserve_mode)` per `ProtectedSpan::new`               |
-| `BridgeUnit.patch_ref`         | constructed via the existing `PatchRef` shape used by Siglus/XP3 (source file path relative to game_dir, slot id, byte range)                                                     |
+| Field                        | Source                                                                                                                                                                            |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BridgeUnit.bridge_unit_id`  | UUIDv7 generated by the adapter at extract time (matches the existing `BridgeBundle` shape; not stable across runs by design — `source_unit_key` is the stable id)                |
+| `BridgeUnit.source_unit_key` | `StringSlot.slot_id.as_str()` — verbatim KAIFUU-173 id (e.g. `reallive:scene-0000:str-off-0000001a-idx00`). Format-pinned by a test in `kaifuu-reallive/tests/inventory.rs` (§11) |
+| `BridgeUnit.occurrence_id`   | `format!("{source_unit_key}#occ-{slot_index_within_scene:04}")` — stable position-derived id                                                                                      |
+| `BridgeUnit.source_hash`     | `sha256(raw_bytes)` of the Shift-JIS bytes (not the decoded text), upper-hex                                                                                                      |
+| `BridgeUnit.source_locale`   | `"ja-JP"` (RealLive Scene/SEEN is Japanese; locale string is locked, audited by a test)                                                                                           |
+| `BridgeUnit.source_text`     | Shift-JIS decoded string (see §5)                                                                                                                                                 |
+| `BridgeUnit.speaker`         | the previous `SetSpeaker` opcode's StringSlot decoded text, if any; otherwise `""` (and a `kaifuu.reallive.inventory.unattributed_dialogue` warning if the slot is `Dialogue`)    |
+| `BridgeUnit.text_surface`    | mapped from `StringSlotRole`: `Dialogue→"dialogue"`, `SpeakerName→"speaker_name"`, `Choice→"choice_label"`, `AssetReference→"metadata_text"`, `Unknown→"dialogue"` (with warning) |
+| `BridgeUnit.protected_spans` | output of `protected_spans::detect_protected_spans` against `source_text` (§6); each span carries `(kind, raw, start, end, preserve_mode)` per `ProtectedSpan::new`               |
+| `BridgeUnit.patch_ref`       | constructed via the existing `PatchRef` shape used by Siglus/XP3 (source file path relative to game_dir, slot id, byte range)                                                     |
 
 The bridge bundle's `bridge_id` is a UUIDv7; `source_bundle_hash` is
 `sha256(archive_bytes)`. `source_locale = "ja-JP"`. `extractor_name =
@@ -455,17 +455,17 @@ Asset refs are emitted from two sources:
 The implementation worker hard-codes this table; expansion follows
 evidence-first per-key inclusion (each new key needs a paired fixture line):
 
-| Key                | Treatment                                                          | Rationale                                                                |
-| ------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| `#WINTITLE`        | BridgeUnit (`text_surface = "metadata_text"`)                       | Window title is user-visible at runtime; translatable.                  |
-| `#TITLE`           | BridgeUnit                                                          | Game title metadata.                                                    |
-| `#REGNAME`         | AssetReference (preserve verbatim; **do not translate**)            | Registry key name — translating breaks save compatibility.              |
-| `#GAMEEXE_VERSION` | AssetReference (preserve verbatim)                                  | Version stamp, not user text.                                            |
-| `#G00*`            | AssetReference (`AssetReferenceKind::Image`)                        | Image path reference.                                                    |
-| `#KOE*`            | AssetReference (`AssetReferenceKind::VoiceArchive`)                 | Voice archive path.                                                      |
-| `#SEEN*`           | AssetReference                                                      | Scene table reference.                                                   |
-| `#NWK*`            | AssetReference                                                      | Voice index reference.                                                   |
-| (anything else)    | Warning: `kaifuu.reallive.inventory.unknown_gameexe_key`            | No silent skip; warning surfaces in `InventoryReport.warnings`.          |
+| Key                | Treatment                                                | Rationale                                                       |
+| ------------------ | -------------------------------------------------------- | --------------------------------------------------------------- |
+| `#WINTITLE`        | BridgeUnit (`text_surface = "metadata_text"`)            | Window title is user-visible at runtime; translatable.          |
+| `#TITLE`           | BridgeUnit                                               | Game title metadata.                                            |
+| `#REGNAME`         | AssetReference (preserve verbatim; **do not translate**) | Registry key name — translating breaks save compatibility.      |
+| `#GAMEEXE_VERSION` | AssetReference (preserve verbatim)                       | Version stamp, not user text.                                   |
+| `#G00*`            | AssetReference (`AssetReferenceKind::Image`)             | Image path reference.                                           |
+| `#KOE*`            | AssetReference (`AssetReferenceKind::VoiceArchive`)      | Voice archive path.                                             |
+| `#SEEN*`           | AssetReference                                           | Scene table reference.                                          |
+| `#NWK*`            | AssetReference                                           | Voice index reference.                                          |
+| (anything else)    | Warning: `kaifuu.reallive.inventory.unknown_gameexe_key` | No silent skip; warning surfaces in `InventoryReport.warnings`. |
 
 ### 4.5 Asset-reference heuristic on StringSlot bytes
 
@@ -544,18 +544,18 @@ verbatim through patch-back.
 
 ### 6.1 Bounded protected-span catalogue
 
-| Stable kind                  | RealLive byte / shape                                                | Public-doc citation                                                | Preserve mode    |
-| ---------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------ | ---------------- |
-| `color_code`                 | `0x1f <color_index_byte>`                                            | RLDEV "Inline color directive"                                     | `exact`          |
-| `ruby_open` / `ruby_close`   | `0x0d <base_text> 0x0a <ruby_text> 0x09` (RLDEV-documented form)     | RLDEV "Ruby annotation"                                            | `transform`      |
-| `name_placeholder`           | `\{<digits>\}` (ASCII brace-digit-brace) — substitutes character name | RLDEV "Named character placeholder"                                | `map`            |
-| `choice_token`               | `0x02 <choice_index_byte>` (within `Choice` opcode string operand)    | RLDEV "Choice option preamble"                                     | `exact`          |
-| `text_size_directive`        | `0x1e <size_byte>`                                                   | RLDEV "Font size escape"                                           | `exact`          |
-| `wait_directive`             | `0x10 <frames_byte>`                                                 | RLDEV "Inline wait directive"                                      | `exact`          |
-| `clear_text_box`             | `0x0c`                                                               | RLDEV "Page break / clear text box"                                | `exact`          |
-| `line_break`                 | `0x0a` (not inside ruby)                                              | Universal across RLDEV-style scripts                               | `exact`          |
-| `variable_placeholder`       | `\\<varname>` (ASCII backslash + identifier)                          | RLDEV "Inline variable reference"                                  | `map`            |
-| `unknown_control`            | any other byte `<0x20` not in the above list                          | _no claim_ — emit warning, preserve byte                            | `exact` (+ warn) |
+| Stable kind                | RealLive byte / shape                                                 | Public-doc citation                      | Preserve mode    |
+| -------------------------- | --------------------------------------------------------------------- | ---------------------------------------- | ---------------- |
+| `color_code`               | `0x1f <color_index_byte>`                                             | RLDEV "Inline color directive"           | `exact`          |
+| `ruby_open` / `ruby_close` | `0x0d <base_text> 0x0a <ruby_text> 0x09` (RLDEV-documented form)      | RLDEV "Ruby annotation"                  | `transform`      |
+| `name_placeholder`         | `\{<digits>\}` (ASCII brace-digit-brace) — substitutes character name | RLDEV "Named character placeholder"      | `map`            |
+| `choice_token`             | `0x02 <choice_index_byte>` (within `Choice` opcode string operand)    | RLDEV "Choice option preamble"           | `exact`          |
+| `text_size_directive`      | `0x1e <size_byte>`                                                    | RLDEV "Font size escape"                 | `exact`          |
+| `wait_directive`           | `0x10 <frames_byte>`                                                  | RLDEV "Inline wait directive"            | `exact`          |
+| `clear_text_box`           | `0x0c`                                                                | RLDEV "Page break / clear text box"      | `exact`          |
+| `line_break`               | `0x0a` (not inside ruby)                                              | Universal across RLDEV-style scripts     | `exact`          |
+| `variable_placeholder`     | `\\<varname>` (ASCII backslash + identifier)                          | RLDEV "Inline variable reference"        | `map`            |
+| `unknown_control`          | any other byte `<0x20` not in the above list                          | _no claim_ — emit warning, preserve byte | `exact` (+ warn) |
 
 `unknown_control` is the **explicit no-silent-skip** policy: every byte
 `<0x20` either matches one of the named kinds above or is recorded as
@@ -617,14 +617,14 @@ Result<Vec<u8>, PatchBackError>`:
 3. For each affected scene, build a `SceneRewrite`:
    a. Walk the scene's `instructions` in `byte_offset` order.
    b. For each `Instruction.operands` containing a `String { slot_ref }`,
-      check whether `slot_ref.slot_id` is in the edit map. If yes, mark the
-      operand's byte range for replacement.
+   check whether `slot_ref.slot_id` is in the edit map. If yes, mark the
+   operand's byte range for replacement.
    c. Re-emit the scene bytes:
-      - Copy opcode opener (`0x23`), opcode byte, operand-count byte
-        verbatim.
-      - For each operand: emit the tag byte; for `String` operands either
-        copy verbatim or substitute the re-encoded bytes (with new 2-byte
-        LE length prefix); for `Int`/`Label` copy verbatim.
+   - Copy opcode opener (`0x23`), opcode byte, operand-count byte
+     verbatim.
+   - For each operand: emit the tag byte; for `String` operands either
+     copy verbatim or substitute the re-encoded bytes (with new 2-byte
+     LE length prefix); for `Int`/`Label` copy verbatim.
 4. Each `SlotEdit` has a `length_policy: SlotEditLengthPolicy`:
    - `LengthPreserving` — encoded bytes plus control-span preserved bytes
      must equal `slot.byte_len` exactly. If not, emit
@@ -636,15 +636,15 @@ Result<Vec<u8>, PatchBackError>`:
      justified (see §13 out-of-scope).
 5. After all per-scene rewrites:
    a. If any scene's total byte length changed, rewrite the SEEN.TXT entry
-      table: for each scene `i`, update `entries[i].byte_offset` to the new
-      offset and `entries[i].byte_len` to the new length. **Per §7.2, this
-      only happens when at least one edit ran with a non-`LengthPreserving`
-      policy, which at this slice is unreachable; the path is implemented
-      and tested for completeness but always returns the
-      `kaifuu.reallive.patchback_offset_overflow` Fatal until
-      length-changing policies ship.**
+   table: for each scene `i`, update `entries[i].byte_offset` to the new
+   offset and `entries[i].byte_len` to the new length. **Per §7.2, this
+   only happens when at least one edit ran with a non-`LengthPreserving`
+   policy, which at this slice is unreachable; the path is implemented
+   and tested for completeness but always returns the
+   `kaifuu.reallive.patchback_offset_overflow` Fatal until
+   length-changing policies ship.**
    b. Concatenate `[ count u32 ][ entry table ][ scene 0 bytes ][ scene 1 bytes ]...`
-      into the new archive.
+   into the new archive.
 6. Round-trip self-check: re-run `parse_archive` + `parse_scene` against
    the new archive. If the parser emits any new Fatal diagnostics, return
    `PatchBackError::ParserRegression` carrying the new diagnostics. This is
@@ -739,21 +739,21 @@ are introduced. Existing variants suffice
 
 ### 9.1 New parser-local codes
 
-| Code (stable string)                                       | Severity | Where emitted                  | Maps to `kaifuu_core::SemanticErrorCode`        |
-| ---------------------------------------------------------- | -------- | ------------------------------ | ----------------------------------------------- |
-| `kaifuu.reallive.shift_jis_decode_failure`                 | Warning  | `encoding::decode_shift_jis_slot` | (recoverable — inventory only)                 |
-| `kaifuu.reallive.unsupported_text_shape`                   | Warning  | `inventory::build_scene_inventory` (e.g. zero-length string slot tagged Dialogue, or unknown `StringSlotRole`) | `UnsupportedLayeredTransform`                  |
-| `kaifuu.reallive.protected_span.unknown_control`           | Warning  | `protected_spans::detect_protected_spans` (control byte not in §6.1) | (recoverable — inventory only)                 |
-| `kaifuu.reallive.inventory.unattributed_dialogue`          | Warning  | `inventory::build_scene_inventory` (Dialogue slot without preceding SetSpeaker) | (recoverable)                                  |
-| `kaifuu.reallive.inventory.unknown_asset_extension`        | Warning  | `inventory::build_scene_inventory` (AssetReference slot with unknown extension) | (recoverable)                                  |
-| `kaifuu.reallive.inventory.unknown_gameexe_key`            | Warning  | `gameexe::parse_gameexe_inventory` (non-catalogue key) | (recoverable)                                  |
-| `kaifuu.reallive.patchback_offset_overflow`                | Fatal    | `patchback::apply_patches` (encoded bytes exceed slot byte budget) | `UnsupportedLayeredTransform`                  |
-| `kaifuu.reallive.patchback_shift_jis_encode_failure`       | Fatal    | `patchback::apply_patches` (encoder hit `had_unmappable_characters`) | `UnsupportedLayeredTransform`                  |
-| `kaifuu.reallive.patchback_unsupported_length_policy`      | Fatal    | `patchback::apply_patches` (caller asked for `FixedBudget`) | `UnsupportedLayeredTransform`                  |
-| `kaifuu.reallive.patchback_parser_regression`              | Fatal    | `patchback::apply_patches` (re-parse self-check failed) | `UnsupportedLayeredTransform`                  |
-| `kaifuu.reallive.patchback_unknown_slot_id`                | Fatal    | `patchback::apply_patches` (edit references a slot id not present in the parsed AST) | `UnsupportedLayeredTransform`                  |
-| `kaifuu.reallive.patchback_stale_source_hash`              | Fatal    | adapter `patch` (PatchExport source_hash != archive bytes hash) | `UnsupportedLayeredTransform` (KAIFUU-014-style stale-hash rejection) |
-| `kaifuu.reallive.patchback_protected_span_lost`            | Fatal    | `patchback::apply_patches` (edited text has fewer protected spans than the source) | `UnsupportedLayeredTransform`                  |
+| Code (stable string)                                  | Severity | Where emitted                                                                                                  | Maps to `kaifuu_core::SemanticErrorCode`                              |
+| ----------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| `kaifuu.reallive.shift_jis_decode_failure`            | Warning  | `encoding::decode_shift_jis_slot`                                                                              | (recoverable — inventory only)                                        |
+| `kaifuu.reallive.unsupported_text_shape`              | Warning  | `inventory::build_scene_inventory` (e.g. zero-length string slot tagged Dialogue, or unknown `StringSlotRole`) | `UnsupportedLayeredTransform`                                         |
+| `kaifuu.reallive.protected_span.unknown_control`      | Warning  | `protected_spans::detect_protected_spans` (control byte not in §6.1)                                           | (recoverable — inventory only)                                        |
+| `kaifuu.reallive.inventory.unattributed_dialogue`     | Warning  | `inventory::build_scene_inventory` (Dialogue slot without preceding SetSpeaker)                                | (recoverable)                                                         |
+| `kaifuu.reallive.inventory.unknown_asset_extension`   | Warning  | `inventory::build_scene_inventory` (AssetReference slot with unknown extension)                                | (recoverable)                                                         |
+| `kaifuu.reallive.inventory.unknown_gameexe_key`       | Warning  | `gameexe::parse_gameexe_inventory` (non-catalogue key)                                                         | (recoverable)                                                         |
+| `kaifuu.reallive.patchback_offset_overflow`           | Fatal    | `patchback::apply_patches` (encoded bytes exceed slot byte budget)                                             | `UnsupportedLayeredTransform`                                         |
+| `kaifuu.reallive.patchback_shift_jis_encode_failure`  | Fatal    | `patchback::apply_patches` (encoder hit `had_unmappable_characters`)                                           | `UnsupportedLayeredTransform`                                         |
+| `kaifuu.reallive.patchback_unsupported_length_policy` | Fatal    | `patchback::apply_patches` (caller asked for `FixedBudget`)                                                    | `UnsupportedLayeredTransform`                                         |
+| `kaifuu.reallive.patchback_parser_regression`         | Fatal    | `patchback::apply_patches` (re-parse self-check failed)                                                        | `UnsupportedLayeredTransform`                                         |
+| `kaifuu.reallive.patchback_unknown_slot_id`           | Fatal    | `patchback::apply_patches` (edit references a slot id not present in the parsed AST)                           | `UnsupportedLayeredTransform`                                         |
+| `kaifuu.reallive.patchback_stale_source_hash`         | Fatal    | adapter `patch` (PatchExport source_hash != archive bytes hash)                                                | `UnsupportedLayeredTransform` (KAIFUU-014-style stale-hash rejection) |
+| `kaifuu.reallive.patchback_protected_span_lost`       | Fatal    | `patchback::apply_patches` (edited text has fewer protected spans than the source)                             | `UnsupportedLayeredTransform`                                         |
 
 The mapping into `kaifuu_core::SemanticErrorCode` is exposed via an extension
 of `diagnostics::semantic_error_code_for_parser_diagnostic` (KAIFUU-173
@@ -779,14 +779,14 @@ These continue to be emitted by the detector path unchanged:
 KAIFUU-014 dependency check (referenced from KAIFUU-173 §7 with KAIFUU-174
 deltas):
 
-| Requirement                                                                                                    | KAIFUU-174 handling                                                                                                                                                                          |
-| -------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Profiles reference required keys through secret refs and never store raw key material.                         | KAIFUU-174 does no key handling; `KeyRequirement::not_required` for the alpha-vertical title set. Encrypted RealLive variants remain a separate node.                                          |
-| Adapters declare required key material, archive parameters, and validation proofs with stable semantic errors. | The adapter declares `keyRequirements: []` (none); `archiveParameters` carries the SEEN.TXT envelope shape; semantic errors per §9.                                                            |
-| Pure extraction and patching consume resolved keys without owning key discovery.                               | No key plumbing.                                                                                                                                                                              |
-| Linux/macOS/Windows extraction and patching remain possible when supported formats are supplied.               | Pure Rust; no helper; tested on Linux/macOS via CI matrix.                                                                                                                                    |
-| Redaction tests prove keys, local paths, helper dumps, and decrypted private text are not emitted.             | The adapter's `BridgeBundle` carries Shift-JIS decoded Japanese text, which is fixture-derived synthetic at this slice. Real-game text is ALPHA-006 territory and routed through redaction.    |
-| Stale-source-hash detection rejects edits against modified source bytes.                                       | `kaifuu.reallive.patchback_stale_source_hash` Fatal in §9.1; asserted by a fixture test that mutates the source bytes between extract and patch.                                              |
+| Requirement                                                                                                    | KAIFUU-174 handling                                                                                                                                                                         |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Profiles reference required keys through secret refs and never store raw key material.                         | KAIFUU-174 does no key handling; `KeyRequirement::not_required` for the alpha-vertical title set. Encrypted RealLive variants remain a separate node.                                       |
+| Adapters declare required key material, archive parameters, and validation proofs with stable semantic errors. | The adapter declares `keyRequirements: []` (none); `archiveParameters` carries the SEEN.TXT envelope shape; semantic errors per §9.                                                         |
+| Pure extraction and patching consume resolved keys without owning key discovery.                               | No key plumbing.                                                                                                                                                                            |
+| Linux/macOS/Windows extraction and patching remain possible when supported formats are supplied.               | Pure Rust; no helper; tested on Linux/macOS via CI matrix.                                                                                                                                  |
+| Redaction tests prove keys, local paths, helper dumps, and decrypted private text are not emitted.             | The adapter's `BridgeBundle` carries Shift-JIS decoded Japanese text, which is fixture-derived synthetic at this slice. Real-game text is ALPHA-006 territory and routed through redaction. |
+| Stale-source-hash detection rejects edits against modified source bytes.                                       | `kaifuu.reallive.patchback_stale_source_hash` Fatal in §9.1; asserted by a fixture test that mutates the source bytes between extract and patch.                                            |
 
 `BridgeUnit.source_unit_key` stability is the load-bearing KAIFUU-014
 guarantee. KAIFUU-174 inherits the KAIFUU-173 stable id format
@@ -935,21 +935,21 @@ fn cli_patch_round_trips_identity_for_reallive_seen_txt_fixture()
 
 ### 11.3 Acceptance assertions vs DAG criteria
 
-| DAG criterion                                                                                                                              | Asserted by                                                                                                                                                |
-| ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The adapter inventories Scene/SEEN/Gameexe text slots, protected markup, and asset references for AVG32-variant RealLive titles.           | `extracts_bridge_units_*`, `projects_dialogue_*`, `captures_g00_and_koe_asset_references_*`                                                                |
-| Extraction lands in the bridge schema with stable identifiers and protected-span markup.                                                   | `source_unit_key_format_pinned_for_bridge_contract`, `detects_color_ruby_name_choice_wait_clear_size_linebreak_control_spans_in_dialogue_slot`              |
-| Patch-back round-trips through the layered access pipeline without corrupting non-text bytes.                                              | `round_trips_archive_byte_for_byte_with_empty_edit_list`, `writes_length_preserving_*`, `preserves_color_ruby_name_choice_control_bytes_through_*`         |
-| The adapter is engine-generic across AVG32-variant RealLive titles, not specialized to one game.                                           | `cli_extract_dispatches_to_reallive_adapter_for_reallive_seen_txt_fixture` runs across multiple synthetic Scene/SEEN/Gameexe sets with no per-game logic.   |
+| DAG criterion                                                                                                                    | Asserted by                                                                                                                                               |
+| -------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The adapter inventories Scene/SEEN/Gameexe text slots, protected markup, and asset references for AVG32-variant RealLive titles. | `extracts_bridge_units_*`, `projects_dialogue_*`, `captures_g00_and_koe_asset_references_*`                                                               |
+| Extraction lands in the bridge schema with stable identifiers and protected-span markup.                                         | `source_unit_key_format_pinned_for_bridge_contract`, `detects_color_ruby_name_choice_wait_clear_size_linebreak_control_spans_in_dialogue_slot`            |
+| Patch-back round-trips through the layered access pipeline without corrupting non-text bytes.                                    | `round_trips_archive_byte_for_byte_with_empty_edit_list`, `writes_length_preserving_*`, `preserves_color_ruby_name_choice_control_bytes_through_*`        |
+| The adapter is engine-generic across AVG32-variant RealLive titles, not specialized to one game.                                 | `cli_extract_dispatches_to_reallive_adapter_for_reallive_seen_txt_fixture` runs across multiple synthetic Scene/SEEN/Gameexe sets with no per-game logic. |
 
 ### 11.4 auditFocus defenses
 
-| auditFocus item                                                  | Defense                                                                                                                                                                                                                                                                       |
-| ---------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Adapter specialized to one game rather than engine-generic.       | The adapter consumes only the AST surface KAIFUU-173 provides; no game-specific branching is allowed (auditor rejects any string match against a game title, registry key, or fixture name). Cross-fixture tests in §11.2 prove the same code path drives every fixture set. |
-| Patch-back corrupting non-text bytes.                              | `preserves_color_ruby_name_choice_control_bytes_through_length_preserving_patchback` + the self-check re-parse gate (`patchback_parser_regression`). The identity round-trip (§7.3) catches drift before any translation work.                                                |
-| Protected markup lost or misclassified.                            | `detects_color_ruby_name_choice_wait_clear_size_linebreak_control_spans_in_dialogue_slot` exercises every catalogue entry; the `patchback_protected_span_lost` Fatal catches loss at patch time.                                                                              |
-| Bridge identifiers unstable across runs.                           | `produces_byte_identical_bridge_json_across_runs_for_inventory_fixture` (3-iteration stability oracle) plus `source_unit_key_format_pinned_for_bridge_contract`.                                                                                                              |
+| auditFocus item                                             | Defense                                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Adapter specialized to one game rather than engine-generic. | The adapter consumes only the AST surface KAIFUU-173 provides; no game-specific branching is allowed (auditor rejects any string match against a game title, registry key, or fixture name). Cross-fixture tests in §11.2 prove the same code path drives every fixture set. |
+| Patch-back corrupting non-text bytes.                       | `preserves_color_ruby_name_choice_control_bytes_through_length_preserving_patchback` + the self-check re-parse gate (`patchback_parser_regression`). The identity round-trip (§7.3) catches drift before any translation work.                                               |
+| Protected markup lost or misclassified.                     | `detects_color_ruby_name_choice_wait_clear_size_linebreak_control_spans_in_dialogue_slot` exercises every catalogue entry; the `patchback_protected_span_lost` Fatal catches loss at patch time.                                                                             |
+| Bridge identifiers unstable across runs.                    | `produces_byte_identical_bridge_json_across_runs_for_inventory_fixture` (3-iteration stability oracle) plus `source_unit_key_format_pinned_for_bridge_contract`.                                                                                                             |
 
 ### 11.5 Not tested at KAIFUU-174
 
@@ -1023,17 +1023,17 @@ Notes:
 
 ## 13. Risks and unknowns
 
-| Risk                                                                                                                                                                                                                                                  | Mitigation / disposition                                                                                                                                                                                                                                                              |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Length-changing patch-back unimplemented at this slice.** Translations frequently expand or contract text in Japanese→English projects; refusing all length changes blocks practical use.                                                            | Disclosed and explicit (§7.2). The adapter returns `kaifuu.reallive.patchback_offset_overflow` Fatal with a remediation message pointing at the future node. Localization workflows that need length-changing edits route through that node when ALPHA-006 evidence justifies it.        |
-| **Real-game Sweetie HD will surface protected-span shapes not in the §6 catalogue.**                                                                                                                                                                  | Expected. `protected_span.unknown_control` warning preserves the byte run and ships the BridgeUnit anyway. ALPHA-006 expands the catalogue with paired evidence per byte/shape.                                                                                                          |
-| **Encoding edge cases (half-width katakana, JIS escape sequences, embedded NUL).**                                                                                                                                                                    | Half-width katakana + JIS X 0208: covered by `encoding_rs`. JIS escape sequences: not used by RealLive per public docs; if encountered, decode falls back via encoding_rs semantics and emits a warning. Embedded NUL: preserved as control-byte slice boundary.                          |
-| **`encoding_rs` workspace dep adds compile-time weight.**                                                                                                                                                                                              | `encoding_rs` is a leaf dep with no transitive surprises. Build-time impact is negligible relative to the size of `kaifuu-core`. License: MIT/Apache-2.0 — compatible.                                                                                                                  |
-| **Asset-reference heuristic (§4.5) may misclassify a non-asset ASCII run as an asset path.**                                                                                                                                                          | The heuristic is anchored on documented extensions (`.g00`, `.koe`, `.ovk`, `.nwk`). False positives surface as warnings, not errors; the BridgeUnit retains its original role as a comment field. Catalogue expansion is evidence-first.                                                |
-| **Bridge identifier stability under future scene-edit operations (carried over from KAIFUU-173 §5.4).** Length-preserving edits at this slice do not move byte offsets; future length-changing edits would shift subsequent slot ids in the same scene. | Stale-source-hash detection (`kaifuu.reallive.patchback_stale_source_hash` Fatal in §9.1) rejects patches written against an edited source. The "logical id that survives edits" mechanism stays deferred until length-changing patch-back ships.                                       |
-| **Speaker attribution heuristic** (Dialogue slot inherits the prior `SetSpeaker` slot's text) misattributes when scenes use `SetSpeaker(0x00)` to clear the speaker.                                                                                  | The heuristic emits `kaifuu.reallive.inventory.unattributed_dialogue` Warning when no `SetSpeaker` precedes a Dialogue slot and treats `SetSpeaker` with an empty string as a clear. Real-game refinement is ALPHA-006 territory.                                                        |
-| **Worker accidentally consults rlvm during implementation and forgets to log it.**                                                                                                                                                                    | Same posture as KAIFUU-172/173: either no rlvm reads, or readiness-record entry plus checklist tick. Auditor rejects unchecked reads.                                                                                                                                                  |
-| **Public-fixture promotion of the new fixtures**: KAIFUU-174 keeps the inventory + patchback fixtures crate-local, like KAIFUU-173. If `kaifuu-cli` integration tests load them, the `fixtures/public/manifest.schema.json` promotion happens here.    | Decision: keep crate-local at this slice. The `kaifuu-cli` integration tests under §11.2 load them via `crates/kaifuu-reallive/tests/fixtures/...` paths, not through the public-fixture manifest. Promotion happens when ALPHA-006 needs them shared with a vertical-slice integration. |
+| Risk                                                                                                                                                                                                                                                    | Mitigation / disposition                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Length-changing patch-back unimplemented at this slice.** Translations frequently expand or contract text in Japanese→English projects; refusing all length changes blocks practical use.                                                             | Disclosed and explicit (§7.2). The adapter returns `kaifuu.reallive.patchback_offset_overflow` Fatal with a remediation message pointing at the future node. Localization workflows that need length-changing edits route through that node when ALPHA-006 evidence justifies it.        |
+| **Real-game Sweetie HD will surface protected-span shapes not in the §6 catalogue.**                                                                                                                                                                    | Expected. `protected_span.unknown_control` warning preserves the byte run and ships the BridgeUnit anyway. ALPHA-006 expands the catalogue with paired evidence per byte/shape.                                                                                                          |
+| **Encoding edge cases (half-width katakana, JIS escape sequences, embedded NUL).**                                                                                                                                                                      | Half-width katakana + JIS X 0208: covered by `encoding_rs`. JIS escape sequences: not used by RealLive per public docs; if encountered, decode falls back via encoding_rs semantics and emits a warning. Embedded NUL: preserved as control-byte slice boundary.                         |
+| **`encoding_rs` workspace dep adds compile-time weight.**                                                                                                                                                                                               | `encoding_rs` is a leaf dep with no transitive surprises. Build-time impact is negligible relative to the size of `kaifuu-core`. License: MIT/Apache-2.0 — compatible.                                                                                                                   |
+| **Asset-reference heuristic (§4.5) may misclassify a non-asset ASCII run as an asset path.**                                                                                                                                                            | The heuristic is anchored on documented extensions (`.g00`, `.koe`, `.ovk`, `.nwk`). False positives surface as warnings, not errors; the BridgeUnit retains its original role as a comment field. Catalogue expansion is evidence-first.                                                |
+| **Bridge identifier stability under future scene-edit operations (carried over from KAIFUU-173 §5.4).** Length-preserving edits at this slice do not move byte offsets; future length-changing edits would shift subsequent slot ids in the same scene. | Stale-source-hash detection (`kaifuu.reallive.patchback_stale_source_hash` Fatal in §9.1) rejects patches written against an edited source. The "logical id that survives edits" mechanism stays deferred until length-changing patch-back ships.                                        |
+| **Speaker attribution heuristic** (Dialogue slot inherits the prior `SetSpeaker` slot's text) misattributes when scenes use `SetSpeaker(0x00)` to clear the speaker.                                                                                    | The heuristic emits `kaifuu.reallive.inventory.unattributed_dialogue` Warning when no `SetSpeaker` precedes a Dialogue slot and treats `SetSpeaker` with an empty string as a clear. Real-game refinement is ALPHA-006 territory.                                                        |
+| **Worker accidentally consults rlvm during implementation and forgets to log it.**                                                                                                                                                                      | Same posture as KAIFUU-172/173: either no rlvm reads, or readiness-record entry plus checklist tick. Auditor rejects unchecked reads.                                                                                                                                                    |
+| **Public-fixture promotion of the new fixtures**: KAIFUU-174 keeps the inventory + patchback fixtures crate-local, like KAIFUU-173. If `kaifuu-cli` integration tests load them, the `fixtures/public/manifest.schema.json` promotion happens here.     | Decision: keep crate-local at this slice. The `kaifuu-cli` integration tests under §11.2 load them via `crates/kaifuu-reallive/tests/fixtures/...` paths, not through the public-fixture manifest. Promotion happens when ALPHA-006 needs them shared with a vertical-slice integration. |
 
 ---
 

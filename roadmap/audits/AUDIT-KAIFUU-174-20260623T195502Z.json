@@ -144,9 +144,18 @@
             "Verification: kaifuu-reallive::patchback rejects an edit when the offset-table rewrite would require recomputing a jump target whose absolute resolution is not yet evidenced."
           ],
           "verification": [
-            {"type": "command", "value": "cargo test -p kaifuu-reallive patchback_length_changing"},
-            {"type": "command", "value": "cargo test -p kaifuu-engine-fixture reallive_adapter_patch_round_trips_length_changing_translation"},
-            {"type": "manual", "value": "ALPHA-006 evidence pack: confirm patched SEEN.TXT loads cleanly in a Sweetie HD runtime smoke."}
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-reallive patchback_length_changing"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-engine-fixture reallive_adapter_patch_round_trips_length_changing_translation"
+            },
+            {
+              "type": "manual",
+              "value": "ALPHA-006 evidence pack: confirm patched SEEN.TXT loads cleanly in a Sweetie HD runtime smoke."
+            }
           ],
           "auditFocus": [
             "Offset-table rewrite corrupting non-edited scene byte ranges.",
@@ -211,8 +220,11 @@
             "kaifuu.reallive.protected_span.unknown_control warning rate against the ALPHA-006 evidence pack drops to zero (or to a documented residual)."
           ],
           "verification": [
-            {"type": "command", "value": "cargo test -p kaifuu-reallive protected_spans"},
-            {"type": "manual", "value": "ALPHA-006 evidence pack: confirm protected-span unknown_control warning rate against Sweetie HD bytes."}
+            { "type": "command", "value": "cargo test -p kaifuu-reallive protected_spans" },
+            {
+              "type": "manual",
+              "value": "ALPHA-006 evidence pack: confirm protected-span unknown_control warning rate against Sweetie HD bytes."
+            }
           ],
           "auditFocus": [
             "Catalogue expansion outpacing per-kind evidence (no silent additions).",
@@ -277,8 +289,8 @@
             "Plan §4.1 of KAIFUU-174 and the equivalent sections in the Siglus/XP3 readiness records agree with the implementation."
           ],
           "verification": [
-            {"type": "command", "value": "cargo test -p kaifuu-engine-fixture"},
-            {"type": "command", "value": "cargo test -p kaifuu-cli"}
+            { "type": "command", "value": "cargo test -p kaifuu-engine-fixture" },
+            { "type": "command", "value": "cargo test -p kaifuu-cli" }
           ],
           "auditFocus": [
             "Mixed convention surviving the migration.",

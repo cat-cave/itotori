@@ -1130,5 +1130,7 @@
       }
     ]
   },
-  "warnings": ["no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"]
+  "warnings": [
+    "no registered extraction adapter matched this directory; archive detection reported unsupported input diagnostics"
+  ]
 }
