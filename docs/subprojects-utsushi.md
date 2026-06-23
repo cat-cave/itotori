@@ -211,16 +211,27 @@ captures are deterministic artifact references without pixel comparison. The
 base fixture contract explicitly does not implement jump, snapshot, live
 screenshot, or recording APIs.
 
-The `utsushi-browser` adapter is the first host-backed launch/capture slice. It
+The `utsushi-browser` adapter is the alpha runtime evidence path for MV/MZ. It
 uses the core bounded process harness to launch a Chromium-compatible browser
-against `index.html` or `www/index.html`, captures a headless screenshot when the
-host provides browser support, and ingests screenshot bytes through the managed
-runtime artifact store. Browser evidence is capped at E2 layout-probe evidence:
-it proves bounded launch and screenshot production, not RPG Maker scene hooks,
-jump control, or reference-runtime fidelity.
+against `index.html` or `www/index.html`, captures a headless screenshot, and
+ingests screenshot bytes through the managed runtime artifact store. Browser
+evidence is capped at E2 layout-probe evidence: it proves bounded launch and
+screenshot production, not RPG Maker scene hooks, jump control, or
+reference-runtime fidelity.
 
-The `utsushi-nwjs` adapter is currently a capability diagnostic fallback. It is
-registered so capability output explicitly states that NW.js launch/capture is
-unsupported in this slice. A future NW.js implementation must define bounded
-process launch, capture timing, screenshot extraction, and process-tree cleanup
-before it can advertise trace, capture, or smoke-validation capabilities.
+Browser launch is a required capability for MV/MZ alpha. A supported host
+environment must provide Chromium on PATH or through `UTSUSHI_BROWSER_BIN`.
+Missing Chromium, incompatible Chromium version, or other environmental
+misconfiguration are hard errors with semantic codes in the `utsushi.browser.*`
+namespace (e.g. `utsushi.browser.chromium_unavailable`,
+`utsushi.browser.chromium_version_mismatch`). Public CI that intentionally lacks
+Chromium must declare the skip at the recipe layer; the adapter itself does not
+silently degrade.
+
+The `utsushi-nwjs` adapter is research-tier. It remains registered so capability
+output explicitly reports the research-tier status under the semantic code
+`utsushi.runtime.research_tier_unsupported`. NW.js is NOT advertised as an alpha
+capability, and trace/capture/smoke calls against the adapter return the same
+semantic code. A future NW.js implementation must define bounded process launch,
+capture timing, screenshot extraction, and process-tree cleanup before it can be
+promoted from research-tier.
