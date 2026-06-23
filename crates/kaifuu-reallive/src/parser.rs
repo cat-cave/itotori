@@ -346,37 +346,3 @@ pub fn parse_scene(scene_bytes: &[u8], archive_index: u32, _scene_offset: u64) -
     };
     ParseOutcome::new(Some(scene), diagnostics)
 }
-
-/// Partition assertion helper used by tests: every byte of the scene
-/// blob is covered by either an instruction node or a fatal-only
-/// diagnostic (warnings ride alongside instructions and do not need to
-/// own bytes). Returns the count of uncovered bytes.
-#[cfg(test)]
-pub(crate) fn count_uncovered_bytes(
-    scene_byte_len: u64,
-    instructions: &[Instruction],
-    diagnostics: &[ParseDiagnostic],
-) -> u64 {
-    let mut covered = vec![false; scene_byte_len as usize];
-    for instruction in instructions {
-        let start = instruction.byte_offset as usize;
-        let end = (instruction.byte_offset + instruction.byte_len) as usize;
-        for byte in covered.iter_mut().take(end).skip(start) {
-            *byte = true;
-        }
-    }
-    for diagnostic in diagnostics {
-        if let Some(len) = diagnostic.byte_len {
-            let start = diagnostic.byte_offset as usize;
-            let end = (diagnostic.byte_offset + len) as usize;
-            for byte in covered
-                .iter_mut()
-                .take(end.min(scene_byte_len as usize))
-                .skip(start)
-            {
-                *byte = true;
-            }
-        }
-    }
-    covered.iter().filter(|byte| !**byte).count() as u64
-}

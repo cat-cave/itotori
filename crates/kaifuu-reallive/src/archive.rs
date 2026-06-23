@@ -109,19 +109,39 @@ pub fn parse_archive(bytes: &[u8]) -> Result<SceneIndex, ParseDiagnostic> {
         let byte_offset = u64::from(read_u32_le(bytes, entry_offset));
         let byte_len = u64::from(read_u32_le(bytes, entry_offset + 4));
 
-        // Per §3.1 row 1 of the plan: an entry whose declared (offset,
-        // size) does not fit inside the archive is a fatal envelope
-        // diagnostic.
+        // An entry whose declared offset overlaps the entry table is a
+        // hard envelope failure (the table itself would be parsed as
+        // scene bytecode).
         let end = byte_offset.saturating_add(byte_len);
-        if byte_offset < table_end || end > archive_len {
+        if byte_offset < table_end {
             return Err(invalid_envelope(
                 entry_offset as u64,
                 Some(8),
                 preview_hex(bytes, entry_offset),
                 format!(
-                    "scene[{index}] entry (offset={byte_offset}, len={byte_len}) does not \
-                     fit in archive (table ends at {table_end}, archive ends at {archive_len})"
+                    "scene[{index}] entry offset={byte_offset} overlaps the entry table \
+                     (table ends at {table_end})"
                 ),
+            ));
+        }
+        // Per §8.2 row 2 of the plan: an entry whose declared
+        // (offset, size) runs past the archive bytes is a
+        // `kaifuu.reallive.truncated_scene` fatal — the scene blob
+        // cannot be parsed.
+        if end > archive_len {
+            return Err(ParseDiagnostic::fatal(
+                ParseDiagnosticCode::TruncatedScene,
+                entry_offset as u64,
+                Some(8),
+                preview_hex(bytes, entry_offset),
+                format!(
+                    "scene[{index}] entry (offset={byte_offset}, len={byte_len}) runs to byte \
+                     {end} past archive length {archive_len}"
+                ),
+            )
+            .with_remediation(
+                "Reject the archive at the adapter boundary; map to \
+                 kaifuu.unknown_engine_variant per the KAIFUU-174 contract.",
             ));
         }
 
