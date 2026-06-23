@@ -669,14 +669,14 @@ mod browser_detection {
 
         // 2. Bounded version probe.
         let version = probe_version(&program).unwrap_or(ChromiumVersion::Unknown);
-        if let Some(major) = version.major() {
-            if major < CHROMIUM_MIN_SUPPORTED_MAJOR {
-                return Err(BrowserUnavailabilityReason::VersionMismatch {
-                    source: BrowserDetectionLabel::VersionUnsupported,
-                    detected: version,
-                    required_major: CHROMIUM_MIN_SUPPORTED_MAJOR,
-                });
-            }
+        if let Some(major) = version.major()
+            && major < CHROMIUM_MIN_SUPPORTED_MAJOR
+        {
+            return Err(BrowserUnavailabilityReason::VersionMismatch {
+                source: BrowserDetectionLabel::VersionUnsupported,
+                detected: version,
+                required_major: CHROMIUM_MIN_SUPPORTED_MAJOR,
+            });
         }
 
         Ok(ChromiumProbeOutcome {
@@ -746,8 +746,7 @@ mod browser_detection {
         let output = child.wait_with_output().ok()?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        parse_chromium_version(stdout.as_ref())
-            .or_else(|| parse_chromium_version(stderr.as_ref()))
+        parse_chromium_version(stdout.as_ref()).or_else(|| parse_chromium_version(stderr.as_ref()))
     }
 
     /// Parse a Chromium-style `--version` output of the form
@@ -989,10 +988,7 @@ fn nwjs_research_tier_error(operation: RuntimeOperation) -> RuntimeHarnessError 
         "NW.js launch is research-tier work and is not advertised as an alpha capability.",
     )
     .with_detail("capability", "browser_launch")
-    .with_detail(
-        "semanticCode",
-        "utsushi.runtime.research_tier_unsupported",
-    )
+    .with_detail("semanticCode", "utsushi.runtime.research_tier_unsupported")
     .with_detail("runtimeTier", "research")
     .with_detail("supersededBy", BrowserLaunchAdapter::NAME)
 }
@@ -1523,9 +1519,10 @@ mod tests {
             limitations = contract.limitations,
         );
         assert!(
-            contract.limitations.iter().any(|limitation| {
-                limitation.contains("utsushi.browser.* namespace")
-            }),
+            contract
+                .limitations
+                .iter()
+                .any(|limitation| { limitation.contains("utsushi.browser.* namespace") }),
             "Contract limitations must reference the engine-neutral namespace: {limitations:?}",
             limitations = contract.limitations,
         );
@@ -1829,10 +1826,7 @@ exit 0
             harness_error.kind,
             RuntimeHarnessErrorKind::ChromiumUnavailable
         );
-        assert_eq!(
-            harness_error.code(),
-            "runtime_browser_chromium_unavailable"
-        );
+        assert_eq!(harness_error.code(), "runtime_browser_chromium_unavailable");
         let semantic = harness_error
             .details
             .iter()
@@ -2081,7 +2075,10 @@ exit 0
         // follow-up node that flips the production gate inherits a working
         // contract.
         let reason = super::browser_detection::force_display_unavailable();
-        assert_eq!(reason.semantic_code(), "utsushi.browser.display_unavailable");
+        assert_eq!(
+            reason.semantic_code(),
+            "utsushi.browser.display_unavailable"
+        );
         assert_eq!(
             reason.harness_error_kind(),
             RuntimeHarnessErrorKind::ChromiumDisplayUnavailable
@@ -2109,8 +2106,8 @@ exit 0
             ("Google Chrome 124.0.6367.118 unknown", 124),
             ("Brave Browser 1.65.114 Chromium: 124.0.6367.118", 1),
         ] {
-            let parsed = super::browser_detection::parse_chromium_version(input)
-                .expect("version parses");
+            let parsed =
+                super::browser_detection::parse_chromium_version(input).expect("version parses");
             assert_eq!(parsed.major(), Some(expected_major));
         }
     }
