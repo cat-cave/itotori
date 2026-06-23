@@ -89,6 +89,8 @@ pub const SEMANTIC_MISSING_PATCH_BACK_CAPABILITY: &str = "kaifuu.missing_capabil
 pub const SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED: &str = "kaifuu.unsupported_variant.encrypted";
 pub const SEMANTIC_UNSUPPORTED_VARIANT_PACKED: &str = "kaifuu.unsupported_variant.packed";
 pub const SEMANTIC_UNKNOWN_ENGINE_VARIANT: &str = "kaifuu.unknown_engine_variant";
+pub const SEMANTIC_AMBIGUOUS_ENGINE_VARIANT: &str = "kaifuu.ambiguous_engine_variant";
+pub const SEMANTIC_UNSUPPORTED_ENGINE_VARIANT: &str = "kaifuu.unsupported_engine_variant";
 pub const SEMANTIC_SIGLUS_UNSUPPORTED_OPCODE: &str = "kaifuu.siglus.unsupported_opcode";
 pub const STRING_SLOT_OVERFLOW: &str = "kaifuu.string_slot.overflow";
 pub const STRING_SLOT_INVALID_ENCODING: &str = "kaifuu.string_slot.invalid_encoding";
@@ -887,6 +889,7 @@ impl ArchiveDetectionReport {
         let mut rows = vec![
             detect_kirikiri_xp3(&scan),
             detect_siglus(&scan),
+            detect_reallive(&scan),
             detect_rpg_maker_mv_mz(&scan),
             detect_wolf_rpg_editor(&scan),
             detect_bgi_ethornell(&scan),
@@ -999,6 +1002,8 @@ pub struct ArchiveDetectionSurface {
 pub enum ArchiveEngineFamily {
     KiriKiriXp3,
     Siglus,
+    #[serde(rename = "reallive")]
+    RealLive,
     RpgMakerMvMz,
     WolfRpgEditor,
     BgiEthornell,
@@ -1380,6 +1385,127 @@ fn detect_siglus(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
         },
         support_boundary: "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated.",
     })
+}
+
+// RealLive archive-detection matrix row (KAIFUU-172).
+//
+// Clean-room provenance: all signal names are derived from publicly archived
+// RealLive format documentation (Haeleth's RLDEV site) and from publicly
+// observable file shape; no rlvm source expression is used. rlvm is a
+// research anchor only and is not linked, vendored, or copied.
+fn detect_reallive(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
+    let seen_txt_count = scan.file_name_count("seen.txt");
+    let seen_gan_count = scan.file_name_count("seen.gan");
+    let gameexe_ini_count = scan.file_name_count("gameexe.ini");
+    let g00_count = scan.extension_count("g00");
+    let voice_archive_count = scan.extension_counts(&["ovk", "koe", "nwk"]);
+    let pdt_count = scan.extension_count("pdt");
+    let scene_pck_count = scan.file_name_count("scene.pck");
+    let gameexe_dat_count = scan.file_name_count("gameexe.dat");
+    let reallive_signal_total = seen_txt_count
+        + seen_gan_count
+        + gameexe_ini_count
+        + g00_count
+        + voice_archive_count;
+    let siglus_marker_present = scene_pck_count > 0 || gameexe_dat_count > 0;
+    let avg32_marker_present = pdt_count > 0;
+    let positive = reallive_signal_total > 0;
+    let ambiguous = positive && siglus_marker_present;
+    let unsupported_avg32 = positive
+        && !siglus_marker_present
+        && avg32_marker_present
+        && seen_txt_count > 0
+        && gameexe_ini_count == 0;
+    let detected = positive && !ambiguous && !unsupported_avg32;
+    let detected_variant = if ambiguous {
+        if scene_pck_count > 0 {
+            "ambiguous-reallive-siglus-scene-pck"
+        } else {
+            "ambiguous-reallive-siglus-gameexe-dat"
+        }
+    } else if unsupported_avg32 {
+        "avg32-lineage-seen-txt"
+    } else if detected {
+        "reallive-seen-txt-archive"
+    } else {
+        "not-reallive"
+    };
+    let signals = if detected {
+        vec![ArchiveDetectionSignal::Packed]
+    } else if ambiguous || unsupported_avg32 {
+        vec![ArchiveDetectionSignal::UnknownVariant]
+    } else {
+        Vec::new()
+    };
+    let support_boundary = "Kaifuu detects RealLive SEEN.TXT/Gameexe.ini/Scene container signals only; extraction, Scene/SEEN decompilation, voice-archive handling, and patch-back remain outside this matrix row.";
+    let mut row = archive_row(ArchiveRowInput {
+        row_id: "reallive-seen-txt",
+        engine_family: ArchiveEngineFamily::RealLive,
+        detected,
+        detected_variant,
+        signals,
+        surfaces: vec![],
+        evidence: vec![
+            evidence(
+                ArchiveEvidenceType::FileName,
+                "SEEN.TXT",
+                seen_txt_count,
+                "RealLive SEEN.TXT scene archive marker count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileName,
+                "SEEN.GAN",
+                seen_gan_count,
+                "RealLive SEEN.GAN animation archive marker count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileName,
+                "Gameexe.ini",
+                gameexe_ini_count,
+                "RealLive Gameexe.ini configuration manifest marker count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileExtension,
+                "*.g00",
+                g00_count,
+                "RealLive .g00 image asset count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileExtension,
+                "*.ovk|*.koe|*.nwk",
+                voice_archive_count,
+                "RealLive voice archive extension count",
+            ),
+            evidence(
+                ArchiveEvidenceType::FileExtension,
+                "*.pdt",
+                pdt_count,
+                "AVG32 .PDT image asset count (corroborates AVG32 lineage when present alongside SEEN.TXT)",
+            ),
+        ],
+        requirements: vec![],
+        support_boundary,
+    });
+    if ambiguous {
+        row.diagnostics.push(diagnostic(
+            SemanticErrorCode::AmbiguousEngineVariant,
+            ArchiveDetectionSignal::UnknownVariant,
+            Some(Capability::Detection),
+            "RealLive detector requires unambiguous RealLive evidence; co-presence of Siglus markers (Scene.pck/Gameexe.dat) blocks identification.",
+            "audit the input directory; remove or relocate cross-engine markers, or report the layout as a new engine variant",
+        ));
+    }
+    if unsupported_avg32 {
+        row.diagnostics.push(diagnostic(
+            SemanticErrorCode::UnsupportedEngineVariant,
+            ArchiveDetectionSignal::UnknownVariant,
+            Some(Capability::Detection),
+            "RealLive detector does not claim AVG32 lineage support; AVG32-shaped SEEN.TXT inputs are out of scope.",
+            "add an AVG32-specific detector (separate node) before localizing this title",
+        ));
+    }
+    row.normalize();
+    row
 }
 
 fn detect_rpg_maker_mv_mz(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
@@ -10493,6 +10619,10 @@ pub enum SemanticErrorCode {
     UnsupportedVariantPacked,
     #[serde(rename = "kaifuu.unknown_engine_variant")]
     UnknownEngineVariant,
+    #[serde(rename = "kaifuu.ambiguous_engine_variant")]
+    AmbiguousEngineVariant,
+    #[serde(rename = "kaifuu.unsupported_engine_variant")]
+    UnsupportedEngineVariant,
 }
 
 impl SemanticErrorCode {
@@ -10517,6 +10647,8 @@ impl SemanticErrorCode {
             Self::UnsupportedVariantEncrypted => SEMANTIC_UNSUPPORTED_VARIANT_ENCRYPTED,
             Self::UnsupportedVariantPacked => SEMANTIC_UNSUPPORTED_VARIANT_PACKED,
             Self::UnknownEngineVariant => SEMANTIC_UNKNOWN_ENGINE_VARIANT,
+            Self::AmbiguousEngineVariant => SEMANTIC_AMBIGUOUS_ENGINE_VARIANT,
+            Self::UnsupportedEngineVariant => SEMANTIC_UNSUPPORTED_ENGINE_VARIANT,
         }
     }
 }
@@ -17234,6 +17366,7 @@ mod tests {
             vec![
                 "kirikiri-xp3",
                 "siglus-scene-pck",
+                "reallive-seen-txt",
                 "rpg-maker-mv-mz-encrypted-assets",
                 "wolf-rpg-editor-archives",
                 "bgi-ethornell-containers",
@@ -17350,6 +17483,131 @@ mod tests {
         assert!(!serialized.contains("confidence"));
         assert!(serialized.contains("aggregate-only"));
 
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_detection_matrix_includes_reallive_row() {
+        let root = temp_dir("reallive-row-present");
+        write_fixture_file(&root, "placeholder.txt", b"unrelated");
+        let report = ArchiveDetectionReport::scan(&root);
+        assert!(
+            report
+                .rows
+                .iter()
+                .any(|row| row.row_id == "reallive-seen-txt"),
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_detection_reallive_row_reports_seen_txt_and_gameexe_ini_counts_as_aggregate_evidence()
+    {
+        let root = temp_dir("reallive-row-aggregate-evidence");
+        write_fixture_file(&root, "SEEN.TXT", b"SEEN\x01");
+        write_fixture_file(&root, "SEEN.GAN", b"GAN\x01");
+        write_fixture_file(
+            &root,
+            "Gameexe.ini",
+            b"# RealLive Gameexe.ini fixture\n#GAMEEXE_VERSION=1.0\n",
+        );
+        write_fixture_file(&root, "image.g00", b"\0");
+        write_fixture_file(&root, "voice.ovk", b"\0");
+        let report = ArchiveDetectionReport::scan(&root);
+        let reallive = detected_archive_row(&report, "reallive-seen-txt");
+        assert_eq!(reallive.engine_family, ArchiveEngineFamily::RealLive);
+        assert_eq!(reallive.detected_variant, "reallive-seen-txt-archive");
+        assert!(reallive.signals.contains(&ArchiveDetectionSignal::Packed));
+        assert!(reallive.evidence.iter().any(|evidence| {
+            evidence.pattern == "SEEN.TXT"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(reallive.evidence.iter().any(|evidence| {
+            evidence.pattern == "SEEN.GAN"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(reallive.evidence.iter().any(|evidence| {
+            evidence.pattern == "Gameexe.ini"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(reallive.evidence.iter().any(|evidence| {
+            evidence.pattern == "*.g00"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        assert!(reallive.evidence.iter().any(|evidence| {
+            evidence.pattern == "*.ovk|*.koe|*.nwk"
+                && evidence.status == EvidenceStatus::Matched
+                && evidence.count == 1
+        }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_detection_reallive_row_emits_ambiguous_diagnostic_when_siglus_markers_co_present() {
+        let root = temp_dir("reallive-row-ambiguous-siglus");
+        write_fixture_file(&root, "SEEN.TXT", b"SEEN\x01");
+        write_fixture_file(
+            &root,
+            "Gameexe.ini",
+            b"# RealLive Gameexe.ini fixture\n#GAMEEXE_VERSION=1.0\n",
+        );
+        write_fixture_file(&root, "Scene.pck", b"SIGLUS-SCENE-PCK");
+        write_fixture_file(&root, "Gameexe.dat", b"SIGLUS-GAMEEXE-DAT");
+        let report = ArchiveDetectionReport::scan(&root);
+        let reallive = report
+            .rows
+            .iter()
+            .find(|row| row.row_id == "reallive-seen-txt")
+            .unwrap();
+        assert!(!reallive.detected);
+        assert_eq!(
+            reallive.detected_variant,
+            "ambiguous-reallive-siglus-scene-pck"
+        );
+        assert!(reallive.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::AmbiguousEngineVariant
+        }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_detection_reallive_row_emits_unsupported_engine_variant_for_avg32_lineage() {
+        let root = temp_dir("reallive-row-avg32-lineage");
+        write_fixture_file(&root, "SEEN.TXT", b"SEEN\x01");
+        write_fixture_file(&root, "image.PDT", b"\0");
+        let report = ArchiveDetectionReport::scan(&root);
+        let reallive = report
+            .rows
+            .iter()
+            .find(|row| row.row_id == "reallive-seen-txt")
+            .unwrap();
+        assert!(!reallive.detected);
+        assert_eq!(reallive.detected_variant, "avg32-lineage-seen-txt");
+        assert!(reallive.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == SemanticErrorCode::UnsupportedEngineVariant
+        }));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn archive_detection_reallive_row_does_not_claim_extraction_or_patch_support() {
+        let root = temp_dir("reallive-row-no-extract-claim");
+        write_fixture_file(&root, "SEEN.TXT", b"SEEN\x01");
+        write_fixture_file(&root, "Gameexe.ini", b"# RealLive Gameexe.ini fixture\n");
+        let report = ArchiveDetectionReport::scan(&root);
+        let reallive = detected_archive_row(&report, "reallive-seen-txt");
+        assert!(reallive.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Extraction
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+        assert!(reallive.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Patching
+                && capability.status == CapabilityStatus::Unsupported
+        }));
         let _ = fs::remove_dir_all(root);
     }
 
