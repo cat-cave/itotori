@@ -15,14 +15,19 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 pub mod port;
+pub mod replay;
+pub mod sinks;
 pub mod vfs;
 
 pub use port::{
-    CapabilityReason, CaptureOutcome, DriftKind, EnginePort, EnginePortError, EnvFieldSchema,
-    EnvFieldShape, LifecycleStage, ManifestError, MomentId, OPTIONAL_LIFECYCLE_STAGES,
-    PortCapability, PortEnv, PortManifest, PortRequest, PortShutdownOutcome, PortShutdownStatus,
-    REQUIRED_LIFECYCLE_STAGES, RunnerCancellation,
+    CapabilityReason, CaptureOutcome, DriftKind, EnginePort, EnginePortAdapter, EnginePortError,
+    EnvFieldSchema, EnvFieldShape, LifecycleStage, ManifestError, MomentId,
+    OPTIONAL_LIFECYCLE_STAGES, PortCapability, PortEnv, PortManifest, PortRequest,
+    PortShutdownOutcome, PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES, Runner, RunnerCancellation,
+    RunnerObservation, RunnerOutcome,
 };
+pub use replay::ReplayLogHandle;
+pub use sinks::RuntimeSinks;
 pub use vfs::{
     AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
     AssetSize, CaseRule, HelperId, IoSummary, MountedVfs, PackageDescriptor, PackageKind,
@@ -58,10 +63,21 @@ pub struct RuntimeRequest<'a> {
     pub artifact_root: Option<&'a Path>,
     /// Optional, additive handoff for downstream nodes that consume the
     /// runtime VFS (UTSUSHI-021/022/023/024/103). Slice A of UTSUSHI-020
-    /// only adds the field so callers can begin to populate it; current
-    /// adapters do not read it. The signature decision for
-    /// `RuntimeAdapter` is deferred to UTSUSHI-103.
+    /// only adds the field so callers can begin to populate it.
     pub vfs: Option<Arc<dyn RuntimeVfs>>,
+    /// Cancellation token plumbed by UTSUSHI-103. The `EnginePortAdapter`
+    /// shim reads this when bridging to `EnginePort::launch`; legacy
+    /// adapters can ignore the field.
+    pub cancellation: Option<RunnerCancellation>,
+    /// Forward-additive replay log handle reserved for UTSUSHI-021. The
+    /// trait stub lives in `replay::ReplayLogHandle` and is intentionally
+    /// `#[doc(hidden)]` so the owning node can replace it with the real
+    /// interface without breaking this struct's shape.
+    #[doc(hidden)]
+    pub replay_log: Option<Arc<dyn ReplayLogHandle>>,
+    /// Forward-additive sinks handle reserved for UTSUSHI-022.
+    #[doc(hidden)]
+    pub sinks: Option<Arc<dyn RuntimeSinks>>,
 }
 
 impl std::fmt::Debug for RuntimeRequest<'_> {
@@ -71,6 +87,18 @@ impl std::fmt::Debug for RuntimeRequest<'_> {
             .field("input_root", &self.input_root)
             .field("artifact_root", &self.artifact_root)
             .field("vfs", &self.vfs.as_ref().map(|_| "Arc<dyn RuntimeVfs>"))
+            .field(
+                "cancellation",
+                &self.cancellation.as_ref().map(|_| "RunnerCancellation"),
+            )
+            .field(
+                "replay_log",
+                &self.replay_log.as_ref().map(|_| "Arc<dyn ReplayLogHandle>"),
+            )
+            .field(
+                "sinks",
+                &self.sinks.as_ref().map(|_| "Arc<dyn RuntimeSinks>"),
+            )
             .finish()
     }
 }
@@ -81,6 +109,9 @@ impl<'a> RuntimeRequest<'a> {
             input_root,
             artifact_root: None,
             vfs: None,
+            cancellation: None,
+            replay_log: None,
+            sinks: None,
         }
     }
 
@@ -91,6 +122,11 @@ impl<'a> RuntimeRequest<'a> {
 
     pub fn with_vfs(mut self, vfs: Arc<dyn RuntimeVfs>) -> Self {
         self.vfs = Some(vfs);
+        self
+    }
+
+    pub fn with_cancellation(mut self, cancellation: RunnerCancellation) -> Self {
+        self.cancellation = Some(cancellation);
         self
     }
 }
