@@ -1,0 +1,16 @@
+{
+  "schemaVersion": "0.2.0-alpha",
+  "adapterId": "utsushi-synthetic",
+  "profileId": "snapshot-restore",
+  "outcome": {
+    "kind": "pass",
+    "evidenceTier": "E1"
+  },
+  "evidence": [
+    {
+      "artifactKind": "statePath",
+      "path": "port.frame"
+    }
+  ],
+  "recordedAt": "2026-06-23T12:01:00Z"
+}

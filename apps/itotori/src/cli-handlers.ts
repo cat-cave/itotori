@@ -1,7 +1,11 @@
 import {
+  assertConformanceManifestV01,
+  assertConformanceResultV01,
   assertPatchResultV02,
   assertRuntimeReport,
   assertStyleGuideConversationTranscript,
+  type ConformanceManifestV01,
+  type ConformanceResultV01,
   type StyleGuideConversationTranscript,
 } from "@itotori/localization-bridge-schema";
 import { createCatalogResolverFixtureArtifact } from "@itotori/db";
@@ -80,6 +84,9 @@ export async function runItotoriCliCommand(
       break;
     case "ingest-patch-result":
       await runIngestPatchResult(args, dependencies);
+      break;
+    case "ingest-conformance":
+      await runIngestConformance(args, dependencies);
       break;
     case "import-feedback":
       await runImportFeedback(args, dependencies);
@@ -179,6 +186,43 @@ async function runIngestPatchResult(
   );
   dependencies.io.writeJson(projectPath, result.project);
   dependencies.io.writeJson(outputPath, result.result);
+}
+
+async function runIngestConformance(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const projectPath = requiredFlag(args, "--project");
+  const reportPath = requiredFlag(args, "--report-file");
+  const manifestPath = optionalFlag(args, "--manifest-file");
+  const outputPath = optionalFlag(args, "--output");
+  const project = readProject(dependencies.io, projectPath);
+  const reportPayload = dependencies.io.readJson(reportPath);
+  const results: ConformanceResultV01[] = Array.isArray(reportPayload)
+    ? reportPayload.map((entry) => {
+        assertConformanceResultV01(entry);
+        return entry;
+      })
+    : (() => {
+        assertConformanceResultV01(reportPayload);
+        return [reportPayload];
+      })();
+  let manifest: ConformanceManifestV01 | undefined;
+  if (manifestPath !== undefined) {
+    const manifestPayload = dependencies.io.readJson(manifestPath);
+    assertConformanceManifestV01(manifestPayload);
+    manifest = manifestPayload;
+  }
+  const result = await dependencies.withServices((services) =>
+    services.projectWorkflow.ingestConformanceReport(project, {
+      results,
+      ...(manifest === undefined ? {} : { manifest }),
+    }),
+  );
+  dependencies.io.writeJson(projectPath, result.project);
+  if (outputPath !== undefined) {
+    dependencies.io.writeJson(outputPath, result.result);
+  }
 }
 
 async function runImportFeedback(

@@ -2890,3 +2890,151 @@ export const translationBatchContextRefs = pgTable(
     index("itotori_translation_batch_context_refs_ref_idx").on(table.refKind, table.refId),
   ],
 );
+
+export const conformanceOutcomeKindValues = {
+  pass: "pass",
+  fail: "fail",
+  skip: "skip",
+  unsupported: "unsupported",
+} as const;
+export type ConformanceOutcomeKind =
+  (typeof conformanceOutcomeKindValues)[keyof typeof conformanceOutcomeKindValues];
+
+export const conformanceProfileIdValues = {
+  textTrace: "text-trace",
+  branchCapture: "branch-capture",
+  snapshotRestore: "snapshot-restore",
+  frameCapture: "frame-capture",
+  recordingCapture: "recording-capture",
+  deterministicReplay: "deterministic-replay",
+} as const;
+export type ConformanceProfileIdValue =
+  (typeof conformanceProfileIdValues)[keyof typeof conformanceProfileIdValues];
+
+export const conformanceEvidenceRefKindValues = {
+  runtimeArtifact: "runtimeArtifact",
+  textLine: "textLine",
+  frameArtifactRef: "frameArtifactRef",
+  replayLogRef: "replayLogRef",
+  implMapFixture: "implMapFixture",
+  bridgeUnit: "bridgeUnit",
+  statePath: "statePath",
+} as const;
+export type ConformanceEvidenceRefKindValue =
+  (typeof conformanceEvidenceRefKindValues)[keyof typeof conformanceEvidenceRefKindValues];
+
+export const conformanceFindingSeverityValues = {
+  info: "info",
+  warning: "warning",
+  error: "error",
+} as const;
+export type ConformanceFindingSeverityValue =
+  (typeof conformanceFindingSeverityValues)[keyof typeof conformanceFindingSeverityValues];
+
+export const conformanceRuns = pgTable(
+  "itotori_conformance_runs",
+  {
+    conformanceRunId: text("conformance_run_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id").references(() => localeBranches.localeBranchId, {
+      onDelete: "cascade",
+    }),
+    manifestArtifactId: text("manifest_artifact_id").references(() => artifacts.artifactId, {
+      onDelete: "set null",
+    }),
+    reportArtifactId: text("report_artifact_id")
+      .notNull()
+      .references(() => artifacts.artifactId, { onDelete: "cascade" }),
+    adapterId: text("adapter_id").notNull(),
+    abiVersion: integer("abi_version").notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    manifestFidelityTier: text("manifest_fidelity_tier"),
+    resultCount: integer("result_count").notNull().default(0),
+    passCount: integer("pass_count").notNull().default(0),
+    failCount: integer("fail_count").notNull().default(0),
+    skipCount: integer("skip_count").notNull().default(0),
+    unsupportedCount: integer("unsupported_count").notNull().default(0),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_conformance_runs_project_recorded_idx").on(table.projectId, table.recordedAt),
+    index("itotori_conformance_runs_adapter_idx").on(table.adapterId),
+  ],
+);
+
+export const conformanceResults = pgTable(
+  "itotori_conformance_results",
+  {
+    conformanceResultId: text("conformance_result_id").primaryKey(),
+    conformanceRunId: text("conformance_run_id")
+      .notNull()
+      .references(() => conformanceRuns.conformanceRunId, { onDelete: "cascade" }),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    adapterId: text("adapter_id").notNull(),
+    profileId: text("profile_id").notNull(),
+    outcomeKind: text("outcome_kind").notNull(),
+    passEvidenceTier: text("pass_evidence_tier"),
+    semanticCode: text("semantic_code"),
+    outcomeMessage: text("outcome_message"),
+    declaredInManifest: boolean("declared_in_manifest"),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_conformance_results_run_idx").on(table.conformanceRunId),
+    index("itotori_conformance_results_profile_outcome_idx").on(table.profileId, table.outcomeKind),
+  ],
+);
+
+export const conformanceEvidenceRefs = pgTable(
+  "itotori_conformance_evidence_refs",
+  {
+    conformanceEvidenceRefId: text("conformance_evidence_ref_id").primaryKey(),
+    conformanceResultId: text("conformance_result_id")
+      .notNull()
+      .references(() => conformanceResults.conformanceResultId, { onDelete: "cascade" }),
+    evidenceKind: text("evidence_kind").notNull(),
+    artifactKind: text("artifact_kind"),
+    uri: text("uri"),
+    artifactId: text("artifact_id"),
+    lineId: text("line_id"),
+    frameId: text("frame_id"),
+    runId: text("run_id"),
+    fixtureId: text("fixture_id"),
+    bridgeUnitId: text("bridge_unit_id"),
+    statePath: text("state_path"),
+    ordinal: integer("ordinal").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_conformance_evidence_refs_result_idx").on(
+      table.conformanceResultId,
+      table.ordinal,
+    ),
+  ],
+);
+
+export const conformanceFindings = pgTable(
+  "itotori_conformance_findings",
+  {
+    conformanceFindingId: text("conformance_finding_id").primaryKey(),
+    conformanceRunId: text("conformance_run_id")
+      .notNull()
+      .references(() => conformanceRuns.conformanceRunId, { onDelete: "cascade" }),
+    findingCode: text("finding_code").notNull(),
+    severity: text("severity").notNull(),
+    message: text("message").notNull(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("itotori_conformance_findings_run_idx").on(table.conformanceRunId)],
+);

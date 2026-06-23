@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "0.2.0-alpha",
+  "adapterId": "utsushi-synthetic",
+  "profileId": "frame-capture",
+  "outcome": {
+    "kind": "fail",
+    "semanticCode": "utsushi.sink.unsupported_kind",
+    "detail": "synthetic adapter does not support sink shape"
+  },
+  "evidence": [],
+  "recordedAt": "2026-06-23T12:00:00Z"
+}

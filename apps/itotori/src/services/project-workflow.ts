@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type {
   AuthorizationActor,
   DashboardDecisionReadModel,
+  ItotoriConformanceRepositoryPort,
   ItotoriModelLedgerRepositoryPort,
   ItotoriProjectRecord,
   ItotoriProjectRepositoryPort,
@@ -16,6 +17,8 @@ import type {
   BridgeUnit,
   BridgeBundle,
   BridgeBundleV02,
+  ConformanceManifestV01,
+  ConformanceResultV01,
   LocalizationUnitV02,
   FindingRecordV02,
   PatchExport,
@@ -25,7 +28,13 @@ import type {
   RuntimeVerificationReport,
   TriageEventV02,
 } from "@itotori/localization-bridge-schema";
-import { computePatchResultOutputHashRollupV02 } from "@itotori/localization-bridge-schema";
+import {
+  assertConformanceManifestResultJoinV01,
+  assertConformanceManifestV01,
+  assertConformanceResultV01,
+  ConformanceIngestionError,
+  computePatchResultOutputHashRollupV02,
+} from "@itotori/localization-bridge-schema";
 import { FakeModelProvider } from "../providers/fake.js";
 import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
 import {
@@ -87,6 +96,37 @@ export type PatchResultIngestionResult = {
   diagnostics: PatchResultIngestionDiagnostic[];
 };
 
+export type ConformanceIngestInput = {
+  manifest?: ConformanceManifestV01;
+  results: ConformanceResultV01[];
+  reportArtifactId?: string;
+  manifestArtifactId?: string;
+};
+
+export type ConformanceIngestOutcomeCounts = {
+  passCount: number;
+  failCount: number;
+  skipCount: number;
+  unsupportedCount: number;
+  resultCount: number;
+};
+
+export type ConformanceIngestResult = {
+  conformanceRunId: string;
+  adapterId: string;
+  schemaVersion: string;
+  manifestFidelityTier: string | null;
+  counts: ConformanceIngestOutcomeCounts;
+  resultIds: string[];
+  results: Array<{
+    conformanceResultId: string;
+    profileId: ConformanceResultV01["profileId"];
+    outcomeKind: ConformanceResultV01["outcome"]["kind"];
+    passEvidenceTier: string | null;
+    semanticCode: string | null;
+  }>;
+};
+
 export class PatchResultIngestionError extends Error {
   constructor(
     readonly diagnostic: PatchResultIngestionDiagnostic,
@@ -123,6 +163,13 @@ export interface ItotoriProjectWorkflowPort {
     project: ProjectState;
     result: PatchResultIngestionResult;
   }>;
+  ingestConformanceReport(
+    project: ProjectState,
+    input: ConformanceIngestInput,
+  ): Promise<{
+    project: ProjectState;
+    result: ConformanceIngestResult;
+  }>;
   recordFinding(
     projectId: string,
     input: {
@@ -148,6 +195,7 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
     private readonly draftModelProvider: ModelProvider = new FakeModelProvider(),
     private readonly modelLedger?: ItotoriModelLedgerRepositoryPort,
     private readonly translationMemory?: Pick<ItotoriTranslationMemoryService, "prefillDrafts">,
+    private readonly conformanceRepository?: ItotoriConformanceRepositoryPort,
   ) {}
 
   async reset(): Promise<void> {
@@ -400,6 +448,129 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         patchExportId: patchResult.patchExportId,
         status: patchResult.status,
         diagnostics,
+      },
+    };
+  }
+
+  async ingestConformanceReport(
+    project: ProjectState,
+    input: ConformanceIngestInput,
+  ): Promise<{
+    project: ProjectState;
+    result: ConformanceIngestResult;
+  }> {
+    if (input.manifest !== undefined) {
+      assertConformanceManifestV01(input.manifest);
+    }
+    for (const result of input.results) {
+      assertConformanceResultV01(result);
+    }
+    if (input.results.length > 0) {
+      const expectedAdapter = input.manifest?.adapterId ?? input.results[0]!.adapterId;
+      for (const result of input.results) {
+        if (result.adapterId !== expectedAdapter) {
+          throw new ConformanceIngestionError({
+            code: "itotori.conformance.adapter_id_mismatch",
+            message: `result.adapterId (${result.adapterId}) does not match expected adapterId ${expectedAdapter}`,
+          });
+        }
+      }
+    }
+    if (input.manifest !== undefined) {
+      assertConformanceManifestResultJoinV01(input.manifest, input.results);
+    }
+
+    const counts: ConformanceIngestOutcomeCounts = {
+      passCount: 0,
+      failCount: 0,
+      skipCount: 0,
+      unsupportedCount: 0,
+      resultCount: input.results.length,
+    };
+    const persistedResults: ConformanceIngestResult["results"] = [];
+    const conformanceRunId = deterministicConformanceRunId(project, input);
+    const resultEntries = input.results.map((result, index) => {
+      const conformanceResultId = `${conformanceRunId}:result:${String(index).padStart(3, "0")}`;
+      switch (result.outcome.kind) {
+        case "pass":
+          counts.passCount += 1;
+          persistedResults.push({
+            conformanceResultId,
+            profileId: result.profileId,
+            outcomeKind: "pass",
+            passEvidenceTier: result.outcome.evidenceTier,
+            semanticCode: null,
+          });
+          break;
+        case "fail":
+          counts.failCount += 1;
+          persistedResults.push({
+            conformanceResultId,
+            profileId: result.profileId,
+            outcomeKind: "fail",
+            passEvidenceTier: null,
+            semanticCode: result.outcome.semanticCode,
+          });
+          break;
+        case "skip":
+          counts.skipCount += 1;
+          persistedResults.push({
+            conformanceResultId,
+            profileId: result.profileId,
+            outcomeKind: "skip",
+            passEvidenceTier: null,
+            semanticCode: result.outcome.semanticCode,
+          });
+          break;
+        case "unsupported":
+          counts.unsupportedCount += 1;
+          persistedResults.push({
+            conformanceResultId,
+            profileId: result.profileId,
+            outcomeKind: "unsupported",
+            passEvidenceTier: null,
+            semanticCode: result.outcome.semanticCode,
+          });
+          break;
+      }
+      return { conformanceResultId, result };
+    });
+
+    const adapterId = input.manifest?.adapterId ?? input.results[0]?.adapterId ?? "unknown-adapter";
+    const schemaVersion =
+      input.manifest?.schemaVersion ?? input.results[0]?.schemaVersion ?? "0.2.0-alpha";
+    const manifestFidelityTier = manifestFidelityTierFromManifest(input.manifest);
+    const recordedAt = mostRecentRecordedAt(input.results);
+
+    if (this.conformanceRepository !== undefined) {
+      const reportArtifactId = input.reportArtifactId ?? `${conformanceRunId}:report-artifact`;
+      await this.conformanceRepository.saveConformanceRun(this.actor, {
+        conformanceRunId,
+        projectId: project.projectId,
+        localeBranchId: project.localeBranchId,
+        manifestArtifactId: input.manifestArtifactId ?? null,
+        reportArtifactId,
+        ...(input.manifest === undefined ? {} : { manifest: input.manifest }),
+        manifestFidelityTier,
+        results: resultEntries,
+        recordedAt,
+        metadata: {
+          adapterId,
+          schemaVersion,
+        },
+      });
+    }
+
+    return {
+      project,
+      result: {
+        conformanceRunId,
+        adapterId,
+        schemaVersion,
+        manifestFidelityTier,
+        counts,
+        resultIds: resultEntries.map((entry) => entry.conformanceResultId),
+        results: persistedResults,
       },
     };
   }
@@ -841,6 +1012,45 @@ function id(kind: string, n: number): string {
 
 function patchResultIdForRuntimeReport(runtimeReport: RuntimeReportInput): string {
   return `${runtimeReport.runtimeReportId}:patch-result`;
+}
+
+function deterministicConformanceRunId(
+  project: ProjectState,
+  input: ConformanceIngestInput,
+): string {
+  const adapterId = input.manifest?.adapterId ?? input.results[0]?.adapterId ?? "unknown-adapter";
+  const seed = `${project.projectId}:${project.localeBranchId}:${adapterId}:${mostRecentRecordedAt(input.results).toISOString()}`;
+  const suffix = createHash("sha256").update(seed).digest("hex").slice(0, 12);
+  return `019ed028-0000-7000-8000-${suffix}`;
+}
+
+function mostRecentRecordedAt(results: ReadonlyArray<ConformanceResultV01>): Date {
+  if (results.length === 0) {
+    return new Date(0);
+  }
+  let max = new Date(results[0]!.recordedAt);
+  for (const result of results.slice(1)) {
+    const candidate = new Date(result.recordedAt);
+    if (candidate.getTime() > max.getTime()) {
+      max = candidate;
+    }
+  }
+  return max;
+}
+
+function manifestFidelityTierFromManifest(
+  manifest: ConformanceManifestV01 | undefined,
+): string | null {
+  if (manifest === undefined) {
+    return null;
+  }
+  const extension = manifest.optionalExtensions?.find(
+    (ext) => ext.key === "manifest-fidelity-tier",
+  );
+  if (extension === undefined) {
+    return null;
+  }
+  return extension.note;
 }
 
 function buildRetainedPartialFinding(patchResult: PatchResultV02): FindingRecordV02 {

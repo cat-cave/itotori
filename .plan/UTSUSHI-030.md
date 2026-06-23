@@ -48,7 +48,7 @@ The audit-focus posture is **conservative everywhere**:
   too; they cannot be ingested as a `Pass` because the schema's tagged
   union forbids the shape change at parse time.
 
-The slice ships only the ingestion seam. The engine ports that *produce*
+The slice ships only the ingestion seam. The engine ports that _produce_
 conformance results remain out of scope (each port lands its own
 `ConformanceResult`-emitting code separately).
 
@@ -87,7 +87,7 @@ conformance results remain out of scope (each port lands its own
   patterns are the precedent). No new package.
 - A single new CLI subcommand on the existing `apps/itotori` CLI:
   `itotori ingest-conformance --project --report-file [--manifest-file]
-  [--output]`. Mirrors the `ingest-runtime` / `ingest-patch-result`
+[--output]`. Mirrors the `ingest-runtime` / `ingest-patch-result`
   surface.
 - DB persistence: four new tables in a single migration
   (`0028_runtime_conformance_results.sql`). No backfill; this is a
@@ -206,14 +206,9 @@ export function assertConformanceManifestV01(
   value: unknown,
 ): asserts value is ConformanceManifestV01;
 
-export function assertConformanceResultV01(
-  value: unknown,
-): asserts value is ConformanceResultV01;
+export function assertConformanceResultV01(value: unknown): asserts value is ConformanceResultV01;
 
-export function assertSemanticCodeAllowedV01(
-  value: string,
-  label: string,
-): void;
+export function assertSemanticCodeAllowedV01(value: string, label: string): void;
 ```
 
 The TS layer enforces:
@@ -444,9 +439,7 @@ export interface ConformanceRepository {
     resultIds: string[];
   }>;
 
-  loadConformanceRun(
-    conformanceRunId: string,
-  ): Promise<ConformanceRunRecord | undefined>;
+  loadConformanceRun(conformanceRunId: string): Promise<ConformanceRunRecord | undefined>;
 }
 ```
 
@@ -550,19 +543,14 @@ The new `assertConformanceResultV01` validator enforces, in this order:
 
 ```ts
 function assertSemanticCodeAllowedV01(value: string, label: string): void {
-  const NAMESPACED =
-    /^(utsushi|kaifuu)\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/u;
+  const NAMESPACED = /^(utsushi|kaifuu)\.[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$/u;
   if (!NAMESPACED.test(value)) {
     throw new ConformanceIngestionError({
       code: "itotori.conformance.semantic_code_malformed",
       message: `${label} (${value}) is not <provider>.<subsystem>.<reason>`,
     });
   }
-  const ALLOWED_PREFIXES = [
-    "utsushi.conformance.",
-    "utsushi.snapshot.",
-    "kaifuu.",
-  ];
+  const ALLOWED_PREFIXES = ["utsushi.conformance.", "utsushi.snapshot.", "kaifuu."];
   if (!ALLOWED_PREFIXES.some((prefix) => value.startsWith(prefix))) {
     throw new ConformanceIngestionError({
       code: "itotori.conformance.semantic_code_not_allowed",
@@ -614,12 +602,12 @@ the new `statePath` and `runtimeArtifact` evidence ref shapes.
 
 ## 6. Audit-focus defenses
 
-| Audit focus                                | Structural defense                                                                                       |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
-| Evidence promotion during ingest           | TS validator + DB `pass_evidence_tier` column are text; round-trip test compares byte-equal.             |
-| Fidelity overclaiming during ingest        | `manifest_fidelity_tier` column is text; service never substitutes when absent.                          |
-| Schema gaps allowing arbitrary semantic codes | TS whitelist + DB `LIKE` CHECK constraint enforce the same allow list; both layers must pass.        |
-| Skipped/Unsupported promoted to Pass       | TS tagged union enforces variant shape; DB `outcome_kind` CHECK constraint + `pass_tier_check` block.    |
+| Audit focus                                   | Structural defense                                                                                    |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Evidence promotion during ingest              | TS validator + DB `pass_evidence_tier` column are text; round-trip test compares byte-equal.          |
+| Fidelity overclaiming during ingest           | `manifest_fidelity_tier` column is text; service never substitutes when absent.                       |
+| Schema gaps allowing arbitrary semantic codes | TS whitelist + DB `LIKE` CHECK constraint enforce the same allow list; both layers must pass.         |
+| Skipped/Unsupported promoted to Pass          | TS tagged union enforces variant shape; DB `outcome_kind` CHECK constraint + `pass_tier_check` block. |
 
 ## 7. Test plan
 

@@ -7,6 +7,7 @@ import {
   type Permission,
 } from "../src/authorization.js";
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
+import { ItotoriConformanceRepository } from "../src/repositories/conformance-repository.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import { ItotoriContextArtifactRepository } from "../src/repositories/context-artifact-repository.js";
@@ -427,6 +428,18 @@ const repositoryPermissionGateMatrix = [
     "translation-batch-repository.test.ts load-by-id coverage",
     (repo) => repo.loadBatchById(deniedActor, "batch-id"),
   ),
+  conformanceGate(
+    "saveConformanceRun",
+    "runtimeIngest",
+    "conformance-repository.test.ts save coverage",
+    (repo) => repo.saveConformanceRun(deniedActor, undefined as never),
+  ),
+  conformanceGate(
+    "loadConformanceRun",
+    "catalogRead",
+    "conformance-repository.test.ts load coverage",
+    (repo) => repo.loadConformanceRun(deniedActor, "conformance-run-id"),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -844,6 +857,18 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "translation-batch-repository.test.ts load-by-id coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriConformanceRepository.saveConformanceRun",
+          "requiredPermission": "runtime.ingest",
+          "successFixture": "conformance-repository.test.ts save coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriConformanceRepository.loadConformanceRun",
+          "requiredPermission": "catalog.read",
+          "successFixture": "conformance-repository.test.ts load coverage",
+        },
       ]
     `);
   });
@@ -1083,6 +1108,22 @@ function translationBatchGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriTranslationBatchRepository(db)),
+  });
+}
+
+function conformanceGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriConformanceRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriConformanceRepository",
+    sourceFile: "conformance-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriConformanceRepository(db)),
   });
 }
 

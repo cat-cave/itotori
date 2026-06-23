@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "0.2.0-alpha",
+  "adapterId": "utsushi-synthetic",
+  "abiVersion": 1,
+  "supportedProfiles": [
+    {
+      "id": "text-trace",
+      "requiredSubsystems": ["text_sink"],
+      "evidenceTierCeiling": "E1"
+    },
+    {
+      "id": "snapshot-restore",
+      "requiredSubsystems": ["snapshot_primitives"],
+      "evidenceTierCeiling": "E1"
+    },
+    {
+      "id": "frame-capture",
+      "requiredSubsystems": ["frame_sink", "artifact_store"],
+      "evidenceTierCeiling": "E2"
+    },
+    {
+      "id": "recording-capture",
+      "requiredSubsystems": ["frame_sink", "artifact_store"],
+      "evidenceTierCeiling": "E2"
+    }
+  ],
+  "optionalExtensions": [
+    {
+      "profileId": "recording-capture",
+      "key": "lossless-recording",
+      "note": "lossless container required for downstream comparison"
+    }
+  ]
+}

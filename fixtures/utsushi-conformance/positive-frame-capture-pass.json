@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "0.2.0-alpha",
+  "adapterId": "utsushi-synthetic",
+  "profileId": "frame-capture",
+  "outcome": {
+    "kind": "pass",
+    "evidenceTier": "E2"
+  },
+  "evidence": [
+    {
+      "artifactKind": "frameArtifactRef",
+      "frameId": "frame-0001"
+    },
+    {
+      "artifactKind": "runtimeArtifact",
+      "kind": "frame_capture",
+      "uri": "artifacts/utsushi/runtime/synthetic-run/frame_capture/frame-0001.png",
+      "artifactId": "frame-0001"
+    }
+  ],
+  "recordedAt": "2026-06-23T12:02:00Z"
+}

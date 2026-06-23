@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "0.2.0-alpha",
+  "adapterId": "utsushi-synthetic",
+  "profileId": "recording-capture",
+  "outcome": {
+    "kind": "pass",
+    "evidenceTier": "E2"
+  },
+  "evidence": [
+    {
+      "artifactKind": "runtimeArtifact",
+      "kind": "recording",
+      "uri": "artifacts/utsushi/runtime/synthetic-run/recording/run-001.mkv",
+      "artifactId": "recording-001"
+    },
+    {
+      "artifactKind": "replayLogRef",
+      "runId": "run-001"
+    }
+  ],
+  "recordedAt": "2026-06-23T12:03:00Z"
+}

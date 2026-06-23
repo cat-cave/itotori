@@ -500,6 +500,29 @@ export type {
   CatalogRecordedStorefrontSource,
 } from "./services/catalog-recorded-importers.js";
 export { ItotoriTranslationBatchRepository } from "./repositories/translation-batch-repository.js";
+export { ItotoriConformanceRepository } from "./repositories/conformance-repository.js";
+export type {
+  ConformanceEvidenceRefRecord,
+  ConformanceFindingRecord,
+  ConformanceIngestFindingInput,
+  ConformanceResultRecord,
+  ConformanceRunRecord,
+  ItotoriConformanceRepositoryPort,
+  SaveConformanceRunInput,
+  SaveConformanceRunResult,
+} from "./repositories/conformance-repository.js";
+export {
+  conformanceEvidenceRefKindValues,
+  conformanceFindingSeverityValues,
+  conformanceOutcomeKindValues,
+  conformanceProfileIdValues,
+} from "./schema.js";
+export type {
+  ConformanceEvidenceRefKindValue,
+  ConformanceFindingSeverityValue,
+  ConformanceOutcomeKind,
+  ConformanceProfileIdValue,
+} from "./schema.js";
 export type {
   ItotoriTranslationBatchRepositoryPort,
   LoadTranslationBatchesQuery,

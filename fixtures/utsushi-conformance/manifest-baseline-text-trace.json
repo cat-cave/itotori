@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "0.2.0-alpha",
+  "adapterId": "utsushi-synthetic",
+  "abiVersion": 1,
+  "supportedProfiles": [
+    {
+      "id": "text-trace",
+      "requiredSubsystems": ["text_sink"],
+      "evidenceTierCeiling": "E1"
+    }
+  ]
+}
