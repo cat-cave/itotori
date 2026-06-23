@@ -264,6 +264,7 @@ mod tests {
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
+    #[allow(non_snake_case)]
     fn resolves_vault_root_from_env_when_ITOTORI_VAULT_ROOT_is_set() {
         let _lock = ENV_LOCK.lock().unwrap();
         let _g = EnvGuard::set("ITOTORI_VAULT_ROOT", "/tmp/my-vault");
