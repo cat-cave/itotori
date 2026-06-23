@@ -1,16 +1,16 @@
 # KAIFUU-172 Implementation Plan — RealLive engine detector
 
-| Field     | Value                                                                |
-| --------- | -------------------------------------------------------------------- |
-| Node id   | KAIFUU-172                                                           |
-| Title     | RealLive engine detector                                             |
-| Branch    | `spec/kaifuu-172`                                                    |
-| Worktree  | `/scratch/worktrees/itotori-spec-kaifuu-172`                         |
-| Author    | orchestrator (planner)                                               |
-| Date      | 2026-06-23                                                           |
-| Status    | planning — implementation worker not yet dispatched                  |
-| Depends   | KAIFUU-006 (engine detection CLI), KAIFUU-034 (archive/encryption detection matrix) |
-| Unblocks  | KAIFUU-173 (Scene/SEEN parser-boundary), KAIFUU-174 (text inventory adapter), UTSUSHI-146 (native runtime port) |
+| Field    | Value                                                                                                           |
+| -------- | --------------------------------------------------------------------------------------------------------------- |
+| Node id  | KAIFUU-172                                                                                                      |
+| Title    | RealLive engine detector                                                                                        |
+| Branch   | `spec/kaifuu-172`                                                                                               |
+| Worktree | `/scratch/worktrees/itotori-spec-kaifuu-172`                                                                    |
+| Author   | orchestrator (planner)                                                                                          |
+| Date     | 2026-06-23                                                                                                      |
+| Status   | planning — implementation worker not yet dispatched                                                             |
+| Depends  | KAIFUU-006 (engine detection CLI), KAIFUU-034 (archive/encryption detection matrix)                             |
+| Unblocks | KAIFUU-173 (Scene/SEEN parser-boundary), KAIFUU-174 (text inventory adapter), UTSUSHI-146 (native runtime port) |
 
 This plan is **planning only**. No Rust feature code is included; illustrative
 sketches use `// pseudo-code` comments and short signatures. The implementation
@@ -173,13 +173,13 @@ behavior (see §9, clean-room provenance).
 
 ### 2.6 Citations and provenance summary
 
-| Source                                                                                     | Use                                                       | License posture                                        |
-| ------------------------------------------------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------ |
-| Haeleth's RealLive / RLDEV site (`https://dev.haeleth.net/rldev.shtml`)                    | SEEN.TXT envelope, Gameexe.ini keys, opcode taxonomy      | research-only; cite as public format archaeology       |
-| RLDEV source tarball                                                                       | confirm hypotheses; do not copy expression                | clean-room; GPL-incompatible — do not import any code  |
-| rlvm (`https://github.com/eglaysher/rlvm`) — `src/libreallive/archive.{h,cc}`, `gameexe.cc` | confirm format observations after independent derivation | research-only; GPLv3+ — never link, never copy         |
-| Owned RealLive title file listings (private-local)                                         | corroboration only                                        | private-local; only redacted aggregate notes allowed   |
-| ALPHA-006 vertical fixture (Sweetie HD Remaster + Sweets) at `/archive/vault/`             | real-game validation later in the chain                   | vault read-only adapter (`docs/itotori-vault-source-adapter.md`); not invoked at KAIFUU-172 |
+| Source                                                                                      | Use                                                      | License posture                                                                             |
+| ------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Haeleth's RealLive / RLDEV site (`https://dev.haeleth.net/rldev.shtml`)                     | SEEN.TXT envelope, Gameexe.ini keys, opcode taxonomy     | research-only; cite as public format archaeology                                            |
+| RLDEV source tarball                                                                        | confirm hypotheses; do not copy expression               | clean-room; GPL-incompatible — do not import any code                                       |
+| rlvm (`https://github.com/eglaysher/rlvm`) — `src/libreallive/archive.{h,cc}`, `gameexe.cc` | confirm format observations after independent derivation | research-only; GPLv3+ — never link, never copy                                              |
+| Owned RealLive title file listings (private-local)                                          | corroboration only                                       | private-local; only redacted aggregate notes allowed                                        |
+| ALPHA-006 vertical fixture (Sweetie HD Remaster + Sweets) at `/archive/vault/`              | real-game validation later in the chain                  | vault read-only adapter (`docs/itotori-vault-source-adapter.md`); not invoked at KAIFUU-172 |
 
 ---
 
@@ -226,14 +226,14 @@ enum RealLiveFixtureVariant {
 
 ### 3.3 Decision table
 
-| State                                                                                                                                                                | Variant                       | `detected` | Diagnostic                                 |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- | ---------- | ------------------------------------------ |
-| Synthetic SEEN.TXT magic + synthetic Gameexe.ini magic present (public-CI fixture)                                                                                   | `CompleteSyntheticTriple`     | true       | none                                       |
-| Real-shape SEEN.TXT envelope + Gameexe.ini contains at least one of {#GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*} + no Siglus markers + no `.PDT`                       | `PositiveLiveLayout`          | true       | none                                       |
-| RealLive markers present AND (Siglus `Scene.pck` or `Gameexe.dat` present)                                                                                           | `Ambiguous`                   | false      | `kaifuu.ambiguous_engine_variant`          |
-| SEEN.TXT envelope present AND `.PDT` count > 0 AND no RealLive-specific Gameexe.ini keys                                                                             | `UnsupportedAvg32Lineage`     | false      | `kaifuu.unsupported_engine_variant`        |
-| SEEN.TXT envelope invalid OR Gameexe.ini missing/empty but RealLive marker names exist                                                                               | `UnknownEngineVariant`        | false      | `kaifuu.unknown_engine_variant`            |
-| No SEEN.TXT, no Gameexe.ini, no RealLive marker extensions                                                                                                           | `NotRealLive`                 | false      | none (silently not-detected)               |
+| State                                                                                                                                          | Variant                   | `detected` | Diagnostic                          |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------- | ---------- | ----------------------------------- |
+| Synthetic SEEN.TXT magic + synthetic Gameexe.ini magic present (public-CI fixture)                                                             | `CompleteSyntheticTriple` | true       | none                                |
+| Real-shape SEEN.TXT envelope + Gameexe.ini contains at least one of {#GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*} + no Siglus markers + no `.PDT` | `PositiveLiveLayout`      | true       | none                                |
+| RealLive markers present AND (Siglus `Scene.pck` or `Gameexe.dat` present)                                                                     | `Ambiguous`               | false      | `kaifuu.ambiguous_engine_variant`   |
+| SEEN.TXT envelope present AND `.PDT` count > 0 AND no RealLive-specific Gameexe.ini keys                                                       | `UnsupportedAvg32Lineage` | false      | `kaifuu.unsupported_engine_variant` |
+| SEEN.TXT envelope invalid OR Gameexe.ini missing/empty but RealLive marker names exist                                                         | `UnknownEngineVariant`    | false      | `kaifuu.unknown_engine_variant`     |
+| No SEEN.TXT, no Gameexe.ini, no RealLive marker extensions                                                                                     | `NotRealLive`             | false      | none (silently not-detected)        |
 
 ### 3.4 Decisive vs. corroborating
 
@@ -298,7 +298,7 @@ The detector is purely static; no helper, no Wine, no rlvm subprocess.
     - `extract`, `patch` → `Unsupported`.
 - `detect(request)` → fills `DetectionResult` exactly like Siglus's:
   - `adapter_id`, `detected` from the variant table, `engine_family =
-    Some("reallive")` when detected, `detected_variant` set for both
+Some("reallive")` when detected, `detected_variant` set for both
     positive and diagnostic-only paths, `evidence` rows for SEEN.TXT,
     Gameexe.ini, SEEN.GAN, `.g00` count, `.ovk/.koe/.nwk` count, and the
     Siglus / AVG32 cross-check counts (Informational status), plus
@@ -585,16 +585,16 @@ behavior-only / clean-room.
 
 ### 8.1 What we know about RealLive's on-disk format, and how
 
-| Fact                                                          | How we know it                                                                                                                            | Where to cite                              |
-| ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ |
-| SEEN.TXT is an archive of scene blobs                         | Publicly archived RealLive format documentation (Haeleth's RLDEV site), confirmed by listing any RealLive title's `SEEN.TXT` size > scenes | docs only; do not lift any RLDEV code      |
-| SEEN.TXT begins with a little-endian count + offset table     | Observable from raw bytes of any owned RealLive title (private-local observation only)                                                    | code comment cites publicly observable     |
-| Gameexe.ini is INI-shaped with `#`-prefixed keys              | Observable from raw bytes; also documented on Haeleth's site                                                                              | code comment cites public archaeology      |
-| RealLive-specific Gameexe.ini keys (#GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*) | Documented on Haeleth's site; cross-verified against owned-title observation                                                              | docs/kaifuu-adapters/reallive.md citations |
-| `.g00` image extension                                        | Documented on Haeleth's site; observable in any owned title                                                                               | citation in detector module comment        |
-| `.ovk` / `.koe` / `.nwk` voice archive extensions             | Documented on Haeleth's site; observable in owned-title file listings                                                                     | citation in detector module comment        |
-| AVG32 ships `.PDT` images and lacks Gameexe.ini in INI form   | AVG32 fan documentation and observable on owned AVG32 titles                                                                              | citation in detector module comment        |
-| Siglus ships `Scene.pck` and `Gameexe.dat`                    | Already documented in this repo (`detect_siglus`, KAIFUU-091)                                                                             | in-repo cross-reference                    |
+| Fact                                                                          | How we know it                                                                                                                             | Where to cite                              |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------ |
+| SEEN.TXT is an archive of scene blobs                                         | Publicly archived RealLive format documentation (Haeleth's RLDEV site), confirmed by listing any RealLive title's `SEEN.TXT` size > scenes | docs only; do not lift any RLDEV code      |
+| SEEN.TXT begins with a little-endian count + offset table                     | Observable from raw bytes of any owned RealLive title (private-local observation only)                                                     | code comment cites publicly observable     |
+| Gameexe.ini is INI-shaped with `#`-prefixed keys                              | Observable from raw bytes; also documented on Haeleth's site                                                                               | code comment cites public archaeology      |
+| RealLive-specific Gameexe.ini keys (#GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*) | Documented on Haeleth's site; cross-verified against owned-title observation                                                               | docs/kaifuu-adapters/reallive.md citations |
+| `.g00` image extension                                                        | Documented on Haeleth's site; observable in any owned title                                                                                | citation in detector module comment        |
+| `.ovk` / `.koe` / `.nwk` voice archive extensions                             | Documented on Haeleth's site; observable in owned-title file listings                                                                      | citation in detector module comment        |
+| AVG32 ships `.PDT` images and lacks Gameexe.ini in INI form                   | AVG32 fan documentation and observable on owned AVG32 titles                                                                               | citation in detector module comment        |
+| Siglus ships `Scene.pck` and `Gameexe.dat`                                    | Already documented in this repo (`detect_siglus`, KAIFUU-091)                                                                              | in-repo cross-reference                    |
 
 ### 8.2 Implementation worker checklist (do NOT copy rlvm code)
 
@@ -652,10 +652,10 @@ detectedVariant, evidence/assetRef, supportBoundary, remediation).
 
 ### 9.1 New codes
 
-| Code                                  | Variant trigger                                                                          | `engine`   | `adapter`         | `detectedVariant`                | `requiredCapability`  | `supportBoundary`                                                                                                     | `remediation`                                                                            |
-| ------------------------------------- | ---------------------------------------------------------------------------------------- | ---------- | ----------------- | -------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `kaifuu.ambiguous_engine_variant`     | RealLive markers present AND Siglus or AVG32 markers also present                        | `reallive` | `kaifuu.reallive` | `ambiguous-reallive-siglus` or `ambiguous-reallive-avg32` | `Detection`           | `RealLive detector requires unambiguous RealLive evidence; co-presence of Siglus or AVG32 markers blocks identification.` | `audit the input directory; remove or relocate cross-engine markers, or report the layout as a new engine variant.` |
-| `kaifuu.unsupported_engine_variant`   | SEEN.TXT envelope present BUT `.PDT` present AND no RealLive-specific Gameexe.ini keys | `reallive` | `kaifuu.reallive` | `avg32-lineage-seen-txt`         | `Detection`           | `RealLive detector does not claim AVG32 lineage support; AVG32-shaped SEEN.TXT inputs are out of scope.`              | `add an AVG32-specific detector (separate node) before localizing this title.`           |
+| Code                                | Variant trigger                                                                        | `engine`   | `adapter`         | `detectedVariant`                                         | `requiredCapability` | `supportBoundary`                                                                                                         | `remediation`                                                                                                       |
+| ----------------------------------- | -------------------------------------------------------------------------------------- | ---------- | ----------------- | --------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `kaifuu.ambiguous_engine_variant`   | RealLive markers present AND Siglus or AVG32 markers also present                      | `reallive` | `kaifuu.reallive` | `ambiguous-reallive-siglus` or `ambiguous-reallive-avg32` | `Detection`          | `RealLive detector requires unambiguous RealLive evidence; co-presence of Siglus or AVG32 markers blocks identification.` | `audit the input directory; remove or relocate cross-engine markers, or report the layout as a new engine variant.` |
+| `kaifuu.unsupported_engine_variant` | SEEN.TXT envelope present BUT `.PDT` present AND no RealLive-specific Gameexe.ini keys | `reallive` | `kaifuu.reallive` | `avg32-lineage-seen-txt`                                  | `Detection`          | `RealLive detector does not claim AVG32 lineage support; AVG32-shaped SEEN.TXT inputs are out of scope.`                  | `add an AVG32-specific detector (separate node) before localizing this title.`                                      |
 
 These two codes need entries added to `SemanticErrorCode` in
 `crates/kaifuu-core/src/lib.rs` (around line 10456) and to its
@@ -664,16 +664,17 @@ strings (`"kaifuu.ambiguous_engine_variant"` /
 `"kaifuu.unsupported_engine_variant"`).
 
 Also add string constants:
+
 - `pub const SEMANTIC_AMBIGUOUS_ENGINE_VARIANT: &str = "kaifuu.ambiguous_engine_variant";`
 - `pub const SEMANTIC_UNSUPPORTED_ENGINE_VARIANT: &str = "kaifuu.unsupported_engine_variant";`
 
 ### 9.2 Reused codes
 
-| Code                                  | Variant trigger                                                              | Notes                                                                                                                                      |
-| ------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `kaifuu.unknown_engine_variant`       | SEEN.TXT envelope invalid OR Gameexe.ini missing despite RealLive marker names | Already exists; reused with `engine: "reallive"`. Matches the established pattern from Siglus's `SiglusFixtureVariant::UnknownNamedPair`. |
-| `kaifuu.unsupported_layered_transform`| extract/patch/verify attempts on the identify-only adapter                   | Already exists; reused to mirror Siglus's behavior at `crates/kaifuu-engine-fixture/src/lib.rs:3137-3146`.                                  |
-| `kaifuu.missing_capability.container` | profile/list-assets/asset-inventory called on a partial-fixture variant      | Already exists; reused for variants like `CompleteSyntheticTriple` failure paths where the synthetic envelope is missing one leg.          |
+| Code                                   | Variant trigger                                                                | Notes                                                                                                                                     |
+| -------------------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `kaifuu.unknown_engine_variant`        | SEEN.TXT envelope invalid OR Gameexe.ini missing despite RealLive marker names | Already exists; reused with `engine: "reallive"`. Matches the established pattern from Siglus's `SiglusFixtureVariant::UnknownNamedPair`. |
+| `kaifuu.unsupported_layered_transform` | extract/patch/verify attempts on the identify-only adapter                     | Already exists; reused to mirror Siglus's behavior at `crates/kaifuu-engine-fixture/src/lib.rs:3137-3146`.                                |
+| `kaifuu.missing_capability.container`  | profile/list-assets/asset-inventory called on a partial-fixture variant        | Already exists; reused for variants like `CompleteSyntheticTriple` failure paths where the synthetic envelope is missing one leg.         |
 
 ### 9.3 Diagnostic shape
 
@@ -808,7 +809,7 @@ Reviewer checks:
   (`.g00`/`.ovk`), and no Siglus/AVG32 negatives passes the positive
   path even without `#GAMEEXE_VERSION`. The detector accepts **any** of
   the RealLive-specific keys (#GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*,
-  #SEEN*) as positive evidence — none alone is required.
+  #SEEN\*) as positive evidence — none alone is required.
 - **Unknown**: the false-positive rate against very early RealLive titles
   (Kanon-era) is not measurable from synthetic fixtures alone. ALPHA-006
   will surface this; the detector can then add corroborating signals

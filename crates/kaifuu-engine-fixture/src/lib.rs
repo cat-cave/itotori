@@ -3310,19 +3310,16 @@ impl RealLiveProfileDetectorAdapter {
         let seen_gan_synthetic_magic = file_starts_with(&seen_gan_path, REALLIVE_SEEN_GAN_MAGIC);
         let gameexe_ini_synthetic_magic =
             file_starts_with(&gameexe_ini_path, REALLIVE_GAMEEXE_INI_MAGIC);
-        let seen_txt_envelope_ok = seen_txt_synthetic_magic
-            || reallive_seen_txt_envelope_ok(&seen_txt_path);
+        let seen_txt_envelope_ok =
+            seen_txt_synthetic_magic || reallive_seen_txt_envelope_ok(&seen_txt_path);
         let gameexe_ini_keys = if gameexe_ini_exists {
             reallive_gameexe_ini_key_hits(&gameexe_ini_path)
         } else {
             GameexeIniKeyHits::default()
         };
-        let (g00_count, voice_archive_count, avg32_pdt_count) =
-            reallive_extension_counts(game_dir);
-        let siglus_scene_pck_present =
-            case_insensitive_find(game_dir, "Scene.pck").is_some();
-        let siglus_gameexe_dat_present =
-            case_insensitive_find(game_dir, "Gameexe.dat").is_some();
+        let (g00_count, voice_archive_count, avg32_pdt_count) = reallive_extension_counts(game_dir);
+        let siglus_scene_pck_present = case_insensitive_find(game_dir, "Scene.pck").is_some();
+        let siglus_gameexe_dat_present = case_insensitive_find(game_dir, "Gameexe.dat").is_some();
         let variant = Self::resolve_variant(
             seen_txt_exists,
             seen_txt_envelope_ok,
@@ -3397,10 +3394,7 @@ impl RealLiveProfileDetectorAdapter {
         }
         // AVG32 lineage: SEEN.TXT envelope present, .PDT present, no
         // RealLive-specific Gameexe.ini keys.
-        if seen_txt_exists
-            && seen_txt_envelope_ok
-            && avg32_pdt_count > 0
-            && !gameexe_ini_keys.any()
+        if seen_txt_exists && seen_txt_envelope_ok && avg32_pdt_count > 0 && !gameexe_ini_keys.any()
         {
             return RealLiveFixtureVariant::UnsupportedAvg32Lineage;
         }
@@ -3693,8 +3687,14 @@ impl RealLiveFixtureState {
         let mut assets = Vec::new();
         if self.seen_txt_exists {
             let mut metadata = BTreeMap::new();
-            metadata.insert("syntheticMagicMatched".to_string(), self.seen_txt_synthetic_magic.to_string());
-            metadata.insert("envelopeValid".to_string(), self.seen_txt_envelope_ok.to_string());
+            metadata.insert(
+                "syntheticMagicMatched".to_string(),
+                self.seen_txt_synthetic_magic.to_string(),
+            );
+            metadata.insert(
+                "envelopeValid".to_string(),
+                self.seen_txt_envelope_ok.to_string(),
+            );
             metadata.insert(
                 "supportBoundary".to_string(),
                 "container identified only; archive entries are not parsed".to_string(),
@@ -3710,7 +3710,10 @@ impl RealLiveFixtureState {
         }
         if self.seen_gan_exists {
             let mut metadata = BTreeMap::new();
-            metadata.insert("syntheticMagicMatched".to_string(), self.seen_gan_synthetic_magic.to_string());
+            metadata.insert(
+                "syntheticMagicMatched".to_string(),
+                self.seen_gan_synthetic_magic.to_string(),
+            );
             metadata.insert(
                 "supportBoundary".to_string(),
                 "container identified only; animation entries are not parsed".to_string(),
@@ -3726,7 +3729,10 @@ impl RealLiveFixtureState {
         }
         if self.gameexe_ini_exists {
             let mut metadata = BTreeMap::new();
-            metadata.insert("syntheticMagicMatched".to_string(), self.gameexe_ini_synthetic_magic.to_string());
+            metadata.insert(
+                "syntheticMagicMatched".to_string(),
+                self.gameexe_ini_synthetic_magic.to_string(),
+            );
             metadata.insert(
                 "gameexeVersionKeyPresent".to_string(),
                 self.gameexe_ini_keys.gameexe_version.to_string(),
@@ -4218,10 +4224,10 @@ fn case_insensitive_find(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
     let target = name.to_ascii_lowercase();
     let entries = fs::read_dir(dir).ok()?;
     for entry in entries.flatten() {
-        if let Some(entry_name) = entry.file_name().to_str() {
-            if entry_name.to_ascii_lowercase() == target {
-                return Some(entry.path());
-            }
+        if let Some(entry_name) = entry.file_name().to_str()
+            && entry_name.to_ascii_lowercase() == target
+        {
+            return Some(entry.path());
         }
     }
     None
@@ -6357,18 +6363,14 @@ mod tests {
             ],
         );
         let adapter = RealLiveProfileDetectorAdapter;
-        let detection = adapter
-            .detect(DetectRequest { game_dir: &dir })
-            .unwrap();
+        let detection = adapter.detect(DetectRequest { game_dir: &dir }).unwrap();
         assert!(detection.detected);
         assert_eq!(detection.engine_family.as_deref(), Some("reallive"));
         assert_eq!(
             detection.detected_variant.as_deref(),
             Some("reallive-synthetic-triple")
         );
-        let profile = adapter
-            .profile(ProfileRequest { game_dir: &dir })
-            .unwrap();
+        let profile = adapter.profile(ProfileRequest { game_dir: &dir }).unwrap();
         assert_eq!(profile.engine.adapter_id, REALLIVE_DETECTOR_ADAPTER_ID);
         assert_eq!(profile.engine.engine_family, "reallive");
         assert_eq!(profile.profile_id, REALLIVE_PROFILE_ID);
@@ -6408,9 +6410,7 @@ mod tests {
             ],
         );
         let adapter = RealLiveProfileDetectorAdapter;
-        let detection = adapter
-            .detect(DetectRequest { game_dir: &dir })
-            .unwrap();
+        let detection = adapter.detect(DetectRequest { game_dir: &dir }).unwrap();
         assert!(detection.detected, "{detection:#?}");
         assert_eq!(
             detection.detected_variant.as_deref(),
@@ -6430,9 +6430,7 @@ mod tests {
             ],
         );
         let adapter = RealLiveProfileDetectorAdapter;
-        let detection = adapter
-            .detect(DetectRequest { game_dir: &dir })
-            .unwrap();
+        let detection = adapter.detect(DetectRequest { game_dir: &dir }).unwrap();
         assert!(!detection.detected);
         assert_eq!(
             detection.detected_variant.as_deref(),
@@ -6479,9 +6477,7 @@ mod tests {
             ],
         );
         let adapter = RealLiveProfileDetectorAdapter;
-        let detection = adapter
-            .detect(DetectRequest { game_dir: &dir })
-            .unwrap();
+        let detection = adapter.detect(DetectRequest { game_dir: &dir }).unwrap();
         assert!(!detection.detected);
         assert_eq!(
             detection.detected_variant.as_deref(),
@@ -6506,9 +6502,7 @@ mod tests {
             ],
         );
         let adapter = RealLiveProfileDetectorAdapter;
-        let detection = adapter
-            .detect(DetectRequest { game_dir: &dir })
-            .unwrap();
+        let detection = adapter.detect(DetectRequest { game_dir: &dir }).unwrap();
         assert!(!detection.detected);
         assert_eq!(
             detection.detected_variant.as_deref(),
@@ -6608,12 +6602,18 @@ mod tests {
             .unwrap();
         assert_eq!(result.status, OperationStatus::Failed);
         assert!(!result.failures.is_empty());
-        assert!(result.failures.iter().any(|failure| {
-            failure.error_code == "kaifuu.missing_capability.container"
-        }));
-        assert!(result.failures.iter().any(|failure| {
-            failure.error_code == "kaifuu.missing_capability.patch_back"
-        }));
+        assert!(
+            result
+                .failures
+                .iter()
+                .any(|failure| { failure.error_code == "kaifuu.missing_capability.container" })
+        );
+        assert!(
+            result
+                .failures
+                .iter()
+                .any(|failure| { failure.error_code == "kaifuu.missing_capability.patch_back" })
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -6630,9 +6630,12 @@ mod tests {
             .verify(VerifyRequest { game_dir: &dir })
             .unwrap();
         assert_eq!(result.status, OperationStatus::Failed);
-        assert!(result.failures.iter().any(|failure| {
-            failure.error_code == "kaifuu.unsupported_layered_transform"
-        }));
+        assert!(
+            result
+                .failures
+                .iter()
+                .any(|failure| { failure.error_code == "kaifuu.unsupported_layered_transform" })
+        );
         let _ = fs::remove_dir_all(dir);
     }
 
@@ -6691,7 +6694,10 @@ mod tests {
             Capability::AssetListing,
             Capability::AssetInventory,
         ] {
-            assert!(supported.contains(&required), "missing supported {required:?}");
+            assert!(
+                supported.contains(&required),
+                "missing supported {required:?}"
+            );
         }
         for unsupported in [
             Capability::Extraction,
@@ -6776,7 +6782,11 @@ mod tests {
     #[test]
     fn reallive_registry_registration_appears_in_adapter_list() {
         let registry = registry();
-        let adapters: Vec<_> = registry.adapters().iter().map(|adapter| adapter.id()).collect();
+        let adapters: Vec<_> = registry
+            .adapters()
+            .iter()
+            .map(|adapter| adapter.id())
+            .collect();
         assert!(adapters.contains(&REALLIVE_DETECTOR_ADAPTER_ID));
     }
 

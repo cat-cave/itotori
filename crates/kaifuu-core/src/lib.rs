@@ -1402,11 +1402,8 @@ fn detect_reallive(scan: &ArchiveDetectionScan) -> ArchiveDetectionRow {
     let pdt_count = scan.extension_count("pdt");
     let scene_pck_count = scan.file_name_count("scene.pck");
     let gameexe_dat_count = scan.file_name_count("gameexe.dat");
-    let reallive_signal_total = seen_txt_count
-        + seen_gan_count
-        + gameexe_ini_count
-        + g00_count
-        + voice_archive_count;
+    let reallive_signal_total =
+        seen_txt_count + seen_gan_count + gameexe_ini_count + g00_count + voice_archive_count;
     let siglus_marker_present = scene_pck_count > 0 || gameexe_dat_count > 0;
     let avg32_marker_present = pdt_count > 0;
     let positive = reallive_signal_total > 0;
@@ -17502,7 +17499,7 @@ mod tests {
 
     #[test]
     fn archive_detection_reallive_row_reports_seen_txt_and_gameexe_ini_counts_as_aggregate_evidence()
-    {
+     {
         let root = temp_dir("reallive-row-aggregate-evidence");
         write_fixture_file(&root, "SEEN.TXT", b"SEEN\x01");
         write_fixture_file(&root, "SEEN.GAN", b"GAN\x01");
@@ -17568,9 +17565,12 @@ mod tests {
             reallive.detected_variant,
             "ambiguous-reallive-siglus-scene-pck"
         );
-        assert!(reallive.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == SemanticErrorCode::AmbiguousEngineVariant
-        }));
+        assert!(
+            reallive
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == SemanticErrorCode::AmbiguousEngineVariant })
+        );
         let _ = fs::remove_dir_all(root);
     }
 
@@ -17587,9 +17587,11 @@ mod tests {
             .unwrap();
         assert!(!reallive.detected);
         assert_eq!(reallive.detected_variant, "avg32-lineage-seen-txt");
-        assert!(reallive.diagnostics.iter().any(|diagnostic| {
-            diagnostic.code == SemanticErrorCode::UnsupportedEngineVariant
-        }));
+        assert!(
+            reallive.diagnostics.iter().any(|diagnostic| {
+                diagnostic.code == SemanticErrorCode::UnsupportedEngineVariant
+            })
+        );
         let _ = fs::remove_dir_all(root);
     }
 

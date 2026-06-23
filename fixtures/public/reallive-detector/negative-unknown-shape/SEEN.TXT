@@ -1,0 +1,1 @@
+random non-magic bytes that do not parse

@@ -5909,6 +5909,163 @@ wait
     }
 
     #[test]
+    fn detect_cli_reports_reallive_adapter_on_synthetic_fixture() {
+        let root = temp_dir("public-reallive-detect-positive");
+        let game_dir =
+            public_fixture_path("fixtures/public/reallive-detector/positive-synthetic-triple");
+        let expected_path = game_dir.join("expected/detection-report.json");
+        let detect_path = root.join("detect.json");
+
+        run_cli(&[
+            "detect",
+            game_dir.to_str().unwrap(),
+            "--output",
+            detect_path.to_str().unwrap(),
+        ]);
+
+        let actual: serde_json::Value = read_json(&detect_path).unwrap();
+        let expected: serde_json::Value = read_json(&expected_path).unwrap();
+        assert_eq!(actual, expected);
+
+        let detection_report: DetectionReport = serde_json::from_value(actual).unwrap();
+        let reallive_detection = detection_report
+            .detections
+            .iter()
+            .find(|detection| {
+                detection.adapter_id == kaifuu_engine_fixture::REALLIVE_DETECTOR_ADAPTER_ID
+            })
+            .unwrap();
+        assert!(reallive_detection.detected);
+        assert_eq!(
+            reallive_detection.engine_family.as_deref(),
+            Some("reallive")
+        );
+        assert_eq!(
+            reallive_detection.detected_variant.as_deref(),
+            Some("reallive-synthetic-triple")
+        );
+    }
+
+    #[test]
+    fn detect_cli_emits_archive_detection_matrix_reallive_row_with_aggregate_evidence_only() {
+        let root = temp_dir("public-reallive-detect-matrix-row");
+        let game_dir =
+            public_fixture_path("fixtures/public/reallive-detector/positive-synthetic-triple");
+        let detect_path = root.join("detect.json");
+
+        run_cli(&[
+            "detect",
+            game_dir.to_str().unwrap(),
+            "--output",
+            detect_path.to_str().unwrap(),
+        ]);
+
+        let detection_report: DetectionReport = read_json(&detect_path).unwrap();
+        let reallive_row = detection_report
+            .archive_detection
+            .rows
+            .iter()
+            .find(|row| row.row_id == "reallive-seen-txt")
+            .expect("RealLive matrix row missing");
+        assert!(reallive_row.detected);
+        assert_eq!(reallive_row.detected_variant, "reallive-seen-txt-archive");
+        assert!(reallive_row.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Extraction
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+        assert!(reallive_row.capabilities.iter().any(|capability| {
+            capability.capability == Capability::Patching
+                && capability.status == CapabilityStatus::Unsupported
+        }));
+    }
+
+    #[test]
+    fn detect_cli_emits_ambiguous_engine_variant_diagnostic_when_reallive_and_siglus_markers_co_present()
+     {
+        let root = temp_dir("public-reallive-detect-ambiguous");
+        let game_dir =
+            public_fixture_path("fixtures/public/reallive-detector/negative-siglus-overlap");
+        let detect_path = root.join("detect.json");
+
+        run_cli(&[
+            "detect",
+            game_dir.to_str().unwrap(),
+            "--output",
+            detect_path.to_str().unwrap(),
+        ]);
+
+        let detection_report: DetectionReport = read_json(&detect_path).unwrap();
+        let reallive_detection = detection_report
+            .detections
+            .iter()
+            .find(|detection| {
+                detection.adapter_id == kaifuu_engine_fixture::REALLIVE_DETECTOR_ADAPTER_ID
+            })
+            .unwrap();
+        assert!(!reallive_detection.detected);
+        assert_eq!(
+            reallive_detection.detected_variant.as_deref(),
+            Some("ambiguous-reallive-siglus-overlap")
+        );
+        let reallive_row = detection_report
+            .archive_detection
+            .rows
+            .iter()
+            .find(|row| row.row_id == "reallive-seen-txt")
+            .expect("RealLive matrix row missing");
+        assert!(
+            reallive_row
+                .diagnostics
+                .iter()
+                .any(|diagnostic| { diagnostic.code == SemanticErrorCode::AmbiguousEngineVariant })
+        );
+    }
+
+    #[test]
+    fn capabilities_cli_lists_reallive_adapter_with_identify_only_support_boundary() {
+        let root = temp_dir("public-reallive-capabilities");
+        let capabilities_path = root.join("capabilities.json");
+        run_cli(&[
+            "capabilities",
+            "--output",
+            capabilities_path.to_str().unwrap(),
+        ]);
+        let capabilities: Vec<AdapterCapabilities> = read_json(&capabilities_path).unwrap();
+        let reallive_caps = capabilities
+            .iter()
+            .find(|caps| caps.adapter_id == kaifuu_engine_fixture::REALLIVE_DETECTOR_ADAPTER_ID)
+            .expect("RealLive adapter missing from capabilities output");
+        for required in [
+            Capability::Detection,
+            Capability::ProfileGeneration,
+            Capability::AssetListing,
+            Capability::AssetInventory,
+        ] {
+            assert!(
+                reallive_caps.reports.iter().any(|report| {
+                    report.capability == required && report.status == CapabilityStatus::Supported
+                }),
+                "RealLive adapter missing supported {required:?}"
+            );
+        }
+        for unsupported in [
+            Capability::Extraction,
+            Capability::Patching,
+            Capability::ContainerAccess,
+            Capability::CodecAccess,
+            Capability::RuntimeVm,
+        ] {
+            assert!(
+                reallive_caps.reports.iter().any(|report| {
+                    report.capability == unsupported
+                        && report.status == CapabilityStatus::Unsupported
+                }),
+                "RealLive adapter missing unsupported {unsupported:?}"
+            );
+        }
+    }
+
+    #[test]
     fn xp3_inventory_cli_reports_plain_file_table_separately_from_extract_and_patch() {
         let root = temp_dir("xp3-inventory-cli");
         let game_dir = root.join("game");

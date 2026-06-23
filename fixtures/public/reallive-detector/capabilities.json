@@ -1,0 +1,527 @@
+[
+  {
+    "adapterId": "kaifuu.fixture",
+    "reports": [
+      {
+        "capability": "asset_inventory",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "asset_listing",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "image, audio, video, and external asset text are outside the fixture format"
+      },
+      {
+        "capability": "codec_access",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "container_access",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "crypto_access",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "delta_patching",
+        "status": "unsupported",
+        "limitation": ".kaifuu delta packages are handled by kaifuu-delta, not this engine adapter"
+      },
+      {
+        "capability": "detection",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "encrypted_input",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "extraction",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "key_profile",
+        "status": "unsupported",
+        "limitation": "fixture projects do not use user-provided keys"
+      },
+      {
+        "capability": "line_parity_patching",
+        "status": "limited",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "non_text_surface_extraction",
+        "status": "limited",
+        "limitation": "reports explicit fixture asset metadata only; does not perform OCR, audio analysis, font inspection, or video frame analysis"
+      },
+      {
+        "capability": "patch_back",
+        "status": "limited",
+        "limitation": "rewrites plaintext source.json; archive rebuild and binary patch-back are not supported"
+      },
+      {
+        "capability": "patching",
+        "status": "limited",
+        "limitation": "writes source.json only; does not rebuild engine archives or binary assets"
+      },
+      {
+        "capability": "profile_generation",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "runtime_vm",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "verification",
+        "status": "supported",
+        "limitation": null
+      }
+    ],
+    "accessContract": {
+      "identify": {
+        "status": "supported",
+        "requiredCapabilities": ["detection", "profile_generation"],
+        "supportedSurfaces": ["identity", "json_pointer"],
+        "supportedContainers": ["identity", "loose_file"],
+        "supportedCrypto": ["null_key"],
+        "supportedCodecs": ["identity", "json_text"],
+        "supportedPatchBack": ["identity", "rewrite_json"],
+        "supportBoundary": "plaintext identity pipeline only; no archive rebuild, encrypted input, helper, or decompile support claimed"
+      },
+      "inventory": {
+        "status": "supported",
+        "requiredCapabilities": ["asset_inventory", "asset_listing"],
+        "supportedSurfaces": ["identity", "json_pointer"],
+        "supportedContainers": ["identity", "loose_file"],
+        "supportedCrypto": ["null_key"],
+        "supportedCodecs": ["identity", "json_text"],
+        "supportedPatchBack": ["identity", "rewrite_json"],
+        "supportBoundary": "plaintext identity pipeline only; no archive rebuild, encrypted input, helper, or decompile support claimed"
+      },
+      "extract": {
+        "status": "supported",
+        "requiredCapabilities": ["extraction"],
+        "supportedSurfaces": ["identity", "json_pointer"],
+        "supportedContainers": ["identity", "loose_file"],
+        "supportedCrypto": ["null_key"],
+        "supportedCodecs": ["identity", "json_text"],
+        "supportedPatchBack": ["identity", "rewrite_json"],
+        "supportBoundary": "plaintext identity pipeline only; no archive rebuild, encrypted input, helper, or decompile support claimed"
+      },
+      "patch": {
+        "status": "supported",
+        "requiredCapabilities": ["line_parity_patching", "patching"],
+        "supportedSurfaces": ["identity", "json_pointer"],
+        "supportedContainers": ["identity", "loose_file"],
+        "supportedCrypto": ["null_key"],
+        "supportedCodecs": ["identity", "json_text"],
+        "supportedPatchBack": ["identity", "rewrite_json"],
+        "supportBoundary": "plaintext identity pipeline only; no archive rebuild, encrypted input, helper, or decompile support claimed"
+      }
+    },
+    "helperRequirements": [
+      {
+        "helperRegistryId": "kaifuu.fixture.helper-stub",
+        "capabilities": ["fixture_invocation"],
+        "allowlistRefId": "kaifuu-fixture-helper-stub-allowlist"
+      }
+    ]
+  },
+  {
+    "adapterId": "kaifuu.kirikiri_xp3",
+    "reports": [
+      {
+        "capability": "asset_inventory",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "asset_listing",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "codec_access",
+        "status": "unsupported",
+        "limitation": "compressed XP3 payload handling and script decoding are outside the detector profile"
+      },
+      {
+        "capability": "container_access",
+        "status": "unsupported",
+        "limitation": "XP3 container access is limited to synthetic plain-index inventory; extraction and rebuild are outside the detector profile"
+      },
+      {
+        "capability": "crypto_access",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "delta_patching",
+        "status": "unsupported",
+        "limitation": ".kaifuu delta packages do not apply to detector-only XP3 profiles"
+      },
+      {
+        "capability": "detection",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "encrypted_input",
+        "status": "unsupported",
+        "limitation": "encrypted payloads are identified only and are never decrypted by this profile"
+      },
+      {
+        "capability": "extraction",
+        "status": "unsupported",
+        "limitation": "KAIFUU-095 is an XP3 detector/profile fixture only"
+      },
+      {
+        "capability": "key_profile",
+        "status": "requires_user_input",
+        "limitation": "encrypted XP3 diagnostics name the key requirement, but no key support is claimed"
+      },
+      {
+        "capability": "non_text_surface_extraction",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "patch_back",
+        "status": "unsupported",
+        "limitation": "XP3 patch-back/repack support is outside the detector profile"
+      },
+      {
+        "capability": "patching",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "profile_generation",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "runtime_vm",
+        "status": "unsupported",
+        "limitation": "runtime support belongs to future Utsushi/KiriKiri work, not this detector fixture"
+      }
+    ],
+    "accessContract": {
+      "identify": {
+        "status": "supported",
+        "requiredCapabilities": ["detection", "profile_generation"],
+        "supportedSurfaces": ["archive_entry"],
+        "supportedContainers": ["xp3"],
+        "supportedCrypto": ["null_key", "key_profile"],
+        "supportedCodecs": ["unknown"],
+        "supportedPatchBack": ["unsupported"],
+        "supportBoundary": "identify/profile generation reads only synthetic XP3 headers, markers, and source hashes"
+      },
+      "inventory": {
+        "status": "supported",
+        "requiredCapabilities": ["asset_inventory", "asset_listing"],
+        "supportedSurfaces": ["archive_entry"],
+        "supportedContainers": ["xp3"],
+        "supportedCrypto": ["null_key", "key_profile"],
+        "supportedCodecs": ["unknown"],
+        "supportedPatchBack": ["unsupported"],
+        "supportBoundary": "inventory parses synthetic plain XP3 index metadata and reports archive member rows; payload extraction, decompression, decryption, and patch-back are unsupported"
+      },
+      "extract": {
+        "status": "unsupported",
+        "requiredCapabilities": ["extraction"],
+        "supportedSurfaces": [],
+        "supportedContainers": [],
+        "supportedCrypto": [],
+        "supportedCodecs": [],
+        "supportedPatchBack": [],
+        "supportBoundary": "XP3 profile fixtures identify synthetic KiriKiri/XP3 archive containers; plain fixture index metadata may be parsed for inventory only, while payload extraction, decompression, decryption, patch-back, and runtime support are not claimed."
+      },
+      "patch": {
+        "status": "unsupported",
+        "requiredCapabilities": ["patch_back", "patching"],
+        "supportedSurfaces": [],
+        "supportedContainers": [],
+        "supportedCrypto": [],
+        "supportedCodecs": [],
+        "supportedPatchBack": [],
+        "supportBoundary": "XP3 profile fixtures identify synthetic KiriKiri/XP3 archive containers; plain fixture index metadata may be parsed for inventory only, while payload extraction, decompression, decryption, patch-back, and runtime support are not claimed."
+      }
+    }
+  },
+  {
+    "adapterId": "kaifuu.reallive",
+    "reports": [
+      {
+        "capability": "asset_inventory",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "asset_listing",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "no RealLive text surfaces are patched by this detector profile"
+      },
+      {
+        "capability": "codec_access",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "container_access",
+        "status": "unsupported",
+        "limitation": "SEEN.TXT archive parsing is outside the detector profile"
+      },
+      {
+        "capability": "crypto_access",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "delta_patching",
+        "status": "unsupported",
+        "limitation": ".kaifuu delta packages do not apply to detector-only RealLive profiles"
+      },
+      {
+        "capability": "detection",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "encrypted_input",
+        "status": "unsupported",
+        "limitation": "encrypted payloads (if any) are identified only and are never decrypted by this profile"
+      },
+      {
+        "capability": "extraction",
+        "status": "unsupported",
+        "limitation": "KAIFUU-172 is a RealLive detector/profile fixture only"
+      },
+      {
+        "capability": "key_profile",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "non_text_surface_extraction",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "patch_back",
+        "status": "unsupported",
+        "limitation": "RealLive patch-back/repack support is outside the detector profile"
+      },
+      {
+        "capability": "patching",
+        "status": "unsupported",
+        "limitation": "KAIFUU-172 does not patch or rebuild RealLive assets"
+      },
+      {
+        "capability": "profile_generation",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "runtime_vm",
+        "status": "unsupported",
+        "limitation": "runtime support belongs to UTSUSHI-146, not this detector fixture"
+      }
+    ],
+    "accessContract": {
+      "identify": {
+        "status": "supported",
+        "requiredCapabilities": ["detection", "profile_generation"],
+        "supportedSurfaces": ["identity"],
+        "supportedContainers": ["loose_file"],
+        "supportedCrypto": ["unknown"],
+        "supportedCodecs": ["unknown"],
+        "supportedPatchBack": ["unsupported"],
+        "supportBoundary": "identify/profile generation reads only SEEN.TXT envelope bytes, Gameexe.ini ASCII prefixes, top-level marker counts, and source hashes"
+      },
+      "inventory": {
+        "status": "supported",
+        "requiredCapabilities": ["asset_inventory", "asset_listing"],
+        "supportedSurfaces": ["identity", "archive_entry"],
+        "supportedContainers": ["loose_file"],
+        "supportedCrypto": ["unknown"],
+        "supportedCodecs": ["unknown"],
+        "supportedPatchBack": ["unsupported"],
+        "supportBoundary": "inventory reports only top-level SEEN.TXT/SEEN.GAN/Gameexe.ini assets and hashes; no archive entry parser is claimed"
+      },
+      "extract": {
+        "status": "unsupported",
+        "requiredCapabilities": ["extraction"],
+        "supportedSurfaces": [],
+        "supportedContainers": [],
+        "supportedCrypto": [],
+        "supportedCodecs": [],
+        "supportedPatchBack": [],
+        "supportBoundary": "RealLive detector profile identifies SEEN.TXT/Gameexe.ini/SEEN.GAN fixtures for identify and (in a single later slice) profile/asset-inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed."
+      },
+      "patch": {
+        "status": "unsupported",
+        "requiredCapabilities": ["patch_back", "patching"],
+        "supportedSurfaces": [],
+        "supportedContainers": [],
+        "supportedCrypto": [],
+        "supportedCodecs": [],
+        "supportedPatchBack": [],
+        "supportBoundary": "RealLive detector profile identifies SEEN.TXT/Gameexe.ini/SEEN.GAN fixtures for identify and (in a single later slice) profile/asset-inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed."
+      }
+    }
+  },
+  {
+    "adapterId": "kaifuu.siglus",
+    "reports": [
+      {
+        "capability": "asset_inventory",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "asset_listing",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "asset_text_patching",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "codec_access",
+        "status": "unsupported",
+        "limitation": "Siglus script decode/decompile support is outside the detector profile"
+      },
+      {
+        "capability": "container_access",
+        "status": "unsupported",
+        "limitation": "Scene.pck archive parsing is outside the detector profile"
+      },
+      {
+        "capability": "crypto_access",
+        "status": "unsupported",
+        "limitation": "encrypted Siglus payload handling is outside the detector profile"
+      },
+      {
+        "capability": "delta_patching",
+        "status": "unsupported",
+        "limitation": ".kaifuu delta packages do not apply to detector-only Siglus profiles"
+      },
+      {
+        "capability": "detection",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "encrypted_input",
+        "status": "unsupported",
+        "limitation": "encrypted payloads are identified only and are never decrypted by this profile"
+      },
+      {
+        "capability": "extraction",
+        "status": "unsupported",
+        "limitation": "KAIFUU-091 is a Siglus detector/profile fixture only"
+      },
+      {
+        "capability": "key_profile",
+        "status": "requires_user_input",
+        "limitation": "encrypted payload diagnostics name the key requirement, but no key support is claimed"
+      },
+      {
+        "capability": "non_text_surface_extraction",
+        "status": "unsupported",
+        "limitation": "no non-text extraction or OCR is performed for Siglus detector fixtures"
+      },
+      {
+        "capability": "patch_back",
+        "status": "unsupported",
+        "limitation": "Siglus patch-back/repack support is outside the detector profile"
+      },
+      {
+        "capability": "patching",
+        "status": "unsupported",
+        "limitation": "[REDACTED:kaifuu.secret_redacted]"
+      },
+      {
+        "capability": "profile_generation",
+        "status": "supported",
+        "limitation": null
+      },
+      {
+        "capability": "runtime_vm",
+        "status": "unsupported",
+        "limitation": "runtime support belongs to future Utsushi/Siglus work, not this detector fixture"
+      }
+    ],
+    "accessContract": {
+      "identify": {
+        "status": "supported",
+        "requiredCapabilities": ["detection", "profile_generation"],
+        "supportedSurfaces": ["identity"],
+        "supportedContainers": ["loose_file", "siglus_pck"],
+        "supportedCrypto": ["unknown"],
+        "supportedCodecs": ["unknown"],
+        "supportedPatchBack": ["unsupported"],
+        "supportBoundary": "identify/profile generation reads only synthetic file names, signatures, and source hashes"
+      },
+      "inventory": {
+        "status": "supported",
+        "requiredCapabilities": ["asset_inventory", "asset_listing"],
+        "supportedSurfaces": ["identity", "archive_entry", "binary_offset"],
+        "supportedContainers": ["loose_file", "siglus_pck"],
+        "supportedCrypto": ["unknown"],
+        "supportedCodecs": ["unknown"],
+        "supportedPatchBack": ["unsupported"],
+        "supportBoundary": "inventory reports only top-level Scene.pck/Gameexe.dat assets and hashes; no archive entry parser is claimed"
+      },
+      "extract": {
+        "status": "unsupported",
+        "requiredCapabilities": ["extraction"],
+        "supportedSurfaces": [],
+        "supportedContainers": [],
+        "supportedCrypto": [],
+        "supportedCodecs": [],
+        "supportedPatchBack": [],
+        "supportBoundary": "Siglus detector profile identifies synthetic Scene.pck/Gameexe.dat fixtures for identify and inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed."
+      },
+      "patch": {
+        "status": "unsupported",
+        "requiredCapabilities": ["patch_back", "patching"],
+        "supportedSurfaces": [],
+        "supportedContainers": [],
+        "supportedCrypto": [],
+        "supportedCodecs": [],
+        "supportedPatchBack": [],
+        "supportBoundary": "Siglus detector profile identifies synthetic Scene.pck/Gameexe.dat fixtures for identify and inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed."
+      }
+    }
+  }
+]

@@ -1,0 +1,229 @@
+{
+  "$schema": "./manifest.schema.json",
+  "schemaVersion": "0.1.0",
+  "fixture": {
+    "id": "reallive-detector",
+    "title": "RealLive Detector Fixtures",
+    "kind": "synthetic",
+    "summary": "Synthetic RealLive detector fixtures for KAIFUU-172. Covers the positive synthetic-triple path, the Siglus-overlap and AVG32-lineage disambiguation negatives, the unknown-shape and corrupt-signal cases, and the not-RealLive baseline. Contains no copyrighted RealLive bytes.",
+    "sourceLocale": "ja-JP",
+    "publicRedistribution": "allowed",
+    "license": {
+      "spdx": "CC0-1.0",
+      "evidence": "Synthetic fixture bytes authored from public format archaeology (Haeleth's RLDEV documentation) for repository tests; contain no third-party raw assets and no copied rlvm source expression."
+    },
+    "provenance": {
+      "author": "Itotori contributors",
+      "creationMethod": "Hand-authored synthetic SEEN.TXT envelope, Gameexe.ini key-prefix lines, SEEN.GAN/g00/ovk marker bytes, Siglus and AVG32 cross-check fixtures for KAIFUU-172 deterministic detection coverage.",
+      "rawAssetPolicy": "contains-no-copyrighted-game-assets"
+    }
+  },
+  "files": [
+    {
+      "path": "fixtures/public/reallive-detector/capabilities.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "7a42261863fb1e4037c094b75b6079e8ef5e4e0d692172c2a4d7fe2663d05803",
+      "bytes": 19287,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/positive-synthetic-triple/SEEN.TXT",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "7a9d3c3e10bcdd37a97f443242f6450b5324f1cd49e5c7d055295f4bdaea80cd",
+      "bytes": 40,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/positive-synthetic-triple/SEEN.GAN",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "1eaa4326a3ecc155800371730a9555668759948616845affc0282d42348883c1",
+      "bytes": 29,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/positive-synthetic-triple/Gameexe.ini",
+      "role": "source-game",
+      "mediaType": "text/plain",
+      "sha256": "94695b9ff8954cf15b89363157649a6b4c9d30783da2ff6b25ab14c9d607599f",
+      "bytes": 110,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/positive-synthetic-triple/image.g00",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "84c82981c40f1561bd5fd585aaef56a9958157fcfc6343d42331c84ef3997809",
+      "bytes": 21,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/positive-synthetic-triple/voice.ovk",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "956dfd4e5a6e1f30d45e93dbe9c623eaf57935521e3c86e362d39a13f2995cd1",
+      "bytes": 21,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/positive-synthetic-triple/expected/detection-report.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "e71bb8e2d3e3ce7d7c0f660b16852938a9a6b4590b50d5d516272d0399af6f4d",
+      "bytes": 28628,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-siglus-overlap/SEEN.TXT",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "7a9d3c3e10bcdd37a97f443242f6450b5324f1cd49e5c7d055295f4bdaea80cd",
+      "bytes": 40,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-siglus-overlap/Gameexe.ini",
+      "role": "source-game",
+      "mediaType": "text/plain",
+      "sha256": "94695b9ff8954cf15b89363157649a6b4c9d30783da2ff6b25ab14c9d607599f",
+      "bytes": 110,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-siglus-overlap/Scene.pck",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "bf86424832796b14bc5d23eecc0d8072badaa98825287629cb9ef5d52ae6a722",
+      "bytes": 40,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-siglus-overlap/Gameexe.dat",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "0125051d23950f0a00dafcc98eed3c615a6c0ad1716a719cb717ad36fcefa38e",
+      "bytes": 43,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-siglus-overlap/expected/detection-report.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "ff42433a32016de4acc6efec5dccb562a570b4d1f0a1eae6824e4d6c838cb54d",
+      "bytes": 33086,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-avg32-lineage/SEEN.TXT",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "7a9d3c3e10bcdd37a97f443242f6450b5324f1cd49e5c7d055295f4bdaea80cd",
+      "bytes": 40,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-avg32-lineage/Gameexe.ini",
+      "role": "source-game",
+      "mediaType": "text/plain",
+      "sha256": "fa6c50a942a59955be06d663c4062e55d1372fc721c8c81611aaaf1140ac2fe1",
+      "bytes": 76,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-avg32-lineage/image.PDT",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "bd358f418d999d7e53d361d325da3ed459feb88527cb88d903495c977ca1fb66",
+      "bytes": 21,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-avg32-lineage/expected/detection-report.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "76f43aea6bbd98798b3f74034e0782e1c6919c30cc170cfcbd9342b6ad67ed38",
+      "bytes": 28702,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-unknown-shape/SEEN.TXT",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "ba0f1e973f2e1fda53e26b291fb8431574ac8a88fa3dd34c5da182bb1d00ac3d",
+      "bytes": 40,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-unknown-shape/Gameexe.ini",
+      "role": "source-game",
+      "mediaType": "text/plain",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-unknown-shape/expected/detection-report.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "58e83a411c9739ac5bb2526f5112f5fc004b65fc0a28572a3d2307c0de682312",
+      "bytes": 28764,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-not-reallive/README.md",
+      "role": "source-game",
+      "mediaType": "text/markdown",
+      "sha256": "cd85982d00d24e7efe08d6b5423f4e8443e5bc8bd222da6e0840e47ecb2abeb3",
+      "bytes": 62,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/negative-not-reallive/expected/detection-report.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "ade1a454ab132aa9efa1221f594da7198ccf62bca0a8d133612f5c5d5f90d0ab",
+      "bytes": 26740,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/corrupt-signals/SEEN.TXT",
+      "role": "source-game",
+      "mediaType": "application/octet-stream",
+      "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+      "bytes": 1,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/corrupt-signals/Gameexe.ini",
+      "role": "source-game",
+      "mediaType": "text/plain",
+      "sha256": "94695b9ff8954cf15b89363157649a6b4c9d30783da2ff6b25ab14c9d607599f",
+      "bytes": 110,
+      "redistributable": true
+    },
+    {
+      "path": "fixtures/public/reallive-detector/corrupt-signals/expected/detection-report.json",
+      "role": "expected-output",
+      "mediaType": "application/json",
+      "sha256": "3cde1e3b72421d2e86537776752fe8c54c83c179c4e78e1cb1c145545114a558",
+      "bytes": 28780,
+      "redistributable": true
+    }
+  ],
+  "aggregateStats": {
+    "files": 24,
+    "textUnits": 0,
+    "sourceTextUtf16CodeUnits": 0,
+    "protectedSpans": 0,
+    "sourceLocales": ["ja-JP"],
+    "engineKinds": ["reallive"],
+    "notes": "Detector-only fixtures for KAIFUU-172; no text units or protected spans because no Scene/SEEN parsing, extraction, or patching is claimed."
+  },
+  "benchmarkUse": {
+    "allowedInPublicCi": true,
+    "allowedInPublicReports": true,
+    "reportingLabel": "public:reallive-detector"
+  }
+}

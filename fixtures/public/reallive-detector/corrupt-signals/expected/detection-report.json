@@ -231,6 +231,7 @@
     {
       "adapterId": "kaifuu.reallive",
       "detected": false,
+      "detectedVariant": "unknown-reallive-named-files",
       "evidence": [
         {
           "path": "*.g00",
@@ -259,8 +260,8 @@
         {
           "path": "Gameexe.ini",
           "kind": "reallive_gameexe_ini_keys",
-          "status": "missing",
-          "detail": "Gameexe.ini missing"
+          "status": "matched",
+          "detail": "Gameexe.ini RealLive keys matched: #GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*"
         },
         {
           "path": "SEEN.GAN",
@@ -271,8 +272,8 @@
         {
           "path": "SEEN.TXT",
           "kind": "reallive_seen_txt_envelope",
-          "status": "missing",
-          "detail": "SEEN.TXT envelope is missing"
+          "status": "invalid",
+          "detail": "SEEN.TXT envelope is present but does not match the synthetic fixture signature"
         },
         {
           "path": "Scene.pck",
@@ -281,7 +282,32 @@
           "detail": "Scene.pck not present"
         }
       ],
-      "requirements": [],
+      "requirements": [
+        {
+          "category": "file",
+          "key": "Gameexe.ini",
+          "status": "satisfied",
+          "description": "RealLive Gameexe.ini with at least one RealLive-specific key (#GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*, #SEEN*)",
+          "placeholder": null,
+          "secret": false
+        },
+        {
+          "category": "file",
+          "key": "SEEN.TXT",
+          "status": "unsupported",
+          "description": "RealLive SEEN.TXT envelope (synthetic magic or generic shape)",
+          "placeholder": null,
+          "secret": false
+        },
+        {
+          "category": "platform",
+          "key": "reallive-parser",
+          "status": "unsupported",
+          "description": "Scene/SEEN parser/decompiler boundary is unsupported for KAIFUU-172",
+          "placeholder": null,
+          "secret": false
+        }
+      ],
       "capabilities": [
         {
           "capability": "asset_inventory",
@@ -562,9 +588,9 @@
       {
         "rowId": "reallive-seen-txt",
         "engineFamily": "reallive",
-        "detected": false,
-        "detectedVariant": "not-reallive",
-        "signals": [],
+        "detected": true,
+        "detectedVariant": "reallive-seen-txt-archive",
+        "signals": ["packed"],
         "evidence": [
           {
             "evidenceType": "file_extension",
@@ -590,8 +616,8 @@
           {
             "evidenceType": "file_name",
             "pattern": "Gameexe.ini",
-            "status": "missing",
-            "count": 0,
+            "status": "matched",
+            "count": 1,
             "detail": "RealLive Gameexe.ini configuration manifest marker count"
           },
           {
@@ -604,9 +630,74 @@
           {
             "evidenceType": "file_name",
             "pattern": "SEEN.TXT",
+            "status": "matched",
+            "count": 1,
+            "detail": "RealLive SEEN.TXT scene archive marker count"
+          }
+        ],
+        "requirements": [],
+        "diagnostics": [
+          {
+            "code": "kaifuu.unsupported_variant.packed",
+            "signal": "packed",
+            "requiredCapability": "extraction",
+            "supportBoundary": "Kaifuu detects RealLive SEEN.TXT/Gameexe.ini/Scene container signals only; extraction, Scene/SEEN decompilation, voice-archive handling, and patch-back remain outside this matrix row.",
+            "remediation": "use already extracted/plaintext sources or wait for an adapter that claims this container"
+          }
+        ],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
+          },
+          {
+            "capability": "extraction",
+            "status": "unsupported",
+            "limitation": "archive/encryption matrix detection is not an extraction support claim"
+          },
+          {
+            "capability": "patching",
+            "status": "unsupported",
+            "limitation": "archive/encryption matrix detection does not rebuild, decrypt, or patch containers"
+          }
+        ],
+        "supportBoundary": "Kaifuu detects RealLive SEEN.TXT/Gameexe.ini/Scene container signals only; extraction, Scene/SEEN decompilation, voice-archive handling, and patch-back remain outside this matrix row."
+      },
+      {
+        "rowId": "rpg-maker-mv-mz-encrypted-assets",
+        "engineFamily": "rpg_maker_mv_mz",
+        "detected": false,
+        "detectedVariant": "mv_or_mz",
+        "signals": [],
+        "evidence": [
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.png|*.m4a|*.ogg",
             "status": "missing",
             "count": 0,
-            "detail": "RealLive SEEN.TXT scene archive marker count"
+            "detail": "RPG Maker MV/MZ plain image/audio asset extension count; does not imply encrypted asset handling"
+          },
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_",
+            "status": "missing",
+            "count": 0,
+            "detail": "RPG Maker MV/MZ encrypted asset extension count"
+          },
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.rpgmvu|*.webp_",
+            "status": "missing",
+            "count": 0,
+            "detail": "RPG Maker-like encrypted asset suffixes without a known codec/key mapping"
+          },
+          {
+            "evidenceType": "metadata_field",
+            "pattern": "data/System.json encryption fields",
+            "status": "missing",
+            "count": 0,
+            "detail": "System.json encryption flags or key-field presence count; key values are never serialized"
           }
         ],
         "requirements": [],
@@ -616,358 +707,6 @@
             "capability": "detection",
             "status": "supported",
             "limitation": null
-          }
-        ],
-        "supportBoundary": "Kaifuu detects RealLive SEEN.TXT/Gameexe.ini/Scene container signals only; extraction, Scene/SEEN decompilation, voice-archive handling, and patch-back remain outside this matrix row."
-      },
-      {
-        "rowId": "rpg-maker-mv-mz-encrypted-assets",
-        "engineFamily": "rpg_maker_mv_mz",
-        "detected": true,
-        "detectedVariant": "mv_or_mz_with_unknown_suffix",
-        "signals": ["encrypted", "missing_key", "unknown_variant"],
-        "surfaces": [
-          {
-            "fixtureId": "kaifuu-rpgmaker-mv-audio-rpgmvm",
-            "engineFamily": "rpgmaker",
-            "variant": "mv_or_mz",
-            "container": "project_asset",
-            "crypto": "rpg_maker_asset_xor",
-            "codec": "m4a_audio",
-            "surface": "audio_asset",
-            "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
-            "diagnostics": [
-              {
-                "code": "kaifuu.missing_key_material",
-                "signal": "missing_key",
-                "requiredCapability": "key_profile",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix maps to the asset-key requirement.",
-                "remediation": "resolve local key material through a secret ref; do not persist raw keys"
-              },
-              {
-                "code": "kaifuu.unsupported_variant.encrypted",
-                "signal": "encrypted",
-                "requiredCapability": "encrypted_input",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix detection is not decryption support.",
-                "remediation": "provide a supported key profile only after an adapter explicitly supports encrypted media extraction"
-              }
-            ]
-          },
-          {
-            "fixtureId": "kaifuu-rpgmaker-mv-audio-rpgmvo",
-            "engineFamily": "rpgmaker",
-            "variant": "mv_or_mz",
-            "container": "project_asset",
-            "crypto": "rpg_maker_asset_xor",
-            "codec": "ogg_audio",
-            "surface": "audio_asset",
-            "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
-            "diagnostics": [
-              {
-                "code": "kaifuu.missing_key_material",
-                "signal": "missing_key",
-                "requiredCapability": "key_profile",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix maps to the asset-key requirement.",
-                "remediation": "resolve local key material through a secret ref; do not persist raw keys"
-              },
-              {
-                "code": "kaifuu.unsupported_variant.encrypted",
-                "signal": "encrypted",
-                "requiredCapability": "encrypted_input",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix detection is not decryption support.",
-                "remediation": "provide a supported key profile only after an adapter explicitly supports encrypted media extraction"
-              }
-            ]
-          },
-          {
-            "fixtureId": "kaifuu-rpgmaker-mv-image-rpgmvp",
-            "engineFamily": "rpgmaker",
-            "variant": "mv_or_mz",
-            "container": "project_asset",
-            "crypto": "rpg_maker_asset_xor",
-            "codec": "png_image",
-            "surface": "image_asset",
-            "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
-            "diagnostics": [
-              {
-                "code": "kaifuu.missing_key_material",
-                "signal": "missing_key",
-                "requiredCapability": "key_profile",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix maps to the asset-key requirement.",
-                "remediation": "resolve local key material through a secret ref; do not persist raw keys"
-              },
-              {
-                "code": "kaifuu.unsupported_variant.encrypted",
-                "signal": "encrypted",
-                "requiredCapability": "encrypted_input",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix detection is not decryption support.",
-                "remediation": "provide a supported key profile only after an adapter explicitly supports encrypted media extraction"
-              }
-            ]
-          },
-          {
-            "fixtureId": "kaifuu-rpgmaker-mz-audio-m4a_",
-            "engineFamily": "rpgmaker",
-            "variant": "mv_or_mz",
-            "container": "project_asset",
-            "crypto": "rpg_maker_asset_xor",
-            "codec": "m4a_audio",
-            "surface": "audio_asset",
-            "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
-            "diagnostics": [
-              {
-                "code": "kaifuu.missing_key_material",
-                "signal": "missing_key",
-                "requiredCapability": "key_profile",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix maps to the asset-key requirement.",
-                "remediation": "resolve local key material through a secret ref; do not persist raw keys"
-              },
-              {
-                "code": "kaifuu.unsupported_variant.encrypted",
-                "signal": "encrypted",
-                "requiredCapability": "encrypted_input",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix detection is not decryption support.",
-                "remediation": "provide a supported key profile only after an adapter explicitly supports encrypted media extraction"
-              }
-            ]
-          },
-          {
-            "fixtureId": "kaifuu-rpgmaker-mz-audio-ogg_",
-            "engineFamily": "rpgmaker",
-            "variant": "mv_or_mz",
-            "container": "project_asset",
-            "crypto": "rpg_maker_asset_xor",
-            "codec": "ogg_audio",
-            "surface": "audio_asset",
-            "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
-            "diagnostics": [
-              {
-                "code": "kaifuu.missing_key_material",
-                "signal": "missing_key",
-                "requiredCapability": "key_profile",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix maps to the asset-key requirement.",
-                "remediation": "resolve local key material through a secret ref; do not persist raw keys"
-              },
-              {
-                "code": "kaifuu.unsupported_variant.encrypted",
-                "signal": "encrypted",
-                "requiredCapability": "encrypted_input",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix detection is not decryption support.",
-                "remediation": "provide a supported key profile only after an adapter explicitly supports encrypted media extraction"
-              }
-            ]
-          },
-          {
-            "fixtureId": "kaifuu-rpgmaker-mz-image-png_",
-            "engineFamily": "rpgmaker",
-            "variant": "mv_or_mz",
-            "container": "project_asset",
-            "crypto": "rpg_maker_asset_xor",
-            "codec": "png_image",
-            "surface": "image_asset",
-            "count": 1,
-            "keyRequirementRefs": ["rpg-maker-mv-mz-asset-key"],
-            "diagnostics": [
-              {
-                "code": "kaifuu.missing_key_material",
-                "signal": "missing_key",
-                "requiredCapability": "key_profile",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix maps to the asset-key requirement.",
-                "remediation": "resolve local key material through a secret ref; do not persist raw keys"
-              },
-              {
-                "code": "kaifuu.unsupported_variant.encrypted",
-                "signal": "encrypted",
-                "requiredCapability": "encrypted_input",
-                "supportBoundary": "RPG Maker MV/MZ encrypted asset suffix detection is not decryption support.",
-                "remediation": "provide a supported key profile only after an adapter explicitly supports encrypted media extraction"
-              }
-            ]
-          },
-          {
-            "fixtureId": "kaifuu-rpgmaker-plain-audio-m4a",
-            "engineFamily": "rpgmaker",
-            "variant": "plain_asset",
-            "container": "project_asset",
-            "crypto": "null_key",
-            "codec": "m4a_audio",
-            "surface": "audio_asset",
-            "count": 1,
-            "keyRequirementRefs": [],
-            "diagnostics": []
-          },
-          {
-            "fixtureId": "kaifuu-rpgmaker-plain-audio-ogg",
-            "engineFamily": "rpgmaker",
-            "variant": "plain_asset",
-            "container": "project_asset",
-            "crypto": "null_key",
-            "codec": "ogg_audio",
-            "surface": "audio_asset",
-            "count": 1,
-            "keyRequirementRefs": [],
-            "diagnostics": []
-          },
-          {
-            "fixtureId": "kaifuu-rpgmaker-plain-image-png",
-            "engineFamily": "rpgmaker",
-            "variant": "plain_asset",
-            "container": "project_asset",
-            "crypto": "null_key",
-            "codec": "png_image",
-            "surface": "image_asset",
-            "count": 1,
-            "keyRequirementRefs": [],
-            "diagnostics": []
-          },
-          {
-            "fixtureId": "kaifuu-rpgmaker-unknown-rpgmvu",
-            "engineFamily": "rpgmaker",
-            "variant": "unknown_suffix",
-            "container": "project_asset",
-            "crypto": "unknown",
-            "codec": "unknown",
-            "surface": "unknown_asset",
-            "count": 1,
-            "keyRequirementRefs": [],
-            "diagnostics": [
-              {
-                "code": "kaifuu.missing_capability.crypto",
-                "signal": "unknown_variant",
-                "requiredCapability": "crypto_access",
-                "supportBoundary": "RPG Maker-like asset suffix has no profiled MV/MZ codec or key mapping.",
-                "remediation": "do not request key material until the suffix crypto profile is known"
-              },
-              {
-                "code": "kaifuu.unknown_engine_variant",
-                "signal": "unknown_variant",
-                "requiredCapability": "detection",
-                "supportBoundary": "RPG Maker-like asset suffix has no profiled MV/MZ codec or key mapping.",
-                "remediation": "add a public fixture profile before assigning key requirements"
-              }
-            ]
-          },
-          {
-            "fixtureId": "kaifuu-rpgmaker-unknown-webp_",
-            "engineFamily": "rpgmaker",
-            "variant": "unknown_suffix",
-            "container": "project_asset",
-            "crypto": "unknown",
-            "codec": "unknown",
-            "surface": "unknown_asset",
-            "count": 1,
-            "keyRequirementRefs": [],
-            "diagnostics": [
-              {
-                "code": "kaifuu.missing_capability.crypto",
-                "signal": "unknown_variant",
-                "requiredCapability": "crypto_access",
-                "supportBoundary": "RPG Maker-like asset suffix has no profiled MV/MZ codec or key mapping.",
-                "remediation": "do not request key material until the suffix crypto profile is known"
-              },
-              {
-                "code": "kaifuu.unknown_engine_variant",
-                "signal": "unknown_variant",
-                "requiredCapability": "detection",
-                "supportBoundary": "RPG Maker-like asset suffix has no profiled MV/MZ codec or key mapping.",
-                "remediation": "add a public fixture profile before assigning key requirements"
-              }
-            ]
-          }
-        ],
-        "evidence": [
-          {
-            "evidenceType": "file_extension",
-            "pattern": "*.png|*.m4a|*.ogg",
-            "status": "matched",
-            "count": 3,
-            "detail": "RPG Maker MV/MZ plain image/audio asset extension count; does not imply encrypted asset handling"
-          },
-          {
-            "evidenceType": "file_extension",
-            "pattern": "*.rpgmvp|*.rpgmvm|*.rpgmvo|*.png_|*.m4a_|*.ogg_",
-            "status": "matched",
-            "count": 6,
-            "detail": "RPG Maker MV/MZ encrypted asset extension count"
-          },
-          {
-            "evidenceType": "file_extension",
-            "pattern": "*.rpgmvu|*.webp_",
-            "status": "matched",
-            "count": 2,
-            "detail": "RPG Maker-like encrypted asset suffixes without a known codec/key mapping"
-          },
-          {
-            "evidenceType": "metadata_field",
-            "pattern": "data/System.json encryption fields",
-            "status": "matched",
-            "count": 1,
-            "detail": "System.json encryption flags or key-field presence count; key values are never serialized"
-          }
-        ],
-        "requirements": [
-          {
-            "category": "secret_key",
-            "key": "rpg-maker-mv-mz-asset-key",
-            "status": "missing",
-            "description": "encrypted RPG Maker MV/MZ assets require a local asset key reference",
-            "placeholder": "KAIFUU_RPG_MAKER_ASSET_KEY",
-            "secret": true
-          }
-        ],
-        "diagnostics": [
-          {
-            "code": "kaifuu.missing_key_material",
-            "signal": "missing_key",
-            "requiredCapability": "key_profile",
-            "supportBoundary": "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims.",
-            "remediation": "resolve local key material through a secret ref; do not persist raw keys"
-          },
-          {
-            "code": "kaifuu.unknown_engine_variant",
-            "signal": "unknown_variant",
-            "requiredCapability": "detection",
-            "supportBoundary": "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims.",
-            "remediation": "add a synthetic public detector fixture or private-local aggregate evidence before claiming support"
-          },
-          {
-            "code": "kaifuu.unsupported_variant.encrypted",
-            "signal": "encrypted",
-            "requiredCapability": "encrypted_input",
-            "supportBoundary": "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims.",
-            "remediation": "provide a supported key profile only after an adapter explicitly supports this encrypted variant"
-          }
-        ],
-        "capabilities": [
-          {
-            "capability": "detection",
-            "status": "supported",
-            "limitation": null
-          },
-          {
-            "capability": "encrypted_input",
-            "status": "unsupported",
-            "limitation": "encrypted input was detected, but decryption support is not claimed by the matrix"
-          },
-          {
-            "capability": "extraction",
-            "status": "unsupported",
-            "limitation": "archive/encryption matrix detection is not an extraction support claim"
-          },
-          {
-            "capability": "key_profile",
-            "status": "requires_user_input",
-            "limitation": "recognized protected inputs require local secret refs or helper evidence before future pure adapter work can proceed"
-          },
-          {
-            "capability": "patching",
-            "status": "unsupported",
-            "limitation": "archive/encryption matrix detection does not rebuild, decrypt, or patch containers"
           }
         ],
         "supportBoundary": "Kaifuu detects RPG Maker MV/MZ encrypted asset signals; JSON text patching and encrypted media restoration are separate adapter claims."
