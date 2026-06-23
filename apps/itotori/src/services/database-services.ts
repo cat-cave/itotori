@@ -11,6 +11,7 @@ import {
   ItotoriStyleGuideFixtureFlowService,
   ItotoriStyleGuideRepository,
   ItotoriTerminologyRepository,
+  ItotoriTranslationBatchRepository,
   ItotoriTranslationMemoryRepository,
   ItotoriTranslationMemoryService,
   bootstrapLocalUser,
@@ -33,6 +34,13 @@ import {
   type StyleGuideFixtureFlowInput,
   type StyleGuideFixtureFlowResult,
 } from "@itotori/db";
+import { persistBatches } from "../batch-planner/index.js";
+import type {
+  PlanBatchesContextLoader,
+  PlanBatchesPersister,
+  PlannedProjectFile,
+} from "../batch-planner/cli.js";
+import type { TerminologyTermSnapshot } from "../batch-planner/shapes.js";
 import {
   ItotoriAuthorizationService,
   localUserActor,
@@ -72,6 +80,10 @@ export type ItotoriApplicationServices = {
   styleGuideFixtureFlow: {
     run(input: StyleGuideFixtureFlowInput): Promise<StyleGuideFixtureFlowResult>;
   };
+  batchPlanner: {
+    loadContext: PlanBatchesContextLoader;
+    persist: PlanBatchesPersister;
+  };
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -85,6 +97,90 @@ export type DatabaseServiceOptions = {
 
 export async function migrateItotoriDatabase(databaseUrl = databaseUrlFromEnv()): Promise<void> {
   await migrate(databaseUrl);
+}
+
+type BatchPlannerLoaderDeps = {
+  styleGuideRepository: ItotoriStyleGuideRepository;
+  terminologyRepository: ItotoriTerminologyRepository;
+};
+
+/**
+ * Default DB-backed context loader for the batch planner CLI. This minimal
+ * implementation pulls the locale-branch's current source revision and the
+ * latest style guide rules. Glossary, scene summary, and character map
+ * inputs default to empty here — programmatic callers (services that want
+ * richer context) should call {@link planBatches} directly with the inputs
+ * they have, and richer DB loaders can be added in follow-up nodes.
+ */
+function createBatchPlannerContextLoader(deps: BatchPlannerLoaderDeps): PlanBatchesContextLoader {
+  return async (project: PlannedProjectFile, _locale: string) => {
+    const context = await deps.styleGuideRepository.getLocaleBranchContext(
+      project.projectId,
+      project.localeBranchId,
+    );
+    if (context === null) {
+      throw new Error(
+        `locale branch ${project.localeBranchId} does not exist for project ${project.projectId}`,
+      );
+    }
+    const approved = await deps.styleGuideRepository.getApprovedVersionByLocaleBranchId(
+      project.localeBranchId,
+    );
+    const styleGuide = approved
+      ? {
+          styleGuideVersionId: approved.styleGuideVersionId,
+          rules: extractRulesFromPolicy(approved.policy),
+        }
+      : undefined;
+
+    // The minimal default loader exposes only the surfaces that have stable
+    // repository APIs today. Programmatic callers needing glossary,
+    // character map, scene summaries, or translation memory should pass
+    // them directly to planBatches.
+    const glossary: ReadonlyArray<TerminologyTermSnapshot> = [];
+    return {
+      sourceRevisionId: context.sourceRevisionReference.sourceRevisionId,
+      glossary,
+      styleGuide,
+    };
+  };
+}
+
+function extractRulesFromPolicy(policy: Record<string, unknown>): {
+  ruleId: string;
+  applicability: string;
+  body?: string | undefined;
+  rulePath?: string | undefined;
+}[] {
+  const rules = (policy as { rules?: unknown }).rules;
+  if (!Array.isArray(rules)) {
+    return [];
+  }
+  const out: {
+    ruleId: string;
+    applicability: string;
+    body?: string | undefined;
+    rulePath?: string | undefined;
+  }[] = [];
+  for (const entry of rules) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const record = entry as Record<string, unknown>;
+    const ruleId = typeof record.ruleId === "string" ? record.ruleId : undefined;
+    const applicability =
+      typeof record.applicability === "string" ? record.applicability : "always_on";
+    if (!ruleId) {
+      continue;
+    }
+    out.push({
+      ruleId,
+      applicability,
+      body: typeof record.body === "string" ? record.body : undefined,
+      rulePath: typeof record.rulePath === "string" ? record.rulePath : undefined,
+    });
+  }
+  return out;
 }
 
 export async function withDatabaseItotoriServices<T>(
@@ -108,6 +204,7 @@ export async function withDatabaseItotoriServices<T>(
     const translationMemoryService = new ItotoriTranslationMemoryService(
       translationMemoryRepository,
     );
+    const translationBatchRepository = new ItotoriTranslationBatchRepository(context.db);
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -146,6 +243,15 @@ export async function withDatabaseItotoriServices<T>(
         styleGuideRepository,
         localUserActor,
       ),
+      batchPlanner: {
+        loadContext: createBatchPlannerContextLoader({
+          styleGuideRepository,
+          terminologyRepository,
+        }),
+        persist: async (batches, identity) => {
+          await persistBatches(translationBatchRepository, localUserActor, batches, identity);
+        },
+      },
     });
   } finally {
     await context.close();

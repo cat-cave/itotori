@@ -499,6 +499,24 @@ export type {
   CatalogRecordedStorefrontResponse,
   CatalogRecordedStorefrontSource,
 } from "./services/catalog-recorded-importers.js";
+export { ItotoriTranslationBatchRepository } from "./repositories/translation-batch-repository.js";
+export type {
+  ItotoriTranslationBatchRepositoryPort,
+  LoadTranslationBatchesQuery,
+  SaveTranslationBatchInput,
+  SaveTranslationBatchesInput,
+  TranslationBatchContextRefRecord,
+  TranslationBatchRecord,
+  TranslationBatchUnitRecord,
+} from "./repositories/translation-batch-repository.js";
+export {
+  translationBatchContextRefKindValues,
+  translationBatchContextRefInclusionReasonValues,
+} from "./schema.js";
+export type {
+  TranslationBatchContextRefKind,
+  TranslationBatchContextRefInclusionReason,
+} from "./schema.js";
 export {
   ItotoriJobWorkerService,
   ItotoriOutboxPublisherService,

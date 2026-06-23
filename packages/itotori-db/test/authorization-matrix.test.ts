@@ -17,6 +17,7 @@ import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-r
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
+import { ItotoriTranslationBatchRepository } from "../src/repositories/translation-batch-repository.js";
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
@@ -407,6 +408,24 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "context-artifact-repository.test.ts retrieval coverage",
     (repo) => repo.retrieveArtifacts(deniedActor, undefined as never),
+  ),
+  translationBatchGate(
+    "saveBatches",
+    "draftWrite",
+    "translation-batch-repository.test.ts save coverage",
+    (repo) => repo.saveBatches(deniedActor, undefined as never),
+  ),
+  translationBatchGate(
+    "loadBatches",
+    "catalogRead",
+    "translation-batch-repository.test.ts load coverage",
+    (repo) => repo.loadBatches(deniedActor, undefined as never),
+  ),
+  translationBatchGate(
+    "loadBatchById",
+    "catalogRead",
+    "translation-batch-repository.test.ts load-by-id coverage",
+    (repo) => repo.loadBatchById(deniedActor, "batch-id"),
   ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
@@ -807,6 +826,24 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "context-artifact-repository.test.ts retrieval coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTranslationBatchRepository.saveBatches",
+          "requiredPermission": "draft.write",
+          "successFixture": "translation-batch-repository.test.ts save coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTranslationBatchRepository.loadBatches",
+          "requiredPermission": "catalog.read",
+          "successFixture": "translation-batch-repository.test.ts load coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTranslationBatchRepository.loadBatchById",
+          "requiredPermission": "catalog.read",
+          "successFixture": "translation-batch-repository.test.ts load-by-id coverage",
+        },
       ]
     `);
   });
@@ -1030,6 +1067,22 @@ function contextArtifactGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriContextArtifactRepository(db)),
+  });
+}
+
+function translationBatchGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriTranslationBatchRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriTranslationBatchRepository",
+    sourceFile: "translation-batch-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriTranslationBatchRepository(db)),
   });
 }
 

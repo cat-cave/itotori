@@ -164,6 +164,10 @@ export const migrations = [
     id: "0026_context_artifact_source_unit_retention",
     file: "0026_context_artifact_source_unit_retention.sql",
   },
+  {
+    id: "0027_translation_batches",
+    file: "0027_translation_batches.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

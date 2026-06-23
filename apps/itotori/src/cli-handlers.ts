@@ -17,6 +17,14 @@ import type {
 import { assertBridgeInput } from "./api-schema.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
+import type { PlanBatchesOutput } from "./batch-planner/index.js";
+import {
+  runPlanBatches,
+  type PlanBatchesContextLoader,
+  type PlanBatchesPersister,
+  type PlannedProjectFile,
+} from "./batch-planner/cli.js";
+import type { ProviderFamily } from "./providers/types.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -30,6 +38,10 @@ export type ItotoriCliServices = {
   catalogFuzzyCandidateGenerator: ItotoriCatalogFuzzyCandidateGeneratorPort;
   styleGuideFixtureFlow: {
     run(input: StyleGuideFixtureFlowInput): Promise<StyleGuideFixtureFlowResult>;
+  };
+  batchPlanner: {
+    loadContext: PlanBatchesContextLoader;
+    persist: PlanBatchesPersister;
   };
 };
 
@@ -83,6 +95,9 @@ export async function runItotoriCliCommand(
       break;
     case "style-guide-fixture-flow":
       await runStyleGuideFixtureFlow(args, dependencies);
+      break;
+    case "plan-batches":
+      await runPlanBatchesHandler(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -254,4 +269,66 @@ function optionalFlag(args: string[], name: string): string | undefined {
 
 function readProject(io: JsonFileStore, path: string): ProjectState {
   return io.readJson(path) as ProjectState;
+}
+
+async function runPlanBatchesHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const projectPath = requiredFlag(args, "--project");
+  const locale = requiredFlag(args, "--locale");
+  const outputPath = optionalFlag(args, "--output");
+  const modelId = optionalFlag(args, "--model");
+  const providerFamilyRaw = optionalFlag(args, "--provider");
+  const maxTokensRaw = optionalFlag(args, "--max-tokens");
+  const fillRatioRaw = optionalFlag(args, "--target-fill-ratio");
+  const priorExampleLimitRaw = optionalFlag(args, "--prior-example-limit");
+  const dryRun = args.includes("--dry-run");
+  const providerFamily =
+    providerFamilyRaw === undefined ? undefined : asProviderFamily(providerFamilyRaw);
+  const maxTokens = maxTokensRaw === undefined ? undefined : Number.parseInt(maxTokensRaw, 10);
+  const targetFillRatio = fillRatioRaw === undefined ? undefined : Number.parseFloat(fillRatioRaw);
+  const priorExampleLimit =
+    priorExampleLimitRaw === undefined ? undefined : Number.parseInt(priorExampleLimitRaw, 10);
+
+  await dependencies.withServices(async (services) => {
+    const result: PlanBatchesOutput = await runPlanBatches(
+      {
+        projectPath,
+        outputPath,
+        locale,
+        modelId,
+        providerFamily,
+        maxTokens,
+        targetFillRatio,
+        priorExampleLimit,
+        dryRun,
+      },
+      {
+        loadProject: (path) => dependencies.io.readJson(path) as PlannedProjectFile,
+        writeJson: (path, value) => dependencies.io.writeJson(path, value),
+        loadContext: (project, planLocale) =>
+          services.batchPlanner.loadContext(project, planLocale),
+        persist: (batches, identity) => services.batchPlanner.persist(batches, identity),
+        log: (message) => {
+          process.stdout.write(`${message}\n`);
+        },
+      },
+    );
+    return result;
+  });
+}
+
+const providerFamilyValues: readonly ProviderFamily[] = [
+  "fake",
+  "recorded",
+  "openrouter",
+  "local-openai-compatible",
+];
+
+function asProviderFamily(value: string): ProviderFamily {
+  if ((providerFamilyValues as readonly string[]).includes(value)) {
+    return value as ProviderFamily;
+  }
+  throw new Error(`unknown provider family: ${value}`);
 }

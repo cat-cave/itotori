@@ -224,14 +224,14 @@ export type GlossaryRef = {
 };
 
 export type StyleRuleRef = {
-  ruleId: string;          // stable across versions; see styleGuideVersions schema
+  ruleId: string; // stable across versions; see styleGuideVersions schema
   styleGuideVersionId: Uuid7;
-  rulePath?: string;       // dotted path inside the version doc, when present
+  rulePath?: string; // dotted path inside the version doc, when present
   inclusionReason: "always_on" | "category_match" | "explicit_pin";
 };
 
 export type CharacterRef = {
-  termId: Uuid7;            // terminology row with kind = "character_name"
+  termId: Uuid7; // terminology row with kind = "character_name"
   canonicalName: string;
   relationshipNotes?: string; // free-form, sourced from terminology aliases / context artifacts
   appearsInBridgeUnitIds: Uuid7[];
@@ -244,7 +244,7 @@ export type SceneSummaryRef = {
 };
 
 export type ExampleRef = {
-  bridgeUnitId: Uuid7;        // the prior unit
+  bridgeUnitId: Uuid7; // the prior unit
   translationMemorySegmentId?: Uuid7;
   similarityReason: "same_speaker" | "same_scene" | "same_surfaceKind";
 };
@@ -268,13 +268,13 @@ export type BatchCitationManifest = {
 };
 
 export type BatchModelProfile = {
-  providerFamily: ProviderFamily;        // re-used from providers/types.ts
+  providerFamily: ProviderFamily; // re-used from providers/types.ts
   modelId: string;
   contextWindowTokens: number;
   maxOutputTokens?: number;
-  targetFillRatio: number;               // default 0.7
-  promptOverheadTokens: number;          // headroom for system prompt + tool defs
-  tokenEstimatorId: string;              // pins which estimator was used
+  targetFillRatio: number; // default 0.7
+  promptOverheadTokens: number; // headroom for system prompt + tool defs
+  tokenEstimatorId: string; // pins which estimator was used
 };
 ```
 
@@ -331,7 +331,7 @@ export type PlanBatchesOutput = {
     averageTokenEstimatePerBatch: number;
     minTokenEstimate: number;
     maxTokenEstimate: number;
-    scenesSplitCount: number;       // scenes that didn't fit in one batch
+    scenesSplitCount: number; // scenes that didn't fit in one batch
     unitsWithoutSceneCount: number; // units lacking RouteContextV02.sceneId
     glossaryHitCount: number;
     modelProfile: BatchModelProfile;
@@ -498,7 +498,7 @@ critical path), but we estimate well enough that the §9 tolerance test holds.
 Per-language heuristic with documented constants:
 
 - Japanese (CJK-dominant text by code-point analysis): `1 token per
-  ~2 source characters` (empirically derived for tiktoken cl100k on Japanese
+~2 source characters` (empirically derived for tiktoken cl100k on Japanese
   game dialogue) — closer to 0.5 chars/token, so the constant is `0.5`.
   Implemented as `ceil(charCount / 2)`.
 - English / Latin scripts: `1 token per ~4 characters` (the classic OpenAI
@@ -588,11 +588,11 @@ Polymorphic citation table — one row per cited item.
 - `batch_id text not null references itotori_translation_batches(batch_id) on delete cascade`
 - `ref_kind text not null` — one of
   `"glossary_term" | "style_rule" | "character" | "scene_summary" |
-  "prior_example"`
+"prior_example"`
 - `ref_id text not null` — termId / ruleId / contextArtifactId / etc.
 - `ref_secondary_id text` — e.g. styleGuideVersionId for style_rule
 - `inclusion_reason text not null` — `"hit" | "always_on" | "category_match" |
-  "explicit_pin" | "same_speaker" | "same_scene" | "same_surfaceKind"`
+"explicit_pin" | "same_speaker" | "same_scene" | "same_surfaceKind"`
 - `hit_bridge_unit_ids jsonb` — array of bridge_unit_ids that triggered hits
   (for `"glossary_term"` and `"character"`)
 - `details jsonb not null default '{}'::jsonb`
@@ -683,7 +683,7 @@ Use `fixtures/hello-game/` (5 source units). Assert:
   glossary has a hit for.
 - `batches[0].tokenEstimate < batches[0].tokenBudgetCap`.
 - `batches[0].context.styleGuideRules.some(r => r.inclusionReason ===
-  "always_on")` — always-on rules are present.
+"always_on")` — always-on rules are present.
 
 ### 9.2 Large game: 10K units respect cap, scene-aware
 
@@ -693,7 +693,7 @@ a synthetic 10K-unit bridge with explicit scene ids. Assert:
 - `batches.length >= 5`.
 - For every `b in batches`, `b.tokenEstimate <= b.tokenBudgetCap`.
 - For every `b in batches`, `b.context.glossaryTerms.length === 0 ||
-  every term has a non-empty hitBridgeUnitIds`.
+every term has a non-empty hitBridgeUnitIds`.
 - Per-scene continuity: when a scene is split, the consecutive batches with
   that `sceneId` share an unbroken `sceneSplitIndex` sequence 1..N.
 
@@ -733,7 +733,7 @@ Style guide with two always-on rules + two `dialogue`-only rules + two
 
 - Both always-on rules present.
 - Both `dialogue` rules present, each with `inclusionReason ===
-  "category_match"`.
+"category_match"`.
 - No `system`-only rules present.
 
 ### 9.8 Character map absence (ITOTORI-014 not ready)

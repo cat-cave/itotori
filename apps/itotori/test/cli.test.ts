@@ -354,6 +354,61 @@ describe("Itotori CLI handlers", () => {
     });
   });
 
+  it("invokes the batch planner CLI handler and writes the plan output", async () => {
+    const services = servicesFixture();
+    const project = projectFixture();
+    const bridge = {
+      ...project.bridge,
+      units: [
+        {
+          bridgeUnitId: "bridge-unit-cli",
+          sourceUnitKey: "cli.line.001",
+          occurrenceId: "occ-cli",
+          sourceHash: "hash-cli",
+          sourceLocale: "ja-JP" as const,
+          sourceText: "こんにちは",
+          textSurface: "dialogue" as const,
+          protectedSpans: [],
+          patchRef: {
+            assetId: "asset.json",
+            writeMode: "replace" as const,
+            sourceUnitKey: "cli.line.001",
+          },
+        },
+      ],
+    };
+    const projectWithUnit = { ...project, bridge };
+    const reads = new Map<string, unknown>([["project.json", projectWithUnit]]);
+    const writes = new Map<string, unknown>();
+
+    await runItotoriCliCommand(
+      [
+        "plan-batches",
+        "--project",
+        "project.json",
+        "--locale",
+        "en-US",
+        "--output",
+        "plan.json",
+        "--dry-run",
+      ],
+      {
+        io: jsonStoreFixture(reads, writes),
+        migrateDatabase: vi.fn(async () => {}),
+        withServices: async (callback) => await callback(services),
+      },
+    );
+
+    expect(services.batchPlanner.loadContext).toHaveBeenCalledTimes(1);
+    expect(services.batchPlanner.persist).not.toHaveBeenCalled();
+    const result = writes.get("plan.json") as {
+      batches: unknown[];
+      summary: { batchCount: number };
+    };
+    expect(result.summary.batchCount).toBe(1);
+    expect(result.batches).toHaveLength(1);
+  });
+
   it("runs the recorded style-guide fixture flow and writes the persisted summary", async () => {
     const services = servicesFixture();
     const fixture = styleGuideConversationFixture();
@@ -474,6 +529,13 @@ function servicesFixture(): ItotoriCliServices {
     },
     styleGuideFixtureFlow: {
       run: vi.fn(async () => styleGuideFixtureFlowResult),
+    },
+    batchPlanner: {
+      loadContext: vi.fn(async () => ({
+        sourceRevisionId: "bridge-1:bundle-revision",
+        glossary: [],
+      })),
+      persist: vi.fn(async () => {}),
     },
   };
 }

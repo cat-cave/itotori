@@ -5,6 +5,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -2771,5 +2772,121 @@ export const feedbackReportEvidence = pgTable(
   (table) => [
     index("itotori_feedback_evidence_report_idx").on(table.feedbackReportId),
     index("itotori_feedback_evidence_source_idx").on(table.feedbackSourceId),
+  ],
+);
+
+export const translationBatchContextRefKindValues = {
+  glossaryTerm: "glossary_term",
+  styleRule: "style_rule",
+  character: "character",
+  sceneSummary: "scene_summary",
+  priorExample: "prior_example",
+  sourceUnitKeyPrefix: "source_unit_key_prefix",
+} as const;
+
+export type TranslationBatchContextRefKind =
+  (typeof translationBatchContextRefKindValues)[keyof typeof translationBatchContextRefKindValues];
+
+export const translationBatchContextRefInclusionReasonValues = {
+  hit: "hit",
+  alwaysOn: "always_on",
+  categoryMatch: "category_match",
+  explicitPin: "explicit_pin",
+  sameSpeaker: "same_speaker",
+  sameScene: "same_scene",
+  sameSurfaceKind: "same_surfaceKind",
+  fallbackGrouping: "fallback_grouping",
+} as const;
+
+export type TranslationBatchContextRefInclusionReason =
+  (typeof translationBatchContextRefInclusionReasonValues)[keyof typeof translationBatchContextRefInclusionReasonValues];
+
+export const translationBatches = pgTable(
+  "itotori_translation_batches",
+  {
+    batchId: text("batch_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    batchOrdinal: integer("batch_ordinal").notNull(),
+    tokenEstimate: integer("token_estimate").notNull(),
+    tokenBudgetCap: integer("token_budget_cap").notNull(),
+    sceneId: text("scene_id"),
+    sceneSplitIndex: integer("scene_split_index"),
+    routeId: text("route_id"),
+    modelProviderFamily: text("model_provider_family").notNull(),
+    modelId: text("model_id").notNull(),
+    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
+    modelMaxOutputTokens: integer("model_max_output_tokens"),
+    modelTargetFillRatio: numeric("model_target_fill_ratio", { precision: 4, scale: 3 }).notNull(),
+    modelPromptOverheadTokens: integer("model_prompt_overhead_tokens").notNull(),
+    tokenEstimatorId: text("token_estimator_id").notNull(),
+    nearCapWarning: boolean("near_cap_warning").notNull().default(false),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_translation_batches_triple_ordinal_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.batchOrdinal,
+    ),
+    index("itotori_translation_batches_triple_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+    ),
+    index("itotori_translation_batches_scene_idx").on(table.sceneId),
+  ],
+);
+
+export const translationBatchUnits = pgTable(
+  "itotori_translation_batch_units",
+  {
+    batchId: text("batch_id")
+      .notNull()
+      .references(() => translationBatches.batchId, { onDelete: "cascade" }),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    sourceUnitKey: text("source_unit_key").notNull(),
+    sourceHash: text("source_hash").notNull(),
+    unitOrdinal: integer("unit_ordinal").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.batchId, table.bridgeUnitId] }),
+    index("itotori_translation_batch_units_bridge_unit_idx").on(table.bridgeUnitId),
+    index("itotori_translation_batch_units_batch_ordinal_idx").on(table.batchId, table.unitOrdinal),
+  ],
+);
+
+export const translationBatchContextRefs = pgTable(
+  "itotori_translation_batch_context_refs",
+  {
+    batchId: text("batch_id")
+      .notNull()
+      .references(() => translationBatches.batchId, { onDelete: "cascade" }),
+    refKind: text("ref_kind").notNull(),
+    refId: text("ref_id").notNull(),
+    refSecondaryId: text("ref_secondary_id").notNull().default(""),
+    inclusionReason: text("inclusion_reason").notNull(),
+    hitBridgeUnitIds: jsonb("hit_bridge_unit_ids").$type<string[] | null>(),
+    details: jsonb("details")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.batchId, table.refKind, table.refId, table.refSecondaryId],
+    }),
+    index("itotori_translation_batch_context_refs_ref_idx").on(table.refKind, table.refId),
   ],
 );
