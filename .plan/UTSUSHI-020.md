@@ -457,7 +457,7 @@ fn _wants_write(vfs: &dyn RuntimeVfs) {
 - A follow-up node (likely UTSUSHI-103 or UTSUSHI-120) will decide whether
   `RuntimeAdapter::run` should take a `&dyn RuntimeVfs` in its
   `RuntimeRequest`. UTSUSHI-020 only adds a `vfs:
-  Option<Arc<dyn RuntimeVfs>>` field to `RuntimeRequest` as an additive,
+Option<Arc<dyn RuntimeVfs>>` field to `RuntimeRequest` as an additive,
   optional handoff so downstream nodes can rely on the field existing.
 
 ```rust
@@ -741,7 +741,7 @@ Single PR; owns the substrate work:
 - `AssetId`, `AssetBytes`, `RuntimeVfs`, `AssetPackage`, `MountedVfs`,
   `PlaintextDirPackage`, `VfsError`, all enums.
 - Additive change to `RuntimeRequest` (new `vfs: Option<Arc<dyn
-  RuntimeVfs>>` field).
+RuntimeVfs>>` field).
 - All unit + integration + redaction tests under utsushi-core.
 - Schema registry update for `utsushi.vfs.*` semantic codes (the conformance
   schema package's allowed-code list, validated by `just schema`).
