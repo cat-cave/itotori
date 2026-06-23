@@ -444,7 +444,7 @@ mod tests {
     }
 
     #[test]
-    fn capabilities_command_reports_browser_host_diagnostic_without_launching_smoke() {
+    fn capabilities_command_reports_browser_required_diagnostic_at_error_severity() {
         let root = temp_dir("browser-host-diagnostic");
         let private_missing_browser = root.join("private-browser-bin");
         let adapter = utsushi_fixture::BrowserLaunchAdapter::with_browser_program(
@@ -483,6 +483,7 @@ mod tests {
             .find(|diagnostic| diagnostic["diagnosticKind"] == "browser_host_availability")
             .unwrap();
         assert_eq!(diagnostic["status"], "unavailable");
+        assert_eq!(diagnostic["severity"], "error");
         assert_eq!(diagnostic["details"]["hostAvailable"], false);
         assert_eq!(
             diagnostic["details"]["browserSource"],
@@ -494,13 +495,129 @@ mod tests {
         );
         assert_eq!(
             diagnostic["details"]["errorCode"],
-            "utsushi.browser_host_unavailable"
+            "utsushi.browser.chromium_unavailable"
         );
         assert_eq!(diagnostic["details"]["capability"], "browser_launch");
         let report_string = serde_json::to_string(&report).unwrap();
         assert!(!report_string.contains(root.to_string_lossy().as_ref()));
         assert!(!report_string.contains(private_missing_browser.to_string_lossy().as_ref()));
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn capabilities_command_reports_nwjs_as_research_tier() {
+        let root = temp_dir("nwjs-research-tier");
+        let adapter = utsushi_fixture::NwjsLaunchAdapter::new();
+        let registry = registry_with(&adapter);
+        let output = root.join("capabilities.json");
+
+        run_cli_with_registry(
+            &[
+                "capabilities".to_string(),
+                "--output".to_string(),
+                output.display().to_string(),
+            ],
+            &registry,
+        )
+        .unwrap();
+
+        let report: Value = serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap();
+        let adapter_report = &report["runtimeAdapters"][0];
+        assert_eq!(
+            adapter_report["adapterName"],
+            utsushi_fixture::NwjsLaunchAdapter::NAME
+        );
+        assert_eq!(adapter_report["capabilities"].as_array().unwrap().len(), 0);
+        let diagnostic = adapter_report["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|diagnostic| diagnostic["diagnosticKind"] == "research_tier_status")
+            .expect("research_tier_status diagnostic is required");
+        assert_eq!(diagnostic["status"], "unsupported");
+        assert_eq!(diagnostic["severity"], "info");
+        assert_eq!(
+            diagnostic["details"]["errorCode"],
+            "utsushi.runtime.research_tier_unsupported"
+        );
+        assert_eq!(diagnostic["details"]["runtimeTier"], "research");
+        assert_eq!(diagnostic["details"]["capability"], "browser_launch");
+        assert_eq!(
+            diagnostic["details"]["supersededBy"],
+            utsushi_fixture::BrowserLaunchAdapter::NAME
+        );
+        let first_limitation = adapter_report["limitations"]
+            .as_array()
+            .unwrap()
+            .first()
+            .and_then(Value::as_str)
+            .unwrap();
+        assert!(
+            first_limitation.contains("research-tier"),
+            "first limitation must mark research-tier: {first_limitation}",
+        );
+        assert!(
+            first_limitation.contains("not advertised as an alpha capability"),
+            "first limitation must call out alpha exclusion: {first_limitation}",
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn capabilities_command_keeps_paths_redacted_in_all_new_diagnostics() {
+        // Parameterized over (broken UTSUSHI_BROWSER_BIN-equivalent
+        // configured path, broken configured path, NW.js research-tier).
+        // Each path-sensitive scenario must produce a capability JSON whose
+        // serialized representation does not contain the operator-private
+        // temp-dir prefix.
+        for scenario in ["browser-broken-configured", "nwjs-research"] {
+            let root = temp_dir(scenario);
+            let output = root.join("capabilities.json");
+            let private_path = root.join("private-browser-bin");
+            let report: Value = match scenario {
+                "browser-broken-configured" => {
+                    let adapter = utsushi_fixture::BrowserLaunchAdapter::with_browser_program(
+                        private_path.clone(),
+                    );
+                    let registry = registry_with(&adapter);
+                    run_cli_with_registry(
+                        &[
+                            "capabilities".to_string(),
+                            "--output".to_string(),
+                            output.display().to_string(),
+                        ],
+                        &registry,
+                    )
+                    .unwrap();
+                    serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap()
+                }
+                "nwjs-research" => {
+                    let adapter = utsushi_fixture::NwjsLaunchAdapter::new();
+                    let registry = registry_with(&adapter);
+                    run_cli_with_registry(
+                        &[
+                            "capabilities".to_string(),
+                            "--output".to_string(),
+                            output.display().to_string(),
+                        ],
+                        &registry,
+                    )
+                    .unwrap();
+                    serde_json::from_str(&fs::read_to_string(&output).unwrap()).unwrap()
+                }
+                _ => unreachable!(),
+            };
+            let report_string = serde_json::to_string(&report).unwrap();
+            assert!(
+                !report_string.contains(root.to_string_lossy().as_ref()),
+                "scenario {scenario} leaked temp-dir prefix into capability JSON",
+            );
+            assert!(
+                !report_string.contains(private_path.to_string_lossy().as_ref()),
+                "scenario {scenario} leaked private adapter path into capability JSON",
+            );
+            let _ = fs::remove_dir_all(root);
+        }
     }
 
     #[test]
