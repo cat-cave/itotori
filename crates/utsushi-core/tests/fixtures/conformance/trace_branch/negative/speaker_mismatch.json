@@ -1,0 +1,63 @@
+{
+  "adapterId": "utsushi-synthetic",
+  "goldenTrace": [
+    {
+      "eventId": "g-001",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000501",
+      "text": "Hello",
+      "speaker": "Akari",
+      "orderIndex": 0
+    },
+    {
+      "eventId": "g-002",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000502",
+      "text": "Welcome",
+      "speaker": "Akari",
+      "orderIndex": 1
+    },
+    {
+      "eventId": "g-003",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000503",
+      "text": "Question",
+      "speaker": "Kaoru",
+      "orderIndex": 2
+    },
+    {
+      "eventId": "g-004",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000504",
+      "text": "Answer",
+      "speaker": "Akari",
+      "orderIndex": 3
+    }
+  ],
+  "observedTrace": [
+    {
+      "eventId": "o-001",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000501",
+      "text": "Hello",
+      "speaker": "Akari",
+      "orderIndex": 0
+    },
+    {
+      "eventId": "o-002",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000502",
+      "text": "Welcome",
+      "speaker": "Akarii",
+      "orderIndex": 1
+    },
+    {
+      "eventId": "o-003",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000503",
+      "text": "Question",
+      "speaker": "Kaoru",
+      "orderIndex": 2
+    },
+    {
+      "eventId": "o-004",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000504",
+      "text": "Answer",
+      "speaker": "Akari",
+      "orderIndex": 3
+    }
+  ]
+}

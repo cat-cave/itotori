@@ -1,0 +1,54 @@
+{
+  "adapterId": "utsushi-synthetic",
+  "goldenTrace": [
+    {
+      "eventId": "g-001",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000301",
+      "text": "Hello",
+      "orderIndex": 0
+    },
+    {
+      "eventId": "g-002",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000302",
+      "text": "Greetings",
+      "orderIndex": 1
+    },
+    {
+      "eventId": "g-003",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000303",
+      "text": "Question",
+      "orderIndex": 2
+    },
+    {
+      "eventId": "g-004",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000304",
+      "text": "Answer",
+      "orderIndex": 3
+    }
+  ],
+  "observedTrace": [
+    {
+      "eventId": "o-001",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000301",
+      "text": "Hello",
+      "orderIndex": 0
+    },
+    {
+      "eventId": "o-002",
+      "text": "Greetings",
+      "orderIndex": 1
+    },
+    {
+      "eventId": "o-003",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000303",
+      "text": "Question",
+      "orderIndex": 2
+    },
+    {
+      "eventId": "o-004",
+      "bridgeUnitId": "0190a000-0000-7000-8000-000000000304",
+      "text": "Answer",
+      "orderIndex": 3
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+{
+  "adapterId": "utsushi-synthetic",
+  "options": { "replayLogRunId": "run-positive-001" },
+  "goldenBranches": [
+    {
+      "branchId": "branch-001",
+      "choiceIndexPath": [0, 1],
+      "expectedOutcome": "happy_end"
+    },
+    {
+      "branchId": "branch-002",
+      "choiceIndexPath": [1, 0],
+      "expectedOutcome": "true_route"
+    },
+    {
+      "branchId": "branch-003",
+      "choiceIndexPath": [0, 0, 2],
+      "expectedOutcome": "branch_to_chapter_2"
+    }
+  ],
+  "observedBranches": [
+    {
+      "branchId": "branch-001",
+      "choiceIndexPath": [0, 1],
+      "observedOutcome": "happy_end"
+    },
+    {
+      "branchId": "branch-002",
+      "choiceIndexPath": [1, 0],
+      "observedOutcome": "true_route"
+    },
+    {
+      "branchId": "branch-003",
+      "choiceIndexPath": [0, 0, 2],
+      "observedOutcome": "branch_to_chapter_2"
+    }
+  ]
+}
