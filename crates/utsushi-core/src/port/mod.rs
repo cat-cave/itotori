@@ -16,6 +16,7 @@
 //!
 //! See the plan in `.plan/UTSUSHI-103.md` for the design rationale.
 
+pub mod conformance;
 pub mod diagnostics;
 pub mod manifest;
 pub mod runner;
