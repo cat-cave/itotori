@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "0.1.0-alpha",
+  "adapterId": "utsushi-synthetic",
+  "abiVersion": 1,
+  "supportedProfiles": [
+    {
+      "id": "text-trace",
+      "requiredSubsystems": ["text_sink"],
+      "evidenceTierCeiling": "E1"
+    }
+  ],
+  "optionalExtensions": [
+    {
+      "profileId": "frame-capture",
+      "key": "rgba8",
+      "note": "Extension references a profile that is not declared."
+    }
+  ]
+}

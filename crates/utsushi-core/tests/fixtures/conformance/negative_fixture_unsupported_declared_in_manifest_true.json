@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "0.1.0-alpha",
+  "adapterId": "utsushi-synthetic",
+  "profileId": "text-trace",
+  "outcome": {
+    "kind": "unsupported",
+    "semanticCode": "utsushi.conformance.profile_not_declared",
+    "declaredInManifest": true
+  },
+  "evidence": [],
+  "recordedAt": "2026-06-23T12:00:00Z"
+}

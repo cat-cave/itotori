@@ -215,14 +215,14 @@ impl ProfileId {
 Per-profile ceilings (the audit-focus "skipped features hidden as passing
 checks" defense lives partly here):
 
-| Profile               | Subsystems                              | Ceiling |
-| --------------------- | --------------------------------------- | ------- |
-| `text-trace`          | TextSink                                | E1      |
-| `branch-capture`      | TextSink                                | E1      |
-| `snapshot-restore`    | SnapshotPrimitives (reserved for 023)   | E1      |
-| `frame-capture`       | FrameSink, ArtifactStore                | E2      |
-| `recording-capture`   | FrameSink, ArtifactStore                | E2      |
-| `deterministic-replay`| ReplayLog, LogicalClock, TextSink       | E1      |
+| Profile                | Subsystems                            | Ceiling |
+| ---------------------- | ------------------------------------- | ------- |
+| `text-trace`           | TextSink                              | E1      |
+| `branch-capture`       | TextSink                              | E1      |
+| `snapshot-restore`     | SnapshotPrimitives (reserved for 023) | E1      |
+| `frame-capture`        | FrameSink, ArtifactStore              | E2      |
+| `recording-capture`    | FrameSink, ArtifactStore              | E2      |
+| `deterministic-replay` | ReplayLog, LogicalClock, TextSink     | E1      |
 
 `SubsystemRequirement` is a small enum naming substrate dependencies the
 profile rests on, used by `ConformanceManifest::validate` to make a
@@ -612,32 +612,32 @@ cross-validation in §7.2 does.
 
 ## 6. Validation rules summary
 
-| Rule                                                        | Where checked                                          | Code                                                       |
-| ----------------------------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------- |
-| Manifest schema version literal                             | `ConformanceManifest::validate`                        | `utsushi.conformance.unsupported_schema_version`           |
-| Manifest adapter id pattern                                 | `ConformanceManifest::validate`                        | `utsushi.conformance.adapter_id_malformed`                 |
-| Manifest ABI version known                                  | `ConformanceManifest::validate`                        | `utsushi.conformance.unknown_abi_version`                  |
-| Manifest non-empty profile list                             | `ConformanceManifest::validate`                        | `utsushi.conformance.manifest_empty`                       |
-| Profile ids unique                                          | `ConformanceManifest::validate`                        | `utsushi.conformance.duplicate_profile`                    |
-| Profile required subsystems superset                        | `ConformanceManifest::validate`                        | `utsushi.conformance.missing_subsystem`                    |
-| Profile subsystem duplicates                                | `ConformanceManifest::validate`                        | `utsushi.conformance.duplicate_subsystem`                  |
-| Profile evidence ceiling <= profile id ceiling              | `ConformanceManifest::validate`                        | `utsushi.conformance.evidence_tier_above_profile_ceiling`  |
-| Extension key kebab pattern                                 | `ConformanceManifest::validate`                        | `utsushi.conformance.extension_key_malformed`              |
-| Extension references a declared profile                    | `ConformanceManifest::validate`                        | `utsushi.conformance.orphaned_extension`                   |
-| Extension key unique per profile                            | `ConformanceManifest::validate`                        | `utsushi.conformance.duplicate_extension`                  |
-| Result schema version literal                               | `ConformanceResult::validate`                          | `utsushi.conformance.unsupported_schema_version`           |
-| Result recorded_at RFC3339                                  | `ConformanceResult::validate`                          | `utsushi.conformance.recorded_at_malformed`                |
-| Evidence ref URI/format                                     | `EvidenceRef::validate`                                | `utsushi.conformance.evidence_ref_invalid`                 |
-| Pass has non-empty evidence                                 | `ConformanceResult::validate`                          | `utsushi.conformance.pass_without_evidence`                |
-| Pass tier <= profile ceiling                                | `ConformanceResult::validate`                          | `utsushi.conformance.evidence_tier_above_profile_ceiling`  |
-| Outcome semantic code shape                                 | `ConformanceResult::validate`                          | `utsushi.conformance.malformed_semantic_code`              |
-| Unsupported with `declared_in_manifest=true`               | `ConformanceResult::validate`                          | `utsushi.conformance.declared_profile_reported_as_unsupported` |
-| Result adapter id matches manifest                          | `cross_validate_results_against_manifest` (§7.2)      | `utsushi.conformance.adapter_id_mismatch`                  |
-| Declared profile reported as Skip                           | `cross_validate_results_against_manifest`              | `utsushi.conformance.declared_profile_skipped`             |
-| Declared profile reported as Unsupported                    | `cross_validate_results_against_manifest`              | `utsushi.conformance.declared_profile_not_declared` (sym)  |
-| Pass tier <= manifest profile ceiling                       | `cross_validate_results_against_manifest`              | `utsushi.conformance.pass_above_manifest_ceiling`          |
-| Manifest profile missing from results                       | `cross_validate_results_against_manifest`              | `utsushi.conformance.profile_not_reported`                 |
-| Result profile not in manifest                              | `cross_validate_results_against_manifest`              | `utsushi.conformance.profile_not_declared`                 |
+| Rule                                           | Where checked                                    | Code                                                           |
+| ---------------------------------------------- | ------------------------------------------------ | -------------------------------------------------------------- |
+| Manifest schema version literal                | `ConformanceManifest::validate`                  | `utsushi.conformance.unsupported_schema_version`               |
+| Manifest adapter id pattern                    | `ConformanceManifest::validate`                  | `utsushi.conformance.adapter_id_malformed`                     |
+| Manifest ABI version known                     | `ConformanceManifest::validate`                  | `utsushi.conformance.unknown_abi_version`                      |
+| Manifest non-empty profile list                | `ConformanceManifest::validate`                  | `utsushi.conformance.manifest_empty`                           |
+| Profile ids unique                             | `ConformanceManifest::validate`                  | `utsushi.conformance.duplicate_profile`                        |
+| Profile required subsystems superset           | `ConformanceManifest::validate`                  | `utsushi.conformance.missing_subsystem`                        |
+| Profile subsystem duplicates                   | `ConformanceManifest::validate`                  | `utsushi.conformance.duplicate_subsystem`                      |
+| Profile evidence ceiling <= profile id ceiling | `ConformanceManifest::validate`                  | `utsushi.conformance.evidence_tier_above_profile_ceiling`      |
+| Extension key kebab pattern                    | `ConformanceManifest::validate`                  | `utsushi.conformance.extension_key_malformed`                  |
+| Extension references a declared profile        | `ConformanceManifest::validate`                  | `utsushi.conformance.orphaned_extension`                       |
+| Extension key unique per profile               | `ConformanceManifest::validate`                  | `utsushi.conformance.duplicate_extension`                      |
+| Result schema version literal                  | `ConformanceResult::validate`                    | `utsushi.conformance.unsupported_schema_version`               |
+| Result recorded_at RFC3339                     | `ConformanceResult::validate`                    | `utsushi.conformance.recorded_at_malformed`                    |
+| Evidence ref URI/format                        | `EvidenceRef::validate`                          | `utsushi.conformance.evidence_ref_invalid`                     |
+| Pass has non-empty evidence                    | `ConformanceResult::validate`                    | `utsushi.conformance.pass_without_evidence`                    |
+| Pass tier <= profile ceiling                   | `ConformanceResult::validate`                    | `utsushi.conformance.evidence_tier_above_profile_ceiling`      |
+| Outcome semantic code shape                    | `ConformanceResult::validate`                    | `utsushi.conformance.malformed_semantic_code`                  |
+| Unsupported with `declared_in_manifest=true`   | `ConformanceResult::validate`                    | `utsushi.conformance.declared_profile_reported_as_unsupported` |
+| Result adapter id matches manifest             | `cross_validate_results_against_manifest` (§7.2) | `utsushi.conformance.adapter_id_mismatch`                      |
+| Declared profile reported as Skip              | `cross_validate_results_against_manifest`        | `utsushi.conformance.declared_profile_skipped`                 |
+| Declared profile reported as Unsupported       | `cross_validate_results_against_manifest`        | `utsushi.conformance.declared_profile_not_declared` (sym)      |
+| Pass tier <= manifest profile ceiling          | `cross_validate_results_against_manifest`        | `utsushi.conformance.pass_above_manifest_ceiling`              |
+| Manifest profile missing from results          | `cross_validate_results_against_manifest`        | `utsushi.conformance.profile_not_reported`                     |
+| Result profile not in manifest                 | `cross_validate_results_against_manifest`        | `utsushi.conformance.profile_not_declared`                     |
 
 The hard-constraint "Skipped ≠ Pass" lives in the type system itself
 (separate `Pass` and `Skip` variants), but the audit-focus item is also
@@ -807,7 +807,7 @@ A `#[cfg(test)]` assertion confirms every `ConformanceError::semantic_code()`
 output is a member of `codes::ALL`, mirroring the `sink::errors` test
 precedent.
 
-### 8.1 Mapping to kaifuu.* codes
+### 8.1 Mapping to kaifuu.\* codes
 
 The audit focus mentions mapping `utsushi.conformance.*` to
 `kaifuu.*` where applicable. The mapping is documented (not codified)
@@ -1133,6 +1133,7 @@ Rejection:
 - `result_validate_rejects_evidence_ref_bridge_unit_with_local_path_substring()`.
 
 ### 12.4 Cross-validation (in
+
 `crates/utsushi-core/tests/conformance_cross_validation.rs`)
 
 - `cross_validate_accepts_manifest_and_matching_pass_result()`.
@@ -1155,6 +1156,7 @@ Rejection:
 - `conformance_error_implements_std_error()`.
 
 ### 12.6 Negative fixtures (integration,
+
 `crates/utsushi-core/tests/conformance_fixtures.rs`)
 
 Stand-alone JSON fixtures committed under
@@ -1186,12 +1188,13 @@ macros) so reviewers can read them as JSON and so a future TypeScript
 mirror has a clear input.
 
 ### 12.7 Bridge-schema integration smoke (in
+
 `packages/localization-bridge-schema/test/`)
 
 A single TS test:
 
 - `runtime evidence report referencing a conformance fixture validates
-  through assertRuntimeEvidenceReportV02` —
+through assertRuntimeEvidenceReportV02` —
   builds a runtime evidence report that references a conformance
   fixture by hash through the existing `conformance_fixture` reference
   comparison kind. This proves the existing bridge schema already

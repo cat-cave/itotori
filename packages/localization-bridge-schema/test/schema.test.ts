@@ -2663,6 +2663,40 @@ describe("localization bridge schema guards", () => {
     expect(() => assertRuntimeEvidenceReportV02(report)).toThrow(/selectedOptionId/);
   });
 
+  it("accepts a runtime evidence report referencing a conformance fixture via the existing reference comparison kind (UTSUSHI-026 smoke)", () => {
+    // UTSUSHI-026 introduces the Rust-side ConformanceManifest/Result
+    // contract but defers the TypeScript schema mirror to UTSUSHI-030.
+    // This smoke test proves the existing bridge schema already
+    // accommodates conformance reports through the
+    // `conformance_fixture` reference comparison kind without any
+    // schema change.
+    const report = traceOnlyReferenceFidelityReport();
+    report.referenceComparisons = [
+      {
+        comparisonId: "019ed003-0000-7000-8000-00000000e441",
+        comparisonKind: "conformance_fixture",
+        status: "passed",
+        scope: "utsushi-synthetic text-trace profile",
+        coveredBridgeUnitRefs: [
+          {
+            bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+            sourceUnitKey: "script/prologue#line-001",
+          },
+        ],
+        artifactRef: {
+          artifactId: "019ed003-0000-7000-8000-00000000e451",
+          artifactKind: "reference_comparison",
+          uri: "artifacts/utsushi/runtime/synthetic-run/conformance-reports/text-trace-pass.json",
+          hash: "sha256:9f19ff8b1b206d23c4df42dc35913c9fdb14d5ec4a85139d368c39942c197f51",
+          mediaType: "application/json",
+          byteSize: 2048,
+        },
+      },
+    ];
+
+    expect(() => assertRuntimeEvidenceReportV02(report)).not.toThrow();
+  });
+
   it("rejects invalid patch exports", () => {
     expect(() => assertPatchExport({ schemaVersion: "0.1.0" })).toThrow();
   });

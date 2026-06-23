@@ -1,0 +1,41 @@
+{
+  "manifest": {
+    "schemaVersion": "0.1.0-alpha",
+    "adapterId": "utsushi-synthetic",
+    "abiVersion": 1,
+    "supportedProfiles": [
+      {
+        "id": "frame-capture",
+        "requiredSubsystems": ["frame_sink", "artifact_store"],
+        "evidenceTierCeiling": "E2"
+      }
+    ],
+    "optionalExtensions": [
+      {
+        "profileId": "frame-capture",
+        "key": "rgba8",
+        "note": "Adapter emits frames as 8-bit RGBA captures."
+      }
+    ]
+  },
+  "results": [
+    {
+      "schemaVersion": "0.1.0-alpha",
+      "adapterId": "utsushi-synthetic",
+      "profileId": "frame-capture",
+      "outcome": {
+        "kind": "pass",
+        "evidenceTier": "E2"
+      },
+      "evidence": [
+        {
+          "artifactKind": "runtimeArtifact",
+          "kind": "frame_capture",
+          "uri": "artifacts/utsushi/runtime/synthetic-run/frame-captures/frame-001.png",
+          "artifactId": "frame-001"
+        }
+      ],
+      "recordedAt": "2026-06-23T12:00:00Z"
+    }
+  ]
+}

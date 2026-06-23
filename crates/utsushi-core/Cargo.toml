@@ -5,6 +5,14 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Documented opt-in marker for downstream test crates that want an
+# explicit dev-dep handshake when consuming the conformance fixture
+# builders (UTSUSHI-027/028/029). The builders themselves are
+# unconditionally `pub` so the in-crate integration tests reach them
+# without a feature pin.
+conformance-fixtures = []
+
 [dependencies]
 bytes.workspace = true
 serde.workspace = true

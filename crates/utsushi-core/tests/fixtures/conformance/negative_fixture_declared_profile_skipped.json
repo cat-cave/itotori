@@ -1,0 +1,29 @@
+{
+  "manifest": {
+    "schemaVersion": "0.1.0-alpha",
+    "adapterId": "utsushi-synthetic",
+    "abiVersion": 1,
+    "supportedProfiles": [
+      {
+        "id": "text-trace",
+        "requiredSubsystems": ["text_sink"],
+        "evidenceTierCeiling": "E1"
+      }
+    ],
+    "optionalExtensions": []
+  },
+  "results": [
+    {
+      "schemaVersion": "0.1.0-alpha",
+      "adapterId": "utsushi-synthetic",
+      "profileId": "text-trace",
+      "outcome": {
+        "kind": "skip",
+        "semanticCode": "utsushi.conformance.profile_not_reported",
+        "reason": "suite filter excluded text-trace"
+      },
+      "evidence": [],
+      "recordedAt": "2026-06-23T12:00:00Z"
+    }
+  ]
+}

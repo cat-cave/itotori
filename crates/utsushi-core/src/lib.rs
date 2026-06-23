@@ -15,6 +15,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
 pub mod clock;
+pub mod conformance;
 pub mod input;
 pub mod port;
 pub mod replay;
@@ -22,6 +23,12 @@ pub mod sink;
 pub mod vfs;
 
 pub use clock::{ClockOrigin, LogicalClock, LogicalClockTick};
+pub use conformance::{
+    CONFORMANCE_SCHEMA_VERSION, ConformanceAbiVersion, ConformanceError, ConformanceManifest,
+    ConformanceProfile, ConformanceResult, EvidenceRef, ProfileExtension, ProfileId, ResultOutcome,
+    SubsystemRequirement, cross_validate_conformance_manifest_against_port_manifest,
+    cross_validate_results_against_manifest,
+};
 pub use input::{
     CLOCK_BACKTRACK_CODE, ChoiceIndex, INPUT_INVALID_PAYLOAD_CODE, INPUT_UNSUPPORTED_KIND_CODE,
     InputError, InputEvent, InputKind, MenuTarget, PointerButton, REPLAY_NON_MONOTONIC_TICK_CODE,
