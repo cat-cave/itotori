@@ -1,0 +1,289 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-103-20260623T183755Z",
+  "generatedAt": "2026-06-23T18:37:56Z",
+  "spec": {
+    "id": "UTSUSHI-103",
+    "title": "Engine-port runner crate template and ABI conformance",
+    "branch": "spec/utsushi-103",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-103",
+    "commit": "2239ccc"
+  },
+  "auditor": {
+    "name": "utsushi-103-engine-port-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "UTSUSHI-103 Slice A delivers the engine-neutral substrate as planned. The new `utsushi_core::port` module (`manifest`, `trait_`, `runner`, `diagnostics`, `conformance`, `mod`) is engine-neutral: a grep for xp3/kirikiri/kag/rgss/rpgmaker/reallive/siglus across the module returns only one match, a doc-comment example in manifest.rs. `EnginePort` declares `const MANIFEST: PortManifest` (the const associated value justifies the generic `Runner<P>` choice the plan documents in section 10.4); the four required lifecycle methods (launch, observe, capture, shutdown) have no default impl, so omission is a compile error. `jump` defaults to `Err(CapabilityUnsupported { reason: DefaultUnimplemented })`. `PortManifest::validate` enforces id shape, semver triple, required-method set equality with `REQUIRED_LIFECYCLE_STAGES`, optional-method membership in `OPTIONAL_LIFECYCLE_STAGES`, capability/lifecycle-method coherence (drift caught as `ManifestCapabilityDrift::UnclaimedImplementation`), tier ceiling, env-key shape, env-field deduplication, and forbidden env shapes — `EnvFieldShape::{Path, LocalPath, Secret}` rejected at construct-time via `EnvFieldSchema::validate` (test `validate_rejects_env_schema_with_*_shape`), with `EnvFieldSchema::validate_value` additionally filtering runtime values through `looks_like_local_path`. `Runner::validate_manifest` layers the ABI membership check (`SUPPORTED_ABI_VERSIONS = &[1]`) and is called from every `run_*` entry. `run_lifecycle` enforces env values, manages cancellation, drains observations under a 4096-event cap, re-validates each `ObservationHookEvent`, and always invokes `shutdown` after the primary flow (primary error promoted, then shutdown error). `ensure_capture_within_root` rejects an out-of-root artifact path with `ArtifactRootViolation`. `RunnerCancellation` is cooperative (`Arc<AtomicBool>` SeqCst). `RuntimeRequest` is extended additively (`cancellation`, `replay_log`, `sinks`), with `Debug` redacted via static labels (test `runtime_request_debug_does_not_leak_cancellation_or_replay_log`). The forward-additive trait stubs (`ReplayLogHandle`, `RuntimeSinks`) are empty, `#[doc(hidden)]`, and tagged with owning-node TODOs as promised. `looks_like_local_path` was widened crate-private -> `pub`; the diff is one line plus an audit-grade doc comment, with no signature change, satisfying the minimal-widening bar. `EnginePortAdapter<P>` correctly hides the generic behind a `Mutex<P>` and a pre-validated descriptor; `discover_branches` correctly falls back to the legacy `RuntimeAdapter` default. utsushi-fixture has zero diff vs main (`git diff main..HEAD -- crates/utsushi-fixture/` is empty), satisfying the explicit Slice B deferral. `launch_adapters.rs` correctly remains unmigrated per the plan. Verification reruns from the worktree match the worker's report: `cargo test -p utsushi-core engine_port` passes 3 integration tests plus 1 unit test (other test files are filtered out by the binary filter), `cargo test -p utsushi-core` passes 117 (84 lib + 17 engine_port unit + 16 vfs_synthetic_package), `cargo test -p utsushi-fixture` passes 22, `cargo clippy -p utsushi-core --all-targets -- -D warnings` clean, `cargo fmt --check` clean, `just check` green (524 nodes, schema gates, typecheck, workspace check). Acceptance criteria: (1) the conformance harness exists and the synthetic `ReferencePort` passes the full positive lifecycle (launch + 1 observation + capture under managed root + idempotent shutdown + cancellation observance + Jump-not-declared diagnostic), satisfying the Slice A clarification; (2) jump-unsupported produces typed `CapabilityUnsupported` (runner gate uses `NotYetSupported`, default trait impl uses `DefaultUnimplemented`); (3) missing required methods, unsupported ABI versions, and unredacted env values all surface as typed diagnostics through the harness; (4) the runner template lives in engine-neutral `utsushi-core::port` with no engine-specific code. Both worker deviations are acceptable: invoking `Jump` directly to catch unclaimed implementations is the only way to detect drift on a capability that the runner gate would otherwise short-circuit (an alternative architectural choice would change the trait surface; not a Slice A blocker), and reserving `DefaultUnimplemented` for the trait default path while runner-gated rejections use `NotYetSupported` is a defensible split that the integration test acknowledges by matching either variant. No P0/P1 findings. Three P2 follow-ups recorded as DAG nodes for Slice B fixture adoption, managed `RuntimeArtifactRoot` propagation through `RuntimeRequest`, and a typed diagnostic for `EnginePortAdapter`'s `BranchDiscovery` rejection (currently stringly-typed via `format!(...).into()`).",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 3,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UTSUSHI-103-F001", "UTSUSHI-103-F002", "UTSUSHI-103-F003"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-103-F001",
+      "severity": "P2",
+      "title": "Slice B fixture adoption: refactor FixtureRuntimeAdapter through EnginePortAdapter<FixtureEnginePort>",
+      "category": "acceptance_criteria",
+      "locations": [
+        {
+          "path": "crates/utsushi-fixture/src/lib.rs",
+          "symbol": "FixtureRuntimeAdapter"
+        },
+        {
+          "path": "crates/utsushi-core/src/port/mod.rs",
+          "line": 50,
+          "symbol": "EnginePortAdapter"
+        }
+      ],
+      "description": "Slice A intentionally leaves utsushi-fixture unchanged (git diff main..HEAD -- crates/utsushi-fixture/ is empty). The plan's acceptance criterion 1 reads in two phases: the conformance harness exists and a reference port passes (Slice A), and the fixture-adapter refactor lands as the reference non-synthetic consumer (Slice B). Until the fixture refactor lands, the conformance harness has only synthetic ports as evidence; the wider claim that 'the fixture port passes ABI conformance for launch, observation envelope emission, cancellation, artifact-root usage, and shutdown' has not been demonstrated against the real fixture port.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "git -C /scratch/worktrees/itotori-spec-utsushi-103 diff main..HEAD -- crates/utsushi-fixture/ returned an empty diff."
+        },
+        {
+          "kind": "file",
+          "detail": "Plan section 12 explicitly scopes the fixture refactor as Slice B (UTSUSHI-103b-fixture-adoption).",
+          "location": {
+            "path": ".plan/UTSUSHI-103.md",
+            "line": 1095
+          }
+        },
+        {
+          "kind": "test",
+          "detail": "cargo test -p utsushi-fixture continues to pass (22/22) with no behavior change because the fixture has not adopted the template."
+        }
+      ],
+      "impact": "Slice A is mergeable as substrate, but the engine-neutral conformance claim is unproven against a real engine port until Slice B lands. Engine-port crates downstream (UTSUSHI-146 utsushi-reallive, UTSUSHI-031..039) need the fixture adoption as their reference example.",
+      "actionableAcceptanceCriteria": [
+        "A new FixtureEnginePort struct implements EnginePort with a const MANIFEST declaring [Launch, Observe, Capture, Shutdown] capabilities, abi_version 1, fidelity_tier_max LayoutProbe, evidence_tier_max E2, and no env_schema.",
+        "FixtureRuntimeAdapter becomes EnginePortAdapter<FixtureEnginePort> (or an alias) so utsushi-cli continues to compile unchanged.",
+        "crates/utsushi-fixture/tests/abi_conformance.rs runs run_required_abi against the fixture port and asserts launched + observation_count >= 1 + captured + first_shutdown_clean + second_shutdown_idempotent + cancellation_observed + JumpOutcome::NotDeclared.",
+        "Existing fixture descriptor round-trips through the manifest (id, version, fidelity tier, evidence ceiling)."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Fixture engine port adoption (UTSUSHI-103 Slice B)",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-103"],
+          "summary": "Refactor utsushi-fixture so FixtureRuntimeAdapter is built on the UTSUSHI-103 EnginePort substrate, providing the first non-synthetic conformance proof and the canonical reference port that downstream engine crates (UTSUSHI-146, UTSUSHI-031..039) imitate.",
+          "deliverables": [
+            "FixtureEnginePort struct implementing EnginePort with a const MANIFEST",
+            "FixtureRuntimeAdapter as EnginePortAdapter<FixtureEnginePort> (alias or thin newtype)",
+            "crates/utsushi-fixture/tests/abi_conformance.rs running run_required_abi",
+            "Round-trip test confirming descriptor fields derive from the manifest"
+          ],
+          "acceptanceCriteria": [
+            "FixtureEnginePort passes the ABI conformance harness for launch, observation envelope emission, cancellation, artifact-root usage, and shutdown idempotence.",
+            "utsushi-cli runtime registry compiles and runs unchanged.",
+            "Existing fixture trace, capture, and smoke_validate goldens continue to pass."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-cli"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Behavior parity with the pre-Slice-B fixture adapter",
+            "Conformance harness coverage of the real (non-synthetic) port",
+            "Descriptor drift between manifest and RuntimeAdapterDescriptor"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-103-F002",
+      "severity": "P2",
+      "title": "EnginePortAdapter shim does not hydrate PortRequest::artifact_root from legacy RuntimeRequest::artifact_root",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/port/mod.rs",
+          "line": 93,
+          "symbol": "EnginePortAdapter::run_lifecycle"
+        },
+        {
+          "path": "crates/utsushi-core/src/lib.rs",
+          "line": 65,
+          "symbol": "RuntimeRequest::artifact_root"
+        }
+      ],
+      "description": "In `EnginePortAdapter::run_lifecycle`, the inline comment (lines 93-98) acknowledges that the Slice A shim does not hydrate `port_request.artifact_root` from the legacy `RuntimeRequest::artifact_root` because the former takes `&RuntimeArtifactRoot` while the latter is `Option<&Path>`. As a result, any engine port driven through the legacy `RuntimeAdapter` surface receives `artifact_root = None` and either falls back to its own ad-hoc handling or fails to satisfy the runner's `ensure_capture_within_root` check (which is no-op when `request.artifact_root` is None — see runner.rs line 202). The integration test `synthetic_port_capture_writes_into_managed_artifact_root` only exercises the direct `Runner::run_capture` path with a hand-built `PortRequest::with_artifact_root`, not the adapter bridge. A typed managed-root carrier on `RuntimeRequest` lets the bridge stop being a Slice A wart and lets the runner's containment check fire on every adapter call.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Inline acknowledgement of the gap and the reason (RuntimeArtifactRoot vs &Path mismatch).",
+          "location": {
+            "path": "crates/utsushi-core/src/port/mod.rs",
+            "line": 93
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "ensure_capture_within_root is conditional on request.artifact_root being Some.",
+          "location": {
+            "path": "crates/utsushi-core/src/port/runner.rs",
+            "line": 202
+          }
+        },
+        {
+          "kind": "test",
+          "detail": "engine_port_adapter_trace_runs_lifecycle_and_returns_runtime_evidence_report_v02 exercises Trace via the bridge, but the capture path of EnginePortAdapter is not covered by a managed-root containment assertion."
+        }
+      ],
+      "impact": "Engine ports driven through `EnginePortAdapter` lose the runner's artifact-root containment guarantee until Slice B (or this work) lands. ports may write outside the managed root and the runner cannot detect it. Once UTSUSHI-031..039 engine ports start consuming the adapter, this gap silently weakens the cross-port artifact-isolation guarantee.",
+      "actionableAcceptanceCriteria": [
+        "RuntimeRequest exposes a typed managed artifact root carrier (either `Option<&RuntimeArtifactRoot>` or an equivalent type-erased handle) so EnginePortAdapter can hydrate PortRequest::artifact_root without the &Path mismatch.",
+        "EnginePortAdapter::run_lifecycle hydrates PortRequest::artifact_root from the new field, the inline Slice A follow-up comment is removed, and the runner's containment check fires on every adapter-driven capture.",
+        "Existing callers continue to compile (additive widening; remove the Slice A note from mod.rs when done).",
+        "A new test asserts that EnginePortAdapter::capture rejects an out-of-root artifact URI with ArtifactRootViolation."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Managed RuntimeArtifactRoot on RuntimeRequest for engine-port bridge",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-103"],
+          "summary": "Widen RuntimeRequest to carry the managed RuntimeArtifactRoot (not just an Option<&Path>) so EnginePortAdapter can hydrate PortRequest::artifact_root and the runner's artifact-root containment check fires on every legacy-adapter-driven capture.",
+          "deliverables": [
+            "Additive RuntimeRequest field that carries Option<&RuntimeArtifactRoot> (or an equivalent typed handle)",
+            "EnginePortAdapter::run_lifecycle hydrates PortRequest::artifact_root from the new field",
+            "Slice A inline TODO comment removed from crates/utsushi-core/src/port/mod.rs",
+            "New test: EnginePortAdapter::capture rejects an out-of-root artifact URI with ArtifactRootViolation"
+          ],
+          "acceptanceCriteria": [
+            "EnginePortAdapter-driven capture passes the runner's ensure_capture_within_root check when the legacy RuntimeRequest supplies the managed root.",
+            "Existing callers that supply only Option<&Path> continue to compile.",
+            "Adapter-driven capture writing outside the managed root is rejected with EnginePortError::ArtifactRootViolation."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Artifact-root containment via the legacy adapter surface",
+            "Additive RuntimeRequest evolution under concurrent specs",
+            "Behavioural parity between direct Runner calls and EnginePortAdapter calls"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-103-F003",
+      "severity": "P2",
+      "title": "EnginePortAdapter::discover_branches rejection is stringly-typed",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/port/mod.rs",
+          "line": 103,
+          "symbol": "EnginePortAdapter::run_lifecycle (BranchDiscovery arm)"
+        }
+      ],
+      "description": "When `EnginePortAdapter::run_lifecycle` is asked to fulfil `RuntimeOperation::BranchDiscovery`, it returns `format!(\"engine port adapter {} does not support {}\", ...).into()`. This is a stringly-typed `Box<dyn std::error::Error>` rather than a typed `CapabilityUnsupported { capability: ..., reason: NotYetSupported }` or the existing `unsupported_operation` helper used by `RuntimeAdapter`'s default `discover_branches` (lib.rs line 3597). Two consequences: (a) downstream consumers cannot match on a structured rejection to decide whether to retry against a different adapter, and (b) the diagnostic format diverges from the rest of the engine-port surface, breaking the auditFocus[1] 'ABI drift between ports' guarantee that every adapter that adopts the template can be inspected through one shape. Note: `RuntimeAdapter::discover_branches` is intentionally outside the EnginePort surface (plan section 10.5), so the right fix is a typed adapter-level diagnostic, not adding a method to the trait.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Stringly-typed rejection branch.",
+          "location": {
+            "path": "crates/utsushi-core/src/port/mod.rs",
+            "line": 103
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "The legacy RuntimeAdapter default uses the typed unsupported_operation helper.",
+          "location": {
+            "path": "crates/utsushi-core/src/lib.rs",
+            "line": 3597
+          }
+        }
+      ],
+      "impact": "Mid-priority: the rejection still fails the call, so it is not a correctness gap. But it leaks a string-formatted diagnostic into the runtime registry instead of a typed one, weakening the orchestration auditFocus[1] claim and forcing downstream code that wants to react to 'this adapter does not support branch discovery' to substring-match.",
+      "actionableAcceptanceCriteria": [
+        "EnginePortAdapter::run_lifecycle's BranchDiscovery arm returns a typed rejection — either reuse the existing unsupported_operation helper to produce a RuntimeAdapterDiagnostic, or extend EnginePortError with an `AdapterOperationUnsupported { operation: RuntimeOperation }` variant and map it through the existing `Box<dyn std::error::Error>` channel.",
+        "The chosen variant is round-trippable: downstream code can match on the typed rejection rather than substring-matching the Display output.",
+        "A regression test asserts that calling discover_branches via an EnginePortAdapter returns the typed rejection and that its Display passes looks_like_local_path."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Typed diagnostic for EnginePortAdapter branch-discovery rejection",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-103"],
+          "summary": "Replace EnginePortAdapter::run_lifecycle's stringly-typed BranchDiscovery rejection with either the existing unsupported_operation helper or a typed AdapterOperationUnsupported variant on EnginePortError so downstream code can match structurally.",
+          "deliverables": [
+            "Typed rejection path for BranchDiscovery in EnginePortAdapter::run_lifecycle",
+            "Regression test verifying the typed shape and redacted Display"
+          ],
+          "acceptanceCriteria": [
+            "EnginePortAdapter-driven discover_branches returns a typed rejection that downstream code can match without substring-parsing.",
+            "Display of the rejection passes looks_like_local_path.",
+            "Existing engine_port and utsushi-fixture tests continue to pass."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            }
+          ],
+          "auditFocus": [
+            "ABI drift between ports (typed vs stringly-typed rejections)",
+            "Diagnostic redaction (looks_like_local_path) on adapter-level rejections",
+            "Downstream registry behavior when an operation is unsupported"
+          ]
+        }
+      }
+    }
+  ]
+}

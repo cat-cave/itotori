@@ -16,6 +16,7 @@ use serde_json::{Map, Value};
 
 pub mod clock;
 pub mod input;
+pub mod port;
 pub mod replay;
 pub mod sink;
 pub mod vfs;
@@ -25,6 +26,13 @@ pub use input::{
     CLOCK_BACKTRACK_CODE, ChoiceIndex, INPUT_INVALID_PAYLOAD_CODE, INPUT_UNSUPPORTED_KIND_CODE,
     InputError, InputEvent, InputKind, MenuTarget, PointerButton, REPLAY_NON_MONOTONIC_TICK_CODE,
     REPLAY_REDACTION_VIOLATION_CODE, REPLAY_UNSUPPORTED_SCHEMA_VERSION_CODE, RawInputCode,
+};
+pub use port::{
+    CapabilityReason, CaptureOutcome, DriftKind, EnginePort, EnginePortAdapter, EnginePortError,
+    EnvFieldSchema, EnvFieldShape, LifecycleStage, ManifestError, MomentId,
+    OPTIONAL_LIFECYCLE_STAGES, PortCapability, PortEnv, PortManifest, PortRequest,
+    PortShutdownOutcome, PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES, Runner, RunnerCancellation,
+    RunnerObservation, RunnerOutcome,
 };
 pub use replay::{
     REPLAY_LOG_SCHEMA_VERSION, ReplayCursor, ReplayEntry, ReplayLog, ReplayLogBuilder,
@@ -99,9 +107,7 @@ pub struct RuntimeRequest<'a> {
     pub artifact_root: Option<&'a Path>,
     /// Optional, additive handoff for downstream nodes that consume the
     /// runtime VFS (UTSUSHI-021/022/023/024/103). Slice A of UTSUSHI-020
-    /// only adds the field so callers can begin to populate it; current
-    /// adapters do not read it. The signature decision for
-    /// `RuntimeAdapter` is deferred to UTSUSHI-103.
+    /// only adds the field so callers can begin to populate it.
     pub vfs: Option<Arc<dyn RuntimeVfs>>,
     /// Optional, additive handoff for the deterministic replay log
     /// (UTSUSHI-021). When `Some`, an adapter that drives input MUST consume
@@ -115,6 +121,10 @@ pub struct RuntimeRequest<'a> {
     /// sites stay valid because the field defaults to `None`. The signature
     /// decision for `RuntimeAdapter` is deferred to UTSUSHI-103.
     pub sinks: Option<SinkSet>,
+    /// Cancellation token plumbed by UTSUSHI-103. The `EnginePortAdapter`
+    /// shim reads this when bridging to `EnginePort::launch`; legacy
+    /// adapters can ignore the field.
+    pub cancellation: Option<RunnerCancellation>,
 }
 
 impl std::fmt::Debug for RuntimeRequest<'_> {
@@ -133,6 +143,10 @@ impl std::fmt::Debug for RuntimeRequest<'_> {
                     "<absent>"
                 },
             )
+            .field(
+                "cancellation",
+                &self.cancellation.as_ref().map(|_| "RunnerCancellation"),
+            )
             .finish()
     }
 }
@@ -145,6 +159,7 @@ impl<'a> RuntimeRequest<'a> {
             vfs: None,
             replay: None,
             sinks: None,
+            cancellation: None,
         }
     }
 
@@ -165,6 +180,11 @@ impl<'a> RuntimeRequest<'a> {
 
     pub fn with_sinks(mut self, sinks: SinkSet) -> Self {
         self.sinks = Some(sinks);
+        self
+    }
+
+    pub fn with_cancellation(mut self, cancellation: RunnerCancellation) -> Self {
+        self.cancellation = Some(cancellation);
         self
     }
 }
@@ -2655,7 +2675,11 @@ fn reject_unredacted_local_paths(path: &str, value: &Value) -> UtsushiResult<()>
     }
 }
 
-fn looks_like_local_path(value: &str) -> bool {
+/// Audit predicate used by `EnvFieldSchema::validate_value` and the
+/// observation event redaction filter. Widened from crate-private to
+/// `pub` by UTSUSHI-103 so engine port crates can apply the same
+/// rejection rule when stamping their own diagnostics.
+pub fn looks_like_local_path(value: &str) -> bool {
     let lower = value.to_ascii_lowercase();
     lower.starts_with("file:")
         || lower.contains("file://")
