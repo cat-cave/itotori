@@ -144,10 +144,10 @@ impl ReplayLogBuilder {
     /// string field looks like a host-local path.
     pub fn record(&mut self, tick: LogicalClockTick, event: InputEvent) -> Result<(), InputError> {
         event.validate_payload_shape()?;
-        if let Some(previous) = self.last_tick {
-            if tick <= previous {
-                return Err(InputError::non_monotonic_tick(previous, tick));
-            }
+        if let Some(previous) = self.last_tick
+            && tick <= previous
+        {
+            return Err(InputError::non_monotonic_tick(previous, tick));
         }
         assert_replay_event_redaction(&event)?;
         self.last_tick = Some(tick);
@@ -257,10 +257,10 @@ impl ReplayLog {
         for entry in &log.events {
             entry.event.validate_payload_shape().map_err(box_err)?;
             assert_replay_event_redaction(&entry.event).map_err(box_err)?;
-            if let Some(prev) = previous {
-                if entry.tick <= prev {
-                    return Err(Box::new(InputError::non_monotonic_tick(prev, entry.tick)));
-                }
+            if let Some(prev) = previous
+                && entry.tick <= prev
+            {
+                return Err(Box::new(InputError::non_monotonic_tick(prev, entry.tick)));
             }
             previous = Some(entry.tick);
         }

@@ -1,0 +1,42 @@
+{
+  "assetRefs": [
+    "vfs://fixture/intro.txt"
+  ],
+  "events": [
+    {
+      "event": {
+        "kind": "text"
+      },
+      "tick": 1
+    },
+    {
+      "event": {
+        "kind": "text"
+      },
+      "tick": 2
+    },
+    {
+      "event": {
+        "kind": "text"
+      },
+      "tick": 3
+    },
+    {
+      "event": {
+        "bridge_unit_id": "intro-unit-7",
+        "index": 1,
+        "kind": "choice"
+      },
+      "tick": 4
+    }
+  ],
+  "metadata": {
+    "adapterName": "fixture",
+    "adapterVersion": "0.1.0",
+    "clockOrigin": "run_start",
+    "runId": "replay-fixture-1",
+    "seed": 0,
+    "sourceLabel": "public-fixture:hello-game"
+  },
+  "schemaVersion": "0.1.0-alpha"
+}
