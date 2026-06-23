@@ -1,0 +1,393 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-025-20260623T195503Z",
+  "generatedAt": "2026-06-23T19:55:03Z",
+  "spec": {
+    "id": "UTSUSHI-025",
+    "title": "Engine port implementation map validator",
+    "branch": "spec/utsushi-025",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-025",
+    "commit": "bdc21f9"
+  },
+  "auditor": {
+    "name": "utsushi-025-impl-map-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "blocked",
+    "text": "UTSUSHI-025 delivers a thoroughly-shaped engine-neutral implementation-map artifact (utsushi_core::port::impl_map: schema, validator, diagnostics, store, json_schema) with 58 new tests that all pass via `cargo test -p utsushi-core impl_map`. The full crate suite is green (244 lib + 15 + 11 + 3 + 16 = 289 utsushi-core tests, plus 22 utsushi-fixture), cargo fmt --check and cargo clippy -p utsushi-core --all-targets -- -D warnings are clean, and cargo check --workspace passes. The validator is pure-data and returns Vec<ImplMapError> for multi-error aggregation; the multi-error test confirms three distinct violations surface in one pass. STATUS_VALIDATED_DISCLAIMER is a compile-time &'static str surfaced through ValidationReport and stamped into ImplementationMap::status_disclaimer on promotion, with `surfaces_status_disclaimer_string_when_status_is_validated` asserting the wire-form `statusDisclaimer` field carries the audit-warning text. The shell-safe command shape rejects pipe, redirection, subshell `$()`, backtick, plus single/double quotes and backslash; reserved prefixes are `cargo `, `just `, `node `, `pnpm ` only. Dedicated negative tests exist for pipe, subshell, backtick, redirection, and unknown-prefix; `validation-command-pipe.json` fixture reinforces the corpus. Engine-neutrality discipline is enforced by `schema_serialization_contains_no_engine_specific_field_names` over six representative EngineFamily variants (RealLive, RpgmakerMv, KirikiriKag, Siglus, Rgss3, Unity) against the banned token set [xp3_, kag_, rgss3_, tjs_, seen_, gameexe_, scene_pck_, pixi_, nwjs_, unity_], walking object keys (not raw substring) so name/caption/capabilities payloads can carry engine-specific words without false positives. The hand-rolled SHA-256 implementation is validated against the FIPS 180-4 vectors for `\"\"` (e3b0c4...855) and `\"abc\"` (ba7816...5ad). The hand-rolled JSON Schema emitter is paired with a BLESS_IMPL_MAP_SCHEMA-gated drift guard (`roadmap_schema_artifact_matches_build_schema_output`) that pretty-prints `build_schema()` + trailing newline and compares byte-for-byte against `roadmap/impl-map.schema.json`; the committed artifact matches. Cross-validation against PortManifest is offered as a separate helper as the plan requires, with the standalone validator remaining manifest-free. The fixture corpus tests cover positive (minimal-supported, mixed-status, engine-family-other-with-notes, synthetic-inline) and negative (empty-subsystems, missing-fixture-hash, orphan-command, partial-without-limitations, validation-command-pipe, engine-family-other-no-notes) through both the Rust validator and (selectively) the JSON Schema. All three auditFocus risks (validated-as-decision-node, unstructured notes as coverage, missing fixture provenance) are addressed: the Validated status carries a load-bearing disclaimer; every Subsystem requires both a FixtureRef and a ValidationCommandId (no free-text-only shape); FixtureRef::hash rejects empty, all-zero, TODO/TBD/PLACEHOLDER substrings, and any non-64-hex-lowercase form. HOWEVER, two BLOCKING gaps invalidate the worker's `just check` claim: (1) `just check` line 14 (pnpm exec vp check) fails on three files this commit ships (.plan/UTSUSHI-025.md, roadmap/impl-map.schema.json, scripts/validate-impl-map-schema.mjs) — vite-plus formatter reports `Found formatting issues in 3 files` and the recipe exits 1 before any other gate runs; (2) the newly-wired `just impl-map-schema-validate` recipe ALSO fails: scripts/validate-impl-map-schema.mjs reports `crates/utsushi-core/src/port/impl_map/fixtures/negative/engine-family-other-no-notes.json (negative) unexpectedly passed schema validation` because roadmap/impl-map.schema.json declares engineFamilyNotes with minLength:1 but never conditionally requires it when engineFamily == \"other\", so the negative fixture passes the JS schema validator. The fixture is correctly rejected by the Rust validator (`rejects_engine_family_other_without_engine_family_notes` is green), but the JSON Schema artifact — the wire contract the script is supposed to enforce — does not encode that invariant. The script's `rustOnly` exemption set (orphan-command.json, validation-command-pipe.json) does NOT include engine-family-other-no-notes.json, so the recipe was wired in a state where it has never passed since commit time. Together these two findings mean the verification surface the worker claims is green is in fact red on a freshly-installed worktree. Three lower-priority follow-ups: (P2) EvidenceLocator for Fixture/Doc only requires a `/`-containing non-absolute path without `..` traversal, which accepts loose strings the audit channel cannot triage (worker pre-identified); (P2) `validate_against_manifest`'s EngineFamily→manifest-id prefix map is a hard-coded `match` whose drift from manifest id grammar is silent (worker pre-identified); (P3) `Status::Outdated` promotion deferred to UTSUSHI-031+ as planned. Verification re-run from the worktree: `cargo test -p utsushi-core impl_map` -> 58 passed / 0 failed; `cargo test -p utsushi-core` -> 244 + 15 + 11 + 3 + 16 = 289 passed; `cargo test -p utsushi-fixture` -> 22 passed; `cargo clippy -p utsushi-core --all-targets -- -D warnings` -> clean; `cargo fmt --check` -> clean; `cargo check --workspace` -> clean; `just impl-map-schema-validate` -> FAILS (negative fixture unexpectedly passes JSON Schema); `just check` -> FAILS at line 14 on formatting. View on deviations: (a) hand-rolled JSON Schema emitter is fine and the BLESS-gated round-trip test is the right shape — accepted; (b) hand-rolled SHA-256 with FIPS 180-4 vectors is acceptable and avoids forcing `sha2` into the utsushi-core public dep tree — accepted; (c) broad redaction across all SubsystemId / ValidationCommandId echoes (not just `raw:` fields) is a defensible discipline upgrade and the redaction test exercises the full Display surface — accepted; (d) lib.rs-level re-exports skipped (callers reach the surface via `crate::port::impl_map::*` or the renamed `port::ImplMapPortId` etc.) is a tidy collision-avoidance move and accepted. The two blocking findings are repair-before-completion: they directly contradict the worker's verification claim and re-rolling `just check` clean is the bar engine-port consumer nodes (UTSUSHI-031..039, UTSUSHI-146) will see on their first import.",
+    "counts": {
+      "P0": 0,
+      "P1": 2,
+      "P2": 2,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "blocked",
+    "blockingFindingIds": ["UTSUSHI-025-F001", "UTSUSHI-025-F002"],
+    "followUpFindingIds": ["UTSUSHI-025-F003", "UTSUSHI-025-F004", "UTSUSHI-025-F005"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-025-F001",
+      "severity": "P1",
+      "title": "just check fails: vite-plus formatter rejects three files this commit ships",
+      "category": "verification",
+      "locations": [
+        {
+          "path": ".plan/UTSUSHI-025.md"
+        },
+        {
+          "path": "roadmap/impl-map.schema.json"
+        },
+        {
+          "path": "scripts/validate-impl-map-schema.mjs"
+        },
+        {
+          "path": "justfile",
+          "line": 14,
+          "symbol": "check recipe"
+        }
+      ],
+      "description": "Running `just check` from the worktree fails on line 14 (`pnpm exec vp check`) with `Found formatting issues in 3 files`: .plan/UTSUSHI-025.md, roadmap/impl-map.schema.json, and scripts/validate-impl-map-schema.mjs. The worker reports that all cargo gates are clean and that `just check` integrates the new recipe successfully; the cargo subset of that claim is verifiable (cargo test / fmt / clippy / check all green), but the wider `just check` claim is contradicted by the formatter exit. Running `vp check --fix` on the worktree confirms the violations are real and not a sibling-project artifact: the formatter wants block-array-style JSON in the schema (`enum` arrays broken across lines), narrower JSON in the example block of the plan (subsystems/validationCommands as block objects instead of inline), `_emphasis_` instead of `*emphasis*` in the plan, and shorter line widths in the validation script (resolve() calls and rustOnly Set construction broken across lines). All three files were introduced by this commit (bdc21f9); UTSUSHI-021's plan and other recent additions are formatter-clean. This means the recipe the worker just wired into `just check` is the FIRST gate that fails, and it fails before the new schema-validate step even runs.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "cd /scratch/worktrees/itotori-spec-utsushi-025 && direnv exec /home/trevor/projects/itotori pnpm exec vp check returns: `Found formatting issues in 3 files (1297ms, 48 threads). Run `vp check --fix` to fix them.` Files: .plan/UTSUSHI-025.md, roadmap/impl-map.schema.json, scripts/validate-impl-map-schema.mjs."
+        },
+        {
+          "kind": "command",
+          "detail": "Sanity check: `pnpm exec vp check --no-lint .plan/UTSUSHI-021.md` reports `All 1 file are correctly formatted`, while `.plan/UTSUSHI-025.md` fails — the issue is specific to this commit's files, not a global config drift."
+        },
+        {
+          "kind": "command",
+          "detail": "`just check` from the worktree exits 1 at line 14 with `error: recipe `check` failed on line 14 with exit code 1` before the new `just impl-map-schema-validate` step runs."
+        },
+        {
+          "kind": "diff",
+          "detail": "Indicative formatter diff on scripts/validate-impl-map-schema.mjs replaces multi-line `resolve(repoRoot, \"...\")` calls and `new Set([...])` with single-line equivalents; on roadmap/impl-map.schema.json it inlines short enum arrays; on .plan/UTSUSHI-025.md it rewrites `*static*` -> `_static_` and re-blocks the example JSON."
+        }
+      ],
+      "impact": "The local-gate the worker integrated to demonstrate the artifact is sound is itself red. Every downstream consumer node (UTSUSHI-031..039, UTSUSHI-146) that imports this slice will see `just check` fail on its first run, suggesting the substrate is broken when in fact only the new file shapes are. CI runs of the workspace gate will fail. The worker's verification claim is materially incorrect; the slice is not in a mergeable shape.",
+      "actionableAcceptanceCriteria": [
+        "Running `pnpm exec vp check` from the worktree exits 0 with `All N files are correctly formatted` and no `Found formatting issues` output.",
+        "Running `just check` from a freshly-installed worktree (after `pnpm install --frozen-lockfile`) exits 0 through every step including the new `impl-map-schema-validate` recipe.",
+        "The three offending files (.plan/UTSUSHI-025.md, roadmap/impl-map.schema.json, scripts/validate-impl-map-schema.mjs) are reformatted with `vp check --fix` and re-committed; the `roadmap_schema_artifact_matches_build_schema_output` drift guard either accepts the new format (by re-blessing build_schema's pretty-print output to match the formatter convention) or is reconciled so the schema and the formatter agree on JSON shape.",
+        "The fix does NOT bypass the formatter via `.prettierignore` / `.gitignore` / vp.config exclusion — the audit-grade files this commit introduces must satisfy the same gate every other file does."
+      ],
+      "orchestration": {
+        "blocksCompletion": true,
+        "nextAction": "repair_before_completion"
+      }
+    },
+    {
+      "id": "UTSUSHI-025-F002",
+      "severity": "P1",
+      "title": "JSON Schema artifact does not enforce engineFamilyNotes when engineFamily == \"other\"; just impl-map-schema-validate fails",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "roadmap/impl-map.schema.json"
+        },
+        {
+          "path": "crates/utsushi-core/src/port/impl_map/json_schema.rs",
+          "line": 194,
+          "symbol": "build_schema"
+        },
+        {
+          "path": "crates/utsushi-core/src/port/impl_map/fixtures/negative/engine-family-other-no-notes.json"
+        },
+        {
+          "path": "scripts/validate-impl-map-schema.mjs",
+          "line": 55,
+          "symbol": "rustOnly exemption set"
+        }
+      ],
+      "description": "The new `just impl-map-schema-validate` recipe (wired into `just check`) runs scripts/validate-impl-map-schema.mjs which compiles roadmap/impl-map.schema.json with Ajv 2020 and asserts that every negative fixture FAILS schema validation unless explicitly exempted. The fixture crates/utsushi-core/src/port/impl_map/fixtures/negative/engine-family-other-no-notes.json sets engineFamily=\"other\" and omits engineFamilyNotes; the Rust validator correctly rejects it (test `rejects_engine_family_other_without_engine_family_notes` is green), but the JSON Schema does NOT — engineFamilyNotes is declared with `{ \"type\": \"string\", \"minLength\": 1 }` at the top level with no conditional `required: [\"engineFamilyNotes\"]` clause keyed off `engineFamily == \"other\"`. The exemption set in validate-impl-map-schema.mjs lists only orphan-command.json and validation-command-pipe.json as rust-validator-only cases, so the script reports `engine-family-other-no-notes.json (negative) unexpectedly passed schema validation` and exits 1. This means the recipe the worker just wired in has never passed from a clean worktree at this commit; the local-gate the slice introduces is broken on its first run. Plan §3 makes engine-family/notes coherence a top-level schema invariant (\"Other REQUIRES a non-empty engine_family_notes field\"), and §6 commits the JSON Schema to be the wire contract validated by `just schema` — the schema must encode the invariant, not just the Rust validator. The fix is one of: (a) add `allOf: [{ if: { properties: { engineFamily: { const: \"other\" } } }, then: { required: [\"engineFamilyNotes\"] } }]` to the top-level schema in build_schema(), re-bless roadmap/impl-map.schema.json, and keep the negative fixture in the Ajv pool; OR (b) move engine-family-other-no-notes.json into the rustOnly exemption set, explicitly documenting that this invariant is Rust-only — but this contradicts plan §3 and weakens the standalone-validatable wire contract.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "cd /scratch/worktrees/itotori-spec-utsushi-025 && direnv exec /home/trevor/projects/itotori just impl-map-schema-validate emits: `crates/utsushi-core/src/port/impl_map/fixtures/negative/engine-family-other-no-notes.json (negative) unexpectedly passed schema validation` and exits 1."
+        },
+        {
+          "kind": "file",
+          "detail": "build_schema() declares engineFamilyNotes as an optional top-level property with no `if`/`then` conditional gating its presence on engineFamily == \"other\".",
+          "location": {
+            "path": "crates/utsushi-core/src/port/impl_map/json_schema.rs",
+            "line": 208
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "The Rust validator's `validate_engine_family` correctly requires engine_family_notes when EngineFamily::Other; covered by test `rejects_engine_family_other_without_engine_family_notes`.",
+          "location": {
+            "path": "crates/utsushi-core/src/port/impl_map/validator.rs",
+            "line": 132
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "rustOnly set lists orphan-command.json and validation-command-pipe.json only; engine-family-other-no-notes.json is therefore expected to fail JSON Schema validation but does not.",
+          "location": {
+            "path": "scripts/validate-impl-map-schema.mjs",
+            "line": 55
+          }
+        },
+        {
+          "kind": "test",
+          "detail": "cargo test -p utsushi-core --lib roadmap_schema_artifact_matches_build_schema_output passes, confirming the committed roadmap/impl-map.schema.json is byte-equal to build_schema() pretty-print + trailing newline — so the drift is in build_schema itself, not stale serialization."
+        }
+      ],
+      "impact": "The JSON Schema artifact is the audit-load-bearing wire contract for downstream consumers (Itotori ingestion, dashboards, conformance harnesses that do not import utsushi-core). A consumer that validates a map only through the JSON Schema will accept maps with engineFamily=\"other\" and no engineFamilyNotes, contradicting plan §3 and weakening the engine-neutrality discipline the schema is supposed to enforce. The directly-observable consequence today is that `just check` cannot pass, which compounds finding F001.",
+      "actionableAcceptanceCriteria": [
+        "build_schema() in crates/utsushi-core/src/port/impl_map/json_schema.rs gains a top-level `allOf` clause encoding `if engineFamily == \"other\" then required: [\"engineFamilyNotes\"]` (Draft 2020-12 if/then/required pattern).",
+        "roadmap/impl-map.schema.json is re-emitted via the BLESS_IMPL_MAP_SCHEMA gate and committed.",
+        "scripts/validate-impl-map-schema.mjs reports `engine-family-other-no-notes.json (negative)` as correctly rejected by the JSON Schema; the rustOnly exemption set continues to exclude this fixture.",
+        "A new positive test (Rust-side) asserts the JSON Schema rejects the negative fixture, parity-checked against the existing `json_schema_rejects_an_otherwise_well_formed_map_missing_fixture_hash` pattern.",
+        "`just impl-map-schema-validate` exits 0 from a freshly-installed worktree."
+      ],
+      "orchestration": {
+        "blocksCompletion": true,
+        "nextAction": "repair_before_completion"
+      }
+    },
+    {
+      "id": "UTSUSHI-025-F003",
+      "severity": "P2",
+      "title": "EvidenceRef locator shape for Fixture and Doc kinds is too loose",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/port/impl_map/validator.rs",
+          "line": 425,
+          "symbol": "is_evidence_locator_valid"
+        }
+      ],
+      "description": "is_evidence_locator_valid for EvidenceKind::Fixture and EvidenceKind::Doc accepts any non-empty string that (a) does not start with `/` or `\\`, (b) contains no `..` path segments, and (c) contains at least one `/`. That admits strings like `a/b`, `notes/random scratch.md`, or `fixtures/notarealdirectory/whatever.bin`. The plan (§3 EvidenceRef) calls for a tight path or id shape per-kind, with Fixture pointing under `fixtures/public/` or `fixtures/private-local/` and Doc pointing under `docs/`. As written, an auditor cannot trust that an evidence-ref locator actually lives in a recognized location. ReferenceImplAnchor is similarly permissive (accepts http(s) URLs OR any string containing `:`, which would accept `foo:bar`). Tightening: Fixture and Doc should require a known root prefix (`fixtures/`, `docs/`) — kept engine-neutral by NOT enforcing the per-engine fixture sub-tree — and ReferenceImplAnchor should require either an http(s) URL or a `<scheme>:<path>:<caption-token>` shape matching the plan example.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Fixture/Doc branch only checks for non-absolute path, no `..` traversal, and presence of `/`. No required prefix.",
+          "location": {
+            "path": "crates/utsushi-core/src/port/impl_map/validator.rs",
+            "line": 430
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §3 EvidenceRef locator examples are tied to specific roots (`fixtures/public/...`, `docs/kaifuu-adapters/reallive.md`).",
+          "location": {
+            "path": ".plan/UTSUSHI-025.md",
+            "line": 241
+          }
+        }
+      ],
+      "impact": "Research subsystems can declare evidence-refs pointing at arbitrary in-repo strings, so the audit channel cannot triage \"does this evidence actually live where it claims?\" without an additional pass. The risk is small today because there are no engine-port consumers yet, but it grows linearly as UTSUSHI-031..039 land and start using Research status with evidence-refs.",
+      "actionableAcceptanceCriteria": [
+        "is_evidence_locator_valid for EvidenceKind::Fixture requires the locator to start with `fixtures/`.",
+        "is_evidence_locator_valid for EvidenceKind::Doc requires the locator to start with `docs/`.",
+        "is_evidence_locator_valid for EvidenceKind::ReferenceImplAnchor requires either an http(s):// URL or a colon-separated `<scheme>:<path>:<caption-token>` shape (at least two colons).",
+        "Three new negative tests cover Fixture-without-prefix, Doc-without-prefix, and ReferenceImplAnchor-without-scheme-or-colons.",
+        "The corresponding JSON Schema artifact is updated to mirror the tighter shape (pattern constraint or per-kind oneOf) and re-blessed; positive fixtures continue to pass."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Tighter EvidenceRef locator shape for Fixture / Doc / ReferenceImplAnchor",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-025"],
+          "summary": "Constrain EvidenceRef locator validation to require known root prefixes (`fixtures/`, `docs/`) for Fixture / Doc kinds and a colon-anchored URI shape for ReferenceImplAnchor, so audit-channel triage of research evidence-refs is mechanical instead of human.",
+          "deliverables": [
+            "Tightened is_evidence_locator_valid branches for Fixture, Doc, ReferenceImplAnchor",
+            "Three new negative-shape tests and one positive-shape test per kind",
+            "Updated JSON Schema artifact (re-blessed via BLESS_IMPL_MAP_SCHEMA) reflecting the tighter shape",
+            "Positive fixture corpus updated if needed to satisfy the new shape"
+          ],
+          "acceptanceCriteria": [
+            "Evidence-ref locators that point outside `fixtures/` (Fixture) or `docs/` (Doc) are rejected with ImplMapError::ResearchEvidenceLocatorMalformed.",
+            "ReferenceImplAnchor locators that are neither http(s):// URLs nor `<scheme>:<path>:<token>` triples are rejected.",
+            "JSON Schema mirrors the Rust validator's per-kind shape and the BLESS-gated drift guard passes."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core impl_map"
+            },
+            {
+              "type": "command",
+              "value": "just impl-map-schema-validate"
+            }
+          ],
+          "auditFocus": [
+            "Triage-cost of evidence-ref locators",
+            "Engine-neutrality (the tightened shape must not encode per-engine paths)",
+            "Schema parity with the Rust validator"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-025-F004",
+      "severity": "P2",
+      "title": "validate_against_manifest engine-family -> manifest-id prefix map is hard-coded and silently drifts",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/port/impl_map/validator.rs",
+          "line": 696,
+          "symbol": "engine_family_manifest_prefix"
+        }
+      ],
+      "description": "engine_family_manifest_prefix returns Some(\"utsushi-<family>\") for each EngineFamily variant via a hard-coded `match`. If a future engine crate uses a different manifest-id grammar (e.g. `utsushi-rpgmaker-mv-pixi-v5` for a sub-variant) the cross-validator either has to be extended in lockstep or silently accepts mismatches as engine-neutral. The mapping is not driven by a controlled vocabulary declared in PortManifest, so two surfaces can drift without a compile-time signal. The risk is the same one plan §11 flags for UTSUSHI-026 coordination: cross-artifact contracts get re-derived in two places and decay. Concretely, EngineFamily::KirikiriKag maps to prefix `utsushi-kirikiri` while the manifest id grammar could equally use `utsushi-kirikiri-kag` or `utsushi-kag`; the current map silently picks one.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Hard-coded prefix map.",
+          "location": {
+            "path": "crates/utsushi-core/src/port/impl_map/validator.rs",
+            "line": 696
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §11 explicitly calls out cross-artifact coordination risk.",
+          "location": {
+            "path": ".plan/UTSUSHI-025.md",
+            "line": 881
+          }
+        }
+      ],
+      "impact": "Today there are no engine ports consuming this path. Once UTSUSHI-031..039 land, an engine port with an off-by-one manifest id (`utsushi-kirikiri-kag` vs `utsushi-kirikiri`) will hit a silent EngineFamilyManifestIdMismatch where the right fix is to teach the map, not the port. Worst case is two engine ports being unable to share an EngineFamily because the prefix map collapses their manifest ids.",
+      "actionableAcceptanceCriteria": [
+        "engine_family_manifest_prefix is replaced by a single source-of-truth controlled-vocabulary surface (either a const slice declared next to EngineFamily or, preferably, an associated method on EngineFamily returning the prefix) so the EngineFamily enum and the prefix list cannot drift.",
+        "Adding a new EngineFamily variant is a compile error until the prefix surface is updated (exhaustive match without a catch-all).",
+        "A round-trip test asserts every EngineFamily variant produces a non-empty prefix or, for `Other`, None, and that the prefix matches the wire-name (`as_wire_name()`) where consistent."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Single-source EngineFamily -> manifest-id prefix vocabulary",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-025"],
+          "summary": "Replace validator.rs's hard-coded engine_family_manifest_prefix `match` with a single source of truth (an associated method on EngineFamily) so adding a variant is a compile-time exhaustive-match obligation and the cross-validator cannot silently drift from the wire-name vocabulary.",
+          "deliverables": [
+            "EngineFamily::manifest_id_prefix(self) -> Option<&'static str> associated method (or equivalent const slice keyed off the enum)",
+            "validate_against_manifest calls the new method instead of the local helper",
+            "Exhaustive round-trip test over every EngineFamily variant"
+          ],
+          "acceptanceCriteria": [
+            "Adding a new EngineFamily variant produces a compile error until the prefix surface is updated.",
+            "validate_impl_map_against_manifest behavior is unchanged for the current variants.",
+            "The engine_family_manifest_prefix helper in validator.rs is removed or trivially delegates."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core impl_map"
+            },
+            {
+              "type": "command",
+              "value": "cargo check --workspace"
+            }
+          ],
+          "auditFocus": [
+            "Single source of truth between EngineFamily and manifest-id grammar",
+            "Cross-validator behaviour parity across the refactor",
+            "Compile-time exhaustiveness for future engine families"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-025-F005",
+      "severity": "P3",
+      "title": "Status::Outdated promotion logic deferred (worker pre-identified)",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/port/impl_map/schema.rs",
+          "line": 282,
+          "symbol": "Status::Outdated"
+        },
+        {
+          "path": "crates/utsushi-core/src/port/impl_map/validator.rs",
+          "line": 723,
+          "symbol": "promote_status"
+        }
+      ],
+      "description": "Status::Outdated exists as a variant and promote_status preserves it as-is, matching plan §4.2 invariant 16. Detection (when should a previously-Validated map flip to Outdated?) is explicitly scoped to UTSUSHI-031+ engine-port nodes. This is a known follow-up the worker pre-identified; no action required in this slice. Recorded so the orchestrator has a placeholder DAG node when the first engine-port consumer needs to bump a map back to Outdated.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "promote_status leaves Status::Outdated untouched.",
+          "location": {
+            "path": "crates/utsushi-core/src/port/impl_map/validator.rs",
+            "line": 723
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §4.3 explicitly defers Outdated promotion to engine-port consumers.",
+          "location": {
+            "path": ".plan/UTSUSHI-025.md",
+            "line": 498
+          }
+        }
+      ],
+      "impact": "Maps that were validated against an earlier manifest version cannot be re-flagged as stale without an external mechanism. Until engine ports land, this is theoretical; the variant placeholder is enough.",
+      "actionableAcceptanceCriteria": [
+        "A first engine port consumer (UTSUSHI-031+ or UTSUSHI-146) adopts an outdated-detection algorithm — e.g., comparing the map's schemaVersion against IMPL_MAP_SCHEMA_VERSION and the port's PortManifest::version against the recorded manifest version — and flips the map to Outdated when either drifts.",
+        "Detection is engine-neutral and lives in utsushi-core, not in any engine crate.",
+        "A new test asserts that re-validating an Outdated map preserves the Outdated status while still emitting the structural diagnostics."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Outdated-detection algorithm for implementation-map status",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-025"],
+          "summary": "Land an engine-neutral outdated-detection algorithm that flips a previously-Validated implementation map to Status::Outdated when its declared schemaVersion or referenced PortManifest version drifts from the live values, completing the Draft/Validated/Outdated typestate cycle UTSUSHI-025 ships as a variant.",
+          "deliverables": [
+            "An is_outdated(&map, &PortManifest, &str /* schema_version */) -> bool helper in utsushi_core::port::impl_map",
+            "Integration with at least one engine-port consumer (the first to land in UTSUSHI-031..039 or UTSUSHI-146) so the algorithm is exercised against a real port",
+            "Tests covering schema-version drift, manifest-version drift, and the no-drift case"
+          ],
+          "acceptanceCriteria": [
+            "Maps with a schemaVersion older than IMPL_MAP_SCHEMA_VERSION (within the same major) are flagged Outdated.",
+            "Maps whose PortManifest::version differs from a recorded baseline are flagged Outdated.",
+            "Validated maps with no drift remain Validated.",
+            "Outdated maps preserve their Outdated status through re-validation."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core impl_map"
+            }
+          ],
+          "auditFocus": [
+            "Engine-neutrality of the detection algorithm",
+            "Interaction with the BLESS schema drift guard",
+            "Correct preservation of Outdated through repeated validation"
+          ]
+        }
+      }
+    }
+  ]
+}
