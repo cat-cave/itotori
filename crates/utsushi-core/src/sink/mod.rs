@@ -25,8 +25,10 @@ use serde::{Deserialize, Serialize};
 use crate::EvidenceTier;
 
 pub mod errors;
+pub mod text;
 
 pub use errors::{SinkError, SinkResult, codes};
+pub use text::{TextLine, TextSurfaceSink};
 
 /// Discriminant for the three sink contracts. Used by [`SinkError`] so the
 /// sink under discussion is always a typed enum, never a free-form string.
