@@ -10023,7 +10023,7 @@
     {
       "id": "UTSUSHI-020",
       "title": "Runtime VFS and asset package boundary",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "kaifuu"],
@@ -10059,10 +10059,7 @@
         "Host path leakage",
         "VFS API shaped around one engine",
         "Encrypted/helper-gated assets reported as generic missing files"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-020",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-020"
+      ]
     },
     {
       "id": "UTSUSHI-021",
@@ -20680,7 +20677,7 @@
     {
       "id": "KAIFUU-172",
       "title": "RealLive engine detector",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -20718,10 +20715,7 @@
         "Shell-out to rlvm or other existing tools",
         "Ambiguous variants accepted silently",
         "Clean-room boundary or rlvm provenance gaps"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/kaifuu-172",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-172"
+      ]
     },
     {
       "id": "KAIFUU-173",
@@ -20812,7 +20806,7 @@
     {
       "id": "KAIFUU-176",
       "title": "Itotori vault-source localCorpus adapter",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "itotori"],
@@ -20858,10 +20852,7 @@
         "Cross-check against _vault/metadata.json skipped",
         "Secrets read from or written into the vault",
         "Adapter advertising games not present in catalog.db"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/kaifuu-176",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-176"
+      ]
     },
     {
       "id": "UTSUSHI-146",
@@ -21007,6 +20998,158 @@
         "Environmental misconfiguration silently skipped instead of erroring",
         "NW.js advertised as an alpha capability",
         "MV/MZ alpha claim made without Chromium browser launch success"
+      ]
+    },
+    {
+      "id": "KAIFUU-177",
+      "status": "planned",
+      "title": "kaifuu-cli vault-source operator subcommand",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["KAIFUU-176"],
+      "summary": "Expose the kaifuu-vault-source LocalCorpusSource trait via a `kaifuu vault` subcommand group so operators can run discover, materialize, materialize-by-sha, and capabilities against /archive/vault/ from the command line without writing Rust.",
+      "deliverables": [
+        "New `vault` subcommand group in crates/kaifuu-cli wiring LocalCorpusRegistry + VaultSource",
+        "Operator-facing flags for retention policy, artifact selection, run id override, and ITOTORI_VAULT_ROOT pass-through",
+        "Structured JSON output mode that surfaces VaultSourceError::semantic_code()"
+      ],
+      "acceptanceCriteria": [
+        "`kaifuu vault capabilities` prints the LocalCorpusCapabilityReport for the configured vault root in both human and JSON modes.",
+        "`kaifuu vault discover --engine kirikiri` returns the discovered release ids exactly as VaultSource::discover does.",
+        "`kaifuu vault materialize <release-id>` and `kaifuu vault materialize-by-sha <sha>` succeed against a synthetic fixture and surface VaultSourceError variants with their semantic codes on failure.",
+        "Exit code is non-zero on any VaultSourceError; semantic_code is included in the structured output."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-vault-source"
+        }
+      ],
+      "auditFocus": [
+        "No write to the vault from the cli path; cli inherits the adapter's read-only contract.",
+        "Secrets boundary preserved; no .kaifuu/secrets.local/ reads.",
+        "Structured output is stable enough for downstream operator dashboards."
+      ]
+    },
+    {
+      "id": "KAIFUU-178",
+      "status": "planned",
+      "title": "vault-curation / itotori catalog schema-version compat handshake doc",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori", "kaifuu", "shared"],
+      "parallelGroup": "contracts",
+      "dependsOn": ["KAIFUU-176"],
+      "summary": "Add a compat-handshake appendix to docs/itotori-vault-source-adapter.md (or a sibling doc) that pins the supported-schema-version matrix between vault-curation and itotori, describes the bump protocol, and gives operators a remediation path when CatalogSchemaUnsupported fires.",
+      "deliverables": [
+        "Appendix listing every catalog schema version itotori supports, what each version added, and which itotori release introduced support",
+        "Bump-protocol section describing the announce / land / consume sequence between vault-curation and itotori",
+        "Operator remediation note tying kaifuu.vault.catalog_schema_unsupported to the upgrade steps"
+      ],
+      "acceptanceCriteria": [
+        "Supported-version matrix exists and matches SUPPORTED_SCHEMA_VERSION in kaifuu-vault-source/src/error.rs.",
+        "Bump-protocol section names both projects' owners and the bump checklist.",
+        "Operator remediation note cross-links to the Failure Modes table entry for CatalogSchemaUnsupported."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "rg -n 'SUPPORTED_SCHEMA_VERSION' crates/kaifuu-vault-source/src/ docs/"
+        },
+        {
+          "type": "manual",
+          "value": "Doc reviewed against current SUPPORTED_SCHEMA_VERSION and against /archive/vault/schema.sql's schema_version table."
+        }
+      ],
+      "auditFocus": [
+        "Supported-version matrix kept in sync with the source pin.",
+        "Bump protocol does not introduce a path where itotori silently accepts an unknown schema.",
+        "Cross-links are consistent with the Failure Modes table."
+      ]
+    },
+    {
+      "id": "KAIFUU-179",
+      "status": "planned",
+      "title": "Scratch GC / quota helper for vault-source scratch root",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu", "itotori"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["KAIFUU-176"],
+      "summary": "Add a scratch-inventory and prune helper (in kaifuu-vault-source or kaifuu-cli) for /scratch/itotori/<game-id>/ so operators can enforce a quota or LRU horizon without manual rm -rf, addressing the KeepExtractedForGame growth risk surfaced in the KAIFUU-176 plan.",
+      "deliverables": [
+        "Scratch-inventory function that walks <scratch-root>/<game-id>/ and reports size + last-used per game",
+        "Prune mode supporting --max-bytes quota and --older-than LRU horizon with --dry-run",
+        "kaifuu-cli surface (or library function with documented call shape) for operator use"
+      ],
+      "acceptanceCriteria": [
+        "Inventory output is deterministic and machine-parseable (JSON option).",
+        "Prune respects the read-only vault contract: only paths under <scratch-root> are touched.",
+        "Prune skips the active per-run directory of any concurrent materialize call (documented invariant; tests cover the safety check)."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-vault-source scratch"
+        }
+      ],
+      "auditFocus": [
+        "Prune never touches <vault-root>.",
+        "Prune does not race with an active materialize call's run-id directory.",
+        "Inventory size accounting matches du -sb to within a documented tolerance."
+      ]
+    },
+    {
+      "id": "KAIFUU-180",
+      "status": "planned",
+      "title": "RealLive detector live-corpus calibration follow-up",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "engine-research",
+      "dependsOn": ["KAIFUU-172", "ALPHA-006"],
+      "summary": "Calibrate the KAIFUU-172 RealLive detector against real-game corpora once ALPHA-006 lands. Use redacted aggregate evidence from owned RealLive titles to surface any false-negative classes the synthetic fixture suite cannot cover (notably early titles that omit #GAMEEXE_VERSION), then land the signal-catalog adjustments under this discrete spec rather than reopening KAIFUU-172.",
+      "deliverables": [
+        "ALPHA-006 vertical adapter invocation of the KAIFUU-172 detector against the alpha-set retail RealLive directories.",
+        "Aggregate evidence log (title labels + observed/missing signals only; no retail bytes) captured under the kaifuu engine-research private-local namespace.",
+        "If evidence justifies it: an FSM extension and one or more new synthetic fixtures covering the discovered false-negative class, plus regression assertions that the existing negatives still reject.",
+        "Updates to docs/kaifuu-adapters/reallive.md reflecting the calibration outcomes and the resolution of the 'real-game false-negative discovery' open item."
+      ],
+      "acceptanceCriteria": [
+        "The KAIFUU-172 detector is exercised against the ALPHA-006 alpha-set RealLive directories without shelling out, vendoring rlvm, or relaxing the clean-room posture.",
+        "Every detected false-negative class is captured as redacted aggregate evidence (title label + signal presence/absence) before any FSM change is proposed.",
+        "Any FSM extension preserves the existing Siglus-overlap and AVG32-lineage rejections; synthetic regression tests assert no misclassification reappears.",
+        "Readiness record at docs/kaifuu-adapters/reallive.md closes the 'real-game false-negative discovery' open item or restates it with concrete evidence."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-engine-fixture"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-core"
+        },
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        },
+        {
+          "type": "manual",
+          "value": "Review the redacted aggregate-evidence log for the ALPHA-006 alpha-set RealLive titles and confirm any FSM extension is justified by per-title evidence."
+        }
+      ],
+      "auditFocus": [
+        "Confirm no rlvm code, headers, or Cargo dependency was added during calibration; clean-room posture preserved.",
+        "Confirm aggregate-evidence log contains only redacted labels and signal presence/absence rows; no retail bytes leak.",
+        "Confirm Siglus-overlap and AVG32-lineage rejections still hold against the updated FSM via the existing synthetic negatives.",
+        "Confirm any new synthetic positive fixture explicitly models the evidence class (e.g. #REGNAME + .g00 corroborator, no #GAMEEXE_VERSION) that justified the FSM extension."
       ]
     }
   ]
