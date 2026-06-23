@@ -1,0 +1,378 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-148-20260623T195801Z",
+  "generatedAt": "2026-06-23T19:58:01Z",
+  "spec": {
+    "id": "UTSUSHI-148",
+    "title": "Browser launch alpha contract tightening",
+    "branch": "spec/utsushi-148",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-148",
+    "commit": "05d241f"
+  },
+  "auditor": {
+    "name": "utsushi-148-browser-launch-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "UTSUSHI-148 delivers the planned tightening of the browser-launch contract for MV/MZ alpha. The `BrowserLaunchAdapter` host-availability diagnostic is now severity `error` (crates/utsushi-fixture/src/launch_adapters.rs:289-307), `resolve_browser_program` returns a typed `RuntimeHarnessError` whose kind is one of the new `ChromiumUnavailable` / `ChromiumVersionMismatch` / `ChromiumDisplayUnavailable` variants in utsushi-core (lib.rs:2889-2929), and `BrowserUnavailabilityReason::semantic_code` maps the three production-reachable reasons to `utsushi.browser.chromium_unavailable`, `utsushi.browser.chromium_version_mismatch`, and (gated-off / test-only via `force_display_unavailable`) `utsushi.browser.display_unavailable`. The forbidden-optionality grep in launch_adapters.rs returns the two literal matches at lines 1541-1542, both inside the negative-assertion test `browser_descriptor_omits_when_host_support_exists_optionality_language`, confirming the test specifies that the descriptor JSON does NOT carry that language. `NwjsLaunchAdapter::descriptor` advertises an empty `capabilities: vec![]`, a `research_tier_status` `info`-severity diagnostic (status `unsupported`, `errorCode = utsushi.runtime.research_tier_unsupported`, `runtimeTier = research`, `supersededBy = utsushi-browser`), and a first-limitation string that contains both `research-tier` and `not advertised as an alpha capability`; the trace/capture/smoke_validate methods all return a `RuntimeHarnessError` with `kind = ResearchTierUnsupported`, code `runtime_research_tier_unsupported`, and detail `semanticCode = utsushi.runtime.research_tier_unsupported` (launch_adapters.rs:925-994). The broken-env test scopes its `unsafe { env::set_var }` inside an `EnvGuard` struct that captures the prior value in `set()` and restores or removes it on `Drop` (launch_adapters.rs:1850-1875), satisfying the audit ask. Engine-neutral semantic codes are observed: a grep for rpg/maker/mv/mz inside `crates/utsushi-fixture/src/launch_adapters.rs` and `crates/utsushi-core/src/lib.rs` finds only descriptor-text references that explain WHO requires Chromium, never inside the semantic-code namespace. Cargo-side verification reruns from the worktree match the worker's report: `cargo test -p utsushi-fixture` 34 passed (including all 14 new launch_adapter tests), `cargo test -p utsushi-core` 117 passed across binaries, `cargo test -p utsushi-cli` 11 passed (including the three new/updated capability tests), `cargo fmt --check` clean, `cargo check --workspace` clean, `cargo clippy -p utsushi-fixture --all-targets -- -D warnings` clean, `cargo clippy -p utsushi-core --all-targets -- -D warnings` clean. However: `just check` FAILS from the worktree (recipe `check` exit 1) because `pnpm exec vp check` reports markdown formatting issues in two files the worker modified — `.plan/UTSUSHI-148.md` and `docs/alpha-localization-project-readiness.md`. Running `vp check --fix` produces an exact, scoped diff: (a) blank line inserted before a list (.plan/UTSUSHI-148.md:291), (b) padded markdown-table column widths in the semantic-code catalog table and the alpha role table, (c) blockquote continuation lines need leading `>` (.plan/UTSUSHI-148.md:583), (d) escape `*` as `\\*` in `utsushi.browser.\\*` to keep markdown emphasis from triggering, (e) a stray indented bullet continuation (.plan/UTSUSHI-148.md:642, :683). All five are cosmetic-only and do not change committed prose. Per the audit instructions, `just check` failure is a P1 finding (UTSUSHI-148-F001). `just test` initially fails for an unrelated environmental reason (`@itotori/localization-bridge-schema` / `@itotori/db` ts:test consumers cannot resolve the schema package until its dist is built); after running `pnpm --filter @itotori/localization-bridge-schema build && pnpm --filter @itotori/db build` once, `just test` passes (vitest: 14+19 test files passed, cargo workspace tests all green). This is a pre-existing devshell prerequisite, not a regression from this work, but is recorded as P3 follow-up (UTSUSHI-148-F003) because the worker's `just test` claim in the report was 'cargo-side gates verified' only — a `just test` lane on a clean worktree must self-bootstrap. Acceptance criteria: (1) Chromium launch is required for MV/MZ alpha — descriptor's Launch feature description and contract limitations both declare `Required for MV/MZ alpha runtime evidence`, plus enforced by tests `browser_descriptor_capability_contract_marks_browser_launch_as_required_for_mv_mz_alpha` and `browser_descriptor_omits_when_host_support_exists_optionality_language`; (2) environmental misconfiguration is a hard error — `resolve_browser_program` returns typed errors not `Ok(_)`, severity is `error`, four broken-env paths covered by tests (`browser_run_returns_chromium_unavailable_kind_when_binary_missing`, `browser_run_returns_chromium_unavailable_when_env_browser_bin_broken`, `browser_run_returns_chromium_version_mismatch_when_version_too_old`, `reserved_display_unavailable_reason_carries_typed_semantic_code`); (3) NW.js demoted to research-tier — capabilities vector is empty, `research_tier_status` diagnostic present at info severity, all three runtime operations return `ResearchTierUnsupported`; (4) no `when host support exists` optionality — guarded by descriptor-output regression test. No P0/P1 architectural findings. One P1 verification finding (just check formatting). Three follow-ups: F002 (`--skip-browser` CI recipe shape — worker pre-identified P2), F003 (strict display checking follow-up — worker pre-identified P2; reserved variant wired and tested but not produced in production paths), F004 (Cargo-side detection refactor candidate: probe is re-invoked on every `descriptor()` call AND every `resolve_browser_program()` call, meaning each descriptor render runs `<binary> --version` synchronously up to the 2s timeout — a minor inefficiency / observable side-effect not violating the contract but worth a P3 cache pass).",
+    "counts": {
+      "P0": 0,
+      "P1": 1,
+      "P2": 2,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "blocked",
+    "blockingFindingIds": ["UTSUSHI-148-F001"],
+    "followUpFindingIds": ["UTSUSHI-148-F002", "UTSUSHI-148-F003", "UTSUSHI-148-F004", "UTSUSHI-148-F005"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-148-F001",
+      "severity": "P1",
+      "title": "`just check` fails on markdown formatting in worker-modified .plan and docs files",
+      "category": "verification",
+      "locations": [
+        {
+          "path": ".plan/UTSUSHI-148.md"
+        },
+        {
+          "path": "docs/alpha-localization-project-readiness.md"
+        }
+      ],
+      "description": "Re-running `just check` from the worktree fails with exit code 1: `pnpm exec vp check` reports formatting issues in `.plan/UTSUSHI-148.md` and `docs/alpha-localization-project-readiness.md`, both files the worker modified or created in this DAG node. Running `vp check --fix` produces a scoped, cosmetic-only diff: (a) blank line required before a list, (b) markdown-table column widths padded so all rows align (semantic-code catalog and the MV/MZ alpha role table), (c) blockquote continuation lines need leading `>`, (d) `*` in `utsushi.browser.*` escaped as `\\*` so markdown emphasis is not triggered, (e) two stray indented bullet continuations. The audit instructions explicitly state: 'If `just check` or `just test` fails, that's a P1.' The worker pre-noted that they could not run `just check` in their sandbox (no offline pnpm/vp install), which is consistent with this slipping through; nothing in their commits is logically wrong, but the verification gate is red on the as-committed state.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "`cd /scratch/worktrees/itotori-spec-utsushi-148 && direnv exec /home/trevor/projects/itotori just check` exits 1: `pnpm exec vp check` -> 'Formatting issues found .plan/UTSUSHI-148.md docs/alpha-localization-project-readiness.md / Found formatting issues in 2 files (1264ms, 48 threads). Run `vp check --fix` to fix them. / error: recipe `check` failed on line 14 with exit code 1'."
+        },
+        {
+          "kind": "command",
+          "detail": "`pnpm exec vp check --fix` succeeds and the resulting `git diff --stat` is: `.plan/UTSUSHI-148.md | 21 +++++++++++---------- docs/alpha-localization-project-readiness.md | 16 ++++++++--------`. All changes are cosmetic table alignment, blank-line-before-list, escaped `*`, and blockquote continuation markers — no prose semantics change."
+        },
+        {
+          "kind": "command",
+          "detail": "Cargo gates (`cargo fmt --check`, `cargo check --workspace`, `cargo clippy -p utsushi-fixture --all-targets -- -D warnings`, `cargo clippy -p utsushi-core --all-targets -- -D warnings`) are all clean — the failure is markdown-only."
+        }
+      ],
+      "impact": "Blocks completion: the DAG completion criterion that re-running `just check` from the worktree succeeds is currently red. Mechanical fix; no architectural rework required. Once `vp check --fix` is run and committed, this finding clears and the rest of the work should be acceptable.",
+      "actionableAcceptanceCriteria": [
+        "Run `pnpm exec vp check --fix` from the worktree (after `pnpm install --frozen-lockfile`) so the two affected files conform to the workspace markdown formatter.",
+        "Confirm the resulting diff is cosmetic-only (no prose-level changes) and commit as an additive fix on top of 05d241f.",
+        "Re-run `just check` from the worktree and confirm exit 0."
+      ],
+      "orchestration": {
+        "blocksCompletion": true,
+        "nextAction": "repair_before_completion"
+      }
+    },
+    {
+      "id": "UTSUSHI-148-F002",
+      "severity": "P2",
+      "title": "Public CI `--skip-browser` recipe shape: declared at recipe layer but no implementation lands here",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "docs/subprojects-utsushi.md",
+          "line": 232
+        }
+      ],
+      "description": "The updated docs commit (a526ce9) reads: 'Public CI that intentionally lacks Chromium must declare the skip at the recipe layer; the adapter itself does not silently degrade.' This is the correct architectural posture for UTSUSHI-148 (no in-adapter optionality), but no recipe-layer skip mechanism is implemented or wired into any concrete CI lane in this commit set. Worker pre-identified this as P2 in the report-back and confirmed 'no CI lane currently gates on browser severity == error' so no immediate fallout. Recording as a follow-up so when the first Chromium-less public CI lane is introduced (Linux CI containers without Chromium, or a deliberately bounded CI runner) the recipe-layer skip is designed and shipped before that lane goes green.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Docs commit a526ce9 declares the recipe-layer skip as the operator's responsibility but does not point to an implementation.",
+          "location": {
+            "path": "docs/subprojects-utsushi.md",
+            "line": 232
+          }
+        },
+        {
+          "kind": "command",
+          "detail": "Worker pre-identified this candidate as P2 in their report-back and confirmed no CI lane currently gates on browser severity."
+        }
+      ],
+      "impact": "Once a CI lane that lacks Chromium starts consuming the capability output, today's UTSUSHI-148 behaviour (severity = error, hard runtime failure on launch) becomes a CI-red event. The recipe-layer skip is the orchestrator-approved escape valve but is not implemented. Mid-priority because no such CI lane exists today.",
+      "actionableAcceptanceCriteria": [
+        "Define the `--skip-browser` (or equivalently named) flag on the `utsushi capabilities` or `utsushi smoke` CLI surface that an operator can pass to acknowledge a Chromium-less environment.",
+        "Make the flag explicit (no env-driven implicit skip) and have it emit a clearly labelled `runtime_skip_acknowledged` diagnostic so the report-side cannot be mistaken for a passing alpha claim.",
+        "Document in `docs/subprojects-utsushi.md` exactly which CI lanes are allowed to pass the flag and which are forbidden (MV/MZ alpha claim lanes MUST NOT)."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Recipe-layer `--skip-browser` flag for Chromium-less CI lanes",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-148"],
+          "summary": "Implement the recipe-layer skip mechanism the UTSUSHI-148 docs declare as the operator's escape valve for Chromium-less public CI lanes, so the in-adapter `severity = error` posture stays intact while CI runners that intentionally lack Chromium can pass.",
+          "deliverables": [
+            "`--skip-browser` (or equivalently named) CLI flag on capabilities/smoke surfaces",
+            "Typed `runtime_skip_acknowledged` diagnostic emitted when the flag is set so the report cannot be mistaken for an alpha pass",
+            "Docs update enumerating which CI lanes are allowed to pass the flag"
+          ],
+          "acceptanceCriteria": [
+            "Flag is explicit (no env-driven implicit skip).",
+            "MV/MZ alpha-claim lanes are documented as forbidden from passing the flag.",
+            "Capability report status under the flag is distinguishable from a successful Chromium probe."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-cli"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Skip mechanism must not silently degrade alpha-claim lanes",
+            "Diagnostic shape distinguishes skip from success",
+            "Documentation enumerates allowed and forbidden CI lanes"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-148-F003",
+      "severity": "P2",
+      "title": "Strict display checking: reserved BrowserUnavailabilityReason::DisplayUnavailable variant is wired but never produced in production paths",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+          "line": 522,
+          "symbol": "BrowserUnavailabilityReason::DisplayUnavailable"
+        },
+        {
+          "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+          "line": 836,
+          "symbol": "force_display_unavailable"
+        }
+      ],
+      "description": "The `BrowserUnavailabilityReason::DisplayUnavailable` variant carries `#[allow(dead_code)]` because its production producer (a strict display/DRI probe) is intentionally not implemented in UTSUSHI-148. The wiring (semantic code mapping to `utsushi.browser.display_unavailable`, harness error kind mapping to `ChromiumDisplayUnavailable`, diagnostic detail attachment, harness-error detail attachment) IS live and exercised through the `force_display_unavailable()` test helper and the test `reserved_display_unavailable_reason_carries_typed_semantic_code`. Worker pre-identified this as P2. The fact that the strict-display-probe gate is reserved is consistent with the plan; the follow-up is the production gate. The reserved variant carries `platform: &'static str` and a `DisplayProbeOutcome` that distinguishes `PresentEnv`, `HeadlessOnly`, and `UnavailableStrict`, but the production code path (`probe_chromium`) currently never returns this variant — `--headless=new --disable-gpu --no-sandbox` is hard-coded into launch args so the adapter operates headlessly regardless of DISPLAY/WAYLAND_DISPLAY env vars.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Reserved variant declared with `#[allow(dead_code)]` and a doc-comment explaining that production paths do not produce it.",
+          "location": {
+            "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+            "line": 522
+          }
+        },
+        {
+          "kind": "test",
+          "detail": "`reserved_display_unavailable_reason_carries_typed_semantic_code` pins the semantic code, harness error kind, and detail-attachment wiring against `force_display_unavailable()`. The production code path (`probe_chromium`) never returns this variant."
+        }
+      ],
+      "impact": "Low/medium: the reserved variant is wired so a follow-up that flips the production gate inherits a working contract, which is exactly the right posture. The strict-display gate itself is not in scope for UTSUSHI-148 alpha. Mid-priority because alpha-environment operators who set up a CI runner with a hardware decoder but a broken DISPLAY may want a structured diagnostic instead of an opaque Chromium launch failure.",
+      "actionableAcceptanceCriteria": [
+        "Decide the activation policy for strict display checking (env-var-gated? always-on under non-Linux? operator-explicit?).",
+        "Implement the production producer that returns `BrowserUnavailabilityReason::DisplayUnavailable { platform, probe }` when the gate fires.",
+        "Remove the `#[allow(dead_code)]` annotation and the test-only `force_display_unavailable` shim.",
+        "Add an integration test that covers the production path under the chosen gate."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Strict display checking: produce DisplayUnavailable variant in production",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-148"],
+          "summary": "Promote the reserved `BrowserUnavailabilityReason::DisplayUnavailable` variant from test-only to a real strict-display probe, so operators of CI runners with broken display surfaces get a typed `utsushi.browser.display_unavailable` outcome instead of an opaque Chromium launch failure.",
+          "deliverables": [
+            "Activation policy for strict display checking documented and chosen",
+            "Production producer for the DisplayUnavailable variant",
+            "Removal of `#[allow(dead_code)]` and the `force_display_unavailable` test shim",
+            "Integration test for the production path"
+          ],
+          "acceptanceCriteria": [
+            "Reserved variant is produced from real probe code under the chosen activation gate.",
+            "Existing UTSUSHI-148 tests continue to pass.",
+            "Typed semantic code `utsushi.browser.display_unavailable` is observable in capability output under the gate."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "Gate activation policy must not regress existing CI lanes",
+            "Production producer is reachable under realistic broken-display conditions",
+            "Operator-facing message distinguishes display-broken from binary-missing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-148-F004",
+      "severity": "P3",
+      "title": "Chromium probe runs synchronously on every descriptor() and every launch with no caching",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+          "line": 267,
+          "symbol": "BrowserLaunchAdapter::probe"
+        },
+        {
+          "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+          "line": 271,
+          "symbol": "BrowserLaunchAdapter::browser_host_availability_diagnostic"
+        },
+        {
+          "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+          "line": 322,
+          "symbol": "BrowserLaunchAdapter::descriptor_limitations"
+        }
+      ],
+      "description": "`BrowserLaunchAdapter::probe()` is invoked from `browser_host_availability_diagnostic()`, `descriptor_limitations()`, AND `resolve_browser_program()` — i.e. every `descriptor()` call triggers TWO synchronous probes (each running `<binary> --version` with a 2-second hard timeout) and every launch triggers a third. The inline rationale (lines 263-266: 'The probe is intentionally invoked on every descriptor render and on every launch so the diagnostic reflects fresh host state (environment can change between capability listing and launch)') is defensible — staleness is real — but the cost is observable: the bounded-timeout regression test `browser_descriptor_version_probe_is_bounded_by_timeout` allows up to 5 seconds elapsed per descriptor render against a wedged probe, and a host with a slow-spawning Chromium will pay that cost on every CLI invocation that reads the capability surface. Not a correctness issue.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Inline rationale acknowledges fresh-state re-probe is by design.",
+          "location": {
+            "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+            "line": 263
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Both descriptor helpers call `self.probe()` independently, so `descriptor()` triggers two probes per call.",
+          "location": {
+            "path": "crates/utsushi-fixture/src/launch_adapters.rs",
+            "line": 322
+          }
+        }
+      ],
+      "impact": "Low: hosts with a working Chromium see two extra ~tens-of-ms `--version` invocations per descriptor render. Worst case is a wedged binary that takes 2s each (4s per descriptor). No correctness gap; the architectural posture (no stale-data risk) is the right default. A simple per-call cache (probe once, share both diagnostic and limitations) would halve the cost without compromising freshness.",
+      "actionableAcceptanceCriteria": [
+        "Refactor `descriptor()` to call `self.probe()` once and pass the result into both `browser_host_availability_diagnostic` and `descriptor_limitations` (e.g. helpers that take `&Result<ChromiumProbeOutcome, BrowserUnavailabilityReason>`).",
+        "Keep `resolve_browser_program()` as a separate, independent probe — staleness between capability render and launch is the intentional design.",
+        "Regression test that asserts `descriptor()` invokes `<binary> --version` at most once per call (mirror of the existing `browser_descriptor_does_not_invoke_browser_launch_during_version_probe` pattern)."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Cache Chromium probe within a single descriptor() call",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-148"],
+          "summary": "Share the bounded Chromium probe outcome within a single `BrowserLaunchAdapter::descriptor()` call so a descriptor render runs at most one `<binary> --version` instead of two, while keeping the per-launch re-probe (intentional fresh-state check).",
+          "deliverables": [
+            "Refactored `descriptor()` that calls `probe()` once and threads the result into diagnostic and limitations helpers",
+            "Regression test asserting at-most-one --version invocation per descriptor render"
+          ],
+          "acceptanceCriteria": [
+            "Existing UTSUSHI-148 tests continue to pass.",
+            "Probe staleness between capability render and launch is preserved (launch path still re-probes).",
+            "Worst-case wedged-binary descriptor cost halves from 4s to 2s."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            }
+          ],
+          "auditFocus": [
+            "Per-launch re-probe is preserved",
+            "Cache is per-call, not per-adapter (no Mutex<state>)",
+            "Test coverage of the at-most-one assertion"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-148-F005",
+      "severity": "P3",
+      "title": "`just test` requires manual pnpm schema/db build prerequisites on a clean worktree",
+      "category": "verification",
+      "locations": [
+        {
+          "path": "justfile",
+          "line": 29,
+          "symbol": "test"
+        },
+        {
+          "path": "packages/localization-bridge-schema/package.json"
+        }
+      ],
+      "description": "On a clean worktree, `just test` fails because vitest cannot resolve `@itotori/localization-bridge-schema` — its `dist/` is not present until `pnpm --filter @itotori/localization-bridge-schema build && pnpm --filter @itotori/db build` is run. After the two builds, `just test` passes cleanly (vitest: 14 + 19 test files passed, cargo workspace tests all green, 0 failures). This is pre-existing, NOT a regression from UTSUSHI-148, but I am recording it because the audit instruction is explicit that `just test` must succeed from the worktree, and the as-shipped `just test` recipe does not self-bootstrap. Worker's report-back said cargo-side gates were verified and `just test` was not runnable in their sandbox, which is consistent with this.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "`just test` from a clean worktree fails: vitest -> 'Error: Failed to resolve entry for package \"@itotori/localization-bridge-schema\". The package may have incorrect main/module/exports specified in its package.json.'"
+        },
+        {
+          "kind": "command",
+          "detail": "After `pnpm --filter @itotori/localization-bridge-schema build && pnpm --filter @itotori/db build`, `just test` passes: vitest test files 14+19 passed, cargo workspace tests all green."
+        },
+        {
+          "kind": "file",
+          "detail": "`just test` recipe runs `pnpm exec vp run ts:test && cargo test --workspace` with no upstream build step.",
+          "location": {
+            "path": "justfile",
+            "line": 29
+          }
+        }
+      ],
+      "impact": "Low: a developer running `just test` after a fresh `pnpm install --frozen-lockfile` hits a confusing TS-module-resolution error instead of a clear build-first instruction. Not specific to UTSUSHI-148 and does not affect any correctness claim. Recording as P3 because the audit instructions demanded a worktree re-run.",
+      "actionableAcceptanceCriteria": [
+        "Add a prerequisite recipe (e.g. `just itotori-scale-build` or `just install && just <schema-build>`) before `pnpm exec vp run ts:test` in the `test` recipe, OR document the bootstrap step in `README.md` and/or `docs/subprojects-utsushi.md`.",
+        "Alternative: have vitest configs point at the source `src/` of `@itotori/localization-bridge-schema` and `@itotori/db` instead of `dist/` so vitest can resolve without a build step."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "`just test` self-bootstrap on a clean worktree",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "tooling",
+          "dependsOn": [],
+          "summary": "Make `just test` succeed on a freshly-installed worktree without requiring a manual `pnpm --filter @itotori/localization-bridge-schema build && pnpm --filter @itotori/db build` first.",
+          "deliverables": [
+            "`just test` recipe self-bootstraps prerequisite TS package builds, OR vitest configs resolve to `src/` instead of `dist/`"
+          ],
+          "acceptanceCriteria": [
+            "`just test` succeeds on a clean worktree after only `pnpm install --frozen-lockfile`.",
+            "No regression in CI test lanes."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "just test"
+            }
+          ],
+          "auditFocus": [
+            "Bootstrap is reliable in CI",
+            "No double-build cost in the developer loop"
+          ]
+        }
+      }
+    }
+  ]
+}
