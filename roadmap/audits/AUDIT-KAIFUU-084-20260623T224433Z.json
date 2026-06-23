@@ -1,0 +1,118 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-084-20260623T224433Z",
+  "generatedAt": "2026-06-23T22:44:33Z",
+  "spec": {
+    "id": "KAIFUU-084",
+    "title": "Binary patch transaction harness",
+    "branch": "spec/kaifuu-084",
+    "worktree": "/scratch/worktrees/itotori-spec-kaifuu-084",
+    "commit": "30d7782"
+  },
+  "auditor": {
+    "name": "kaifuu-084-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Iter-5 correctness audit of KAIFUU-084 (binary patch transaction harness) at commit 30d7782 on spec/kaifuu-084. Verification re-run is clean: `cargo test -p kaifuu-core` -> 176 passed + 1 doc + 2 patch_transaction integration suites all 0 failed (matches worker's 176 kaifuu-core + 14 patch_transaction tests claim, totaling the new harness coverage). `cargo test -p kaifuu-reallive` -> 22 + 11 + 11 + 9 + 0 = all passing, 0 failed (no regression -- confirms the audit claim that `crates/kaifuu-reallive/` was NOT modified; verified via `git diff main..HEAD --stat -- crates/kaifuu-reallive/` returning empty). `just check` -> exit 0 (fmt, clippy, schema lint, ts:typecheck, spec DAG validate clean; cargo check --workspace clean). Audit-focus structural verification: (1) Binary patch writes NEVER happen before preflight completes -- `PatchTransaction::stage` (patch_transaction.rs:420-432) gates on `self.state != TransactionState::Preflight` AND `self.diagnostics.is_empty()`, returning `StateMachineMisuse` if either condition fails. `run_preflight` (patch_transaction.rs:261-291) is the only transition from `Idle -> Preflight`, runs all five checks (`TransformSupport`, `ByteBudget`, `SourceMissing`/`SourceHash`, `Relocation`, `OutputHashFormat`), accumulates diagnostics, and transitions to `PreflightFailed` if any check fired -- explicitly documented as 'no file is created or modified' (patch_transaction.rs:258-260). `grep -n 'write|create|fs::' patch_transaction.rs` confirms every fs::write/create_dir_all/OpenOptions::create_new sits inside `stage()` (line 451+), which is gated. (2) Rollback covers verify and promote failures -- `verify` (line 574-622) deletes the staged file on read failure (line 588) and on hash mismatch (line 605), then transitions to `VerifyFailed`. `promote` (line 630-659) deletes the staged file on rename failure (line 642) and transitions to `PromoteFailed`; on rename success the original output path is preserved because POSIX `fs::rename` is atomic on success (same-filesystem siblings enforced by the `<output_dir>/.staging/` layout). `cancel` (line 665-705) deletes the staged file from `Staged` or `Verified`. The audit-focus 'rollback missing failed-promotion coverage' item is met: promote-time rename failure is rolled back. (3) PatchResult v0.2 is tied to transaction states -- `into_outcome` (line 713-738) consumes the harness and emits `patch_result_v02` via `build_patch_result_v02(&self.config, final_state, &self.diagnostics)` where `final_state` is one of the terminal `TransactionState` variants (`Promoted`, `PreflightFailed`, `VerifyFailed`, `PromoteFailed`, `Cancelled`). In debug builds the harness validates the emitted JSON via `validate_patch_result_v02` (line 727-729). The five `TransactionFailureCategory` variants (`SourceIncompatible`, `PatchWriteFailed`, `AssetMissing`, `AdapterUnsupported`, `OutputHashMismatch`) map 1:1 to the v0.2 `PATCH_FAILURE_CATEGORIES_V02` allowed values. F001 is a P2 follow-up: stage-time write failures (StageWrite check failure during `stage()`) currently transition the harness to `TransactionState::PromoteFailed` (line 566 inside `record_stage_failure`), conflating stage-time failures with promote-time failures in the terminal state. Per the plan this is intentional ('semantically: we did try a write') and the diagnostics carry the precise `PreflightCheck::StageWrite` and `kaifuu.patch_transaction.staged_write_failed` semantic code, so a downstream consumer reading the `patch_result_v02` JSON CAN distinguish the two; but a caller inspecting `final_state` alone cannot tell stage-time from promote-time failure. Recording as P2 follow-up because it doesn't violate any acceptance criterion but introduces a state-name/semantics mismatch that future tooling may stumble on. Outcome: `follow_up_only` -- completion allowed, one P2 follow-up recorded.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-084-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-084-F001",
+      "severity": "P2",
+      "title": "Stage-time write failures terminate in `TransactionState::PromoteFailed`, conflating stage vs promote terminal states",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-core/src/patch_transaction.rs",
+          "line": 566,
+          "symbol": "PatchTransaction::record_stage_failure"
+        },
+        {
+          "path": "crates/kaifuu-core/src/patch_transaction.rs",
+          "line": 84,
+          "symbol": "TransactionState"
+        }
+      ],
+      "description": "The `TransactionState` enum declares the failed states `PreflightFailed`, `VerifyFailed`, `PromoteFailed`, `Cancelled` -- there is no `StageFailed`. When a stage-time write fails (`fs::create_dir_all` parent error, `OpenOptions::create_new` collision, `write_all` failure, `sync_all` failure), `record_stage_failure` transitions the harness to `TransactionState::PromoteFailed` (patch_transaction.rs:566). The plan at `.plan/KAIFUU-084.md:179-180` documents this as intentional ('we did try a write'), and the `TransactionDiagnostic` records the precise `PreflightCheck::StageWrite` and `SEMANTIC_PATCH_TRANSACTION_STAGED_WRITE_FAILED`/`STAGED_COLLISION` semantic codes -- so a consumer reading the v0.2 PatchResult JSON CAN tell stage-time from promote-time failure. However, a caller inspecting `outcome.final_state` alone cannot distinguish a stage-time write failure (no atomic rename was ever attempted) from a promote-time rename failure (the staged file existed, was verified, and the rename failed). This conflation has two downstream costs: (a) operator dashboards summarising failure-state distributions over a fleet of patch jobs cannot separately count stage-write vs promote-rename failures without re-parsing the v0.2 JSON; (b) the audit-focus item 'rollback missing failed-promotion coverage' is technically met, but a reader is forced to consult the diagnostic codes inside the JSON to confirm which physical step rolled back.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "`record_stage_failure` (patch_transaction.rs:548-567) is the single sink for all stage-time write failures (parent missing, collision, write, fsync). At line 566 it sets `self.state = TransactionState::PromoteFailed`.",
+          "location": {
+            "path": "crates/kaifuu-core/src/patch_transaction.rs",
+            "line": 566
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "The plan at `.plan/KAIFUU-084.md:179-180` documents 'transition to `PromoteFailed`, semantically: we did try a write' for stage-time failures -- so the conflation is intentional per the planner, but the runtime enum has no distinguishing variant.",
+          "location": {
+            "path": ".plan/KAIFUU-084.md",
+            "line": 179
+          }
+        }
+      ],
+      "impact": "Mid-priority. Acceptance criteria are met (all writes gated by preflight, rollback covers staged-write failures via best-effort `fs::remove_file`, PatchResult v0.2 carries the precise diagnostic code). The follow-up adds an additional `TransactionState::StageFailed` variant (or a typed-tag on `PromoteFailed`) so dashboards and consumers can distinguish failures without re-parsing the diagnostic list. Non-blocking because the diagnostic codes already carry the precise classification.",
+      "actionableAcceptanceCriteria": [
+        "Introduce a `TransactionState::StageFailed` variant (or equivalent semantic distinction such as `PromoteFailed { stage: PromoteFailureStage }`).",
+        "Update `record_stage_failure` to set the new variant instead of `PromoteFailed`.",
+        "Update `is_terminal` and the `build_patch_result_v02` / `build_legacy_patch_result` mappers to handle the new variant identically to `PromoteFailed` (preserve the v0.2 wire form).",
+        "Add a regression test asserting that a `stage()` write failure leaves the harness in the new `StageFailed` state, with the existing `staged_write_failed` semantic code intact."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Distinguish stage-time vs promote-time terminal states in PatchTransaction",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-084"],
+          "summary": "Add a distinct `TransactionState` variant (e.g. `StageFailed`) so callers inspecting `outcome.final_state` can distinguish a stage-time write failure (no rename ever attempted) from a promote-time rename failure (rename failed after verify), without having to re-parse the v0.2 PatchResult diagnostic list.",
+          "deliverables": [
+            "New `TransactionState::StageFailed` variant added to the enum.",
+            "`record_stage_failure` updated to use the new variant.",
+            "`is_terminal` and v0.2 mappers updated to treat the new variant identically to `PromoteFailed` for wire-form compatibility.",
+            "Regression test asserting stage-write failure terminates in the new state."
+          ],
+          "acceptanceCriteria": [
+            "Stage-time write failures terminate in a distinct state from promote-time rename failures.",
+            "Existing v0.2 PatchResult wire form is preserved (the new state maps to the same v0.2 category as before).",
+            "Existing `cargo test -p kaifuu-core` continues to pass."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core"
+            },
+            {
+              "type": "command",
+              "value": "just check"
+            }
+          ],
+          "auditFocus": [
+            "New variant must not change the v0.2 wire form (no schema bump).",
+            "Existing kaifuu-reallive consumers continue to compile and pass.",
+            "Stage-time vs promote-time distinction observable from `outcome.final_state` alone."
+          ]
+        }
+      }
+    }
+  ]
+}
