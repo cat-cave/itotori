@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-173-20260623T183609Z",
+  "generatedAt": "2026-06-23T18:36:09Z",
+  "spec": {
+    "id": "KAIFUU-173",
+    "title": "RealLive Scene/SEEN parser-boundary smoke",
+    "branch": "spec/kaifuu-173",
+    "worktree": "/scratch/worktrees/itotori-spec-kaifuu-173",
+    "commit": "0ff6df9"
+  },
+  "auditor": {
+    "name": "kaifuu-173-parser-boundary-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "KAIFUU-173 lands the RealLive Scene/SEEN parser-boundary smoke cleanly across all four acceptance criteria with no blocking defects. The new crates/kaifuu-reallive workspace member is library-only as the plan required (no EngineAdapter impl; capability matrix intentionally unchanged from KAIFUU-172 per plan section 2.2). Acceptance criterion #1: parses_smoke_scene_001_into_structured_ast_with_named_opcodes parses the synthetic single-scene SEEN.TXT end-to-end and asserts the resulting Scene carries SetSpeaker -> TextDisplay -> Choice -> Pause as named opcodes, four StringSlots with the expected raw bytes (Aoi/Hello!/Yes/No) and roles (SpeakerName/Dialogue/Choice/Choice), and that the Choice instruction holds two slot refs. Acceptance criterion #2: ast_serializes_named_opcode_strings_not_opaque_byte_values asserts the serialized AST contains \"opcode\":\"set_speaker\"/\"text_display\"/\"choice\"/\"pause\" and zero \"rawOpcodeByte\" markers; InstructionKind::Named carries the typed NamedOpcode and Unrecognized carries the raw_opener_byte field paired with a diagnostic. Acceptance criterion #3: string_slot_id_format_matches_documented_bridge_contract pins the slot id format to reallive:scene-0000:str-off-00000006-idx00 (exact match for the first SetSpeaker payload at scene-blob offset 6) and extracts_stable_string_slot_ids_derived_from_byte_offset confirms every slot id follows the position-derived form documented in the plan section 5.3. Acceptance criterion #4: emits_kaifuu_reallive_unrecognized_instruction_warning_without_dropping_byte_range asserts the 0x55 unknown opener becomes an Unrecognized AST node with byte_len 1 plus exactly one kaifuu.reallive.unrecognized_instruction warning at offset 8; rejects_truncated_scene_with_kaifuu_reallive_truncated_scene_diagnostic and rejects_out_of_profile_input_with_kaifuu_reallive_out_of_profile_input cover the fatal envelope paths; partitions_scene_bytes_completely_into_instructions_and_diagnostics enforces the no-silent-skip invariant by asserting every scene-blob byte is covered by either an instruction span or a diagnostic span. The 3-iteration stability oracle parses_identical_bytes_to_identical_ast_across_runs serializes the SceneIndex + ParseOutcome combined JSON across three parses and asserts byte-identical strings, directly defending auditFocus #2 (string-slot identifier stability). Hard architectural constraints all verified: pure Rust with no Command::new in the crate (grep -rn 'Command::new' crates/kaifuu-reallive/ returns only the lib.rs clean-room provenance line declaring the rule); no rlvm Cargo dep (grep -n 'rlvm' Cargo.toml Cargo.lock crates/*/Cargo.toml returns only the new kaifuu-reallive description string declaring 'rlvm not linked, not derived'); module-level provenance comment present at the top of every src/*.rs file; opcode table and operand-tag set are clean-room synthetic (eight opcodes 0x01-0x08, three operand tags i/s/l), authored for fixture readability rather than copied from any rlvm or RLDEV table; no engine-VM execution surface. Worker-reported deviation (inlined semantic assertions in tests/smoke.rs rather than the plan section 9.1 expected/ JSON golden directories): defensible and aligned with docs/testing-standard.md section 112 preference for field-by-field assertions over snapshot dumps; coverage is comprehensive (named-opcode sequence, raw text content, semantic roles, slot id format and exact first-slot id/offset/len/hex, schema versions, choice operand count, byte-range partition, stability oracle). Verification re-run: cargo test -p kaifuu-reallive 9/9 passed (0 failed, 0 ignored); cargo test -p kaifuu-core 1 lib + 3 doctests passed (0 failed); cargo clippy -p kaifuu-reallive --all-targets -- -D warnings clean; cargo fmt --check clean; just check clean (cargo fmt --check + cargo check --workspace + pnpm vitest + tsc --noEmit suites all green). Readiness record addendum at docs/kaifuu-adapters/reallive.md extends the existing KAIFUU-172 section without rewriting it and ticks 6/7 boxes on the KAIFUU-173 clean-room checklist; the seventh ('if a future worker reads rlvm') is intentionally left as a hand-off marker matching the KAIFUU-172 pattern. No blocking findings; no follow-ups warranted at this slice (the four cushion opcodes SetVar/Jump/Return/ClearScreen are unexercised by the synthetic fixture but their inclusion is justified by plan section 6.1 inclusion criterion #1 'documented common-case cushion', and KAIFUU-174 will exercise the remainder when real-game extraction lands).",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
