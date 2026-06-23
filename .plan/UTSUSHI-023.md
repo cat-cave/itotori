@@ -41,7 +41,7 @@ Downstream consumers and what they require from this layer:
   `ConformanceResult` entries whose `EvidenceRef` cites changed state paths.
   Needs `StateDiff` shape stable enough for the conformance result schema.
 - **UTSUSHI-146** (RealLive runtime port) — `dependsOn: UTSUSHI-023, UTSUSHI-103,
-  UTSUSHI-120`. The RealLive port implements the `Inspectable` trait against
+UTSUSHI-120`. The RealLive port implements the `Inspectable` trait against
   its Scene/SEEN replay state (frame counter, sel-stack cursor, bridge-unit
   cursor). It MUST NOT have to leak engine-specific structures into the state
   tree; the substrate's state-value taxonomy has to be expressive enough for
@@ -156,14 +156,14 @@ The substrate pre-declares the top-level namespaces that engine ports may use.
 Unknown namespaces are rejected. New namespaces require a typed `StateNamespace`
 enum extension — engine ports cannot smuggle engine-flavoured roots in.
 
-| Top-level    | Owner                  | Examples                                                              |
-| ------------ | ---------------------- | --------------------------------------------------------------------- |
-| `runtime`    | substrate              | `runtime.clock.tick`, `runtime.clock.origin`, `runtime.input.cursor`  |
-| `replay`     | substrate              | `replay.log_id`, `replay.cursor`, `replay.asset_refs`                 |
-| `bridge`    | observation-hook       | `bridge.unit.<bridge_unit_id>`, `bridge.scene.<scene_id>`             |
-| `vfs`        | UTSUSHI-020             | `vfs.<package>.<asset_path>`                                          |
-| `port`       | engine port            | `port.frame`, `port.sel_stack.depth`, `port.scene_cursor`             |
-| `metadata`   | substrate              | `metadata.seed`, `metadata.adapter_name`, `metadata.run_id`           |
+| Top-level  | Owner            | Examples                                                             |
+| ---------- | ---------------- | -------------------------------------------------------------------- |
+| `runtime`  | substrate        | `runtime.clock.tick`, `runtime.clock.origin`, `runtime.input.cursor` |
+| `replay`   | substrate        | `replay.log_id`, `replay.cursor`, `replay.asset_refs`                |
+| `bridge`   | observation-hook | `bridge.unit.<bridge_unit_id>`, `bridge.scene.<scene_id>`            |
+| `vfs`      | UTSUSHI-020      | `vfs.<package>.<asset_path>`                                         |
+| `port`     | engine port      | `port.frame`, `port.sel_stack.depth`, `port.scene_cursor`            |
+| `metadata` | substrate        | `metadata.seed`, `metadata.adapter_name`, `metadata.run_id`          |
 
 The implementation models this as:
 
