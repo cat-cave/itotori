@@ -1,0 +1,255 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-022-20260623T183631Z",
+  "generatedAt": "2026-06-23T18:36:31Z",
+  "spec": {
+    "id": "UTSUSHI-022",
+    "title": "Headless text render and audio sink contracts",
+    "branch": "spec/utsushi-022",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-022",
+    "commit": "50df95f"
+  },
+  "auditor": {
+    "name": "utsushi-022-sink-contracts-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "UTSUSHI-022 Slice A delivers the engine-neutral, headless sink substrate as specified. The new `utsushi_core::sink` module exposes `SinkKind`, `SinkCapability`, `SinkSet`, `SinkCapabilitySummary`, `SinkError`/`SinkResult`/`codes`, and the three trait surfaces `TextSurfaceSink`/`FrameArtifactSink`/`AudioEventSink` plus their payload types `TextLine`/`FrameArtifact`/`AudioEvent` (and `AudioEventKind`). All three traits are `Send + Sync` with `&self`-only methods (no `&mut self` anywhere under `crates/utsushi-core/src/sink/`), interior mutability is left to implementors, and no trait surface or payload field uses `std::path::Path` or `PathBuf` — path-shaped fields use the UTSUSHI-020 `AssetId` (now with a serialize-as-`vfs://`-string serde impl that round-trips through `AssetId::parse`) or `ObservationArtifactRef`. Engine-neutrality is preserved: an exhaustive grep across the sink module for `xp3|kirikiri|kag|rgss|rpgmaker` returned zero matches outside two false positives in doc comments (the substring `kag` appears only inside `linkage`). The per-sink ceilings are pinned by `SinkKind::evidence_tier_ceiling`: TextSurface→E1, AudioEvent→E0, FrameArtifact→E4 (intentional change from the plan §3.1 prose). The plan §5 table is authoritative and explicitly states `Enforced ceiling: E4 (only for ReferenceFidelity)` with an `E2 minimum required` lower bound for frame artifacts; that floor is enforced by `FrameArtifact::validate` (`evidence_tier < EvidenceTier::E2 → SinkError::EvidenceTierMismatch` with `ceiling: E2`) and is covered by `frame_sink_rejects_e1_emission_as_evidence_tier_mismatch` and `frame_sink_rejects_e0_emission_as_evidence_tier_mismatch`. The descriptor-side guard that an E1-ceiling adapter cannot register a Supported-E2 `FrameArtifactSink` is correctly deferred (plan §5 last paragraph) and not present in this slice — captured as F002 below. Frame artifact refs are policy-gated: `FrameArtifact::validate` calls `ObservationArtifactRef::validate` (which routes through `validate_runtime_artifact_uri` rejecting absolute paths, file://, blob://, data://, traversal, and non-managed roots) and an `FRAME_ARTIFACT_KIND_ALLOW_LIST` of `screenshot|frame_capture|recording`. Bytes never enter the sink — only refs do; the integration test in `crates/utsushi-core/tests/sink_contracts.rs` writes bytes through `RuntimeArtifactRoot::write_bytes` and only then emits the announcement. `AudioEvent` has no `bytes`/`sampleRate`/`duration`/`mixLevel`/`channels` field (structural test `audio_sink_payload_has_no_audio_bytes_field` enforces this) and `AudioEvent::validate` rejects any tier `!= E0`. `SinkError::UnsupportedKind` is the documented non-silent diagnostic; all three sink tests exercise the capability-`Unsupported` adapter path and `codes::ALL` mirrors the UTSUSHI-020 `vfs::diagnostics::codes::ALL` precedent, so a downstream allowed-code validator cannot drift. The `BudgetExhausted` variant is unreachable from any production code path — `inject_budget_exhaustion` is declared inside `#[cfg(test)] mod tests` in `audio.rs` and the corresponding `budget_inject: Mutex<Option<String>>` field lives only on the in-test collector struct, never on the production sink contract. UTSUSHI-029 will wire the production hook through `RuntimeArtifactRoot::write_bytes`, tracked as F001. `RuntimeRequest` extension is strictly additive: one new `pub sinks: Option<SinkSet>` field, one new `with_sinks` builder, one new Debug field (`<present>`/`<absent>` marker, no implementor type leakage — exercised by `runtime_request_debug_does_not_expose_sink_implementor_type`), and `RuntimeRequest::new` continues to default `sinks: None`. `utsushi-fixture` is untouched (`git diff main..HEAD -- crates/utsushi-fixture/` returns empty). The new `utsushi_core::redaction::reject_unredacted_local_paths` re-export is a thin pub wrapper around the existing crate-private helper and is exercised by the cross-sink integration test, which serializes one `TextLine`, one `FrameArtifact`, and one `AudioEvent` and asserts the combined JSON passes the filter; the negative test in `text.rs` confirms the wrapper catches a `/home/...` substring planted in `speaker`. The new `Sink Tier Rules` section in `docs/utsushi-fidelity-policy.md` is placed between `Adapter Capability Contract` and `Runtime Environment Matrix` as planned, restates the per-sink ceilings, lists the four `utsushi.sink.*` codes that surface on violation, and explicitly forbids promoting `unsupported_kind` to higher tiers on the basis of empty event lists. Verification re-runs from the worktree: `cargo test -p utsushi-core` passes 128 lib + 3 `sink_contracts.rs` + 16 `vfs_synthetic_package.rs` (147 total; 5 ignored), `cargo test -p utsushi-fixture` passes 22, `cargo clippy -p utsushi-core --all-targets -- -D warnings` is clean, `cargo fmt --check` is clean, `just schema` passes 124 schema tests, and `just check` exits 0 across the workspace. Outcome: follow_up_only with two non-blocking P2 follow-ups (BudgetExhausted production wire-in, descriptor-vs-capability cross-check) and one P3 follow-up (voice-subtitle-sync taxonomy variant when the first port needs it).",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 2,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "UTSUSHI-022-F001",
+      "UTSUSHI-022-F002",
+      "UTSUSHI-022-F003"
+    ]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-022-F001",
+      "severity": "P2",
+      "title": "Wire SinkError::BudgetExhausted into RuntimeArtifactRoot::write_bytes once UTSUSHI-029 lands",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/sink/errors.rs",
+          "line": 73,
+          "symbol": "SinkError::BudgetExhausted"
+        },
+        {
+          "path": "crates/utsushi-core/src/sink/audio.rs",
+          "line": 134,
+          "symbol": "CollectingAudioSink::inject_budget_exhaustion"
+        }
+      ],
+      "description": "The `SinkError::BudgetExhausted { sink, budget }` variant is defined, carries the stable `utsushi.sink.budget_exhausted` semantic code, and is exercised by `budget_exhausted_variant_is_reachable_via_injection_point_but_not_wired_in_production` in `sink/audio.rs`. However, the injection point (`inject_budget_exhaustion` plus the `budget_inject: Mutex<Option<String>>` field) lives inside the `#[cfg(test)] mod tests` block, so the variant is only reachable from test code. The production sink path never returns it. The plan and the new `Soft budget exhaustion` paragraph in `docs/utsushi-fidelity-policy.md` both explicitly defer the production hook to UTSUSHI-029 (`RuntimeArtifactRoot::write_bytes` routing the diagnostic when an artifact-budget tracker is registered). This is acceptable for Slice A — the ABI is forward-compatible — but the production wire-up must land with UTSUSHI-029 so the `Artifact Limits` table in the fidelity policy has a real enforcement point.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "`crates/utsushi-core/src/sink/audio.rs` declares `inject_budget_exhaustion` under `#[cfg(test)]` and stores `budget_inject` only on the in-test `CollectingAudioSink`, not on any production trait surface."
+        },
+        {
+          "kind": "file",
+          "detail": "`docs/utsushi-fidelity-policy.md` §Sink Tier Rules / Soft budget exhaustion explicitly defers the wire-up to UTSUSHI-029 and `RuntimeArtifactRoot::write_bytes`."
+        },
+        {
+          "kind": "test",
+          "detail": "Test `budget_exhausted_variant_is_reachable_via_injection_point_but_not_wired_in_production` confirms the variant is constructable but not reachable from a real adapter path."
+        }
+      ],
+      "impact": "Without a production hook, soft artifact-budget enforcement remains best-effort. The diagnostic surface and semantic code are stable, so the wire-up is additive and will not break existing adapters; the consequence of delay is only that the fidelity policy's `artifactLimits` cannot be enforced until UTSUSHI-029 lands.",
+      "actionableAcceptanceCriteria": [
+        "`RuntimeArtifactRoot::write_bytes` (or a budget tracker it delegates to) returns `SinkError::BudgetExhausted { sink: SinkKind::FrameArtifact, budget }` when a configured soft budget is exceeded.",
+        "A non-test integration test demonstrates a real adapter receiving `SinkError::BudgetExhausted` when its artifact stream exceeds a configured byte/count cap.",
+        "Test-only `inject_budget_exhaustion` helpers can be removed or kept only as adversarial fuzz inputs; they must not be the only path to the variant."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Wire SinkError::BudgetExhausted into the runtime artifact root budget hook",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-022", "UTSUSHI-029"],
+          "summary": "Route the soft artifact-budget violation surface from RuntimeArtifactRoot::write_bytes (or its delegate budget tracker) to SinkError::BudgetExhausted so the diagnostic is reachable from a real adapter path rather than only the cfg(test) injection point.",
+          "deliverables": [
+            "Production budget tracker on RuntimeArtifactRoot::write_bytes returning utsushi.sink.budget_exhausted",
+            "Adapter-side propagation so FrameArtifactSink::emit_frame surfaces BudgetExhausted instead of ArtifactPolicy when bytes exceed the cap",
+            "Removal or repurposing of the cfg(test) inject_budget_exhaustion helper"
+          ],
+          "acceptanceCriteria": [
+            "A real adapter writing more bytes than the configured soft budget receives SinkError::BudgetExhausted with the correct sink and budget label.",
+            "The semantic code utsushi.sink.budget_exhausted is reachable without using cfg(test) helpers.",
+            "The fidelity policy artifactLimits table cites the wire-up location and the test that exercises it."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            }
+          ],
+          "auditFocus": [
+            "Production reachability of SinkError::BudgetExhausted",
+            "No silent drop of budget-exhausted emissions",
+            "Soft budget enforcement matches docs/utsushi-fidelity-policy.md artifactLimits"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-022-F002",
+      "severity": "P2",
+      "title": "Cross-check that an E1-ceiling adapter cannot register a Supported-E2 FrameArtifactSink",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/sink/set.rs",
+          "line": 55,
+          "symbol": "SinkSet::capabilities"
+        },
+        {
+          "path": "crates/utsushi-core/src/sink/mod.rs",
+          "line": 63,
+          "symbol": "SinkKind::evidence_tier_ceiling"
+        }
+      ],
+      "description": "The plan §5 last paragraph commits to a runtime-time assertion that an adapter declaring `evidence_tier_ceiling = E1` does not register a `FrameArtifactSink` with capability `Supported { evidence_tier_ceiling: E2 }`. Slice A intentionally keeps `RuntimeAdapterDescriptor` structurally unchanged and exposes a typed view through `SinkSet::capabilities()` so conformance (UTSUSHI-026) can inspect later. The follow-up is to implement that conformance check — either inside `SinkSet::capabilities()` (returning a diagnostic on the cross-check fail) or as a descriptor-side validator that runs at adapter registration. Without it, a misconfigured adapter could declare a text-only ceiling at the descriptor level and still expose an E2 frame sink, and the per-sink ceiling alone would not catch the inconsistency (the frame sink's own ceiling allows up to E4).",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Plan `.plan/UTSUSHI-022.md` §5: 'a follow-up audit asserts that an adapter declaring `evidence_tier_ceiling = E1` does not register a `FrameArtifactSink` with capability `Supported { evidence_tier_ceiling: E2 }`. That check is added as a separate runtime-time assertion in `SinkSet::capabilities()`'"
+        },
+        {
+          "kind": "file",
+          "detail": "`SinkSet::capabilities` currently produces a passive snapshot; it does not cross-check the adapter descriptor's overall evidence_tier_ceiling."
+        }
+      ],
+      "impact": "An adapter could mis-declare evidence ceilings (descriptor-level E1, frame-sink E2) and the substrate would not catch it. Conformance reports for capture/recording (UTSUSHI-029) could then accept E2 captures from an adapter whose top-level ceiling forbids them. The slice ships honestly because the deferral is documented; the follow-up closes the structural loophole.",
+      "actionableAcceptanceCriteria": [
+        "A descriptor or SinkSet validator returns a typed diagnostic when an adapter's overall evidence_tier_ceiling is below the per-sink Supported ceiling declared by any of its registered sinks.",
+        "A unit test demonstrates an E1-ceiling adapter registering a Supported E2 frame sink and asserts the diagnostic surfaces with a stable semantic code.",
+        "The fidelity policy section documents the cross-check rule alongside the existing per-sink ceiling rules."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Descriptor and SinkSet evidence-tier cross-check",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-022", "UTSUSHI-026"],
+          "summary": "Add the planned runtime-time cross-check that prevents an adapter with an E1 overall evidence_tier_ceiling from registering a Supported-E2 FrameArtifactSink, closing the structural loophole the per-sink ceiling alone does not cover.",
+          "deliverables": [
+            "Cross-check validator (descriptor- or SinkSet-side) that compares the adapter's overall evidence_tier_ceiling against each registered sink's Supported ceiling",
+            "Stable semantic code under utsushi.sink.* (e.g. utsushi.sink.descriptor_ceiling_below_sink) wired through SinkError or a sibling diagnostic enum",
+            "Test coverage including the E1-adapter / E2-frame-sink mismatch case and the matching-ceiling baseline"
+          ],
+          "acceptanceCriteria": [
+            "An adapter whose overall evidence_tier_ceiling is below any registered sink's Supported ceiling fails registration or surfaces a typed diagnostic at SinkSet::capabilities-time.",
+            "The conformance manifest from UTSUSHI-026 references the cross-check rule.",
+            "All existing tests in utsushi-core continue to pass without modification."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            },
+            {
+              "type": "command",
+              "value": "just schema"
+            }
+          ],
+          "auditFocus": [
+            "Descriptor and sink capability consistency",
+            "No silent acceptance of over-claimed sink ceilings",
+            "Conformance manifest references the cross-check"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-022-F003",
+      "severity": "P3",
+      "title": "Voice-subtitle sync AudioEventKind variant deferred until a port exercises it",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/sink/audio.rs",
+          "line": 70,
+          "symbol": "AudioEventKind"
+        }
+      ],
+      "description": "`AudioEventKind` covers `BgmStart`, `BgmStop`, `SeFire`, `VoicePlay`, `VoiceStop`, and `Marker`. The plan §11.3 risks section flags voice-subtitle sync as an unknown: whether it needs its own variant or fits inside `VoicePlay`/`Marker` plus the `bridge_ref` linkage. The current shape can express a voice line tied to a bridge unit (the integration test does exactly this with `bridge_ref` populated on a `VoicePlay`), but a dedicated `VoiceSubtitleSync` variant would let downstream conformance distinguish the start of a voiced line from a metadata marker tied to that line. Adding the variant is a small additive enum extension; the audit recommends deferring until the first runtime port that exercises it (likely an MV/MZ or RealLive voice fixture) requests the distinction.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Plan `.plan/UTSUSHI-022.md` §11.3 explicitly defers the voice-subtitle sync taxonomy decision to the first port that needs it."
+        },
+        {
+          "kind": "test",
+          "detail": "`audio_sink_accepts_e0_voice_play_with_bridge_ref` in `sink/audio.rs` already exercises the bridge-ref-on-VoicePlay shape that the deferred variant would refine."
+        }
+      ],
+      "impact": "Low. Adapters can already announce voiced lines via `VoicePlay` plus `bridge_ref`. The lack of a dedicated variant only matters if downstream conformance needs to distinguish 'voice playback started' from 'voice tied to subtitle' inside the same emission stream; today no consumer requires this.",
+      "actionableAcceptanceCriteria": [
+        "The first runtime port that emits voiced dialogue tied to a subtitle drives a decision (either documenting that VoicePlay+bridge_ref is sufficient or adding the new AudioEventKind variant).",
+        "If a new variant is added, the snake_case serde mapping, `as_str` arm, and at least one acceptance test are added together.",
+        "The fidelity policy audio section reflects the decision."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Voice-subtitle sync AudioEventKind taxonomy extension",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-022"],
+          "summary": "Extend AudioEventKind with the voice-subtitle sync shape (or document that VoicePlay+bridge_ref already covers it) once the first runtime port emits voiced dialogue tied to a subtitle bridge unit.",
+          "deliverables": [
+            "AudioEventKind taxonomy update (either a new variant with snake_case serde mapping plus as_str arm, or an inline doc-comment recording that VoicePlay+bridge_ref is sufficient)",
+            "Acceptance test exercising the chosen shape against a voiced-line bridge unit",
+            "Fidelity policy audio section updated to reflect the taxonomy outcome"
+          ],
+          "acceptanceCriteria": [
+            "Downstream conformance can distinguish a voiced line tied to a subtitle from a generic VoicePlay marker (either via the existing bridge_ref shape or via a new variant).",
+            "All existing audio sink tests continue to pass.",
+            "No engine-specific opcode or shape leaks into the taxonomy."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core"
+            }
+          ],
+          "auditFocus": [
+            "Engine-neutral voice/subtitle taxonomy",
+            "No engine opcode leakage into AudioEventKind",
+            "Audio event sink remains E0-capped"
+          ]
+        }
+      }
+    }
+  ]
+}
