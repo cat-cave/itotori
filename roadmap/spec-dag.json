@@ -2736,7 +2736,7 @@
     {
       "id": "KAIFUU-010",
       "title": "Patch result and verification v0.2",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared", "itotori"],
@@ -2771,7 +2771,10 @@
           "value": "just contract-validate"
         }
       ],
-      "auditFocus": ["Untriageable errors", "Weak failure categories", "Silent partial success"]
+      "auditFocus": ["Untriageable errors", "Weak failure categories", "Silent partial success"],
+      "owner": "orchestrator",
+      "branch": "spec/kaifuu-010",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-010"
     },
     {
       "id": "KAIFUU-011",
@@ -10142,7 +10145,7 @@
     {
       "id": "UTSUSHI-023",
       "title": "Inspectable state and snapshot primitives",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10178,7 +10181,10 @@
         "Snapshot payloads leaking private data",
         "State diffs too vague to debug",
         "Restore behavior coupled to fixture runtime only"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-023",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-023"
     },
     {
       "id": "UTSUSHI-024",
@@ -10306,7 +10312,7 @@
     {
       "id": "UTSUSHI-027",
       "title": "Trace and branch conformance",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10342,7 +10348,10 @@
         "Trace-only evidence overclaiming rendered playback",
         "Branch mismatches hidden as skipped checks",
         "Bridge-unit links missing from conformance output"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-027",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-027"
     },
     {
       "id": "UTSUSHI-028",
@@ -10384,7 +10393,7 @@
     {
       "id": "UTSUSHI-029",
       "title": "Capture and recording artifact conformance",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10420,7 +10429,10 @@
         "Host-specific artifact refs",
         "Unsupported capture reported as pass",
         "Evidence tier hidden from reviewers"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-029",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-029"
     },
     {
       "id": "UTSUSHI-030",
