@@ -4,6 +4,7 @@ members = [
   "crates/kaifuu-core",
   "crates/kaifuu-delta",
   "crates/kaifuu-engine-fixture",
+  "crates/kaifuu-reallive",
   "crates/kaifuu-cli",
   "crates/kaifuu-vault-source",
   "crates/utsushi-core",

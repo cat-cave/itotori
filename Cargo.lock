@@ -553,6 +553,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kaifuu-reallive"
+version = "0.0.0"
+dependencies = [
+ "kaifuu-core",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "kaifuu-vault-source"
 version = "0.0.0"
 dependencies = [
