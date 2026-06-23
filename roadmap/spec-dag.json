@@ -10064,7 +10064,7 @@
     {
       "id": "UTSUSHI-021",
       "title": "Deterministic input clock and replay log",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10096,12 +10096,15 @@
         "Nondeterministic replay state",
         "Unsupported inputs hidden as successful replay",
         "Replay logs that cannot drive future runtime ports"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-021",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-021"
     },
     {
       "id": "UTSUSHI-022",
       "title": "Headless text render and audio sink contracts",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -10137,7 +10140,10 @@
         "Text evidence overclaiming rendered output",
         "Screenshot refs bypassing artifact policy",
         "Audio metadata treated as playback fidelity"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-022",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-022"
     },
     {
       "id": "UTSUSHI-023",
@@ -15470,7 +15476,7 @@
     },
     {
       "id": "UTSUSHI-103",
-      "status": "planned",
+      "status": "in_progress",
       "title": "Engine-port runner crate template and ABI conformance",
       "priority": "P1",
       "target": "alpha",
@@ -15503,7 +15509,10 @@
         "Engine ports bypassing shared lifecycle controls",
         "ABI drift between ports",
         "Private environment leakage through manifests"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-103",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-103"
     },
     {
       "id": "UTSUSHI-104",
@@ -20720,7 +20729,7 @@
     {
       "id": "KAIFUU-173",
       "title": "RealLive Scene/SEEN parser-boundary smoke",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -20758,7 +20767,10 @@
         "String-slot identifiers unstable across runs",
         "Parser-boundary failures hidden as silent skips",
         "RLDEV provenance or clean-room boundary gaps"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/kaifuu-173",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-173"
     },
     {
       "id": "KAIFUU-174",
