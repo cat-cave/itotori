@@ -24,10 +24,14 @@ pub mod vfs;
 
 pub use clock::{ClockOrigin, LogicalClock, LogicalClockTick};
 pub use conformance::{
-    CONFORMANCE_SCHEMA_VERSION, ConformanceAbiVersion, ConformanceError, ConformanceManifest,
-    ConformanceProfile, ConformanceResult, EvidenceRef, ProfileExtension, ProfileId, ResultOutcome,
-    SubsystemRequirement, cross_validate_conformance_manifest_against_port_manifest,
-    cross_validate_results_against_manifest,
+    ArtifactCountRange, CONFORMANCE_SCHEMA_VERSION, CaptureCheckSummary, ConformanceAbiVersion,
+    ConformanceError, ConformanceManifest, ConformanceProfile, ConformanceResult, DurationRangeMs,
+    EvidenceRef, FrameArtifactRef as CaptureFrameArtifactRef, FrameCaptureConformanceCheck,
+    ProfileExtension, ProfileId, RecordingCheckSummary, RecordingConformanceCheck,
+    RecordingMetadata, ResultOutcome, SubsystemRequirement,
+    cross_validate_conformance_manifest_against_port_manifest,
+    cross_validate_results_against_manifest, unsupported_frame_capture_result,
+    unsupported_recording_capture_result,
 };
 pub use input::{
     CLOCK_BACKTRACK_CODE, ChoiceIndex, INPUT_INVALID_PAYLOAD_CODE, INPUT_UNSUPPORTED_KIND_CODE,
