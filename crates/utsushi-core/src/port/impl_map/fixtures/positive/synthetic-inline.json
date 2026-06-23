@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "0.1.0",
+  "portId": "utsushi-fixture",
+  "engineFamily": "renpy",
+  "subsystems": [
+    {
+      "id": "synthetic-self-check",
+      "name": "Synthetic self-check",
+      "status": { "kind": "Supported" },
+      "fixtureRef": {
+        "id": "synthetic/builder-derived",
+        "classification": "SyntheticInline",
+        "kind": "SyntheticInline",
+        "hash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "byteCount": 0
+      },
+      "validationCommandId": "cargo-test-synthetic",
+      "capabilities": ["synthetic-self-check"],
+      "notes": ""
+    }
+  ],
+  "validationCommands": [
+    {
+      "id": "cargo-test-synthetic",
+      "command": "cargo test -p utsushi-fixture synthetic_self_check",
+      "expectedOutcome": { "kind": "Pass" },
+      "caption": "Synthetic self-check smoke."
+    }
+  ],
+  "referenceBehavior": {
+    "engineRuntime": "synthetic fixture (no reference runtime)",
+    "observableSignal": "byte-for-byte builder output",
+    "captureMethod": "SyntheticSelfCheck"
+  },
+  "status": "Draft",
+  "generatedAt": "2026-06-23T17:00:00Z"
+}

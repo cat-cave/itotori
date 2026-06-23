@@ -18,6 +18,7 @@
 
 pub mod conformance;
 pub mod diagnostics;
+pub mod impl_map;
 pub mod manifest;
 pub mod runner;
 pub mod trait_;
@@ -25,6 +26,16 @@ pub mod trait_;
 pub use diagnostics::{
     CapabilityReason, DriftKind, EnginePortError, ManifestError, PortShutdownOutcome,
     PortShutdownStatus,
+};
+pub use impl_map::{
+    CaptureMethod, EngineFamily, EvidenceKind, EvidenceRef, ExpectedOutcome, FixtureClassification,
+    FixtureHashMismatch, FixtureKind, FixtureRef, FixtureStore, FixtureStoreError,
+    IMPL_MAP_SCHEMA_VERSION, ImplMapError, ImplMapManifestMismatch, ImplementationMap,
+    PortId as ImplMapPortId, ProvenanceField, ReferenceBehavior, ReferenceField,
+    STATUS_VALIDATED_DISCLAIMER, Status as ImplMapStatus, Subsystem, SubsystemId, SubsystemStatus,
+    UnsupportedReason, ValidationCommand, ValidationCommandId, ValidationReport, ValidationWarning,
+    validate as validate_impl_map, validate_against_manifest as validate_impl_map_against_manifest,
+    validate_and_promote as validate_and_promote_impl_map, verify_fixture_hashes,
 };
 pub use manifest::{
     EnvFieldSchema, EnvFieldShape, LifecycleStage, OPTIONAL_LIFECYCLE_STAGES, PortCapability,

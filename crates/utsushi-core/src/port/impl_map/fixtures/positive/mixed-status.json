@@ -1,0 +1,106 @@
+{
+  "schemaVersion": "0.1.0",
+  "portId": "utsushi-rpgmaker-mv",
+  "engineFamily": "rpgmaker-mv",
+  "subsystems": [
+    {
+      "id": "event-text-box",
+      "name": "Event Command 101 text box",
+      "status": { "kind": "Supported" },
+      "fixtureRef": {
+        "id": "rpgmaker-mv/event-text-box-trace",
+        "classification": "Public",
+        "kind": "Directory",
+        "hash": "abababababababababababababababababababababababababababababababab",
+        "byteCount": 8192
+      },
+      "validationCommandId": "cargo-test-rpgmaker-mv",
+      "capabilities": ["deterministic-text-trace"],
+      "notes": ""
+    },
+    {
+      "id": "menu-system",
+      "name": "Menu system",
+      "status": {
+        "kind": "Partial",
+        "data": {
+          "limitations": ["menu cursor wraparound not yet honoured"]
+        }
+      },
+      "fixtureRef": {
+        "id": "rpgmaker-mv/menu-partial-trace",
+        "classification": "Public",
+        "kind": "Directory",
+        "hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+        "byteCount": 2048
+      },
+      "validationCommandId": "cargo-test-rpgmaker-mv",
+      "capabilities": ["partial-coverage"],
+      "notes": ""
+    },
+    {
+      "id": "battle-system",
+      "name": "Battle system",
+      "status": {
+        "kind": "Unsupported",
+        "data": {
+          "reason": {
+            "kind": "DeferredTo",
+            "data": "deferred-to-UTSUSHI-148"
+          }
+        }
+      },
+      "fixtureRef": {
+        "id": "rpgmaker-mv/battle-self-check",
+        "classification": "SyntheticInline",
+        "kind": "SyntheticInline",
+        "hash": "babababababababababababababababababababababababababababababababa",
+        "byteCount": 0
+      },
+      "validationCommandId": "cargo-test-rpgmaker-mv",
+      "capabilities": ["out-of-scope"],
+      "notes": ""
+    },
+    {
+      "id": "audio-events",
+      "name": "Audio event sequencing",
+      "status": {
+        "kind": "Research",
+        "data": {
+          "evidenceRefs": [
+            {
+              "kind": "RoadmapNode",
+              "locator": "UTSUSHI-029",
+              "caption": "Audio-event check is roadmapped."
+            }
+          ]
+        }
+      },
+      "fixtureRef": {
+        "id": "rpgmaker-mv/audio-research-corpus",
+        "classification": "Public",
+        "kind": "Directory",
+        "hash": "1212121212121212121212121212121212121212121212121212121212121212",
+        "byteCount": 1024
+      },
+      "validationCommandId": "cargo-test-rpgmaker-mv",
+      "capabilities": ["research-only"],
+      "notes": ""
+    }
+  ],
+  "validationCommands": [
+    {
+      "id": "cargo-test-rpgmaker-mv",
+      "command": "cargo test -p utsushi-rpgmaker-mv",
+      "expectedOutcome": { "kind": "Pass" },
+      "caption": "RPG Maker MV deterministic trace smoke."
+    }
+  ],
+  "referenceBehavior": {
+    "engineRuntime": "RPG Maker MV browser runtime (NW.js 0.83)",
+    "observableSignal": "deterministic text trace per scene id",
+    "captureMethod": "TraceLog"
+  },
+  "status": "Draft",
+  "generatedAt": "2026-06-23T17:00:00Z"
+}

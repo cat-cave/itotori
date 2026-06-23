@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "0.1.0",
+  "portId": "utsushi-reallive",
+  "engineFamily": "reallive",
+  "subsystems": [
+    {
+      "id": "scene-seen-replay",
+      "name": "Scene/SEEN deterministic replay",
+      "status": { "kind": "Supported" },
+      "fixtureRef": {
+        "id": "reallive-detector/positive-synthetic-triple",
+        "classification": "Public",
+        "kind": "Directory",
+        "hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "byteCount": 4096
+      },
+      "validationCommandId": "cargo-test-utsushi-reallive",
+      "capabilities": ["deterministic-text-trace"],
+      "notes": ""
+    }
+  ],
+  "validationCommands": [
+    {
+      "id": "cargo-test-utsushi-reallive",
+      "command": "cargo test -p utsushi-reallive scene_seen_replay",
+      "expectedOutcome": { "kind": "Pass" },
+      "caption": "Deterministic Scene/SEEN replay smoke."
+    }
+  ],
+  "referenceBehavior": {
+    "engineRuntime": "rlvm (research anchor; clean-room; behavior-only)",
+    "observableSignal": "deterministic text trace per scene id",
+    "captureMethod": "TraceLog"
+  },
+  "status": "Draft",
+  "generatedAt": "2026-06-23T17:00:00Z"
+}

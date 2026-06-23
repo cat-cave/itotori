@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "0.1.0",
+  "portId": "utsushi-custom",
+  "engineFamily": "other",
+  "subsystems": [
+    {
+      "id": "custom-loop",
+      "name": "Custom main loop",
+      "status": { "kind": "Supported" },
+      "fixtureRef": {
+        "id": "custom/main-loop-trace",
+        "classification": "Public",
+        "kind": "Directory",
+        "hash": "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        "byteCount": 512
+      },
+      "validationCommandId": "cargo-test-custom",
+      "capabilities": ["deterministic-text-trace"],
+      "notes": ""
+    }
+  ],
+  "validationCommands": [
+    {
+      "id": "cargo-test-custom",
+      "command": "cargo test -p utsushi-custom",
+      "expectedOutcome": { "kind": "Pass" },
+      "caption": "smoke"
+    }
+  ],
+  "referenceBehavior": {
+    "engineRuntime": "custom",
+    "observableSignal": "deterministic text trace",
+    "captureMethod": "TraceLog"
+  },
+  "status": "Draft",
+  "generatedAt": "2026-06-23T17:00:00Z"
+}

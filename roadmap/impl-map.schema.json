@@ -1,0 +1,436 @@
+{
+  "$defs": {
+    "CaptureMethod": {
+      "enum": [
+        "TraceLog",
+        "ScreenshotArtifact",
+        "AudioEvent",
+        "SnapshotState",
+        "SyntheticSelfCheck",
+        "NoReferenceComparison"
+      ],
+      "type": "string"
+    },
+    "EngineFamily": {
+      "enum": [
+        "reallive",
+        "rpgmaker-mv",
+        "rpgmaker-mz",
+        "rpgmaker-vx-ace",
+        "kirikiri-kag",
+        "xp3",
+        "siglus",
+        "renpy",
+        "wolf-rpg-editor",
+        "bgi-ethornell",
+        "tyranoscript",
+        "rgss3",
+        "unity",
+        "other"
+      ],
+      "type": "string"
+    },
+    "EvidenceKind": {
+      "enum": [
+        "Fixture",
+        "Doc",
+        "RoadmapNode",
+        "ReferenceImplAnchor"
+      ],
+      "type": "string"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "properties": {
+        "caption": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/EvidenceKind"
+        },
+        "locator": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "locator",
+        "caption"
+      ],
+      "type": "object"
+    },
+    "ExpectedOutcome": {
+      "properties": {
+        "data": {},
+        "kind": {
+          "enum": [
+            "Pass",
+            "Skip",
+            "Fail"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "FixtureClassification": {
+      "enum": [
+        "Public",
+        "PrivateLocal",
+        "SyntheticInline"
+      ],
+      "type": "string"
+    },
+    "FixtureKind": {
+      "enum": [
+        "File",
+        "Directory",
+        "Archive",
+        "SyntheticInline",
+        "Other"
+      ],
+      "type": "string"
+    },
+    "FixtureRef": {
+      "additionalProperties": false,
+      "properties": {
+        "byteCount": {
+          "minimum": 0,
+          "type": "integer"
+        },
+        "classification": {
+          "$ref": "#/$defs/FixtureClassification"
+        },
+        "hash": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "id": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "$ref": "#/$defs/FixtureKind"
+        },
+        "kindNotes": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "classification",
+        "kind",
+        "hash",
+        "byteCount"
+      ],
+      "type": "object"
+    },
+    "PortId": {
+      "maxLength": 64,
+      "minLength": 8,
+      "pattern": "^[a-z][a-z0-9-]{7,63}$",
+      "type": "string"
+    },
+    "ReferenceBehavior": {
+      "additionalProperties": false,
+      "properties": {
+        "captureMethod": {
+          "$ref": "#/$defs/CaptureMethod"
+        },
+        "engineRuntime": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "observableSignal": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "engineRuntime",
+        "observableSignal",
+        "captureMethod"
+      ],
+      "type": "object"
+    },
+    "Status": {
+      "enum": [
+        "Draft",
+        "Validated",
+        "Outdated"
+      ],
+      "type": "string"
+    },
+    "Subsystem": {
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "fixtureRef": {
+          "$ref": "#/$defs/FixtureRef"
+        },
+        "id": {
+          "$ref": "#/$defs/SubsystemId"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/SubsystemStatus"
+        },
+        "validationCommandId": {
+          "$ref": "#/$defs/ValidationCommandId"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "status",
+        "fixtureRef",
+        "validationCommandId",
+        "capabilities"
+      ],
+      "type": "object"
+    },
+    "SubsystemId": {
+      "minLength": 1,
+      "pattern": "^[a-z0-9-]+$",
+      "type": "string"
+    },
+    "SubsystemStatus": {
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "Partial"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "properties": {
+                  "limitations": {
+                    "items": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "limitations"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "data"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "Unsupported"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "properties": {
+                  "reason": {
+                    "$ref": "#/$defs/UnsupportedReason"
+                  }
+                },
+                "required": [
+                  "reason"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "data"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "Research"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "data": {
+                "properties": {
+                  "evidenceRefs": {
+                    "items": {
+                      "$ref": "#/$defs/EvidenceRef"
+                    },
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "evidenceRefs"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "data"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "data": {},
+        "kind": {
+          "enum": [
+            "Supported",
+            "Partial",
+            "Unsupported",
+            "Research"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "type": "object"
+    },
+    "UnsupportedReason": {
+      "additionalProperties": false,
+      "properties": {
+        "data": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "SemanticCode",
+            "DeferredTo"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "data"
+      ],
+      "type": "object"
+    },
+    "ValidationCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "caption": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "command": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "expectedOutcome": {
+          "$ref": "#/$defs/ExpectedOutcome"
+        },
+        "id": {
+          "$ref": "#/$defs/ValidationCommandId"
+        }
+      },
+      "required": [
+        "id",
+        "command",
+        "expectedOutcome",
+        "caption"
+      ],
+      "type": "object"
+    },
+    "ValidationCommandId": {
+      "minLength": 1,
+      "pattern": "^[a-z0-9-]+$",
+      "type": "string"
+    }
+  },
+  "$id": "https://itotori.dev/schemas/utsushi/impl-map.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "engineFamily": {
+      "$ref": "#/$defs/EngineFamily"
+    },
+    "engineFamilyNotes": {
+      "minLength": 1,
+      "type": "string"
+    },
+    "generatedAt": {
+      "minLength": 20,
+      "type": "string"
+    },
+    "portId": {
+      "$ref": "#/$defs/PortId"
+    },
+    "referenceBehavior": {
+      "$ref": "#/$defs/ReferenceBehavior"
+    },
+    "schemaVersion": {
+      "pattern": "^0\\.\\d+\\.\\d+$",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/Status"
+    },
+    "statusDisclaimer": {
+      "type": "string"
+    },
+    "subsystems": {
+      "items": {
+        "$ref": "#/$defs/Subsystem"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "validationCommands": {
+      "items": {
+        "$ref": "#/$defs/ValidationCommand"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "portId",
+    "engineFamily",
+    "subsystems",
+    "validationCommands",
+    "referenceBehavior",
+    "status",
+    "generatedAt"
+  ],
+  "title": "Utsushi engine-port implementation map (UTSUSHI-025)",
+  "type": "object"
+}

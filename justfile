@@ -17,10 +17,14 @@ check:
     node scripts/spec-dag-validator.test.mjs
     node scripts/spec-dag.mjs validate
     just fixtures-validate
+    just impl-map-schema-validate
     node scripts/verify-toolchain-policy.mjs
     pnpm exec vp run ts:typecheck
     cargo fmt --check
     cargo check --workspace
+
+impl-map-schema-validate:
+    pnpm exec node scripts/validate-impl-map-schema.mjs
 
 fixtures-validate:
     pnpm exec node fixtures/validate-public-manifests.mjs

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "0.1.0",
+  "portId": "utsushi-reallive",
+  "engineFamily": "reallive",
+  "subsystems": [
+    {
+      "id": "scene-seen-replay",
+      "name": "Scene/SEEN replay",
+      "status": {
+        "kind": "Partial",
+        "data": { "limitations": [] }
+      },
+      "fixtureRef": {
+        "id": "reallive-detector/positive",
+        "classification": "Public",
+        "kind": "Directory",
+        "hash": "abababababababababababababababababababababababababababababababab",
+        "byteCount": 4096
+      },
+      "validationCommandId": "cargo-test-utsushi-reallive",
+      "capabilities": ["deterministic-text-trace"],
+      "notes": ""
+    }
+  ],
+  "validationCommands": [
+    {
+      "id": "cargo-test-utsushi-reallive",
+      "command": "cargo test -p utsushi-reallive",
+      "expectedOutcome": { "kind": "Pass" },
+      "caption": "smoke"
+    }
+  ],
+  "referenceBehavior": {
+    "engineRuntime": "rlvm",
+    "observableSignal": "deterministic text trace",
+    "captureMethod": "TraceLog"
+  },
+  "status": "Draft",
+  "generatedAt": "2026-06-23T17:00:00Z"
+}
