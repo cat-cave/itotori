@@ -16,6 +16,7 @@ use serde_json::{Map, Value};
 
 pub mod clock;
 pub mod input;
+pub mod replay;
 pub mod vfs;
 
 pub use clock::{ClockOrigin, LogicalClock, LogicalClockTick};
@@ -24,12 +25,28 @@ pub use input::{
     InputError, InputEvent, InputKind, MenuTarget, PointerButton, REPLAY_NON_MONOTONIC_TICK_CODE,
     REPLAY_REDACTION_VIOLATION_CODE, REPLAY_UNSUPPORTED_SCHEMA_VERSION_CODE, RawInputCode,
 };
+pub use replay::{
+    REPLAY_LOG_SCHEMA_VERSION, ReplayCursor, ReplayEntry, ReplayLog, ReplayLogBuilder,
+    ReplayMetadata, ReplaySchemaVersion,
+};
 pub use vfs::{
     AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
     AssetSize, CaseRule, HelperId, IoSummary, MountedVfs, PackageDescriptor, PackageKind,
     PackageSource, PlaintextDirPackage, RequiredCapability, ResourceBoundKind, RuntimeVfs,
     TransformKind, TraversalKind, VfsError, VfsResult,
 };
+
+/// Crate-private re-export so the `replay` module can reuse the redaction
+/// helper without duplicating it.
+pub(crate) fn reject_unredacted_local_paths_public(path: &str, value: &Value) -> UtsushiResult<()> {
+    reject_unredacted_local_paths(path, value)
+}
+
+/// Crate-private re-export so the `replay` module can reuse the path-shape
+/// heuristic that the existing observation-hook validator uses.
+pub(crate) fn looks_like_local_path_public(value: &str) -> bool {
+    looks_like_local_path(value)
+}
 
 pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
 
@@ -63,6 +80,12 @@ pub struct RuntimeRequest<'a> {
     /// adapters do not read it. The signature decision for
     /// `RuntimeAdapter` is deferred to UTSUSHI-103.
     pub vfs: Option<Arc<dyn RuntimeVfs>>,
+    /// Optional, additive handoff for the deterministic replay log
+    /// (UTSUSHI-021). When `Some`, an adapter that drives input MUST consume
+    /// events through `ReplayLog::next_event` instead of querying live input.
+    /// `Arc<ReplayLog>` keeps cloning cheap when the runner shares the log
+    /// across multiple adapter invocations.
+    pub replay: Option<Arc<ReplayLog>>,
 }
 
 impl std::fmt::Debug for RuntimeRequest<'_> {
@@ -72,6 +95,7 @@ impl std::fmt::Debug for RuntimeRequest<'_> {
             .field("input_root", &self.input_root)
             .field("artifact_root", &self.artifact_root)
             .field("vfs", &self.vfs.as_ref().map(|_| "Arc<dyn RuntimeVfs>"))
+            .field("replay", &self.replay.as_ref().map(|_| "Arc<ReplayLog>"))
             .finish()
     }
 }
@@ -82,6 +106,7 @@ impl<'a> RuntimeRequest<'a> {
             input_root,
             artifact_root: None,
             vfs: None,
+            replay: None,
         }
     }
 
@@ -92,6 +117,11 @@ impl<'a> RuntimeRequest<'a> {
 
     pub fn with_vfs(mut self, vfs: Arc<dyn RuntimeVfs>) -> Self {
         self.vfs = Some(vfs);
+        self
+    }
+
+    pub fn with_replay(mut self, replay: Arc<ReplayLog>) -> Self {
+        self.replay = Some(replay);
         self
     }
 }
