@@ -31,9 +31,10 @@ pub enum GameIdSource {
 
 /// Retention policy for per-run extraction directories *(Contract:
 /// §Scratch and Secret Custody)*.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum RetentionPolicy {
     /// Delete `<run-id>/` on success and on failure. CI-friendly default.
+    #[default]
     KeepNone,
     /// Delete on success; preserve on failure for inspection.
     KeepOnFailure,
@@ -42,12 +43,6 @@ pub enum RetentionPolicy {
     /// Keep `<game-id>/extracted/` across runs as long as the artifact
     /// sha256 still matches the last cached hash.
     KeepExtractedForGame,
-}
-
-impl Default for RetentionPolicy {
-    fn default() -> Self {
-        Self::KeepNone
-    }
 }
 
 /// Vault-root resolution input.
@@ -71,10 +66,10 @@ pub struct ScratchConfig {
 /// Returns the unvalidated path; callers (the [`crate::source::VaultSource`]
 /// constructor) then assert that `catalog.db` and `artifacts/by-sha/` exist.
 pub fn resolve_vault_root(cfg: &VaultConfig) -> Result<PathBuf, VaultSourceError> {
-    if let Ok(env_root) = env::var("ITOTORI_VAULT_ROOT") {
-        if !env_root.is_empty() {
-            return Ok(PathBuf::from(env_root));
-        }
+    if let Ok(env_root) = env::var("ITOTORI_VAULT_ROOT")
+        && !env_root.is_empty()
+    {
+        return Ok(PathBuf::from(env_root));
     }
     if let Some(o) = cfg.vault_root_override.as_ref() {
         return Ok(o.clone());
@@ -84,10 +79,10 @@ pub fn resolve_vault_root(cfg: &VaultConfig) -> Result<PathBuf, VaultSourceError
 
 /// Resolve the scratch root per the contract's order.
 pub fn resolve_scratch_root(cfg: &ScratchConfig) -> Result<PathBuf, VaultSourceError> {
-    if let Ok(env_root) = env::var("ITOTORI_SCRATCH_ROOT") {
-        if !env_root.is_empty() {
-            return Ok(PathBuf::from(env_root));
-        }
+    if let Ok(env_root) = env::var("ITOTORI_SCRATCH_ROOT")
+        && !env_root.is_empty()
+    {
+        return Ok(PathBuf::from(env_root));
     }
     if let Some(o) = cfg.scratch_root_override.as_ref() {
         return Ok(o.clone());
@@ -177,11 +172,10 @@ pub fn validate_vault_root(root: &Path) -> Result<(), VaultSourceError> {
             });
         }
     };
-    let canonical_meta = std::fs::metadata(&canonical).map_err(|_| {
-        VaultSourceError::VaultRootMissing {
+    let canonical_meta =
+        std::fs::metadata(&canonical).map_err(|_| VaultSourceError::VaultRootMissing {
             path: root.to_path_buf(),
-        }
-    })?;
+        })?;
     if !canonical_meta.is_dir() {
         return Err(VaultSourceError::VaultRootMissing {
             path: root.to_path_buf(),

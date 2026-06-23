@@ -30,7 +30,9 @@ fn selects_primary_role_by_default_and_includes_patch_role_on_request() {
         .unwrap()
         .pop()
         .unwrap();
-    let mat = source.materialize(&candidate, MaterializeOptions::default()).unwrap();
+    let mat = source
+        .materialize(&candidate, MaterializeOptions::default())
+        .unwrap();
     let roles: Vec<&str> = mat.artifacts.iter().map(|a| a.role.as_str()).collect();
     assert_eq!(roles, vec!["primary"]);
 
@@ -72,7 +74,9 @@ fn never_reads_from_artifacts_by_name_subtree() {
         .unwrap()
         .pop()
         .unwrap();
-    let _ = source.materialize(&candidate, MaterializeOptions::default()).unwrap();
+    let _ = source
+        .materialize(&candidate, MaterializeOptions::default())
+        .unwrap();
 
     let after = common::snapshot_tree(&v.vault_root.join("artifacts/by-name"));
     assert_eq!(by_name_snapshot, after);
@@ -87,7 +91,9 @@ fn extracts_subpath_artifact_and_returns_subpath_root_under_extracted_root() {
         .unwrap()
         .pop()
         .unwrap();
-    let mat = source.materialize(&candidate, MaterializeOptions::default()).unwrap();
+    let mat = source
+        .materialize(&candidate, MaterializeOptions::default())
+        .unwrap();
     assert!(mat.subpath_root.is_some());
     let sp = mat.subpath_root.as_ref().unwrap();
     assert!(sp.starts_with(&mat.extracted_root));

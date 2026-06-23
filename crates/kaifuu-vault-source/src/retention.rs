@@ -145,7 +145,10 @@ mod tests {
         let p = setup_run(td.path());
         let sha = "deadbeef".repeat(8);
         write_last_artifact_sha(&p.last_artifact_sha_marker, &sha).unwrap();
-        assert_eq!(read_last_artifact_sha(&p.last_artifact_sha_marker).as_deref(), Some(sha.as_str()));
+        assert_eq!(
+            read_last_artifact_sha(&p.last_artifact_sha_marker).as_deref(),
+            Some(sha.as_str())
+        );
     }
 
     #[test]

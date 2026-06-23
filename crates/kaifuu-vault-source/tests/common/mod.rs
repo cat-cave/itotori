@@ -82,8 +82,8 @@ impl SyntheticVault {
         .unwrap();
 
         // Materialise catalog.db from seed.sql.
-        let seed_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/synthetic-vault/seed.sql");
+        let seed_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/synthetic-vault/seed.sql");
         let seed_sql = std::fs::read_to_string(&seed_path).unwrap();
         let catalog_path = vault_root.join("catalog.db");
         let conn = Connection::open(&catalog_path).unwrap();
@@ -397,7 +397,8 @@ fn insert_artifacts_and_links(
 ) {
     // Map each fixture to a synthetic catalog tuple:
     //   (id, sha256, size, kind, release_links: Vec<(release_id, role, subpath)>)
-    let plan: Vec<(i64, &str, &str, Vec<(i64, &str, Option<&str>)>)> = vec![
+    type Plan<'a> = Vec<(i64, &'a str, &'a str, Vec<(i64, &'a str, Option<&'a str>)>)>;
+    let plan: Plan<'_> = vec![
         (
             100,
             FIXTURE_GOOD_PRIMARY,
@@ -410,12 +411,7 @@ fn insert_artifacts_and_links(
             "dlsite_zip",
             vec![(11, "primary", Some("Win"))],
         ),
-        (
-            102,
-            FIXTURE_GOOD_PATCH,
-            "patch",
-            vec![(10, "patch", None)],
-        ),
+        (102, FIXTURE_GOOD_PATCH, "patch", vec![(10, "patch", None)]),
         (
             103,
             FIXTURE_HASH_MISMATCH,

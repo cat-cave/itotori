@@ -79,8 +79,7 @@ pub fn extract_archive(
     let extracted_root = paths.extracted_root.clone();
     let archive_path_owned = archive_path.to_path_buf();
 
-    let unsafe_reason: std::cell::RefCell<Option<UnsafeReason>> =
-        std::cell::RefCell::new(None);
+    let unsafe_reason: std::cell::RefCell<Option<UnsafeReason>> = std::cell::RefCell::new(None);
 
     let result = sevenz_rust2::decompress_file_with_extract_fn(
         archive_path,
@@ -114,8 +113,7 @@ pub fn extract_archive(
             if entry.is_directory {
                 // A bare `_vault/` directory entry is fine; only its
                 // children other than metadata.json are forbidden.
-                std::fs::create_dir_all(&target)
-                    .map_err(|e| io_err(format!("mkdir: {e}")))?;
+                std::fs::create_dir_all(&target).map_err(|e| io_err(format!("mkdir: {e}")))?;
                 return Ok(true);
             }
 
@@ -132,13 +130,11 @@ pub fn extract_archive(
             }
 
             if let Some(p) = target.parent() {
-                std::fs::create_dir_all(p)
-                    .map_err(|e| io_err(format!("mkdir parent: {e}")))?;
+                std::fs::create_dir_all(p).map_err(|e| io_err(format!("mkdir parent: {e}")))?;
             }
-            let mut file = std::fs::File::create(&target)
-                .map_err(|e| io_err(format!("create file: {e}")))?;
-            let n = std::io::copy(reader, &mut file)
-                .map_err(|e| io_err(format!("copy: {e}")))?;
+            let mut file =
+                std::fs::File::create(&target).map_err(|e| io_err(format!("create file: {e}")))?;
+            let n = std::io::copy(reader, &mut file).map_err(|e| io_err(format!("copy: {e}")))?;
             bytes_written = bytes_written.saturating_add(n);
             Ok(true)
         },

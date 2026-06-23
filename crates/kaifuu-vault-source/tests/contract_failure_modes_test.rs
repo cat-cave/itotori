@@ -28,9 +28,7 @@ fn open_source(v: &common::SyntheticVault) -> VaultSource {
 fn vault_root_missing_when_configured_path_does_not_exist() {
     let err = VaultSource::open(
         &VaultConfig {
-            vault_root_override: Some(PathBuf::from(
-                "/tmp/kaifuu-vault-source-nonexistent-please",
-            )),
+            vault_root_override: Some(PathBuf::from("/tmp/kaifuu-vault-source-nonexistent-please")),
         },
         &ScratchConfig::default(),
     )
@@ -64,9 +62,8 @@ fn catalog_open_failed_when_catalog_db_is_a_directory() {
     std::fs::create_dir_all(td.path().join("catalog.db")).unwrap();
     std::fs::create_dir_all(td.path().join("artifacts/by-sha")).unwrap();
     // need the schema file or open will report different err first
-    let schema_src =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/synthetic-vault/embedded-metadata.schema.json");
+    let schema_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/synthetic-vault/embedded-metadata.schema.json");
     std::fs::copy(schema_src, td.path().join("embedded-metadata.schema.json")).unwrap();
 
     let err = VaultSource::open(
@@ -97,9 +94,8 @@ fn catalog_open_failed_when_catalog_db_is_a_directory() {
 fn catalog_schema_unsupported_when_schema_version_row_is_absent() {
     let td = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(td.path().join("artifacts/by-sha")).unwrap();
-    let schema_src =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/synthetic-vault/embedded-metadata.schema.json");
+    let schema_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/synthetic-vault/embedded-metadata.schema.json");
     std::fs::copy(schema_src, td.path().join("embedded-metadata.schema.json")).unwrap();
     let cat_path = td.path().join("catalog.db");
     let c = rusqlite::Connection::open(&cat_path).unwrap();
@@ -116,10 +112,7 @@ fn catalog_schema_unsupported_when_schema_version_row_is_absent() {
     .unwrap_err();
     assert!(matches!(
         err,
-        VaultSourceError::CatalogSchemaUnsupported {
-            observed: None,
-            ..
-        }
+        VaultSourceError::CatalogSchemaUnsupported { observed: None, .. }
     ));
 }
 
@@ -127,9 +120,8 @@ fn catalog_schema_unsupported_when_schema_version_row_is_absent() {
 fn catalog_schema_unsupported_when_schema_version_exceeds_supported() {
     let td = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(td.path().join("artifacts/by-sha")).unwrap();
-    let schema_src =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("tests/fixtures/synthetic-vault/embedded-metadata.schema.json");
+    let schema_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/synthetic-vault/embedded-metadata.schema.json");
     std::fs::copy(schema_src, td.path().join("embedded-metadata.schema.json")).unwrap();
     let cat_path = td.path().join("catalog.db");
     let c = rusqlite::Connection::open(&cat_path).unwrap();

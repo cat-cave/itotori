@@ -6,20 +6,26 @@ use std::sync::Arc;
 
 use uuid::Uuid;
 
-use crate::config::{RetentionPolicy, ScratchConfig, VaultConfig, resolve_scratch_root,
-    resolve_vault_root, validate_vault_root};
-use crate::discovery::{ClaimQuery, ReleaseCandidate, discover, load_canonical_title,
-    load_work_identifiers};
+use crate::config::{
+    RetentionPolicy, ScratchConfig, VaultConfig, resolve_scratch_root, resolve_vault_root,
+    validate_vault_root,
+};
+use crate::discovery::{
+    ClaimQuery, ReleaseCandidate, discover, load_canonical_title, load_work_identifiers,
+};
 use crate::error::VaultSourceError;
 use crate::extraction::{ExtractedTree, ScratchPaths, extract_archive};
 use crate::findings::{CrossCheckFinding, catalog_bypass_finding};
-use crate::metadata::{CrossCheckTolerance, EmbeddedMetadata, EmbeddedSchema, cross_check,
-    read_and_validate};
+use crate::metadata::{
+    CrossCheckTolerance, EmbeddedMetadata, EmbeddedSchema, cross_check, read_and_validate,
+};
 use crate::paths::{GameIdContext, derive_game_id};
-use crate::resolution::{ArtifactSelection, ResolvedArtifact, by_sha_path, resolve_by_sha,
-    resolve_release};
-use crate::retention::{RunOutcome, apply_retention, read_last_artifact_sha,
-    write_last_artifact_sha};
+use crate::resolution::{
+    ArtifactSelection, ResolvedArtifact, by_sha_path, resolve_by_sha, resolve_release,
+};
+use crate::retention::{
+    RunOutcome, apply_retention, read_last_artifact_sha, write_last_artifact_sha,
+};
 
 /// Capability report a caller can introspect before doing anything.
 #[derive(Debug, Clone)]
@@ -110,8 +116,11 @@ pub trait LocalCorpusSource: Send + Sync {
     /// Apply the retention policy after a run. The caller passes the same
     /// result back in for cleanup; the implementation derives the scratch
     /// paths and applies the policy.
-    fn release(&self, materialized: &MaterializeResult, outcome: RunOutcome)
-        -> Result<(), VaultSourceError>;
+    fn release(
+        &self,
+        materialized: &MaterializeResult,
+        outcome: RunOutcome,
+    ) -> Result<(), VaultSourceError>;
 
     /// Capability report for introspection.
     fn capabilities(&self) -> LocalCorpusCapabilityReport;
@@ -246,7 +255,8 @@ impl VaultSource {
 
         let (resolved_artifacts, candidate_owned, work_ids, canonical_title) = match candidate {
             Some(c) => {
-                let resolved = resolve_release(&conn, &self.vault_root, c.release_id, &opts.selection)?;
+                let resolved =
+                    resolve_release(&conn, &self.vault_root, c.release_id, &opts.selection)?;
                 let work_ids = load_work_identifiers(&conn, c.work_id)?;
                 let title = load_canonical_title(&conn, c.work_id)?;
                 (resolved, c.clone(), work_ids, title)
@@ -265,7 +275,12 @@ impl VaultSource {
                     languages: Vec::new(),
                     platforms: Vec::new(),
                 };
-                (vec![primary], synthetic_candidate, Vec::new(), "bypass".into())
+                (
+                    vec![primary],
+                    synthetic_candidate,
+                    Vec::new(),
+                    "bypass".into(),
+                )
             }
         };
 
@@ -286,14 +301,13 @@ impl VaultSource {
         let paths = self.build_paths(&game_id.id, &run_id);
 
         // Decide whether to reuse a cached extraction.
-        let reuse = matches!(opts.retention, RetentionPolicy::KeepExtractedForGame)
-            && {
-                let last = read_last_artifact_sha(&paths.last_artifact_sha_marker);
-                let canonical_extracted = paths.game_root.join("extracted");
-                last.as_deref() == Some(primary.sha256.as_str())
-                    && canonical_extracted.exists()
-                    && canonical_extracted.join("_vault/metadata.json").exists()
-            };
+        let reuse = matches!(opts.retention, RetentionPolicy::KeepExtractedForGame) && {
+            let last = read_last_artifact_sha(&paths.last_artifact_sha_marker);
+            let canonical_extracted = paths.game_root.join("extracted");
+            last.as_deref() == Some(primary.sha256.as_str())
+                && canonical_extracted.exists()
+                && canonical_extracted.join("_vault/metadata.json").exists()
+        };
 
         let extracted_root = if reuse {
             paths.game_root.join("extracted")
@@ -303,15 +317,14 @@ impl VaultSource {
             let _tree: ExtractedTree = extract_archive(&primary.on_disk_path, &paths)?;
             // For KeepExtractedForGame, write the marker eagerly so a later
             // failure that triggers `release()` still leaves the marker.
-            if matches!(opts.retention, RetentionPolicy::KeepExtractedForGame) {
-                if let Err(e) =
+            if matches!(opts.retention, RetentionPolicy::KeepExtractedForGame)
+                && let Err(e) =
                     write_last_artifact_sha(&paths.last_artifact_sha_marker, &primary.sha256)
-                {
-                    return Err(VaultSourceError::ScratchUnwritable {
-                        path: paths.last_artifact_sha_marker.clone(),
-                        source: e,
-                    });
-                }
+            {
+                return Err(VaultSourceError::ScratchUnwritable {
+                    path: paths.last_artifact_sha_marker.clone(),
+                    source: e,
+                });
             }
             paths.extracted_root.clone()
         };
@@ -335,10 +348,7 @@ impl VaultSource {
             findings.push(catalog_bypass_finding(&primary.sha256));
         }
 
-        let subpath_root = primary
-            .subpath
-            .as_ref()
-            .map(|sp| extracted_root.join(sp));
+        let subpath_root = primary.subpath.as_ref().map(|sp| extracted_root.join(sp));
 
         Ok(MaterializeResult {
             game_id: game_id.id,

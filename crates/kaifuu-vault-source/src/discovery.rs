@@ -70,9 +70,7 @@ impl ClaimQuery {
                 producer_external_id,
             } => format!(
                 "producer-external({}:{}={})",
-                producer_external_id.source,
-                producer_external_id.kind,
-                producer_external_id.value
+                producer_external_id.source, producer_external_id.kind, producer_external_id.value
             ),
             Self::ByEngineClaim {
                 engine,
@@ -148,7 +146,9 @@ pub fn discover(
                 )
                 .map_err(map_query_err)?;
             let rows = stmt
-                .query_map(rusqlite::params![source, kind, value], |r| r.get::<_, i64>(0))
+                .query_map(rusqlite::params![source, kind, value], |r| {
+                    r.get::<_, i64>(0)
+                })
                 .map_err(map_query_err)?;
             collect_ids(rows)?
         }

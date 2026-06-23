@@ -33,14 +33,11 @@ pub const SEMANTIC_VAULT_EXTRACTION_FAILED: &str = "kaifuu.vault.extraction_fail
 /// Semantic code for [`VaultSourceError::ExtractionUnsafePath`].
 pub const SEMANTIC_VAULT_EXTRACTION_UNSAFE_PATH: &str = "kaifuu.vault.extraction_unsafe_path";
 /// Semantic code for [`VaultSourceError::EmbeddedMetadataMissing`].
-pub const SEMANTIC_VAULT_EMBEDDED_METADATA_MISSING: &str =
-    "kaifuu.vault.embedded_metadata_missing";
+pub const SEMANTIC_VAULT_EMBEDDED_METADATA_MISSING: &str = "kaifuu.vault.embedded_metadata_missing";
 /// Semantic code for [`VaultSourceError::EmbeddedMetadataInvalid`].
-pub const SEMANTIC_VAULT_EMBEDDED_METADATA_INVALID: &str =
-    "kaifuu.vault.embedded_metadata_invalid";
+pub const SEMANTIC_VAULT_EMBEDDED_METADATA_INVALID: &str = "kaifuu.vault.embedded_metadata_invalid";
 /// Semantic code for [`VaultSourceError::CatalogEmbeddedMismatch`].
-pub const SEMANTIC_VAULT_CATALOG_EMBEDDED_MISMATCH: &str =
-    "kaifuu.vault.catalog_embedded_mismatch";
+pub const SEMANTIC_VAULT_CATALOG_EMBEDDED_MISMATCH: &str = "kaifuu.vault.catalog_embedded_mismatch";
 /// Semantic code for [`VaultSourceError::ScratchUnwritable`].
 pub const SEMANTIC_VAULT_SCRATCH_UNWRITABLE: &str = "kaifuu.vault.scratch_unwritable";
 

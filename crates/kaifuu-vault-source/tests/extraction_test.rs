@@ -34,7 +34,13 @@ fn materialize_raises_ExtractionUnsafePath_for_path_traversal_fixture() {
         .materialize(&candidate, MaterializeOptions::default())
         .unwrap_err();
     assert!(
-        matches!(err, VaultSourceError::ExtractionUnsafePath { reason: "parent-dir", .. }),
+        matches!(
+            err,
+            VaultSourceError::ExtractionUnsafePath {
+                reason: "parent-dir",
+                ..
+            }
+        ),
         "expected ExtractionUnsafePath{{parent-dir}}, got {err:?}"
     );
 }
@@ -78,7 +84,9 @@ fn does_not_write_any_file_under_vault_root_during_a_materialize_call() {
         .unwrap()
         .pop()
         .unwrap();
-    let _ = source.materialize(&candidate, MaterializeOptions::default()).unwrap();
+    let _ = source
+        .materialize(&candidate, MaterializeOptions::default())
+        .unwrap();
     let after = common::snapshot_tree(&v.vault_root);
     // The vault root tree must be entirely unchanged: same paths, same
     // mtimes.

@@ -13,7 +13,9 @@ use crate::findings::CrossCheckFinding;
 use crate::paths::ExternalId;
 
 /// Caller-facing tolerance for cross-check disagreements.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Contract default: reject mismatched work identity (always); accept
+/// everything else with a finding.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct CrossCheckTolerance {
     /// When `true`, platforms-disjoint promotes to error.
     pub strict_platforms: bool,
@@ -21,18 +23,6 @@ pub struct CrossCheckTolerance {
     pub strict_languages: bool,
     /// When `true`, role-mismatch promotes to error.
     pub strict_role: bool,
-}
-
-impl Default for CrossCheckTolerance {
-    fn default() -> Self {
-        // Contract default: reject mismatched work identity (always);
-        // accept everything else with a finding.
-        Self {
-            strict_platforms: false,
-            strict_languages: false,
-            strict_role: false,
-        }
-    }
 }
 
 impl CrossCheckTolerance {
@@ -76,12 +66,11 @@ impl std::fmt::Debug for EmbeddedSchema {
 impl EmbeddedSchema {
     /// Compile a schema file (the vault's `embedded-metadata.schema.json`).
     pub fn from_schema_path(path: &Path) -> Result<Self, VaultSourceError> {
-        let raw = std::fs::read_to_string(path).map_err(|_| {
-            VaultSourceError::VaultRootIncomplete {
+        let raw =
+            std::fs::read_to_string(path).map_err(|_| VaultSourceError::VaultRootIncomplete {
                 path: path.to_path_buf(),
                 missing: "embedded-metadata.schema.json",
-            }
-        })?;
+            })?;
         Self::from_schema_str(&raw)
     }
 
@@ -93,13 +82,13 @@ impl EmbeddedSchema {
                 schema_version: "unknown".into(),
                 errors: vec![format!("schema parse: {e}")],
             })?;
-        let validator = jsonschema::options()
-            .build(&schema_value)
-            .map_err(|e| VaultSourceError::EmbeddedMetadataInvalid {
+        let validator = jsonschema::options().build(&schema_value).map_err(|e| {
+            VaultSourceError::EmbeddedMetadataInvalid {
                 extracted_root: PathBuf::new(),
                 schema_version: "unknown".into(),
                 errors: vec![format!("schema compile: {e}")],
-            })?;
+            }
+        })?;
         Ok(Self { validator })
     }
 
@@ -141,19 +130,17 @@ pub fn read_and_validate(
     artifact_sha256: &str,
 ) -> Result<EmbeddedMetadata, VaultSourceError> {
     let path = extracted_root.join("_vault").join("metadata.json");
-    let raw = std::fs::read_to_string(&path).map_err(|_| {
-        VaultSourceError::EmbeddedMetadataMissing {
+    let raw =
+        std::fs::read_to_string(&path).map_err(|_| VaultSourceError::EmbeddedMetadataMissing {
             extracted_root: extracted_root.to_path_buf(),
             artifact_sha256: artifact_sha256.to_string(),
-        }
-    })?;
-    let value: Value = serde_json::from_str(&raw).map_err(|e| {
-        VaultSourceError::EmbeddedMetadataInvalid {
+        })?;
+    let value: Value =
+        serde_json::from_str(&raw).map_err(|e| VaultSourceError::EmbeddedMetadataInvalid {
             extracted_root: extracted_root.to_path_buf(),
             schema_version: "unknown".into(),
             errors: vec![format!("json parse: {e}")],
-        }
-    })?;
+        })?;
     schema.validate(&value, extracted_root)?;
     let schema_version = value
         .get("schema_version")
@@ -194,9 +181,7 @@ pub fn cross_check(
     } else {
         releases
             .iter()
-            .find(|r| {
-                r.get("role").and_then(|v| v.as_str()) == Some(resolved_role)
-            })
+            .find(|r| r.get("role").and_then(|v| v.as_str()) == Some(resolved_role))
             .cloned()
             .or_else(|| releases.first().cloned())
     };
@@ -228,19 +213,16 @@ pub fn cross_check(
                 embedded_identifiers.iter().cloned().collect();
 
             let intersection: Vec<_> = embedded_set.intersection(&catalog_set).cloned().collect();
-            if !embedded_set.is_empty()
-                && !catalog_set.is_empty()
-                && intersection.is_empty()
-            {
+            if !embedded_set.is_empty() && !catalog_set.is_empty() && intersection.is_empty() {
                 return Err(VaultSourceError::CatalogEmbeddedMismatch {
                     entity_type: "work".into(),
                     entity_id: catalog_candidate.work_id,
                     field: "identifiers".into(),
-                    catalog_value: serde_json::to_value(&catalog_work_identifiers_json(
+                    catalog_value: serde_json::to_value(catalog_work_identifiers_json(
                         catalog_work_identifiers,
                     ))
                     .unwrap_or(Value::Null),
-                    embedded_value: serde_json::to_value(&embedded_identifiers_json(
+                    embedded_value: serde_json::to_value(embedded_identifiers_json(
                         &embedded_identifiers,
                     ))
                     .unwrap_or(Value::Null),
@@ -265,8 +247,7 @@ pub fn cross_check(
                 field: "platforms".into(),
                 catalog_value: serde_json::to_value(&catalog_candidate.platforms)
                     .unwrap_or(Value::Null),
-                embedded_value: serde_json::to_value(&embedded_platforms)
-                    .unwrap_or(Value::Null),
+                embedded_value: serde_json::to_value(&embedded_platforms).unwrap_or(Value::Null),
                 source: "vault:embedded",
                 evidence: "direct_observation",
             };
@@ -299,8 +280,7 @@ pub fn cross_check(
                 field: "languages".into(),
                 catalog_value: serde_json::to_value(&catalog_candidate.languages)
                     .unwrap_or(Value::Null),
-                embedded_value: serde_json::to_value(&embedded_languages)
-                    .unwrap_or(Value::Null),
+                embedded_value: serde_json::to_value(&embedded_languages).unwrap_or(Value::Null),
                 source: "vault:embedded",
                 evidence: "direct_observation",
             };
@@ -347,18 +327,18 @@ pub fn cross_check(
         .get("vault_artifact")
         .and_then(|v| v.get("original_sha256"))
         .and_then(|v| v.as_str());
-    if let (Some(cat), Some(emb)) = (catalog_artifact_original_sha256, embedded_orig_sha) {
-        if cat != emb {
-            findings.push(CrossCheckFinding {
-                entity_type: "artifact".into(),
-                entity_id: catalog_candidate.release_id,
-                field: "original_sha256".into(),
-                catalog_value: Value::String(cat.to_string()),
-                embedded_value: Value::String(emb.to_string()),
-                source: "vault:embedded",
-                evidence: "direct_observation",
-            });
-        }
+    if let (Some(cat), Some(emb)) = (catalog_artifact_original_sha256, embedded_orig_sha)
+        && cat != emb
+    {
+        findings.push(CrossCheckFinding {
+            entity_type: "artifact".into(),
+            entity_id: catalog_candidate.release_id,
+            field: "original_sha256".into(),
+            catalog_value: Value::String(cat.to_string()),
+            embedded_value: Value::String(emb.to_string()),
+            source: "vault:embedded",
+            evidence: "direct_observation",
+        });
     }
 
     Ok(CrossCheckOutcome { findings })

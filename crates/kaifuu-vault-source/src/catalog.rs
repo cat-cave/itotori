@@ -38,11 +38,9 @@ pub fn open_catalog(catalog_path: &Path) -> Result<Connection, VaultSourceError>
 /// the observed version exceeds [`SUPPORTED_SCHEMA_VERSION`].
 pub fn probe_schema_version(conn: &Connection) -> Result<u32, VaultSourceError> {
     let observed: Option<u32> = conn
-        .query_row(
-            "SELECT MAX(version) FROM schema_version",
-            [],
-            |row| row.get::<_, Option<u32>>(0),
-        )
+        .query_row("SELECT MAX(version) FROM schema_version", [], |row| {
+            row.get::<_, Option<u32>>(0)
+        })
         .map_err(|_| VaultSourceError::CatalogSchemaUnsupported {
             observed: None,
             supported: SUPPORTED_SCHEMA_VERSION,
@@ -106,10 +104,7 @@ mod tests {
         let err = probe_schema_version(&conn).unwrap_err();
         assert!(matches!(
             err,
-            VaultSourceError::CatalogSchemaUnsupported {
-                observed: None,
-                ..
-            }
+            VaultSourceError::CatalogSchemaUnsupported { observed: None, .. }
         ));
     }
 
@@ -120,8 +115,7 @@ mod tests {
         let err = probe_schema_version(&conn).unwrap_err();
         match err {
             VaultSourceError::CatalogSchemaUnsupported {
-                observed: Some(99),
-                ..
+                observed: Some(99), ..
             } => {}
             other => panic!("unexpected: {other:?}"),
         }

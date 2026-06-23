@@ -302,13 +302,13 @@ fn stream_sha256(path: &Path) -> Result<String, VaultSourceError> {
     let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 1024 * 1024];
     loop {
-        let n = file.read(&mut buf).map_err(|e| {
-            VaultSourceError::ExtractionFailed {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| VaultSourceError::ExtractionFailed {
                 archive_path: path.to_path_buf(),
                 reason: format!("read error during sha256 stream: {e}"),
                 bytes_written: 0,
-            }
-        })?;
+            })?;
         if n == 0 {
             break;
         }

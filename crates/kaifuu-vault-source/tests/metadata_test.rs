@@ -33,7 +33,9 @@ fn materialize_returns_findings_for_platform_mismatch_without_raising_error() {
         .unwrap()
         .pop()
         .unwrap();
-    let mat = source.materialize(&candidate, MaterializeOptions::default()).unwrap();
+    let mat = source
+        .materialize(&candidate, MaterializeOptions::default())
+        .unwrap();
     // Platforms overlap; no platform finding expected.
     let platform_findings: Vec<_> = mat
         .findings
@@ -93,10 +95,11 @@ fn catalog_bypass_mode_materializes_by_sha_and_emits_bypass_finding() {
         .materialize_by_sha(&sha, MaterializeOptions::default())
         .unwrap();
     assert!(mat.catalog_bypass);
-    assert!(mat
-        .findings
-        .iter()
-        .any(|f| f.field == "materialization_kind"));
+    assert!(
+        mat.findings
+            .iter()
+            .any(|f| f.field == "materialization_kind")
+    );
 }
 
 #[test]
