@@ -3936,7 +3936,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
     }
 
     fn name(&self) -> &'static str {
-        "Kaifuu RealLive detector profile fixture adapter"
+        "Kaifuu RealLive Scene/SEEN inventory adapter"
     }
 
     fn capabilities(&self) -> AdapterCapabilities {
@@ -3945,30 +3945,51 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             required_capabilities: vec![Capability::Detection, Capability::ProfileGeneration],
             supported_surfaces: vec![SurfaceTransform::Identity],
             supported_containers: vec![ContainerTransform::LooseFile],
-            supported_crypto: vec![CryptoTransform::Unknown],
-            supported_codecs: vec![CodecTransform::Unknown],
-            supported_patch_back: vec![PatchBackTransform::Unsupported],
-            support_boundary: Some("identify/profile generation reads only SEEN.TXT envelope bytes, Gameexe.ini ASCII prefixes, top-level marker counts, and source hashes".to_string()),
+            supported_crypto: vec![CryptoTransform::NullKey],
+            supported_codecs: vec![CodecTransform::ShiftJisText],
+            supported_patch_back: vec![PatchBackTransform::Identity],
+            support_boundary: Some("identify/profile generation reads SEEN.TXT envelope bytes, Gameexe.ini ASCII prefixes, top-level marker counts, and source hashes".to_string()),
         };
         let inventory = LayeredAccessOperationContract {
             status: CapabilityStatus::Supported,
             required_capabilities: vec![Capability::AssetListing, Capability::AssetInventory],
-            supported_surfaces: vec![SurfaceTransform::Identity, SurfaceTransform::ArchiveEntry],
-            supported_containers: vec![ContainerTransform::LooseFile],
-            supported_crypto: vec![CryptoTransform::Unknown],
-            supported_codecs: vec![CodecTransform::Unknown],
-            supported_patch_back: vec![PatchBackTransform::Unsupported],
-            support_boundary: Some("inventory reports only top-level SEEN.TXT/SEEN.GAN/Gameexe.ini assets and hashes; no archive entry parser is claimed".to_string()),
+            supported_surfaces: vec![
+                SurfaceTransform::Identity,
+                SurfaceTransform::ArchiveEntry,
+                SurfaceTransform::BinaryOffset,
+            ],
+            supported_containers: vec![ContainerTransform::LooseFile, ContainerTransform::Archive],
+            supported_crypto: vec![CryptoTransform::NullKey],
+            supported_codecs: vec![CodecTransform::ShiftJisText, CodecTransform::BytecodeDecompile],
+            supported_patch_back: vec![PatchBackTransform::Identity],
+            support_boundary: Some("Scene/SEEN + Gameexe.ini bridge inventory plus bounded asset reference catalogue (.g00 / .koe / .ovk / .nwk)".to_string()),
         };
-        let unsupported = |required_capabilities| LayeredAccessOperationContract {
-            status: CapabilityStatus::Unsupported,
-            required_capabilities,
-            supported_surfaces: vec![],
-            supported_containers: vec![],
-            supported_crypto: vec![],
-            supported_codecs: vec![],
-            supported_patch_back: vec![],
-            support_boundary: Some(REALLIVE_SUPPORT_BOUNDARY.to_string()),
+        let extract = LayeredAccessOperationContract {
+            status: CapabilityStatus::Supported,
+            required_capabilities: vec![Capability::Extraction],
+            supported_surfaces: vec![SurfaceTransform::BinaryOffset],
+            supported_containers: vec![ContainerTransform::LooseFile, ContainerTransform::Archive],
+            supported_crypto: vec![CryptoTransform::NullKey],
+            supported_codecs: vec![CodecTransform::ShiftJisText, CodecTransform::BytecodeDecompile],
+            supported_patch_back: vec![
+                PatchBackTransform::Identity,
+                PatchBackTransform::ReplaceFile,
+                PatchBackTransform::RecompileBytecode,
+            ],
+            support_boundary: Some("Scene/SEEN bridge unit extraction with stable KAIFUU-173 slot ids (length-preserving patch-back at the Patch contract)".to_string()),
+        };
+        let patch = LayeredAccessOperationContract {
+            status: CapabilityStatus::Supported,
+            required_capabilities: vec![Capability::Patching, Capability::PatchBack],
+            supported_surfaces: vec![SurfaceTransform::BinaryOffset],
+            supported_containers: vec![ContainerTransform::Archive],
+            supported_crypto: vec![CryptoTransform::NullKey],
+            supported_codecs: vec![CodecTransform::ShiftJisText, CodecTransform::BytecodeDecompile],
+            supported_patch_back: vec![PatchBackTransform::RecompileBytecode],
+            support_boundary: Some(
+                "Length-preserving slot replacement only; length-changing edits emit kaifuu.reallive.patchback_offset_overflow Fatal."
+                    .to_string(),
+            ),
         };
         AdapterCapabilities::new(
             REALLIVE_DETECTOR_ADAPTER_ID,
@@ -3977,61 +3998,54 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 CapabilityReport::supported(Capability::ProfileGeneration),
                 CapabilityReport::supported(Capability::AssetListing),
                 CapabilityReport::supported(Capability::AssetInventory),
-                CapabilityReport::unsupported(
-                    Capability::Extraction,
-                    "KAIFUU-172 is a RealLive detector/profile fixture only",
-                ),
-                CapabilityReport::unsupported(
+                CapabilityReport::supported(Capability::Extraction),
+                CapabilityReport::supported(Capability::Verification),
+                CapabilityReport::supported(Capability::ContainerAccess),
+                CapabilityReport::supported(Capability::CodecAccess),
+                CapabilityReport::supported(Capability::PatchBack),
+                CapabilityReport::limited(
                     Capability::Patching,
-                    "KAIFUU-172 does not patch or rebuild RealLive assets",
+                    "length-preserving slot replacement only; length-changing edits return kaifuu.reallive.patchback_offset_overflow Fatal",
                 ),
-                CapabilityReport::unsupported(
-                    Capability::ContainerAccess,
-                    "SEEN.TXT archive parsing is outside the detector profile",
+                CapabilityReport::limited(
+                    Capability::AssetTextPatching,
+                    "Scene/SEEN dialogue/speaker/choice slots only; image-overlaid text inside .g00 is not in scope",
+                ),
+                CapabilityReport::limited(
+                    Capability::LineParityPatching,
+                    "patch-back is per-slot, not per-line; the KAIFUU-052 line-parity contract is not claimed at this slice",
                 ),
                 CapabilityReport::unsupported(
                     Capability::CryptoAccess,
-                    "RealLive voice archive obfuscation handling is outside the detector profile",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::CodecAccess,
-                    "RealLive Scene/SEEN decode/decompile support is outside the detector profile",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::PatchBack,
-                    "RealLive patch-back/repack support is outside the detector profile",
+                    "RealLive voice archive obfuscation handling is outside this slice",
                 ),
                 CapabilityReport::unsupported(
                     Capability::KeyProfile,
-                    "RealLive identify-only profile does not require user-provided keys for the alpha-vertical title set",
+                    "alpha-vertical RealLive titles do not require user-provided keys; encrypted variants are a separate node",
                 ),
                 CapabilityReport::unsupported(
                     Capability::RuntimeVm,
-                    "runtime support belongs to UTSUSHI-146, not this detector fixture",
+                    "runtime support belongs to UTSUSHI-146, not this slice",
                 ),
                 CapabilityReport::unsupported(
                     Capability::EncryptedInput,
-                    "encrypted payloads (if any) are identified only and are never decrypted by this profile",
-                ),
-                CapabilityReport::unsupported(
-                    Capability::AssetTextPatching,
-                    "no RealLive text surfaces are patched by this detector profile",
+                    "encrypted SEEN.TXT is out of scope at KAIFUU-174",
                 ),
                 CapabilityReport::unsupported(
                     Capability::DeltaPatching,
-                    ".kaifuu delta packages do not apply to detector-only RealLive profiles",
+                    ".kaifuu delta packages do not apply to RealLive at this slice",
                 ),
                 CapabilityReport::unsupported(
                     Capability::NonTextSurfaceExtraction,
-                    "no non-text extraction or OCR is performed for RealLive detector fixtures",
+                    "no non-text extraction or OCR is performed for RealLive fixtures",
                 ),
             ],
         )
         .with_access_contract(LayeredAccessCapabilityContract {
             identify,
             inventory,
-            extract: unsupported(vec![Capability::Extraction]),
-            patch: unsupported(vec![Capability::Patching, Capability::PatchBack]),
+            extract,
+            patch,
         })
     }
 
@@ -4175,41 +4189,426 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
 
     fn extract(&self, request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
         let state = Self::inspect(request.game_dir);
-        let variant = Self::detected_variant(state.variant);
-        Err(Self::diagnostic_error(Self::parser_boundary_failure(
-            variant,
-        )))
+        if !Self::is_detected(state.variant) {
+            return Err(Self::diagnostic_error(Self::invalid_input_failure(
+                state.variant,
+            )));
+        }
+        let seen_path = Self::seen_txt_path(request.game_dir);
+        let archive_bytes = fs::read(&seen_path)?;
+        let scene_index = match kaifuu_reallive::parse_archive(&archive_bytes) {
+            Ok(index) => index,
+            Err(diag) => {
+                return Err(Self::diagnostic_error(Self::parser_failure(
+                    Self::detected_variant(state.variant),
+                    &diag.code.as_str(),
+                    &diag.message,
+                )));
+            }
+        };
+        let mut scenes = Vec::new();
+        let mut adapter_warnings: Vec<kaifuu_core::AdapterWarning> = Vec::new();
+        for entry in &scene_index.entries {
+            let blob = &archive_bytes
+                [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
+            let outcome = kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
+            for diagnostic in &outcome.diagnostics {
+                adapter_warnings.push(kaifuu_core::AdapterWarning {
+                    code: diagnostic.code.as_str().to_string(),
+                    message: diagnostic.message.clone(),
+                });
+            }
+            if let Some(scene) = outcome.scene {
+                scenes.push(scene);
+            }
+        }
+        let inventory =
+            kaifuu_reallive::build_scene_inventory(&archive_bytes, &scene_index, &scenes);
+        for warning in &inventory.warnings {
+            adapter_warnings.push(kaifuu_core::AdapterWarning {
+                code: warning.code.clone(),
+                message: warning.message.clone(),
+            });
+        }
+        let profile = self.profile_from_state(state.clone())?;
+        let bridge = BridgeBundle {
+            schema_version: "0.1.0".to_string(),
+            bridge_id: deterministic_id("reallive-bridge", 174),
+            source_bundle_hash: kaifuu_core::sha256_hash_bytes(&archive_bytes),
+            source_locale: "ja-JP".to_string(),
+            extractor_name: "kaifuu-reallive".to_string(),
+            extractor_version: env!("CARGO_PKG_VERSION").to_string(),
+            units: inventory.bridge_units,
+        };
+        Ok(ExtractionResult {
+            adapter_id: REALLIVE_DETECTOR_ADAPTER_ID.to_string(),
+            profile,
+            bridge,
+            warnings: adapter_warnings,
+        })
     }
 
     fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
+        // Length-preserving budget check: every PatchExportEntry whose
+        // target Shift-JIS bytes exceed the source slot's byte budget
+        // emits an OffsetOverflow failure. Other failures (unknown slot,
+        // encode failure) are deferred to the real `patch` call.
         let state = Self::inspect(request.game_dir);
-        Ok(self
-            .unsupported_patch_result(request.patch_export.patch_export_id.clone(), state.variant))
+        if !Self::is_detected(state.variant) {
+            return Ok(self.unsupported_patch_result(
+                request.patch_export.patch_export_id.clone(),
+                state.variant,
+            ));
+        }
+        let seen_path = Self::seen_txt_path(request.game_dir);
+        let archive_bytes = match fs::read(&seen_path) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return Ok(self.unsupported_patch_result(
+                    request.patch_export.patch_export_id.clone(),
+                    state.variant,
+                ));
+            }
+        };
+        let Ok(scene_index) = kaifuu_reallive::parse_archive(&archive_bytes) else {
+            return Ok(self.unsupported_patch_result(
+                request.patch_export.patch_export_id.clone(),
+                state.variant,
+            ));
+        };
+        let mut scenes = Vec::new();
+        for entry in &scene_index.entries {
+            let blob = &archive_bytes
+                [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
+            let outcome =
+                kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
+            if let Some(scene) = outcome.scene {
+                scenes.push(scene);
+            }
+        }
+        let failures = self.preflight_failures(
+            request.patch_export,
+            Self::detected_variant(state.variant),
+            &scenes,
+        );
+        Ok(PatchResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("reallive-preflight", 174),
+            patch_export_id: request.patch_export.patch_export_id.clone(),
+            status: if failures.is_empty() {
+                OperationStatus::Passed
+            } else {
+                OperationStatus::Failed
+            },
+            output_hash: content_hash(&kaifuu_core::sha256_hash_bytes(&archive_bytes)),
+            failures,
+        })
     }
 
     fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
         let state = Self::inspect(request.game_dir);
-        Ok(self
-            .unsupported_patch_result(request.patch_export.patch_export_id.clone(), state.variant))
+        if !Self::is_detected(state.variant) {
+            return Ok(self.unsupported_patch_result(
+                request.patch_export.patch_export_id.clone(),
+                state.variant,
+            ));
+        }
+        let seen_path = Self::seen_txt_path(request.game_dir);
+        let archive_bytes = fs::read(&seen_path)?;
+        let scene_index = match kaifuu_reallive::parse_archive(&archive_bytes) {
+            Ok(index) => index,
+            Err(_) => {
+                // Synthetic-magic-only fixtures (KAIFUU-172 detector
+                // smoke) do not present a parseable archive envelope.
+                // Return the legacy unsupported-patch result so the
+                // detector contract stays observable through `patch`.
+                return Ok(self.unsupported_patch_result(
+                    request.patch_export.patch_export_id.clone(),
+                    state.variant,
+                ));
+            }
+        };
+        let mut scenes = Vec::new();
+        for entry in &scene_index.entries {
+            let blob = &archive_bytes
+                [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
+            let outcome = kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
+            if let Some(scene) = outcome.scene {
+                scenes.push(scene);
+            }
+        }
+
+        // Convert the PatchExport into reallive SlotEdits. Each entry's
+        // sourceUnitKey is the StringSlotId; locate its scene and emit
+        // a LengthPreserving SlotEdit. Entries that do not match a known
+        // slot surface as UnknownSlotId failures.
+        let mut edits = Vec::new();
+        let mut failures = Vec::new();
+        for entry in &request.patch_export.entries {
+            let mut found = false;
+            for scene in &scenes {
+                if scene
+                    .strings
+                    .iter()
+                    .any(|s| s.slot_id.as_str() == entry.source_unit_key)
+                {
+                    edits.push(kaifuu_reallive::SlotEdit {
+                        scene_id: scene.scene_id.as_str().to_string(),
+                        slot_id: entry.source_unit_key.clone(),
+                        replacement_text: entry.target_text.clone(),
+                        length_policy: kaifuu_reallive::SlotEditLengthPolicy::LengthPreserving,
+                        expected_source_hash: Some(entry.source_hash.clone()),
+                    });
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                failures.push(Self::unsupported_failure(
+                    SemanticErrorCode::UnsupportedLayeredTransform,
+                    Capability::PatchBack,
+                    Self::detected_variant(state.variant),
+                    &entry.source_unit_key,
+                    "PatchExportEntry sourceUnitKey is not present in the parsed Scene/SEEN AST",
+                    "re-extract the bridge bundle before re-applying this patch",
+                ));
+            }
+        }
+        if !failures.is_empty() {
+            return Ok(PatchResult {
+                schema_version: "0.1.0".to_string(),
+                patch_result_id: deterministic_id("reallive-patch", 174),
+                patch_export_id: request.patch_export.patch_export_id.clone(),
+                status: OperationStatus::Failed,
+                output_hash: kaifuu_core::sha256_hash_bytes(&archive_bytes),
+                failures,
+            });
+        }
+
+        match kaifuu_reallive::apply_patches(&archive_bytes, &scene_index, &scenes, &edits) {
+            Ok(patched) => {
+                let output_path =
+                    kaifuu_core::safe_join_relative(request.output_dir, REALLIVE_SEEN_TXT_PATH)?;
+                if let Some(parent) = output_path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(&output_path, &patched)?;
+                Ok(PatchResult {
+                    schema_version: "0.1.0".to_string(),
+                    patch_result_id: deterministic_id("reallive-patch", 174),
+                    patch_export_id: request.patch_export.patch_export_id.clone(),
+                    status: OperationStatus::Passed,
+                    output_hash: kaifuu_core::sha256_hash_bytes(&patched),
+                    failures: vec![],
+                })
+            }
+            Err(err) => Ok(PatchResult {
+                schema_version: "0.1.0".to_string(),
+                patch_result_id: deterministic_id("reallive-patch", 174),
+                patch_export_id: request.patch_export.patch_export_id.clone(),
+                status: OperationStatus::Failed,
+                output_hash: kaifuu_core::sha256_hash_bytes(&archive_bytes),
+                failures: vec![Self::patchback_failure_to_adapter_failure(
+                    Self::detected_variant(state.variant),
+                    err,
+                )],
+            }),
+        }
     }
 
     fn verify(&self, request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
         let state = Self::inspect(request.game_dir);
         let variant = Self::detected_variant(state.variant).to_string();
+        let seen_path = Self::seen_txt_path(request.game_dir);
+        let archive_bytes = match fs::read(&seen_path) {
+            Ok(bytes) => bytes,
+            Err(_) => {
+                return Ok(VerificationResult {
+                    schema_version: "0.1.0".to_string(),
+                    patch_result_id: deterministic_id("reallive-verify", 174),
+                    status: OperationStatus::Failed,
+                    output_hash: content_hash(REALLIVE_SUPPORT_BOUNDARY),
+                    failures: vec![Self::unsupported_failure(
+                        SemanticErrorCode::UnsupportedLayeredTransform,
+                        Capability::Verification,
+                        variant,
+                        REALLIVE_SEEN_TXT_PATH,
+                        "patched SEEN.TXT not present at the requested game directory",
+                        "run patch first to populate the output directory",
+                    )],
+                });
+            }
+        };
+        let mut failures = Vec::new();
+        match kaifuu_reallive::parse_archive(&archive_bytes) {
+            Ok(index) => {
+                for entry in &index.entries {
+                    let blob = &archive_bytes
+                        [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
+                    let outcome = kaifuu_reallive::parse_scene(
+                        blob,
+                        entry.archive_index,
+                        entry.byte_offset,
+                    );
+                    if outcome.scene.is_none() {
+                        failures.push(Self::unsupported_failure(
+                            SemanticErrorCode::UnsupportedLayeredTransform,
+                            Capability::Verification,
+                            variant.clone(),
+                            REALLIVE_SEEN_TXT_PATH,
+                            "verify scene re-parse failed",
+                            "re-run patch with corrected SlotEdits",
+                        ));
+                    }
+                }
+            }
+            Err(diag) => {
+                failures.push(Self::unsupported_failure(
+                    SemanticErrorCode::UnsupportedLayeredTransform,
+                    Capability::Verification,
+                    variant.clone(),
+                    REALLIVE_SEEN_TXT_PATH,
+                    format!("verify archive re-parse failed: {}", diag.message),
+                    "re-run patch with corrected SlotEdits",
+                ));
+            }
+        }
+        let status = if failures.is_empty() {
+            OperationStatus::Passed
+        } else {
+            OperationStatus::Failed
+        };
         Ok(VerificationResult {
             schema_version: "0.1.0".to_string(),
-            patch_result_id: deterministic_id("reallive-verify", 172),
-            status: OperationStatus::Failed,
-            output_hash: content_hash(REALLIVE_SUPPORT_BOUNDARY),
-            failures: vec![Self::unsupported_failure(
-                SemanticErrorCode::UnsupportedLayeredTransform,
-                Capability::RuntimeVm,
-                variant,
-                REALLIVE_SEEN_TXT_PATH,
-                "runtime/parser verification is outside the RealLive detector profile",
-                "use detect, profile, or asset-inventory only",
-            )],
+            patch_result_id: deterministic_id("reallive-verify", 174),
+            status,
+            output_hash: kaifuu_core::sha256_hash_bytes(&archive_bytes),
+            failures,
         })
+    }
+}
+
+impl RealLiveProfileDetectorAdapter {
+    fn parser_failure(
+        variant: &str,
+        diagnostic_code: &str,
+        message: &str,
+    ) -> AdapterFailure {
+        AdapterFailure::semantic(
+            AdapterFailureSemanticParams::new(
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                REALLIVE_DETECTOR_ADAPTER_ID,
+                format!("RealLive parser rejected SEEN.TXT: {diagnostic_code}: {message}"),
+            )
+            .engine("reallive")
+            .detected_variant(variant)
+            .asset_ref(REALLIVE_SEEN_TXT_PATH)
+            .required_capability(Capability::CodecAccess)
+            .remediation(
+                "audit SEEN.TXT bytes against the KAIFUU-173 envelope shape and re-run extract",
+            ),
+        )
+    }
+
+    fn preflight_failures(
+        &self,
+        patch_export: &kaifuu_core::PatchExport,
+        variant: &str,
+        scenes: &[kaifuu_reallive::Scene],
+    ) -> Vec<AdapterFailure> {
+        let mut failures = Vec::new();
+        for entry in &patch_export.entries {
+            // Locate the slot.
+            let mut found_slot = None;
+            for scene in scenes {
+                for slot in &scene.strings {
+                    if slot.slot_id.as_str() == entry.source_unit_key {
+                        found_slot = Some(slot);
+                        break;
+                    }
+                }
+                if found_slot.is_some() {
+                    break;
+                }
+            }
+            let Some(slot) = found_slot else {
+                failures.push(Self::unsupported_failure(
+                    SemanticErrorCode::UnsupportedLayeredTransform,
+                    Capability::PatchBack,
+                    variant,
+                    &entry.source_unit_key,
+                    "PatchExportEntry sourceUnitKey is not present in the parsed Scene/SEEN AST",
+                    "re-extract the bridge bundle before re-applying this patch",
+                ));
+                continue;
+            };
+            // Check Shift-JIS encoding budget (text bytes only;
+            // patch-back re-injects control bytes from the source).
+            match kaifuu_reallive::encode_shift_jis_slot(&entry.target_text) {
+                Ok(encoded) => {
+                    let source_control_bytes = parse_hex_bytes(&slot.raw_bytes_hex)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|b| *b < 0x20)
+                        .count();
+                    let allowed = slot.byte_len as usize - source_control_bytes;
+                    if encoded.len() != allowed {
+                        failures.push(Self::unsupported_failure(
+                            SemanticErrorCode::UnsupportedLayeredTransform,
+                            Capability::PatchBack,
+                            variant,
+                            &entry.source_unit_key,
+                            format!(
+                                "length-preserving budget violated for slot {}: {} encoded bytes \
+                                 vs {} allowed (source had {} control bytes)",
+                                entry.source_unit_key,
+                                encoded.len(),
+                                allowed,
+                                source_control_bytes
+                            ),
+                            "shorten the translation or expand a future length-changing slot",
+                        ));
+                    }
+                }
+                Err(err) => {
+                    failures.push(Self::unsupported_failure(
+                        SemanticErrorCode::UnsupportedLayeredTransform,
+                        Capability::PatchBack,
+                        variant,
+                        &entry.source_unit_key,
+                        format!("Shift-JIS encode failure: {err}"),
+                        "replace characters outside Shift-JIS with mappable substitutes",
+                    ));
+                }
+            }
+        }
+        failures
+    }
+
+    fn patchback_failure_to_adapter_failure(
+        variant: &str,
+        err: kaifuu_reallive::PatchBackError,
+    ) -> AdapterFailure {
+        let code = err.code.as_str();
+        let asset_ref = err
+            .slot_id
+            .clone()
+            .unwrap_or_else(|| REALLIVE_SEEN_TXT_PATH.to_string());
+        AdapterFailure::semantic(
+            AdapterFailureSemanticParams::new(
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                REALLIVE_DETECTOR_ADAPTER_ID,
+                format!("patch-back rejected: {code}: {}", err.message),
+            )
+            .engine("reallive")
+            .detected_variant(variant)
+            .asset_ref(asset_ref)
+            .required_capability(Capability::PatchBack)
+            .remediation(
+                "review the patch export entries against the patch-back contract \
+                 (kaifuu.reallive.patchback_* semantic codes)",
+            ),
+        )
     }
 }
 
@@ -6678,8 +7077,7 @@ mod tests {
     }
 
     #[test]
-    fn reallive_capability_report_lists_identify_inventory_supported_and_extract_patch_unsupported()
-    {
+    fn reallive_adapter_capabilities_report_supported_extract_patch_verify_for_kaifuu_174() {
         let capabilities = RealLiveProfileDetectorAdapter.capabilities();
         assert_eq!(capabilities.adapter_id, REALLIVE_DETECTOR_ADAPTER_ID);
         let supported: Vec<Capability> = capabilities
@@ -6693,22 +7091,38 @@ mod tests {
             Capability::ProfileGeneration,
             Capability::AssetListing,
             Capability::AssetInventory,
+            Capability::Extraction,
+            Capability::Verification,
+            Capability::ContainerAccess,
+            Capability::CodecAccess,
+            Capability::PatchBack,
         ] {
             assert!(
                 supported.contains(&required),
-                "missing supported {required:?}"
+                "missing supported {required:?}; got: {supported:?}"
             );
         }
-        for unsupported in [
-            Capability::Extraction,
+        // Patching / AssetTextPatching / LineParityPatching are Limited
+        // because KAIFUU-174 is length-preserving only.
+        for limited in [
             Capability::Patching,
-            Capability::ContainerAccess,
+            Capability::AssetTextPatching,
+            Capability::LineParityPatching,
+        ] {
+            assert!(
+                capabilities.reports.iter().any(|report| {
+                    report.capability == limited
+                        && report.status == CapabilityStatus::Limited
+                }),
+                "missing limited capability {limited:?}"
+            );
+        }
+        // Still Unsupported.
+        for unsupported in [
             Capability::CryptoAccess,
-            Capability::CodecAccess,
-            Capability::PatchBack,
             Capability::RuntimeVm,
             Capability::EncryptedInput,
-            Capability::AssetTextPatching,
+            Capability::KeyProfile,
             Capability::DeltaPatching,
             Capability::NonTextSurfaceExtraction,
         ] {
@@ -6726,8 +7140,8 @@ mod tests {
             .expect("RealLive adapter must declare a layered access contract");
         assert_eq!(access.identify.status, CapabilityStatus::Supported);
         assert_eq!(access.inventory.status, CapabilityStatus::Supported);
-        assert_eq!(access.extract.status, CapabilityStatus::Unsupported);
-        assert_eq!(access.patch.status, CapabilityStatus::Unsupported);
+        assert_eq!(access.extract.status, CapabilityStatus::Supported);
+        assert_eq!(access.patch.status, CapabilityStatus::Supported);
     }
 
     #[test]
@@ -6788,6 +7202,191 @@ mod tests {
             .map(|adapter| adapter.id())
             .collect();
         assert!(adapters.contains(&REALLIVE_DETECTOR_ADAPTER_ID));
+    }
+
+    // -----------------------------------------------------------------
+    // KAIFUU-174 — RealLive Scene/SEEN bridge inventory + patch-back
+    // adapter tests.
+    // -----------------------------------------------------------------
+
+    fn reallive_174_fixture_dir(name: &str) -> PathBuf {
+        // Build a writable temp dir containing the bridge-inventory-001
+        // SEEN.TXT / Gameexe.ini fixtures from the kaifuu-reallive crate.
+        let src_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../kaifuu-reallive/tests/fixtures/bridge-inventory-001");
+        let seen_bytes = fs::read(src_dir.join("SEEN.TXT")).unwrap();
+        let gameexe_bytes = fs::read(src_dir.join("Gameexe.ini")).unwrap();
+        let dir = temp_dir(name);
+        fs::write(dir.join(REALLIVE_SEEN_TXT_PATH), &seen_bytes).unwrap();
+        fs::write(dir.join(REALLIVE_GAMEEXE_INI_PATH), &gameexe_bytes).unwrap();
+        dir
+    }
+
+    #[test]
+    fn reallive_adapter_extract_emits_bridge_bundle_with_scene_dialogue_units() {
+        let dir = reallive_174_fixture_dir("kaifuu-174-extract-bridge-bundle");
+        let result = RealLiveProfileDetectorAdapter
+            .extract(ExtractRequest { game_dir: &dir })
+            .unwrap();
+        assert_eq!(result.adapter_id, REALLIVE_DETECTOR_ADAPTER_ID);
+        assert!(!result.bridge.units.is_empty());
+        let surfaces: BTreeSet<_> = result
+            .bridge
+            .units
+            .iter()
+            .map(|u| u.text_surface.clone())
+            .collect();
+        assert!(surfaces.contains("dialogue"));
+        assert!(surfaces.contains("speaker_name"));
+        assert!(surfaces.contains("choice_label"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reallive_adapter_patch_round_trips_unchanged_archive_byte_for_byte() {
+        let dir = reallive_174_fixture_dir("kaifuu-174-patch-identity");
+        let export = PatchExport {
+            patch_export_id: "kaifuu-reallive-empty-export".to_string(),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![],
+        };
+        let output_dir = temp_dir("kaifuu-174-patch-identity-out");
+        let result = RealLiveProfileDetectorAdapter
+            .patch(PatchRequest {
+                game_dir: &dir,
+                patch_export: &export,
+                output_dir: &output_dir,
+            })
+            .unwrap();
+        assert_eq!(result.status, OperationStatus::Passed);
+        let patched = fs::read(output_dir.join(REALLIVE_SEEN_TXT_PATH)).unwrap();
+        let original = fs::read(dir.join(REALLIVE_SEEN_TXT_PATH)).unwrap();
+        assert_eq!(patched, original);
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[test]
+    fn reallive_adapter_patch_round_trips_length_preserving_translation() {
+        let dir = reallive_174_fixture_dir("kaifuu-174-patch-length-preserving");
+        // First extract to learn the slot id for the dialogue slot.
+        let extract = RealLiveProfileDetectorAdapter
+            .extract(ExtractRequest { game_dir: &dir })
+            .unwrap();
+        let dialogue_unit = extract
+            .bridge
+            .units
+            .iter()
+            .find(|u| u.text_surface == "dialogue" && u.source_text == "Hello!")
+            .expect("dialogue 'Hello!' unit");
+        let export = PatchExport {
+            patch_export_id: "kaifuu-reallive-translate".to_string(),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![kaifuu_core::PatchExportEntry {
+                bridge_unit_id: dialogue_unit.bridge_unit_id.clone(),
+                source_unit_key: dialogue_unit.source_unit_key.clone(),
+                source_hash: dialogue_unit.source_hash.clone(),
+                target_text: "Bye!!!".to_string(),
+                protected_span_mappings: vec![],
+            }],
+        };
+        let output_dir = temp_dir("kaifuu-174-patch-length-preserving-out");
+        let result = RealLiveProfileDetectorAdapter
+            .patch(PatchRequest {
+                game_dir: &dir,
+                patch_export: &export,
+                output_dir: &output_dir,
+            })
+            .unwrap();
+        assert_eq!(
+            result.status,
+            OperationStatus::Passed,
+            "failures: {:?}",
+            result.failures
+        );
+        let patched = fs::read(output_dir.join(REALLIVE_SEEN_TXT_PATH)).unwrap();
+        assert!(patched.windows(6).any(|w| w == b"Bye!!!"));
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[test]
+    fn reallive_adapter_patch_rejects_length_overflow_with_unsupported_layered_transform_semantic_error()
+     {
+        let dir = reallive_174_fixture_dir("kaifuu-174-patch-overflow");
+        let extract = RealLiveProfileDetectorAdapter
+            .extract(ExtractRequest { game_dir: &dir })
+            .unwrap();
+        let dialogue_unit = extract
+            .bridge
+            .units
+            .iter()
+            .find(|u| u.text_surface == "dialogue" && u.source_text == "Hello!")
+            .expect("dialogue 'Hello!' unit");
+        let export = PatchExport {
+            patch_export_id: "kaifuu-reallive-overflow".to_string(),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![kaifuu_core::PatchExportEntry {
+                bridge_unit_id: dialogue_unit.bridge_unit_id.clone(),
+                source_unit_key: dialogue_unit.source_unit_key.clone(),
+                source_hash: dialogue_unit.source_hash.clone(),
+                // Too long (10 bytes vs 6 budgeted).
+                target_text: "ByeByeBye!".to_string(),
+                protected_span_mappings: vec![],
+            }],
+        };
+        let output_dir = temp_dir("kaifuu-174-patch-overflow-out");
+        let result = RealLiveProfileDetectorAdapter
+            .patch(PatchRequest {
+                game_dir: &dir,
+                patch_export: &export,
+                output_dir: &output_dir,
+            })
+            .unwrap();
+        assert_eq!(result.status, OperationStatus::Failed);
+        assert!(
+            result
+                .failures
+                .iter()
+                .any(|f| f.error_code == "kaifuu.unsupported_layered_transform"
+                    && f.support_boundary
+                        .contains("kaifuu.reallive.patchback_offset_overflow")),
+            "failures: {:?}",
+            result.failures
+        );
+        let _ = fs::remove_dir_all(dir);
+        let _ = fs::remove_dir_all(output_dir);
+    }
+
+    #[test]
+    fn reallive_adapter_layered_access_profile_describes_scene_and_gameexe_surfaces() {
+        let dir = reallive_174_fixture_dir("kaifuu-174-layered-profile");
+        let profile = RealLiveProfileDetectorAdapter
+            .profile(ProfileRequest { game_dir: &dir })
+            .unwrap();
+        let layered = profile
+            .layered_access
+            .as_ref()
+            .expect("layered access profile present");
+        let surface_ids: BTreeSet<&str> = layered
+            .surfaces
+            .iter()
+            .map(|s| s.surface_id.as_str())
+            .collect();
+        assert!(
+            surface_ids
+                .iter()
+                .any(|id| id.starts_with("reallive-seen-txt"))
+        );
+        assert!(
+            surface_ids
+                .iter()
+                .any(|id| id.starts_with("reallive-gameexe-ini"))
+        );
+        let _ = fs::remove_dir_all(dir);
     }
 
     #[test]
