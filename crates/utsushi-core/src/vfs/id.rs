@@ -166,6 +166,25 @@ impl std::fmt::Display for AssetId {
     }
 }
 
+impl serde::Serialize for AssetId {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for AssetId {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let raw = String::deserialize(deserializer)?;
+        Self::parse(&raw).map_err(serde::de::Error::custom)
+    }
+}
+
 fn validate_package_id(package: &str) -> Result<(), AssetIdErrorReason> {
     if package.is_empty() {
         return Err(AssetIdErrorReason::EmptyPackage);

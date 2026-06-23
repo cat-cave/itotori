@@ -14,8 +14,28 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::{Map, Value};
 
+pub mod sink;
 pub mod vfs;
 
+/// Re-exports for the local-path redaction filter. The helper itself is a
+/// crate-private utility used by observation-hook validators and by the sink
+/// payload tests (see UTSUSHI-022). The re-export keeps the public surface
+/// narrow — only the `reject_unredacted_local_paths` entry point is exposed
+/// — so cross-crate consumers can run the same filter on their own sink
+/// emissions without grabbing the rest of the helper module.
+pub mod redaction {
+    use crate::UtsushiResult;
+    use serde_json::Value;
+
+    /// Reject local-path-shaped strings anywhere inside a serialized payload.
+    /// Returns the offending JSON path on failure (e.g.
+    /// `"textLine.speaker"`).
+    pub fn reject_unredacted_local_paths(path: &str, value: &Value) -> UtsushiResult<()> {
+        super::reject_unredacted_local_paths(path, value)
+    }
+}
+
+pub use sink::{SinkCapability, SinkError, SinkKind, SinkResult};
 pub use vfs::{
     AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
     AssetSize, CaseRule, HelperId, IoSummary, MountedVfs, PackageDescriptor, PackageKind,

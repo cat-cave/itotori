@@ -142,7 +142,7 @@ pub enum SinkCapability {
 emission can never claim E1-only because that would be under-claiming, and a
 text emission cannot claim E2 because text is not a rendered screen. Audio is
 always E0 metadata; an adapter wanting to claim audio playback parity must do
-so through a *different* sink that does not yet exist (out of scope: see §11).
+so through a _different_ sink that does not yet exist (out of scope: see §11).
 
 ### 3.2 `TextSurfaceSink`
 
@@ -231,7 +231,7 @@ pub struct FrameArtifact {
 
 The sink does not store bytes. Bytes live behind the artifact-store API
 (`RuntimeArtifactRoot::write_bytes`, already implemented). `FrameArtifactSink`
-is the *announcement* surface, not the storage surface; this is what keeps
+is the _announcement_ surface, not the storage surface; this is what keeps
 "screenshot refs bypassing artifact policy" out of the audit focus.
 
 ### 3.4 `AudioEventSink`
@@ -281,7 +281,7 @@ The kind enum is intentionally bounded to engine-neutral events. New kinds
 require a typed-enum extension, not a free-form string, so adapters cannot
 smuggle engine semantics into metadata. The audit focus item "audio metadata
 treated as playback fidelity" is met because the trait does not accept bytes,
-durations, sample rates, or mix levels — there is no surface that *could*
+durations, sample rates, or mix levels — there is no surface that _could_
 look like playback evidence.
 
 ### 3.5 Trait posture (all three)
@@ -376,11 +376,11 @@ fixture refactor that opts into the sink set.
 The headline rule: **each sink output carries its `EvidenceTier`, and the
 sink contract enforces the per-sink ceiling**.
 
-| Sink                | Field on the payload type                | Enforced ceiling                    | Lower bound          |
-| ------------------- | ---------------------------------------- | ----------------------------------- | -------------------- |
-| `TextSurfaceSink`   | `TextLine::evidence_tier`                | E1                                  | E0 allowed (static)  |
-| `FrameArtifactSink` | `FrameArtifact::evidence_tier`           | E4 (only for ReferenceFidelity)     | E2 minimum required  |
-| `AudioEventSink`    | `AudioEvent::evidence_tier`              | E0                                  | E0 minimum required  |
+| Sink                | Field on the payload type      | Enforced ceiling                | Lower bound         |
+| ------------------- | ------------------------------ | ------------------------------- | ------------------- |
+| `TextSurfaceSink`   | `TextLine::evidence_tier`      | E1                              | E0 allowed (static) |
+| `FrameArtifactSink` | `FrameArtifact::evidence_tier` | E4 (only for ReferenceFidelity) | E2 minimum required |
+| `AudioEventSink`    | `AudioEvent::evidence_tier`    | E0                              | E0 minimum required |
 
 The sink methods validate the tier on insert and return
 `SinkError::EvidenceTierMismatch { sink, claimed, ceiling }` on violation.
@@ -730,8 +730,8 @@ deliberately small because:
 - Adding a kind is a small additive enum extension; removing one is a
   breaking change. Start narrow.
 - Audio is E0 metadata only; the taxonomy needs to be expressive enough to
-  describe *that an event happened*, not *what its audio signal looked
-  like*. The current six kinds carry that contract for synthetic, MV/MZ
+  describe _that an event happened_, not _what its audio signal looked
+  like_. The current six kinds carry that contract for synthetic, MV/MZ
   (audio_bgm/audio_se), and RealLive (BGM/SE/voice opcodes).
 - A future "audio fidelity sink" that does claim playback parity would be
   a different trait with a different tier ceiling; nothing here forecloses
