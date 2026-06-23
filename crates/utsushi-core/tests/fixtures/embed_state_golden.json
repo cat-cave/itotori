@@ -1,0 +1,124 @@
+{
+  "adapterId": "utsushi-fixture",
+  "adapterVersion": "0.0.0",
+  "artifactRefs": [
+    {
+      "artifactId": "screenshot-001",
+      "artifactKind": "screenshot",
+      "mediaType": "image/png",
+      "uri": "artifacts/utsushi/runtime/run-fixture-001/screenshots/screenshot-001.png"
+    },
+    {
+      "artifactId": "trace-log-001",
+      "artifactKind": "trace_log",
+      "mediaType": "application/json",
+      "uri": "artifacts/utsushi/runtime/run-fixture-001/traces/trace-log-001.json"
+    }
+  ],
+  "capabilities": [
+    {
+      "capabilityId": "state",
+      "evidenceTierCeiling": "E2",
+      "status": "supported"
+    },
+    {
+      "capabilityId": "trace",
+      "evidenceTierCeiling": "E1",
+      "status": "supported"
+    },
+    {
+      "capabilityId": "snapshot",
+      "evidenceTierCeiling": "E2",
+      "status": "supported"
+    },
+    {
+      "capabilityId": "artifact_refs",
+      "evidenceTierCeiling": "E2",
+      "limitations": ["fixture corpus exposes 2 artifact kinds only"],
+      "status": "partial"
+    },
+    {
+      "capabilityId": "deterministic_fixture",
+      "limitations": ["fixture posture asserted by adapter id"],
+      "status": "unsupported"
+    }
+  ],
+  "currentSnapshot": {
+    "adapterId": "utsushi-fixture",
+    "contentHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "evidenceTier": "E2",
+    "sizeBytes": 1024,
+    "snapshotId": "run-fixture-001-tick-0042"
+  },
+  "schemaVersion": "0.1.0-alpha",
+  "trace": {
+    "lines": [
+      {
+        "bridgeRef": {
+          "bridgeUnitId": "0190a000-0000-7000-8000-000000000001",
+          "runtimeObjectId": "scene-intro/text-1",
+          "sourceUnitKey": "intro/line/1"
+        },
+        "evidenceTier": "E1",
+        "lineId": "line-001",
+        "sourceAsset": "vfs://www/data/Map001.json",
+        "speaker": "narrator",
+        "text": "fixture trace line 1",
+        "textSurface": "adv"
+      },
+      {
+        "bridgeRef": {
+          "bridgeUnitId": "0190a000-0000-7000-8000-000000000002",
+          "runtimeObjectId": "scene-intro/text-2",
+          "sourceUnitKey": "intro/line/2"
+        },
+        "evidenceTier": "E1",
+        "lineId": "line-002",
+        "sourceAsset": "vfs://www/data/Map001.json",
+        "speaker": "narrator",
+        "text": "fixture trace line 2",
+        "textSurface": "adv"
+      },
+      {
+        "bridgeRef": {
+          "bridgeUnitId": "0190a000-0000-7000-8000-000000000003",
+          "runtimeObjectId": "scene-intro/text-3",
+          "sourceUnitKey": "intro/line/3"
+        },
+        "evidenceTier": "E1",
+        "lineId": "line-003",
+        "sourceAsset": "vfs://www/data/Map001.json",
+        "speaker": "narrator",
+        "text": "fixture trace line 3",
+        "textSurface": "adv"
+      },
+      {
+        "bridgeRef": {
+          "bridgeUnitId": "0190a000-0000-7000-8000-000000000004",
+          "runtimeObjectId": "scene-intro/text-4",
+          "sourceUnitKey": "intro/line/4"
+        },
+        "evidenceTier": "E1",
+        "lineId": "line-004",
+        "sourceAsset": "vfs://www/data/Map001.json",
+        "speaker": "narrator",
+        "text": "fixture trace line 4",
+        "textSurface": "adv"
+      },
+      {
+        "bridgeRef": {
+          "bridgeUnitId": "0190a000-0000-7000-8000-000000000005",
+          "runtimeObjectId": "scene-intro/text-5",
+          "sourceUnitKey": "intro/line/5"
+        },
+        "evidenceTier": "E1",
+        "lineId": "line-005",
+        "sourceAsset": "vfs://www/data/Map001.json",
+        "speaker": "narrator",
+        "text": "fixture trace line 5",
+        "textSurface": "adv"
+      }
+    ],
+    "schemaVersion": "0.1.0-alpha"
+  }
+}

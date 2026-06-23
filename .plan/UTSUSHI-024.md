@@ -275,11 +275,11 @@ no host path can leak through.
 
 The ABI is two functions and one envelope:
 
-| Function                                    | Returns                  | Purpose                                                                                      |
-| ------------------------------------------- | ------------------------ | -------------------------------------------------------------------------------------------- |
-| `embed_capabilities(adapter) -> Value`      | `Vec<EmbedCapability>` JSON | Capability discovery. Called by the host BEFORE any `embed_state` call.                      |
-| `embed_state(adapter) -> Value`             | `EmbedState` JSON        | Returns the current envelope.                                                                |
-| `EmbedState::from_json_value(value)`        | `Result<EmbedState, _>`  | Host-side parse (only needed by Rust-side test fixtures and consumers re-validating input). |
+| Function                               | Returns                     | Purpose                                                                                     |
+| -------------------------------------- | --------------------------- | ------------------------------------------------------------------------------------------- |
+| `embed_capabilities(adapter) -> Value` | `Vec<EmbedCapability>` JSON | Capability discovery. Called by the host BEFORE any `embed_state` call.                     |
+| `embed_state(adapter) -> Value`        | `EmbedState` JSON           | Returns the current envelope.                                                               |
+| `EmbedState::from_json_value(value)`   | `Result<EmbedState, _>`     | Host-side parse (only needed by Rust-side test fixtures and consumers re-validating input). |
 
 A host that wants a "do I support X?" check calls `embed_capabilities`,
 inspects the list, and only invokes `embed_state` if the capability is
@@ -1058,10 +1058,10 @@ Rationale:
   `embed_state` / `embed_capabilities` impl) and the WASM bundle slice,
   both tracked separately.
 - Test surface is moderate: ~40 unit tests, 2 Rust integration files
-  + 1 golden, 6 TS tests + 1 TS embed module. All inside
-  `utsushi-core` and `apps/runtime-web-review`. The `utsushi-fixture`
-  no-regression bar is satisfied because the embed module is purely
-  additive.
+  - 1 golden, 6 TS tests + 1 TS embed module. All inside
+    `utsushi-core` and `apps/runtime-web-review`. The `utsushi-fixture`
+    no-regression bar is satisfied because the embed module is purely
+    additive.
 
 Verification (per §11):
 `cargo test -p utsushi-core embed`,
