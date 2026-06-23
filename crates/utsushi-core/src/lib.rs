@@ -20,6 +20,7 @@ pub mod input;
 pub mod port;
 pub mod replay;
 pub mod sink;
+pub mod snapshot;
 pub mod vfs;
 
 pub use clock::{ClockOrigin, LogicalClock, LogicalClockTick};
@@ -48,6 +49,14 @@ pub use replay::{
 pub use sink::{
     AudioEvent, AudioEventKind, AudioEventSink, FrameArtifact, FrameArtifactSink, SinkCapability,
     SinkCapabilitySummary, SinkError, SinkKind, SinkResult, SinkSet, TextLine, TextSurfaceSink,
+};
+pub use snapshot::{
+    BYTES_HASH_HEX_LEN, BYTES_SAMPLE_HEX_LEN, BytesValue, Inspectable, MAX_STATE_PATH_BYTES,
+    MAX_STATE_PATH_SEGMENTS, Restorable, RestoreReport, SNAPSHOT_EVIDENCE_TIER_CEILING,
+    SNAPSHOT_MAX_SERIALIZED_BYTES, SNAPSHOT_SCHEMA_VERSION, STATE_TREE_MAX_SERIALIZED_BYTES,
+    Snapshot, SnapshotError, SnapshotId, SnapshotRef, SnapshotRequest, SnapshotSchemaVersion,
+    StateChange, StateChangeKind, StateDiff, StateNamespace, StatePath, StateTree, StateValue,
+    diff_snapshots, restore_snapshot, take_snapshot,
 };
 
 /// Re-exports for the local-path redaction filter. The helper itself is a
@@ -132,6 +141,14 @@ pub struct RuntimeRequest<'a> {
     /// shim reads this when bridging to `EnginePort::launch`; legacy
     /// adapters can ignore the field.
     pub cancellation: Option<RunnerCancellation>,
+    /// Optional snapshot anchor (UTSUSHI-023). When `Some`, the runner is
+    /// being asked to restore the snapshot at `start` and replay from the
+    /// matching anchor. The reference is intentionally lightweight
+    /// (id-only, no payload); the full `Snapshot` is resolved by the
+    /// runner from the supplied store or test fixture. Adapters that do
+    /// not consume snapshots ignore the field. The signature decision
+    /// for a `SnapshotStore` trait is deferred to UTSUSHI-028.
+    pub snapshot: Option<SnapshotRef>,
 }
 
 impl std::fmt::Debug for RuntimeRequest<'_> {
@@ -154,6 +171,14 @@ impl std::fmt::Debug for RuntimeRequest<'_> {
                 "cancellation",
                 &self.cancellation.as_ref().map(|_| "RunnerCancellation"),
             )
+            .field(
+                "snapshot",
+                &if self.snapshot.is_some() {
+                    "<present>"
+                } else {
+                    "<absent>"
+                },
+            )
             .finish()
     }
 }
@@ -167,6 +192,7 @@ impl<'a> RuntimeRequest<'a> {
             replay: None,
             sinks: None,
             cancellation: None,
+            snapshot: None,
         }
     }
 
@@ -192,6 +218,11 @@ impl<'a> RuntimeRequest<'a> {
 
     pub fn with_cancellation(mut self, cancellation: RunnerCancellation) -> Self {
         self.cancellation = Some(cancellation);
+        self
+    }
+
+    pub fn with_snapshot(mut self, snapshot: SnapshotRef) -> Self {
+        self.snapshot = Some(snapshot);
         self
     }
 }
