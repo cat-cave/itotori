@@ -1,0 +1,406 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-027-20260623T213610Z",
+  "generatedAt": "2026-06-23T21:36:10Z",
+  "spec": {
+    "id": "UTSUSHI-027",
+    "title": "Trace and branch conformance",
+    "branch": "spec/utsushi-027",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-027",
+    "commit": "d78928f"
+  },
+  "auditor": {
+    "name": "utsushi-027-trace-branch-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Correctness audit of UTSUSHI-027 at commit d78928f. The single feat commit (3478 +) adds `utsushi_core::conformance::trace_branch` (trace.rs, branch.rs, fixtures.rs, mod.rs), 12 new stable semantic codes appended to `conformance::diagnostics::codes::ALL`, and a fixture tree under `crates/utsushi-core/tests/fixtures/conformance/trace_branch/` with 3 positive + 11 negative JSON fixtures plus a `tests/conformance_trace_branch.rs` integration suite.\n\nVerification (worktree, direnv):\n  - `cargo clean -p utsushi-core` then `cargo test -p utsushi-core --no-run`: tests build clean (8 test binaries). (A stale-build flake was observed without the clean step; from a clean baseline the build succeeds.)\n  - `cargo test -p utsushi-core`: 356 passed / 0 failed / 5 ignored (lib) + 10 + 9 + 14 + 15 + 11 + 3 + 16 = 78 across 7 test binaries, all green. The new `conformance_trace_branch` integration binary contributes 14 passed; the 61 new lib unit tests (matched against the worker's 61 + 14 = 75 count) live inside `conformance::trace_branch::{trace,branch,fixtures,mod}::tests`.\n  - `cargo test -p utsushi-fixture`: 0 tests / 0 failures (utsushi-fixture has no test surface in this slice).\n  - `cargo clippy -p utsushi-core --all-targets -- -D warnings`: clean.\n  - `cargo fmt --check`: clean.\n  - `just check`: FAILS at the `pnpm exec vp check` step with `ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL` / `Command \"vp\" not found`. This is an environment / tooling defect on the audit host (the `vp` binary is not on PATH inside the worktree's pnpm exec), NOT an UTSUSHI-027 regression: `vp` is a pre-existing repo tool and the failure happens before any UTSUSHI-027 file is touched. Not raised as a finding against this node; tracked under the existing tooling backlog.\n\nGreps for engine leakage and process boundary discipline:\n  - `grep -rn 'Command::new' crates/utsushi-core/src/conformance/trace_branch/`: no hits. The check substrate stays in-process; no subprocess spawn.\n  - `grep -rniE 'xp3|kirikiri|kag|rgss|rpgmaker|reallive|siglus' crates/utsushi-core/src/conformance/trace_branch/`: three matches, all in trace.rs doc-comments about `bridge_unit_id`, NONE referencing engine identifiers; the substring matches are coincidental (\"bridge\" in \"Bridge unit linkage\"). Engine-neutral confirmed.\n  - `grep` on codes::ALL (crates/utsushi-core/src/conformance/diagnostics.rs lines 45-95) confirms all 12 new constants (TRACE_TEXT_MISMATCH, TRACE_ORDER_MISMATCH, TRACE_SPEAKER_MISMATCH, TRACE_EVENT_MISSING, TRACE_EVENT_UNEXPECTED, BRIDGE_UNIT_UNLINKED, BRIDGE_UNIT_DIVERGENT, BRANCH_MISSING, BRANCH_UNEXPECTED, BRANCH_CHOICE_PATH_MISMATCH, BRANCH_OUTCOME_MISMATCH, TRACE_EVIDENCE_TIER_OVERCLAIM) are members of `ALL` and the unit test `new_codes_have_no_duplicates_in_codes_all` (mod.rs:138) enforces uniqueness.\n\nAcceptance-criteria walk-through:\n  1. \"Intentional text, order, branch, and bridge-unit mismatches fail predictably.\" Confirmed via `negative_*_fixture_fails_with_*` integration tests (14/14 pass with the asserted mismatch kinds). The trace pairing loop (trace.rs lines 176-292) emits every per-event mismatch in the fixed evaluation order plan §3.3.1 specified (BridgeUnitUnlinked / BridgeUnitDivergent / OrderShift / TextDifference / SpeakerMismatch), never short-circuiting inside a single event — see `trace_check_run_collects_all_per_event_mismatches_not_only_the_first()` in trace.rs::tests. Branch pairing (branch.rs lines 127-209) is id-keyed via HashMap join, emitting Missing + Unexpected + ChoicePathDivergent + OutcomeDifference exhaustively.\n  2. \"Trace and branch failures identify expected + observed runtime event ids.\" Confirmed: `TraceMismatch.{expected_event_id, observed_event_id}` and `BranchMismatch.{expected_branch_id, observed_branch_id}` are populated on every emission; `observed_event_id = None` is reachable only for `TraceMismatchKind::Missing` (observed trace shorter than golden) per plan §3.3.1, and `observed_branch_id = None` only for `BranchMismatchKind::Missing`. Sentinel strings `BEYOND_GOLDEN_SENTINEL = \"<beyond-golden>\"` (trace.rs:22) and `UNKNOWN_GOLDEN_SENTINEL = \"<unknown-golden>\"` (branch.rs:20) are exported constants, asserted by `trace_check_unexpected_mismatch_uses_documented_sentinel_event_id` (trace.rs::tests line ~969).\n  3. \"Trace-only conformance remains distinct from screenshot/render conformance.\" Confirmed structurally and behaviorally: `accepts_text_trace_evidence` (trace.rs:506) and `accepts_branch_capture_evidence` (branch.rs:409) both reject `EvidenceRef::FrameArtifactRef` and `RuntimeArtifactKind::{Screenshot, FrameCapture, Recording}`. `TraceCheckResult::into_conformance_result` checks the tier ceiling at line 328-335 and runs each evidence ref through the filter at lines 338-344, 351-357. `trace_into_conformance_result_rejects_frame_artifact_evidence` and `..._rejects_recording_runtime_artifact` are present in trace.rs::tests; analogous tests exist for branch.\n\nHard-constraint walk-through:\n  - **Trace E1 ceiling.** Enforced in `into_conformance_result` for both result types against `ProfileId::{TextTrace,BranchCapture}.evidence_tier_ceiling()` (which UTSUSHI-026 binds to E1).\n  - **Engine-neutral.** Confirmed — no engine identifiers in trace_branch/ or fixtures.\n  - **No optionality.** Honoured. `BranchCheckOptions.replay_log_run_id: Option<String>` is the only optional field; the worker's deviation note about validating it in `BranchConformanceCheck::new()` is confirmed at branch.rs:107-109 (when Some, validates via the shared `super::trace::validate_id_field`). Plan §13.5 explicitly carves this out as evidence-emission-only.\n  - **12 stable codes registered.** Confirmed (see codes::ALL section above).\n  - **Exhaustive collection.** The comparison loops never short-circuit; per-event detail is capped at 256 bytes via `TRACE_MISMATCH_DETAIL_BYTE_CAP` (trace.rs:28), reused by branch via `super::trace::TRACE_MISMATCH_DETAIL_BYTE_CAP`. `trace_mismatch_detail_truncates_at_256_bytes()` and `trace_mismatch_detail_rejects_local_path_substring()` cover the cap + redaction.\n\nDeviations spot-check:\n  - `BranchCheckOptions.replay_log_run_id` validated in `new()`: confirmed.\n  - Branch Pass evidence uses `branch_id` as `bridge_unit_id`: confirmed at branch.rs:230-234 — `EvidenceRef::BridgeUnit { bridge_unit_id: branch.branch_id.clone() }`. Recorded as F002 below.\n  - `TextNormalisation` derives `Default`: confirmed (trace.rs); clippy-clean.\n\nFindings: P0=0, P1=0, P2=0, P3=4 (3 worker-pre-identified, 1 new on the trace-overclaim diagnostic surface). completionDecision=complete_allowed.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 4
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "UTSUSHI-027-F001",
+      "UTSUSHI-027-F002",
+      "UTSUSHI-027-F003",
+      "UTSUSHI-027-F004"
+    ]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-027-F001",
+      "severity": "P3",
+      "title": "MaxMismatchesPerEvent truncation cap deferred (worker pre-identified)",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/conformance/trace_branch/trace.rs",
+          "line": 176,
+          "symbol": "TraceConformanceCheck::run"
+        },
+        {
+          "path": ".plan/UTSUSHI-027.md",
+          "line": 1033,
+          "symbol": "13.3 Trace mismatch granularity"
+        }
+      ],
+      "description": "Worker-pre-identified. Plan §13.3 explicitly defers a `MaxMismatchesPerEvent` truncation cap to a future tightening. The current substrate collects every per-event mismatch unbounded; with `TRACE_MISMATCH_DETAIL_BYTE_CAP = 256` and at most 5 mismatch kinds per event (BridgeUnitUnlinked / BridgeUnitDivergent / OrderShift / TextDifference / SpeakerMismatch), the worst-case output is bounded at `golden_len * 5 * 256 ≈ golden_len * 1.3 KB`. For the alpha track's ≤5-event fixtures this is well within budget, but a production engine port that emits a 10k-event trace with every event divergent would emit ~13 MB of mismatch text. The brief's hard constraint of \"exhaustive collection (no truncation/short-circuit other than 256-byte detail cap)\" is honoured today; this is preserved as a future-work tracker for when a real engine port is the producer.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Plan §13.3 records the deferred cap explicitly.",
+          "location": {
+            "path": ".plan/UTSUSHI-027.md",
+            "line": 1037
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §14 Out of Scope lists `Per-event MaxMismatchesPerEvent truncation cap` as future work.",
+          "location": {
+            "path": ".plan/UTSUSHI-027.md",
+            "line": 1101
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "TraceConformanceCheck::run collects every kind per event with no per-event cap; only the detail string is truncated.",
+          "location": {
+            "path": "crates/utsushi-core/src/conformance/trace_branch/trace.rs",
+            "line": 281
+          }
+        }
+      ],
+      "impact": "Negligible while UTSUSHI-027 ships with synthetic fixtures only. Surface area widens once UTSUSHI-031+ engine ports produce real traces against the check; a large divergence then balloons mismatch output to megabytes. The current contract (exhaustive collection) is the right default for the alpha track and matches the brief; the cap is a production-readiness knob.",
+      "actionableAcceptanceCriteria": [
+        "`TraceCheckOptions` gains a `max_mismatches_per_event: Option<NonZeroU32>` (None = unbounded, today's default) so the wire-shape default stays exhaustive.",
+        "When set, the per-event loop emits at most N mismatches per event and appends a single typed `TraceMismatchKind::TruncatedPerEvent` sentinel mismatch with the count of suppressed kinds so the truncation is observable.",
+        "A new stable code `utsushi.conformance.trace_per_event_truncated` is added to `codes::ALL` and to the round-trip parity test.",
+        "Tests cover the default (unbounded) path and the bounded path with N=1 + N=3 on a synthetic 4-divergence event."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "MaxMismatchesPerEvent truncation cap for trace conformance",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-027"],
+          "summary": "Add an opt-in per-event truncation cap to `TraceCheckOptions` so production engine-port runs against large traces emit bounded mismatch lists without losing the exhaustive default that UTSUSHI-027's alpha-track fixtures rely on.",
+          "deliverables": [
+            "`TraceCheckOptions.max_mismatches_per_event: Option<NonZeroU32>` (default None preserves current behaviour)",
+            "`TraceMismatchKind::TruncatedPerEvent` typed sentinel that carries the suppressed-count detail",
+            "New stable code `utsushi.conformance.trace_per_event_truncated` registered in `codes::ALL`",
+            "Unit + integration tests for the unbounded and bounded paths"
+          ],
+          "acceptanceCriteria": [
+            "Setting `max_mismatches_per_event = None` reproduces the current exhaustive emission (regression-tested).",
+            "Setting `max_mismatches_per_event = Some(N)` caps per-event emissions at N and appends exactly one `TruncatedPerEvent` sentinel when suppression occurred.",
+            "The new code is in `codes::ALL` and the mod.rs parity test exhaustively covers it."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core conformance::trace_branch"
+            }
+          ],
+          "auditFocus": [
+            "Default-preserving behaviour for existing callers",
+            "Truncation observability via the typed sentinel kind",
+            "Codes-registry parity for the new code"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-027-F002",
+      "severity": "P3",
+      "title": "Bridge-unit id normalisation deferred (worker pre-identified)",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/conformance/trace_branch/trace.rs",
+          "line": 213,
+          "symbol": "TraceConformanceCheck::run (BridgeUnitDivergent branch)"
+        },
+        {
+          "path": ".plan/UTSUSHI-027.md",
+          "line": 992,
+          "symbol": "13.1 Bridge-unit id stability across runs"
+        }
+      ],
+      "description": "Worker-pre-identified. Plan §13.1 explicitly defers a normalised bridge-unit-id comparison mode (e.g. leading-zero stripping, lowercase folding) to a future addition. The check today compares `bridge_unit_id` strings byte-for-byte; an engine adapter that legitimately emits the same UUIDv7 with different surface forms (e.g. uppercase hex vs lowercase) would trip a spurious `BridgeUnitDivergent` mismatch. The plan accepts this as the correct default: stability of the id surface is UTSUSHI-031+ engine-port contract, not a UTSUSHI-027 concern. Recorded so the orchestrator carries the future-work tracker when the first engine port reveals a normalisation gap.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Plan §13.1 records the deferred normalisation explicitly.",
+          "location": {
+            "path": ".plan/UTSUSHI-027.md",
+            "line": 999
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §14 Out of Scope lists `Bridge-unit id normalisation` as future work.",
+          "location": {
+            "path": ".plan/UTSUSHI-027.md",
+            "line": 1091
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "BridgeUnitDivergent compares `observed_id != golden.bridge_unit_id` by byte equality.",
+          "location": {
+            "path": "crates/utsushi-core/src/conformance/trace_branch/trace.rs",
+            "line": 215
+          }
+        }
+      ],
+      "impact": "Negligible while engine ports do not yet exist. Once a real adapter lowers UTSUSHI-022 `TextLine.bridge_ref` into `ObservedTextEvent.bridge_unit_id`, any surface-form drift trips a false mismatch that requires a per-adapter patch instead of a substrate option.",
+      "actionableAcceptanceCriteria": [
+        "`TraceCheckOptions` gains an opt-in `bridge_unit_id_normalisation: BridgeUnitIdNormalisation` enum with at least `Exact` (default, preserves current behaviour) and `LowercaseHex` (lowercase ASCII before equality).",
+        "Normalisation is applied symmetrically to golden + observed before the `BridgeUnitDivergent` check.",
+        "New unit test covers a fixture where golden uses lowercase hex and observed uses uppercase hex; `Exact` mode trips `BridgeUnitDivergent`, `LowercaseHex` mode passes."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Optional bridge-unit-id normalisation modes for trace conformance",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-027"],
+          "summary": "Add an opt-in normalisation mode to bridge-unit-id equality so engine adapters that emit stable UUIDs in different surface forms (uppercase vs lowercase hex) do not trip spurious BridgeUnitDivergent mismatches.",
+          "deliverables": [
+            "`BridgeUnitIdNormalisation` enum with `Exact` (default) and at least one folding variant",
+            "Symmetric application in the per-event comparison loop",
+            "Tests covering exact + folding paths"
+          ],
+          "acceptanceCriteria": [
+            "Default (`Exact`) reproduces UTSUSHI-027's byte-for-byte behaviour.",
+            "`LowercaseHex` folds both sides before comparison; UUIDv7 inputs with case-only differences match.",
+            "The new option is plumbed through the fixture loader (`TraceFixtureOptions`)."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core conformance::trace_branch"
+            }
+          ],
+          "auditFocus": [
+            "Default preservation",
+            "Symmetric normalisation",
+            "Wire-shape impact on the fixture JSON (additive only)"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-027-F003",
+      "severity": "P3",
+      "title": "Branch Pass evidence reuses branch_id as bridge_unit_id placeholder (worker pre-identified)",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/conformance/trace_branch/branch.rs",
+          "line": 230,
+          "symbol": "build_branch_evidence"
+        },
+        {
+          "path": ".plan/UTSUSHI-027.md",
+          "line": 482,
+          "symbol": "4.3 BranchCheckResult"
+        }
+      ],
+      "description": "Worker-pre-identified deviation. Plan §4.3 specifies that branch-conformance Pass emits `one EvidenceRef::BridgeUnit per branch (the choice-index path's terminal branch unit)`. The implementation today reuses `GoldenBranch.branch_id` as the `bridge_unit_id` payload (`EvidenceRef::BridgeUnit { bridge_unit_id: branch.branch_id.clone() }`). This is semantically a placeholder: the `branch_id` is the discovery key, not the terminal bridge unit the choice-index path resolves to. The deviation is intentional and labeled by the worker as \"UTSUSHI-031+ can refine\" — the bridge-unit-id substrate (UTSUSHI-022 `TextLine.bridge_ref.bridge_unit_id`) is not joinable from a branch's `choice_index_path` without an engine adapter, which this slice explicitly does not ship. The evidence-ref payload validates against UTSUSHI-026's schema because `bridge_unit_id` is just a non-empty string; ingestion (UTSUSHI-030) joins by string equality, so the placeholder will round-trip safely until a real engine port lands.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "build_branch_evidence reuses `branch.branch_id` as the `bridge_unit_id` payload.",
+          "location": {
+            "path": "crates/utsushi-core/src/conformance/trace_branch/branch.rs",
+            "line": 231
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §4.3 calls for `the choice-index path's terminal branch unit`, not the branch id.",
+          "location": {
+            "path": ".plan/UTSUSHI-027.md",
+            "line": 485
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §14 / worker report flag this as a UTSUSHI-031+ refinement.",
+          "location": {
+            "path": ".plan/UTSUSHI-027.md",
+            "line": 1079
+          }
+        }
+      ],
+      "impact": "Today: zero — there is no engine-port consumer, ingestion validates the payload by shape only, and `branch_id` is itself a stable id. Once UTSUSHI-031+ engine ports emit real branches that resolve to terminal bridge units distinct from their discovery ids, the placeholder either needs an engine-side mapping (terminate-bridge-unit-id resolver) or the `BranchConformanceCheck` needs a typed `terminal_bridge_unit_id` field on `GoldenBranch` / `ObservedBranch`. The mis-labelled evidence-ref does NOT cause a false Pass — pairing semantics are id-keyed on `branch_id`, not on the evidence ref.",
+      "actionableAcceptanceCriteria": [
+        "`GoldenBranch` and `ObservedBranch` gain a `terminal_bridge_unit_id: String` field (required, non-empty, no whitespace, no local-path leak per the shared `validate_id_field`).",
+        "`build_branch_evidence` emits `EvidenceRef::BridgeUnit { bridge_unit_id: branch.terminal_bridge_unit_id.clone() }` instead of the branch id.",
+        "Fixture corpus is updated to add `terminalBridgeUnitId` to every golden / observed branch; ingestion (UTSUSHI-030) round-trip parity is re-verified.",
+        "Existing tests that previously asserted `bridge_unit_id == branch_id` are rewritten to assert against `terminal_bridge_unit_id`."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Real terminal-bridge-unit-id evidence on branch conformance Pass",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-027"],
+          "summary": "Replace the UTSUSHI-027 placeholder where branch-conformance Pass evidence cites `branch_id` as a `bridge_unit_id` with a real `terminal_bridge_unit_id` field on `GoldenBranch` / `ObservedBranch`, so ingestion can join discovered branches to their terminal bridge units without inferring identity from the discovery key.",
+          "deliverables": [
+            "`terminal_bridge_unit_id: String` field on both golden and observed branch types",
+            "Updated `build_branch_evidence` to cite the new field",
+            "Fixture corpus updated (additive `terminalBridgeUnitId` on every branch)",
+            "Tests asserting the evidence ref carries the terminal id, not the branch id"
+          ],
+          "acceptanceCriteria": [
+            "The new field is required at construction with the shared id-validation rules.",
+            "`BranchCheckResult::Pass.evidence_refs` carries `terminal_bridge_unit_id` values that are distinct from `branch_id` in at least one positive fixture.",
+            "UTSUSHI-030 round-trip parity (when it lands) sees the new field through the JSON wire shape."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core conformance::trace_branch"
+            }
+          ],
+          "auditFocus": [
+            "Schema impact (additive field, no version bump)",
+            "Round-trip parity with UTSUSHI-030 ingestion",
+            "Test coverage for the distinct-id case"
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-027-F004",
+      "severity": "P3",
+      "title": "into_conformance_result evidence-ref rejection surfaces MALFORMED_SEMANTIC_CODE, not TRACE_EVIDENCE_TIER_OVERCLAIM",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/conformance/trace_branch/trace.rs",
+          "line": 340,
+          "symbol": "TraceCheckResult::into_conformance_result"
+        },
+        {
+          "path": "crates/utsushi-core/src/conformance/trace_branch/branch.rs",
+          "line": 279,
+          "symbol": "BranchCheckResult::into_conformance_result"
+        },
+        {
+          "path": "crates/utsushi-core/src/conformance/diagnostics.rs",
+          "line": 197,
+          "symbol": "ConformanceError::semantic_code (MalformedSemanticCode arm)"
+        }
+      ],
+      "description": "Plan §6 / §9 specify that the trace-specific `TRACE_EVIDENCE_TIER_OVERCLAIM` code surfaces earlier than UTSUSHI-026's generic schema-level `evidence_tier_above_profile_ceiling` so reviewers can attribute the failure to the trace/branch check rather than the validator. The implementation routes the failure through `Err(ConformanceError::MalformedSemanticCode { code: codes::TRACE_EVIDENCE_TIER_OVERCLAIM.to_string() })` — but `ConformanceError::semantic_code()` returns `codes::MALFORMED_SEMANTIC_CODE` for this variant (diagnostics.rs:197), so any downstream consumer that calls `error.semantic_code()` to triage the failure gets `utsushi.conformance.malformed_semantic_code`, not the trace overclaim code. The embedded `code` string is only visible via the `Display` impl. This subtly defeats the audit-focus surface: a reviewer triaging by stable code sees the generic malformed-code diagnostic and has to read the Display message to discover the trace-specific intent. The error variant being abused is also semantically wrong — `MalformedSemanticCode` was designed to signal that an INPUT code string (e.g. from a downstream provider) failed the `is_valid_semantic_code` shape check, not that an evidence-ref was inadmissible. The four call sites (trace.rs lines 340-342, 353-355; branch.rs lines 279-281, 292-294) all reuse this pattern; fixing one without the others would leave the surface inconsistent.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Trace Pass-path evidence-ref rejection routes through MalformedSemanticCode with the overclaim code embedded.",
+          "location": {
+            "path": "crates/utsushi-core/src/conformance/trace_branch/trace.rs",
+            "line": 340
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "ConformanceError::semantic_code() returns codes::MALFORMED_SEMANTIC_CODE for the MalformedSemanticCode variant, ignoring the embedded code string.",
+          "location": {
+            "path": "crates/utsushi-core/src/conformance/diagnostics.rs",
+            "line": 197
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §6 commits to the trace-specific code surfacing 'earlier and points reviewers at the trace check rather than the generic schema validator'.",
+          "location": {
+            "path": ".plan/UTSUSHI-027.md",
+            "line": 600
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §9.1 reaffirms the 'trace helper rejects on a tier-overclaim attempt with a specific code'.",
+          "location": {
+            "path": ".plan/UTSUSHI-027.md",
+            "line": 822
+          }
+        }
+      ],
+      "impact": "Today there are no downstream code-based triagers, so the misrouting is invisible at runtime. The audit-focus surface (\"Trace-only evidence overclaiming rendered playback\") is partially defended: the helper DOES reject the offending evidence-ref at construction time (a real-world overclaim is caught and returned as Err), but the diagnostic the auditor receives identifies the generic malformed-code path rather than the trace overclaim. Reviewers writing future code that branches on `error.semantic_code()` will see one bucket where the plan promised two. Severity stays P3 because the rejection itself still happens — only the diagnostic surface is muddied.",
+      "actionableAcceptanceCriteria": [
+        "A new `ConformanceError::EvidenceRefNotAdmissibleForProfile { profile: ProfileId, evidence: &'static str }` variant (or equivalent) is added so the rejection has a typed home that is NOT `MalformedSemanticCode`.",
+        "`ConformanceError::semantic_code()` maps the new variant to `codes::TRACE_EVIDENCE_TIER_OVERCLAIM` (or a fresh `EVIDENCE_REF_NOT_ADMISSIBLE` if a per-profile breakout is preferred).",
+        "Both `TraceCheckResult::into_conformance_result` and `BranchCheckResult::into_conformance_result` are updated to return the new variant at all four call sites (trace.rs:340, 353; branch.rs:279, 292).",
+        "A test asserts `err.semantic_code() == codes::TRACE_EVIDENCE_TIER_OVERCLAIM` (or the breakout code) when a FrameArtifactRef is supplied to either helper."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Typed ConformanceError for inadmissible evidence-refs on trace and branch conformance",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-027"],
+          "summary": "Replace the four call sites in `trace_branch::{trace,branch}::into_conformance_result` that emit `Err(MalformedSemanticCode { code: TRACE_EVIDENCE_TIER_OVERCLAIM })` with a typed `ConformanceError::EvidenceRefNotAdmissibleForProfile` variant whose `semantic_code()` returns the trace-specific overclaim code, so downstream code-based triagers see the diagnostic the plan promised instead of the generic malformed-code bucket.",
+          "deliverables": [
+            "New `ConformanceError::EvidenceRefNotAdmissibleForProfile { profile, evidence_kind }` variant",
+            "`semantic_code()` mapping for the new variant",
+            "All four call sites updated in trace.rs / branch.rs",
+            "Tests covering `.semantic_code()` for the rejection path on both Pass and Fail input to both helpers"
+          ],
+          "acceptanceCriteria": [
+            "Calling `TraceCheckResult::Pass { evidence_refs: vec![FrameArtifactRef{..}] }.into_conformance_result(...)` returns an Err whose `.semantic_code()` is `TRACE_EVIDENCE_TIER_OVERCLAIM`, not `MALFORMED_SEMANTIC_CODE`.",
+            "The same is true for the branch helper.",
+            "`MalformedSemanticCode` is no longer used as a carrier for evidence-ref rejections; it goes back to signalling input-code-shape failures only."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core conformance::trace_branch"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core conformance::result"
+            }
+          ],
+          "auditFocus": [
+            "semantic_code() surface accuracy",
+            "Backward-compatibility of MalformedSemanticCode for its original purpose",
+            "Symmetry across the four call sites"
+          ]
+        }
+      }
+    }
+  ]
+}
