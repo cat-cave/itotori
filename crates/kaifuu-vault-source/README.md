@@ -30,7 +30,7 @@ contract in `docs/itotori-vault-source-adapter.md` and the plan in
 - Mutate the itotori catalog or any other database.
 - Launch the game, probe it at runtime, or evaluate runtime behaviour.
 
-See *Out of Scope* in the contract for the authoritative list.
+See _Out of Scope_ in the contract for the authoritative list.
 
 ## Owner / support boundary
 
@@ -51,15 +51,15 @@ The synthetic-vault fixture under
 `tests/common/mod.rs`; the seven synthetic archives are constructed
 in-test via `sevenz-rust2`'s `ArchiveWriter`. Fixture archives:
 
-| id | description |
-| --- | --- |
-| `good_primary` | primary archive with valid `_vault/metadata.json` |
-| `subpath_winmac` | one archive with `Win/` and `Mac/` subtrees |
-| `good_patch` | `role=patch` archive bound to the same release |
-| `hash_mismatch` | archive bytes that don't match the catalog sha |
-| `embedded_id_mismatch` | embedded ids disjoint from the catalog |
-| `path_traversal` | archive containing `../escape.txt` |
-| `missing_metadata` | archive without `_vault/metadata.json` |
+| id                     | description                                       |
+| ---------------------- | ------------------------------------------------- |
+| `good_primary`         | primary archive with valid `_vault/metadata.json` |
+| `subpath_winmac`       | one archive with `Win/` and `Mac/` subtrees       |
+| `good_patch`           | `role=patch` archive bound to the same release    |
+| `hash_mismatch`        | archive bytes that don't match the catalog sha    |
+| `embedded_id_mismatch` | embedded ids disjoint from the catalog            |
+| `path_traversal`       | archive containing `../escape.txt`                |
+| `missing_metadata`     | archive without `_vault/metadata.json`            |
 
 ## Semantic error codes
 

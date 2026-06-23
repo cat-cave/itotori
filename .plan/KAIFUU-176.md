@@ -1,17 +1,17 @@
 # KAIFUU-176 — Itotori Vault-Source localCorpus Adapter — Implementation Plan
 
-| Field | Value |
-| --- | --- |
-| DAG node | `KAIFUU-176` |
-| Title | Itotori vault-source localCorpus adapter |
-| Branch | `spec/kaifuu-176` |
-| Worktree | `/scratch/worktrees/itotori-spec-kaifuu-176` |
-| Plan author | planning worker (orchestrator-spawned) |
-| Plan date | 2026-06-23 |
+| Field              | Value                                                                             |
+| ------------------ | --------------------------------------------------------------------------------- |
+| DAG node           | `KAIFUU-176`                                                                      |
+| Title              | Itotori vault-source localCorpus adapter                                          |
+| Branch             | `spec/kaifuu-176`                                                                 |
+| Worktree           | `/scratch/worktrees/itotori-spec-kaifuu-176`                                      |
+| Plan author        | planning worker (orchestrator-spawned)                                            |
+| Plan date          | 2026-06-23                                                                        |
 | Contract of record | [`docs/itotori-vault-source-adapter.md`](../docs/itotori-vault-source-adapter.md) |
-| Output file | `.plan/KAIFUU-176.md` (this file) |
+| Output file        | `.plan/KAIFUU-176.md` (this file)                                                 |
 
-Citations of the form *(Contract: §Section)* refer to the heading in
+Citations of the form _(Contract: §Section)_ refer to the heading in
 `docs/itotori-vault-source-adapter.md`. The plan is deliberately terse: contract
 prose is the source of truth; this plan only fixes structure.
 
@@ -129,7 +129,7 @@ catalog source columns). See §8 for registration.
 
 Open: `rusqlite::Connection::open_with_flags` using URI
 `file:<vault-root>/catalog.db?mode=ro&immutable=0` with `OPEN_READ_ONLY |
-OPEN_URI`. No `PRAGMA` writes; *(Contract: §Read-only Contract)*.
+OPEN_URI`. No `PRAGMA` writes; _(Contract: §Read-only Contract)_.
 
 Probe step (run once per `VaultSource::open`):
 
@@ -143,7 +143,7 @@ If the row is absent or `> SUPPORTED_SCHEMA_VERSION` (initial: `1`, matching
 ### Discovery queries (`discovery.rs`)
 
 `ClaimQuery` is a tagged enum mirroring the contract's allowed entry vectors
-*(Contract: §Discovery)*:
+_(Contract: §Discovery)_:
 
 ```rust
 enum ClaimQuery {
@@ -206,11 +206,11 @@ ORDER BY CASE ra.role
 ```
 
 `ArtifactSelection { primary_only, include_roles: HashSet<Role> }` controls
-which rows are returned to the caller *(Contract: §Resolution)*. `vault_path`
+which rows are returned to the caller _(Contract: §Resolution)_. `vault_path`
 is read but **never used to construct the on-disk path**; it is informational.
 
 Every connection is opened per discovery call and dropped at the end; no
-cross-run cache *(Contract: §Discovery — "does not cache the catalog")*.
+cross-run cache _(Contract: §Discovery — "does not cache the catalog")_.
 
 ---
 
@@ -223,12 +223,12 @@ For each selected artifact:
 2. `fs::symlink_metadata` (not `metadata`) → must be a regular file. Reject
    symlinks → `ArtifactMissing`.
 3. Compare `metadata.len()` with `artifacts.size_bytes`. Mismatch →
-   `ArtifactSizeMismatch { expected, actual, path, sha256 }` *before* opening
+   `ArtifactSizeMismatch { expected, actual, path, sha256 }` _before_ opening
    for read.
 4. Stream the file through `sha2::Sha256` in fixed-size chunks (e.g. 1 MiB).
    Final digest must equal `artifacts.sha256`. Mismatch →
    `ArtifactHashMismatch { expected, actual, path }`.
-5. `by-name/` is never consulted, listed, or stat-ed *(Contract: §Resolution)*.
+5. `by-name/` is never consulted, listed, or stat-ed _(Contract: §Resolution)_.
 
 Resolver returns a `ResolvedArtifact { id, role, subpath, sha256, size_bytes,
 on_disk_path, original_sha256 }`.
@@ -239,8 +239,8 @@ on_disk_path, original_sha256 }`.
 
 ### Scratch layout
 
-`<scratch_root>/<game_id>/<run_id>/extracted/` per *(Contract: §Extraction,
-§Scratch and Secret Custody)*.
+`<scratch_root>/<game_id>/<run_id>/extracted/` per _(Contract: §Extraction,
+§Scratch and Secret Custody)_.
 
 - `<scratch_root>` resolved by `ScratchConfig` (§7).
 - `<game_id>` derived deterministically (`paths.rs`):
@@ -260,10 +260,10 @@ Rationale (resolves the policy question called out in the prompt):
 - The workspace has **no existing 7z handling** (`grep` on `crates/`,
   `Cargo.toml`, and `Cargo.lock` returns no 7z dep). There is therefore no
   prior pattern to align with.
-- `docs/subprojects-kaifuu.md` codifies *no shell-outs* — but explicitly
-  scopes that to *foreign localization tools* (GARbro/KrkrExtract/etc.). A
+- `docs/subprojects-kaifuu.md` codifies _no shell-outs_ — but explicitly
+  scopes that to _foreign localization tools_ (GARbro/KrkrExtract/etc.). A
   generic system `7z` binary is a different category, the contract names
-  `7z x` as the default extractor *(Contract: §Extraction)*, and operationally
+  `7z x` as the default extractor _(Contract: §Extraction)_, and operationally
   shelling to `7z` would be acceptable.
 - However: a Rust crate is preferable because (a) it removes the system
   dependency (cross-OS portability, the contract's third operating commitment),
@@ -283,7 +283,7 @@ documented in §13 as a contingency.
 ### Pre-write safety
 
 `extraction.rs` iterates archive entries and, for each entry path, enforces
-all of the following before any byte is written *(Contract: §Extraction)*:
+all of the following before any byte is written _(Contract: §Extraction)_:
 
 - Normalise the entry path using `Path::components` rejecting
   `Component::ParentDir` and `Component::RootDir` and `Component::Prefix`
@@ -299,7 +299,7 @@ On any rejection, the partial extraction directory is removed and
 `ExtractionUnsafePath` is returned. The `<run-id>/` directory is also removed
 on truncated/decompression failure; `ExtractionFailed { source, archive_path,
 bytes_written }` is returned. No partial extraction is ever surfaced to the
-caller *(Contract: §Extraction — "Partial extractions are not used")*.
+caller _(Contract: §Extraction — "Partial extractions are not used")_.
 
 ### Retry semantics
 
@@ -307,20 +307,20 @@ The adapter does not auto-retry. Callers can retry by calling `materialize`
 again with the same `RetentionPolicy`; under `keep-extracted-for-game`,
 re-extraction is triggered iff the on-disk archive sha256 mismatches the
 cached previous hash file (`<scratch>/<game-id>/.last-artifact-sha256`).
-Otherwise the existing `extracted/` is reused as-is *(Contract: §Scratch and
-Secret Custody — "still verifies the artifact sha256 each run")*.
+Otherwise the existing `extracted/` is reused as-is _(Contract: §Scratch and
+Secret Custody — "still verifies the artifact sha256 each run")_.
 
 ---
 
 ## 6. Embedded-Metadata Cross-Check
 
-`_vault/metadata.json` is the **first** file read post-extraction *(Contract:
-§Extraction → §Cross-checking via Embedded Metadata)*.
+`_vault/metadata.json` is the **first** file read post-extraction _(Contract:
+§Extraction → §Cross-checking via Embedded Metadata)_.
 
 ### Validation
 
 - Parse via `serde_json`. Missing → `EmbeddedMetadataMissing { extracted_root,
-  artifact_sha256 }`.
+artifact_sha256 }`.
 - Validate against
   `<vault-root>/embedded-metadata.schema.json` using `jsonschema` crate
   (draft 2020-12). Schema is loaded once per `VaultSource` and cached in
@@ -332,17 +332,17 @@ Secret Custody — "still verifies the artifact sha256 each run")*.
 
 For the artifact selected:
 
-| Embedded field | Catalog field | Default disposition on mismatch |
-| --- | --- | --- |
-| `vault_artifact.original_sha256` | `artifacts.original_sha256` (when both non-null) | Finding |
-| `releases[].work.identifiers` (any ∈ catalog `identifiers` for the work) | `identifiers` table | **Error** `CatalogEmbeddedMismatch` (work identity) when intersection is empty |
-| `releases[].platforms` | `release_platforms` | Finding (catalog wins) |
-| `releases[].languages` | `release_languages` | Finding (catalog wins) |
-| `releases[].role` | `release_artifacts.role` | Finding |
+| Embedded field                                                           | Catalog field                                    | Default disposition on mismatch                                                |
+| ------------------------------------------------------------------------ | ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| `vault_artifact.original_sha256`                                         | `artifacts.original_sha256` (when both non-null) | Finding                                                                        |
+| `releases[].work.identifiers` (any ∈ catalog `identifiers` for the work) | `identifiers` table                              | **Error** `CatalogEmbeddedMismatch` (work identity) when intersection is empty |
+| `releases[].platforms`                                                   | `release_platforms`                              | Finding (catalog wins)                                                         |
+| `releases[].languages`                                                   | `release_languages`                              | Finding (catalog wins)                                                         |
+| `releases[].role`                                                        | `release_artifacts.role`                         | Finding                                                                        |
 
-The default tolerance is exactly the contract default *(Contract: §Cross-checking
+The default tolerance is exactly the contract default _(Contract: §Cross-checking
 via Embedded Metadata — "default threshold rejects mismatched work identity and
-accepts everything else with a finding")*. A future tolerance struct
+accepts everything else with a finding")_. A future tolerance struct
 (`CrossCheckTolerance`) is sketched but `Default` yields the contract default.
 
 ### Finding shape
@@ -361,8 +361,8 @@ pub struct CrossCheckFinding {
 }
 ```
 
-Shape mirrors a `v_facts_needs_review` row *(Contract: §Cross-checking via
-Embedded Metadata)*. The adapter **never writes to `catalog.db`** — findings
+Shape mirrors a `v_facts_needs_review` row _(Contract: §Cross-checking via
+Embedded Metadata)_. The adapter **never writes to `catalog.db`** — findings
 are returned in `MaterializeResult.findings` for the caller (Kaifuu or the
 itotori findings sink) to route to vault-curation.
 
@@ -372,8 +372,8 @@ When `ClaimQuery::ByArtifactSha` is used, discovery is skipped, the artifact
 is resolved purely by sha (still via `by-sha/`), extracted, and the embedded
 metadata is parsed without cross-check. The result carries a
 `materialization_kind: CatalogBypass` flag and a finding noting that catalog
-resolution was bypassed *(Contract: §Cross-checking via Embedded Metadata —
-"this is allowed but always flagged")*.
+resolution was bypassed _(Contract: §Cross-checking via Embedded Metadata —
+"this is allowed but always flagged")_.
 
 ---
 
@@ -440,7 +440,7 @@ shapes overlap only conceptually).
 
 ### Cross-OS path resolution (`config.rs`)
 
-Resolution order *(Contract: §Cross-OS Path Resolution)*:
+Resolution order _(Contract: §Cross-OS Path Resolution)_:
 
 1. `ITOTORI_VAULT_ROOT` env var.
 2. A `VaultConfig::vault_root_override` field (callers wire user config in).
@@ -481,7 +481,7 @@ This crate explicitly:
   (out of scope for this slice).
 
 The intent is to make the adapter's non-relationship with secrets auditable
-and to keep the contract bullet *(Contract: §Scratch and Secret Custody)*
+and to keep the contract bullet _(Contract: §Scratch and Secret Custody)_
 provably satisfied by inspection of this crate's source.
 
 ---
@@ -489,7 +489,7 @@ provably satisfied by inspection of this crate's source.
 ## 9. Failure-Mode Mapping
 
 `error.rs` defines `VaultSourceError`, one variant per row in the
-*(Contract: §Failure Modes)* table. Every variant carries enough context
+_(Contract: §Failure Modes)_ table. Every variant carries enough context
 for an operator to act without re-running discovery.
 
 ```rust
@@ -551,9 +551,9 @@ pub enum VaultSourceError {
 
 These map 1:1 to the contract's Failure Modes table. There are no fallback
 codepaths; every recoverable disagreement that the contract permits is
-returned as a `CrossCheckFinding`, **not** as an error variant *(Contract:
+returned as a `CrossCheckFinding`, **not** as an error variant _(Contract:
 §Failure Modes — "every failure is a typed semantic error. The adapter
-never falls back silently to a degraded mode")*.
+never falls back silently to a degraded mode")_.
 
 Semantic-code naming follows the `kaifuu.*` shape used throughout
 `kaifuu-core` (`pub const SEMANTIC_VAULT_*`). Initial code prefixes:
@@ -633,12 +633,8 @@ A synthetic vault fixture is built deterministically under
   2. **Subpath-bearing**: contains `_vault/metadata.json` plus `Win/` and
      `Mac/` subtrees, with `release_artifacts.subpath = 'Win'`.
   3. **Good patch**: role=`patch`, primary already present.
-- Three corrupted variants:
-  4. **Hash-mismatch**: archive bytes do not hash to `artifacts.sha256`.
-  5. **Embedded-id-mismatch**: `_vault/metadata.json` lists `vndb v9999`
-     while the catalog `identifiers` row says `v1234`.
-  6. **Path-traversal**: contains an entry named `../escape.txt`.
-  7. **Missing-metadata**: archive has no `_vault/metadata.json`.
+- Three corrupted variants: 4. **Hash-mismatch**: archive bytes do not hash to `artifacts.sha256`. 5. **Embedded-id-mismatch**: `_vault/metadata.json` lists `vndb v9999`
+  while the catalog `identifiers` row says `v1234`. 6. **Path-traversal**: contains an entry named `../escape.txt`. 7. **Missing-metadata**: archive has no `_vault/metadata.json`.
 
 Integration tests:
 
@@ -678,8 +674,8 @@ Integration tests:
 All tests use temp dirs (`tempfile::tempdir`) for scratch roots, never the
 real `/scratch/itotori/`. The synthetic vault fixture is regenerated per test
 run; no shared mutable state. Public CI runs without `/archive/vault/`
-present *(testing standard §Fixture Layers — "CI must pass when the
-directory is absent")*.
+present _(testing standard §Fixture Layers — "CI must pass when the
+directory is absent")_.
 
 ---
 
@@ -718,7 +714,7 @@ the orchestrator's responsibility to mark complete.
 1. **Extraction-tool choice (`sevenz-rust2` vs system `7z`).** Decision in
    §5; orchestrator should confirm. If `sevenz-rust2` cannot handle a real
    vault artifact (e.g. a 7z format variant the crate does not support),
-   fallback is a sandboxed system-`7z` invocation governed by a *new* policy
+   fallback is a sandboxed system-`7z` invocation governed by a _new_ policy
    note — that is a meaningful policy change and should be a follow-up
    spec node, not silent fallback.
 2. **Catalog-schema drift.** The vault-curation project owns `schema.sql`
@@ -830,7 +826,7 @@ Implementation worker's first commit should:
 4. Commit, then iterate per the module plan.
 
 The readiness record (per `docs/kaifuu-engine-playbook.md` template) is
-*not required* for this slice because the vault source is not an
+_not required_ for this slice because the vault source is not an
 `EngineAdapter` — but a short `crates/kaifuu-vault-source/README.md` with
 the relevant subset (owner, support boundary, fixture ids, semantic error
 codes, local validation commands) is recommended and should land in the
