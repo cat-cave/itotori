@@ -56,8 +56,8 @@
       "path": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
       "role": "patch-result",
       "mediaType": "application/json",
-      "sha256": "4c05bfedab6cff96ad314d794f393a39453da16aecf4c68bae9bc9b8699ccea7",
-      "bytes": 5562,
+      "sha256": "a6c44fa4d44937a5f963d25c9579042a46f37d2d15df897b99cf49ae50444c55",
+      "bytes": 6551,
       "redistributable": true
     },
     {

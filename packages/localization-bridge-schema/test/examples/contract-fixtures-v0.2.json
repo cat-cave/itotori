@@ -153,6 +153,24 @@
       "description": "Patch results cannot carry an incompatible source report unless the top-level status says so."
     },
     {
+      "kind": "patch-result-v0.2",
+      "path": "./invalid/patch-result-v0.2-missing-failure-category.json",
+      "expectedSemanticError": "kaifuu\\.patch_result\\.missing_failure_category",
+      "description": "Patch results must declare every observed failure category in failureCategories."
+    },
+    {
+      "kind": "patch-result-v0.2",
+      "path": "./invalid/patch-result-v0.2-output-hash-mismatch.json",
+      "expectedSemanticError": "kaifuu\\.patch_result\\.output_hash_drift",
+      "description": "Patch result outputHash must equal the rollup of touchedAssets[].outputHash."
+    },
+    {
+      "kind": "patch-result-v0.2",
+      "path": "./invalid/patch-result-v0.2-partial-write.json",
+      "expectedSemanticError": "kaifuu\\.patch_result\\.silent_partial_write",
+      "description": "Patch result partialWrite must account for every attempted asset as written or skipped."
+    },
+    {
       "kind": "permission-local-user-v0.2",
       "path": "./invalid/permission-local-user-v0.2-missing-grant.json",
       "expectedSemanticError": "grants must include feedback\\.import",

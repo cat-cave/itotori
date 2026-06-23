@@ -68,6 +68,18 @@ const PATCH_WRITE_MODES: &[&str] = &[
     "metadata",
 ];
 
+pub const PATCH_FAILURE_CATEGORIES_V02: &[&str] = &[
+    "source_incompatible",
+    "patch_write_failed",
+    "protected_span_violation",
+    "asset_missing",
+    "adapter_unsupported",
+    "output_hash_mismatch",
+];
+
+pub const PATCH_PARTIAL_WRITE_DISPOSITIONS_V02: &[&str] =
+    &["rolled_back", "cleaned_up", "retained_partial"];
+
 const TRIAGE_SEVERITIES: &[&str] = &["P0", "P1", "P2", "P3"];
 const RUNTIME_EVIDENCE_TIERS: &[&str] = &["E0", "E1", "E2", "E3", "E4"];
 const RUNTIME_FIDELITY_TIERS: &[&str] = &[
@@ -897,30 +909,88 @@ pub fn validate_patch_result_v02(value: &Value) -> BridgeContractResult<()> {
     assert_schema_version(result, "PatchResultV02")?;
     assert_required_uuid7(result, "patchResultId", "PatchResultV02.patchResultId")?;
     let patch_export_id =
-        assert_required_uuid7(result, "patchExportId", "PatchResultV02.patchExportId")?;
+        assert_required_uuid7(result, "patchExportId", "PatchResultV02.patchExportId")?.to_string();
+    assert_required_string(result, "adapterId", "PatchResultV02.adapterId")?;
     let status = assert_required_one_of(
         result,
         "status",
         &["passed", "failed", "incompatible_source"],
         "PatchResultV02.status",
-    )?;
-    if let Some(output_hash) = result.get("outputHash") {
-        assert_hash_value(output_hash, "PatchResultV02.outputHash")?;
+    )?
+    .to_string();
+    let output_hash = match result.get("outputHash") {
+        Some(value) => {
+            assert_hash_value(value, "PatchResultV02.outputHash")?;
+            Some(
+                value
+                    .as_str()
+                    .expect("checked by assert_hash_value")
+                    .to_string(),
+            )
+        }
+        None => None,
+    };
+
+    let failures_value = required(result, "failures", "PatchResultV02.failures")?;
+    let failures_array = array_value(failures_value, "PatchResultV02.failures")?;
+    let mut observed_categories: Vec<String> = Vec::new();
+    let mut failure_asset_ids: Vec<String> = Vec::new();
+    let mut seen_failure_ids: HashSet<String> = HashSet::new();
+    for (index, failure_value) in failures_array.iter().enumerate() {
+        let failure_label = format!("PatchResultV02.failures[{index}]");
+        let (failure_id, category, asset_id) =
+            validate_patch_failure_v02(failure_value, &failure_label)?;
+        if !seen_failure_ids.insert(failure_id.clone()) {
+            return error(format!(
+                "{failure_label}.failureId must not duplicate {failure_id}"
+            ));
+        }
+        observed_categories.push(category);
+        failure_asset_ids.push(asset_id);
     }
-    assert_string_array(
-        required(result, "failures", "PatchResultV02.failures")?,
-        "PatchResultV02.failures",
-    )?;
+
+    let touched_assets = match result.get("touchedAssets") {
+        Some(value) => Some(validate_patch_touched_assets_v02(
+            value,
+            "PatchResultV02.touchedAssets",
+        )?),
+        None => None,
+    };
+
+    let declared_categories = match result.get("failureCategories") {
+        Some(value) => {
+            let array = array_value(value, "PatchResultV02.failureCategories")?;
+            let mut seen = HashSet::new();
+            let mut declared = Vec::new();
+            for (index, entry) in array.iter().enumerate() {
+                let label = format!("PatchResultV02.failureCategories[{index}]");
+                let category = string_value(entry, &label)?;
+                assert_one_of(category, PATCH_FAILURE_CATEGORIES_V02, &label)?;
+                if !seen.insert(category.to_string()) {
+                    return error(format!("{label} must not duplicate {category}"));
+                }
+                declared.push(category.to_string());
+            }
+            Some(declared)
+        }
+        None => None,
+    };
+
+    let partial_write = match result.get("partialWrite") {
+        Some(value) => Some(validate_patch_partial_write_accounting_v02(
+            value,
+            "PatchResultV02.partialWrite",
+        )?),
+        None => None,
+    };
 
     let source_compatibility = result.get("sourceCompatibility");
     if let Some(report) = source_compatibility {
-        let compatibility_status = validate_patch_source_compatibility_report_v02(
-            report,
-            "PatchResultV02.sourceCompatibility",
-        )?;
-        let report = as_record(report, "PatchResultV02.sourceCompatibility")?;
+        let compatibility_status =
+            validate_patch_source_compatibility_v02(report, "PatchResultV02.sourceCompatibility")?;
+        let report_record = as_record(report, "PatchResultV02.sourceCompatibility")?;
         let report_patch_export_id = assert_required_uuid7(
-            report,
+            report_record,
             "patchExportId",
             "PatchResultV02.sourceCompatibility.patchExportId",
         )?;
@@ -955,7 +1025,324 @@ pub fn validate_patch_result_v02(value: &Value) -> BridgeContractResult<()> {
             );
         }
     }
+
+    if status == "passed" {
+        let touched = match touched_assets.as_ref() {
+            Some(touched) if !touched.is_empty() => touched,
+            _ => {
+                return error(
+                    "PatchResultV02.touchedAssets must include at least one asset when status is passed: kaifuu.patch_result.passed_requires_touched_assets",
+                );
+            }
+        };
+        let Some(top_hash) = output_hash.as_ref() else {
+            return error(
+                "PatchResultV02.outputHash is required when status is passed: kaifuu.patch_result.passed_requires_output_hash",
+            );
+        };
+        if !failures_array.is_empty() {
+            return error(
+                "PatchResultV02.failures must be empty when status is passed: kaifuu.patch_result.passed_must_have_no_failures",
+            );
+        }
+        if declared_categories.is_some() {
+            return error(
+                "PatchResultV02.failureCategories must be omitted when status is passed: kaifuu.patch_result.passed_must_omit_failure_categories",
+            );
+        }
+        if partial_write.is_some() {
+            return error(
+                "PatchResultV02.partialWrite must be omitted when status is passed: kaifuu.patch_result.passed_must_omit_partial_write",
+            );
+        }
+        let rollup = compute_patch_result_output_hash_rollup_v02(touched);
+        if rollup.as_str() != top_hash.as_str() {
+            return error(format!(
+                "PatchResultV02.outputHash must equal rollup of touchedAssets[].outputHash (expected {rollup}): kaifuu.patch_result.output_hash_drift"
+            ));
+        }
+    }
+
+    if status == "failed" || status == "incompatible_source" {
+        if failures_array.is_empty() {
+            return error(format!(
+                "PatchResultV02.failures must include at least one entry when status is {status}: kaifuu.patch_result.non_passed_requires_failures"
+            ));
+        }
+        let Some(declared) = declared_categories.as_ref() else {
+            return error(format!(
+                "PatchResultV02.failureCategories is required when status is {status}: kaifuu.patch_result.missing_failure_category"
+            ));
+        };
+        let observed_set: HashSet<&str> = observed_categories.iter().map(String::as_str).collect();
+        let declared_set: HashSet<&str> = declared.iter().map(String::as_str).collect();
+        for observed in &observed_set {
+            if !declared_set.contains(observed) {
+                return error(format!(
+                    "PatchResultV02.failureCategories is missing {observed}: kaifuu.patch_result.missing_failure_category"
+                ));
+            }
+        }
+        for declared in &declared_set {
+            if !observed_set.contains(declared) {
+                return error(format!(
+                    "PatchResultV02.failureCategories contains unobserved {declared}: kaifuu.patch_result.unknown_failure_category"
+                ));
+            }
+        }
+        if output_hash.is_some() {
+            return error(format!(
+                "PatchResultV02.outputHash must be omitted when status is {status}"
+            ));
+        }
+        if touched_assets.is_some() {
+            return error(format!(
+                "PatchResultV02.touchedAssets must be omitted when status is {status}"
+            ));
+        }
+    }
+
+    if status == "incompatible_source" {
+        for category in &observed_categories {
+            if category != "source_incompatible" {
+                return error(
+                    "PatchResultV02.failures[*].category must be source_incompatible when status is incompatible_source: kaifuu.patch_result.incompatible_source_category_required",
+                );
+            }
+        }
+    }
+
+    if let Some(accounting) = partial_write.as_ref() {
+        if status == "passed" {
+            return error(
+                "PatchResultV02.partialWrite must be omitted when status is passed: kaifuu.patch_result.passed_must_omit_partial_write",
+            );
+        }
+        let attempted_set: HashSet<&str> = accounting
+            .attempted_asset_ids
+            .iter()
+            .map(String::as_str)
+            .collect();
+        for asset_id in &failure_asset_ids {
+            if !attempted_set.contains(asset_id.as_str()) {
+                return error(format!(
+                    "PatchResultV02.failures asset {asset_id} must appear in partialWrite.attemptedAssetIds: kaifuu.patch_result.silent_partial_write"
+                ));
+            }
+        }
+    }
+
     Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct PatchTouchedAssetSummary {
+    asset_id: String,
+    output_hash: String,
+}
+
+#[derive(Debug, Clone)]
+struct PatchPartialWriteAccountingSummary {
+    attempted_asset_ids: Vec<String>,
+}
+
+pub fn validate_patch_failure_v02(
+    value: &Value,
+    label: &str,
+) -> BridgeContractResult<(String, String, String)> {
+    let failure = as_record(value, label)?;
+    let failure_id =
+        assert_required_uuid7(failure, "failureId", &format!("{label}.failureId"))?.to_string();
+    let category = assert_required_one_of(
+        failure,
+        "category",
+        PATCH_FAILURE_CATEGORIES_V02,
+        &format!("{label}.category"),
+    )?
+    .to_string();
+    assert_required_string(
+        failure,
+        "diagnosticCode",
+        &format!("{label}.diagnosticCode"),
+    )?;
+    assert_required_string(failure, "cause", &format!("{label}.cause"))?;
+    let asset_id =
+        assert_required_uuid7(failure, "assetId", &format!("{label}.assetId"))?.to_string();
+    assert_required_uuid7(failure, "bridgeUnitId", &format!("{label}.bridgeUnitId"))?;
+    assert_required_string(failure, "adapterId", &format!("{label}.adapterId"))?;
+    assert_required_string(failure, "command", &format!("{label}.command"))?;
+    if let Some(entry_id) = failure.get("patchExportEntryId") {
+        assert_uuid7_value(entry_id, &format!("{label}.patchExportEntryId"))?;
+    }
+    if let Some(location) = failure.get("sourceLocation") {
+        validate_source_location(location, &format!("{label}.sourceLocation"))?;
+    }
+    Ok((failure_id, category, asset_id))
+}
+
+fn validate_patch_touched_assets_v02(
+    value: &Value,
+    label: &str,
+) -> BridgeContractResult<Vec<PatchTouchedAssetSummary>> {
+    let array = array_value(value, label)?;
+    let mut summaries = Vec::new();
+    let mut seen = HashSet::new();
+    for (index, entry) in array.iter().enumerate() {
+        let entry_label = format!("{label}[{index}]");
+        let asset = as_record(entry, &entry_label)?;
+        let asset_id =
+            assert_required_uuid7(asset, "assetId", &format!("{entry_label}.assetId"))?.to_string();
+        let output_hash =
+            assert_required_hash(asset, "outputHash", &format!("{entry_label}.outputHash"))?
+                .to_string();
+        assert_required_non_negative_integer(
+            asset,
+            "byteSize",
+            &format!("{entry_label}.byteSize"),
+        )?;
+        if !seen.insert(asset_id.clone()) {
+            return error(format!(
+                "{entry_label}.assetId must not duplicate {asset_id}"
+            ));
+        }
+        summaries.push(PatchTouchedAssetSummary {
+            asset_id,
+            output_hash,
+        });
+    }
+    Ok(summaries)
+}
+
+pub fn validate_patch_partial_write_accounting_v02_pub(
+    value: &Value,
+    label: &str,
+) -> BridgeContractResult<()> {
+    validate_patch_partial_write_accounting_v02(value, label).map(|_| ())
+}
+
+fn validate_patch_partial_write_accounting_v02(
+    value: &Value,
+    label: &str,
+) -> BridgeContractResult<PatchPartialWriteAccountingSummary> {
+    let accounting = as_record(value, label)?;
+    let attempted = collect_unique_uuid7_array(
+        required(
+            accounting,
+            "attemptedAssetIds",
+            &format!("{label}.attemptedAssetIds"),
+        )?,
+        &format!("{label}.attemptedAssetIds"),
+    )?;
+    let written = collect_unique_uuid7_array(
+        required(
+            accounting,
+            "writtenAssetIds",
+            &format!("{label}.writtenAssetIds"),
+        )?,
+        &format!("{label}.writtenAssetIds"),
+    )?;
+    let skipped = collect_unique_uuid7_array(
+        required(
+            accounting,
+            "skippedAssetIds",
+            &format!("{label}.skippedAssetIds"),
+        )?,
+        &format!("{label}.skippedAssetIds"),
+    )?;
+    let disposition = assert_required_one_of(
+        accounting,
+        "disposition",
+        PATCH_PARTIAL_WRITE_DISPOSITIONS_V02,
+        &format!("{label}.disposition"),
+    )?
+    .to_string();
+    let rollback_diagnostic = match accounting.get("rollbackDiagnosticCode") {
+        Some(value) => {
+            let v = string_value(value, &format!("{label}.rollbackDiagnosticCode"))?;
+            Some(v.to_string())
+        }
+        None => None,
+    };
+
+    let attempted_set: HashSet<&str> = attempted.iter().map(String::as_str).collect();
+    let written_set: HashSet<&str> = written.iter().map(String::as_str).collect();
+    let skipped_set: HashSet<&str> = skipped.iter().map(String::as_str).collect();
+    if written_set.len() + skipped_set.len() != attempted_set.len() {
+        return error(format!(
+            "{label}.attemptedAssetIds must equal disjoint union of writtenAssetIds and skippedAssetIds: kaifuu.patch_result.silent_partial_write"
+        ));
+    }
+    for id in &written_set {
+        if skipped_set.contains(id) {
+            return error(format!(
+                "{label}.writtenAssetIds must not overlap skippedAssetIds: kaifuu.patch_result.silent_partial_write"
+            ));
+        }
+        if !attempted_set.contains(id) {
+            return error(format!(
+                "{label}.attemptedAssetIds must equal disjoint union of writtenAssetIds and skippedAssetIds: kaifuu.patch_result.silent_partial_write"
+            ));
+        }
+    }
+    for id in &skipped_set {
+        if !attempted_set.contains(id) {
+            return error(format!(
+                "{label}.attemptedAssetIds must equal disjoint union of writtenAssetIds and skippedAssetIds: kaifuu.patch_result.silent_partial_write"
+            ));
+        }
+    }
+
+    if disposition == "retained_partial" {
+        if rollback_diagnostic.is_some() {
+            return error(format!(
+                "{label}.rollbackDiagnosticCode must be omitted when disposition is retained_partial"
+            ));
+        }
+    } else if rollback_diagnostic.is_none() {
+        return error(format!(
+            "{label}.rollbackDiagnosticCode is required when disposition is {disposition}: kaifuu.patch_result.rollback_diagnostic_required"
+        ));
+    }
+
+    Ok(PatchPartialWriteAccountingSummary {
+        attempted_asset_ids: attempted,
+    })
+}
+
+fn collect_unique_uuid7_array(value: &Value, label: &str) -> BridgeContractResult<Vec<String>> {
+    let array = array_value(value, label)?;
+    let mut seen = HashSet::new();
+    let mut ids = Vec::new();
+    for (index, item) in array.iter().enumerate() {
+        let entry_label = format!("{label}[{index}]");
+        let id = string_value(item, &entry_label)?;
+        assert_uuid7(id, &entry_label)?;
+        if !seen.insert(id.to_string()) {
+            return error(format!("{entry_label} must not duplicate {id}"));
+        }
+        ids.push(id.to_string());
+    }
+    Ok(ids)
+}
+
+fn compute_patch_result_output_hash_rollup_v02(
+    touched_assets: &[PatchTouchedAssetSummary],
+) -> String {
+    use sha2::{Digest, Sha256};
+    let mut sorted: Vec<&PatchTouchedAssetSummary> = touched_assets.iter().collect();
+    sorted.sort_by(|a, b| a.asset_id.cmp(&b.asset_id));
+    let payload: String = sorted
+        .iter()
+        .map(|asset| format!("{}\n{}\n", asset.asset_id, asset.output_hash))
+        .collect();
+    let mut hasher = Sha256::new();
+    hasher.update(payload.as_bytes());
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(64);
+    for byte in digest {
+        hex.push_str(&format!("{byte:02x}"));
+    }
+    format!("sha256:{hex}")
 }
 
 pub fn validate_delta_package_metadata_v02(value: &Value) -> BridgeContractResult<()> {
@@ -2000,6 +2387,13 @@ fn validate_contract_fixture_manifest_entry(
     assert_fixture_path(path, &format!("{label}.path"))?;
     assert_required_string(entry, "description", &format!("{label}.description"))?;
     Ok((kind.to_string(), path.to_string()))
+}
+
+pub fn validate_patch_source_compatibility_v02(
+    value: &Value,
+    label: &str,
+) -> BridgeContractResult<String> {
+    validate_patch_source_compatibility_report_v02(value, label)
 }
 
 fn validate_patch_source_compatibility_report_v02(
@@ -6250,5 +6644,276 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(error.contains("eventKind must match"));
+    }
+
+    use super::validate_patch_result_v02;
+
+    fn passed_patch_result_fixture() -> Value {
+        // Rollup of the two touched assets below.
+        json!({
+            "schemaVersion": "0.2.0",
+            "patchResultId": "019ed001-0000-7000-8000-000000000950",
+            "patchExportId": "019ed001-0000-7000-8000-000000000901",
+            "adapterId": "kaifuu-reallive",
+            "status": "passed",
+            "outputHash": "sha256:da95500381246b4466b73a2dd6fc2610ad5ecea58719c2e9d28c4805ac24c83d",
+            "touchedAssets": [
+                {
+                    "assetId": "019ed001-0000-7000-8000-000000000810",
+                    "outputHash": "sha256:fa01799c693dbf37732740572dde0106c2d67bed57a5955528687642896968e1",
+                    "byteSize": 64
+                },
+                {
+                    "assetId": "019ed001-0000-7000-8000-000000000811",
+                    "outputHash": "sha256:8566707ead9fabf49905b018e40ab4772e166d6f0c6e126ebdb5e6af7a7258ca",
+                    "byteSize": 72
+                }
+            ],
+            "failures": []
+        })
+    }
+
+    #[test]
+    fn patch_result_v02_accepts_passed_fixture_with_matching_rollup() {
+        validate_patch_result_v02(&passed_patch_result_fixture()).unwrap();
+    }
+
+    #[test]
+    fn patch_result_v02_rejects_passed_without_output_hash() {
+        let mut fixture = passed_patch_result_fixture();
+        fixture.as_object_mut().unwrap().remove("outputHash");
+        let error = validate_patch_result_v02(&fixture).unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.patch_result.passed_requires_output_hash"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn patch_result_v02_rejects_passed_without_touched_assets() {
+        let mut fixture = passed_patch_result_fixture();
+        fixture.as_object_mut().unwrap().remove("touchedAssets");
+        let error = validate_patch_result_v02(&fixture).unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.patch_result.passed_requires_touched_assets"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn patch_result_v02_rejects_output_hash_drift() {
+        let mut fixture = passed_patch_result_fixture();
+        fixture["outputHash"] =
+            json!("sha256:0000000000000000000000000000000000000000000000000000000000000000");
+        let error = validate_patch_result_v02(&fixture).unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.patch_result.output_hash_drift"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn patch_result_v02_rejects_failed_without_failure_categories() {
+        let fixture = json!({
+            "schemaVersion": "0.2.0",
+            "patchResultId": "019ed001-0000-7000-8000-000000000951",
+            "patchExportId": "019ed001-0000-7000-8000-000000000901",
+            "adapterId": "kaifuu-reallive",
+            "status": "failed",
+            "failures": [
+                {
+                    "failureId": "019ed001-0000-7000-8000-000000000a01",
+                    "category": "patch_write_failed",
+                    "diagnosticCode": "kaifuu.reallive.patchback_offset_overflow",
+                    "cause": "offset overflow",
+                    "assetId": "019ed001-0000-7000-8000-000000000810",
+                    "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+                    "adapterId": "kaifuu-reallive",
+                    "command": "patch.write_string_slot"
+                }
+            ]
+        });
+        let error = validate_patch_result_v02(&fixture).unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.patch_result.missing_failure_category"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn patch_result_v02_rejects_silent_partial_write_attempted_mismatch() {
+        let fixture = json!({
+            "schemaVersion": "0.2.0",
+            "patchResultId": "019ed001-0000-7000-8000-000000000952",
+            "patchExportId": "019ed001-0000-7000-8000-000000000901",
+            "adapterId": "kaifuu-reallive",
+            "status": "failed",
+            "failures": [
+                {
+                    "failureId": "019ed001-0000-7000-8000-000000000a02",
+                    "category": "patch_write_failed",
+                    "diagnosticCode": "kaifuu.reallive.patchback_offset_overflow",
+                    "cause": "offset overflow",
+                    "assetId": "019ed001-0000-7000-8000-000000000810",
+                    "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+                    "adapterId": "kaifuu-reallive",
+                    "command": "patch.write_string_slot"
+                }
+            ],
+            "failureCategories": ["patch_write_failed"],
+            "partialWrite": {
+                "attemptedAssetIds": [
+                    "019ed001-0000-7000-8000-000000000810",
+                    "019ed001-0000-7000-8000-000000000811"
+                ],
+                "writtenAssetIds": ["019ed001-0000-7000-8000-000000000810"],
+                "skippedAssetIds": [],
+                "disposition": "rolled_back",
+                "rollbackDiagnosticCode": "kaifuu.reallive.rollback_complete"
+            }
+        });
+        let error = validate_patch_result_v02(&fixture).unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.patch_result.silent_partial_write"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn patch_result_v02_rejects_rolled_back_without_rollback_diagnostic() {
+        let fixture = json!({
+            "schemaVersion": "0.2.0",
+            "patchResultId": "019ed001-0000-7000-8000-000000000953",
+            "patchExportId": "019ed001-0000-7000-8000-000000000901",
+            "adapterId": "kaifuu-reallive",
+            "status": "failed",
+            "failures": [
+                {
+                    "failureId": "019ed001-0000-7000-8000-000000000a03",
+                    "category": "patch_write_failed",
+                    "diagnosticCode": "kaifuu.reallive.patchback_offset_overflow",
+                    "cause": "offset overflow",
+                    "assetId": "019ed001-0000-7000-8000-000000000810",
+                    "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+                    "adapterId": "kaifuu-reallive",
+                    "command": "patch.write_string_slot"
+                }
+            ],
+            "failureCategories": ["patch_write_failed"],
+            "partialWrite": {
+                "attemptedAssetIds": ["019ed001-0000-7000-8000-000000000810"],
+                "writtenAssetIds": [],
+                "skippedAssetIds": ["019ed001-0000-7000-8000-000000000810"],
+                "disposition": "rolled_back"
+            }
+        });
+        let error = validate_patch_result_v02(&fixture).unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.patch_result.rollback_diagnostic_required"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn patch_result_v02_accepts_retained_partial_without_rollback_diagnostic() {
+        let fixture = json!({
+            "schemaVersion": "0.2.0",
+            "patchResultId": "019ed001-0000-7000-8000-000000000954",
+            "patchExportId": "019ed001-0000-7000-8000-000000000901",
+            "adapterId": "kaifuu-reallive",
+            "status": "failed",
+            "failures": [
+                {
+                    "failureId": "019ed001-0000-7000-8000-000000000a04",
+                    "category": "patch_write_failed",
+                    "diagnosticCode": "kaifuu.reallive.patchback_offset_overflow",
+                    "cause": "mid-write corruption could not be rolled back",
+                    "assetId": "019ed001-0000-7000-8000-000000000810",
+                    "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+                    "adapterId": "kaifuu-reallive",
+                    "command": "patch.write_string_slot"
+                }
+            ],
+            "failureCategories": ["patch_write_failed"],
+            "partialWrite": {
+                "attemptedAssetIds": ["019ed001-0000-7000-8000-000000000810"],
+                "writtenAssetIds": ["019ed001-0000-7000-8000-000000000810"],
+                "skippedAssetIds": [],
+                "disposition": "retained_partial"
+            }
+        });
+        validate_patch_result_v02(&fixture).unwrap();
+    }
+
+    #[test]
+    fn patch_result_v02_rejects_incompatible_source_non_source_failure_category() {
+        let fixture = json!({
+            "schemaVersion": "0.2.0",
+            "patchResultId": "019ed001-0000-7000-8000-000000000955",
+            "patchExportId": "019ed001-0000-7000-8000-000000000901",
+            "adapterId": "kaifuu-reallive",
+            "status": "incompatible_source",
+            "failures": [
+                {
+                    "failureId": "019ed001-0000-7000-8000-000000000a05",
+                    "category": "patch_write_failed",
+                    "diagnosticCode": "kaifuu.reallive.patchback_offset_overflow",
+                    "cause": "wrong category",
+                    "assetId": "019ed001-0000-7000-8000-000000000810",
+                    "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+                    "adapterId": "kaifuu-reallive",
+                    "command": "patch.write_string_slot"
+                }
+            ],
+            "failureCategories": ["patch_write_failed"],
+            "sourceCompatibility": {
+                "schemaVersion": "0.2.0",
+                "patchExportId": "019ed001-0000-7000-8000-000000000901",
+                "sourceBridgeId": "019ed001-0000-7000-8000-000000000001",
+                "status": "incompatible",
+                "expectedSourceBundleHash": "sha256:fd8dc24ee34b959fbd2beb9af53af65f5a376da5cb392bf4ef7246aff8804647",
+                "actualSourceBundleHash": "sha256:530752517d6fe6af8505a362c5da79a034a16bb1c73b9c3b4c2e5bd5c2a2c060",
+                "sourceBundleHashMatches": false,
+                "compatibleUnits": [],
+                "incompatibleUnits": [
+                    {
+                        "entryId": "019ed001-0000-7000-8000-000000000910",
+                        "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+                        "sourceUnitKey": "script/prologue#line-001",
+                        "status": "incompatible",
+                        "expectedSourceHash": "sha256:fa01799c693dbf37732740572dde0106c2d67bed57a5955528687642896968e1",
+                        "actualSourceHash": "sha256:ee738430dc6b47e520cbf9de9a54130e50671aa69dfd4d05bc447a9cbb980ea3",
+                        "reason": "source_hash_mismatch"
+                    }
+                ]
+            }
+        });
+        let error = validate_patch_result_v02(&fixture).unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.patch_result.incompatible_source_category_required"),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn patch_result_v02_rejects_passed_with_failures() {
+        let mut fixture = passed_patch_result_fixture();
+        fixture["failures"] = json!([
+            {
+                "failureId": "019ed001-0000-7000-8000-000000000a06",
+                "category": "patch_write_failed",
+                "diagnosticCode": "kaifuu.reallive.patchback_offset_overflow",
+                "cause": "spurious",
+                "assetId": "019ed001-0000-7000-8000-000000000810",
+                "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+                "adapterId": "kaifuu-reallive",
+                "command": "patch.write_string_slot"
+            }
+        ]);
+        let error = validate_patch_result_v02(&fixture).unwrap_err().to_string();
+        assert!(
+            error.contains("kaifuu.patch_result.passed_must_have_no_failures"),
+            "{error}"
+        );
     }
 }

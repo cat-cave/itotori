@@ -21,6 +21,7 @@ import {
   assertRuntimeVerificationReport,
   assertStyleGuideConversationTranscript,
   assertTriageBundleV02,
+  computePatchResultOutputHashRollupV02,
   evaluatePatchExportCompatibilityV02,
   projectStyleGuideConversationToPolicyDraft,
   validateStyleGuideConversationTranscript,
@@ -108,6 +109,21 @@ function findingFixtureV02Example(): Record<string, unknown> {
   return JSON.parse(
     readFileSync(new URL("./examples/finding-v0.2.json", import.meta.url), "utf8"),
   ) as Record<string, unknown>;
+}
+
+function sourceIncompatibleFailureFixture(
+  options: { failureId?: string; cause?: string } = {},
+): Record<string, unknown> {
+  return {
+    failureId: options.failureId ?? "019ed001-0000-7000-8000-00000000fa60",
+    category: "source_incompatible",
+    diagnosticCode: "kaifuu.patch_result.source_incompatible",
+    cause: options.cause ?? "source bundle hash drifted; re-extract before re-applying",
+    assetId: "019ed001-0000-7000-8000-000000000800",
+    bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+    adapterId: "kaifuu-reallive",
+    command: "patch.write_string_slot",
+  };
 }
 
 function permissionLocalUserFixtureV02Example(): Record<string, unknown> {
@@ -1884,10 +1900,14 @@ describe("localization bridge schema guards", () => {
         schemaVersion: "0.2.0",
         patchResultId: "019ed001-0000-7000-8000-000000000950",
         patchExportId: patchExport.patchExportId,
+        adapterId: "kaifuu-reallive",
         status: "incompatible_source",
         failures: [
-          `source_hash_mismatch: script/prologue#line-001 expected ${HASH_UNIT_DIALOGUE_KNOWN} but found ${HASH_UNIT_DIALOGUE_KNOWN_TYPO}`,
+          sourceIncompatibleFailureFixture({
+            cause: `source_hash_mismatch: script/prologue#line-001 expected ${HASH_UNIT_DIALOGUE_KNOWN} but found ${HASH_UNIT_DIALOGUE_KNOWN_TYPO}`,
+          }),
         ],
+        failureCategories: ["source_incompatible"],
         sourceCompatibility: report,
       }),
     ).not.toThrow();
@@ -1988,8 +2008,10 @@ describe("localization bridge schema guards", () => {
         schemaVersion: "0.2.0",
         patchResultId: "019ed001-0000-7000-8000-000000000951",
         patchExportId: patchExport.patchExportId,
+        adapterId: "kaifuu-reallive",
         status: "incompatible_source",
-        failures: ["source_hash_mismatch"],
+        failures: [sourceIncompatibleFailureFixture()],
+        failureCategories: ["source_incompatible"],
       }),
     ).toThrow(/sourceCompatibility is required/);
   });
@@ -2015,8 +2037,10 @@ describe("localization bridge schema guards", () => {
         schemaVersion: "0.2.0",
         patchResultId: "019ed001-0000-7000-8000-000000000956",
         patchExportId: patchExport.patchExportId,
+        adapterId: "kaifuu-reallive",
         status: "incompatible_source",
-        failures: ["incompatible_source"],
+        failures: [sourceIncompatibleFailureFixture()],
+        failureCategories: ["source_incompatible"],
         sourceCompatibility: report,
       }),
     ).toThrow(/sourceCompatibility\.patchExportId.*PatchResultV02\.patchExportId/);
@@ -2032,8 +2056,10 @@ describe("localization bridge schema guards", () => {
         schemaVersion: "0.2.0",
         patchResultId: "019ed001-0000-7000-8000-000000000957",
         patchExportId: patchExport.patchExportId,
+        adapterId: "kaifuu-reallive",
         status: "incompatible_source",
-        failures: ["incompatible_source"],
+        failures: [sourceIncompatibleFailureFixture()],
+        failureCategories: ["source_incompatible"],
         sourceCompatibility: report,
       }),
     ).toThrow(/sourceCompatibility\.status must be incompatible/);
@@ -2059,8 +2085,21 @@ describe("localization bridge schema guards", () => {
         schemaVersion: "0.2.0",
         patchResultId: "019ed001-0000-7000-8000-000000000958",
         patchExportId: patchExport.patchExportId,
+        adapterId: "kaifuu-reallive",
         status: "failed",
-        failures: ["apply_failed"],
+        failures: [
+          {
+            failureId: "019ed001-0000-7000-8000-00000000fa58",
+            category: "patch_write_failed",
+            diagnosticCode: "kaifuu.reallive.patchback_offset_overflow",
+            cause: "apply_failed: offset would overflow during write",
+            assetId: "019ed001-0000-7000-8000-000000000800",
+            bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+            adapterId: "kaifuu-reallive",
+            command: "patch.write_string_slot",
+          },
+        ],
+        failureCategories: ["patch_write_failed"],
         sourceCompatibility: report,
       }),
     ).toThrow(/status must be incompatible_source/);
@@ -2078,8 +2117,10 @@ describe("localization bridge schema guards", () => {
         schemaVersion: "0.2.0",
         patchResultId: "019ed001-0000-7000-8000-000000000952",
         patchExportId: patchExport.patchExportId,
+        adapterId: "kaifuu-reallive",
         status: "incompatible_source",
-        failures: ["incompatible_source"],
+        failures: [sourceIncompatibleFailureFixture()],
+        failureCategories: ["source_incompatible"],
         sourceCompatibility: incompatibleWithEmptyUnits,
       }),
     ).toThrow(/empty incompatibleUnits/);
@@ -2095,8 +2136,10 @@ describe("localization bridge schema guards", () => {
         schemaVersion: "0.2.0",
         patchResultId: "019ed001-0000-7000-8000-000000000953",
         patchExportId: patchExport.patchExportId,
+        adapterId: "kaifuu-reallive",
         status: "incompatible_source",
-        failures: ["incompatible_source"],
+        failures: [sourceIncompatibleFailureFixture()],
+        failureCategories: ["source_incompatible"],
         sourceCompatibility: incompatibleInCompatibleUnits,
       }),
     ).toThrow(/compatibleUnits\[0\]\.status/);
@@ -2109,8 +2152,10 @@ describe("localization bridge schema guards", () => {
         schemaVersion: "0.2.0",
         patchResultId: "019ed001-0000-7000-8000-000000000954",
         patchExportId: patchExport.patchExportId,
+        adapterId: "kaifuu-reallive",
         status: "incompatible_source",
-        failures: ["incompatible_source"],
+        failures: [sourceIncompatibleFailureFixture()],
+        failureCategories: ["source_incompatible"],
         sourceCompatibility: compatibleWithReason,
       }),
     ).toThrow(/reason is only valid/);
@@ -2132,8 +2177,10 @@ describe("localization bridge schema guards", () => {
         schemaVersion: "0.2.0",
         patchResultId: "019ed001-0000-7000-8000-000000000959",
         patchExportId: patchExport.patchExportId,
+        adapterId: "kaifuu-reallive",
         status: "incompatible_source",
-        failures: ["incompatible_source"],
+        failures: [sourceIncompatibleFailureFixture()],
+        failureCategories: ["source_incompatible"],
         sourceCompatibility: bridgeUnitMismatchWithoutActual,
       }),
     ).toThrow(/actualBridgeUnitId is required/);
@@ -2145,11 +2192,180 @@ describe("localization bridge schema guards", () => {
         schemaVersion: "0.2.0",
         patchResultId: "019ed001-0000-7000-8000-000000000955",
         patchExportId: patchExport.patchExportId,
+        adapterId: "kaifuu-reallive",
         status: "incompatible_source",
-        failures: ["incompatible_source"],
+        failures: [sourceIncompatibleFailureFixture()],
+        failureCategories: ["source_incompatible"],
         sourceCompatibility: mismatchedBundleFlag,
       }),
     ).toThrow(/sourceBundleHashMatches/);
+  });
+
+  describe("PatchResultV02 v0.2 structured failures and partial-write accounting", () => {
+    function invalidPatchResultFixture(name: string): Record<string, unknown> {
+      return JSON.parse(
+        readFileSync(new URL(`./examples/invalid/${name}`, import.meta.url), "utf8"),
+      ) as Record<string, unknown>;
+    }
+
+    function helloGamePatchResultFixture(): Record<string, unknown> {
+      return publicFixture("fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json");
+    }
+
+    it("accepts the hello-game v0.2 patch result fixture with touched assets and rollup outputHash", () => {
+      expect(() => assertPatchResultV02(helloGamePatchResultFixture())).not.toThrow();
+    });
+
+    it("rejects patch-result-v0.2-missing-failure-category fixture with the documented semantic code", () => {
+      expect(() =>
+        assertPatchResultV02(
+          invalidPatchResultFixture("patch-result-v0.2-missing-failure-category.json"),
+        ),
+      ).toThrow(/kaifuu\.patch_result\.missing_failure_category/);
+    });
+
+    it("rejects patch-result-v0.2-output-hash-mismatch fixture with output_hash_drift", () => {
+      expect(() =>
+        assertPatchResultV02(
+          invalidPatchResultFixture("patch-result-v0.2-output-hash-mismatch.json"),
+        ),
+      ).toThrow(/kaifuu\.patch_result\.output_hash_drift/);
+    });
+
+    it("rejects patch-result-v0.2-partial-write fixture with silent_partial_write", () => {
+      expect(() =>
+        assertPatchResultV02(invalidPatchResultFixture("patch-result-v0.2-partial-write.json")),
+      ).toThrow(/kaifuu\.patch_result\.silent_partial_write/);
+    });
+
+    it("requires outputHash when status is passed", () => {
+      const result = helloGamePatchResultFixture();
+      delete result.outputHash;
+      expect(() => assertPatchResultV02(result)).toThrow(
+        /kaifuu\.patch_result\.passed_requires_output_hash/,
+      );
+    });
+
+    it("requires touchedAssets when status is passed", () => {
+      const result = helloGamePatchResultFixture();
+      delete result.touchedAssets;
+      expect(() => assertPatchResultV02(result)).toThrow(
+        /kaifuu\.patch_result\.passed_requires_touched_assets/,
+      );
+    });
+
+    it("rejects incompatible_source results with a non-source_incompatible failure", () => {
+      const base = invalidPatchResultFixture("patch-result-v0.2-incompatible-status.json");
+      const result = {
+        ...base,
+        status: "incompatible_source",
+        failures: [
+          {
+            failureId: "019ed001-0000-7000-8000-00000000fa11",
+            category: "patch_write_failed",
+            diagnosticCode: "kaifuu.reallive.patchback_offset_overflow",
+            cause: "wrong category for incompatible_source",
+            assetId: "019ed001-0000-7000-8000-000000000800",
+            bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+            adapterId: "kaifuu-reallive",
+            command: "patch.write_string_slot",
+          },
+        ],
+        failureCategories: ["patch_write_failed"],
+      };
+      expect(() => assertPatchResultV02(result)).toThrow(
+        /kaifuu\.patch_result\.incompatible_source_category_required/,
+      );
+    });
+
+    it("rejects partialWrite without rollbackDiagnosticCode for non-retained dispositions", () => {
+      const result = {
+        schemaVersion: "0.2.0",
+        patchResultId: "019ed001-0000-7000-8000-00000000fb01",
+        patchExportId: "019ed001-0000-7000-8000-000000000901",
+        adapterId: "kaifuu-reallive",
+        status: "failed",
+        failures: [
+          {
+            failureId: "019ed001-0000-7000-8000-00000000fb11",
+            category: "patch_write_failed",
+            diagnosticCode: "kaifuu.reallive.patchback_offset_overflow",
+            cause: "offset overflow",
+            assetId: "019ed001-0000-7000-8000-000000000810",
+            bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+            adapterId: "kaifuu-reallive",
+            command: "patch.write_string_slot",
+          },
+        ],
+        failureCategories: ["patch_write_failed"],
+        partialWrite: {
+          attemptedAssetIds: ["019ed001-0000-7000-8000-000000000810"],
+          writtenAssetIds: [],
+          skippedAssetIds: ["019ed001-0000-7000-8000-000000000810"],
+          disposition: "rolled_back",
+        },
+      };
+      expect(() => assertPatchResultV02(result)).toThrow(
+        /kaifuu\.patch_result\.rollback_diagnostic_required/,
+      );
+    });
+
+    it("accepts a partialWrite report with retained_partial disposition and no rollback diagnostic", () => {
+      const result = {
+        schemaVersion: "0.2.0",
+        patchResultId: "019ed001-0000-7000-8000-00000000fb02",
+        patchExportId: "019ed001-0000-7000-8000-000000000901",
+        adapterId: "kaifuu-reallive",
+        status: "failed",
+        failures: [
+          {
+            failureId: "019ed001-0000-7000-8000-00000000fb22",
+            category: "patch_write_failed",
+            diagnosticCode: "kaifuu.reallive.patchback_offset_overflow",
+            cause: "mid-write corruption could not be rolled back",
+            assetId: "019ed001-0000-7000-8000-000000000810",
+            bridgeUnitId: "019ed001-0000-7000-8000-000000000201",
+            adapterId: "kaifuu-reallive",
+            command: "patch.write_string_slot",
+          },
+        ],
+        failureCategories: ["patch_write_failed"],
+        partialWrite: {
+          attemptedAssetIds: ["019ed001-0000-7000-8000-000000000810"],
+          writtenAssetIds: ["019ed001-0000-7000-8000-000000000810"],
+          skippedAssetIds: [],
+          disposition: "retained_partial",
+        },
+      };
+      expect(() => assertPatchResultV02(result)).not.toThrow();
+    });
+
+    it("rejects failureCategories that include an unobserved category", () => {
+      const result = invalidPatchResultFixture("patch-result-v0.2-missing-failure-category.json");
+      result.failureCategories = ["patch_write_failed", "adapter_unsupported"];
+      expect(() => assertPatchResultV02(result)).toThrow(
+        /kaifuu\.patch_result\.unknown_failure_category/,
+      );
+    });
+
+    it("computes the rollup hash deterministically over sorted touched assets", () => {
+      const assets = [
+        {
+          assetId: "019ed001-0000-7000-8000-0000000000aa",
+          outputHash: "sha256:aa".padEnd(71, "a"),
+          byteSize: 4,
+        },
+        {
+          assetId: "019ed001-0000-7000-8000-0000000000ab",
+          outputHash: "sha256:bb".padEnd(71, "b"),
+          byteSize: 4,
+        },
+      ];
+      const first = computePatchResultOutputHashRollupV02(assets);
+      const second = computePatchResultOutputHashRollupV02([assets[1]!, assets[0]!]);
+      expect(first).toBe(second);
+      expect(first).toMatch(/^sha256:[0-9a-f]{64}$/);
+    });
   });
 
   it("accepts v0.2 delta metadata that traces to a source revision and patch export", () => {

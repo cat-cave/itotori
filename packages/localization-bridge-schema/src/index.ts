@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export * from "./style-guide-conversation.js";
 
 export type Uuid7 = string;
@@ -94,6 +96,12 @@ export type PatchResult = {
   outputHash: string;
   failures: string[];
 };
+
+/**
+ * @deprecated Use `PatchResultV02`. v0.1 callers will be migrated under
+ *   KAIFUU-010 §7 then removed once ALPHA-006 closes.
+ */
+export type PatchResultV01 = PatchResult;
 
 export type RuntimeTextEvent = {
   runtimeTextEventId: Uuid7;
@@ -573,6 +581,23 @@ export const PATCH_INCOMPATIBILITY_REASONS_V02 = [
   "protected_span_mapping_mismatch",
 ] as const;
 export type PatchIncompatibilityReasonV02 = (typeof PATCH_INCOMPATIBILITY_REASONS_V02)[number];
+
+export const PATCH_FAILURE_CATEGORIES_V02 = [
+  "source_incompatible",
+  "patch_write_failed",
+  "protected_span_violation",
+  "asset_missing",
+  "adapter_unsupported",
+  "output_hash_mismatch",
+] as const;
+export type PatchFailureCategoryV02 = (typeof PATCH_FAILURE_CATEGORIES_V02)[number];
+
+export const PATCH_PARTIAL_WRITE_DISPOSITIONS_V02 = [
+  "rolled_back",
+  "cleaned_up",
+  "retained_partial",
+] as const;
+export type PatchPartialWriteDispositionV02 = (typeof PATCH_PARTIAL_WRITE_DISPOSITIONS_V02)[number];
 
 export const ITOTORI_PERMISSION_VALUES_V02 = [
   "project.import",
@@ -1579,13 +1604,44 @@ export type PatchSourceCompatibilityReportV02 = {
   incompatibleUnits: UnitSourceCompatibilityV02[];
 };
 
+export type PatchFailureV02 = {
+  failureId: Uuid7;
+  category: PatchFailureCategoryV02;
+  diagnosticCode: string;
+  cause: string;
+  assetId: Uuid7;
+  bridgeUnitId: Uuid7;
+  adapterId: string;
+  command: string;
+  patchExportEntryId?: Uuid7;
+  sourceLocation?: SourceLocationV02;
+};
+
+export type PatchPartialWriteAccountingV02 = {
+  attemptedAssetIds: Uuid7[];
+  writtenAssetIds: Uuid7[];
+  skippedAssetIds: Uuid7[];
+  disposition: PatchPartialWriteDispositionV02;
+  rollbackDiagnosticCode?: string;
+};
+
+export type PatchTouchedAssetV02 = {
+  assetId: Uuid7;
+  outputHash: string;
+  byteSize: number;
+};
+
 export type PatchResultV02 = {
   schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
   patchResultId: Uuid7;
   patchExportId: Uuid7;
+  adapterId: string;
   status: PatchResultStatusV02;
   outputHash?: string;
-  failures: string[];
+  touchedAssets?: PatchTouchedAssetV02[];
+  failures: PatchFailureV02[];
+  failureCategories?: PatchFailureCategoryV02[];
+  partialWrite?: PatchPartialWriteAccountingV02;
   sourceCompatibility?: PatchSourceCompatibilityReportV02;
 };
 
@@ -2483,14 +2539,178 @@ export function assertPatchExportV02(value: unknown): asserts value is PatchExpo
   }
 }
 
+export function computePatchResultOutputHashRollupV02(
+  touchedAssets: readonly PatchTouchedAssetV02[],
+): string {
+  const sorted = [...touchedAssets].sort((a, b) =>
+    a.assetId < b.assetId ? -1 : a.assetId > b.assetId ? 1 : 0,
+  );
+  const payload = sorted.map((asset) => `${asset.assetId}\n${asset.outputHash}\n`).join("");
+  const digest = createHash("sha256").update(payload, "utf8").digest("hex");
+  return `sha256:${digest}`;
+}
+
+function assertPatchFailureV02(value: unknown, label: string): PatchFailureV02 {
+  const failure = asRecord(value, label);
+  assertUuid7(failure.failureId, `${label}.failureId`);
+  assertEnum(failure.category, PATCH_FAILURE_CATEGORIES_V02, `${label}.category`);
+  assertString(failure.diagnosticCode, `${label}.diagnosticCode`);
+  assertString(failure.cause, `${label}.cause`);
+  assertUuid7(failure.assetId, `${label}.assetId`);
+  assertUuid7(failure.bridgeUnitId, `${label}.bridgeUnitId`);
+  assertString(failure.adapterId, `${label}.adapterId`);
+  assertString(failure.command, `${label}.command`);
+  assertOptionalUuid7(failure.patchExportEntryId, `${label}.patchExportEntryId`);
+  if (failure.sourceLocation !== undefined) {
+    assertSourceLocationV02(failure.sourceLocation, `${label}.sourceLocation`);
+  }
+  return failure as PatchFailureV02;
+}
+
+function assertPatchFailuresV02(value: unknown, label: string): PatchFailureV02[] {
+  const array = asArray(value, label);
+  const failures: PatchFailureV02[] = [];
+  const seen = new Set<string>();
+  for (const [index, entry] of array.entries()) {
+    const failure = assertPatchFailureV02(entry, `${label}[${index}]`);
+    if (seen.has(failure.failureId)) {
+      throw new Error(`${label}[${index}].failureId must not duplicate ${failure.failureId}`);
+    }
+    seen.add(failure.failureId);
+    failures.push(failure);
+  }
+  return failures;
+}
+
+function assertPatchTouchedAssetV02(value: unknown, label: string): PatchTouchedAssetV02 {
+  const asset = asRecord(value, label);
+  assertUuid7(asset.assetId, `${label}.assetId`);
+  assertHashStringV02(asset.outputHash, `${label}.outputHash`);
+  assertNonNegativeInteger(asset.byteSize, `${label}.byteSize`);
+  return asset as PatchTouchedAssetV02;
+}
+
+function assertPatchTouchedAssetsV02(value: unknown, label: string): PatchTouchedAssetV02[] {
+  const array = asArray(value, label);
+  const assets: PatchTouchedAssetV02[] = [];
+  const seen = new Set<string>();
+  for (const [index, entry] of array.entries()) {
+    const asset = assertPatchTouchedAssetV02(entry, `${label}[${index}]`);
+    if (seen.has(asset.assetId)) {
+      throw new Error(`${label}[${index}].assetId must not duplicate ${asset.assetId}`);
+    }
+    seen.add(asset.assetId);
+    assets.push(asset);
+  }
+  return assets;
+}
+
+function assertPatchPartialWriteAccountingV02(
+  value: unknown,
+  label: string,
+): PatchPartialWriteAccountingV02 {
+  const accounting = asRecord(value, label);
+  const attempted = assertUuid7ArrayUnique(
+    accounting.attemptedAssetIds,
+    `${label}.attemptedAssetIds`,
+  );
+  const written = assertUuid7ArrayUnique(accounting.writtenAssetIds, `${label}.writtenAssetIds`);
+  const skipped = assertUuid7ArrayUnique(accounting.skippedAssetIds, `${label}.skippedAssetIds`);
+  assertEnum(accounting.disposition, PATCH_PARTIAL_WRITE_DISPOSITIONS_V02, `${label}.disposition`);
+  if (accounting.rollbackDiagnosticCode !== undefined) {
+    assertString(accounting.rollbackDiagnosticCode, `${label}.rollbackDiagnosticCode`);
+  }
+  const attemptedSet = new Set(attempted);
+  const writtenSet = new Set(written);
+  const skippedSet = new Set(skipped);
+  if (writtenSet.size + skippedSet.size !== attemptedSet.size) {
+    throw new Error(
+      `${label}.attemptedAssetIds must equal disjoint union of writtenAssetIds and skippedAssetIds: kaifuu.patch_result.silent_partial_write`,
+    );
+  }
+  for (const id of writtenSet) {
+    if (skippedSet.has(id)) {
+      throw new Error(
+        `${label}.writtenAssetIds must not overlap skippedAssetIds: kaifuu.patch_result.silent_partial_write`,
+      );
+    }
+    if (!attemptedSet.has(id)) {
+      throw new Error(
+        `${label}.attemptedAssetIds must equal disjoint union of writtenAssetIds and skippedAssetIds: kaifuu.patch_result.silent_partial_write`,
+      );
+    }
+  }
+  for (const id of skippedSet) {
+    if (!attemptedSet.has(id)) {
+      throw new Error(
+        `${label}.attemptedAssetIds must equal disjoint union of writtenAssetIds and skippedAssetIds: kaifuu.patch_result.silent_partial_write`,
+      );
+    }
+  }
+  if (accounting.disposition === "retained_partial") {
+    if (accounting.rollbackDiagnosticCode !== undefined) {
+      throw new Error(
+        `${label}.rollbackDiagnosticCode must be omitted when disposition is retained_partial`,
+      );
+    }
+  } else {
+    if (accounting.rollbackDiagnosticCode === undefined) {
+      throw new Error(
+        `${label}.rollbackDiagnosticCode is required when disposition is ${accounting.disposition}: kaifuu.patch_result.rollback_diagnostic_required`,
+      );
+    }
+  }
+  return accounting as PatchPartialWriteAccountingV02;
+}
+
+function assertUuid7ArrayUnique(value: unknown, label: string): Uuid7[] {
+  const array = asArray(value, label);
+  const seen = new Set<Uuid7>();
+  const ids: Uuid7[] = [];
+  for (const [index, item] of array.entries()) {
+    assertUuid7(item, `${label}[${index}]`);
+    if (seen.has(item)) {
+      throw new Error(`${label}[${index}] must not duplicate ${item}`);
+    }
+    seen.add(item);
+    ids.push(item);
+  }
+  return ids;
+}
+
 export function assertPatchResultV02(value: unknown): asserts value is PatchResultV02 {
   const result = asRecord(value, "PatchResultV02");
   assertEqual(result.schemaVersion, BRIDGE_SCHEMA_VERSION_V02, "PatchResultV02.schemaVersion");
   assertUuid7(result.patchResultId, "PatchResultV02.patchResultId");
   assertUuid7(result.patchExportId, "PatchResultV02.patchExportId");
+  assertString(result.adapterId, "PatchResultV02.adapterId");
   assertEnum(result.status, PATCH_RESULT_STATUSES_V02, "PatchResultV02.status");
   assertOptionalHashStringV02(result.outputHash, "PatchResultV02.outputHash");
-  assertStringArray(result.failures, "PatchResultV02.failures");
+  const failures = assertPatchFailuresV02(result.failures, "PatchResultV02.failures");
+  const touchedAssets =
+    result.touchedAssets !== undefined
+      ? assertPatchTouchedAssetsV02(result.touchedAssets, "PatchResultV02.touchedAssets")
+      : undefined;
+  let declaredCategories: PatchFailureCategoryV02[] | undefined;
+  if (result.failureCategories !== undefined) {
+    const categoriesArray = asArray(result.failureCategories, "PatchResultV02.failureCategories");
+    const seenCategories = new Set<string>();
+    const declared: PatchFailureCategoryV02[] = [];
+    for (const [index, entry] of categoriesArray.entries()) {
+      assertEnum(entry, PATCH_FAILURE_CATEGORIES_V02, `PatchResultV02.failureCategories[${index}]`);
+      if (seenCategories.has(entry)) {
+        throw new Error(`PatchResultV02.failureCategories[${index}] must not duplicate ${entry}`);
+      }
+      seenCategories.add(entry);
+      declared.push(entry);
+    }
+    declaredCategories = declared;
+  }
+  const partialWrite =
+    result.partialWrite !== undefined
+      ? assertPatchPartialWriteAccountingV02(result.partialWrite, "PatchResultV02.partialWrite")
+      : undefined;
+
   if (result.sourceCompatibility !== undefined) {
     assertPatchSourceCompatibilityReportV02(
       result.sourceCompatibility,
@@ -2515,11 +2735,112 @@ export function assertPatchResultV02(value: unknown): asserts value is PatchResu
   }
   if (
     result.status === "incompatible_source" &&
-    result.sourceCompatibility?.status !== "incompatible"
+    result.sourceCompatibility !== undefined &&
+    result.sourceCompatibility.status !== "incompatible"
   ) {
     throw new Error(
       "PatchResultV02.sourceCompatibility.status must be incompatible for incompatible_source",
     );
+  }
+
+  if (result.status === "passed") {
+    if (result.outputHash === undefined) {
+      throw new Error(
+        "PatchResultV02.outputHash is required when status is passed: kaifuu.patch_result.passed_requires_output_hash",
+      );
+    }
+    if (touchedAssets === undefined || touchedAssets.length === 0) {
+      throw new Error(
+        "PatchResultV02.touchedAssets must include at least one asset when status is passed: kaifuu.patch_result.passed_requires_touched_assets",
+      );
+    }
+    if (failures.length !== 0) {
+      throw new Error(
+        "PatchResultV02.failures must be empty when status is passed: kaifuu.patch_result.passed_must_have_no_failures",
+      );
+    }
+    if (declaredCategories !== undefined) {
+      throw new Error(
+        "PatchResultV02.failureCategories must be omitted when status is passed: kaifuu.patch_result.passed_must_omit_failure_categories",
+      );
+    }
+    if (partialWrite !== undefined) {
+      throw new Error(
+        "PatchResultV02.partialWrite must be omitted when status is passed: kaifuu.patch_result.passed_must_omit_partial_write",
+      );
+    }
+    const rollup = computePatchResultOutputHashRollupV02(touchedAssets);
+    if (rollup !== result.outputHash) {
+      throw new Error(
+        `PatchResultV02.outputHash must equal rollup of touchedAssets[].outputHash (expected ${rollup}): kaifuu.patch_result.output_hash_drift`,
+      );
+    }
+  }
+
+  if (result.status === "failed" || result.status === "incompatible_source") {
+    if (failures.length === 0) {
+      throw new Error(
+        `PatchResultV02.failures must include at least one entry when status is ${result.status}: kaifuu.patch_result.non_passed_requires_failures`,
+      );
+    }
+    if (declaredCategories === undefined) {
+      throw new Error(
+        `PatchResultV02.failureCategories is required when status is ${result.status}: kaifuu.patch_result.missing_failure_category`,
+      );
+    }
+    const observedSet = new Set<PatchFailureCategoryV02>();
+    for (const failure of failures) {
+      observedSet.add(failure.category);
+    }
+    const declaredSet = new Set(declaredCategories);
+    for (const observed of observedSet) {
+      if (!declaredSet.has(observed)) {
+        throw new Error(
+          `PatchResultV02.failureCategories is missing ${observed}: kaifuu.patch_result.missing_failure_category`,
+        );
+      }
+    }
+    for (const declared of declaredSet) {
+      if (!observedSet.has(declared)) {
+        throw new Error(
+          `PatchResultV02.failureCategories contains unobserved ${declared}: kaifuu.patch_result.unknown_failure_category`,
+        );
+      }
+    }
+    if (result.outputHash !== undefined) {
+      throw new Error(`PatchResultV02.outputHash must be omitted when status is ${result.status}`);
+    }
+    if (touchedAssets !== undefined) {
+      throw new Error(
+        `PatchResultV02.touchedAssets must be omitted when status is ${result.status}`,
+      );
+    }
+  }
+
+  if (result.status === "incompatible_source") {
+    for (const failure of failures) {
+      if (failure.category !== "source_incompatible") {
+        throw new Error(
+          `PatchResultV02.failures[*].category must be source_incompatible when status is incompatible_source: kaifuu.patch_result.incompatible_source_category_required`,
+        );
+      }
+    }
+  }
+
+  if (partialWrite !== undefined) {
+    if (result.status === "passed") {
+      throw new Error(
+        "PatchResultV02.partialWrite must be omitted when status is passed: kaifuu.patch_result.passed_must_omit_partial_write",
+      );
+    }
+    const attemptedSet = new Set(partialWrite.attemptedAssetIds);
+    for (const failure of failures) {
+      if (!attemptedSet.has(failure.assetId)) {
+        throw new Error(
+          `PatchResultV02.failures asset ${failure.assetId} must appear in partialWrite.attemptedAssetIds: kaifuu.patch_result.silent_partial_write`,
+        );
+      }
+    }
   }
 }
 

@@ -2,8 +2,21 @@
   "schemaVersion": "0.2.0",
   "patchResultId": "019ed001-0000-7000-8000-00000000f950",
   "patchExportId": "019ed001-0000-7000-8000-000000000901",
+  "adapterId": "kaifuu-reallive",
   "status": "failed",
-  "failures": ["source_hash_mismatch"],
+  "failures": [
+    {
+      "failureId": "019ed001-0000-7000-8000-00000000f960",
+      "category": "source_incompatible",
+      "diagnosticCode": "kaifuu.patch_result.source_incompatible",
+      "cause": "source bundle hash drifted; re-extract before re-applying",
+      "assetId": "019ed001-0000-7000-8000-000000000800",
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+      "adapterId": "kaifuu-reallive",
+      "command": "patch.write_string_slot"
+    }
+  ],
+  "failureCategories": ["source_incompatible"],
   "sourceCompatibility": {
     "schemaVersion": "0.2.0",
     "patchExportId": "019ed001-0000-7000-8000-000000000901",

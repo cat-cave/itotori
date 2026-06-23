@@ -14,6 +14,7 @@ import {
   type LocalizationUnitV02,
   type PatchExport,
   type PatchExportV02,
+  type PatchResultV02,
   type RuntimeArtifactRefV02,
   type RuntimeArtifactKindV02,
   type RuntimeBridgeUnitRefV02,
@@ -88,6 +89,7 @@ export type ItotoriProjectRecord = {
   drafts: Record<string, string>;
   importStatus?: BridgeImportStatus;
   patchExport?: PatchExport | PatchExportV02;
+  patchResult?: PatchResultV02;
   runtimeReport?: RuntimeVerificationReport | RuntimeEvidenceReportV02;
 };
 

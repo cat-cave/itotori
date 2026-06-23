@@ -92,6 +92,33 @@ pub const SEMANTIC_UNKNOWN_ENGINE_VARIANT: &str = "kaifuu.unknown_engine_variant
 pub const SEMANTIC_AMBIGUOUS_ENGINE_VARIANT: &str = "kaifuu.ambiguous_engine_variant";
 pub const SEMANTIC_UNSUPPORTED_ENGINE_VARIANT: &str = "kaifuu.unsupported_engine_variant";
 pub const SEMANTIC_SIGLUS_UNSUPPORTED_OPCODE: &str = "kaifuu.siglus.unsupported_opcode";
+pub const SEMANTIC_PATCH_RESULT_MISSING_FAILURE_CATEGORY: &str =
+    "kaifuu.patch_result.missing_failure_category";
+pub const SEMANTIC_PATCH_RESULT_UNKNOWN_FAILURE_CATEGORY: &str =
+    "kaifuu.patch_result.unknown_failure_category";
+pub const SEMANTIC_PATCH_RESULT_MISMATCHED_EXPORT_ID: &str =
+    "kaifuu.patch_result.mismatched_export_id";
+pub const SEMANTIC_PATCH_RESULT_OUTPUT_HASH_DRIFT: &str = "kaifuu.patch_result.output_hash_drift";
+pub const SEMANTIC_PATCH_RESULT_SOURCE_INCOMPATIBLE: &str =
+    "kaifuu.patch_result.source_incompatible";
+pub const SEMANTIC_PATCH_RESULT_SILENT_PARTIAL_WRITE: &str =
+    "kaifuu.patch_result.silent_partial_write";
+pub const SEMANTIC_PATCH_RESULT_PASSED_REQUIRES_OUTPUT_HASH: &str =
+    "kaifuu.patch_result.passed_requires_output_hash";
+pub const SEMANTIC_PATCH_RESULT_PASSED_REQUIRES_TOUCHED_ASSETS: &str =
+    "kaifuu.patch_result.passed_requires_touched_assets";
+pub const SEMANTIC_PATCH_RESULT_PASSED_MUST_HAVE_NO_FAILURES: &str =
+    "kaifuu.patch_result.passed_must_have_no_failures";
+pub const SEMANTIC_PATCH_RESULT_PASSED_MUST_OMIT_FAILURE_CATEGORIES: &str =
+    "kaifuu.patch_result.passed_must_omit_failure_categories";
+pub const SEMANTIC_PATCH_RESULT_PASSED_MUST_OMIT_PARTIAL_WRITE: &str =
+    "kaifuu.patch_result.passed_must_omit_partial_write";
+pub const SEMANTIC_PATCH_RESULT_NON_PASSED_REQUIRES_FAILURES: &str =
+    "kaifuu.patch_result.non_passed_requires_failures";
+pub const SEMANTIC_PATCH_RESULT_INCOMPATIBLE_SOURCE_CATEGORY_REQUIRED: &str =
+    "kaifuu.patch_result.incompatible_source_category_required";
+pub const SEMANTIC_PATCH_RESULT_ROLLBACK_DIAGNOSTIC_REQUIRED: &str =
+    "kaifuu.patch_result.rollback_diagnostic_required";
 pub const STRING_SLOT_OVERFLOW: &str = "kaifuu.string_slot.overflow";
 pub const STRING_SLOT_INVALID_ENCODING: &str = "kaifuu.string_slot.invalid_encoding";
 pub const STRING_SLOT_TERMINATOR_LOSS: &str = "kaifuu.string_slot.terminator_loss";

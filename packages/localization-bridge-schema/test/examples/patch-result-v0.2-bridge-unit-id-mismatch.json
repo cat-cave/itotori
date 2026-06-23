@@ -2,8 +2,22 @@
   "schemaVersion": "0.2.0",
   "patchResultId": "019ed001-0000-7000-8000-000000000970",
   "patchExportId": "019ed001-0000-7000-8000-000000000901",
+  "adapterId": "kaifuu-reallive",
   "status": "incompatible_source",
-  "failures": ["bridge_unit_id_mismatch"],
+  "failures": [
+    {
+      "failureId": "019ed001-0000-7000-8000-000000000f70",
+      "category": "source_incompatible",
+      "diagnosticCode": "kaifuu.reallive.patchback_stale_source_hash",
+      "cause": "bridge unit id mismatch for script/prologue#line-001",
+      "assetId": "019ed001-0000-7000-8000-000000000810",
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000202",
+      "adapterId": "kaifuu-reallive",
+      "command": "patch.write_string_slot",
+      "patchExportEntryId": "019ed001-0000-7000-8000-000000000910"
+    }
+  ],
+  "failureCategories": ["source_incompatible"],
   "sourceCompatibility": {
     "schemaVersion": "0.2.0",
     "patchExportId": "019ed001-0000-7000-8000-000000000901",

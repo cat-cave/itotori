@@ -110,3 +110,28 @@ encrypted-profile extract/patch/verify vertical are tracked in
 [kaifuu-key-discovery.md](kaifuu-key-discovery.md). Broad production support for
 every protected commercial variant remains scoped per adapter, but failures
 inside a declared support profile are compatibility bugs, not feature requests.
+
+## Patch result v0.2
+
+Patch result v0.2 reports every patch outcome via a structured record. Every
+failure carries six fields together — asset id, bridge unit id, adapter id,
+semantic command, diagnostic code, and human-readable cause — so downstream
+ingestion can never silently lose context. Failures classify into one of six
+categories: `source_incompatible`, `patch_write_failed`, `protected_span_violation`,
+`asset_missing`, `adapter_unsupported`, and `output_hash_mismatch`. Engine
+adapters map their own internal error codes (e.g. RealLive `PatchBackError`)
+onto this category enum and a verbatim `diagnosticCode`.
+
+For successful runs the report carries a deterministic `outputHash` that is the
+rollup of the per-asset hashes in `touchedAssets`. The rollup is computed as
+`sha256(sorted(touchedAssets, by assetId).map(a => `${a.assetId}\n${a.outputHash}\n`).join(""))`
+using UTF-8 and LF line endings. Per-asset hashes use byte-deterministic input;
+no locale-formatted strings appear in the hash payload so the rollup is stable
+across operating systems.
+
+Partial-write reports must carry a `partialWrite.disposition` of `rolled_back`,
+`cleaned_up`, or `retained_partial`. `retained_partial` is the explicit trap-
+door for adapters that physically cannot roll back; Itotori ingestion treats
+that disposition as a P0 finding requirement. Disjointness of the
+`writtenAssetIds` and `skippedAssetIds` sets, fully covering
+`attemptedAssetIds`, is enforced on both TS and Rust sides.

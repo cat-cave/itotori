@@ -53,3 +53,26 @@ env -u DATABASE_URL pnpm --filter @itotori/db test
 
 The command exits successfully, prints the skip reason, and writes
 `.tmp/itotori-db/no-database-skipped.json`.
+
+## Ingesting patch results
+
+`itotori ingest-patch-result` reads a v0.2 patch result JSON artifact, validates
+it against the shared schema (`assertPatchResultV02`), and routes it through the
+project workflow boundary. The boundary additionally enforces three cross-
+artifact checks the schema cannot do alone: it rejects results whose
+`patchExportId` does not match the project's recorded export
+(`kaifuu.patch_result.mismatched_export_id`), recomputes and re-checks the
+`outputHash` rollup against `touchedAssets` for passed reports
+(`kaifuu.patch_result.output_hash_drift`), and raises a P0 finding for any
+`partialWrite.disposition === "retained_partial"`
+(`kaifuu.patch_result.silent_partial_write`).
+
+```sh
+node apps/itotori/dist/cli.js ingest-patch-result \
+  --project .tmp/hello-world/itotori-project.json \
+  --patch-result .tmp/hello-world/patch-result.json \
+  --output .tmp/hello-world/patch-result-ingest.json
+```
+
+Persistence is in-memory for the KAIFUU-010 slice; `@itotori/db` schema work
+that records ingested patch results is tracked as a follow-up.

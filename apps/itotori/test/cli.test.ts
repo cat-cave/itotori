@@ -439,6 +439,15 @@ function servicesFixture(): ItotoriCliServices {
           dashboard: dashboardStatusFixture,
         },
       })),
+      ingestPatchResult: vi.fn(async (project: ProjectState) => ({
+        project,
+        result: {
+          patchResultId: "019ed001-0000-7000-8000-000000000950",
+          patchExportId: "019ed001-0000-7000-8000-000000000901",
+          status: "passed",
+          diagnostics: [],
+        },
+      })),
       recordFinding: vi.fn(async () => ({ findingId: "finding-1", status: "open" })),
       recordDecision: vi.fn(async () => ({
         decisionId: "019ed004-0000-7000-8000-000000000201",

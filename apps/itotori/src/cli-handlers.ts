@@ -1,4 +1,5 @@
 import {
+  assertPatchResultV02,
   assertRuntimeReport,
   assertStyleGuideConversationTranscript,
   type StyleGuideConversationTranscript,
@@ -64,6 +65,9 @@ export async function runItotoriCliCommand(
       break;
     case "ingest-runtime":
       await runIngestRuntime(args, dependencies);
+      break;
+    case "ingest-patch-result":
+      await runIngestPatchResult(args, dependencies);
       break;
     case "import-feedback":
       await runImportFeedback(args, dependencies);
@@ -140,6 +144,23 @@ async function runIngestRuntime(
   assertRuntimeReport(report);
   const result = await dependencies.withServices((services) =>
     services.projectWorkflow.ingestRuntimeReport(project, report),
+  );
+  dependencies.io.writeJson(projectPath, result.project);
+  dependencies.io.writeJson(outputPath, result.result);
+}
+
+async function runIngestPatchResult(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const projectPath = requiredFlag(args, "--project");
+  const patchResultPath = requiredFlag(args, "--patch-result");
+  const outputPath = requiredFlag(args, "--output");
+  const project = readProject(dependencies.io, projectPath);
+  const patchResult = dependencies.io.readJson(patchResultPath);
+  assertPatchResultV02(patchResult);
+  const result = await dependencies.withServices((services) =>
+    services.projectWorkflow.ingestPatchResult(project, patchResult),
   );
   dependencies.io.writeJson(projectPath, result.project);
   dependencies.io.writeJson(outputPath, result.result);

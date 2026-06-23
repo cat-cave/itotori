@@ -1,6 +1,7 @@
 {
+  "adapterId": "kaifuu-reallive",
   "failures": [],
-  "outputHash": "sha256:d836c13580d41115e33db8ec1157fd8f72ea46d525101759a5809eff2a9740e8",
+  "outputHash": "sha256:d8442a4c072a5cdba34fbe49ede5c1b5bdecae93bedb68f6634e6b40f25c66f8",
   "patchExportId": "019ed012-0000-7000-8000-000000000901",
   "patchResultId": "019ed012-0000-7000-8000-000000000902",
   "schemaVersion": "0.2.0",
@@ -104,5 +105,32 @@
     "sourceBundleHashMatches": true,
     "status": "compatible"
   },
-  "status": "passed"
+  "status": "passed",
+  "touchedAssets": [
+    {
+      "assetId": "019ed012-0000-7000-8000-000000000200",
+      "byteSize": 57,
+      "outputHash": "sha256:28c86a20de2c0fae129e17d557b6f8cabb0de39beca9a7fd11410192be83e1a2"
+    },
+    {
+      "assetId": "019ed012-0000-7000-8000-000000000201",
+      "byteSize": 57,
+      "outputHash": "sha256:13492219d3f8fd6dcaddc75e3cd52d971db7e3eab18bb3f123abe3793027366b"
+    },
+    {
+      "assetId": "019ed012-0000-7000-8000-000000000202",
+      "byteSize": 57,
+      "outputHash": "sha256:2672a29e3ec160ae7b169fdd811169396f91389bf8968ba1507bcc044e653cd3"
+    },
+    {
+      "assetId": "019ed012-0000-7000-8000-000000000203",
+      "byteSize": 57,
+      "outputHash": "sha256:3c93cd82cafdab3b87c758a8e281f736647d381be42e5ece9862fe18ee49b2f7"
+    },
+    {
+      "assetId": "019ed012-0000-7000-8000-000000000204",
+      "byteSize": 57,
+      "outputHash": "sha256:a9ece03a027a0a376f4377f20c9c5bee1cb7d4455dd47b88c79e4a6d122dd9d0"
+    }
+  ]
 }

@@ -15,15 +15,15 @@
 
 ## 0. Evidence Map (what already exists, what must change)
 
-| Surface                                                                                           | State today                                                                                                                                                                                                                                                                                                                                       | Change demanded by KAIFUU-010                                                                                                                                                                                                  |
-| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `packages/localization-bridge-schema/src/index.ts` `PatchResultV02` (lines 1582–1590)              | Has `schemaVersion`, `patchResultId`, `patchExportId`, `status` (`passed`/`failed`/`incompatible_source`), optional `outputHash`, `failures: string[]`, optional `sourceCompatibility`. Failures are loose strings. No category enum, no asset/bridge-unit/adapter cite, no partial-write accounting, no `touchedAssets`.                            | Tighten schema: structured failure objects, typed `failureCategories` summary, partial-write accounting, `touchedAssets`, `outputHash` required on `passed`. Keep `sourceCompatibility` story intact (already wired).            |
-| `packages/localization-bridge-schema/src/index.ts` `assertPatchResultV02` (lines 2486–2524)        | Validates current loose shape. Calls `assertStringArray(result.failures)`. No category cross-checks. Passing report has no required `outputHash` enforcement.                                                                                                                                                                                       | Replace loose `failures` assertion with structured-failure assertion. Add `failureCategories`/`touchedAssets`/`partialWrite` validation. Enforce category-status invariants. Enforce `outputHash` on `passed`.                  |
-| `crates/kaifuu-core/src/contracts.rs` `validate_patch_result_v02` (lines 895–959)                  | Mirrors the loose TS shape. Calls `assert_string_array(failures)`. Same gap.                                                                                                                                                                                                                                                                       | Mirror new TS rules 1:1 in Rust, including category enum, structured-failure required fields, partial-write accounting, `outputHash` required on `passed`.                                                                      |
-| `crates/kaifuu-reallive/src/patchback.rs` `PatchBackError` (lines 53–122)                          | RealLive patch consumer with its own typed error codes (`kaifuu.reallive.patchback_*`). Does **not** today emit a shared `PatchResult` — it just bubbles `Result<Vec<u8>, PatchBackError>`.                                                                                                                                                         | RealLive must learn how to translate these into the shared `PatchFailureCategoryV02` enum. KAIFUU-010 does **not** rewrite the patchback engine; it only specifies the mapping table the future emitter will use (see §6).      |
-| `apps/itotori/src/cli-handlers.ts` (lines 120–129) and `services/project-workflow.ts` (lines 220–299) | `export-patch` writes a `PatchExport` (v0.1). `ingest-runtime` writes runtime reports and synthesizes a `patchResultId` from the runtime report. No CLI command ingests a `PatchResult` artifact from disk; no v0.2 schema validation hits an Itotori boundary today.                                                                              | Add a new `ingest-patch-result` CLI command + `ProjectWorkflow.ingestPatchResult()` boundary. Schema-validate input via `assertPatchResultV02`. Reject missing-category / mismatched-export-id / output-hash-drift semantically. |
-| `fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json`                                       | Already present with `status: "passed"`, `outputHash`, empty `failures`, full `sourceCompatibility`. **No `touchedAssets`, no `failureCategories`, no `partialWrite` block.**                                                                                                                                                                       | Regenerate to add the new v0.2 fields. Hashes must stay stable across CI platforms (see §10 risks).                                                                                                                              |
-| `packages/localization-bridge-schema/test/examples/invalid/patch-result-v0.2-incompatible-status.json` | Single negative fixture present (mismatched `status: "failed"` for incompatible source).                                                                                                                                                                                                                                                          | Add **three** more negatives mandated by DAG. Update the existing one to the new structured-failure shape if needed.                                                                                                             |
+| Surface                                                                                                | State today                                                                                                                                                                                                                                                                                                               | Change demanded by KAIFUU-010                                                                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/localization-bridge-schema/src/index.ts` `PatchResultV02` (lines 1582–1590)                  | Has `schemaVersion`, `patchResultId`, `patchExportId`, `status` (`passed`/`failed`/`incompatible_source`), optional `outputHash`, `failures: string[]`, optional `sourceCompatibility`. Failures are loose strings. No category enum, no asset/bridge-unit/adapter cite, no partial-write accounting, no `touchedAssets`. | Tighten schema: structured failure objects, typed `failureCategories` summary, partial-write accounting, `touchedAssets`, `outputHash` required on `passed`. Keep `sourceCompatibility` story intact (already wired).            |
+| `packages/localization-bridge-schema/src/index.ts` `assertPatchResultV02` (lines 2486–2524)            | Validates current loose shape. Calls `assertStringArray(result.failures)`. No category cross-checks. Passing report has no required `outputHash` enforcement.                                                                                                                                                             | Replace loose `failures` assertion with structured-failure assertion. Add `failureCategories`/`touchedAssets`/`partialWrite` validation. Enforce category-status invariants. Enforce `outputHash` on `passed`.                   |
+| `crates/kaifuu-core/src/contracts.rs` `validate_patch_result_v02` (lines 895–959)                      | Mirrors the loose TS shape. Calls `assert_string_array(failures)`. Same gap.                                                                                                                                                                                                                                              | Mirror new TS rules 1:1 in Rust, including category enum, structured-failure required fields, partial-write accounting, `outputHash` required on `passed`.                                                                       |
+| `crates/kaifuu-reallive/src/patchback.rs` `PatchBackError` (lines 53–122)                              | RealLive patch consumer with its own typed error codes (`kaifuu.reallive.patchback_*`). Does **not** today emit a shared `PatchResult` — it just bubbles `Result<Vec<u8>, PatchBackError>`.                                                                                                                               | RealLive must learn how to translate these into the shared `PatchFailureCategoryV02` enum. KAIFUU-010 does **not** rewrite the patchback engine; it only specifies the mapping table the future emitter will use (see §6).       |
+| `apps/itotori/src/cli-handlers.ts` (lines 120–129) and `services/project-workflow.ts` (lines 220–299)  | `export-patch` writes a `PatchExport` (v0.1). `ingest-runtime` writes runtime reports and synthesizes a `patchResultId` from the runtime report. No CLI command ingests a `PatchResult` artifact from disk; no v0.2 schema validation hits an Itotori boundary today.                                                     | Add a new `ingest-patch-result` CLI command + `ProjectWorkflow.ingestPatchResult()` boundary. Schema-validate input via `assertPatchResultV02`. Reject missing-category / mismatched-export-id / output-hash-drift semantically. |
+| `fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json`                                            | Already present with `status: "passed"`, `outputHash`, empty `failures`, full `sourceCompatibility`. **No `touchedAssets`, no `failureCategories`, no `partialWrite` block.**                                                                                                                                             | Regenerate to add the new v0.2 fields. Hashes must stay stable across CI platforms (see §10 risks).                                                                                                                              |
+| `packages/localization-bridge-schema/test/examples/invalid/patch-result-v0.2-incompatible-status.json` | Single negative fixture present (mismatched `status: "failed"` for incompatible source).                                                                                                                                                                                                                                  | Add **three** more negatives mandated by DAG. Update the existing one to the new structured-failure shape if needed.                                                                                                             |
 
 The plan that follows is strictly bounded by these rows. Each schema rule below is the **why** for one or more of these surfaces.
 
@@ -49,8 +49,7 @@ export const PATCH_PARTIAL_WRITE_DISPOSITIONS_V02 = [
   "cleaned_up",
   "retained_partial",
 ] as const;
-export type PatchPartialWriteDispositionV02 =
-  (typeof PATCH_PARTIAL_WRITE_DISPOSITIONS_V02)[number];
+export type PatchPartialWriteDispositionV02 = (typeof PATCH_PARTIAL_WRITE_DISPOSITIONS_V02)[number];
 ```
 
 `retained_partial` is **not** silent partial success: it is an explicit, opt-in disposition that downstream Itotori ingestion treats as a P0 finding (see §5.3). The disposition enum keeps the contract truthful when an adapter physically cannot roll back (e.g. mid-write `.exe` corruption on Windows). The acceptance criterion "no silent partial success" is satisfied by requiring **one of** the three values whenever `partialWrite` is present.
@@ -63,13 +62,13 @@ export type PatchPartialWriteDispositionV02 =
 export type PatchFailureV02 = {
   failureId: Uuid7;
   category: PatchFailureCategoryV02;
-  diagnosticCode: string;        // e.g. "kaifuu.reallive.patchback_protected_span_lost"
-  cause: string;                 // human-readable, single sentence
-  assetId: Uuid7;                // every failure cites an asset
-  bridgeUnitId: Uuid7;           // every failure cites a bridge unit
-  adapterId: string;             // engine adapter id, e.g. "kaifuu-reallive"
-  command: string;               // semantic command name, e.g. "patch.write_string_slot"
-  patchExportEntryId?: Uuid7;    // optional precise pointer when known
+  diagnosticCode: string; // e.g. "kaifuu.reallive.patchback_protected_span_lost"
+  cause: string; // human-readable, single sentence
+  assetId: Uuid7; // every failure cites an asset
+  bridgeUnitId: Uuid7; // every failure cites a bridge unit
+  adapterId: string; // engine adapter id, e.g. "kaifuu-reallive"
+  command: string; // semantic command name, e.g. "patch.write_string_slot"
+  patchExportEntryId?: Uuid7; // optional precise pointer when known
   sourceLocation?: SourceLocationV02; // reuse existing v0.2 type
 };
 
@@ -83,7 +82,7 @@ export type PatchPartialWriteAccountingV02 = {
 
 export type PatchTouchedAssetV02 = {
   assetId: Uuid7;
-  outputHash: string;            // per-asset hash of the patched bytes
+  outputHash: string; // per-asset hash of the patched bytes
   byteSize: number;
 };
 ```
@@ -95,11 +94,11 @@ export type PatchResultV02 = {
   schemaVersion: typeof BRIDGE_SCHEMA_VERSION_V02;
   patchResultId: Uuid7;
   patchExportId: Uuid7;
-  adapterId: string;             // top-level adapter id (engine that produced the result)
-  status: PatchResultStatusV02;  // "passed" | "failed" | "incompatible_source"
-  outputHash?: string;           // required when status === "passed"
+  adapterId: string; // top-level adapter id (engine that produced the result)
+  status: PatchResultStatusV02; // "passed" | "failed" | "incompatible_source"
+  outputHash?: string; // required when status === "passed"
   touchedAssets?: PatchTouchedAssetV02[]; // required when status === "passed"
-  failures: PatchFailureV02[];   // structured, not strings
+  failures: PatchFailureV02[]; // structured, not strings
   failureCategories?: PatchFailureCategoryV02[]; // required when status !== "passed"
   partialWrite?: PatchPartialWriteAccountingV02;
   sourceCompatibility?: PatchSourceCompatibilityReportV02;
@@ -354,9 +353,9 @@ ingestPatchResult(
 
 ```ts
 type PatchResultIngestionDiagnostic = {
-  code: string;       // one of the kaifuu.patch_result.* constants from §2.5
+  code: string; // one of the kaifuu.patch_result.* constants from §2.5
   message: string;
-  pointer?: string;   // JSON-Pointer into the input
+  pointer?: string; // JSON-Pointer into the input
 };
 ```
 
@@ -391,15 +390,15 @@ Test cases (one per rejection path + one positive):
 
 KAIFUU-010 does **not** rewrite the RealLive patchback emitter. It specifies the mapping table that the future emitter (or a thin adapter layer in `kaifuu-reallive` or `kaifuu-cli`) will use to translate `PatchBackError` into the shared `PatchFailureV02`:
 
-| `PatchBackErrorCode`         | `PatchFailureCategoryV02`     | `diagnosticCode` (verbatim from `patchback.rs` lines 54–63) |
-| ---------------------------- | ----------------------------- | ----------------------------------------------------------- |
-| `OffsetOverflow`             | `patch_write_failed`          | `kaifuu.reallive.patchback_offset_overflow`                 |
-| `ShiftJisEncodeFailure`      | `patch_write_failed`          | `kaifuu.reallive.patchback_shift_jis_encode_failure`        |
-| `UnsupportedLengthPolicy`    | `adapter_unsupported`         | `kaifuu.reallive.patchback_unsupported_length_policy`       |
-| `ParserRegression`           | `patch_write_failed`          | `kaifuu.reallive.patchback_parser_regression`               |
-| `UnknownSlotId`              | `asset_missing`               | `kaifuu.reallive.patchback_unknown_slot_id`                 |
-| `StaleSourceHash`            | `source_incompatible`         | `kaifuu.reallive.patchback_stale_source_hash`               |
-| `ProtectedSpanLost`          | `protected_span_violation`    | `kaifuu.reallive.patchback_protected_span_lost`             |
+| `PatchBackErrorCode`      | `PatchFailureCategoryV02`  | `diagnosticCode` (verbatim from `patchback.rs` lines 54–63) |
+| ------------------------- | -------------------------- | ----------------------------------------------------------- |
+| `OffsetOverflow`          | `patch_write_failed`       | `kaifuu.reallive.patchback_offset_overflow`                 |
+| `ShiftJisEncodeFailure`   | `patch_write_failed`       | `kaifuu.reallive.patchback_shift_jis_encode_failure`        |
+| `UnsupportedLengthPolicy` | `adapter_unsupported`      | `kaifuu.reallive.patchback_unsupported_length_policy`       |
+| `ParserRegression`        | `patch_write_failed`       | `kaifuu.reallive.patchback_parser_regression`               |
+| `UnknownSlotId`           | `asset_missing`            | `kaifuu.reallive.patchback_unknown_slot_id`                 |
+| `StaleSourceHash`         | `source_incompatible`      | `kaifuu.reallive.patchback_stale_source_hash`               |
+| `ProtectedSpanLost`       | `protected_span_violation` | `kaifuu.reallive.patchback_protected_span_lost`             |
 
 The mapping table is the **only** RealLive-side artifact this slice produces (as Rust `const` or `match`). The `assetId`/`bridgeUnitId`/`adapterId: "kaifuu-reallive"`/`command` fields are filled by the caller that wraps `apply_patches` — KAIFUU-010 does not pick that caller; KAIFUU-011 (binary patcher composed smoke) is the natural consumer.
 
@@ -423,22 +422,22 @@ No `PatchResultV01 → PatchResultV02` converter is shipped: the v0.1 shape lack
 
 All semantic codes used across this slice are listed below. Each appears in either §2.5 (Rust constants) or as the `code` string in §5.3 (Itotori diagnostics). The TS schema messages embed these strings verbatim so cross-language search returns the same hits.
 
-| Code                                                            | Surface                                | When raised                                                  |
-| --------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------ |
-| `kaifuu.patch_result.missing_failure_category`                  | TS asserter, Rust validator, Itotori   | `failureCategories` missing or shorter than dedup(failures). |
-| `kaifuu.patch_result.unknown_failure_category`                  | TS asserter, Rust validator            | `failureCategories` contains a value not in dedup(failures). |
-| `kaifuu.patch_result.mismatched_export_id`                      | Itotori boundary                       | Result's `patchExportId` ≠ project's recorded export id.     |
-| `kaifuu.patch_result.output_hash_drift`                         | TS asserter, Rust validator, Itotori   | Rollup of `touchedAssets[].outputHash` ≠ `outputHash`.       |
-| `kaifuu.patch_result.passed_requires_output_hash`               | TS, Rust                               | `status: "passed"` but `outputHash` missing.                 |
-| `kaifuu.patch_result.passed_requires_touched_assets`            | TS, Rust                               | `status: "passed"` but `touchedAssets` empty or missing.     |
-| `kaifuu.patch_result.passed_must_have_no_failures`              | TS, Rust                               | `status: "passed"` with non-empty `failures`.                |
-| `kaifuu.patch_result.passed_must_omit_failure_categories`       | TS, Rust                               | `status: "passed"` with `failureCategories` present.         |
-| `kaifuu.patch_result.passed_must_omit_partial_write`            | TS, Rust                               | `status: "passed"` with `partialWrite` present.              |
-| `kaifuu.patch_result.non_passed_requires_failures`              | TS, Rust                               | `status: "failed"` or `incompatible_source` with no failures. |
-| `kaifuu.patch_result.incompatible_source_category_required`     | TS, Rust                               | Any non-`source_incompatible` failure on `incompatible_source` status. |
-| `kaifuu.patch_result.silent_partial_write`                      | TS, Rust, Itotori                      | `attemptedAssetIds` ≠ `writtenAssetIds ∪ skippedAssetIds`, or `retained_partial` without finding. |
-| `kaifuu.patch_result.rollback_diagnostic_required`              | TS, Rust                               | Disposition ∈ `{rolled_back, cleaned_up}` without `rollbackDiagnosticCode`. |
-| `kaifuu.patch_result.source_incompatible`                       | Engine adapter (RealLive mapping)      | Used as `diagnosticCode` when wrapping a `StaleSourceHash`.  |
+| Code                                                        | Surface                              | When raised                                                                                       |
+| ----------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| `kaifuu.patch_result.missing_failure_category`              | TS asserter, Rust validator, Itotori | `failureCategories` missing or shorter than dedup(failures).                                      |
+| `kaifuu.patch_result.unknown_failure_category`              | TS asserter, Rust validator          | `failureCategories` contains a value not in dedup(failures).                                      |
+| `kaifuu.patch_result.mismatched_export_id`                  | Itotori boundary                     | Result's `patchExportId` ≠ project's recorded export id.                                          |
+| `kaifuu.patch_result.output_hash_drift`                     | TS asserter, Rust validator, Itotori | Rollup of `touchedAssets[].outputHash` ≠ `outputHash`.                                            |
+| `kaifuu.patch_result.passed_requires_output_hash`           | TS, Rust                             | `status: "passed"` but `outputHash` missing.                                                      |
+| `kaifuu.patch_result.passed_requires_touched_assets`        | TS, Rust                             | `status: "passed"` but `touchedAssets` empty or missing.                                          |
+| `kaifuu.patch_result.passed_must_have_no_failures`          | TS, Rust                             | `status: "passed"` with non-empty `failures`.                                                     |
+| `kaifuu.patch_result.passed_must_omit_failure_categories`   | TS, Rust                             | `status: "passed"` with `failureCategories` present.                                              |
+| `kaifuu.patch_result.passed_must_omit_partial_write`        | TS, Rust                             | `status: "passed"` with `partialWrite` present.                                                   |
+| `kaifuu.patch_result.non_passed_requires_failures`          | TS, Rust                             | `status: "failed"` or `incompatible_source` with no failures.                                     |
+| `kaifuu.patch_result.incompatible_source_category_required` | TS, Rust                             | Any non-`source_incompatible` failure on `incompatible_source` status.                            |
+| `kaifuu.patch_result.silent_partial_write`                  | TS, Rust, Itotori                    | `attemptedAssetIds` ≠ `writtenAssetIds ∪ skippedAssetIds`, or `retained_partial` without finding. |
+| `kaifuu.patch_result.rollback_diagnostic_required`          | TS, Rust                             | Disposition ∈ `{rolled_back, cleaned_up}` without `rollbackDiagnosticCode`.                       |
+| `kaifuu.patch_result.source_incompatible`                   | Engine adapter (RealLive mapping)    | Used as `diagnosticCode` when wrapping a `StaleSourceHash`.                                       |
 
 ---
 
@@ -504,12 +503,12 @@ The DAG also names `just contract-validate`; that target is run by `just check` 
 
 ## 12. Out of Scope
 
-- `KAIFUU-011` (Binary patcher composed smoke command). Will *consume* the v0.2 emitter wired here.
+- `KAIFUU-011` (Binary patcher composed smoke command). Will _consume_ the v0.2 emitter wired here.
 - `UTSUSHI-146` runtime port. Runtime verification reports use a different schema (`RuntimeEvidenceReportV02`).
 - `ALPHA-006` vertical itself.
 - Persistence of patch results in `@itotori/db` (deferred per §5.4).
 - Removal of v0.1 `PatchResult` type (Phase C in §7.1).
-- v0.2 patch *export* changes — the existing v0.1 `exportPatch` path (`project-workflow.ts` line 220) remains untouched. v0.2 export is a separate node.
+- v0.2 patch _export_ changes — the existing v0.1 `exportPatch` path (`project-workflow.ts` line 220) remains untouched. v0.2 export is a separate node.
 - Engine-side wrapper that actually emits `PatchResultV02` from `apply_patches` results in RealLive. KAIFUU-010 specifies the mapping table (§6); the wrapper lands in KAIFUU-011.
 
 ---
@@ -518,9 +517,9 @@ The DAG also names `just contract-validate`; that target is run by `just check` 
 
 One worker, two-language span (TS + Rust + minimal Itotori TS).
 
-| Slice           | Surfaces touched                                                                                                                                                                                       | Estimated effort |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
-| **A** (TS only) | `packages/localization-bridge-schema/src/index.ts`, the 4 fixtures in `test/examples/invalid/`, contract tests.                                                                                          | ~½ day           |
+| Slice                  | Surfaces touched                                                                                                                                                                                                                   | Estimated effort |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| **A** (TS only)        | `packages/localization-bridge-schema/src/index.ts`, the 4 fixtures in `test/examples/invalid/`, contract tests.                                                                                                                    | ~½ day           |
 | **B** (Rust + Itotori) | `crates/kaifuu-core/src/contracts.rs`, `crates/kaifuu-core/src/lib.rs` (semantic constants), `apps/itotori/src/cli-handlers.ts`, `apps/itotori/src/services/project-workflow.ts`, hello-game generator + fixture, ingestion tests. | ~1 day           |
 
 **Recommendation: one worker** runs both slices in sequence (A → B). The contract change is cohesive: splitting would force B to mock A's schema export, and any drift between the two would re-emerge as a CI flake. The two-language span is a feature of this DAG node, not a reason to split.

@@ -5,7 +5,7 @@
   "fixture": {
     "fixtureId": "hello-game",
     "publicManifestUri": "fixtures/public/hello-game.manifest.json",
-    "publicManifestHash": "sha256:3e4eb26164f3892d138c883a1da2fcfb37d1882b274755d30d36288d8324db9a",
+    "publicManifestHash": "sha256:1b800fad6acab8d16e8b8c651238186c4dde656c0afb641da7325b21365b0f20",
     "publicRedistribution": "allowed"
   },
   "engineProfile": {
@@ -35,7 +35,7 @@
       "artifactId": "019ed025-0000-7000-8000-000000000302",
       "artifactKind": "public_fixture_manifest",
       "uri": "fixtures/public/hello-game.manifest.json",
-      "hash": "sha256:3e4eb26164f3892d138c883a1da2fcfb37d1882b274755d30d36288d8324db9a",
+      "hash": "sha256:1b800fad6acab8d16e8b8c651238186c4dde656c0afb641da7325b21365b0f20",
       "mediaType": "application/json",
       "byteSize": 5060
     },
@@ -59,9 +59,9 @@
       "artifactId": "019ed012-0000-7000-8000-000000000902",
       "artifactKind": "patch_result",
       "uri": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
-      "hash": "sha256:4c05bfedab6cff96ad314d794f393a39453da16aecf4c68bae9bc9b8699ccea7",
+      "hash": "sha256:a6c44fa4d44937a5f963d25c9579042a46f37d2d15df897b99cf49ae50444c55",
       "mediaType": "application/json",
-      "byteSize": 5562
+      "byteSize": 6551
     },
     "deltaPackage": {
       "artifactId": "019ed012-0000-7000-8000-000000000903",
@@ -106,7 +106,7 @@
     {
       "scope": "public_fixture_manifest",
       "contentId": "fixtures/public/hello-game.manifest.json",
-      "hash": "sha256:3e4eb26164f3892d138c883a1da2fcfb37d1882b274755d30d36288d8324db9a"
+      "hash": "sha256:1b800fad6acab8d16e8b8c651238186c4dde656c0afb641da7325b21365b0f20"
     },
     {
       "scope": "source_bundle",
@@ -131,7 +131,7 @@
     {
       "scope": "patch_result",
       "contentId": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
-      "hash": "sha256:4c05bfedab6cff96ad314d794f393a39453da16aecf4c68bae9bc9b8699ccea7"
+      "hash": "sha256:a6c44fa4d44937a5f963d25c9579042a46f37d2d15df897b99cf49ae50444c55"
     },
     {
       "scope": "delta_package",

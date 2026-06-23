@@ -2,8 +2,21 @@
   "schemaVersion": "0.2.0",
   "patchResultId": "019ed001-0000-7000-8000-000000000950",
   "patchExportId": "019ed001-0000-7000-8000-000000000901",
+  "adapterId": "kaifuu-reallive",
   "status": "passed",
-  "outputHash": "sha256:0c884f5ea86e287a8ca371dad6ee490729873b17aa13f08053af1054ad40b8e1",
+  "outputHash": "sha256:da95500381246b4466b73a2dd6fc2610ad5ecea58719c2e9d28c4805ac24c83d",
+  "touchedAssets": [
+    {
+      "assetId": "019ed001-0000-7000-8000-000000000810",
+      "outputHash": "sha256:fa01799c693dbf37732740572dde0106c2d67bed57a5955528687642896968e1",
+      "byteSize": 64
+    },
+    {
+      "assetId": "019ed001-0000-7000-8000-000000000811",
+      "outputHash": "sha256:8566707ead9fabf49905b018e40ab4772e166d6f0c6e126ebdb5e6af7a7258ca",
+      "byteSize": 72
+    }
+  ],
   "failures": [],
   "sourceCompatibility": {
     "schemaVersion": "0.2.0",

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "0.2.0",
+  "patchResultId": "019ed001-0000-7000-8000-00000000f951",
+  "patchExportId": "019ed001-0000-7000-8000-000000000901",
+  "adapterId": "kaifuu-reallive",
+  "status": "failed",
+  "failures": [
+    {
+      "failureId": "019ed001-0000-7000-8000-00000000f961",
+      "category": "patch_write_failed",
+      "diagnosticCode": "kaifuu.reallive.patchback_offset_overflow",
+      "cause": "offset overflow during patch write",
+      "assetId": "019ed001-0000-7000-8000-000000000800",
+      "bridgeUnitId": "019ed001-0000-7000-8000-000000000201",
+      "adapterId": "kaifuu-reallive",
+      "command": "patch.write_string_slot"
+    }
+  ]
+}

@@ -19,10 +19,13 @@ import type {
   LocalizationUnitV02,
   FindingRecordV02,
   PatchExport,
+  PatchResultStatusV02,
+  PatchResultV02,
   RuntimeEvidenceReportV02,
   RuntimeVerificationReport,
   TriageEventV02,
 } from "@itotori/localization-bridge-schema";
+import { computePatchResultOutputHashRollupV02 } from "@itotori/localization-bridge-schema";
 import { FakeModelProvider } from "../providers/fake.js";
 import { assertProviderInvocationSupported } from "../providers/capability-guard.js";
 import {
@@ -71,6 +74,29 @@ export type BenchmarkRecordResult = {
   findingCount: number;
 };
 
+export type PatchResultIngestionDiagnostic = {
+  code: string;
+  message: string;
+  pointer?: string;
+};
+
+export type PatchResultIngestionResult = {
+  patchResultId: string;
+  patchExportId: string;
+  status: PatchResultStatusV02;
+  diagnostics: PatchResultIngestionDiagnostic[];
+};
+
+export class PatchResultIngestionError extends Error {
+  constructor(
+    readonly diagnostic: PatchResultIngestionDiagnostic,
+    readonly diagnostics: PatchResultIngestionDiagnostic[],
+  ) {
+    super(`patch result ingestion rejected: ${diagnostic.code} ${diagnostic.message}`);
+    this.name = "PatchResultIngestionError";
+  }
+}
+
 export interface ItotoriProjectWorkflowPort {
   reset(): Promise<void>;
   getDashboardStatus(): Promise<ProjectDashboardStatus>;
@@ -89,6 +115,13 @@ export interface ItotoriProjectWorkflowPort {
   ): Promise<{
     project: ProjectState;
     result: RuntimeIngestResult;
+  }>;
+  ingestPatchResult(
+    project: ProjectState,
+    patchResult: PatchResultV02,
+  ): Promise<{
+    project: ProjectState;
+    result: PatchResultIngestionResult;
   }>;
   recordFinding(
     projectId: string,
@@ -294,6 +327,79 @@ export class ItotoriProjectWorkflowService implements ItotoriProjectWorkflowPort
         patchResultId,
         runtimeReportId: runtimeReport.runtimeReportId,
         dashboard,
+      },
+    };
+  }
+
+  async ingestPatchResult(
+    project: ProjectState,
+    patchResult: PatchResultV02,
+  ): Promise<{
+    project: ProjectState;
+    result: PatchResultIngestionResult;
+  }> {
+    const diagnostics: PatchResultIngestionDiagnostic[] = [];
+    const reject = (code: string, message: string, pointer?: string): never => {
+      const diagnostic: PatchResultIngestionDiagnostic = pointer
+        ? { code, message, pointer }
+        : { code, message };
+      diagnostics.push(diagnostic);
+      throw new PatchResultIngestionError(diagnostic, diagnostics);
+    };
+
+    const recordedExportId = project.patchExport?.patchExportId;
+    if (recordedExportId !== undefined && recordedExportId !== patchResult.patchExportId) {
+      reject(
+        "kaifuu.patch_result.mismatched_export_id",
+        `patchResult.patchExportId (${patchResult.patchExportId}) does not match project.patchExport.patchExportId (${recordedExportId})`,
+        "/patchExportId",
+      );
+    }
+
+    if (patchResult.status === "passed") {
+      const touchedAssets = patchResult.touchedAssets ?? [];
+      const rollup = computePatchResultOutputHashRollupV02(touchedAssets);
+      if (patchResult.outputHash !== rollup) {
+        reject(
+          "kaifuu.patch_result.output_hash_drift",
+          `patchResult.outputHash drift: expected ${rollup} from touchedAssets rollup, found ${String(
+            patchResult.outputHash,
+          )}`,
+          "/outputHash",
+        );
+      }
+      if (patchResult.partialWrite !== undefined) {
+        reject(
+          "kaifuu.patch_result.silent_partial_write",
+          "patchResult.partialWrite must be omitted when status is passed",
+          "/partialWrite",
+        );
+      }
+    }
+
+    if (patchResult.partialWrite?.disposition === "retained_partial") {
+      diagnostics.push({
+        code: "kaifuu.patch_result.silent_partial_write",
+        message:
+          "patchResult.partialWrite.disposition is retained_partial; an open P0 finding must reference this patch result",
+        pointer: "/partialWrite/disposition",
+      });
+      await this.repository.recordFinding(this.actor, {
+        projectId: project.projectId,
+        localeBranchId: project.localeBranchId,
+        finding: buildRetainedPartialFinding(patchResult),
+        status: "open",
+      });
+    }
+
+    const nextProject: ProjectState = { ...project, patchResult };
+    return {
+      project: nextProject,
+      result: {
+        patchResultId: patchResult.patchResultId,
+        patchExportId: patchResult.patchExportId,
+        status: patchResult.status,
+        diagnostics,
       },
     };
   }
@@ -735,6 +841,58 @@ function id(kind: string, n: number): string {
 
 function patchResultIdForRuntimeReport(runtimeReport: RuntimeReportInput): string {
   return `${runtimeReport.runtimeReportId}:patch-result`;
+}
+
+function buildRetainedPartialFinding(patchResult: PatchResultV02): FindingRecordV02 {
+  const seed = `${patchResult.patchResultId}:retained_partial`;
+  const findingId = deterministicPatchResultUuid("finding", seed);
+  const provenanceId = deterministicPatchResultUuid("provenance", seed);
+  const evidenceId = deterministicPatchResultUuid("evidence", seed);
+  const checkId = deterministicPatchResultUuid("check", seed);
+  const affected = patchResult.partialWrite?.attemptedAssetIds ?? [];
+  return {
+    findingId,
+    findingKind: "patching_issue",
+    severity: "P0",
+    qualityCategory: "technical_integrity",
+    title: `Retained partial patch write for ${patchResult.patchResultId}`,
+    description:
+      "Patch result reports partialWrite.disposition=retained_partial; partial bytes remain on disk and require operator intervention before any re-apply.",
+    impact:
+      "The target executable is in a partially-patched state until this finding is resolved; do not re-export until rollback is confirmed.",
+    createdAt: "2026-06-23T00:00:00.000Z",
+    affectedRefs: affected.map((assetId) => ({
+      subjectKind: "asset",
+      subjectId: assetId,
+      label: "retained_partial asset",
+    })),
+    evidence: [
+      {
+        evidenceId,
+        evidenceKind: "validator_message",
+        summary:
+          "kaifuu.patch_result.silent_partial_write: retained_partial disposition recorded without rollback",
+        expectedValue: "rolled_back or cleaned_up",
+        observedValue: "retained_partial",
+        provenanceIds: [provenanceId],
+      },
+    ],
+    provenance: [
+      {
+        provenanceId,
+        provenanceKind: "deterministic_check",
+        checkId,
+        checkName: "kaifuu.patch_result.silent_partial_write",
+        checkVersion: "kaifuu-010.1",
+      },
+    ],
+    causalLinks: [],
+  };
+}
+
+function deterministicPatchResultUuid(kind: string, seed: string): string {
+  const suffix = createHash("sha256").update(`${kind}:${seed}`).digest("hex").slice(0, 12);
+  return `019ed010-0000-7000-8000-${suffix}`;
 }
 
 function isBridgeBundleV02(bridge: BridgeBundle | BridgeBundleV02): bridge is BridgeBundleV02 {
