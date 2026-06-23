@@ -64,8 +64,8 @@ alongside `manifest`, `conformance`, `runner`, `trait_`, `diagnostics`.**
 Justification:
 
 - The map is conceptually a **sibling** to `PortManifest` (UTSUSHI-103). The
-  manifest is the audit-grade *static* declaration shipped as a `const` by each
-  port crate; the impl map is the *coverage* declaration the engine-port worker
+  manifest is the audit-grade _static_ declaration shipped as a `const` by each
+  port crate; the impl map is the _coverage_ declaration the engine-port worker
   commits as a serialized artifact alongside their slice. Both live in
   `utsushi-core::port::*` because they share the same audit surface and are both
   engine-neutral types every port consumes.
@@ -488,7 +488,7 @@ pub enum ValidationWarning {
 ### 4.3 What the validator does NOT check (deliberate)
 
 - Whether the validation command actually passes — the validator never runs
-  shell commands (§"No shell-outs" rule). Command *execution* is UTSUSHI-027–
+  shell commands (§"No shell-outs" rule). Command _execution_ is UTSUSHI-027–
   030's responsibility.
 - Whether the fixture hash matches the current on-disk file. The validator is
   string-shape only. A separate `verify_fixture_hashes(&map, &dyn FixtureStore)`
@@ -646,27 +646,31 @@ Example minimal valid JSON:
   "schemaVersion": "0.1.0",
   "portId": "utsushi-reallive",
   "engineFamily": "reallive",
-  "subsystems": [{
-    "id": "scene-seen-replay",
-    "name": "Scene/SEEN deterministic replay",
-    "status": { "kind": "Supported" },
-    "fixtureRef": {
-      "id": "reallive-detector/positive-synthetic-triple",
-      "classification": "Public",
-      "kind": "Directory",
-      "hash": "f0e1d2c3...64hex",
-      "byteCount": 4096
-    },
-    "validationCommandId": "cargo-test-utsushi-reallive",
-    "capabilities": ["deterministic-text-trace", "scene-seen-bytecode"],
-    "notes": ""
-  }],
-  "validationCommands": [{
-    "id": "cargo-test-utsushi-reallive",
-    "command": "cargo test -p utsushi-reallive scene_seen_replay",
-    "expectedOutcome": { "kind": "Pass" },
-    "caption": "Deterministic Scene/SEEN replay smoke."
-  }],
+  "subsystems": [
+    {
+      "id": "scene-seen-replay",
+      "name": "Scene/SEEN deterministic replay",
+      "status": { "kind": "Supported" },
+      "fixtureRef": {
+        "id": "reallive-detector/positive-synthetic-triple",
+        "classification": "Public",
+        "kind": "Directory",
+        "hash": "f0e1d2c3...64hex",
+        "byteCount": 4096
+      },
+      "validationCommandId": "cargo-test-utsushi-reallive",
+      "capabilities": ["deterministic-text-trace", "scene-seen-bytecode"],
+      "notes": ""
+    }
+  ],
+  "validationCommands": [
+    {
+      "id": "cargo-test-utsushi-reallive",
+      "command": "cargo test -p utsushi-reallive scene_seen_replay",
+      "expectedOutcome": { "kind": "Pass" },
+      "caption": "Deterministic Scene/SEEN replay smoke."
+    }
+  ],
   "referenceBehavior": {
     "engineRuntime": "rlvm (research anchor; clean-room; behavior-only)",
     "observableSignal": "deterministic text trace per scene id",
@@ -815,7 +819,7 @@ existing `just check` schema validation step instead.
    is offered as a separate helper. This avoids forcing engine port crates to
    own both artifacts in lock-step while still making it possible for the
    conformance harness to enforce coverage. The risk is that downstream
-   nodes (UTSUSHI-031+) may end up requiring cross-validation *de facto* —
+   nodes (UTSUSHI-031+) may end up requiring cross-validation _de facto_ —
    if so, the manifest cross-check becomes a hard requirement in a future
    node, not in this one.
 
@@ -869,7 +873,7 @@ existing `just check` schema validation step instead.
 - Executing the validation commands. The map declares them; UTSUSHI-027–030
   schedule and consume them. This node does not shell out.
 - Outdated-detection algorithm (`Status::Outdated` promotion logic). The
-  variant exists; the *detection* is an open downstream concern (engine port
+  variant exists; the _detection_ is an open downstream concern (engine port
   nodes own it).
 - Controlled-vocabulary for `capabilities: Vec<String>` (see risk #2).
 - A CLI surface (e.g. `utsushi impl-map validate <file>`). The Rust library
@@ -881,20 +885,20 @@ existing `just check` schema validation step instead.
 UTSUSHI-025 and UTSUSHI-026 are being planned in parallel. They are two
 distinct artifacts and MUST NOT overlap:
 
-| Artifact                        | UTSUSHI-025 (this node)                                                                                   | UTSUSHI-026 (parallel)                                                                              |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| What it declares                | "Here's what subsystems we cover, with which fixtures, and how the coverage is exercised."                | "Here are the conformance checks the port MUST satisfy, and the result schema for those checks."    |
-| Type                            | `ImplementationMap` (coverage plan + fixture provenance + validation commands).                           | Conformance profile manifest + result schema (pass/fail/skipped/unsupported semantics).             |
-| Module                          | `utsushi_core::port::impl_map`                                                                            | `utsushi_core::port::conformance` (already partially exists for UTSUSHI-103's harness; extended).   |
-| Validator surface               | `validate(&ImplementationMap) -> Result<ValidationReport, Vec<ImplMapError>>`                             | Conformance-profile validator + result-schema validator.                                            |
-| Owns "what we plan to cover"    | YES                                                                                                       | NO                                                                                                  |
-| Owns "what we actually checked" | NO                                                                                                        | YES                                                                                                 |
-| Owns fixture provenance         | YES                                                                                                       | References fixtures but does not define provenance shape.                                           |
-| Owns pass/fail/skipped semantics| Defines `ExpectedOutcome` for the *declared* command only (Pass/Skip/Fail-semantic-code).                 | Defines the *runtime* result enum (Pass/Fail/Skipped/Unsupported with semantic reason codes).       |
-| Consumed by engine ports        | YES (every port ships an `ImplementationMap` artifact alongside their slice).                             | YES (every port emits conformance results into the result schema).                                  |
-| Standalone-readable             | YES                                                                                                       | YES                                                                                                 |
+| Artifact                         | UTSUSHI-025 (this node)                                                                    | UTSUSHI-026 (parallel)                                                                            |
+| -------------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| What it declares                 | "Here's what subsystems we cover, with which fixtures, and how the coverage is exercised." | "Here are the conformance checks the port MUST satisfy, and the result schema for those checks."  |
+| Type                             | `ImplementationMap` (coverage plan + fixture provenance + validation commands).            | Conformance profile manifest + result schema (pass/fail/skipped/unsupported semantics).           |
+| Module                           | `utsushi_core::port::impl_map`                                                             | `utsushi_core::port::conformance` (already partially exists for UTSUSHI-103's harness; extended). |
+| Validator surface                | `validate(&ImplementationMap) -> Result<ValidationReport, Vec<ImplMapError>>`              | Conformance-profile validator + result-schema validator.                                          |
+| Owns "what we plan to cover"     | YES                                                                                        | NO                                                                                                |
+| Owns "what we actually checked"  | NO                                                                                         | YES                                                                                               |
+| Owns fixture provenance          | YES                                                                                        | References fixtures but does not define provenance shape.                                         |
+| Owns pass/fail/skipped semantics | Defines `ExpectedOutcome` for the _declared_ command only (Pass/Skip/Fail-semantic-code).  | Defines the _runtime_ result enum (Pass/Fail/Skipped/Unsupported with semantic reason codes).     |
+| Consumed by engine ports         | YES (every port ships an `ImplementationMap` artifact alongside their slice).              | YES (every port emits conformance results into the result schema).                                |
+| Standalone-readable              | YES                                                                                        | YES                                                                                               |
 
-The two artifacts cross-reference at the *port* level (both cite
+The two artifacts cross-reference at the _port_ level (both cite
 `PortManifest::id`) but their Rust types are disjoint — no shared enum, no
 shared struct. The implementation worker for UTSUSHI-025 MUST NOT add
 `ConformanceResult`-shaped fields; the worker for UTSUSHI-026 MUST NOT

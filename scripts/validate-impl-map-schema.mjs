@@ -13,14 +13,8 @@ import Ajv2020 from "ajv/dist/2020.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const schemaPath = resolve(repoRoot, "roadmap/impl-map.schema.json");
-const positiveDir = resolve(
-  repoRoot,
-  "crates/utsushi-core/src/port/impl_map/fixtures/positive",
-);
-const negativeDir = resolve(
-  repoRoot,
-  "crates/utsushi-core/src/port/impl_map/fixtures/negative",
-);
+const positiveDir = resolve(repoRoot, "crates/utsushi-core/src/port/impl_map/fixtures/positive");
+const negativeDir = resolve(repoRoot, "crates/utsushi-core/src/port/impl_map/fixtures/negative");
 
 const schema = JSON.parse(readFileSync(schemaPath, "utf8"));
 const ajv = new Ajv2020({ allErrors: true });
@@ -52,18 +46,13 @@ for (const file of readdirSync(negativeDir).sort()) {
   // documented-Rust-only failures. For now the corpus is shaped so that
   // the JSON Schema catches the obvious cases; subtler ones (e.g.
   // orphan command refs) are Rust-validator-only and exempted.
-  const rustOnly = new Set([
-    "orphan-command.json",
-    "validation-command-pipe.json",
-  ]);
+  const rustOnly = new Set(["orphan-command.json", "validation-command-pipe.json"]);
   if (rustOnly.has(file)) {
     negativeCount += 1;
     continue;
   }
   if (validate(value)) {
-    errors.push(
-      `${relative(repoRoot, path)} (negative) unexpectedly passed schema validation`,
-    );
+    errors.push(`${relative(repoRoot, path)} (negative) unexpectedly passed schema validation`);
   }
   negativeCount += 1;
 }
