@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-028-20260623T224433Z",
+  "generatedAt": "2026-06-23T22:44:33Z",
+  "spec": {
+    "id": "UTSUSHI-028",
+    "title": "Snapshot conformance",
+    "branch": "spec/utsushi-028",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-028",
+    "commit": "1852f3a"
+  },
+  "auditor": {
+    "name": "utsushi-028-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Iter-5 correctness audit of UTSUSHI-028 (snapshot conformance + SnapshotStore) at commit 1852f3a on spec/utsushi-028. Verification re-run is clean: `cargo test -p utsushi-core` -> 543 unit + 7 + 10 + 9 + 9 + 14 + 15 + 11 + 3 + 5 integration suites, all passing 0 failed (matches the worker's 27 unit + 9 integration + 13 fixtures + 11 SnapshotStore + 9 EvidenceRef::StatePath claim). `just check` -> exit 0 (fmt, clippy, schema lint, ts:typecheck, spec DAG validate clean). Audit-focus structural verification: (1) State drift is reported with VERBATIM `StatePath` strings, not vaguely -- `SnapshotConformanceCheck::state_path_evidence_from_diff` (check.rs:150-156) maps every `StateDiff::changed_paths()` entry one-to-one into `EvidenceRef::StatePath { path: path.as_str().to_string() }`, no summarization, no truncation. The fail-side semantic_code is the literal `crate::snapshot::store::codes::STATE_DRIFT` constant, which resolves to `\"utsushi.snapshot.state_drift\"` (verified via the test `synthetic_snapshot_check_observed_drifts_at_port_frame_runs_fail_with_state_drift` at fixtures.rs:810-816 asserting `assert_eq!(semantic_code, \"utsushi.snapshot.state_drift\")`). (2) Snapshot checks do NOT require a renderer -- `SnapshotConformanceCheck` carries only two `SnapshotRef` (id + inspectable_id + evidence_tier; id-only) and resolves them through a `SnapshotStore` trait at `run` time; no `FrameArtifactSink`, screenshot, or renderer surface is involved at any level. The module-level doc-comment at `snapshot_check/check.rs:1-9` is explicit: \"No screenshot, frame, or renderer surface is involved at any level of the check (audit-focus structural defense for the 'snapshot checks requiring renderer support' item).\" Verified by the test `snapshot_restore_profile_required_subsystems_does_not_include_frame_sink_or_artifact_store` at check.rs:298. (3) Private data is NOT embedded in snapshot reports -- `EvidenceRef::StatePath { path }` carries only the canonical `StatePath` wire form (lowercase ASCII, `.` separator), enforced by `crate::StatePath::parse` at validate time; the per-variant validator additionally runs `looks_like_local_path` as defense-in-depth (result.rs:167-172). The `detail` field on a `Fail` outcome is `format!(\"snapshot drift: {} path(s) differ\", diff.changes.len())` -- a COUNT only, no state values, no paths embedded into the free-form message. (4) `SnapshotStore` typed errors are all 5 declared: `NotFound`, `MismatchedSchemaVersion`, `InvalidSnapshotRef`, `InspectableIdMismatch`, `StoreUnavailable` (store.rs:52-82); every error has a `semantic_code()` mapping; never silent stale/empty (the trait contract at store.rs:138-172 explicitly documents \"never silently returns a stale or wrong snapshot\"; `resolve` returns `Result<Snapshot, SnapshotStoreError>` so a missing snapshot is `NotFound`, not `Ok(None)`). (5) `EvidenceRef::StatePath { path }` round-trip clean -- the variant is additive (appended at the end of the enum at result.rs:108-117, all existing variants `RuntimeArtifact`, `TextLine`, `FrameArtifactRef`, `ReplayLogRef`, `ImplMapFixture`, `BridgeUnit` unchanged); wire shape `{ \"artifactKind\": \"statePath\", \"path\": \"<state path>\" }` via `#[serde(tag = \"artifactKind\")]` + `rename = \"statePath\"`; the 9 `EvidenceRef::StatePath` tests confirm round-trip through serde_json and reject empty path / whitespace / local-path-shaped inputs. (6) State-drift fails on non-empty diff -- check.rs:127-135: `if diff.is_empty() { Pass } else { Fail with STATE_DRIFT }`. CONFORMANCE_SCHEMA_VERSION bumped to `0.2.0-alpha` (verified by negative-fixture json files all referencing the new version). Outcome: `pass` -- no blocking findings, no follow-ups recorded.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
