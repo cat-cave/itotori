@@ -4333,7 +4333,7 @@
     {
       "id": "KAIFUU-053",
       "title": "Capability-leveled engine detector registry",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu", "shared", "itotori"],
@@ -4370,7 +4370,10 @@
         "Recognized engine overstated as usable",
         "Registry drift between Kaifuu and catalog scanner",
         "Private evidence leakage"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/kaifuu-053",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-053"
     },
     {
       "id": "KAIFUU-054",
@@ -6111,7 +6114,7 @@
     {
       "id": "ITOTORI-013",
       "title": "Scene summary agent",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -6151,7 +6154,10 @@
           "value": "Artifact invalidation test"
         }
       ],
-      "auditFocus": ["Overbroad agent scope", "Uncited claims", "Prompt brittleness"]
+      "auditFocus": ["Overbroad agent scope", "Uncited claims", "Prompt brittleness"],
+      "owner": "orchestrator",
+      "branch": "spec/itotori-013",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-013"
     },
     {
       "id": "ITOTORI-014",
@@ -8966,7 +8972,7 @@
     {
       "id": "UTSUSHI-060",
       "title": "Reference runtime trace and capture recorder",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -9003,7 +9009,10 @@
         "Reference goldens leaking private data",
         "Environment missing from comparisons",
         "Recorder output treated as pixel-perfect proof"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-060",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-060"
     },
     {
       "id": "UTSUSHI-061",
@@ -10449,7 +10458,7 @@
     {
       "id": "UTSUSHI-030",
       "title": "Runtime conformance ingestion fixture",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "itotori"],
@@ -10495,7 +10504,10 @@
         "Cross-validator wire-shape parity",
         "Negative fixture drift detection",
         "Conformance manifest/result reachable from non-Rust consumers"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-030",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-030"
     },
     {
       "id": "UTSUSHI-031",
