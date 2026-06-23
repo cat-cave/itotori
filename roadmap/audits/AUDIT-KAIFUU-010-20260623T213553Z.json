@@ -1,0 +1,248 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-010-20260623T213553Z",
+  "generatedAt": "2026-06-23T21:35:53Z",
+  "spec": {
+    "id": "KAIFUU-010",
+    "title": "Patch result and verification v0.2",
+    "branch": "spec/kaifuu-010",
+    "worktree": "/scratch/worktrees/itotori-spec-kaifuu-010",
+    "commit": "3dd14fb"
+  },
+  "auditor": {
+    "name": "kaifuu-010-patch-result-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "KAIFUU-010 lands the PatchResultV02 tightening with full structural invariants on both TS and Rust validators. The six-category failure enum, structured PatchFailureV02 (asset/bridge-unit/adapter/command/diagnostic), passed-status outputHash rollup over deterministically sorted touchedAssets, disjoint attempted/written/skipped accounting, retained_partial P0 disposition rule, dedup(failures[*].category)==failureCategories cross-check, and incompatible_source category constraint are all enforced. Four negative fixtures (incompatible-status, missing-failure-category, output-hash-mismatch, partial-write) all reject with the documented semantic codes; the Rust shared-fixture-manifest test exercises the same set against the Rust validator, satisfying TS+Rust schema parity. Itotori gains an ingest-patch-result CLI, ProjectWorkflow.ingestPatchResult, and four boundary checks (schema assert at CLI, mismatched export id, output-hash drift on passed, retained_partial P0 finding) with PatchResultIngestionError surfacing pointer+code. Hello-game fixture regenerated with adapterId, 5 deduped touchedAssets (bridge has 11 units mapping to 5 distinct sourceAssetRef.assetId values; worker's plan-deviation correction verified by counting the bridge fixture itself), and propagated through alpha-vertical-proof + hello-game.manifest hashes. v0.1 PatchResult retained, with PatchResultV01 alias and deprecation note. Gates green: kaifuu-core 162 + 1 + 2 passed; kaifuu-cli 78 passed; TS 174 passed (3 skipped) + 136 schema; just check + just hello world clean. P3 follow-ups (no blockers) cover DB persistence for ingestPatchResult, KAIFUU-011 binary-patcher emitter wiring, and future generator/regeneration policy.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 3
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-010-F001", "KAIFUU-010-F002", "KAIFUU-010-F003"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-010-F001",
+      "severity": "P3",
+      "title": "ingestPatchResult does not persist patchResult to the project repository",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "apps/itotori/src/services/project-workflow.ts",
+          "line": 334,
+          "symbol": "ItotoriProjectWorkflowService.ingestPatchResult"
+        },
+        {
+          "path": "packages/itotori-db/src/repositories/project-repository.ts",
+          "line": 92,
+          "symbol": "ItotoriProjectRecord.patchResult"
+        }
+      ],
+      "description": "ingestPatchResult validates the patch result, runs the four boundary checks (mismatched export id, output-hash drift, silent partial write, retained_partial), records the retained_partial P0 finding via repository.recordFinding, and returns a nextProject with patchResult attached in-memory. It does not call a repository method to persist the patchResult artifact, so the validated record is lost as soon as the workflow returns and the caller writes the in-memory project back. The retained_partial finding is persisted, but the patchResult itself (including outputHash, touchedAssets rollup, and failureCategories) survives only in the JSON the CLI writes back via dependencies.io.writeJson. There is no patchResult artifact row, no dashboard/decision linkage by patchResultId, and no audit trail for non-retained_partial failures. The worker explicitly flagged this as a P3 follow-up; this finding records the gap and proposes the persistence node.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "ingestPatchResult body returns nextProject and a PatchResultIngestionResult without touching repository.savePatchResult/recordPatchResultArtifact; only recordFinding is called and only for the retained_partial branch.",
+          "location": {
+            "path": "apps/itotori/src/services/project-workflow.ts",
+            "line": 395
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "ItotoriProjectRecord gains an optional patchResult field but ProjectRepository does not expose a savePatchResult equivalent to savePatchExport/saveRuntimeReport.",
+          "location": {
+            "path": "packages/itotori-db/src/repositories/project-repository.ts",
+            "line": 92
+          }
+        }
+      ],
+      "impact": "Patch result evidence (failures, categories, output-hash rollup) is not durable across CLI invocations or across the workflow boundary, blocking downstream consumers (dashboard, finding ledger, benchmark cross-checks) from joining by patchResultId. The retained_partial finding is persisted but the patchResult it cites is not, so the open P0 finding cannot be deterministically explained from DB-only state.",
+      "actionableAcceptanceCriteria": [
+        "ProjectRepository exposes a savePatchResult (or recordPatchResultArtifact) method that persists PatchResultV02 keyed by patchResultId with patchExportId, status, outputHash, failureCategories, and partialWrite disposition as queryable columns.",
+        "ItotoriProjectWorkflowService.ingestPatchResult calls the new method inside the same actor transaction that records the retained_partial finding, so the finding and the patch result it cites land atomically.",
+        "DB-backed itotori test asserts that after ingestPatchResult, the patch result row is queryable by patchResultId and the retained_partial finding row references the same id.",
+        "Dashboard read-model exposes patchResult status and failureCategories by patchResultId for at least the retained_partial and failed branches."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Persist ingested PatchResultV02 in the itotori project repository",
+          "priority": "P3",
+          "target": "alpha",
+          "projects": ["itotori", "kaifuu"],
+          "parallelGroup": "itotori-core",
+          "dependsOn": ["KAIFUU-010"],
+          "summary": "Add durable storage for PatchResultV02 records ingested via ProjectWorkflow.ingestPatchResult so failures, output hash, and partialWrite disposition survive across CLI invocations and are joinable from the dashboard and finding ledger.",
+          "deliverables": [
+            "ProjectRepository.savePatchResult (or recordPatchResultArtifact) writing patch_result rows keyed by patchResultId",
+            "ingestPatchResult wired to call the new repository method in the same actor transaction as recordFinding",
+            "Dashboard read-model surface exposing patchResult status + failureCategories"
+          ],
+          "acceptanceCriteria": [
+            "After ingestPatchResult, the patch result row is queryable from the DB by patchResultId with status, outputHash, and failureCategories.",
+            "retained_partial finding rows reference a patch_result row that already exists in the same transaction.",
+            "Dashboard exposes patchResult ingestion state by patchResultId."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "DATABASE_URL=postgres://itotori:itotori@127.0.0.1:55433/itotori pnpm --filter @itotori/itotori test"
+            }
+          ],
+          "auditFocus": [
+            "Silent loss of patch result state between CLI runs",
+            "Finding referencing a patch result that was never persisted",
+            "Dashboard joins that fail because patch_result rows are missing"
+          ]
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-010-F002",
+      "severity": "P3",
+      "title": "RealLive patchback does not yet emit PatchResultV02 with PatchFailureCategoryV02 mapping",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-reallive/src/patchback.rs",
+          "symbol": "PatchBackError"
+        },
+        {
+          "path": "packages/localization-bridge-schema/src/index.ts",
+          "line": 585,
+          "symbol": "PATCH_FAILURE_CATEGORIES_V02"
+        }
+      ],
+      "description": "KAIFUU-010 only specifies the v0.2 patch result schema and validators; it does not rewrite the RealLive patchback engine to emit them. PatchBackError today returns its own kaifuu.reallive.patchback_* codes and bubbles Result<Vec<u8>, PatchBackError> rather than producing a PatchResultV02 with the new six PatchFailureCategoryV02 entries, structured PatchFailureV02 attribution, and partialWrite accounting. The KAIFUU-010 plan §6 explicitly documents this as a future emitter mapping table. Until KAIFUU-011 (binary patcher) lands the emitter, no real adapter writes the new schema in production runs; only fixtures and itotori ingest tests exercise it. The worker flagged this as a P3 follow-up.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "PatchBackError defines kaifuu.reallive.patchback_* codes but no translation into PatchFailureCategoryV02; no producer of PatchResultV02 in crates/kaifuu-reallive.",
+          "location": {
+            "path": "crates/kaifuu-reallive/src/patchback.rs"
+          }
+        },
+        {
+          "kind": "manual",
+          "detail": "Plan §6 (KAIFUU-010 implementation plan) explicitly defers the emitter wiring to a follow-up node and only specifies the mapping table."
+        }
+      ],
+      "impact": "Without an emitter, the schema's no-silent-partial-success and full-attribution guarantees are not exercised in real patch runs; only the validator catches violations at the itotori boundary. If KAIFUU-011 lands and writes loose PatchBackError strings, the itotori boundary will reject them late, costing a round trip.",
+      "actionableAcceptanceCriteria": [
+        "KAIFUU-011 (or a dedicated follow-up) adds a public function on the RealLive crate that converts a sequence of PatchBackError into a PatchResultV02 with structured PatchFailureV02 entries and a deterministic outputHash rollup over touchedAssets.",
+        "The conversion explicitly maps every variant of PatchBackError to one of PATCH_FAILURE_CATEGORIES_V02 (with patch_write_failed and protected_span_violation as the two most common targets).",
+        "Conversion-table coverage test asserts that every PatchBackError variant has a non-source_incompatible category target."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-011",
+          "acceptanceCriteria": [
+            "RealLive emits PatchResultV02 via a public crate function that converts PatchBackError sequences into structured PatchFailureV02 entries with PATCH_FAILURE_CATEGORIES_V02 mapping.",
+            "Every PatchBackError variant has a documented target in PATCH_FAILURE_CATEGORIES_V02 (not source_incompatible by default).",
+            "RealLive emitter integration test exercises a successful run (passed + touchedAssets + outputHash rollup) and at least one failed run (patch_write_failed)."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "direnv exec /home/trevor/projects/itotori cargo test -p kaifuu-reallive"
+            }
+          ],
+          "auditFocus": [
+            "PatchBackError variants that silently fall through to a default category",
+            "RealLive emitting v0.1 strings instead of v0.2 failures",
+            "Missing structured attribution at the engine boundary"
+          ],
+          "notes": "KAIFUU-010 only delivers the schema and validator; KAIFUU-011 must consume PATCH_FAILURE_CATEGORIES_V02 and emit structured PatchFailureV02 entries with full attribution."
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-010-F003",
+      "severity": "P3",
+      "title": "Hello-game v0.2 patch-result fixture is hand-rolled deterministic, not generator-driven",
+      "category": "test",
+      "locations": [
+        {
+          "path": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
+          "symbol": "touchedAssets rollup"
+        },
+        {
+          "path": "fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json"
+        },
+        {
+          "path": "fixtures/public/hello-game.manifest.json"
+        }
+      ],
+      "description": "The hello-game v0.2 patch-result fixture was regenerated by hand to add adapterId, the five deduped touchedAssets entries (assetId, outputHash, byteSize), and the rollup outputHash. The deviation note from the worker correctly observes there is no generator binary or just-target that regenerates the fixture from the bridge bundle. The plan §10 risk about stable hashes across CI platforms is currently satisfied because the rollup function is deterministic (sorted-by-assetId, ASCII payload, SHA-256), but any future change to byteSize, asset content, or the bridge unit -> asset id mapping requires hand-editing the fixture and the cascaded alpha-vertical-proof + public manifest hashes. The worker explicitly flagged this as a follow-up.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "direnv exec /home/trevor/projects/itotori node -e 'const b=require(\"./fixtures/hello-game/expected/bridge-v0.2.json\"); ...' confirms 11 bridge units map to 5 distinct sourceAssetRef.assetId values, which is why touchedAssets has 5 entries (schema dedupes by assetId)."
+        },
+        {
+          "kind": "file",
+          "detail": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json carries 5 hand-tuned outputHash/byteSize entries and a top-level outputHash that equals the rollup; no generator script writes this file.",
+          "location": {
+            "path": "fixtures/hello-game/expected/patch-result-v0.2.fr-FR.json",
+            "line": 109
+          }
+        }
+      ],
+      "impact": "Without a generator, future bridge changes will require coordinated hand-edits across hello-game/expected/patch-result-v0.2.fr-FR.json, fixtures/alpha-vertical-proof/hello-game-alpha-proof-v0.2.fr-FR.json, and fixtures/public/hello-game.manifest.json. A miss will silently invalidate the alpha-vertical-proof public hash chain.",
+      "actionableAcceptanceCriteria": [
+        "A just-target (or scripts/regenerate-hello-game-patch-result-v0.2.mjs) rebuilds patch-result-v0.2.fr-FR.json from bridge-v0.2.json + a deterministic byte-size table, using computePatchResultOutputHashRollupV02.",
+        "The same script (or a follow-up step) cascades the resulting file hash through hello-game-alpha-proof-v0.2.fr-FR.json and hello-game.manifest.json.",
+        "CI gate (just fixtures-validate or a new just regenerate-hello-game --check) fails if the committed file does not match the regenerator output."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Hello-game v0.2 patch-result fixture regenerator",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori", "kaifuu", "shared"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-010"],
+          "summary": "Replace the hand-rolled deterministic hello-game v0.2 patch-result fixture with a regenerator and CI check that also cascades hashes through the alpha-vertical-proof and public manifest.",
+          "deliverables": [
+            "scripts/regenerate-hello-game-patch-result-v0.2.mjs (or a just-target) that writes the expected/patch-result-v0.2.fr-FR.json from bridge + byte-size table",
+            "Hash cascade through hello-game-alpha-proof-v0.2.fr-FR.json and hello-game.manifest.json",
+            "CI check that the committed fixture matches the regenerator output"
+          ],
+          "acceptanceCriteria": [
+            "Running the regenerator with no source change is a no-op (idempotent).",
+            "A bridge-v0.2.json edit that adds, removes, or rehashes an asset triggers a deterministic update to all three downstream files.",
+            "CI fails if any committed file drifts from the regenerator output."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "direnv exec /home/trevor/projects/itotori just fixtures-validate"
+            }
+          ],
+          "auditFocus": [
+            "Hand-edited fixture drift between expected, alpha-vertical-proof, and public manifest",
+            "Asset count changes that escape the dedup-by-assetId rule",
+            "Output hash rollup hand-calculations that go stale"
+          ]
+        }
+      }
+    }
+  ]
+}
