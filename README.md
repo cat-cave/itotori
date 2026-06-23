@@ -8,7 +8,7 @@ The suite has three first-class subprojects:
 - **Kaifuu**: deterministic game extraction, patching, verification, and `.kaifuu` delta packages.
 - **Utsushi**: validation runtimes for trace, replay, capture, screenshots, and runtime evidence.
 
-The current scaffold is a functional DB-backed fixture path. It uses a fixture game rather than a real engine, but exercises the intended end-to-end contract across all three projects.
+The current scaffold is a functional DB-backed path. The hello-world fixture is the deterministic bootstrap that exercises the intended end-to-end contract across all three projects without copyrighted bytes; the first real-engine vertical is `ALPHA-006` (Sukara's _Oshioki Sweetie HD Remaster + Sweets fandisc_ on RealLive, sourced from `/archive/vault/`).
 
 ## Quickstart
 
@@ -19,7 +19,7 @@ just ci
 just hello
 ```
 
-`just hello` remains the deterministic fixture path against Postgres-backed Itotori state:
+`just hello` remains the deterministic bootstrap path against Postgres-backed Itotori state; it proves the contract end-to-end on a synthetic fixture. The first real-engine alpha vertical is tracked under `ALPHA-006` and sourced from `/archive/vault/` per [docs/itotori-vault-source-adapter.md](docs/itotori-vault-source-adapter.md).
 
 1. Kaifuu extracts `fixtures/hello-game` into a `BridgeBundle`.
 2. Itotori imports the bridge, creates a fake `ja-JP -> en-US` draft, and exports `PatchExport`.
@@ -53,7 +53,8 @@ Vite+ and Vite Task are the high-level TypeScript/web workspace surface. Cargo r
 ## Status
 
 This repository is scaffolded for DAG-driven development from the DB-backed hello
-world toward alpha readiness for the first real localization project.
+world toward `ALPHA-006`, the named first real-engine vertical (Sukara's
+_Oshioki Sweetie HD Remaster + Sweets fandisc_ on RealLive).
 
 The canonical roadmap is tracked as machine-readable data in `roadmap/spec-dag.json`.
 Use `just roadmap-validate`, `just roadmap-ready`, and `just roadmap-pop` to inspect

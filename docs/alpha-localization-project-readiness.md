@@ -56,9 +56,11 @@ The product loop is:
 
 The first real-engine end-to-end vertical is Sukara's _Oshioki Sweetie HD
 Remaster + Sweets fandisc_ (RealLive engine), sourced from the vault-curation
-catalog at `/archive/vault/`. That vertical is what proves the suite on real
-owned content: detect, extract, decrypt, decompile, patch, verify, delta-apply,
-and Utsushi runtime evidence through a native RealLive port.
+catalog at `/archive/vault/` via the read-only contract in
+[itotori-vault-source-adapter.md](itotori-vault-source-adapter.md). That
+vertical is what proves the suite on real owned content: detect, extract,
+decrypt, decompile, patch, verify, delta-apply, and Utsushi runtime evidence
+through a native RealLive port.
 
 Synthetic encrypted-XP3 work continues as CI scaffolding under `KAIFUU-171` and
 remains useful for redaction tests, schema validation, helper-unavailable

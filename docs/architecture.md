@@ -2,7 +2,10 @@
 
 Itotori is a monorepo because the shared contracts are the hard part. The three
 subprojects remain independent at runtime, but they evolve against the same
-catalog, bridge, patch, delta, readiness, and runtime evidence schemas.
+catalog, bridge, patch, delta, readiness, and runtime evidence schemas. Itotori
+reads owned-game bytes from `/archive/vault/` — managed by the sibling
+vault-curation project — strictly read-only through the contract in
+[itotori-vault-source-adapter.md](itotori-vault-source-adapter.md).
 
 ## Boundaries
 
@@ -35,11 +38,13 @@ Vite+ and Vite Task provide the TypeScript/web workspace command surface and cac
 
 The first fixture loop intentionally avoids copyrighted game files. It proves the contract between the projects without claiming real-engine support or translation quality.
 
-The Hello World workflow remains the required integration guardrail until the
-alpha public fixture vertical command exists. After `ALPHA-007`, `ALPHA-009`
-promotes that command into an alpha proof CI workflow and retires the literal
-hello-world gate. The replacement proof must validate real cross-project
-artifact linkage instead of only a placeholder success line. Once that
-replacement is green, the old Hello World workflow must either disappear or
-become the same alpha proof under a compatibility alias; it should not remain as
-a second, weaker source of truth.
+The Hello World workflow remains the deterministic integration guardrail on the
+synthetic fixture path. The first real-engine vertical is `ALPHA-006` (Sukara's
+_Oshioki Sweetie HD Remaster + Sweets fandisc_ on RealLive, sourced from
+`/archive/vault/` per the vault-source adapter contract). `ALPHA-007` and
+`ALPHA-009` are the workflow handoff steps that promote the alpha-proof command
+into CI and retire the literal hello-world gate: the replacement proof must
+validate real cross-project artifact linkage instead of only a placeholder
+success line. Once that replacement is green, the old Hello World workflow must
+either disappear or become the same alpha proof under a compatibility alias; it
+should not remain as a second, weaker source of truth.

@@ -327,6 +327,16 @@ as a binary at runtime.
 
 ## Remote Windows And Wine Helper Protocol Sketch
 
+This section describes **aspirational helper protocol design** for a future
+capability tracked at continuous-tier under `KAIFUU-064`, `KAIFUU-065`,
+`KAIFUU-090`, and `KAIFUU-129`. It is _not_ a current contract: no adapter
+worker should depend on this protocol being available, and the remote/Wine
+helper transports are no longer alpha-required. Per the per-game
+evidence-first rule above, any dynamic-key-discovery helper infrastructure is
+added only when a specific claimed game proves the in-process static-Rust path
+is insufficient. The sketch is kept here as reference for when that work
+lands.
+
 Remote Windows and Wine helpers are optional helper classes for local,
 owned-corpus workflows. They are not part of a pure adapter and must be disabled
 or absent without breaking public CI.

@@ -153,10 +153,9 @@ Seeded-defect reports must separate:
 - category accuracy;
 - quality-severity accuracy;
 - root-cause accuracy;
-- unscorable finding rate.
-
-No seeded-defect result may be counted if the finding lacks evidence, category,
-quality severity, root cause, or adjudication state.
+- unscorable finding rate: findings that lack evidence, category, quality
+  severity, root cause, or adjudication state are counted here only and do not
+  contribute to any of the metrics above.
 
 ## Human Evaluation Rubric
 

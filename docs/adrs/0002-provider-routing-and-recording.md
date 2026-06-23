@@ -148,10 +148,12 @@ Raw prompt or completion text may be stored only when all of these are true:
   be unsafe to publish.
 - The artifact records that raw text capture was enabled.
 
-Free or logging providers must be treated as public or semi-public execution
-surfaces. Do not send private corpora, customer data, secrets, unreleased source
-material, or confidential prompts to providers whose logging, retention,
-training, or human-review policy is unknown or incompatible with the data.
+Providers that may retain or log prompts and responses for training,
+analytics, or human review must be treated as semi-public execution surfaces
+and kept away from private data. Do not send private corpora, customer data,
+secrets, unreleased source material, or confidential prompts to providers
+whose logging, retention, training, or human-review policy is unknown or
+incompatible with the data.
 
 OpenRouter has account and workspace prompt/completion handling settings in
 addition to upstream provider routing. Input & Output Logging can store prompts

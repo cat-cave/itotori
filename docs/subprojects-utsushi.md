@@ -100,14 +100,24 @@ repeat the run deterministically enough that a failed validation is debuggable.
 ## Rust Engine Port Track
 
 The practical alpha path starts with probes, launch/capture, and instrumentation
-where those methods can produce useful evidence quickly. The long-term Utsushi
-track still includes full or partial Rust ports of common engines because they
-unlock a stronger product shape: cross-platform play, browser/WASM review,
-deterministic jump-to-moment, snapshots, recordings, agent-readable state, and
-patch validation without depending on a brittle host runtime.
+where those methods can produce useful evidence quickly. The Utsushi track also
+includes full or partial Rust ports of common engines because they unlock a
+stronger product shape: cross-platform play, browser/WASM review, deterministic
+jump-to-moment, snapshots, recordings, agent-readable state, and patch validation
+without depending on a brittle host runtime.
 
-This is deliberately P3 continuous work, but it is not speculative
-decision-making. The roadmap contains executable Rust-port specs:
+The substrate slices (`UTSUSHI-020` through `UTSUSHI-030`, plus `UTSUSHI-056`,
+`UTSUSHI-103`, and `UTSUSHI-120`) are alpha-tier: they are the load-bearing
+render-fidelity and conformance track that every claimed engine depends on. The
+per-claimed-engine port slices (`UTSUSHI-031` through `UTSUSHI-039`, covering RPG
+Maker MV/MZ, SiglusEngine, KiriKiri/KAG, and plain XP3) are likewise alpha-tier
+and co-equal product to Kaifuu adapters, not nice-to-have polish. Engine port
+work for unclaimed engines — Ren'Py, Wolf RPG Editor, BGI/Ethornell,
+TyranoScript, RGSS3/VX Ace, Unity, and encrypted krkrz/TJS-heavy KiriKiri —
+remains continuous research-tier work and stays in the roadmap as future
+verticals rather than being deleted.
+
+The roadmap contains executable Rust-port specs:
 
 - `UTSUSHI-020` through `UTSUSHI-025` build the shared substrate in reviewable
   slices: VFS and asset packages, deterministic input and clocks, headless

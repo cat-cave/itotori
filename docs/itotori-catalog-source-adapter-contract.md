@@ -1,5 +1,10 @@
 # Itotori Catalog Source Adapter Import Contract
 
+This contract governs _metadata-import_ adapters that write catalog facts from
+external sources (DLsite, VNDB, EGS, etc.) into the itotori catalog. For
+_binary game data_ ingest from the local vault-curation store, see
+[itotori-vault-source-adapter.md](itotori-vault-source-adapter.md).
+
 CATALOG-065 defines the idempotent fact-write contract for catalog crawler source adapters.
 
 An adapter can be marked `alpha_ready` or `production_ready` only when it declares
