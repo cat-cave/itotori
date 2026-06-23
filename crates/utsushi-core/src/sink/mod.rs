@@ -26,14 +26,19 @@ use crate::EvidenceTier;
 
 pub mod audio;
 pub mod errors;
+pub mod frame;
+pub mod set;
 pub mod text;
 
 pub use audio::{AudioEvent, AudioEventKind, AudioEventSink};
 pub use errors::{SinkError, SinkResult, codes};
+pub use frame::{FrameArtifact, FrameArtifactSink};
+pub use set::{SinkCapabilitySummary, SinkSet};
 pub use text::{TextLine, TextSurfaceSink};
 
-/// Discriminant for the three sink contracts. Used by [`SinkError`] so the
-/// sink under discussion is always a typed enum, never a free-form string.
+/// Discriminant for the three sink contracts. Used by [`SinkError`] and
+/// [`SinkCapabilitySummary`] so the sink under discussion is always a typed
+/// enum, never a free-form string.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SinkKind {

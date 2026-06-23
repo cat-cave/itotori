@@ -36,8 +36,8 @@ pub mod redaction {
 }
 
 pub use sink::{
-    AudioEvent, AudioEventKind, AudioEventSink, SinkCapability, SinkError, SinkKind, SinkResult,
-    TextLine, TextSurfaceSink,
+    AudioEvent, AudioEventKind, AudioEventSink, FrameArtifact, FrameArtifactSink, SinkCapability,
+    SinkCapabilitySummary, SinkError, SinkKind, SinkResult, SinkSet, TextLine, TextSurfaceSink,
 };
 pub use vfs::{
     AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
@@ -78,6 +78,12 @@ pub struct RuntimeRequest<'a> {
     /// adapters do not read it. The signature decision for
     /// `RuntimeAdapter` is deferred to UTSUSHI-103.
     pub vfs: Option<Arc<dyn RuntimeVfs>>,
+    /// Optional, additive handoff for adapters that emit into the
+    /// UTSUSHI-022 headless sink contracts. Adapters that do not consume
+    /// sinks ignore the field; the existing `RuntimeRequest::new` call
+    /// sites stay valid because the field defaults to `None`. The signature
+    /// decision for `RuntimeAdapter` is deferred to UTSUSHI-103.
+    pub sinks: Option<SinkSet>,
 }
 
 impl std::fmt::Debug for RuntimeRequest<'_> {
@@ -87,6 +93,14 @@ impl std::fmt::Debug for RuntimeRequest<'_> {
             .field("input_root", &self.input_root)
             .field("artifact_root", &self.artifact_root)
             .field("vfs", &self.vfs.as_ref().map(|_| "Arc<dyn RuntimeVfs>"))
+            .field(
+                "sinks",
+                &if self.sinks.is_some() {
+                    "<present>"
+                } else {
+                    "<absent>"
+                },
+            )
             .finish()
     }
 }
@@ -97,6 +111,7 @@ impl<'a> RuntimeRequest<'a> {
             input_root,
             artifact_root: None,
             vfs: None,
+            sinks: None,
         }
     }
 
@@ -107,6 +122,11 @@ impl<'a> RuntimeRequest<'a> {
 
     pub fn with_vfs(mut self, vfs: Arc<dyn RuntimeVfs>) -> Self {
         self.vfs = Some(vfs);
+        self
+    }
+
+    pub fn with_sinks(mut self, sinks: SinkSet) -> Self {
+        self.sinks = Some(sinks);
         self
     }
 }
