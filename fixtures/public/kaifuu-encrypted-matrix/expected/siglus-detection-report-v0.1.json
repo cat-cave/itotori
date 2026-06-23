@@ -229,6 +229,143 @@
       ]
     },
     {
+      "adapterId": "kaifuu.reallive",
+      "detected": false,
+      "evidence": [
+        {
+          "path": "*.g00",
+          "kind": "[REDACTED:kaifuu.secret_redacted]",
+          "status": "missing",
+          "detail": "RealLive .g00 image asset count: 0"
+        },
+        {
+          "path": "*.ovk|*.koe|*.nwk",
+          "kind": "reallive_voice_archive_count",
+          "status": "missing",
+          "detail": "RealLive voice archive extension count: 0"
+        },
+        {
+          "path": "*.pdt",
+          "kind": "[REDACTED:kaifuu.secret_redacted]",
+          "status": "missing",
+          "detail": "AVG32 .PDT image asset count (informational): 0"
+        },
+        {
+          "path": "Gameexe.dat",
+          "kind": "siglus_cross_check_gameexe_dat",
+          "status": "invalid",
+          "detail": "Gameexe.dat co-present (Siglus marker)"
+        },
+        {
+          "path": "Gameexe.ini",
+          "kind": "reallive_gameexe_ini_keys",
+          "status": "missing",
+          "detail": "Gameexe.ini missing"
+        },
+        {
+          "path": "SEEN.GAN",
+          "kind": "reallive_seen_gan_marker",
+          "status": "missing",
+          "detail": "SEEN.GAN marker is missing"
+        },
+        {
+          "path": "SEEN.TXT",
+          "kind": "reallive_seen_txt_envelope",
+          "status": "missing",
+          "detail": "SEEN.TXT envelope is missing"
+        },
+        {
+          "path": "Scene.pck",
+          "kind": "siglus_cross_check_scene_pck",
+          "status": "invalid",
+          "detail": "Scene.pck co-present (Siglus marker)"
+        }
+      ],
+      "requirements": [],
+      "capabilities": [
+        {
+          "capability": "asset_inventory",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "asset_listing",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "asset_text_patching",
+          "status": "unsupported",
+          "limitation": "no RealLive text surfaces are patched by this detector profile"
+        },
+        {
+          "capability": "codec_access",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "container_access",
+          "status": "unsupported",
+          "limitation": "SEEN.TXT archive parsing is outside the detector profile"
+        },
+        {
+          "capability": "crypto_access",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "delta_patching",
+          "status": "unsupported",
+          "limitation": ".kaifuu delta packages do not apply to detector-only RealLive profiles"
+        },
+        {
+          "capability": "detection",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "encrypted_input",
+          "status": "unsupported",
+          "limitation": "encrypted payloads (if any) are identified only and are never decrypted by this profile"
+        },
+        {
+          "capability": "extraction",
+          "status": "unsupported",
+          "limitation": "KAIFUU-172 is a RealLive detector/profile fixture only"
+        },
+        {
+          "capability": "key_profile",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "non_text_surface_extraction",
+          "status": "unsupported",
+          "limitation": "[REDACTED:kaifuu.secret_redacted]"
+        },
+        {
+          "capability": "patch_back",
+          "status": "unsupported",
+          "limitation": "RealLive patch-back/repack support is outside the detector profile"
+        },
+        {
+          "capability": "patching",
+          "status": "unsupported",
+          "limitation": "KAIFUU-172 does not patch or rebuild RealLive assets"
+        },
+        {
+          "capability": "profile_generation",
+          "status": "supported",
+          "limitation": null
+        },
+        {
+          "capability": "runtime_vm",
+          "status": "unsupported",
+          "limitation": "runtime support belongs to UTSUSHI-146, not this detector fixture"
+        }
+      ]
+    },
+    {
       "adapterId": "kaifuu.siglus",
       "detected": true,
       "engineFamily": "siglus",
@@ -530,6 +667,67 @@
           }
         ],
         "supportBoundary": "Kaifuu detects Siglus package/key-requirement signals only; extraction, secondary-key discovery, and protected executable handling remain helper-gated."
+      },
+      {
+        "rowId": "reallive-seen-txt",
+        "engineFamily": "reallive",
+        "detected": false,
+        "detectedVariant": "not-reallive",
+        "signals": [],
+        "evidence": [
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.g00",
+            "status": "missing",
+            "count": 0,
+            "detail": "RealLive .g00 image asset count"
+          },
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.ovk|*.koe|*.nwk",
+            "status": "missing",
+            "count": 0,
+            "detail": "RealLive voice archive extension count"
+          },
+          {
+            "evidenceType": "file_extension",
+            "pattern": "*.pdt",
+            "status": "missing",
+            "count": 0,
+            "detail": "AVG32 .PDT image asset count (corroborates AVG32 lineage when present alongside SEEN.TXT)"
+          },
+          {
+            "evidenceType": "file_name",
+            "pattern": "Gameexe.ini",
+            "status": "missing",
+            "count": 0,
+            "detail": "RealLive Gameexe.ini configuration manifest marker count"
+          },
+          {
+            "evidenceType": "file_name",
+            "pattern": "SEEN.GAN",
+            "status": "missing",
+            "count": 0,
+            "detail": "RealLive SEEN.GAN animation archive marker count"
+          },
+          {
+            "evidenceType": "file_name",
+            "pattern": "SEEN.TXT",
+            "status": "missing",
+            "count": 0,
+            "detail": "RealLive SEEN.TXT scene archive marker count"
+          }
+        ],
+        "requirements": [],
+        "diagnostics": [],
+        "capabilities": [
+          {
+            "capability": "detection",
+            "status": "supported",
+            "limitation": null
+          }
+        ],
+        "supportBoundary": "Kaifuu detects RealLive SEEN.TXT/Gameexe.ini/Scene container signals only; extraction, Scene/SEEN decompilation, voice-archive handling, and patch-back remain outside this matrix row."
       },
       {
         "rowId": "rpg-maker-mv-mz-encrypted-assets",

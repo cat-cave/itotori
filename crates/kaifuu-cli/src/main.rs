@@ -4004,7 +4004,7 @@ wait
             capabilities_path.to_str().unwrap(),
         ]);
         let capabilities: Vec<AdapterCapabilities> = read_json(&capabilities_path).unwrap();
-        assert_eq!(capabilities.len(), 3);
+        assert_eq!(capabilities.len(), 4);
         let fixture_capabilities = capabilities
             .iter()
             .find(|capabilities| {
@@ -5250,7 +5250,7 @@ wait
 
         let detection_report: DetectionReport = read_json(&detect_path).unwrap();
         assert_eq!(detection_report.status, DetectionReportStatus::Unknown);
-        assert_eq!(detection_report.detections.len(), 3);
+        assert_eq!(detection_report.detections.len(), 4);
         let fixture_detection = detection_report
             .detections
             .iter()
@@ -5271,6 +5271,14 @@ wait
         assert!(xp3_detection.evidence.iter().any(|evidence| {
             evidence.path == "data.xp3" && evidence.status == EvidenceStatus::Missing
         }));
+        let reallive_detection = detection_report
+            .detections
+            .iter()
+            .find(|detection| {
+                detection.adapter_id == kaifuu_engine_fixture::REALLIVE_DETECTOR_ADAPTER_ID
+            })
+            .unwrap();
+        assert!(!reallive_detection.detected);
         assert!(
             detection_report
                 .detections

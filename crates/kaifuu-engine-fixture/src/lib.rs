@@ -1,3 +1,23 @@
+//! Kaifuu engine fixture / detector adapters.
+//!
+//! Clean-room provenance for the RealLive detector (KAIFUU-172):
+//! - All RealLive format observations are derived from publicly archived
+//!   format documentation (Haeleth's RLDEV site,
+//!   `https://dev.haeleth.net/rldev.shtml`) and from publicly observable file
+//!   shape of owned RealLive titles. No source expression is copied from
+//!   RLDEV or rlvm.
+//! - rlvm (`https://github.com/eglaysher/rlvm`) is a research anchor only.
+//!   Its license is GPLv3+ and is incompatible with itotori's distribution
+//!   posture if linked or derived. This crate does NOT depend on rlvm, does
+//!   NOT include rlvm headers, does NOT copy rlvm's structure layouts, and
+//!   does NOT mechanically translate rlvm code into Rust. If a hypothesis
+//!   about RealLive's format was confirmed by reading rlvm, the hypothesis
+//!   is re-derived and re-tested against publicly observable bytes before
+//!   being encoded here.
+//! - The RealLive detector is identify-only. Extraction, decompilation, and
+//!   patching live in KAIFUU-173/KAIFUU-174 (Kaifuu) and UTSUSHI-146
+//!   (runtime port). All of those nodes inherit the same clean-room posture.
+
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
@@ -29,6 +49,7 @@ use serde_json::{Value, json};
 pub const FIXTURE_ADAPTER_ID: &str = "kaifuu.fixture";
 pub const XP3_DETECTOR_ADAPTER_ID: &str = "kaifuu.kirikiri_xp3";
 pub const SIGLUS_DETECTOR_ADAPTER_ID: &str = "kaifuu.siglus";
+pub const REALLIVE_DETECTOR_ADAPTER_ID: &str = "kaifuu.reallive";
 const XP3_ARCHIVE_PATH: &str = "data.xp3";
 const XP3_MAGIC: &[u8] = b"XP3";
 const XP3_ENCRYPTED_MARKER: &str = "XP3-CRYPT";
@@ -45,6 +66,45 @@ const SIGLUS_PROFILE_ID: &str = "019ed000-0000-7000-8000-000000091001";
 const SIGLUS_GAME_ID: &str = "kaifuu-siglus-synthetic-scene-pck";
 const SIGLUS_SUPPORT_BOUNDARY: &str = "Siglus detector profile identifies synthetic Scene.pck/Gameexe.dat fixtures for identify and inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed.";
 
+// RealLive detector constants (KAIFUU-172). See the module-level RealLive
+// provenance block above `RealLiveProfileDetectorAdapter` for clean-room rules.
+const REALLIVE_SEEN_TXT_PATH: &str = "SEEN.TXT";
+const REALLIVE_SEEN_GAN_PATH: &str = "SEEN.GAN";
+const REALLIVE_GAMEEXE_INI_PATH: &str = "Gameexe.ini";
+// Synthetic fixture short-circuit signatures. Public CI uses these to assert
+// detector wiring without needing observed real-game SEEN.TXT bytes. The
+// generic envelope check (see `reallive_seen_txt_envelope_ok`) is what
+// ALPHA-006 exercises against real titles.
+const REALLIVE_SEEN_TXT_MAGIC: &[u8] = b"SEEN\x01";
+const REALLIVE_SEEN_GAN_MAGIC: &[u8] = b"GAN\x01";
+const REALLIVE_GAMEEXE_INI_MAGIC: &[u8] = b"# RealLive Gameexe.ini fixture";
+const REALLIVE_PROFILE_ID: &str = "019ed000-0000-7000-8000-000000172001";
+const REALLIVE_GAME_ID: &str = "kaifuu-reallive-synthetic-scene-seen";
+const REALLIVE_SUPPORT_BOUNDARY: &str = "RealLive detector profile identifies SEEN.TXT/Gameexe.ini/SEEN.GAN fixtures for identify and (in a single later slice) profile/asset-inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed.";
+// Conservative upper bound on the synthetic SEEN.TXT scene-count read by the
+// generic envelope check. Real RealLive titles ship far fewer scenes; this
+// bound exists only to reject pathological "first 4 bytes happen to be a huge
+// integer" cases on hostile inputs and is not a structural claim about the
+// format.
+const REALLIVE_SEEN_TXT_MAX_SCENE_COUNT: u32 = 1 << 17;
+// RealLive Gameexe.ini ASCII prefixes recognized as positive engine evidence.
+// All are documented on Haeleth's RLDEV site
+// (https://dev.haeleth.net/rldev.shtml) and observable in any RealLive title's
+// Gameexe.ini. None are copied from rlvm source.
+const REALLIVE_GAMEEXE_INI_KEY_PREFIXES: &[&str] = &[
+    "#GAMEEXE_VERSION",
+    "#REGNAME",
+    "#G00BUF",
+    "#G00CACHE",
+    "#G00",
+    "#KOEPAC",
+    "#KOEDIR",
+    "#KOE",
+    "#SEEN_PATH",
+    "#SEEN.TXT",
+    "#SEEN",
+];
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct FixtureAdapter;
 
@@ -53,6 +113,28 @@ pub struct Xp3ProfileDetectorAdapter;
 
 #[derive(Debug, Default, Clone, Copy)]
 pub struct SiglusProfileDetectorAdapter;
+
+// RealLive engine detector adapter (KAIFUU-172).
+//
+// Clean-room provenance:
+// - All format observations encoded here are derived from publicly archived
+//   format documentation (Haeleth's RLDEV site,
+//   https://dev.haeleth.net/rldev.shtml) and from publicly observable file
+//   shape of owned RealLive titles. No source expression is copied from
+//   RLDEV or rlvm.
+// - rlvm (https://github.com/eglaysher/rlvm) is a research anchor only. Its
+//   license is GPLv3+ and is incompatible with itotori's distribution posture
+//   if linked or derived. This crate does NOT depend on rlvm, does NOT
+//   include rlvm headers, does NOT copy rlvm's structure layouts, and does
+//   NOT mechanically translate rlvm code into Rust. If a hypothesis about
+//   RealLive's format was confirmed by reading rlvm, the hypothesis is
+//   re-derived and re-tested against publicly observable bytes before being
+//   encoded here.
+// - This detector is identify-only. Extraction, decompilation, and patching
+//   live in KAIFUU-173/KAIFUU-174 (Kaifuu) and UTSUSHI-146 (runtime port).
+//   All of those nodes inherit the same clean-room posture.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct RealLiveProfileDetectorAdapter;
 
 impl FixtureAdapter {
     fn source_path(game_dir: &Path) -> std::path::PathBuf {
@@ -3146,6 +3228,1135 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
     }
 }
 
+// =====================================================================
+// RealLive detector (KAIFUU-172).
+//
+// FSM lives in `RealLiveProfileDetectorAdapter::resolve_variant`. The
+// algorithm is a small deterministic state machine over presence/absence
+// and signature-validity counts: no confidence floats, no thresholds beyond
+// what the plan specifies. See KAIFUU-172 §3 for the decision table.
+// =====================================================================
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RealLiveFixtureVariant {
+    CompleteSyntheticTriple,
+    PositiveLiveLayout,
+    AmbiguousSiglusOverlap,
+    UnsupportedAvg32Lineage,
+    UnknownEngineVariant,
+    NotRealLive,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct GameexeIniKeyHits {
+    gameexe_version: bool,
+    regname: bool,
+    g00_key: bool,
+    koe_key: bool,
+    seen_key: bool,
+}
+
+impl GameexeIniKeyHits {
+    fn any(self) -> bool {
+        self.gameexe_version || self.regname || self.g00_key || self.koe_key || self.seen_key
+    }
+}
+
+#[derive(Debug, Clone)]
+struct RealLiveFixtureState {
+    seen_txt_exists: bool,
+    seen_txt_envelope_ok: bool,
+    seen_txt_synthetic_magic: bool,
+    seen_gan_exists: bool,
+    seen_gan_synthetic_magic: bool,
+    gameexe_ini_exists: bool,
+    gameexe_ini_synthetic_magic: bool,
+    gameexe_ini_keys: GameexeIniKeyHits,
+    g00_count: u64,
+    voice_archive_count: u64,
+    siglus_scene_pck_present: bool,
+    siglus_gameexe_dat_present: bool,
+    avg32_pdt_count: u64,
+    seen_txt_hash: Option<String>,
+    seen_gan_hash: Option<String>,
+    gameexe_ini_hash: Option<String>,
+    variant: RealLiveFixtureVariant,
+}
+
+impl RealLiveProfileDetectorAdapter {
+    fn seen_txt_path(game_dir: &Path) -> std::path::PathBuf {
+        case_insensitive_find(game_dir, REALLIVE_SEEN_TXT_PATH)
+            .unwrap_or_else(|| game_dir.join(REALLIVE_SEEN_TXT_PATH))
+    }
+
+    fn seen_gan_path(game_dir: &Path) -> std::path::PathBuf {
+        case_insensitive_find(game_dir, REALLIVE_SEEN_GAN_PATH)
+            .unwrap_or_else(|| game_dir.join(REALLIVE_SEEN_GAN_PATH))
+    }
+
+    fn gameexe_ini_path(game_dir: &Path) -> std::path::PathBuf {
+        case_insensitive_find(game_dir, REALLIVE_GAMEEXE_INI_PATH)
+            .unwrap_or_else(|| game_dir.join(REALLIVE_GAMEEXE_INI_PATH))
+    }
+
+    fn inspect(game_dir: &Path) -> RealLiveFixtureState {
+        let seen_txt_path = Self::seen_txt_path(game_dir);
+        let seen_gan_path = Self::seen_gan_path(game_dir);
+        let gameexe_ini_path = Self::gameexe_ini_path(game_dir);
+        let seen_txt_exists = seen_txt_path.is_file();
+        let seen_gan_exists = seen_gan_path.is_file();
+        let gameexe_ini_exists = gameexe_ini_path.is_file();
+        let seen_txt_synthetic_magic = file_starts_with(&seen_txt_path, REALLIVE_SEEN_TXT_MAGIC);
+        let seen_gan_synthetic_magic = file_starts_with(&seen_gan_path, REALLIVE_SEEN_GAN_MAGIC);
+        let gameexe_ini_synthetic_magic =
+            file_starts_with(&gameexe_ini_path, REALLIVE_GAMEEXE_INI_MAGIC);
+        let seen_txt_envelope_ok = seen_txt_synthetic_magic
+            || reallive_seen_txt_envelope_ok(&seen_txt_path);
+        let gameexe_ini_keys = if gameexe_ini_exists {
+            reallive_gameexe_ini_key_hits(&gameexe_ini_path)
+        } else {
+            GameexeIniKeyHits::default()
+        };
+        let (g00_count, voice_archive_count, avg32_pdt_count) =
+            reallive_extension_counts(game_dir);
+        let siglus_scene_pck_present =
+            case_insensitive_find(game_dir, "Scene.pck").is_some();
+        let siglus_gameexe_dat_present =
+            case_insensitive_find(game_dir, "Gameexe.dat").is_some();
+        let variant = Self::resolve_variant(
+            seen_txt_exists,
+            seen_txt_envelope_ok,
+            seen_txt_synthetic_magic,
+            seen_gan_exists,
+            gameexe_ini_exists,
+            gameexe_ini_synthetic_magic,
+            gameexe_ini_keys,
+            g00_count,
+            voice_archive_count,
+            siglus_scene_pck_present,
+            siglus_gameexe_dat_present,
+            avg32_pdt_count,
+        );
+        RealLiveFixtureState {
+            seen_txt_exists,
+            seen_txt_envelope_ok,
+            seen_txt_synthetic_magic,
+            seen_gan_exists,
+            seen_gan_synthetic_magic,
+            gameexe_ini_exists,
+            gameexe_ini_synthetic_magic,
+            gameexe_ini_keys,
+            g00_count,
+            voice_archive_count,
+            siglus_scene_pck_present,
+            siglus_gameexe_dat_present,
+            avg32_pdt_count,
+            seen_txt_hash: seen_txt_exists
+                .then(|| sha256_file_ref(&seen_txt_path).ok())
+                .flatten(),
+            seen_gan_hash: seen_gan_exists
+                .then(|| sha256_file_ref(&seen_gan_path).ok())
+                .flatten(),
+            gameexe_ini_hash: gameexe_ini_exists
+                .then(|| sha256_file_ref(&gameexe_ini_path).ok())
+                .flatten(),
+            variant,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn resolve_variant(
+        seen_txt_exists: bool,
+        seen_txt_envelope_ok: bool,
+        seen_txt_synthetic_magic: bool,
+        seen_gan_exists: bool,
+        gameexe_ini_exists: bool,
+        gameexe_ini_synthetic_magic: bool,
+        gameexe_ini_keys: GameexeIniKeyHits,
+        g00_count: u64,
+        voice_archive_count: u64,
+        siglus_scene_pck_present: bool,
+        siglus_gameexe_dat_present: bool,
+        avg32_pdt_count: u64,
+    ) -> RealLiveFixtureVariant {
+        let any_reallive_marker = seen_txt_exists
+            || seen_gan_exists
+            || gameexe_ini_exists
+            || g00_count > 0
+            || voice_archive_count > 0;
+        if !any_reallive_marker {
+            return RealLiveFixtureVariant::NotRealLive;
+        }
+        let siglus_overlap = siglus_scene_pck_present || siglus_gameexe_dat_present;
+        if siglus_overlap {
+            return RealLiveFixtureVariant::AmbiguousSiglusOverlap;
+        }
+        // Public-CI synthetic short-circuit: both magic bytes present.
+        if seen_txt_synthetic_magic && gameexe_ini_synthetic_magic {
+            return RealLiveFixtureVariant::CompleteSyntheticTriple;
+        }
+        // AVG32 lineage: SEEN.TXT envelope present, .PDT present, no
+        // RealLive-specific Gameexe.ini keys.
+        if seen_txt_exists
+            && seen_txt_envelope_ok
+            && avg32_pdt_count > 0
+            && !gameexe_ini_keys.any()
+        {
+            return RealLiveFixtureVariant::UnsupportedAvg32Lineage;
+        }
+        // Positive live layout: SEEN.TXT envelope OK + Gameexe.ini with
+        // RealLive-specific key + no Siglus markers and no AVG32 PDT.
+        if seen_txt_exists
+            && seen_txt_envelope_ok
+            && gameexe_ini_exists
+            && gameexe_ini_keys.any()
+            && avg32_pdt_count == 0
+        {
+            return RealLiveFixtureVariant::PositiveLiveLayout;
+        }
+        // Otherwise: a name-shaped RealLive layout (SEEN.TXT, Gameexe.ini,
+        // SEEN.GAN, or .g00/.ovk/.koe/.nwk present) without sufficient
+        // evidence to identify positively. Mark unknown so the operator
+        // sees the diagnostic loudly instead of silently passing.
+        let _ = seen_gan_exists; // already accounted for in any_reallive_marker
+        RealLiveFixtureVariant::UnknownEngineVariant
+    }
+
+    fn detected_variant(variant: RealLiveFixtureVariant) -> &'static str {
+        match variant {
+            RealLiveFixtureVariant::CompleteSyntheticTriple => "reallive-synthetic-triple",
+            RealLiveFixtureVariant::PositiveLiveLayout => "reallive-positive-live-layout",
+            RealLiveFixtureVariant::AmbiguousSiglusOverlap => "ambiguous-reallive-siglus-overlap",
+            RealLiveFixtureVariant::UnsupportedAvg32Lineage => "avg32-lineage-seen-txt",
+            RealLiveFixtureVariant::UnknownEngineVariant => "unknown-reallive-named-files",
+            RealLiveFixtureVariant::NotRealLive => "not-reallive",
+        }
+    }
+
+    fn is_detected(variant: RealLiveFixtureVariant) -> bool {
+        matches!(
+            variant,
+            RealLiveFixtureVariant::CompleteSyntheticTriple
+                | RealLiveFixtureVariant::PositiveLiveLayout
+        )
+    }
+
+    fn can_inventory(variant: RealLiveFixtureVariant) -> bool {
+        Self::is_detected(variant)
+    }
+
+    fn profile_from_state(&self, state: RealLiveFixtureState) -> KaifuuResult<GameProfile> {
+        if !Self::is_detected(state.variant) {
+            return Err(Self::diagnostic_error(Self::invalid_input_failure(
+                state.variant,
+            )));
+        }
+        let mut profile = GameProfile {
+            schema_version: "0.1.0".to_string(),
+            profile_id: REALLIVE_PROFILE_ID.to_string(),
+            game_id: REALLIVE_GAME_ID.to_string(),
+            title: "RealLive fixture".to_string(),
+            source_locale: "ja-JP".to_string(),
+            engine: EngineProfile {
+                adapter_id: REALLIVE_DETECTOR_ADAPTER_ID.to_string(),
+                engine_family: "reallive".to_string(),
+                engine_version: None,
+                detected_variant: Self::detected_variant(state.variant).to_string(),
+            },
+            source_fingerprint: Some(SourceFingerprint {
+                game_root_hash: None,
+                engine_evidence: state.engine_evidence(),
+            }),
+            key_requirements: vec![],
+            archive_parameters: vec![ArchiveParameter {
+                parameter_id: "scene-archive".to_string(),
+                name: "sceneArchive".to_string(),
+                kind: ArchiveParameterKind::ArchiveFormat,
+                value: REALLIVE_SEEN_TXT_PATH.to_string(),
+                source: Some(ArchiveParameterSource::Detected),
+            }],
+            helper_evidence: None,
+            assets: state.asset_profiles(),
+            layered_access: Some(state.layered_access_profile()),
+            capabilities: self.capabilities().reports,
+            requirements: state.profile_requirements(),
+            metadata: state.metadata(),
+        };
+        profile.normalize();
+        Ok(profile)
+    }
+
+    fn inventory_from_state(
+        &self,
+        state: RealLiveFixtureState,
+    ) -> KaifuuResult<AssetInventoryManifest> {
+        if !Self::can_inventory(state.variant) {
+            return Err(Self::diagnostic_error(Self::invalid_input_failure(
+                state.variant,
+            )));
+        }
+        let mut manifest = AssetInventoryManifest {
+            schema_version: ASSET_INVENTORY_SCHEMA_VERSION.to_string(),
+            manifest_id: deterministic_id("reallive-inventory", 172),
+            adapter_id: REALLIVE_DETECTOR_ADAPTER_ID.to_string(),
+            source_locale: "ja-JP".to_string(),
+            assets: state.inventory_assets(),
+            surfaces: vec![],
+            capabilities: self.capabilities().reports,
+            warnings: vec![],
+            metadata: state.metadata(),
+        };
+        manifest.normalize();
+        Ok(manifest)
+    }
+
+    fn unsupported_failure(
+        code: SemanticErrorCode,
+        required_capability: Capability,
+        variant: impl Into<String>,
+        asset_ref: impl Into<String>,
+        support_boundary: impl Into<String>,
+        remediation: impl Into<String>,
+    ) -> AdapterFailure {
+        AdapterFailure::semantic(
+            AdapterFailureSemanticParams::new(code, REALLIVE_DETECTOR_ADAPTER_ID, support_boundary)
+                .engine("reallive")
+                .detected_variant(variant)
+                .asset_ref(asset_ref)
+                .required_capability(required_capability)
+                .remediation(remediation),
+        )
+    }
+
+    fn parser_boundary_failure(variant: impl Into<String>) -> AdapterFailure {
+        Self::unsupported_failure(
+            SemanticErrorCode::UnsupportedLayeredTransform,
+            Capability::CodecAccess,
+            variant,
+            REALLIVE_SEEN_TXT_PATH,
+            "RealLive SEEN.TXT/Scene parsing/decompilation is outside KAIFUU-172 detector fixtures",
+            "use identify or asset-inventory output only; do not request extract or patch for this detector profile",
+        )
+    }
+
+    fn invalid_input_failure(variant: RealLiveFixtureVariant) -> AdapterFailure {
+        let (code, required_capability, asset_ref, support_boundary, remediation) = match variant {
+            RealLiveFixtureVariant::AmbiguousSiglusOverlap => (
+                SemanticErrorCode::AmbiguousEngineVariant,
+                Capability::Detection,
+                REALLIVE_SEEN_TXT_PATH,
+                "RealLive detector requires unambiguous RealLive evidence; co-presence of Siglus markers (Scene.pck/Gameexe.dat) blocks identification.",
+                "audit the input directory; remove or relocate cross-engine markers, or report the layout as a new engine variant",
+            ),
+            RealLiveFixtureVariant::UnsupportedAvg32Lineage => (
+                SemanticErrorCode::UnsupportedEngineVariant,
+                Capability::Detection,
+                REALLIVE_SEEN_TXT_PATH,
+                "RealLive detector does not claim AVG32 lineage support; AVG32-shaped SEEN.TXT inputs are out of scope.",
+                "add an AVG32-specific detector (separate node) before localizing this title",
+            ),
+            RealLiveFixtureVariant::UnknownEngineVariant => (
+                SemanticErrorCode::UnknownEngineVariant,
+                Capability::Detection,
+                REALLIVE_SEEN_TXT_PATH,
+                "RealLive marker names were present without recognized RealLive SEEN.TXT envelope and Gameexe.ini key evidence",
+                "provide a complete synthetic RealLive fixture or add an explicit adapter for this RealLive variant before profiling or inventory",
+            ),
+            RealLiveFixtureVariant::NotRealLive => (
+                SemanticErrorCode::UnknownEngineVariant,
+                Capability::Detection,
+                REALLIVE_SEEN_TXT_PATH,
+                "RealLive detector profile requires recognized SEEN.TXT/Gameexe.ini fixture evidence",
+                "run detection with a complete synthetic RealLive fixture or select another adapter",
+            ),
+            RealLiveFixtureVariant::CompleteSyntheticTriple
+            | RealLiveFixtureVariant::PositiveLiveLayout => (
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                Capability::CodecAccess,
+                REALLIVE_SEEN_TXT_PATH,
+                REALLIVE_SUPPORT_BOUNDARY,
+                "use identify or asset-inventory output only",
+            ),
+        };
+        Self::unsupported_failure(
+            code,
+            required_capability,
+            Self::detected_variant(variant),
+            asset_ref,
+            support_boundary,
+            remediation,
+        )
+    }
+
+    fn diagnostic_error(failure: AdapterFailure) -> Box<dyn std::error::Error> {
+        match kaifuu_core::stable_json(&failure) {
+            Ok(serialized) => serialized.into(),
+            Err(error) => error,
+        }
+    }
+
+    fn unsupported_patch_result(
+        &self,
+        patch_export_id: String,
+        variant: RealLiveFixtureVariant,
+    ) -> PatchResult {
+        let detected_variant = Self::detected_variant(variant).to_string();
+        PatchResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("reallive-patch", 172),
+            patch_export_id,
+            status: OperationStatus::Failed,
+            output_hash: content_hash(REALLIVE_SUPPORT_BOUNDARY),
+            failures: vec![
+                Self::unsupported_failure(
+                    SemanticErrorCode::MissingContainerCapability,
+                    Capability::ContainerAccess,
+                    detected_variant.clone(),
+                    REALLIVE_SEEN_TXT_PATH,
+                    "RealLive SEEN.TXT archive container access is not implemented by the detector profile",
+                    "use identify or asset-inventory output only",
+                ),
+                Self::parser_boundary_failure(detected_variant.clone()),
+                Self::unsupported_failure(
+                    SemanticErrorCode::MissingPatchBackCapability,
+                    Capability::PatchBack,
+                    detected_variant,
+                    REALLIVE_SEEN_TXT_PATH,
+                    "RealLive patch-back/repack support is not implemented by the detector profile",
+                    "add an explicit patch-back adapter before writing patched SEEN.TXT output",
+                ),
+            ],
+        }
+    }
+}
+
+impl RealLiveFixtureState {
+    fn engine_evidence(&self) -> Vec<String> {
+        let mut evidence = Vec::new();
+        if self.seen_txt_exists {
+            evidence.push(REALLIVE_SEEN_TXT_PATH.to_string());
+        }
+        if self.seen_gan_exists {
+            evidence.push(REALLIVE_SEEN_GAN_PATH.to_string());
+        }
+        if self.gameexe_ini_exists {
+            evidence.push(REALLIVE_GAMEEXE_INI_PATH.to_string());
+        }
+        evidence
+    }
+
+    fn asset_profiles(&self) -> Vec<AssetProfile> {
+        let mut assets = Vec::new();
+        if self.seen_txt_exists {
+            assets.push(AssetProfile {
+                asset_id: "reallive-seen-txt".to_string(),
+                path: REALLIVE_SEEN_TXT_PATH.to_string(),
+                asset_kind: AssetKind::Archive,
+                text_surfaces: vec![TextSurface::Dialogue, TextSurface::Narration],
+                source_hash: self.seen_txt_hash.clone(),
+                patching: CapabilityReport::unsupported(
+                    Capability::Patching,
+                    "RealLive detector profile does not parse, repack, or patch SEEN.TXT",
+                ),
+            });
+        }
+        if self.seen_gan_exists {
+            assets.push(AssetProfile {
+                asset_id: "reallive-seen-gan".to_string(),
+                path: REALLIVE_SEEN_GAN_PATH.to_string(),
+                asset_kind: AssetKind::Archive,
+                text_surfaces: vec![],
+                source_hash: self.seen_gan_hash.clone(),
+                patching: CapabilityReport::unsupported(
+                    Capability::Patching,
+                    "RealLive detector profile does not parse or patch SEEN.GAN",
+                ),
+            });
+        }
+        if self.gameexe_ini_exists {
+            assets.push(AssetProfile {
+                asset_id: "reallive-gameexe-ini".to_string(),
+                path: REALLIVE_GAMEEXE_INI_PATH.to_string(),
+                asset_kind: AssetKind::Metadata,
+                text_surfaces: vec![TextSurface::MetadataText],
+                source_hash: self.gameexe_ini_hash.clone(),
+                patching: CapabilityReport::unsupported(
+                    Capability::Patching,
+                    "RealLive detector profile does not patch Gameexe.ini metadata",
+                ),
+            });
+        }
+        assets
+    }
+
+    fn inventory_assets(&self) -> Vec<AssetInventoryAsset> {
+        let mut assets = Vec::new();
+        if self.seen_txt_exists {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("syntheticMagicMatched".to_string(), self.seen_txt_synthetic_magic.to_string());
+            metadata.insert("envelopeValid".to_string(), self.seen_txt_envelope_ok.to_string());
+            metadata.insert(
+                "supportBoundary".to_string(),
+                "container identified only; archive entries are not parsed".to_string(),
+            );
+            assets.push(AssetInventoryAsset {
+                asset_id: "reallive-seen-txt".to_string(),
+                asset_key: REALLIVE_SEEN_TXT_PATH.to_string(),
+                asset_kind: AssetInventoryAssetKind::Archive,
+                path: Some(REALLIVE_SEEN_TXT_PATH.to_string()),
+                source_hash: self.seen_txt_hash.clone(),
+                metadata,
+            });
+        }
+        if self.seen_gan_exists {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("syntheticMagicMatched".to_string(), self.seen_gan_synthetic_magic.to_string());
+            metadata.insert(
+                "supportBoundary".to_string(),
+                "container identified only; animation entries are not parsed".to_string(),
+            );
+            assets.push(AssetInventoryAsset {
+                asset_id: "reallive-seen-gan".to_string(),
+                asset_key: REALLIVE_SEEN_GAN_PATH.to_string(),
+                asset_kind: AssetInventoryAssetKind::Archive,
+                path: Some(REALLIVE_SEEN_GAN_PATH.to_string()),
+                source_hash: self.seen_gan_hash.clone(),
+                metadata,
+            });
+        }
+        if self.gameexe_ini_exists {
+            let mut metadata = BTreeMap::new();
+            metadata.insert("syntheticMagicMatched".to_string(), self.gameexe_ini_synthetic_magic.to_string());
+            metadata.insert(
+                "gameexeVersionKeyPresent".to_string(),
+                self.gameexe_ini_keys.gameexe_version.to_string(),
+            );
+            metadata.insert(
+                "regnameKeyPresent".to_string(),
+                self.gameexe_ini_keys.regname.to_string(),
+            );
+            metadata.insert(
+                "g00KeyPresent".to_string(),
+                self.gameexe_ini_keys.g00_key.to_string(),
+            );
+            metadata.insert(
+                "koeKeyPresent".to_string(),
+                self.gameexe_ini_keys.koe_key.to_string(),
+            );
+            metadata.insert(
+                "seenKeyPresent".to_string(),
+                self.gameexe_ini_keys.seen_key.to_string(),
+            );
+            metadata.insert(
+                "supportBoundary".to_string(),
+                "metadata identified only; full Gameexe.ini parsing is not implemented".to_string(),
+            );
+            assets.push(AssetInventoryAsset {
+                asset_id: "reallive-gameexe-ini".to_string(),
+                asset_key: REALLIVE_GAMEEXE_INI_PATH.to_string(),
+                asset_kind: AssetInventoryAssetKind::Metadata,
+                path: Some(REALLIVE_GAMEEXE_INI_PATH.to_string()),
+                source_hash: self.gameexe_ini_hash.clone(),
+                metadata,
+            });
+        }
+        assets
+    }
+
+    fn layered_access_profile(&self) -> LayeredAccessProfile {
+        let mut surfaces = Vec::new();
+        if self.seen_txt_exists {
+            surfaces.push(LayeredTextSurfaceAccess {
+                surface_id: "reallive-seen-txt#dialogue".to_string(),
+                asset_id: "reallive-seen-txt".to_string(),
+                path: REALLIVE_SEEN_TXT_PATH.to_string(),
+                text_surface: TextSurface::Dialogue,
+                surface_transform: SurfaceTransform::ArchiveEntry,
+                surface_selector: "aggregate-only:synthetic-seen-archive".to_string(),
+                container: ContainerTransform::LooseFile,
+                crypto: CryptoTransform::Unknown,
+                codec: CodecTransform::Unknown,
+                patch_back: PatchBackTransform::Unsupported,
+                key_material_status: LayeredAccessKeyMaterialStatus::Missing,
+                helper_status: LayeredAccessHelperStatus::Unavailable,
+                key_requirement_refs: vec![],
+                notes: vec![
+                    "detector-only layered access record; no Scene/SEEN parser, normalized script text, or archive entry listing is claimed".to_string(),
+                ],
+            });
+        }
+        if self.gameexe_ini_exists {
+            surfaces.push(LayeredTextSurfaceAccess {
+                surface_id: "reallive-gameexe-ini#metadata".to_string(),
+                asset_id: "reallive-gameexe-ini".to_string(),
+                path: REALLIVE_GAMEEXE_INI_PATH.to_string(),
+                text_surface: TextSurface::MetadataText,
+                surface_transform: SurfaceTransform::Identity,
+                surface_selector: "aggregate-only:synthetic-gameexe-ini-metadata".to_string(),
+                container: ContainerTransform::LooseFile,
+                crypto: CryptoTransform::Unknown,
+                codec: CodecTransform::Unknown,
+                patch_back: PatchBackTransform::Unsupported,
+                key_material_status: LayeredAccessKeyMaterialStatus::Missing,
+                helper_status: LayeredAccessHelperStatus::Unavailable,
+                key_requirement_refs: vec![],
+                notes: vec![
+                    "detector-only metadata record; full Gameexe.ini parsing is outside this profile".to_string(),
+                ],
+            });
+        }
+        let mut profile = LayeredAccessProfile {
+            schema_version: "0.1.0".to_string(),
+            surfaces,
+        };
+        profile.normalize();
+        profile
+    }
+
+    fn detection_requirements(&self) -> Vec<ProfileRequirement> {
+        vec![
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: REALLIVE_SEEN_TXT_PATH.to_string(),
+                status: if self.seen_txt_envelope_ok {
+                    RequirementStatus::Satisfied
+                } else if self.seen_txt_exists {
+                    RequirementStatus::Unsupported
+                } else {
+                    RequirementStatus::Missing
+                },
+                description: "RealLive SEEN.TXT envelope (synthetic magic or generic shape)".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: REALLIVE_GAMEEXE_INI_PATH.to_string(),
+                status: if self.gameexe_ini_keys.any() {
+                    RequirementStatus::Satisfied
+                } else if self.gameexe_ini_exists {
+                    RequirementStatus::Unsupported
+                } else {
+                    RequirementStatus::Missing
+                },
+                description: "RealLive Gameexe.ini with at least one RealLive-specific key (#GAMEEXE_VERSION, #REGNAME, #G00*, #KOE*, #SEEN*)".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::Platform,
+                key: "reallive-parser".to_string(),
+                status: RequirementStatus::Unsupported,
+                description: "Scene/SEEN parser/decompiler boundary is unsupported for KAIFUU-172".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+        ]
+    }
+
+    fn profile_requirements(&self) -> Vec<ProfileRequirement> {
+        vec![
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: REALLIVE_SEEN_TXT_PATH.to_string(),
+                status: if self.seen_txt_exists {
+                    RequirementStatus::Satisfied
+                } else {
+                    RequirementStatus::NotRequired
+                },
+                description: "RealLive SEEN.TXT detector evidence status".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::File,
+                key: REALLIVE_GAMEEXE_INI_PATH.to_string(),
+                status: if self.gameexe_ini_exists {
+                    RequirementStatus::Satisfied
+                } else {
+                    RequirementStatus::NotRequired
+                },
+                description: "RealLive Gameexe.ini detector evidence status".to_string(),
+                placeholder: None,
+                secret: false,
+            },
+            ProfileRequirement {
+                category: RequirementCategory::Platform,
+                key: "reallive-parser".to_string(),
+                status: RequirementStatus::NotRequired,
+                description: "parser/runtime helpers are outside the detector-only profile"
+                    .to_string(),
+                placeholder: None,
+                secret: false,
+            },
+        ]
+    }
+
+    fn metadata(&self) -> BTreeMap<String, String> {
+        let mut metadata = BTreeMap::new();
+        metadata.insert("fixtureOnly".to_string(), "true".to_string());
+        metadata.insert(
+            "profileDiagnostics.ambiguousSiglusOverlap".to_string(),
+            (self.siglus_scene_pck_present || self.siglus_gameexe_dat_present).to_string(),
+        );
+        metadata.insert(
+            "profileDiagnostics.avg32PdtPresent".to_string(),
+            (self.avg32_pdt_count > 0).to_string(),
+        );
+        metadata.insert(
+            "profileDiagnostics.gameexeIniKeyHits".to_string(),
+            self.gameexe_ini_keys.any().to_string(),
+        );
+        metadata.insert(
+            "profileDiagnostics.unsupportedParserBoundary".to_string(),
+            "true".to_string(),
+        );
+        metadata.insert("g00Count".to_string(), self.g00_count.to_string());
+        metadata.insert(
+            "voiceArchiveCount".to_string(),
+            self.voice_archive_count.to_string(),
+        );
+        metadata.insert(
+            "supportBoundary".to_string(),
+            REALLIVE_SUPPORT_BOUNDARY.to_string(),
+        );
+        metadata
+    }
+}
+
+impl EngineAdapter for RealLiveProfileDetectorAdapter {
+    fn id(&self) -> &'static str {
+        REALLIVE_DETECTOR_ADAPTER_ID
+    }
+
+    fn name(&self) -> &'static str {
+        "Kaifuu RealLive detector profile fixture adapter"
+    }
+
+    fn capabilities(&self) -> AdapterCapabilities {
+        let identify = LayeredAccessOperationContract {
+            status: CapabilityStatus::Supported,
+            required_capabilities: vec![Capability::Detection, Capability::ProfileGeneration],
+            supported_surfaces: vec![SurfaceTransform::Identity],
+            supported_containers: vec![ContainerTransform::LooseFile],
+            supported_crypto: vec![CryptoTransform::Unknown],
+            supported_codecs: vec![CodecTransform::Unknown],
+            supported_patch_back: vec![PatchBackTransform::Unsupported],
+            support_boundary: Some("identify/profile generation reads only SEEN.TXT envelope bytes, Gameexe.ini ASCII prefixes, top-level marker counts, and source hashes".to_string()),
+        };
+        let inventory = LayeredAccessOperationContract {
+            status: CapabilityStatus::Supported,
+            required_capabilities: vec![Capability::AssetListing, Capability::AssetInventory],
+            supported_surfaces: vec![SurfaceTransform::Identity, SurfaceTransform::ArchiveEntry],
+            supported_containers: vec![ContainerTransform::LooseFile],
+            supported_crypto: vec![CryptoTransform::Unknown],
+            supported_codecs: vec![CodecTransform::Unknown],
+            supported_patch_back: vec![PatchBackTransform::Unsupported],
+            support_boundary: Some("inventory reports only top-level SEEN.TXT/SEEN.GAN/Gameexe.ini assets and hashes; no archive entry parser is claimed".to_string()),
+        };
+        let unsupported = |required_capabilities| LayeredAccessOperationContract {
+            status: CapabilityStatus::Unsupported,
+            required_capabilities,
+            supported_surfaces: vec![],
+            supported_containers: vec![],
+            supported_crypto: vec![],
+            supported_codecs: vec![],
+            supported_patch_back: vec![],
+            support_boundary: Some(REALLIVE_SUPPORT_BOUNDARY.to_string()),
+        };
+        AdapterCapabilities::new(
+            REALLIVE_DETECTOR_ADAPTER_ID,
+            vec![
+                CapabilityReport::supported(Capability::Detection),
+                CapabilityReport::supported(Capability::ProfileGeneration),
+                CapabilityReport::supported(Capability::AssetListing),
+                CapabilityReport::supported(Capability::AssetInventory),
+                CapabilityReport::unsupported(
+                    Capability::Extraction,
+                    "KAIFUU-172 is a RealLive detector/profile fixture only",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::Patching,
+                    "KAIFUU-172 does not patch or rebuild RealLive assets",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::ContainerAccess,
+                    "SEEN.TXT archive parsing is outside the detector profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::CryptoAccess,
+                    "RealLive voice archive obfuscation handling is outside the detector profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::CodecAccess,
+                    "RealLive Scene/SEEN decode/decompile support is outside the detector profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::PatchBack,
+                    "RealLive patch-back/repack support is outside the detector profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::KeyProfile,
+                    "RealLive identify-only profile does not require user-provided keys for the alpha-vertical title set",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::RuntimeVm,
+                    "runtime support belongs to UTSUSHI-146, not this detector fixture",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::EncryptedInput,
+                    "encrypted payloads (if any) are identified only and are never decrypted by this profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::AssetTextPatching,
+                    "no RealLive text surfaces are patched by this detector profile",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::DeltaPatching,
+                    ".kaifuu delta packages do not apply to detector-only RealLive profiles",
+                ),
+                CapabilityReport::unsupported(
+                    Capability::NonTextSurfaceExtraction,
+                    "no non-text extraction or OCR is performed for RealLive detector fixtures",
+                ),
+            ],
+        )
+        .with_access_contract(LayeredAccessCapabilityContract {
+            identify,
+            inventory,
+            extract: unsupported(vec![Capability::Extraction]),
+            patch: unsupported(vec![Capability::Patching, Capability::PatchBack]),
+        })
+    }
+
+    fn detect(&self, request: DetectRequest<'_>) -> KaifuuResult<DetectionResult> {
+        let state = Self::inspect(request.game_dir);
+        let detected = Self::is_detected(state.variant);
+        let diagnostic_only = !detected && state.variant != RealLiveFixtureVariant::NotRealLive;
+        let mut result = DetectionResult {
+            adapter_id: REALLIVE_DETECTOR_ADAPTER_ID.to_string(),
+            detected,
+            engine_family: detected.then(|| "reallive".to_string()),
+            engine_version: None,
+            detected_variant: (detected || diagnostic_only)
+                .then(|| Self::detected_variant(state.variant).to_string()),
+            evidence: vec![
+                DetectionEvidence {
+                    path: REALLIVE_SEEN_TXT_PATH.to_string(),
+                    kind: "reallive_seen_txt_envelope".to_string(),
+                    status: evidence_status(state.seen_txt_exists, state.seen_txt_envelope_ok),
+                    detail: signature_detail(
+                        state.seen_txt_exists,
+                        state.seen_txt_envelope_ok,
+                        "SEEN.TXT envelope",
+                    ),
+                },
+                DetectionEvidence {
+                    path: REALLIVE_SEEN_GAN_PATH.to_string(),
+                    kind: "reallive_seen_gan_marker".to_string(),
+                    status: evidence_status(state.seen_gan_exists, state.seen_gan_synthetic_magic),
+                    detail: signature_detail(
+                        state.seen_gan_exists,
+                        state.seen_gan_synthetic_magic,
+                        "SEEN.GAN marker",
+                    ),
+                },
+                DetectionEvidence {
+                    path: REALLIVE_GAMEEXE_INI_PATH.to_string(),
+                    kind: "reallive_gameexe_ini_keys".to_string(),
+                    status: evidence_status(state.gameexe_ini_exists, state.gameexe_ini_keys.any()),
+                    detail: gameexe_ini_detail(state.gameexe_ini_exists, state.gameexe_ini_keys),
+                },
+                DetectionEvidence {
+                    path: "*.g00".to_string(),
+                    kind: "reallive_g00_extension_count".to_string(),
+                    status: if state.g00_count > 0 {
+                        EvidenceStatus::Matched
+                    } else {
+                        EvidenceStatus::Missing
+                    },
+                    detail: format!("RealLive .g00 image asset count: {}", state.g00_count),
+                },
+                DetectionEvidence {
+                    path: "*.ovk|*.koe|*.nwk".to_string(),
+                    kind: "reallive_voice_archive_count".to_string(),
+                    status: if state.voice_archive_count > 0 {
+                        EvidenceStatus::Matched
+                    } else {
+                        EvidenceStatus::Missing
+                    },
+                    detail: format!(
+                        "RealLive voice archive extension count: {}",
+                        state.voice_archive_count
+                    ),
+                },
+                DetectionEvidence {
+                    path: "Scene.pck".to_string(),
+                    kind: "siglus_cross_check_scene_pck".to_string(),
+                    status: if state.siglus_scene_pck_present {
+                        EvidenceStatus::Invalid
+                    } else {
+                        EvidenceStatus::Missing
+                    },
+                    detail: if state.siglus_scene_pck_present {
+                        "Scene.pck co-present (Siglus marker)".to_string()
+                    } else {
+                        "Scene.pck not present".to_string()
+                    },
+                },
+                DetectionEvidence {
+                    path: "Gameexe.dat".to_string(),
+                    kind: "siglus_cross_check_gameexe_dat".to_string(),
+                    status: if state.siglus_gameexe_dat_present {
+                        EvidenceStatus::Invalid
+                    } else {
+                        EvidenceStatus::Missing
+                    },
+                    detail: if state.siglus_gameexe_dat_present {
+                        "Gameexe.dat co-present (Siglus marker)".to_string()
+                    } else {
+                        "Gameexe.dat not present".to_string()
+                    },
+                },
+                DetectionEvidence {
+                    path: "*.pdt".to_string(),
+                    kind: "avg32_cross_check_pdt_count".to_string(),
+                    status: if state.avg32_pdt_count > 0 {
+                        EvidenceStatus::Invalid
+                    } else {
+                        EvidenceStatus::Missing
+                    },
+                    detail: format!(
+                        "AVG32 .PDT image asset count (informational): {}",
+                        state.avg32_pdt_count
+                    ),
+                },
+            ],
+            requirements: if detected || diagnostic_only {
+                state.detection_requirements()
+            } else {
+                vec![]
+            },
+            capabilities: self.capabilities().reports,
+        };
+        result.normalize();
+        Ok(result)
+    }
+
+    fn profile(&self, request: ProfileRequest<'_>) -> KaifuuResult<GameProfile> {
+        self.profile_from_state(Self::inspect(request.game_dir))
+    }
+
+    fn list_assets(&self, request: AssetListRequest<'_>) -> KaifuuResult<AssetList> {
+        let state = Self::inspect(request.game_dir);
+        if !Self::can_inventory(state.variant) {
+            return Err(Self::diagnostic_error(Self::invalid_input_failure(
+                state.variant,
+            )));
+        }
+        Ok(AssetList {
+            adapter_id: REALLIVE_DETECTOR_ADAPTER_ID.to_string(),
+            assets: state.asset_profiles(),
+        })
+    }
+
+    fn asset_inventory(
+        &self,
+        request: AssetInventoryRequest<'_>,
+    ) -> KaifuuResult<AssetInventoryManifest> {
+        self.inventory_from_state(Self::inspect(request.game_dir))
+    }
+
+    fn extract(&self, request: ExtractRequest<'_>) -> KaifuuResult<ExtractionResult> {
+        let state = Self::inspect(request.game_dir);
+        let variant = Self::detected_variant(state.variant);
+        Err(Self::diagnostic_error(Self::parser_boundary_failure(
+            variant,
+        )))
+    }
+
+    fn patch_preflight(&self, request: PatchPreflightRequest<'_>) -> KaifuuResult<PatchResult> {
+        let state = Self::inspect(request.game_dir);
+        Ok(self
+            .unsupported_patch_result(request.patch_export.patch_export_id.clone(), state.variant))
+    }
+
+    fn patch(&self, request: PatchRequest<'_>) -> KaifuuResult<PatchResult> {
+        let state = Self::inspect(request.game_dir);
+        Ok(self
+            .unsupported_patch_result(request.patch_export.patch_export_id.clone(), state.variant))
+    }
+
+    fn verify(&self, request: VerifyRequest<'_>) -> KaifuuResult<VerificationResult> {
+        let state = Self::inspect(request.game_dir);
+        let variant = Self::detected_variant(state.variant).to_string();
+        Ok(VerificationResult {
+            schema_version: "0.1.0".to_string(),
+            patch_result_id: deterministic_id("reallive-verify", 172),
+            status: OperationStatus::Failed,
+            output_hash: content_hash(REALLIVE_SUPPORT_BOUNDARY),
+            failures: vec![Self::unsupported_failure(
+                SemanticErrorCode::UnsupportedLayeredTransform,
+                Capability::RuntimeVm,
+                variant,
+                REALLIVE_SEEN_TXT_PATH,
+                "runtime/parser verification is outside the RealLive detector profile",
+                "use detect, profile, or asset-inventory only",
+            )],
+        })
+    }
+}
+
+// Case-insensitive direct-child lookup.
+//
+// The lookup mirrors the existing `ArchiveDetectionScan.file_name_count`
+// case-insensitive pattern. Returns the resolved path on a hit so callers
+// can read its bytes; returns None if no direct child matches the lowercase
+// name. Used only against `game_dir` (no recursion); RealLive top-level
+// markers are always at the game root per Haeleth's public documentation.
+fn case_insensitive_find(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
+    let target = name.to_ascii_lowercase();
+    let entries = fs::read_dir(dir).ok()?;
+    for entry in entries.flatten() {
+        if let Some(entry_name) = entry.file_name().to_str() {
+            if entry_name.to_ascii_lowercase() == target {
+                return Some(entry.path());
+            }
+        }
+    }
+    None
+}
+
+// Walks the game root (direct children only) to count the RealLive
+// corroborating extensions and the AVG32 disqualifier. Top-level only,
+// matching plan §3 inputs.
+fn reallive_extension_counts(dir: &Path) -> (u64, u64, u64) {
+    let mut g00_count: u64 = 0;
+    let mut voice_archive_count: u64 = 0;
+    let mut pdt_count: u64 = 0;
+    let Ok(entries) = fs::read_dir(dir) else {
+        return (0, 0, 0);
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let Some(extension) = path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(str::to_ascii_lowercase)
+        else {
+            continue;
+        };
+        match extension.as_str() {
+            "g00" => g00_count += 1,
+            "ovk" | "koe" | "nwk" => voice_archive_count += 1,
+            "pdt" => pdt_count += 1,
+            _ => {}
+        }
+    }
+    (g00_count, voice_archive_count, pdt_count)
+}
+
+// Generic real-shape SEEN.TXT envelope check.
+//
+// Derivation: Haeleth's RLDEV documentation describes SEEN.TXT as a
+// little-endian count-plus-offset-table archive. The check here is
+// intentionally minimal so we do not encode rlvm structure layouts: a
+// reasonable scene count (1..=REALLIVE_SEEN_TXT_MAX_SCENE_COUNT) followed
+// by enough file length to hold an 8-byte-per-entry table. We do not
+// parse entries.
+fn reallive_seen_txt_envelope_ok(path: &Path) -> bool {
+    let Ok(metadata) = fs::metadata(path) else {
+        return false;
+    };
+    let file_len = metadata.len();
+    if file_len < 8 {
+        return false;
+    }
+    let Ok(bytes) = fs::read(path) else {
+        return false;
+    };
+    if bytes.len() < 4 {
+        return false;
+    }
+    let count = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    if count == 0 || count > REALLIVE_SEEN_TXT_MAX_SCENE_COUNT {
+        return false;
+    }
+    // 8 bytes per (offset, size) table entry is the publicly-documented
+    // minimum for a count + offset table envelope shape; we use it as a
+    // floor without claiming an exact entry layout.
+    let required = 4u64.saturating_add((count as u64).saturating_mul(8));
+    required <= file_len
+}
+
+// Read up to 64 KiB of Gameexe.ini and check for the documented
+// RealLive-specific ASCII key prefixes. The detector intentionally only
+// looks at ASCII prefixes; full Gameexe parsing (including Shift-JIS
+// values) is a KAIFUU-174 concern.
+fn reallive_gameexe_ini_key_hits(path: &Path) -> GameexeIniKeyHits {
+    let Ok(bytes) = fs::read(path) else {
+        return GameexeIniKeyHits::default();
+    };
+    let limit = std::cmp::min(bytes.len(), 64 * 1024);
+    let slice = &bytes[..limit];
+    let text = String::from_utf8_lossy(slice);
+    let mut hits = GameexeIniKeyHits::default();
+    for raw_line in text.lines() {
+        let line = raw_line.trim_start();
+        if !line.starts_with('#') {
+            continue;
+        }
+        // Compare against the documented prefixes; uppercase the key
+        // portion only (before '=' or whitespace) for robustness.
+        let key_end = line
+            .find(|c: char| c == '=' || c.is_whitespace())
+            .unwrap_or(line.len());
+        let key = line[..key_end].to_ascii_uppercase();
+        let _ = REALLIVE_GAMEEXE_INI_KEY_PREFIXES; // touch to document source
+        if key == "#GAMEEXE_VERSION" {
+            hits.gameexe_version = true;
+        } else if key == "#REGNAME" {
+            hits.regname = true;
+        } else if key.starts_with("#G00") {
+            hits.g00_key = true;
+        } else if key.starts_with("#KOE") {
+            hits.koe_key = true;
+        } else if key.starts_with("#SEEN") {
+            hits.seen_key = true;
+        }
+    }
+    hits
+}
+
+fn gameexe_ini_detail(exists: bool, keys: GameexeIniKeyHits) -> String {
+    if !exists {
+        return "Gameexe.ini missing".to_string();
+    }
+    if !keys.any() {
+        return "Gameexe.ini present but no RealLive-specific keys matched".to_string();
+    }
+    let mut matched = Vec::new();
+    if keys.gameexe_version {
+        matched.push("#GAMEEXE_VERSION");
+    }
+    if keys.regname {
+        matched.push("#REGNAME");
+    }
+    if keys.g00_key {
+        matched.push("#G00*");
+    }
+    if keys.koe_key {
+        matched.push("#KOE*");
+    }
+    if keys.seen_key {
+        matched.push("#SEEN*");
+    }
+    format!("Gameexe.ini RealLive keys matched: {}", matched.join(", "))
+}
+
 fn file_starts_with(path: &Path, expected: &[u8]) -> bool {
     fs::read(path)
         .map(|bytes| bytes.starts_with(expected))
@@ -3192,6 +4403,7 @@ pub fn registry() -> kaifuu_core::AdapterRegistry {
     registry.register(FixtureAdapter);
     registry.register(Xp3ProfileDetectorAdapter);
     registry.register(SiglusProfileDetectorAdapter);
+    registry.register(RealLiveProfileDetectorAdapter);
     registry
 }
 
@@ -5088,6 +6300,484 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(game_dir);
+    }
+
+    // -----------------------------------------------------------------
+    // RealLive detector tests (KAIFUU-172).
+    //
+    // Synthetic fixtures only; no rlvm code is read or linked. The
+    // `reallive_fixture_dir` helper writes top-level RealLive marker files
+    // into a fresh temp dir per test. Real-game evidence flows in at
+    // ALPHA-006.
+    // -----------------------------------------------------------------
+
+    fn synthetic_seen_txt(scene_count: u32) -> Vec<u8> {
+        // Concrete public-CI envelope shape: magic + LE count + 8-byte
+        // synthetic table-of-contents entry per scene. Derived from
+        // Haeleth's RLDEV public format documentation; no rlvm structure
+        // is copied.
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(REALLIVE_SEEN_TXT_MAGIC);
+        bytes.extend_from_slice(&scene_count.to_le_bytes());
+        for index in 0..scene_count {
+            bytes.extend_from_slice(&(index as u64).to_le_bytes());
+        }
+        bytes.extend_from_slice(b"synthetic-scene-payload");
+        bytes
+    }
+
+    fn synthetic_gameexe_ini() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(REALLIVE_GAMEEXE_INI_MAGIC);
+        bytes.extend_from_slice(
+            b"\n#GAMEEXE_VERSION=1.0\n#REGNAME=KaifuuFixture\\RealLive\n#G00BUF=8\n#KOEPAC=koe.ovk\n",
+        );
+        bytes
+    }
+
+    fn reallive_fixture_dir(name: &str, files: &[(&str, &[u8])]) -> PathBuf {
+        let dir = temp_dir(name);
+        for (rel_path, bytes) in files {
+            let path = dir.join(rel_path);
+            fs::write(&path, bytes).unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn detects_reallive_on_complete_synthetic_triple_fixture() {
+        let dir = reallive_fixture_dir(
+            "reallive-complete-synthetic-triple",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(2)),
+                (REALLIVE_SEEN_GAN_PATH, REALLIVE_SEEN_GAN_MAGIC),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+                ("image.g00", b"\0"),
+                ("voice.ovk", b"\0"),
+            ],
+        );
+        let adapter = RealLiveProfileDetectorAdapter;
+        let detection = adapter
+            .detect(DetectRequest { game_dir: &dir })
+            .unwrap();
+        assert!(detection.detected);
+        assert_eq!(detection.engine_family.as_deref(), Some("reallive"));
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("reallive-synthetic-triple")
+        );
+        let profile = adapter
+            .profile(ProfileRequest { game_dir: &dir })
+            .unwrap();
+        assert_eq!(profile.engine.adapter_id, REALLIVE_DETECTOR_ADAPTER_ID);
+        assert_eq!(profile.engine.engine_family, "reallive");
+        assert_eq!(profile.profile_id, REALLIVE_PROFILE_ID);
+        let inventory = adapter
+            .asset_inventory(AssetInventoryRequest { game_dir: &dir })
+            .unwrap();
+        assert!(
+            inventory
+                .assets
+                .iter()
+                .any(|asset| asset.asset_key == REALLIVE_SEEN_TXT_PATH),
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn detects_reallive_on_positive_live_layout_with_gameexe_ini_key_hits() {
+        // Generic envelope: no synthetic SEEN.TXT magic; just LE count + table
+        // shape. Gameexe.ini has #GAMEEXE_VERSION present without the
+        // synthetic-magic prefix. Mirrors what a real RealLive title looks
+        // like at the SEEN.TXT + Gameexe.ini layer.
+        let mut seen_bytes = Vec::new();
+        seen_bytes.extend_from_slice(&3_u32.to_le_bytes());
+        for index in 0..3_u64 {
+            seen_bytes.extend_from_slice(&index.to_le_bytes());
+        }
+        seen_bytes.extend_from_slice(b"generic-shape-payload");
+        let dir = reallive_fixture_dir(
+            "reallive-positive-live-layout",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &seen_bytes),
+                (
+                    REALLIVE_GAMEEXE_INI_PATH,
+                    b"#GAMEEXE_VERSION=1.0\n#G00BUF=8\n",
+                ),
+                ("image.g00", b"\0"),
+            ],
+        );
+        let adapter = RealLiveProfileDetectorAdapter;
+        let detection = adapter
+            .detect(DetectRequest { game_dir: &dir })
+            .unwrap();
+        assert!(detection.detected, "{detection:#?}");
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("reallive-positive-live-layout")
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_reallive_when_siglus_scene_pck_co_present_with_ambiguous_engine_variant_error() {
+        let dir = reallive_fixture_dir(
+            "reallive-ambiguous-siglus-scene-pck",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(1)),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+                ("Scene.pck", b"SIGLUS-SCENE-PCK"),
+            ],
+        );
+        let adapter = RealLiveProfileDetectorAdapter;
+        let detection = adapter
+            .detect(DetectRequest { game_dir: &dir })
+            .unwrap();
+        assert!(!detection.detected);
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("ambiguous-reallive-siglus-overlap")
+        );
+        let failure = adapter_failure_from_error(
+            adapter
+                .profile(ProfileRequest { game_dir: &dir })
+                .unwrap_err(),
+        );
+        assert_eq!(failure.error_code, "kaifuu.ambiguous_engine_variant");
+        assert_eq!(failure.engine.as_deref(), Some("reallive"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_reallive_when_gameexe_dat_co_present_with_ambiguous_engine_variant_error() {
+        let dir = reallive_fixture_dir(
+            "reallive-ambiguous-gameexe-dat",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(1)),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+                ("Gameexe.dat", b"SIGLUS-GAMEEXE-DAT"),
+            ],
+        );
+        let adapter = RealLiveProfileDetectorAdapter;
+        let failure = adapter_failure_from_error(
+            adapter
+                .asset_inventory(AssetInventoryRequest { game_dir: &dir })
+                .unwrap_err(),
+        );
+        assert_eq!(failure.error_code, "kaifuu.ambiguous_engine_variant");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_reallive_on_avg32_pdt_layout_with_unsupported_engine_variant_error() {
+        let dir = reallive_fixture_dir(
+            "reallive-avg32-pdt-layout",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(1)),
+                ("Gameexe.ini", b"# AVG32 lineage placeholder\n"),
+                ("image.PDT", b"\0"),
+            ],
+        );
+        let adapter = RealLiveProfileDetectorAdapter;
+        let detection = adapter
+            .detect(DetectRequest { game_dir: &dir })
+            .unwrap();
+        assert!(!detection.detected);
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("avg32-lineage-seen-txt")
+        );
+        let failure = adapter_failure_from_error(
+            adapter
+                .profile(ProfileRequest { game_dir: &dir })
+                .unwrap_err(),
+        );
+        assert_eq!(failure.error_code, "kaifuu.unsupported_engine_variant");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_reallive_on_invalid_seen_txt_envelope_with_unknown_engine_variant_error() {
+        let dir = reallive_fixture_dir(
+            "reallive-invalid-seen-envelope",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &[0u8; 4]),
+                (REALLIVE_GAMEEXE_INI_PATH, b""),
+            ],
+        );
+        let adapter = RealLiveProfileDetectorAdapter;
+        let detection = adapter
+            .detect(DetectRequest { game_dir: &dir })
+            .unwrap();
+        assert!(!detection.detected);
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("unknown-reallive-named-files")
+        );
+        let failure = adapter_failure_from_error(
+            adapter
+                .profile(ProfileRequest { game_dir: &dir })
+                .unwrap_err(),
+        );
+        assert_eq!(failure.error_code, "kaifuu.unknown_engine_variant");
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn does_not_detect_reallive_on_hello_game_fixture_without_emitting_diagnostic() {
+        let dir = hello_fixture_dir();
+        let detection = RealLiveProfileDetectorAdapter
+            .detect(DetectRequest { game_dir: &dir })
+            .unwrap();
+        assert!(!detection.detected);
+        assert!(detection.detected_variant.is_none());
+        assert!(detection.engine_family.is_none());
+    }
+
+    #[test]
+    fn does_not_detect_reallive_on_xp3_fixture_without_misclassifying() {
+        let dir = xp3_fixture_dir(
+            "reallive-cross-check-xp3",
+            b"XP3\r\nfixture-only plain archive",
+        );
+        let detection = RealLiveProfileDetectorAdapter
+            .detect(DetectRequest { game_dir: &dir })
+            .unwrap();
+        assert!(!detection.detected);
+        assert!(detection.detected_variant.is_none());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn does_not_detect_reallive_on_siglus_only_fixture_without_misclassifying() {
+        let dir = siglus_fixture_dir(
+            "reallive-cross-check-siglus",
+            Some(SIGLUS_SCENE_MAGIC),
+            Some(SIGLUS_GAMEEXE_MAGIC),
+        );
+        let detection = RealLiveProfileDetectorAdapter
+            .detect(DetectRequest { game_dir: &dir })
+            .unwrap();
+        assert!(!detection.detected);
+        assert!(detection.detected_variant.is_none());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_reallive_extract_request_with_unsupported_layered_transform_error() {
+        let dir = reallive_fixture_dir(
+            "reallive-extract-unsupported",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(1)),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+            ],
+        );
+        let failure = adapter_failure_from_error(
+            RealLiveProfileDetectorAdapter
+                .extract(ExtractRequest { game_dir: &dir })
+                .unwrap_err(),
+        );
+        assert_eq!(failure.error_code, "kaifuu.unsupported_layered_transform");
+        assert_eq!(failure.required_capability, Some(Capability::CodecAccess));
+        assert_eq!(failure.asset_ref.as_deref(), Some(REALLIVE_SEEN_TXT_PATH));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_reallive_patch_request_with_unsupported_failures() {
+        let dir = reallive_fixture_dir(
+            "reallive-patch-unsupported",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(1)),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+            ],
+        );
+        let export = PatchExport {
+            patch_export_id: "kaifuu-reallive-export-001".to_string(),
+            source_locale: "ja-JP".to_string(),
+            target_locale: "en-US".to_string(),
+            entries: vec![],
+        };
+        let output_dir = temp_dir("reallive-patch-output");
+        let result = RealLiveProfileDetectorAdapter
+            .patch(PatchRequest {
+                game_dir: &dir,
+                patch_export: &export,
+                output_dir: &output_dir,
+            })
+            .unwrap();
+        assert_eq!(result.status, OperationStatus::Failed);
+        assert!(!result.failures.is_empty());
+        assert!(result.failures.iter().any(|failure| {
+            failure.error_code == "kaifuu.missing_capability.container"
+        }));
+        assert!(result.failures.iter().any(|failure| {
+            failure.error_code == "kaifuu.missing_capability.patch_back"
+        }));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_reallive_verify_request_with_unsupported_layered_transform_error() {
+        let dir = reallive_fixture_dir(
+            "reallive-verify-unsupported",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(1)),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+            ],
+        );
+        let result = RealLiveProfileDetectorAdapter
+            .verify(VerifyRequest { game_dir: &dir })
+            .unwrap();
+        assert_eq!(result.status, OperationStatus::Failed);
+        assert!(result.failures.iter().any(|failure| {
+            failure.error_code == "kaifuu.unsupported_layered_transform"
+        }));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reallive_detection_evidence_lists_seen_txt_gameexe_ini_seen_gan_and_g00_counts() {
+        let dir = reallive_fixture_dir(
+            "reallive-detection-evidence-coverage",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(1)),
+                (REALLIVE_SEEN_GAN_PATH, REALLIVE_SEEN_GAN_MAGIC),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+                ("image.g00", b"\0"),
+                ("voice.ovk", b"\0"),
+            ],
+        );
+        let detection = RealLiveProfileDetectorAdapter
+            .detect(DetectRequest { game_dir: &dir })
+            .unwrap();
+        let evidence_paths: BTreeSet<_> = detection
+            .evidence
+            .iter()
+            .map(|evidence| evidence.path.as_str())
+            .collect();
+        for expected in [
+            REALLIVE_SEEN_TXT_PATH,
+            REALLIVE_SEEN_GAN_PATH,
+            REALLIVE_GAMEEXE_INI_PATH,
+            "*.g00",
+            "*.ovk|*.koe|*.nwk",
+            "Scene.pck",
+            "Gameexe.dat",
+            "*.pdt",
+        ] {
+            assert!(
+                evidence_paths.contains(expected),
+                "missing evidence path {expected}"
+            );
+        }
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reallive_capability_report_lists_identify_inventory_supported_and_extract_patch_unsupported()
+    {
+        let capabilities = RealLiveProfileDetectorAdapter.capabilities();
+        assert_eq!(capabilities.adapter_id, REALLIVE_DETECTOR_ADAPTER_ID);
+        let supported: Vec<Capability> = capabilities
+            .reports
+            .iter()
+            .filter(|report| report.status == CapabilityStatus::Supported)
+            .map(|report| report.capability.clone())
+            .collect();
+        for required in [
+            Capability::Detection,
+            Capability::ProfileGeneration,
+            Capability::AssetListing,
+            Capability::AssetInventory,
+        ] {
+            assert!(supported.contains(&required), "missing supported {required:?}");
+        }
+        for unsupported in [
+            Capability::Extraction,
+            Capability::Patching,
+            Capability::ContainerAccess,
+            Capability::CryptoAccess,
+            Capability::CodecAccess,
+            Capability::PatchBack,
+            Capability::RuntimeVm,
+            Capability::EncryptedInput,
+            Capability::AssetTextPatching,
+            Capability::DeltaPatching,
+            Capability::NonTextSurfaceExtraction,
+        ] {
+            assert!(
+                capabilities.reports.iter().any(|report| {
+                    report.capability == unsupported
+                        && report.status == CapabilityStatus::Unsupported
+                }),
+                "missing unsupported capability {unsupported:?}"
+            );
+        }
+        let access = capabilities
+            .access_contract
+            .as_ref()
+            .expect("RealLive adapter must declare a layered access contract");
+        assert_eq!(access.identify.status, CapabilityStatus::Supported);
+        assert_eq!(access.inventory.status, CapabilityStatus::Supported);
+        assert_eq!(access.extract.status, CapabilityStatus::Unsupported);
+        assert_eq!(access.patch.status, CapabilityStatus::Unsupported);
+    }
+
+    #[test]
+    fn reallive_detection_report_redacts_game_dir_for_logs_and_reports() {
+        let dir = reallive_fixture_dir(
+            "reallive-detection-redaction",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(1)),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+            ],
+        );
+        let detection = RealLiveProfileDetectorAdapter
+            .detect(DetectRequest { game_dir: &dir })
+            .unwrap();
+        let serialized = stable_json(&detection.redacted_for_report()).unwrap();
+        let dir_str = dir.to_string_lossy().to_string();
+        assert!(
+            !serialized.contains(&dir_str),
+            "raw game dir leaked into detection report"
+        );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reallive_profile_emits_stable_uuidv7_profile_id_across_runs() {
+        let dir_one = reallive_fixture_dir(
+            "reallive-stable-profile-one",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(1)),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+            ],
+        );
+        let dir_two = reallive_fixture_dir(
+            "reallive-stable-profile-two",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(1)),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+            ],
+        );
+        let first = RealLiveProfileDetectorAdapter
+            .profile(ProfileRequest { game_dir: &dir_one })
+            .unwrap();
+        let second = RealLiveProfileDetectorAdapter
+            .profile(ProfileRequest { game_dir: &dir_two })
+            .unwrap();
+        assert_eq!(first.profile_id, REALLIVE_PROFILE_ID);
+        assert_eq!(first.profile_id, second.profile_id);
+        let _ = fs::remove_dir_all(dir_one);
+        let _ = fs::remove_dir_all(dir_two);
+    }
+
+    #[test]
+    fn reallive_registry_registration_appears_in_adapter_list() {
+        let registry = registry();
+        let adapters: Vec<_> = registry.adapters().iter().map(|adapter| adapter.id()).collect();
+        assert!(adapters.contains(&REALLIVE_DETECTOR_ADAPTER_ID));
     }
 
     #[test]
