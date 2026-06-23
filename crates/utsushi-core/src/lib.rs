@@ -2889,6 +2889,27 @@ pub enum RuntimeHarnessErrorKind {
     CaptureFailed,
     ArtifactStoreUnavailable,
     ArtifactWriteFailed,
+    /// Browser-launch path could not locate a Chromium-compatible binary.
+    ///
+    /// Reported when neither an explicitly configured browser, the
+    /// `UTSUSHI_BROWSER_BIN` env override, the PATH lookup, nor the
+    /// platform-specific install-path fallback yields a launchable executable.
+    /// The semantic code attached to the harness error is
+    /// `utsushi.browser.chromium_unavailable`.
+    ChromiumUnavailable,
+    /// Browser-launch path detected a Chromium binary whose major version is
+    /// below the minimum supported floor. Semantic code:
+    /// `utsushi.browser.chromium_version_mismatch`.
+    ChromiumVersionMismatch,
+    /// Browser-launch path could not reach a usable display surface under
+    /// strict display checking. Reserved for follow-up; producing this kind
+    /// is gated and not exercised in UTSUSHI-148 production paths. Semantic
+    /// code: `utsushi.browser.display_unavailable`.
+    ChromiumDisplayUnavailable,
+    /// Adapter is research-tier and not advertised as alpha capability;
+    /// invoking trace/capture/smoke returns this kind. Semantic code:
+    /// `utsushi.runtime.research_tier_unsupported`.
+    ResearchTierUnsupported,
 }
 
 impl RuntimeHarnessErrorKind {
@@ -2904,6 +2925,10 @@ impl RuntimeHarnessErrorKind {
             Self::CaptureFailed => "runtime_capture_failed",
             Self::ArtifactStoreUnavailable => "runtime_artifact_store_unavailable",
             Self::ArtifactWriteFailed => "runtime_artifact_write_failed",
+            Self::ChromiumUnavailable => "runtime_browser_chromium_unavailable",
+            Self::ChromiumVersionMismatch => "runtime_browser_chromium_version_mismatch",
+            Self::ChromiumDisplayUnavailable => "runtime_browser_display_unavailable",
+            Self::ResearchTierUnsupported => "runtime_research_tier_unsupported",
         }
     }
 }
