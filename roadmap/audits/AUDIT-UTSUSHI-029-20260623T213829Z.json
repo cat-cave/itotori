@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-029-20260623T213829Z",
+  "generatedAt": "2026-06-23T21:38:29Z",
+  "spec": {
+    "id": "UTSUSHI-029",
+    "title": "Capture and recording artifact conformance",
+    "branch": "spec/utsushi-029",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-029",
+    "commit": "af80b13"
+  },
+  "auditor": {
+    "name": "utsushi-029-capture-recording-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "UTSUSHI-029 delivers the capture/recording side of the runtime conformance contract as specified. The new `utsushi_core::conformance::capture_recording` submodule ships `FrameCaptureConformanceCheck`, `RecordingConformanceCheck`, `FrameArtifactRef`, `RecordingMetadata`, `ArtifactCountRange`, `DurationRangeMs`, and `CaptureCheckSummary`/`RecordingCheckSummary` aggregates, plus per-check `validate()`, `run()`, and `into_conformance_result()` helpers. All three acceptance criteria are satisfied. (1) Portable artifact refs: every capture/recording artifact is an `ObservationArtifactRef` whose `validate()` runs `validate_runtime_artifact_uri`; the check structs hold no raw path fields. `frame_check.rs:151` and `recording_check.rs:153` route every artifact through `artifact.validate()` before any other rule, and host paths/`file:`/`data:`/`blob:`/traversal/out-of-root URIs are rejected with `FrameArtifactHostPath` / `RecordingArtifactHostPath`. (2) Unsupported handling is structural: missing capture support is reported through `unsupported_frame_capture_result()` / `unsupported_recording_capture_result()` returning `ResultOutcome::Unsupported { semantic_code, declared_in_manifest: false }`; the check struct is never constructed on that path because `run()` only ever returns Pass/Fail. The `capture_recording_unsupported_path_does_not_invoke_check_struct` integration test pins this contract. (3) Evidence tiers stay visible at every layer: per-frame `evidence_tier`, recording `evidence_tier`, profile ceiling, frame-sink ceiling, and audio-sink ceiling all surface through `CaptureCheckSummary`/`RecordingCheckSummary`, and `Pass` outcomes serialize `evidenceTier` (confirmed by `capture_recording_result_envelope_carries_evidence_tier_in_serialized_output`). Hard architectural constraints all hold: `grep -rn 'Command::new' crates/utsushi-core/src/conformance/capture_recording/` returns nothing, `grep -rn 'std::path'` returns nothing, and the only `xp3|kirikiri|kag|rgss|rpgmaker|reallive|siglus` hits are the negative doc comment in `mod.rs:6` plus a `bridge-unit` mention. Frame sink ceiling is E4 and audio sink ceiling is E0 as required (`sink/mod.rs:66-67`). Frame floor is structurally pinned at E2 (rejects E1 via `FrameTierFloorBelowSinkFloor`) and capped at the `FrameCapture` profile ceiling of E2 in this slice; reservation of E3/E4 for a follow-up profile addition matches the worker's pre-identified P3 (BudgetExhausted + E3/E4 deferred). Recording stays metadata-only: `RecordingMetadata` carries `frame_count`, `audio_event_count`, `duration_ms`, `evidence_tier`, and `artifact_refs` only - no raw bytes, no codec, no mix levels. Engine neutrality holds across the slice. The `codes` module ships exactly 24 stable `utsushi.conformance.*` entries (`codes.rs:124-126` asserts `ALL.len() == 24`), all kebab/snake-namespaced and uniqueness-checked; every entry is mirrored in `conformance::diagnostics::codes::ALL` via `pub use` re-export (`diagnostics.rs:48-59`) plus explicit listing at lines 87-111, and the cross-registry parity test `capture_recording_codes_all_present_in_conformance_diagnostics_all` guards drift. The worker's flagged deviation - negative cross-validation twin lowering the manifest's recording ceiling to E1 instead of raising the result tier - is defensible: `ConformanceResult::validate()` runs first and rejects any tier above the profile-id ceiling (E2 for RecordingCapture), so the only path that exercises the cross-validator's `PassAboveManifestCeiling` branch is to lower the manifest ceiling below the in-range result tier. Verification reruns: `cargo test -p utsushi-core` returns 357 + 7 + 10 + 9 + 15 + 11 + 3 + 16 = 428 passed / 0 failed / 5 ignored across lib and integration suites; `cargo test -p utsushi-core --test conformance_capture_recording` returns 7 passed; `cargo test -p utsushi-fixture` returns 34 passed; `cargo clippy -p utsushi-core --all-targets -- -D warnings` is clean; `just check` is green end-to-end (cargo fmt, cargo check --workspace, schema:check, ts:typecheck). The worker's `74 tests added` claim is off-by-five (the actual `#[test]` additions under `crates/utsushi-core/` are 69 by `git diff main..af80b13`), but the underlying coverage is real and the gates do pass; this is a counting nit, not a correctness issue. No P0/P1/P2/P3 findings.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
