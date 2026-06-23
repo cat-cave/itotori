@@ -44,7 +44,7 @@ The audit-focus items this slice has to make unrepresentable:
   surface only emits `EvidenceRef::TextLine`, `EvidenceRef::BridgeUnit`,
   `EvidenceRef::ReplayLogRef`, and `EvidenceRef::ImplMapFixture`. A typed
   evidence filter (§9) rejects `EvidenceRef::RuntimeArtifact { kind:
-  Screenshot | FrameCapture | Recording, .. }` at construction time.
+Screenshot | FrameCapture | Recording, .. }` at construction time.
 - **Branch mismatches hidden as skipped checks.** Skip is **forbidden** for
   the two declared profiles by UTSUSHI-026's
   `cross_validate_results_against_manifest`. UTSUSHI-027 surfaces missing
@@ -81,13 +81,13 @@ The audit-focus items this slice has to make unrepresentable:
 ### Distinction from UTSUSHI-022 (text sink) and UTSUSHI-021 (replay log)
 
 - UTSUSHI-022 already emits `TextLine { line_id, evidence_tier, text,
-  speaker, text_surface, bridge_ref, source_asset }`. UTSUSHI-027 does NOT
+speaker, text_surface, bridge_ref, source_asset }`. UTSUSHI-027 does NOT
   redefine that struct; it consumes `TextLine` indirectly through an adapter
   that lowers `TextLine` into `ObservedTextEvent`. The lowering is a
   test-utility helper, **not** a public engine-port contract — engine ports
   will land their own lowering as part of UTSUSHI-031+ (out of scope here).
 - UTSUSHI-021 already records `InputEvent::Choice { index: ChoiceIndex,
-  bridge_unit_id }` in `ReplayLog`. UTSUSHI-027 does NOT redefine choice
+bridge_unit_id }` in `ReplayLog`. UTSUSHI-027 does NOT redefine choice
   recording; it consumes the recorded `ChoiceIndex` path through an
   adapter that lowers `ReplayLog` cursor events into the
   `choice_index_path: Vec<ChoiceIndex>` field of `ObservedBranch`. Same
@@ -342,7 +342,7 @@ pub enum TraceMismatchKind {
 Pairing rule: for each `i` in `0..max(golden.len(), observed.len())`:
 
 - If `i >= observed.len()`: emit `Missing` (`expected_event_id =
-  golden[i].event_id`, `observed_event_id = None`).
+golden[i].event_id`, `observed_event_id = None`).
 - If `i >= golden.len()`: emit `Unexpected` (`expected_event_id` is the
   sentinel string `"<beyond-golden>"` — committed as a const so reviewers
   can grep for it; `observed_event_id = Some(observed[i].event_id)`).
@@ -545,19 +545,19 @@ For convenience and to satisfy the brief's requirement that "each mismatch
 identifies expected + observed runtime event id", the table below shows
 every mismatch kind and the diagnostic fields it always populates.
 
-| Kind                        | expected\_event\_id      | observed\_event\_id      | detail content                                                 | Stable code                                       |
-| --------------------------- | ------------------------ | ------------------------ | -------------------------------------------------------------- | ------------------------------------------------- |
-| TextDifference              | golden.event\_id         | observed.event\_id       | normalised expected/observed text, truncated to 256 bytes      | `utsushi.conformance.trace_text_mismatch`         |
-| OrderShift                  | golden.event\_id         | observed.event\_id       | expected/observed `order_index`                                | `utsushi.conformance.trace_order_mismatch`        |
-| BridgeUnitUnlinked          | golden.event\_id         | observed.event\_id       | "observed event has no bridge\_unit\_id"                       | `utsushi.conformance.bridge_unit_unlinked`        |
-| BridgeUnitDivergent         | golden.event\_id         | observed.event\_id       | expected/observed bridge\_unit\_id                             | `utsushi.conformance.bridge_unit_divergent`       |
-| SpeakerMismatch             | golden.event\_id         | observed.event\_id       | expected/observed speaker label (None rendered as `"<none>"`)  | `utsushi.conformance.trace_speaker_mismatch`      |
-| Missing (trace)             | golden.event\_id         | None                     | "observed trace ended at index N"                              | `utsushi.conformance.trace_event_missing`         |
-| Unexpected (trace)          | `"<beyond-golden>"`      | observed.event\_id       | observed extra event at index N                                | `utsushi.conformance.trace_event_unexpected`      |
-| Missing (branch)            | golden.branch\_id        | None                     | "branch not present in observed set"                           | `utsushi.conformance.branch_missing`              |
-| Unexpected (branch)         | `"<unknown-golden>"`     | observed.branch\_id      | "observed branch absent from golden"                           | `utsushi.conformance.branch_unexpected`           |
-| ChoicePathDivergent         | golden.branch\_id        | observed.branch\_id      | choice path delta (head index / length, no full list)          | `utsushi.conformance.branch_choice_path_mismatch` |
-| OutcomeDifference           | golden.branch\_id        | observed.branch\_id      | expected/observed outcome label                                | `utsushi.conformance.branch_outcome_mismatch`     |
+| Kind                | expected_event_id    | observed_event_id  | detail content                                                | Stable code                                       |
+| ------------------- | -------------------- | ------------------ | ------------------------------------------------------------- | ------------------------------------------------- |
+| TextDifference      | golden.event_id      | observed.event_id  | normalised expected/observed text, truncated to 256 bytes     | `utsushi.conformance.trace_text_mismatch`         |
+| OrderShift          | golden.event_id      | observed.event_id  | expected/observed `order_index`                               | `utsushi.conformance.trace_order_mismatch`        |
+| BridgeUnitUnlinked  | golden.event_id      | observed.event_id  | "observed event has no bridge_unit_id"                        | `utsushi.conformance.bridge_unit_unlinked`        |
+| BridgeUnitDivergent | golden.event_id      | observed.event_id  | expected/observed bridge_unit_id                              | `utsushi.conformance.bridge_unit_divergent`       |
+| SpeakerMismatch     | golden.event_id      | observed.event_id  | expected/observed speaker label (None rendered as `"<none>"`) | `utsushi.conformance.trace_speaker_mismatch`      |
+| Missing (trace)     | golden.event_id      | None               | "observed trace ended at index N"                             | `utsushi.conformance.trace_event_missing`         |
+| Unexpected (trace)  | `"<beyond-golden>"`  | observed.event_id  | observed extra event at index N                               | `utsushi.conformance.trace_event_unexpected`      |
+| Missing (branch)    | golden.branch_id     | None               | "branch not present in observed set"                          | `utsushi.conformance.branch_missing`              |
+| Unexpected (branch) | `"<unknown-golden>"` | observed.branch_id | "observed branch absent from golden"                          | `utsushi.conformance.branch_unexpected`           |
+| ChoicePathDivergent | golden.branch_id     | observed.branch_id | choice path delta (head index / length, no full list)         | `utsushi.conformance.branch_choice_path_mismatch` |
+| OutcomeDifference   | golden.branch_id     | observed.branch_id | expected/observed outcome label                               | `utsushi.conformance.branch_outcome_mismatch`     |
 
 Two policy notes:
 
@@ -635,9 +635,9 @@ Implementation:
    bridge unit cannot be loaded — the deserializer rejects with the
    serde "missing field" error and the loader maps that to
    `ConformanceError::EvidenceRefInvalid { artifact_kind: "bridge_unit",
-   .. }`. (We do not surface the raw serde error.)
+.. }`. (We do not surface the raw serde error.)
 2. **Observed side**: `ObservedTextEvent.bridge_unit_id:
-   Option<String>` deliberately allows None so the check can emit a
+Option<String>` deliberately allows None so the check can emit a
    typed `BridgeUnitUnlinked` mismatch rather than the adapter being
    forced to lie. The Pass path requires every observed event have
    Some(id); the typed Fail path emits when any is None.
@@ -906,6 +906,7 @@ Diagnostics:
 - `branch_mismatch_codes_are_all_members_of_codes_all()`.
 
 ### 10.3 Lowering to `ConformanceResult` (in `trace_branch/trace.rs::tests`
+
 and `trace_branch/branch.rs::tests`)
 
 - `trace_into_conformance_result_emits_pass_with_text_line_evidence()`.
@@ -919,6 +920,7 @@ and `trace_branch/branch.rs::tests`)
 - `branch_pass_result_round_trips_through_conformance_schema_v0_1()`.
 
 ### 10.4 Fixture integration (in
+
 `crates/utsushi-core/tests/conformance_trace_branch.rs`)
 
 One test per fixture file. Names match the kind they exercise so the
@@ -940,6 +942,7 @@ test → fixture mapping is obvious:
 - `negative_branch_unexpected_fixture_fails_with_unexpected_branch()`.
 
 ### 10.5 Codes-registry parity (in
+
 `trace_branch/mod.rs::tests`)
 
 - `every_new_trace_code_is_member_of_codes_all()`.
@@ -1124,15 +1127,15 @@ Justification:
 
 ## 16. Header rollup
 
-| Field         | Value                                                              |
-| ------------- | ------------------------------------------------------------------ |
-| Node          | UTSUSHI-027                                                        |
-| Module        | `utsushi_core::conformance::trace_branch`                          |
-| New types     | `Trace*`, `Branch*`, `GoldenTextEvent`, `ObservedTextEvent`, etc.  |
-| New codes     | 12 added to `conformance::diagnostics::codes::ALL`                 |
-| Fixture root  | `crates/utsushi-core/tests/fixtures/conformance/trace_branch/`     |
-| Schema bump   | None — additive only                                               |
-| Worker count  | 1                                                                  |
-| Depends on    | UTSUSHI-026 (manifest + result), UTSUSHI-022 (text sink),          |
-|               | UTSUSHI-021 (replay log, ChoiceIndex)                              |
-| Blocks        | UTSUSHI-030 (ingestion), UTSUSHI-031+ (per-engine port tests)      |
+| Field        | Value                                                             |
+| ------------ | ----------------------------------------------------------------- |
+| Node         | UTSUSHI-027                                                       |
+| Module       | `utsushi_core::conformance::trace_branch`                         |
+| New types    | `Trace*`, `Branch*`, `GoldenTextEvent`, `ObservedTextEvent`, etc. |
+| New codes    | 12 added to `conformance::diagnostics::codes::ALL`                |
+| Fixture root | `crates/utsushi-core/tests/fixtures/conformance/trace_branch/`    |
+| Schema bump  | None — additive only                                              |
+| Worker count | 1                                                                 |
+| Depends on   | UTSUSHI-026 (manifest + result), UTSUSHI-022 (text sink),         |
+|              | UTSUSHI-021 (replay log, ChoiceIndex)                             |
+| Blocks       | UTSUSHI-030 (ingestion), UTSUSHI-031+ (per-engine port tests)     |
