@@ -1,0 +1,338 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-023-20260623T213742Z",
+  "generatedAt": "2026-06-23T21:37:42Z",
+  "spec": {
+    "id": "UTSUSHI-023",
+    "title": "Inspectable state and snapshot primitives",
+    "branch": "spec/utsushi-023",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-023",
+    "commit": "6f2a53d"
+  },
+  "auditor": {
+    "name": "utsushi-023-snapshot-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "UTSUSHI-023 delivers the inspectable-state and snapshot primitives substrate as planned. The new `utsushi_core::snapshot` module ships six submodules (`state`, `snapshot`, `inspectable`, `diff`, `redaction`, `diagnostics`) plus three integration test files. The module is engine-neutral: a grep for `xp3|kirikiri|kag|rgss|rpgmaker|reallive|siglus` across `crates/utsushi-core/src/snapshot/` returns only one doc-comment example string (`utsushi-reallive` in `inspectable.rs:18`) and no implementation reference. The substrate has no shell-outs (`grep -rn 'Command::new'` is empty) and no `std::path` imports inside the module. The state-tree taxonomy uses the six pre-declared `StateNamespace` namespaces (Runtime, Replay, Bridge, Vfs, Port, Metadata) with the `port.*` engine-port escape hatch, and `StatePath::parse` rejects unknown roots, oversize segments, host-path shapes, and uppercase characters via stable typed errors. `StateValue::Bytes` carries hash + bounded `sample_hex` only — `BytesValue::PartialEq` deliberately compares on hash+length so two snapshots with different sample prefixes still match on identical content. The three audit-focus claims hold by construction: (1) round-trip determinism is asserted in `tests/snapshot_round_trip.rs::fixture_inspectable_round_trip_produces_equal_state_tree` (canonical JSON bytes are compared byte-for-byte after mutate-restore) and reinforced by `restore_snapshot_round_trip_produces_equal_snapshot_on_re_take` in the lib unit tests; (2) path-keyed diff identification is enforced because every `StateChange` carries a full `StatePath`, asserted in `tests/snapshot_state_drift.rs::mutated_state_produces_diff_naming_the_drifted_state_path` (asserts `diff.changes[0].path.as_str() == \"port.frame\"`); (3) redaction is enforced at three layers — `StatePath::parse` (path-shape rejection), `StateValue::String::validate` (insert-time `reject_unredacted_local_path_string`), and the `Snapshot::validate` belt-and-suspenders walk over the entire serialized JSON envelope (`reject_unredacted_local_paths_in_value`). All three layers are individually exercised in `tests/snapshot_redaction.rs` (`snapshot_state_path_with_drive_letter_shape_is_rejected_at_parse`, `snapshot_payload_does_not_contain_temp_path_after_inspectable_emits_one`, `snapshot_validate_redaction_walk_catches_serialized_form_leak`). Hard constraints hold: `Snapshot` exposes no `&mut` accessor (only `&self` getters; the `&mut self` matches in snapshot.rs:771,932,978 are on `Restorable` ports, not `Snapshot`); `Inspectable: Send + Sync` is declared at the trait bound; the 16 KiB snapshot ceiling is enforced in `Snapshot::validate` (snapshot.rs:328) and the 12 KiB state-tree ceiling is enforced in `StateTree::validate` (state.rs:502) and exercised by `state_tree_validate_rejects_serialized_form_exceeding_ceiling`; the `RuntimeRequest::snapshot` field is purely additive (the field defaults to `None` in `RuntimeRequest::new`, `Debug` redacts with a `<present>/<absent>` token, and a `with_snapshot` builder method mirrors the precedent set by `with_vfs`, `with_replay`, `with_sinks`, `with_cancellation`); the substrate has no `SystemTime::now()` call (caller supplies `generated_at` via `SnapshotRequest`, asserted by `take_snapshot_does_not_call_system_time_now`); the substrate has no silent best-effort branch (`Restorable::restore_state` returns `RestoreReport { consumed_paths, ignored_by_design }` so every path is consumed, ignored on purpose, or rejected with a typed `SnapshotError`). Verification reruns from the worktree confirm: `cargo test -p utsushi-core snapshot` passes 64 unit tests (post-cache-flap clean run); `cargo test -p utsushi-core` passes 358 lib + 10+9+15+11+3+5+3+3+16 integration binaries with no failures; `cargo test -p utsushi-fixture` passes 34 tests (no regression); `just check` green. Worker deviations are defensible: (1) the five extra `SnapshotError` housekeeping variants (`InvalidSnapshotId`, `InvalidInspectableId`, `InvalidGeneratedAt`, `EmptyStateTree`, `SerializationFailure`) close gaps the plan left implicit and registered codes under `utsushi.snapshot.*`, satisfying the orchestrator no-optionality directive; (2) renaming `from_str` to `from_identifier` avoids the clippy `should_implement_trait` lint without changing semantics; (3) `SnapshotRequest::tick: Option<u64>` is the documented seed for deterministic id derivation when `snapshot_id` is unset and rounds-trip cleanly; (4) `BytesValue::PartialEq` comparing hash+length only is explicitly per-plan (`§3.3`) and reinforced by `state_value_bytes_diff_compares_on_hash_not_sample_hex`. Three pre-identified follow-ups (Slice B fixture refactor to adopt `Inspectable + Restorable`, `SnapshotStore` trait + `EvidenceRef::StatePath` deferred to UTSUSHI-028, replay-tail integration to anchor a recorded log) recorded as P2/P3 DAG nodes. One additional minor coverage gap noted as P3: the substrate ceiling is enforced via `Snapshot::validate` but no test directly exercises `SnapshotError::SnapshotTooLarge`; the state-tree-too-large test reaches the snapshot path indirectly because the tree ceiling is lower than the snapshot ceiling, but a direct positive-rejection test would close the gap.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 2,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": [
+      "UTSUSHI-023-F001",
+      "UTSUSHI-023-F002",
+      "UTSUSHI-023-F003",
+      "UTSUSHI-023-F004"
+    ]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-023-F001",
+      "severity": "P2",
+      "title": "Slice B fixture adoption: implement Inspectable + Restorable on utsushi-fixture",
+      "category": "acceptance_criteria",
+      "locations": [
+        {
+          "path": "crates/utsushi-fixture/src/lib.rs",
+          "symbol": "FixtureRuntimeAdapter"
+        },
+        {
+          "path": "crates/utsushi-core/src/snapshot/inspectable.rs",
+          "line": 16,
+          "symbol": "Inspectable"
+        }
+      ],
+      "description": "Slice A intentionally leaves utsushi-fixture unchanged (`git diff main..HEAD -- crates/utsushi-fixture/` is empty), matching the UTSUSHI-020/022/103 Slice A posture documented in the plan §13. The plan's first claim (round-trip determinism) is asserted against an in-test `FixtureInspectable` constructed inside `crates/utsushi-core/tests/snapshot_round_trip.rs`, not against the shipped fixture adapter. Until Slice B lands, the substrate's positive determinism evidence comes only from in-test fixtures; the wider claim that a real fixture port supports inspection + restoration has not been demonstrated against the production fixture surface.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "git -C /scratch/worktrees/itotori-spec-utsushi-023 diff main..HEAD --stat shows zero changes under crates/utsushi-fixture/."
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §13 explicitly scopes the fixture refactor as a Slice B follow-up.",
+          "location": {
+            "path": ".plan/UTSUSHI-023.md",
+            "line": 1062
+          }
+        },
+        {
+          "kind": "test",
+          "detail": "cargo test -p utsushi-fixture passes 34/34 with no behavior change because the fixture has not adopted the new traits."
+        }
+      ],
+      "impact": "Slice A is mergeable as substrate, but the Inspectable/Restorable contract has no non-synthetic consumer until Slice B lands. Engine-port crates downstream (UTSUSHI-146 utsushi-reallive) need the fixture adoption as their reference example.",
+      "actionableAcceptanceCriteria": [
+        "utsushi-fixture's adapter struct implements `Inspectable` with `inspectable_id() = \"utsushi-fixture\"` and produces a `StateTree` covering at minimum runtime.clock.tick, port.frame, and metadata.adapter_name.",
+        "utsushi-fixture's adapter struct implements `Restorable` with `restore_state` consuming the inspected paths and declaring metadata.* as ignored_by_design.",
+        "A new integration test under crates/utsushi-fixture/tests/ asserts a snapshot round-trip (take, mutate, restore, re-take, byte-equal) against the production fixture adapter.",
+        "Existing fixture trace, capture, and smoke_validate goldens continue to pass."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Fixture snapshot adoption (UTSUSHI-023 Slice B)",
+          "priority": "P2",
+          "target": "alpha",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-023"],
+          "summary": "Refactor utsushi-fixture so its runtime adapter implements `Inspectable` + `Restorable` against the UTSUSHI-023 substrate, providing the first non-synthetic snapshot round-trip proof and the canonical reference port that downstream engine crates (UTSUSHI-146 utsushi-reallive) imitate.",
+          "deliverables": [
+            "Inspectable impl on the fixture adapter exposing tick + frame + asset id + metadata",
+            "Restorable impl on the fixture adapter consuming the same paths and declaring metadata.* ignored_by_design",
+            "Integration test crates/utsushi-fixture/tests/snapshot_roundtrip.rs asserting take-mutate-restore-retake byte equality",
+            "Documentation note in the fixture crate root pointing at the in-test FixtureInspectable as the design reference"
+          ],
+          "acceptanceCriteria": [
+            "Fixture adapter passes a snapshot round-trip test against the production surface (not an in-test FixtureInspectable).",
+            "Existing fixture trace, capture, and smoke_validate goldens continue to pass.",
+            "utsushi-cli runtime registry compiles and runs unchanged."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture"
+            },
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-fixture snapshot_roundtrip"
+            }
+          ],
+          "auditFocus": [
+            "Fixture inspect/restore implementation matches the substrate's Inspectable/Restorable contract verbatim (no silent best-effort branch).",
+            "Round-trip determinism holds against the production fixture surface, not just an in-test stub.",
+            "No regression in existing trace, capture, or smoke_validate goldens."
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-023-F002",
+      "severity": "P2",
+      "title": "SnapshotStore trait and EvidenceRef::StatePath deferred to UTSUSHI-028",
+      "category": "acceptance_criteria",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/lib.rs",
+          "line": 150,
+          "symbol": "RuntimeRequest.snapshot"
+        },
+        {
+          "path": "crates/utsushi-core/src/snapshot/diff.rs",
+          "line": 5,
+          "symbol": "diff_snapshots"
+        }
+      ],
+      "description": "Per the plan §12.6 and §13, `RuntimeRequest::snapshot: Option<SnapshotRef>` is the only payload commitment in this slice — the `SnapshotStore` trait that resolves the id-only reference to a full payload is deferred to UTSUSHI-028, and the `EvidenceRef::StatePath` variant that UTSUSHI-028 will use to cite drifted paths in conformance results is also deferred. UTSUSHI-023's test surface asserts `StateDiff` correctness directly (not through `EvidenceRef`), so UTSUSHI-023 ships without coupling to a conformance-schema bump. The follow-up cannot be elided — without UTSUSHI-028, no consumer can resolve a `SnapshotRef` to a `Snapshot`, and the path-keyed diff cannot surface as a conformance diagnostic.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "lib.rs:150 doc comment explicitly defers the `SnapshotStore` trait to UTSUSHI-028.",
+          "location": {
+            "path": "crates/utsushi-core/src/lib.rs",
+            "line": 150
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "Plan §12.4 commits to not adding an EvidenceRef::StatePath variant in this slice; UTSUSHI-028 owns the conformance schema.",
+          "location": {
+            "path": ".plan/UTSUSHI-023.md",
+            "line": 1008
+          }
+        },
+        {
+          "kind": "command",
+          "detail": "grep -rn 'SnapshotStore' on snapshot module returns no hits; the trait is intentionally absent."
+        }
+      ],
+      "impact": "Until UTSUSHI-028 lands, the `RuntimeRequest::snapshot` field cannot be resolved to a payload by any consumer, and `diff_snapshots` output cannot drive a conformance result. The substrate is structurally sound but not yet wired into the conformance harness.",
+      "actionableAcceptanceCriteria": [
+        "UTSUSHI-028 introduces a `SnapshotStore` trait that resolves a `SnapshotRef` to an `Arc<Snapshot>`, with a typed error variant for missing-id and mismatched-inspectable-id cases.",
+        "UTSUSHI-028 adds an `EvidenceRef::StatePath { path: String }` variant on the conformance result enum, populated from `StateDiff::changed_paths()`.",
+        "A new conformance check named `utsushi.snapshot.state_drift` quotes the changed `StatePath::as_str()` verbatim in its `EvidenceRef`.",
+        "An integration test under crates/utsushi-core/tests/ asserts a full snapshot-to-conformance-result round trip using a fixture port."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-028",
+          "acceptanceCriteria": [
+            "`SnapshotStore` trait introduced as the resolution layer for `RuntimeRequest::snapshot: Option<SnapshotRef>`, with typed errors for missing and mismatched ids.",
+            "`EvidenceRef::StatePath { path: String }` variant added on the conformance result enum and populated from `StateDiff::changed_paths()`.",
+            "New conformance check `utsushi.snapshot.state_drift` quotes the drifted `StatePath` verbatim in its `EvidenceRef`."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core snapshot_conformance"
+            },
+            {
+              "type": "command",
+              "value": "just schema"
+            }
+          ],
+          "auditFocus": [
+            "SnapshotStore resolution returns typed errors, never silently returning a stale or empty payload.",
+            "EvidenceRef::StatePath round-trips through the conformance result schema cleanly.",
+            "The state-drift conformance check actually fails when the diff is non-empty (negative case asserted)."
+          ],
+          "notes": "Deferred from UTSUSHI-023 per the plan's §12.6 (SnapshotStore) and §12.4 (EvidenceRef::StatePath) commitments. UTSUSHI-023 ships SnapshotRef as the only commitment; UTSUSHI-028 owns the storage and conformance-schema follow-ups."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-023-F003",
+      "severity": "P3",
+      "title": "Replay-tail integration test approximates rather than drives ReplayLog",
+      "category": "test",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/tests/snapshot_round_trip.rs",
+          "line": 197,
+          "symbol": "fixture_inspectable_round_trip_observation_sequence_matches_after_restore"
+        }
+      ],
+      "description": "Plan §10.7 calls for a fixture-driven test that constructs a `ReplayLog` (UTSUSHI-021), drives the fixture, takes a snapshot at tick T, mutates, restores from the snapshot, replays the tail of the log from T onward, and asserts the emitted observation sequence matches the original from-zero replay tail. The implemented test `fixture_inspectable_round_trip_observation_sequence_matches_after_restore` instead uses a local `observe()` helper that returns `vec![(port.tick, port.frame)]` directly — it asserts the deterministic-recovery contract on the port state, but does not drive an actual `ReplayLog` or assert observation-sequence equality through the replay infrastructure. The path-keyed diff and round-trip claims are still individually asserted; this is a coverage-completeness gap on the integration with UTSUSHI-021.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Plan §10.7 second test calls for ReplayLog construction and replay-tail comparison.",
+          "location": {
+            "path": ".plan/UTSUSHI-023.md",
+            "line": 887
+          }
+        },
+        {
+          "kind": "test",
+          "detail": "tests/snapshot_round_trip.rs:197-216 uses an inline observe() helper instead of ReplayLog; grep -rn 'ReplayLog' on snapshot module returns no hits."
+        }
+      ],
+      "impact": "The replay-tail equality claim is asserted in spirit but not against the replay infrastructure. UTSUSHI-027 (trace + branch conformance) consumers will eventually need the snapshot-to-replay-tail coupling to be exercised end-to-end. Low risk in alpha because the per-component contracts are individually green.",
+      "actionableAcceptanceCriteria": [
+        "Add a new integration test (or extend the existing one) that constructs a `ReplayLog` with at least two `ReplayEntry` records, drives the fixture from the replay log, takes a snapshot at the second entry's tick, restores, and replays the remaining tail.",
+        "Assert the post-restore observation sequence (collected through the replay infrastructure, not through ad-hoc port reads) matches the pre-mutation sequence byte-for-byte.",
+        "If the `ReplayLog` API needs a snapshot-anchor accessor, file that as a UTSUSHI-021 follow-up and link it from the new test."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Snapshot replay-tail integration test against ReplayLog",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-023"],
+          "summary": "Strengthen the round-trip determinism claim by exercising a real ReplayLog through the snapshot/restore/diff substrate, replacing the placeholder observe() helper in tests/snapshot_round_trip.rs with a log-driven flow that asserts observation-sequence equality through the replay infrastructure.",
+          "deliverables": [
+            "Integration test constructing a ReplayLog with at least two ReplayEntry records",
+            "Test driving the fixture from the log, snapshotting at a known tick, mutating, restoring, and replaying the tail",
+            "Byte-equality assertion on the observation sequence collected through the replay infrastructure"
+          ],
+          "acceptanceCriteria": [
+            "ReplayLog is constructed and driven explicitly (no ad-hoc observation helper).",
+            "Snapshot restore at tick T followed by tail replay produces an observation sequence equal to the pre-mutation from-zero replay tail.",
+            "Test is hermetic — no host paths, no clock side effects, no external fixtures."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core --test snapshot_round_trip"
+            }
+          ],
+          "auditFocus": [
+            "ReplayLog is the actual source of observations (not a stub).",
+            "Tail replay starts at the snapshot's anchor tick, not from zero.",
+            "Observation sequence equality is byte-level, not field-level."
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-023-F004",
+      "severity": "P3",
+      "title": "Snapshot 16 KiB ceiling enforced but lacks a direct positive-rejection test",
+      "category": "test",
+      "locations": [
+        {
+          "path": "crates/utsushi-core/src/snapshot/snapshot.rs",
+          "line": 328,
+          "symbol": "Snapshot::validate"
+        },
+        {
+          "path": "crates/utsushi-core/src/snapshot/snapshot.rs",
+          "line": 640,
+          "symbol": "snapshot_serialized_form_stays_under_documented_ceiling"
+        }
+      ],
+      "description": "The 16 KiB serialized-snapshot ceiling is correctly defined as `SNAPSHOT_MAX_SERIALIZED_BYTES = 16 * 1024` and enforced in `Snapshot::validate` at line 328, returning `SnapshotError::SnapshotTooLarge`. The only test that touches the ceiling is `snapshot_serialized_form_stays_under_documented_ceiling`, which asserts a clean snapshot stays under the limit — it does not exercise the rejection branch. The corresponding state-tree ceiling has a positive-rejection test (`state_tree_validate_rejects_serialized_form_exceeding_ceiling`); in practice the state-tree ceiling (12 KiB) trips before the snapshot ceiling, so the snapshot rejection path is hit only by a snapshot whose envelope itself is heavy (e.g. an extreme `inspectable_id` or schema field). Coverage gap only — the enforcement code path itself is straightforward and the constant is correctly used.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "Snapshot::validate enforces `SNAPSHOT_MAX_SERIALIZED_BYTES` via SnapshotTooLarge.",
+          "location": {
+            "path": "crates/utsushi-core/src/snapshot/snapshot.rs",
+            "line": 328
+          }
+        },
+        {
+          "kind": "command",
+          "detail": "grep -n 'SnapshotTooLarge' on the snapshot module shows only the validation site and the variant declaration; no test directly asserts the rejection branch."
+        }
+      ],
+      "impact": "The hard-constraint 16 KiB ceiling is structurally enforced and the constant is correct, but the rejection branch lacks a direct positive-rejection test. Low risk because the state-tree ceiling test already exercises the same JSON-size-rejection mechanism on a sibling code path.",
+      "actionableAcceptanceCriteria": [
+        "Add a unit test under crates/utsushi-core/src/snapshot/snapshot.rs that constructs a Snapshot whose serialized form exceeds SNAPSHOT_MAX_SERIALIZED_BYTES (e.g. by stuffing the state tree with allowed leaves until the envelope crosses the threshold while individual tree validation passes via a relaxed ceiling fixture, or by directly asserting on the validate path).",
+        "Test asserts `SnapshotError::SnapshotTooLarge { size, ceiling }` with `ceiling == SNAPSHOT_MAX_SERIALIZED_BYTES` and `size > ceiling`."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Direct positive-rejection test for snapshot 16 KiB ceiling",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["utsushi"],
+          "parallelGroup": "utsushi-core",
+          "dependsOn": ["UTSUSHI-023"],
+          "summary": "Add a direct positive-rejection test for `SnapshotError::SnapshotTooLarge` covering the 16 KiB serialized-snapshot ceiling enforcement path in `Snapshot::validate`. The current test surface only asserts that a clean snapshot stays under the ceiling; the rejection branch itself is not directly exercised (the state-tree ceiling test reaches the same JSON-size-rejection mechanism on a sibling path).",
+          "deliverables": [
+            "Unit test under crates/utsushi-core/src/snapshot/snapshot.rs constructing a Snapshot whose serialized form exceeds SNAPSHOT_MAX_SERIALIZED_BYTES",
+            "Assertion that SnapshotError::SnapshotTooLarge is returned with size > ceiling"
+          ],
+          "acceptanceCriteria": [
+            "Test exercises the SnapshotError::SnapshotTooLarge rejection branch in Snapshot::validate directly.",
+            "Constant SNAPSHOT_MAX_SERIALIZED_BYTES is referenced from the test so a future ceiling change updates both the validator and the test together."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p utsushi-core snapshot_validate_rejects_envelope_exceeding_ceiling"
+            }
+          ],
+          "auditFocus": [
+            "Test asserts the rejection branch, not just that a clean snapshot is under the ceiling.",
+            "No clippy / fmt regressions introduced.",
+            "Constant SNAPSHOT_MAX_SERIALIZED_BYTES is referenced from the test."
+          ]
+        }
+      }
+    }
+  ]
+}
