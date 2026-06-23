@@ -1,0 +1,23 @@
+# Synthetic asset package fixture for UTSUSHI-020 integration tests.
+#
+# Drives the FixturePolicyPackage's diagnostic surface without requiring
+# real crypto or helper transport in the test crate. Per-path policy:
+#
+#   encrypted/locked.bin   -> AssetEncrypted { required_capability = "crypto" }
+#   helper-gated/remote.bin -> AssetHelperGated { helper_id = Named("synthetic-fixture-helper") }
+#
+# Plaintext paths under hello/ are read straight from disk.
+
+id = "synthetic"
+public_source = "public-fixture:synthetic-package"
+case_rule = "sensitive"
+
+[[policy]]
+path = "encrypted/locked.bin"
+access = "encrypted"
+required_capability = "crypto"
+
+[[policy]]
+path = "helper-gated/remote.bin"
+access = "helper_gated"
+helper_id = "synthetic-fixture-helper"
