@@ -6313,7 +6313,7 @@
     {
       "id": "ITOTORI-017",
       "title": "Speaker and hidden-identity labeling agent",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -6358,9 +6358,7 @@
         "False certainty",
         "Conflating parser and narrative unknowns"
       ],
-      "owner": "orchestrator-itotori-017",
-      "branch": "spec/itotori-017",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-017"
+      "statusReason": "Implementation merged (commit 85bf964). SpeakerLabelAgent + hidden-identity invariant + patch-safe serialization filter + 55 tests."
     },
     {
       "id": "ITOTORI-018",
