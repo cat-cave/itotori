@@ -200,7 +200,7 @@ modules. Run with `cargo test -p utsushi-core recorder`.
 4. **SourceTag wire form is the kebab-case enum**. For every variant of
    `SourceTag`, build a trace, serialize, parse the JSON back, and assert
    the `source` field is one of `"browser" | "native" | "wine" |
-   "fixture"`. Also assert no field in the serialized JSON contains the
+"fixture"`. Also assert no field in the serialized JSON contains the
    substring of any host-specific value (`/home`, `C:\\`, `wine-`).
 5. **All four SourceTag variants produce valid records**. For each variant,
    round-trip `ReferenceTrace` through serde and assert equality.

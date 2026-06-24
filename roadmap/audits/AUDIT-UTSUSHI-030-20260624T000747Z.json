@@ -99,8 +99,11 @@
             "Removing the artifact insertion path causes the integration test to fail."
           ],
           "verification": [
-            {"type": "command", "value": "just db-up && just db-migrate && pnpm --filter @itotori/db test:db"},
-            {"type": "command", "value": "pnpm exec vp run ts:test"}
+            {
+              "type": "command",
+              "value": "just db-up && just db-migrate && pnpm --filter @itotori/db test:db"
+            },
+            { "type": "command", "value": "pnpm exec vp run ts:test" }
           ],
           "auditFocus": [
             "FK integrity between conformance rows and itotori_artifacts.",
