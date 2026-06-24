@@ -256,11 +256,12 @@ milestone proposed in §D:
 These capabilities should not be claimed for the alpha milestone at all:
 
 - **Native pure-Rust RealLive runtime port** (`UTSUSHI-146`, including all 7
-  proposed sub-nodes in `dag-critique.md` §A.1). The combined scope is
-  realistically 6+ months of engine-focused work; treating it as alpha-blocking
-  prevents alpha from ever shipping. Move to **research-tier** with a
-  decomposed plan (see §C.3) and call the alpha milestone in §D the practical
-  exit point that does not require it.
+  proposed sub-nodes in `dag-critique.md` §A.1 — superseded by the 22-node
+  decomposition in `docs/research/reallive-engine-dag-proposal.md`). The
+  combined scope is large enough that treating it as a single alpha-blocking
+  node makes alpha unreachable as a dogfood point. Move to **continuous-tier**
+  with the decomposed plan, and call the alpha milestone in §D the practical
+  dogfood point that does not require the whole runtime port to land first.
 - **SiglusEngine claimed-support.** Already excluded by the doc
   (`alpha-localization-project-readiness.md`:391: "No SiglusEngine production
   adapter before the first real localization project"), but the engine row at
@@ -488,12 +489,13 @@ The minimum ordered DAG path to reach alpha as redefined in §D:
 10. **Add audit-playbook entry H.1** from `dag-critique.md` (no single-node
     engine ports).
 
-Once steps 1–10 land, the redefined alpha milestone is reachable. Estimated
-sequencing: 146a + KAIFUU-007 tightening + KAIFUU-011b + KAIFUU-173b can run
-in parallel (different crates); the doc edits and demo script revisions can
-land alongside; the DAG splits/demotions are a single repair PR. Total
-calendar estimate: weeks, not months — versus an unknown-but-multi-month
-estimate for the current "real RealLive runtime" framing.
+Once steps 1–10 land, the redefined alpha milestone is reachable. Sequencing:
+146a + KAIFUU-007 tightening + KAIFUU-011b + KAIFUU-173b can run in parallel
+(different crates); the doc edits and demo script revisions can land
+alongside; the DAG splits/demotions are a single repair PR. The project has
+no external timeline; the relevant comparison is "alpha dogfoodable after a
+finite, decomposed set of follow-up nodes" vs "alpha never reachable as
+currently framed because a single node demands the entire runtime port."
 
 ---
 
@@ -553,8 +555,9 @@ against:
 ## Bottom line
 
 The alpha milestone as currently written promises end-to-end on a real game
-(Sweetie HD) through a runtime engine port that does not exist and would take
-6+ months to build. The substrate facade and the synthetic loop are genuinely
+(Sweetie HD) through a runtime engine port that does not exist and is large
+enough that treating it as one alpha-blocking node makes alpha unreachable as
+a dogfood point. The substrate facade and the synthetic loop are genuinely
 done — but the substrate-honesty audit shows the substrate is functionally
 fixture-shaped in 8 of 11 subsystems (M.1–M.5 extensions identified as needed
 before a real port can land). The RealLive parser is a clean-room toy on a
@@ -566,8 +569,10 @@ extensions M.1–M.3 plus a non-synthetic engine port crate (UTSUSHI-146a) that
 registers conformance, plus a real-bytes parser/patchback smoke on Sweetie HD
 (KAIFUU-173b/011b), plus a recorded-LLM bundle, plus dashboard reachable
 against synthetic state." Runtime evidence on a real game is post-alpha
-first-project work.** This redefinition makes alpha reachable in weeks of
-focused substrate-extension and crate-scaffold work, preserves the project's
-strategic purpose (proving the architecture and validating direction), and
-does not require any of the proven-impossible-to-fake commitments the current
-doc accidentally makes against its own claimed-support definition.
+first-project work.** Alpha-ready under this definition is the point at which
+the suite is usable enough to dogfood — to actually attempt a localization
+and discover where it struggles, feeding new DAG nodes for the next pass.
+This redefinition preserves the project's strategic purpose (proving the
+architecture and validating direction), and does not require any of the
+proven-impossible-to-fake commitments the current doc accidentally makes
+against its own claimed-support definition.

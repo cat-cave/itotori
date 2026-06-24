@@ -741,8 +741,8 @@ long-tail of unused opcodes, no per-title hacks) is realistically:
 - asset decoders (g00 + nwa + ovk + cgm + save): ~2–3 KLoC.
 
 **Pure-Rust subset port estimate: 20–35 KLoC of new code**, spread across
-~15–25 sub-nodes. That's 6–12 engineer-months of focused work, not the
-single-node "RealLive runtime port" UTSUSHI-146 currently claims. Two
+~15–25 sub-nodes — substantially more than the single-node "RealLive runtime
+port" UTSUSHI-146 currently claims. Two
 caveats:
 
 - The 250–400 used-opcode estimate is unverified until a real decoder

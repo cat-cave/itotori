@@ -5,6 +5,25 @@ from `roadmap/spec-dag.json`. It explains what the orchestrator owns, what it
 must delegate, and how audit, CI, model-provider, cost, and worktree decisions
 should be handled without relying on chat history.
 
+## Alpha Milestone Definition (2026-06-24)
+
+This project has **no external timeline**. Eng-month/week/year cost framing
+is off-shape and must not appear in orchestrator outputs (audit reports,
+acceptance criteria, summary docs).
+
+**Alpha-ready** is defined in `docs/alpha-localization-project-readiness.md`
+as: the architecture proven on synthetic + real-bytes smoke, with enough of
+the claimed engines exercised to **dogfood the suite on a first localization
+project**. Alpha is not "complete product"; it is the point at which the
+suite is usable enough to discover what the next pass of nodes should be.
+Dogfood failures fuel the DAG; they are not a failure of the milestone.
+
+The native RealLive runtime port lives at continuous tier as the 22-node
+decomposition (`docs/research/reallive-engine-dag-proposal.md`,
+UTSUSHI-200..UTSUSHI-221 in the DAG). Only the scaffolding node
+(UTSUSHI-200, = the proposal's 146a) is alpha; the rest are continuous and
+land post-alpha on no external schedule.
+
 ## Source Of Truth
 
 `roadmap/spec-dag.json` is the source of truth for roadmap state. The

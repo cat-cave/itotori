@@ -1,41 +1,61 @@
 # Alpha Localization Project Readiness
 
-> **Audit-evidence callout (2026-06-23):** A 6-angle audit batch landed in
-> `docs/audits/` and `docs/research/`. The audits found that several claims in
-> this document are not currently met by the codebase. **The aspirational
-> claims below are preserved** so the project does not lose sight of its goal,
-> but the callout below names the major evidence gaps. No scope is being
-> deleted — the annotation exists so a reader can see at a glance which claims
-> are demonstrable today vs which require concrete follow-up work before the
-> alpha milestone can honestly be declared.
+> **Alpha milestone redefinition (approved 2026-06-24):** The previous framing
+> of this document defined alpha-ready as "end-to-end runtime evidence on
+> Sweetie HD via a complete native RealLive port." A 6-angle audit batch
+> (`docs/audits/*`, `docs/research/*`) demonstrated that framing collapses a
+> ~20–35 KLoC native port spanning ~22 sub-nodes into one DAG node, which
+> makes alpha unreachable as a dogfood point.
 >
-> Specific findings:
+> **Alpha-ready under the redefinition** means: the architecture is proven
+> end-to-end on synthetic + real-bytes smoke, with enough of the claimed
+> engines exercised to dogfood the suite on a first localization project. The
+> first project then surfaces real failure modes that feed new DAG nodes.
+> Alpha is **not** "complete product" — it is "usable enough to discover what
+> the next pass of nodes should be." The native RealLive runtime port and the
+> SiglusEngine port stay in the DAG at continuous tier; their decomposed
+> sub-nodes (`docs/research/reallive-engine-dag-proposal.md`, 22 sub-nodes
+> 146a–v) drive that work post-alpha, on no external timeline.
 >
-> - **RealLive chain on real game bytes**: `kaifuu-cli detect REALLIVEDATA/`
->   returns `detected: false` against the real Oshioki Sweetie HD files.
->   `parse_archive` on the real 3.87 MB `Seen.txt` returns `Ok(entries=[])`
->   (silent zero-scene parse). Gameexe parser classifies 1,328/1,345 (98.7%)
->   of Sweetie HD's keys as Unknown. See `docs/audits/code-criticism.md` and
->   `docs/research/reallive-engine.md` for evidence.
-> - **UTSUSHI-146 as a single DAG node is structurally infeasible**:
->   `docs/research/reallive-engine-dag-proposal.md` proposes a 22-node
->   decomposition (146a–v) with 6–12 engineer-months of work. Pending
->   maintainer adoption.
-> - **Substrate consumers**: zero non-test consumers of the UTSUSHI substrate
->   types exist outside `utsushi-core`. `EnginePort::observe` returns the
->   legacy `ObservationHookEvent`, not the new substrate sink payloads — the
->   UTSUSHI-022/023 work is unreachable from the official port trait. Five
->   substrate extensions (M.1–M.5 in `docs/audits/substrate-honesty.md`) are
->   required before a real engine port can land.
-> - **Forbidden-state risk**: the claimed-support framing for SiglusEngine +
->   RealLive currently relies on extraction and patch-back work that does not
->   round-trip real game bytes. See `docs/audits/alpha-scope-honesty.md` for
->   the proposed redefinition.
+> **Concrete alpha gates under the redefinition** (cross-ref
+> `docs/audits/alpha-scope-honesty.md` §D):
 >
-> Until the maintainer adopts the proposed redefinitions, this document
-> retains its original wording so the goal remains visible. The DAG, the
-> claimed-engine list, and the engine-set table below are all subject to the
-> redefinition outlined in `docs/audits/alpha-scope-honesty.md`.
+> 1. **Substrate extensions M.1–M.3 landed.** `EnginePort::observe` carries
+>    the substrate sink payloads (not the legacy `ObservationHookEvent`);
+>    snapshot/replay round-trips through the substrate types; at least one
+>    non-test consumer of each substrate subsystem exists outside
+>    `utsushi-core`.
+> 2. **Non-synthetic engine port crate scaffolded.** `UTSUSHI-146a` exists
+>    as a crate that registers conformance against the substrate, with the
+>    smallest credible opcode subset (call/return/text-display/wait), and
+>    does **not** depend on author-fixture envelopes.
+> 3. **Real-bytes smoke on Sweetie HD.** `kaifuu-cli detect` returns true,
+>    `parse_archive` returns a non-empty entry list (no silent zero-state),
+>    and the Gameexe parser classifies the dominant key families. Findings
+>    captured in `docs/audits/real-bytes-validation-2026-06-24.md` drive
+>    the specific follow-up DAG nodes that close this gate.
+> 4. **Recorded-LLM bundle.** A reproducible recorded-provider run through
+>    the full Itotori workflow (draft → QA → patch export) is reachable
+>    behind `ITOTORI_LIVE_PROVIDER=0` with deterministic outputs.
+> 5. **Dashboard reachable.** The spec-dag-dashboard renders DAG, claims,
+>    and audit state from real DB state, not fixtures.
+> 6. **Repo hygiene.** `just check` / `just test` / `just ci` / `just hello`
+>    green locally; no silenced tests representing real outstanding work
+>    (cross-ref `docs/audits/silenced-2026-06-24.md`); no foreign-tool
+>    subprocess invocations in production code.
+>
+> **What remains continuous-tier post-alpha:** the full RealLive runtime
+> port (146b–v), the SiglusEngine port, full real-game runtime evidence on
+> Sweetie HD, RPG Maker MV/MZ end-to-end on a real game (vs. fixture
+> vertical), encrypted XP3 + TJS, and every engine in the
+> "Continuous Expansion Candidates" section below. None of these are
+> required for the dogfood point; all of them are real DAG work that the
+> dogfood point will help prioritize.
+>
+> **Original goal language preserved below** so the long-term vision stays
+> visible. Read it as the project's North Star, not as the alpha gate. The
+> sections that follow describe the suite's intended end-state; the gates
+> above are the subset needed for the first dogfood pass.
 
 This document defines the feature set that makes the Itotori suite ready to
 start a first real localization project. It does not define a terminal product
