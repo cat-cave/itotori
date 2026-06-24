@@ -23,14 +23,14 @@ use std::fs;
 use std::path::Path;
 
 use kaifuu_core::{
-    ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterFailure,
+    ASSET_INVENTORY_SCHEMA_VERSION, AdapterCapabilities, AdapterCapabilityMatrix, AdapterFailure,
     AdapterFailureSemanticParams, AdapterHelperRequirementDeclaration, ArchiveParameter,
     ArchiveParameterKind, ArchiveParameterSource, AssetInventoryAsset, AssetInventoryAssetKind,
     AssetInventoryAssetRef, AssetInventoryManifest, AssetInventoryPatchMode, AssetInventoryRequest,
     AssetInventorySurface, AssetInventorySurfaceKind, AssetInventoryTextSourceKind, AssetKind,
     AssetList, AssetListRequest, AssetProfile, BridgeBundle, BridgeUnit, Capability,
-    CapabilityReport, CapabilityStatus, CodecTransform, ContainerTransform, CryptoTransform,
-    DetectRequest, DetectionEvidence, DetectionResult, EncodedStringSlot,
+    CapabilityLevelStatus, CapabilityReport, CapabilityStatus, CodecTransform, ContainerTransform,
+    CryptoTransform, DetectRequest, DetectionEvidence, DetectionResult, EncodedStringSlot,
     EncodedStringSlotProtectedSpan, EngineAdapter, EngineProfile, EvidenceStatus, ExtractRequest,
     ExtractionResult, FIXTURE_HELPER_ALLOWLIST_REF_ID, FIXTURE_HELPER_REGISTRY_ID, GameProfile,
     HelperCapability, KaifuuResult, KeyMaterialKind, KeyRequirement,
@@ -1242,6 +1242,17 @@ impl EngineAdapter for FixtureAdapter {
                 ),
             ],
         )
+        .with_level_matrix(AdapterCapabilityMatrix::new(
+            FIXTURE_ADAPTER_ID,
+            CapabilityLevelStatus::supported(),
+            CapabilityLevelStatus::supported(),
+            CapabilityLevelStatus::supported(),
+            CapabilityLevelStatus::partial(vec![
+                "writes source.json only; does not rebuild engine archives or binary assets"
+                    .to_string(),
+                "requires patch entries to match existing sourceUnitKey values".to_string(),
+            ]),
+        ))
         .with_access_contract(LayeredAccessCapabilityContract::plaintext_identity())
         .with_helper_requirements(vec![AdapterHelperRequirementDeclaration::new(
             FIXTURE_HELPER_REGISTRY_ID,
@@ -2363,6 +2374,17 @@ impl EngineAdapter for Xp3ProfileDetectorAdapter {
                 ),
             ],
         )
+        .with_level_matrix(AdapterCapabilityMatrix::new(
+            XP3_DETECTOR_ADAPTER_ID,
+            CapabilityLevelStatus::supported(),
+            CapabilityLevelStatus::supported(),
+            CapabilityLevelStatus::unsupported(
+                "KAIFUU-095 is an XP3 detector/profile fixture only; payload extraction, decompression, decryption, and patch-back are outside the detector profile",
+            ),
+            CapabilityLevelStatus::unsupported(
+                "XP3 patch-back/repack support is outside the detector profile (KAIFUU-XP3 patch backlog)",
+            ),
+        ))
         .with_access_contract(LayeredAccessCapabilityContract {
             identify,
             inventory,
@@ -3112,6 +3134,10 @@ impl EngineAdapter for SiglusProfileDetectorAdapter {
                 ),
             ],
         )
+        .with_level_matrix(AdapterCapabilityMatrix::identify_only(
+            SIGLUS_DETECTOR_ADAPTER_ID,
+            "Siglus detector profile is identify-only; Scene.pck/Gameexe.dat archive parsing, extraction, decryption, and patch-back are unsupported (KAIFUU-091)",
+        ))
         .with_access_contract(LayeredAccessCapabilityContract {
             identify,
             inventory,
@@ -4041,6 +4067,19 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
                 ),
             ],
         )
+        .with_level_matrix(AdapterCapabilityMatrix::new(
+            REALLIVE_DETECTOR_ADAPTER_ID,
+            CapabilityLevelStatus::supported(),
+            CapabilityLevelStatus::supported(),
+            CapabilityLevelStatus::partial(vec![
+                "Scene parser (KAIFUU-173) covers text slots but not all asset surfaces"
+                    .to_string(),
+                "image-overlaid text inside .g00 is not in scope".to_string(),
+            ]),
+            CapabilityLevelStatus::unsupported(
+                "no full patch path yet; KAIFUU-053 reports patch as Unsupported at the matrix even though KAIFUU-174 supports length-preserving slot replacement",
+            ),
+        ))
         .with_access_contract(LayeredAccessCapabilityContract {
             identify,
             inventory,
@@ -6190,6 +6229,88 @@ mod tests {
             report.capability == Capability::RuntimeVm
                 && report.status == kaifuu_core::CapabilityStatus::Unsupported
         }));
+    }
+
+    // KAIFUU-053: detector level-matrix snapshot tests. Each detector must
+    // emit a stable typed matrix so consumers can rely on the strict gate.
+    #[test]
+    fn fixture_adapter_level_matrix_is_stable() {
+        use kaifuu_core::{CapabilityLevel, CapabilityLevelStatus};
+        let matrix = FixtureAdapter.capabilities().level_matrix;
+        assert_eq!(matrix.adapter_id, FIXTURE_ADAPTER_ID);
+        assert!(matrix.supports(CapabilityLevel::Identify));
+        assert!(matrix.supports(CapabilityLevel::Inventory));
+        assert!(matrix.supports(CapabilityLevel::Extract));
+        // Patch is Partial — not Supported — per fixture line-parity policy.
+        assert!(!matrix.supports(CapabilityLevel::Patch));
+        assert!(matrix.patch.is_partial());
+        if let CapabilityLevelStatus::Partial { limitations } = &matrix.patch {
+            assert!(
+                limitations.iter().any(|l| l.contains("source.json")),
+                "expected line-parity limitation"
+            );
+        }
+    }
+
+    #[test]
+    fn xp3_detector_level_matrix_is_identify_and_inventory_only() {
+        use kaifuu_core::CapabilityLevel;
+        let matrix = Xp3ProfileDetectorAdapter.capabilities().level_matrix;
+        assert_eq!(matrix.adapter_id, XP3_DETECTOR_ADAPTER_ID);
+        assert!(matrix.supports(CapabilityLevel::Identify));
+        assert!(matrix.supports(CapabilityLevel::Inventory));
+        assert!(matrix.extract.is_unsupported());
+        assert!(matrix.patch.is_unsupported());
+    }
+
+    #[test]
+    fn siglus_detector_level_matrix_is_identify_only() {
+        use kaifuu_core::CapabilityLevel;
+        let matrix = SiglusProfileDetectorAdapter.capabilities().level_matrix;
+        assert_eq!(matrix.adapter_id, SIGLUS_DETECTOR_ADAPTER_ID);
+        assert!(matrix.supports(CapabilityLevel::Identify));
+        // Higher rungs are identify-only — explicit conservative override.
+        assert!(matrix.inventory.is_unsupported());
+        assert!(matrix.extract.is_unsupported());
+        assert!(matrix.patch.is_unsupported());
+    }
+
+    #[test]
+    fn reallive_detector_level_matrix_extract_partial_patch_unsupported() {
+        use kaifuu_core::CapabilityLevel;
+        let matrix = RealLiveProfileDetectorAdapter.capabilities().level_matrix;
+        assert_eq!(matrix.adapter_id, REALLIVE_DETECTOR_ADAPTER_ID);
+        assert!(matrix.supports(CapabilityLevel::Identify));
+        assert!(matrix.supports(CapabilityLevel::Inventory));
+        // Extract is Partial per plan: Scene parser covers text only.
+        assert!(!matrix.supports(CapabilityLevel::Extract));
+        assert!(matrix.extract.is_partial());
+        // No full patch path yet at this slice.
+        assert!(matrix.patch.is_unsupported());
+    }
+
+    #[test]
+    fn detectors_level_matrices_do_not_overclaim_against_reports() {
+        use kaifuu_core::AdapterCapabilityMatrix;
+        for capabilities in [
+            FixtureAdapter.capabilities(),
+            Xp3ProfileDetectorAdapter.capabilities(),
+            SiglusProfileDetectorAdapter.capabilities(),
+            RealLiveProfileDetectorAdapter.capabilities(),
+        ] {
+            let derived = AdapterCapabilityMatrix::derive_from_reports(
+                &capabilities.adapter_id,
+                &capabilities.reports,
+            );
+            assert!(
+                capabilities
+                    .level_matrix
+                    .first_overclaim_against(&derived)
+                    .is_none(),
+                "{} declared level_matrix overclaims against per-Capability reports",
+                capabilities.adapter_id
+            );
+        }
     }
 
     fn siglus_fixture_dir(name: &str, scene: Option<&[u8]>, gameexe: Option<&[u8]>) -> PathBuf {

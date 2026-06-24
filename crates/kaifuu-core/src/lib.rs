@@ -157,6 +157,9 @@ pub const XP3_PLAIN_MAGIC: &[u8] = b"XP3\r\n \n\x1a\x8b\x67\x01";
 pub mod contracts;
 mod offset_map;
 pub mod patch_transaction;
+pub mod registry;
+
+pub use registry::{AdapterCapabilityMatrix, CapabilityLevel, CapabilityLevelStatus};
 
 pub use patch_transaction::{
     DiagnosticSeverity, PatchTransaction, PatchTransactionConfig, PatchTransactionError,
@@ -375,6 +378,12 @@ impl CapabilityReport {
 pub struct AdapterCapabilities {
     pub adapter_id: String,
     pub reports: Vec<CapabilityReport>,
+    /// KAIFUU-053 capability ladder. When `new` is called without
+    /// `with_level_matrix`, this is conservatively derived from `reports`
+    /// via [`AdapterCapabilityMatrix::derive_from_reports`]. Detectors
+    /// should declare it explicitly so identify-only engines can never
+    /// bubble up to Extract/Patch from granular report drift.
+    pub level_matrix: AdapterCapabilityMatrix,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub access_contract: Option<LayeredAccessCapabilityContract>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -385,15 +394,29 @@ pub struct AdapterCapabilities {
 
 impl AdapterCapabilities {
     pub fn new(adapter_id: impl Into<String>, reports: Vec<CapabilityReport>) -> Self {
+        let adapter_id = adapter_id.into();
+        let level_matrix = AdapterCapabilityMatrix::derive_from_reports(&adapter_id, &reports);
         let mut capabilities = Self {
-            adapter_id: adapter_id.into(),
+            adapter_id,
             reports,
+            level_matrix,
             access_contract: None,
             key_requirements: vec![],
             helper_requirements: vec![],
         };
         capabilities.normalize();
         capabilities
+    }
+
+    /// Declare the typed level matrix explicitly. The declared matrix must
+    /// not claim more than the granular `reports` would support — see
+    /// [`AdapterCapabilityMatrix::first_overclaim_against`] and the
+    /// `derive_from_reports` mapping; this constraint is enforced in
+    /// `normalize` via `debug_assert!` so detector tests catch drift.
+    pub fn with_level_matrix(mut self, level_matrix: AdapterCapabilityMatrix) -> Self {
+        self.level_matrix = level_matrix;
+        self.normalize();
+        self
     }
 
     pub fn with_access_contract(
@@ -438,6 +461,20 @@ impl AdapterCapabilities {
         if let Some(access_contract) = &mut self.access_contract {
             access_contract.normalize();
         }
+        // KAIFUU-053 risk: detector report drift. The declared level matrix
+        // must never claim more than the per-capability reports support.
+        // `derive_from_reports` is conservative; `first_overclaim_against`
+        // returns the first rung where the declared matrix is strictly more
+        // optimistic than the derived one.
+        let derived = AdapterCapabilityMatrix::derive_from_reports(&self.adapter_id, &self.reports);
+        debug_assert!(
+            self.level_matrix
+                .first_overclaim_against(&derived)
+                .is_none(),
+            "adapter {:?} declared level_matrix overclaims against per-Capability reports at {:?}",
+            self.adapter_id,
+            self.level_matrix.first_overclaim_against(&derived)
+        );
     }
 
     pub fn redacted_for_report(&self) -> Self {
@@ -462,6 +499,9 @@ impl AdapterCapabilities {
             .access_contract
             .as_ref()
             .map(LayeredAccessCapabilityContract::redacted_for_report);
+        // Redact adapter_id inside the level matrix to match the outer
+        // capabilities surface.
+        capabilities.level_matrix.adapter_id = capabilities.adapter_id.clone();
         capabilities.normalize();
         capabilities
     }

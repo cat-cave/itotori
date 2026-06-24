@@ -8,8 +8,10 @@ import {
   type ConformanceResultV01,
   type StyleGuideConversationTranscript,
 } from "@itotori/localization-bridge-schema";
-import { createCatalogResolverFixtureArtifact } from "@itotori/db";
+import { capabilityLevelValues, createCatalogResolverFixtureArtifact } from "@itotori/db";
 import type {
+  AdapterCapabilityMatrixRecord,
+  CapabilityLevel,
   CatalogExactExternalIdLinkRequest,
   CatalogFuzzyCandidateRequest,
   CatalogResolverFixtureInput,
@@ -18,6 +20,7 @@ import type {
   StyleGuideFixtureFlowInput,
   StyleGuideFixtureFlowResult,
 } from "@itotori/db";
+import type { EngineCapabilityReportPort } from "./services/engine-capability-report.js";
 import { assertBridgeInput } from "./api-schema.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
@@ -53,6 +56,7 @@ export type ItotoriCliServices = {
     loadContext: PlanBatchesContextLoader;
     persist: PlanBatchesPersister;
   };
+<<<<<<< HEAD
   sceneSummary?: {
     /**
      * Construct the per-invocation dependencies (provider, repositories,
@@ -63,6 +67,9 @@ export type ItotoriCliServices = {
     defaultProviderFamily: ProviderFamily;
     defaultContextWindowTokens: number;
   };
+=======
+  engineCapabilityReports: EngineCapabilityReportPort;
+>>>>>>> spec/kaifuu-053
 };
 
 export type ItotoriCliDependencies = {
@@ -122,11 +129,19 @@ export async function runItotoriCliCommand(
     case "plan-batches":
       await runPlanBatchesHandler(args, dependencies);
       break;
+<<<<<<< HEAD
     case "generate-scene-summaries":
       await runGenerateSceneSummariesHandler(args, dependencies);
       break;
     case "check-scene-summaries":
       await runCheckSceneSummariesHandler(args, dependencies);
+=======
+    case "engine-capabilities-record":
+      await runEngineCapabilitiesRecord(args, dependencies);
+      break;
+    case "engine-capabilities-list":
+      await runEngineCapabilitiesList(args, dependencies);
+>>>>>>> spec/kaifuu-053
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -399,6 +414,7 @@ function asProviderFamily(value: string): ProviderFamily {
   throw new Error(`unknown provider family: ${value}`);
 }
 
+<<<<<<< HEAD
 async function runGenerateSceneSummariesHandler(
   args: string[],
   dependencies: ItotoriCliDependencies,
@@ -490,3 +506,108 @@ async function runCheckSceneSummariesHandler(
 // Helper used internally during the legacy CLI bridging so unused-import lints
 // pass while the resolveSceneSummaryProvider symbol stays public for embedders.
 export const _internalResolveSceneSummaryProviderForCliHandlers = resolveSceneSummaryProvider;
+=======
+// KAIFUU-053: CLI commands for the capability-leveled engine detector
+// registry. `engine-capabilities-record` upserts one adapter's matrix
+// from a JSON file (used to import what `EngineAdapter::capabilities()`
+// produced upstream); `engine-capabilities-list` writes a JSON report
+// the dashboard and any wrapping tooling can render — see
+// `apps/itotori/src/dashboard.ts:renderEngineCapabilityRows`.
+async function runEngineCapabilitiesRecord(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const matrixPath = requiredFlag(args, "--matrix");
+  const matrix = dependencies.io.readJson(matrixPath);
+  assertAdapterCapabilityMatrixRecord(matrix);
+  await dependencies.withServices((services) =>
+    services.engineCapabilityReports.recordMatrix(matrix),
+  );
+}
+
+async function runEngineCapabilitiesList(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const outputPath = requiredFlag(args, "--output");
+  const levelRaw = optionalFlag(args, "--level");
+  const level = levelRaw === undefined ? undefined : asCapabilityLevel(levelRaw);
+  const result = await dependencies.withServices(async (services) => {
+    const summaries = await services.engineCapabilityReports.listAdapterSummaries();
+    if (level === undefined) {
+      return { adapters: summaries };
+    }
+    const supporting = await services.engineCapabilityReports.adaptersSupporting(level);
+    const supportingSet = new Set(supporting);
+    return {
+      adapters: summaries,
+      level,
+      adaptersSupporting: supporting,
+      identifyOnlyAdapterIds: summaries
+        .filter((summary) => !supportingSet.has(summary.adapterId))
+        .map((summary) => summary.adapterId),
+    };
+  });
+  dependencies.io.writeJson(outputPath, result);
+}
+
+function asCapabilityLevel(value: string): CapabilityLevel {
+  switch (value) {
+    case capabilityLevelValues.identify:
+    case capabilityLevelValues.inventory:
+    case capabilityLevelValues.extract:
+    case capabilityLevelValues.patch:
+      return value;
+    default:
+      throw new Error(`unknown capability level: ${value}`);
+  }
+}
+
+function assertAdapterCapabilityMatrixRecord(
+  value: unknown,
+): asserts value is AdapterCapabilityMatrixRecord {
+  if (!value || typeof value !== "object") {
+    throw new Error("AdapterCapabilityMatrix payload must be an object");
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.adapterId !== "string" || record.adapterId.length === 0) {
+    throw new Error("AdapterCapabilityMatrix.adapterId must be a non-empty string");
+  }
+  for (const level of [
+    capabilityLevelValues.identify,
+    capabilityLevelValues.inventory,
+    capabilityLevelValues.extract,
+    capabilityLevelValues.patch,
+  ]) {
+    assertCapabilityLevelStatus(record[level], `AdapterCapabilityMatrix.${level}`);
+  }
+}
+
+function assertCapabilityLevelStatus(value: unknown, label: string): void {
+  if (!value || typeof value !== "object") {
+    throw new Error(`${label} must be an object`);
+  }
+  const record = value as Record<string, unknown>;
+  switch (record.kind) {
+    case "supported":
+      return;
+    case "partial":
+      if (!Array.isArray(record.limitations) || record.limitations.length === 0) {
+        throw new Error(`${label}.limitations must be a non-empty string array`);
+      }
+      for (const entry of record.limitations) {
+        if (typeof entry !== "string") {
+          throw new Error(`${label}.limitations entries must be strings`);
+        }
+      }
+      return;
+    case "unsupported":
+      if (typeof record.reason !== "string" || record.reason.trim().length === 0) {
+        throw new Error(`${label}.reason must be a non-empty string`);
+      }
+      return;
+    default:
+      throw new Error(`${label}.kind must be supported, partial, or unsupported`);
+  }
+}
+>>>>>>> spec/kaifuu-053

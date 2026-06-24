@@ -518,6 +518,17 @@ export type {
   SceneSummaryRecord,
   SceneSummaryStatus,
 } from "./repositories/scene-summary-repository.js";
+export {
+  EngineCapabilityReportRepository,
+  EngineCapabilityReportShapeError,
+} from "./repositories/engine-capability-report-repository.js";
+export type {
+  AdapterCapabilityMatrixRecord,
+  CapabilityLevelStatusInput,
+  EngineCapabilityReportRow,
+} from "./repositories/engine-capability-report-repository.js";
+export { capabilityLevelValues, capabilityLevelStatusKindValues } from "./schema.js";
+export type { CapabilityLevel, CapabilityLevelStatusKind } from "./schema.js";
 export { ItotoriTranslationBatchRepository } from "./repositories/translation-batch-repository.js";
 export { ItotoriConformanceRepository } from "./repositories/conformance-repository.js";
 export type {
