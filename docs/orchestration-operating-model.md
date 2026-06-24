@@ -384,6 +384,61 @@ non-author byte stream before allowing any "claimed-support" status. If the
 chain cannot, the framing must be demoted from "claimed-support" to
 "readiness-record" with no completion-level claim.
 
+### Legacy-path preservation in greenfield code (2026-06-24)
+
+The 2026-06-23 audit batch confirmed that large parts of the codebase are
+fixture-shaped, never-touched-by-a-real-engine scaffolding. Specs that
+re-architect or extend any subsystem must **remove the legacy path
+entirely**. Backwards-compatibility shims, `#[deprecated]` markers, dual
+v0/v1 plumbing, "wrapper that calls the old impl", and "alias for
+back-compat" patterns are forbidden in this codebase because:
+
+- There are no external consumers — nothing pins us to old APIs.
+- The legacy paths are themselves fixture-shaped; preserving them
+  preserves the bug.
+- Dual paths multiply audit surface and let "the wrong path silently keeps
+  working" become a regression vector.
+
+When a spec changes a substrate trait, an engine-port surface, a sink
+contract, an envelope size class, or any other type that has a sibling
+"old" version, the old version must be deleted in the same change, not
+flagged for follow-up removal. Acceptance criteria must include a `git
+grep` invariant proving the old symbol is gone. Audit workers must reject
+completion when the legacy symbol still exists.
+
+This rule applies to substrate extensions M.1–M.5
+(`UTSUSHI-222`–`UTSUSHI-226`), the UTSUSHI-200..221 RealLive runtime
+decomposition, and to every greenfield engine port. The only exceptions
+are externally-defined wire formats (e.g. the published
+`localization-bridge-schema` v0.2 JSON shape) where a documented
+versioning policy applies.
+
+### Single-game validation passing as "claimed support"
+
+A parser, decoder, or runtime port that works on game X but breaks on game
+Y is fixture-shaped against game X. The 2026-06-24 audit batch made this
+concrete: `kaifuu-reallive::parse_archive` parses synthetic 47-byte
+fixtures it authored, returns silent zero-state on the real 3.87 MB
+Sweetie HD `Seen.txt`.
+
+When a spec claims support for an **engine family** (RealLive, RPG Maker
+MV/MZ, KiriKiri KAG, etc.), acceptance criteria must include validation
+against **at least two real-world games of that engine**, not just one.
+Single-game validation may produce a confident-looking pass that is in
+fact specific to that one title's compiler version, key, or asset layout.
+
+Where the second real-world game is not yet sourced (e.g. only Sweetie HD
+is staged for RealLive), the node's status remains `planned` with a
+sourcing-required note in the summary; the orchestrator does not claim
+the node ready until the second corpus is available. Audit workers must
+not approve completion of an engine-claiming node whose verification only
+exercises one real corpus.
+
+The exception is **substrate-level** work that is genuinely
+cross-engine (e.g. a generic asset resolver, a generic snapshot envelope)
+— multiple real-world games means multiple engine families, not multiple
+titles of the same engine.
+
 ### Process: planning subagent checklist
 
 When the orchestrator spawns a planning subagent, the prompt must require

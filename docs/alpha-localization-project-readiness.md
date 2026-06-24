@@ -20,20 +20,30 @@
 > **Concrete alpha gates under the redefinition** (cross-ref
 > `docs/audits/alpha-scope-honesty.md` §D):
 >
-> 1. **Substrate extensions M.1–M.3 landed.** `EnginePort::observe` carries
->    the substrate sink payloads (not the legacy `ObservationHookEvent`);
->    snapshot/replay round-trips through the substrate types; at least one
->    non-test consumer of each substrate subsystem exists outside
->    `utsushi-core`.
-> 2. **Non-synthetic engine port crate scaffolded.** `UTSUSHI-146a` exists
->    as a crate that registers conformance against the substrate, with the
->    smallest credible opcode subset (call/return/text-display/wait), and
->    does **not** depend on author-fixture envelopes.
+> 1. **Substrate extensions M.1–M.3 landed.** Materialised as DAG nodes
+>    `UTSUSHI-222` (composite asset package + try-dir-then-archive
+>    resolver), `UTSUSHI-223` (snapshot envelope size class), and
+>    `UTSUSHI-224` (`EnginePort` → substrate-sinks bridge, legacy
+>    `ObservationHookEvent` deleted). Each ships with multi-engine
+>    validation against ≥2 real-bytes corpora (RealLive Sweetie HD + one
+>    of MV/MZ Lust Memory, plain KiriKiri Bukkake Ranch), and each deletes
+>    its legacy path in the same change — no shims, no `#[deprecated]`
+>    markers, no compat aliases. M.4 (`UTSUSHI-225`, pixel-bound mouse
+>    area input) and M.5 (`UTSUSHI-226`, frame-as-layer-composition sink)
+>    are RealLive-specific and live at continuous tier; they unblock the
+>    UTSUSHI-2xx runtime decomposition but are not alpha gates themselves.
+> 2. **Non-synthetic engine port crate scaffolded.** `UTSUSHI-200`
+>    (formerly 146a) exists as a crate that registers conformance against
+>    the substrate, with the smallest credible opcode subset
+>    (call/return/text-display/wait), and does **not** depend on
+>    author-fixture envelopes. Depends on M.1–M.3 landing first.
 > 3. **Real-bytes smoke on Sweetie HD.** `kaifuu-cli detect` returns true,
 >    `parse_archive` returns a non-empty entry list (no silent zero-state),
 >    and the Gameexe parser classifies the dominant key families. Findings
 >    captured in `docs/audits/real-bytes-validation-2026-06-24.md` drive
->    the specific follow-up DAG nodes that close this gate.
+>    the specific follow-up DAG nodes (`KAIFUU-188` 10000-slot envelope,
+>    `KAIFUU-189` depth-N detector, `KAIFUU-190` Gameexe key family
+>    expansion) that close this gate.
 > 4. **Recorded-LLM bundle.** A reproducible recorded-provider run through
 >    the full Itotori workflow (draft → QA → patch export) is reachable
 >    behind `ITOTORI_LIVE_PROVIDER=0` with deterministic outputs.
