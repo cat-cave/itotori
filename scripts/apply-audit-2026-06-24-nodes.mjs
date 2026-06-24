@@ -233,7 +233,7 @@ const NEW_NODES = [
     parallelGroup: "engine-adapters",
     dependsOn: ["KAIFUU-189"],
     summary:
-      "When the detector follows `REALLIVEDATA/`, surface the resolved subdir in `DetectionReport.evidence[].path` fields and add a new `kaifuu.reallive.nested_data_dir_resolved` evidence row so downstream `extract` / `profile` / `verify` invocations don't have to re-discover it. Today the JSON report hides the resolved path and shows `path: \"SEEN.TXT\"` even when the detector walks past it.",
+      'When the detector follows `REALLIVEDATA/`, surface the resolved subdir in `DetectionReport.evidence[].path` fields and add a new `kaifuu.reallive.nested_data_dir_resolved` evidence row so downstream `extract` / `profile` / `verify` invocations don\'t have to re-discover it. Today the JSON report hides the resolved path and shows `path: "SEEN.TXT"` even when the detector walks past it.',
     deliverables: [
       "New `EvidenceCode::NestedDataDirResolved` (string id `kaifuu.reallive.nested_data_dir_resolved`) emitted by `RealLiveProfileDetectorAdapter::inspect` whenever `resolve_reallive_data_dir` returns `Some`.",
       "Evidence rows for SEEN.TXT, Gameexe.ini, and extension counts carry `path` strings that include the resolved data-dir prefix (e.g. `REALLIVEDATA/Seen.txt`).",
@@ -241,7 +241,7 @@ const NEW_NODES = [
       "Updated JSON snapshot fixture under `crates/kaifuu-engine-fixture/tests/fixtures/reallive-nested-detect.json`.",
     ],
     acceptanceCriteria: [
-      "`kaifuu detect <Sweetie HD>` JSON output contains an evidence row with `code == \"kaifuu.reallive.nested_data_dir_resolved\"` and `path` ending in `REALLIVEDATA`.",
+      '`kaifuu detect <Sweetie HD>` JSON output contains an evidence row with `code == "kaifuu.reallive.nested_data_dir_resolved"` and `path` ending in `REALLIVEDATA`.',
       "Every SEEN.TXT / Gameexe.ini evidence row has a `path` starting with `REALLIVEDATA/` when the detector resolved a nested subdir.",
       "When no nested subdir is present, no `nested_data_dir_resolved` row is emitted (negative test).",
     ],
@@ -321,7 +321,7 @@ const NEW_NODES = [
       "Updated `docs/utsushi-fixture-policy.md` (or equivalent) documenting the new refusal contract.",
     ],
     acceptanceCriteria: [
-      "`utsushi trace <Sweetie HD>` exits 1 and stdout contains JSON `{\"diagnostic\":{\"code\":\"utsushi.unsupported_input_shape\",\"engine_family\":\"reallive\",...}}`.",
+      '`utsushi trace <Sweetie HD>` exits 1 and stdout contains JSON `{"diagnostic":{"code":"utsushi.unsupported_input_shape","engine_family":"reallive",...}}`.',
       "stderr does not contain `os::Error::NotFound` or `No such file or directory` for the real-game path.",
       "`utsushi trace <fixture-with-source.json>` continues to succeed (no regression of existing fixture path).",
       "`cargo test -p utsushi-fixture --test real_game_refusal` passes deterministically.",
@@ -361,7 +361,7 @@ const NEW_NODES = [
       "Documentation update naming the adapters' new precondition.",
     ],
     acceptanceCriteria: [
-      "`utsushi capture <Sweetie HD> --adapter utsushi-browser` exits 1 with JSON diagnostic `code == \"utsushi.engine_family_mismatch\"` and `observed_family == \"reallive\"`.",
+      '`utsushi capture <Sweetie HD> --adapter utsushi-browser` exits 1 with JSON diagnostic `code == "utsushi.engine_family_mismatch"` and `observed_family == "reallive"`.',
       "`utsushi capture <Sweetie HD> --adapter utsushi-nwjs` exits 1 with the same diagnostic shape.",
       "stderr does not contain `os::Error::NotFound` for the real-game path.",
       "Existing browser/NW.js fixture paths continue to launch without regression.",
@@ -523,7 +523,7 @@ const NEW_NODES = [
       "License + dependency-tree CI gate (license MIT-OR-Apache-2.0; no GPL transitive deps).",
     ],
     acceptanceCriteria: [
-      "`crates/utsushi-rpgmaker-mv-mz/Cargo.toml` exists with `license = \"MIT OR Apache-2.0\"`, depends only on `utsushi-core` via `utsushi_core::substrate::*`.",
+      '`crates/utsushi-rpgmaker-mv-mz/Cargo.toml` exists with `license = "MIT OR Apache-2.0"`, depends only on `utsushi-core` via `utsushi_core::substrate::*`.',
       "`cargo test -p utsushi-rpgmaker-mv-mz scaffold` exercises the `ConformanceManifest` registration and reports `Unimplemented` for every lifecycle stage.",
       "Crate-level doc contains the clean-room boundary statement verbatim, identical wording to `utsushi-reallive`.",
       "No `Show Text` / `Show Choices` opcode handler exists in the crate (grep for `handler` returns only the `Unimplemented` stubs).",
@@ -563,7 +563,7 @@ const NEW_NODES = [
     ],
     acceptanceCriteria: [
       "`cargo test -p utsushi-rpgmaker-mv-mz --test browser_replay_e1` asserts the emitted trace JSON contains >= 1 `text_event.bridge_unit_id` matching a `KAIFUU-109` bridge unit id from `KAIFUU-200`'s fixture manifest.",
-      "Emitted trace JSON declares `engine_family == \"rpg_maker_mv_mz\"` and `runtime == \"browser-chromium\"`.",
+      'Emitted trace JSON declares `engine_family == "rpg_maker_mv_mz"` and `runtime == "browser-chromium"`.',
       "Snapshot fixture compares byte-equal across two consecutive runs (no timestamp / pid fields).",
       "`utsushi run --adapter utsushi-rpgmaker-mv-mz --fixture kaifuu-rpgmaker-mv-mz-profile-a` exits 0.",
     ],
@@ -602,7 +602,7 @@ const NEW_NODES = [
       "Regression test `crates/kaifuu-core/tests/kag_corpus_manifest.rs` asserting manifest invariants.",
     ],
     acceptanceCriteria: [
-      "Manifest declares `\"SPDX-License-Identifier\": \"CC0-1.0\"` verbatim.",
+      'Manifest declares `"SPDX-License-Identifier": "CC0-1.0"` verbatim.',
       "`tagInventory` across all files in the manifest contains >= 6 distinct KAG tag names from the profile-B inventory.",
       "`pnpm node fixtures/generate-kaifuu-kag-synthetic-corpus.mjs --check` succeeds with deterministic byte-equal regeneration.",
       "`cargo test -p kaifuu-core --test kag_corpus_manifest` passes deterministically.",
@@ -610,8 +610,7 @@ const NEW_NODES = [
     verification: [
       {
         type: "command",
-        value:
-          "direnv exec . pnpm node fixtures/generate-kaifuu-kag-synthetic-corpus.mjs --check",
+        value: "direnv exec . pnpm node fixtures/generate-kaifuu-kag-synthetic-corpus.mjs --check",
       },
       {
         type: "command",
@@ -761,7 +760,7 @@ const NEW_NODES = [
       "License + dependency-tree CI gate (license MIT-OR-Apache-2.0; no GPL transitive deps).",
     ],
     acceptanceCriteria: [
-      "`crates/utsushi-kirikiri-xp3/Cargo.toml` exists with `license = \"MIT OR Apache-2.0\"`, depends only on `utsushi-core` via `utsushi_core::substrate::*`.",
+      '`crates/utsushi-kirikiri-xp3/Cargo.toml` exists with `license = "MIT OR Apache-2.0"`, depends only on `utsushi-core` via `utsushi_core::substrate::*`.',
       "`cargo test -p utsushi-kirikiri-xp3 scaffold` exercises the `ConformanceManifest` registration and reports `Unimplemented` for every lifecycle stage.",
       "Crate-level doc contains the clean-room boundary statement verbatim, identical wording to `utsushi-reallive`.",
       "No KAG opcode handler exists in the crate (grep for `handler` returns only the `Unimplemented` stubs).",
@@ -790,13 +789,7 @@ const NEW_NODES = [
     target: "continuous",
     projects: ["utsushi"],
     parallelGroup: "runtime-adapters",
-    dependsOn: [
-      "UTSUSHI-181",
-      "UTSUSHI-037",
-      "UTSUSHI-038",
-      "KAIFUU-009",
-      "KAIFUU-203",
-    ],
+    dependsOn: ["UTSUSHI-181", "UTSUSHI-037", "UTSUSHI-038", "KAIFUU-009", "KAIFUU-203"],
     summary:
       "Drive UTSUSHI-037 (KAG plaintext parser replay) and UTSUSHI-038 (macro + storage subset) against KAIFUU-203's CC0 synthetic corpus and emit an E0/E1 trace of text + jump events. The trace must contain at least one `text_event` id and at least one `label_jump_event` id matching KAIFUU-009 bridge unit ids.",
     deliverables: [
@@ -807,7 +800,7 @@ const NEW_NODES = [
     ],
     acceptanceCriteria: [
       "`cargo test -p utsushi-kirikiri-xp3 --test kag_replay_e0_e1` asserts emitted trace JSON contains >=1 `text_event.bridge_unit_id` and >=1 `label_jump_event.bridge_unit_id` matching `KAIFUU-009` bridge unit ids from KAIFUU-203's corpus manifest.",
-      "Emitted trace JSON declares `engine_family == \"kirikiri_xp3\"` and `runtime == \"kag-plaintext-interpreter\"`.",
+      'Emitted trace JSON declares `engine_family == "kirikiri_xp3"` and `runtime == "kag-plaintext-interpreter"`.',
       "Snapshot fixture compares byte-equal across two consecutive runs (no timestamp / pid fields).",
       "`utsushi run --adapter utsushi-kirikiri-xp3 --fixture kaifuu-kag-synthetic-corpus` exits 0.",
     ],
@@ -918,11 +911,11 @@ const NEW_NODES = [
     parallelGroup: "kaifuu-core",
     dependsOn: [],
     summary:
-      "Move `bans.multiple-versions` from `\"warn\"` to `\"deny\"`, flip `bans.wildcards` from `\"allow\"` to `\"deny\"` in `deny.toml`, and add a documented `skip = [...]` allowlist for any duplicate-version pair we accept (with a one-line `# reason:` justification each).",
+      'Move `bans.multiple-versions` from `"warn"` to `"deny"`, flip `bans.wildcards` from `"allow"` to `"deny"` in `deny.toml`, and add a documented `skip = [...]` allowlist for any duplicate-version pair we accept (with a one-line `# reason:` justification each).',
     deliverables: [
-      "Edit to `deny.toml` setting `bans.multiple-versions = \"deny\"` and `bans.wildcards = \"deny\"`.",
+      'Edit to `deny.toml` setting `bans.multiple-versions = "deny"` and `bans.wildcards = "deny"`.',
       "If duplicates remain unavoidable: `skip` table entries in `deny.toml` listing each crate name + version, each preceded by a `# reason: …` comment line.",
-      "Regression test (`scripts/verify-deny-strict.mjs` or equivalent) asserting `bans.multiple-versions == \"deny\"` and `bans.wildcards == \"deny\"`.",
+      'Regression test (`scripts/verify-deny-strict.mjs` or equivalent) asserting `bans.multiple-versions == "deny"` and `bans.wildcards == "deny"`.',
       "Updated `docs/dependency-policy.md` (or new section in the kaifuu policy doc) describing the new strictness.",
     ],
     acceptanceCriteria: [
@@ -943,7 +936,7 @@ const NEW_NODES = [
     ],
     auditFocus: [
       "`skip` entries must not absorb arbitrary duplicate pairs; each must have a documented reason.",
-      "`bans.wildcards = \"deny\"` must catch `version = \"*\"` slips at the next dependency add.",
+      '`bans.wildcards = "deny"` must catch `version = "*"` slips at the next dependency add.',
       "Strictness flip must not regress an existing crate transitively (audit the diff).",
     ],
   },
@@ -1039,9 +1032,7 @@ function main() {
   writeFileSync(dagPath, JSON.stringify(dag, null, 2) + "\n");
 
   for (const { nodeId, missing } of droppedDependencies) {
-    console.log(
-      `notice: ${nodeId} dropped dependsOn=${missing} (target id not present in DAG).`,
-    );
+    console.log(`notice: ${nodeId} dropped dependsOn=${missing} (target id not present in DAG).`);
   }
   console.log(
     `applied 2026-06-24 audit nodes: ${insertedIds.length} inserted, ${skippedIds.length} pre-existing.`,
