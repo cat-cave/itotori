@@ -6,6 +6,7 @@ import {
   type AuthorizationActor,
   type Permission,
 } from "../src/authorization.js";
+import { ItotoriAssetLocalizationDecisionRepository } from "../src/repositories/asset-localization-decision-repository.js";
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
 import { ItotoriCharacterRelationshipRepository } from "../src/repositories/character-relationship-repository.js";
 import { ItotoriConformanceRepository } from "../src/repositories/conformance-repository.js";
@@ -710,6 +711,40 @@ const repositoryPermissionGateMatrix = [
         to: new Date(0),
       }),
   ),
+  assetLocalizationDecisionGate(
+    "recordDecision",
+    "draftWrite",
+    "asset-localization-decision-repository.test.ts record decision coverage",
+    (repo) => repo.recordDecision(deniedActor, undefined as never),
+  ),
+  assetLocalizationDecisionGate(
+    "recordDecisionsBulk",
+    "draftWrite",
+    "asset-localization-decision-repository.test.ts record decisions bulk coverage",
+    (repo) => repo.recordDecisionsBulk(deniedActor, undefined as never),
+  ),
+  assetLocalizationDecisionGate(
+    "loadActiveDecisions",
+    "catalogRead",
+    "asset-localization-decision-repository.test.ts load active decisions coverage",
+    (repo) => repo.loadActiveDecisions(deniedActor, "project", "locale"),
+  ),
+  assetLocalizationDecisionGate(
+    "loadDecisionHistory",
+    "catalogRead",
+    "asset-localization-decision-repository.test.ts load decision history coverage",
+    (repo) =>
+      repo.loadDecisionHistory(deniedActor, "project", "locale", {
+        kind: "bridgeAssetRef",
+        ref: "asset.json#example",
+      }),
+  ),
+  assetLocalizationDecisionGate(
+    "loadDecisionsByPolicy",
+    "catalogRead",
+    "asset-localization-decision-repository.test.ts load decisions by policy coverage",
+    (repo) => repo.loadDecisionsByPolicy(deniedActor, "project", "locale", "keep_original"),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -1391,6 +1426,36 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "draft-attempt-provider-ledger-repository.test.ts sum cost by project coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAssetLocalizationDecisionRepository.recordDecision",
+          "requiredPermission": "draft.write",
+          "successFixture": "asset-localization-decision-repository.test.ts record decision coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAssetLocalizationDecisionRepository.recordDecisionsBulk",
+          "requiredPermission": "draft.write",
+          "successFixture": "asset-localization-decision-repository.test.ts record decisions bulk coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAssetLocalizationDecisionRepository.loadActiveDecisions",
+          "requiredPermission": "catalog.read",
+          "successFixture": "asset-localization-decision-repository.test.ts load active decisions coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAssetLocalizationDecisionRepository.loadDecisionHistory",
+          "requiredPermission": "catalog.read",
+          "successFixture": "asset-localization-decision-repository.test.ts load decision history coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAssetLocalizationDecisionRepository.loadDecisionsByPolicy",
+          "requiredPermission": "catalog.read",
+          "successFixture": "asset-localization-decision-repository.test.ts load decisions by policy coverage",
+        },
       ]
     `);
   });
@@ -1758,6 +1823,22 @@ function draftAttemptProviderLedgerGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriDraftAttemptProviderLedgerRepository(db)),
+  });
+}
+
+function assetLocalizationDecisionGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriAssetLocalizationDecisionRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriAssetLocalizationDecisionRepository",
+    sourceFile: "asset-localization-decision-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriAssetLocalizationDecisionRepository(db)),
   });
 }
 

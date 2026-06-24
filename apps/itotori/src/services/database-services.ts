@@ -1,5 +1,6 @@
 import {
   EngineCapabilityReportRepository,
+  ItotoriAssetLocalizationDecisionRepository,
   ItotoriFeedbackRepository,
   ItotoriExactSearchDocumentRepository,
   ItotoriCatalogExactExternalIdLinkerService,
@@ -40,6 +41,7 @@ import {
   EngineCapabilityReportService,
   type EngineCapabilityReportPort,
 } from "./engine-capability-report.js";
+import type { AssetDecisionsCliPort } from "../asset-decisions/cli.js";
 import { persistBatches } from "../batch-planner/index.js";
 import {
   resolveSceneSummaryProvider,
@@ -102,6 +104,7 @@ export type ItotoriApplicationServices = {
     defaultContextWindowTokens: number;
   };
   engineCapabilityReports: EngineCapabilityReportPort;
+  assetDecisions: AssetDecisionsCliPort;
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -225,6 +228,7 @@ export async function withDatabaseItotoriServices<T>(
     const translationBatchRepository = new ItotoriTranslationBatchRepository(context.db);
     const sceneSummaryRepository = new ItotoriSceneSummaryRepository(context.db);
     const engineCapabilityReportRepository = new EngineCapabilityReportRepository(context.db);
+    const assetDecisionRepository = new ItotoriAssetLocalizationDecisionRepository(context.db);
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -287,6 +291,11 @@ export async function withDatabaseItotoriServices<T>(
         engineCapabilityReportRepository,
         localUserActor,
       ),
+      assetDecisions: {
+        loadActiveDecisions: (projectId, localeBranchId) =>
+          assetDecisionRepository.loadActiveDecisions(localUserActor, projectId, localeBranchId),
+        recordDecision: (input) => assetDecisionRepository.recordDecision(localUserActor, input),
+      },
     });
   } finally {
     await context.close();
