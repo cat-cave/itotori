@@ -138,8 +138,8 @@ pub use encoding::{
     decode_shift_jis_slot, encode_shift_jis_slot, slice_control_bytes,
 };
 pub use gameexe::{
-    GameexeIniDiagnostic, GameexeInventoryEntry, GameexeInventoryReport, GameexeKeyTreatment,
-    UNKNOWN_GAMEEXE_KEY_CODE, parse_gameexe_inventory,
+    GameexeIniDiagnostic, GameexeInventoryEntry, GameexeInventoryReport, GameexeKeyFamily,
+    GameexeKeyTreatment, UNKNOWN_GAMEEXE_KEY_CODE, UnknownReason, parse_gameexe_inventory,
 };
 pub use inventory::{
     AssetReference, AssetReferenceInventory, AssetReferenceKind,

@@ -104,10 +104,14 @@ quoted strings, comma-separated integer arrays, or a tuple of `=`-separated
 groups (the `FOLDNAME` example above). [V]
 
 Distinct top-level (pre-dot) key prefixes observed in Sweetie HD's
-`Gameexe.ini`: **191**. The existing `kaifuu-reallive::gameexe`
-inventory recognises a bounded catalogue and emits a
-`kaifuu.reallive.inventory.unknown_gameexe_key` warning otherwise
-(`crates/kaifuu-reallive/src/gameexe.rs:18`). [V — counted with
+`Gameexe.ini`: **191**. The `kaifuu-reallive::gameexe` inventory walks
+every line, classifies it into a typed [`GameexeKeyFamily`] variant
+(KAIFUU-190), and emits a `kaifuu.reallive.inventory.unknown_gameexe_key`
+warning for any line that doesn't match a documented family
+(`crates/kaifuu-reallive/src/gameexe.rs`). As of KAIFUU-190 the
+catalogue covers 1,345 / 1,345 lines on Sweetie HD's Gameexe.ini (0 %
+fall-through; see `crates/kaifuu-reallive/tests/gameexe_real_bytes.rs`
+for the breakdown). [V — counted with
 `grep -oE '^#[A-Z_]+' /tmp/gameexe.utf8.txt | sort -u | wc -l`]
 
 The keys group into the following category buckets. Counts refer to the
