@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v1",
+  "fixtureId": "calibration-semantic-drift",
+  "agentName": "style-adherence",
+  "authority": "original",
+  "findings": []
+}

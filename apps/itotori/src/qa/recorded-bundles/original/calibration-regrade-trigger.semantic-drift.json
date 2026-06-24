@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v1",
+  "fixtureId": "calibration-regrade-trigger",
+  "agentName": "semantic-drift",
+  "authority": "original",
+  "findings": []
+}
