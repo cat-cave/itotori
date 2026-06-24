@@ -9,6 +9,7 @@ members = [
   "crates/kaifuu-vault-source",
   "crates/utsushi-core",
   "crates/utsushi-fixture",
+  "crates/utsushi-reallive",
   "crates/utsushi-cli",
 ]
 
