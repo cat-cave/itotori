@@ -185,6 +185,10 @@ export const migrations = [
     file: "0031_character_relationships.sql",
   },
   {
+    id: "0032_route_choice_maps",
+    file: "0032_route_choice_maps.sql",
+  },
+  {
     id: "0033_terminology_candidates",
     file: "0033_terminology_candidates.sql",
   },

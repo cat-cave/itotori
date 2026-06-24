@@ -457,6 +457,15 @@ export class ItotoriTerminologyCandidateRepository implements ItotoriTerminology
       })),
     );
   }
+
+  async countTerminologyTerms(actor: AuthorizationActor, projectId: string): Promise<number> {
+    await requirePermission(this.db, actor, permissionValues.catalogRead);
+    const rows = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(terminologyTerms)
+      .where(eq(terminologyTerms.projectId, projectId));
+    return rows[0]?.count ?? 0;
+  }
 }
 
 function assertOrdinalsUnique(
@@ -513,12 +522,7 @@ export async function countTerminologyTerms(
   actor: AuthorizationActor,
   projectId: string,
 ): Promise<number> {
-  await requirePermission(db, actor, permissionValues.catalogRead);
-  const rows = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(terminologyTerms)
-    .where(eq(terminologyTerms.projectId, projectId));
-  return rows[0]?.count ?? 0;
+  return new ItotoriTerminologyCandidateRepository(db).countTerminologyTerms(actor, projectId);
 }
 
 export {

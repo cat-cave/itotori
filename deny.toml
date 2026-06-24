@@ -6,7 +6,13 @@ ignore = []
 version = 2
 # Unicode-3.0 is OSI-approved and is pulled in only through unicode-ident
 # in the Rust proc-macro parser stack used by serde derives.
-allow = ["MIT", "Apache-2.0", "Unicode-3.0"]
+# MIT-0, BSD-3-Clause, and Zlib are permissive and ecosystem-standard.
+# MPL-2.0 is weak/file-level copyleft; using `dirs` (which transitively pulls
+# `option-ext`) as an unmodified library does not infect downstream code. We
+# allow it because the alternative (a custom XDG basedir implementation) is
+# not worth the cost; any modification to the MPL'd source would re-introduce
+# the policy question.
+allow = ["MIT", "Apache-2.0", "Unicode-3.0", "MIT-0", "BSD-3-Clause", "Zlib", "MPL-2.0"]
 
 [bans]
 multiple-versions = "warn"

@@ -20,3 +20,5 @@ fixtures/private-local/
 .kaifuu/secrets.local/
 # Local research scratch exports. Curated research notes live under docs/research/.
 /research/
+# Per-agent worktrees managed by Claude Code agents.
+.claude/

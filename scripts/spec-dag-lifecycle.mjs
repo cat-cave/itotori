@@ -700,6 +700,18 @@ function writeJsonAtomic(path, value) {
   const tmpPath = `${path}.tmp-${process.pid}-${Date.now()}`;
   writeFileSync(tmpPath, `${JSON.stringify(value, null, 2)}\n`);
   renameSync(tmpPath, path);
+  maybeCanonicalizeSpecDag(path);
+}
+
+function maybeCanonicalizeSpecDag(path) {
+  if (process.env.ITOTORI_SKIP_DAG_CANONICALIZE === "1") return;
+  if (!/(^|\/)roadmap\/spec-dag\.json$/.test(path)) return;
+  const result = spawnSync("pnpm", ["exec", "vp", "check", "--fix", "--no-lint", path], {
+    stdio: ["ignore", "ignore", "ignore"],
+  });
+  if (result.error && result.error.code !== "ENOENT") {
+    throw result.error;
+  }
 }
 
 function escapeRegExp(value) {
