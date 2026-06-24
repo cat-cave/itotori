@@ -1,0 +1,115 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-014-20260624T013623Z",
+  "generatedAt": "2026-06-24T01:36:23Z",
+  "spec": {
+    "id": "ITOTORI-014",
+    "title": "Character relationship agent",
+    "branch": "spec/itotori-014",
+    "worktree": "/scratch/worktrees/itotori-spec-itotori-014",
+    "commit": "0fb2370"
+  },
+  "auditor": {
+    "name": "itotori-014-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "ITOTORI-014 lands the character relationship agent module (`apps/itotori/src/agents/character-relationship/`: shapes, prompt-template, agent, persistence, staleness, cli, index) plus migration 0031 with three tables (`itotori_character_bios`, `itotori_character_bio_evidence`, `itotori_character_relationships`, `itotori_character_relationship_evidence`) and the `ItotoriCharacterRelationshipRepository` adapter. Headline acceptance holds. (1) Citations required end-to-end: the agent's relationship loop (`agent.ts:171-235`) throws `CharacterRelationshipUncitedEdgeError` when `emitted.citedUnitIds.length === 0` BEFORE constructing a CharacterRelationship; the bio loop throws `CharacterRelationshipUnknownCitationError` on an empty citation list (lines 123-133); the repository tier (`character-relationship-repository.ts:184-185, 255-256`) re-asserts `input.citations.length === 0` → `throw new Error(...must cite at least one bridge unit)`; migration 0031 lines 55-69 enforce the closed-enum `kind in ('FamilyRelation','Romantic','Friendship','Mentor','Rivalry','Allegiance','Antagonism','Other')` CHECK constraint and `direction in ('Symmetric','FromAToB')`; both bio and relationship evidence tables carry `bridge_unit_id`/`cited_source_hash`/`cite_ordinal>=1` with `(record_id, bridge_unit_id)` primary keys. (2) Closed-roster defense (no invented characters): `computeRoster` (line 261) builds the union of curated characters + every observed speaker + every observed addressee; any provider-emitted `characterId`/`fromCharacterId`/`toCharacterId` outside the roster surfaces `CharacterRelationshipUnknownCharacterError`. (3) Rerun invalidation via hash drift: `staleness.ts::markStaleCharacterArtifactsForRevision` (line 48) loads Fresh bios+relationships, fetches `currentSourceHashesForBridgeUnits`, compares per-citation `citedSourceHash` against current hashes, and invokes `repository.markBioStale` / `markRelationshipStale` with reason `source_hash_drift`; migration 0031 lines 29-32 and 101-104 close-enum `invalidated_reason` to `('source_hash_drift','template_version_bump','manual')`. (4) Source-language: bio/relationship `descriptorLocale` is pinned to `input.sourceLocale` (agent.ts lines 156, 226) — never the target locale; the locale-mismatch guard (lines 46-51) throws `CharacterRelationshipLocaleMismatchError` if the source locale is missing. (5) No live LLM in CI: the agent has no provider construction surface — providers are passed in via `options.provider`; the CLI factory (`cli.ts:72-82`) constructs `FakeModelProvider` by default and requires `process.env.ITOTORI_LIVE_PROVIDER === '1'` to allow any non-fake family with explicit refusal message; the two test files (`character-relationship-agent.test.ts`, `character-relationship-staleness.test.ts`) use `FakeModelProvider` exclusively. PROMPT_TEMPLATE_VERSION_V1=\"itotori-character-relationship-v1\" pinned in TS and SQL (migration header comment). Verification: `pnpm exec vp run ts:test` 23 Test Files / 256 passed + 3 skipped (the 3 skips are explicitly the deferred §8.6/§8.9/§8.10 fixtures noted below); `just check` clean (cargo fmt, schema:check, ts:typecheck, cargo check --workspace). One P3 follow-up: worker explicitly deferred §8.6 recorded-provider fixture replay, §8.9 DB-backed persistence round-trip, and §8.10 CLI snapshot smoke; these need recorded fixture infrastructure and DATABASE_URL-bearing CI respectively, and are tracked as a continuous follow-up DAG node. No P0/P1/P2 findings.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 1
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-014-F001"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-014-F001",
+      "severity": "P3",
+      "title": "Deferred end-to-end coverage: recorded-provider replay, DB persistence round-trip, CLI snapshot smoke",
+      "category": "test",
+      "locations": [
+        {
+          "path": ".plan/ITOTORI-014.md",
+          "symbol": "§8.6 / §8.9 / §8.10"
+        },
+        {
+          "path": "apps/itotori/test/character-relationship-agent.test.ts"
+        },
+        {
+          "path": "apps/itotori/test/character-relationship-staleness.test.ts"
+        }
+      ],
+      "description": "ITOTORI-014's plan §8.6 (recorded-provider fixture replay against a sealed provider trace), §8.9 (DB-backed persistence round-trip against a real Postgres connection via DATABASE_URL), and §8.10 (CLI snapshot smoke that asserts the `generate-character-relationships` / `check-character-relationships` CLI surfaces a stable text shape) were explicitly deferred by the worker. The substrate they need does not exist in this slice: §8.6 wants a recorded-fixture provider infrastructure (parallel to the structured-output provider's recorded mode, but for the character-relationship pack shape); §8.9 needs a CI lane that wires DATABASE_URL to a transient Postgres so the repository's INSERT/SELECT path is exercised end-to-end against the migration 0031 schema; §8.10 needs the CLI snapshot harness pattern (analogous to the structured-output CLI smoke). The acceptance criteria for ITOTORI-014 hold without these (citations enforced at agent + repository tiers, fake provider used in CI, migration schema validated by ts:typecheck), but the absence of end-to-end coverage leaves three gaps: a regression in the recorded-pack shape would only surface at first live use; a migration 0031 schema mismatch would only surface in production INSERT; a CLI text-shape regression would only surface in operator review. Categorising as a continuous follow-up rather than alpha-blocking because the in-process tests already pin the agent contract and the migration's closed-enum CHECK constraints catch the highest-leverage schema drift.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": ".plan/ITOTORI-014.md §8.6 'recorded-provider fixture replay', §8.9 'DB-backed persistence round-trip', §8.10 'CLI snapshot smoke' all marked as deferred."
+        },
+        {
+          "kind": "command",
+          "detail": "pnpm exec vp run ts:test reports 256 passed + 3 skipped across 23 Test Files; the 3 skips correspond to the deferred end-to-end paths."
+        },
+        {
+          "kind": "file",
+          "detail": "apps/itotori/test/character-relationship-agent.test.ts uses FakeModelProvider exclusively (lines 224, 253, 279); no recorded-provider fixture exists."
+        }
+      ],
+      "impact": "Continuous-track risk: a future regression in (a) the structured pack shape the agent expects from a real model, (b) the migration 0031 INSERT/SELECT path against a live Postgres, or (c) the CLI text shape would not be caught until first operator use. The in-process tests pin the agent's contract and the closed-enum SQL constraints catch the highest-leverage drift, so this is not alpha-blocking. The follow-up sits cleanly in the continuous track once the recorded-provider fixture infrastructure (sibling to the structured-output recorded mode) and the DATABASE_URL CI lane are available.",
+      "actionableAcceptanceCriteria": [
+        "A recorded-provider fixture replay test under apps/itotori/test/ exercises generateCharacterRelationships end-to-end against a sealed provider trace and asserts the resulting bios+relationships pack matches a committed snapshot.",
+        "A DB-backed persistence round-trip test, gated on DATABASE_URL, applies migration 0031 to a transient Postgres, runs ItotoriCharacterRelationshipRepository.saveCharacterBio / saveCharacterRelationship / loadBios / loadRelationshipsByProject, and asserts the persisted records round-trip with citation arrays and source hashes intact.",
+        "A CLI snapshot smoke under apps/itotori/test/ invokes the generate-character-relationships and check-character-relationships CLI handlers with the FakeModelProvider and asserts the emitted human-readable output matches a committed snapshot."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Character relationship agent end-to-end coverage: recorded replay + DB round-trip + CLI snapshot",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "agent-runtime",
+          "dependsOn": ["ITOTORI-014"],
+          "summary": "Close the three end-to-end gaps deferred by ITOTORI-014: a recorded-provider fixture replay test that exercises generateCharacterRelationships against a sealed provider trace; a DB-backed persistence round-trip test (gated on DATABASE_URL) that applies migration 0031 and round-trips bios+relationships through the repository; and a CLI snapshot smoke that pins the generate-character-relationships / check-character-relationships handler text shape.",
+          "deliverables": [
+            "apps/itotori/test/character-relationship-agent-recorded.test.ts exercising a committed recorded provider trace.",
+            "apps/itotori/test/character-relationship-persistence-round-trip.test.ts gated on DATABASE_URL.",
+            "apps/itotori/test/character-relationship-cli-snapshot.test.ts pinning CLI text shape against a committed snapshot."
+          ],
+          "acceptanceCriteria": [
+            "Recorded-provider replay asserts the bios+relationships pack matches a committed snapshot byte-for-byte.",
+            "DB round-trip applies migration 0031, persists a Fresh bio+relationship with non-empty citations, loads it back, and asserts citation arrays + source hashes are equal.",
+            "CLI snapshot asserts the human-readable output of generate-character-relationships and check-character-relationships matches committed snapshots; the test must use FakeModelProvider (no live LLM call) and must not require DATABASE_URL."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm exec vp run ts:test"
+            },
+            {
+              "type": "command",
+              "value": "ITOTORI_LIVE_PROVIDER=0 pnpm exec vitest run apps/itotori/test/character-relationship-agent-recorded.test.ts apps/itotori/test/character-relationship-cli-snapshot.test.ts"
+            },
+            {
+              "type": "command",
+              "value": "DATABASE_URL=$POSTGRES_TEST_URL pnpm exec vitest run apps/itotori/test/character-relationship-persistence-round-trip.test.ts"
+            }
+          ],
+          "auditFocus": [
+            "Recorded fixture diverges from agent's expected pack shape.",
+            "Migration 0031 schema drift caught only at live INSERT, not in CI.",
+            "CLI text-shape regression surfaces only in operator review."
+          ]
+        }
+      }
+    }
+  ]
+}
