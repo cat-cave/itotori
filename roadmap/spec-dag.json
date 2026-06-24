@@ -20958,7 +20958,7 @@
     {
       "id": "UTSUSHI-200",
       "title": "utsushi-reallive crate skeleton + facade dependency (RealLive port foundation)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -20993,7 +20993,10 @@
         "rlvm header / source leakage",
         "Facade bypass via `utsushi_core::vfs::*` direct import",
         "Placeholder `Ok(())` returns that hide unimplemented stages"
-      ]
+      ],
+      "owner": "orchestrator-utsushi-200",
+      "branch": "spec/utsushi-200",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-200"
     },
     {
       "id": "UTSUSHI-201",
@@ -23631,7 +23634,7 @@
     {
       "id": "KAIFUU-189",
       "title": "RealLive detector resolves nested REALLIVEDATA/ subdirectory",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "continuous",
       "projects": ["kaifuu"],
@@ -23664,12 +23667,15 @@
         "Case-insensitive directory match must not match unrelated names (`reallive`, `data`).",
         "Recursion bound: the scanner must not descend past depth 2 from the resolved data dir.",
         "Behaviour when both root and nested data dir contain SEEN.TXT (prefer nested)."
-      ]
+      ],
+      "owner": "orchestrator-kaifuu-189",
+      "branch": "spec/kaifuu-189",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-189"
     },
     {
       "id": "KAIFUU-190",
       "title": "Gameexe.ini key catalogue extension to documented RealLive surface",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "continuous",
       "projects": ["kaifuu"],
@@ -23702,7 +23708,10 @@
         "Catalogue must not classify documented Sweetie-HD-private keys as Config without RLDEV citation.",
         "Bridge-unit emission must distinguish translatable text from asset path text.",
         "Warnings count must drop in lockstep with the unknown share."
-      ]
+      ],
+      "owner": "orchestrator-kaifuu-190",
+      "branch": "spec/kaifuu-190",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-190"
     },
     {
       "id": "KAIFUU-191",
