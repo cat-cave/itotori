@@ -11733,7 +11733,7 @@
     {
       "id": "ITOTORI-076",
       "title": "Draft protected-span validation and retry policy",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11771,9 +11771,7 @@
         "Retry classification missing field-level diagnostics",
         "Repair policy allowing unbounded attempts"
       ],
-      "owner": "orchestrator-itotori-076",
-      "branch": "spec/itotori-076",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-076"
+      "statusReason": "Implementation merged (commit 7fc2099). DraftProtectedSpanValidator + RetryPolicy + acceptance gate + 8 fixtures + 33 tests."
     },
     {
       "id": "ITOTORI-077",
