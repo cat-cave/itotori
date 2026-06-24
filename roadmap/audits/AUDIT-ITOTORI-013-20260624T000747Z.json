@@ -120,9 +120,7 @@
             "Calling `generateSceneSummary` with a unit whose declared `sourceHash` does not match `sha256(sourceText)` throws a typed error before any model invocation.",
             "Existing batch-planner-driven happy path remains green."
           ],
-          "verification": [
-            {"type": "command", "value": "pnpm exec vp run ts:test"}
-          ],
+          "verification": [{ "type": "command", "value": "pnpm exec vp run ts:test" }],
           "auditFocus": [
             "Staleness invariant cannot be defeated by caller-supplied mismatch.",
             "Performance: hash recomputation per input unit should be O(n) and not block on IO."

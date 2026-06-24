@@ -118,7 +118,10 @@
             "Every existing detector continues to register without behavioural drift in `adapters_supporting(...)`."
           ],
           "verification": [
-            {"type": "command", "value": "cargo test -p kaifuu-core -p kaifuu-engine-fixture -p kaifuu-reallive"}
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-core -p kaifuu-engine-fixture -p kaifuu-reallive"
+            }
           ],
           "auditFocus": [
             "No silent fallback to derive_from_reports.",
