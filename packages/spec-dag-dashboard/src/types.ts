@@ -37,6 +37,27 @@ export interface EnrichedNode extends SpecNode {
   ready: boolean;
   blockedBy: string[];
   issues: string[];
+  /**
+   * Per-node audit-finding rollup. Populated when the dashboard runs
+   * with `--with-audit-findings` and DATABASE_URL is set; an empty
+   * `findings.openFindings` (and all-zero counts) when the node has no
+   * open findings or when the DB read path was not requested.
+   */
+  findings: {
+    counts: { P0: number; P1: number; P2: number; P3: number };
+    openFindings: NodeAuditFinding[];
+  };
+}
+
+/** One open audit finding as the dashboard renders it. */
+export interface NodeAuditFinding {
+  auditFindingId: string;
+  auditReportId: string;
+  severity: Priority;
+  category: string;
+  summary: string;
+  fileRef: string | null;
+  proposedDagNode: string | null;
 }
 
 /** Counts keyed by node status. */
@@ -50,6 +71,18 @@ export interface Provenance {
   originMainKnown: boolean;
 }
 
+/**
+ * Top-level status of the audit-findings DB integration, surfaced on
+ * the rendered page. `disabled` is the fixture-less default; `loaded`
+ * is the happy path; `error` carries a typed message the page can
+ * render verbatim so the operator never sees a silent missing-findings
+ * state.
+ */
+export type AuditFindingsStatus =
+  | { kind: "disabled"; reason: "flag_not_set" | "database_url_not_set" }
+  | { kind: "loaded"; nodesWithFindings: number; totalOpenFindings: number }
+  | { kind: "error"; reason: string };
+
 /** The fully serialized payload embedded as `var DATA` in the page. */
 export interface DashboardData {
   generatedAt: string;
@@ -61,6 +94,7 @@ export interface DashboardData {
   globalIssues: string[];
   nodes: EnrichedNode[];
   provenance: Provenance;
+  auditFindingsStatus: AuditFindingsStatus;
 }
 
 export const PRANK: Record<string, number> = { P0: 0, P1: 1, P2: 2, P3: 3 };

@@ -7,6 +7,7 @@ import {
   type Permission,
 } from "../src/authorization.js";
 import { ItotoriAssetLocalizationDecisionRepository } from "../src/repositories/asset-localization-decision-repository.js";
+import { ItotoriAuditFindingRepository } from "../src/repositories/audit-finding-repository.js";
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
 import { ItotoriCharacterRelationshipRepository } from "../src/repositories/character-relationship-repository.js";
 import { ItotoriConformanceRepository } from "../src/repositories/conformance-repository.js";
@@ -745,6 +746,43 @@ const repositoryPermissionGateMatrix = [
     "asset-localization-decision-repository.test.ts load decisions by policy coverage",
     (repo) => repo.loadDecisionsByPolicy(deniedActor, "project", "locale", "keep_original"),
   ),
+  auditFindingGate(
+    "recordFinding",
+    "auditWrite",
+    "audit-finding-repository.test.ts record finding coverage",
+    (repo) => repo.recordFinding(deniedActor, undefined as never),
+  ),
+  auditFindingGate(
+    "loadFindingsByNode",
+    "catalogRead",
+    "audit-finding-repository.test.ts load findings by node coverage",
+    (repo) => repo.loadFindingsByNode(deniedActor, "UTSUSHI-200"),
+  ),
+  auditFindingGate(
+    "loadFindingsByReport",
+    "catalogRead",
+    "audit-finding-repository.test.ts load findings by report coverage",
+    (repo) => repo.loadFindingsByReport(deniedActor, "AUDIT-REPORT-1"),
+  ),
+  auditFindingGate(
+    "loadOpenFindings",
+    "catalogRead",
+    "audit-finding-repository.test.ts load open findings coverage",
+    (repo) => repo.loadOpenFindings(deniedActor),
+  ),
+  auditFindingGate(
+    "markFindingFixed",
+    "auditWrite",
+    "audit-finding-repository.test.ts mark finding fixed coverage",
+    (repo) => repo.markFindingFixed(deniedActor, "audit-finding-x", new Date()),
+  ),
+  auditFindingGate(
+    "markFindingSuperseded",
+    "auditWrite",
+    "audit-finding-repository.test.ts mark finding superseded coverage",
+    (repo) =>
+      repo.markFindingSuperseded(deniedActor, "audit-finding-old", "audit-finding-new", new Date()),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -1456,6 +1494,42 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "asset-localization-decision-repository.test.ts load decisions by policy coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuditFindingRepository.recordFinding",
+          "requiredPermission": "audit.write",
+          "successFixture": "audit-finding-repository.test.ts record finding coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuditFindingRepository.loadFindingsByNode",
+          "requiredPermission": "catalog.read",
+          "successFixture": "audit-finding-repository.test.ts load findings by node coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuditFindingRepository.loadFindingsByReport",
+          "requiredPermission": "catalog.read",
+          "successFixture": "audit-finding-repository.test.ts load findings by report coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuditFindingRepository.loadOpenFindings",
+          "requiredPermission": "catalog.read",
+          "successFixture": "audit-finding-repository.test.ts load open findings coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuditFindingRepository.markFindingFixed",
+          "requiredPermission": "audit.write",
+          "successFixture": "audit-finding-repository.test.ts mark finding fixed coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriAuditFindingRepository.markFindingSuperseded",
+          "requiredPermission": "audit.write",
+          "successFixture": "audit-finding-repository.test.ts mark finding superseded coverage",
+        },
       ]
     `);
   });
@@ -1839,6 +1913,22 @@ function assetLocalizationDecisionGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriAssetLocalizationDecisionRepository(db)),
+  });
+}
+
+function auditFindingGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriAuditFindingRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriAuditFindingRepository",
+    sourceFile: "audit-finding-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriAuditFindingRepository(db)),
   });
 }
 

@@ -14,6 +14,7 @@ export const permissionValues = {
   queueRead: "queue.read",
   catalogRead: "catalog.read",
   catalogWrite: "catalog.write",
+  auditWrite: "audit.write",
   systemReset: "system.reset",
 } as const;
 
@@ -29,6 +30,7 @@ export const allPermissions = [
   permissionValues.queueRead,
   permissionValues.catalogRead,
   permissionValues.catalogWrite,
+  permissionValues.auditWrite,
   permissionValues.systemReset,
 ] as const satisfies readonly Permission[];
 

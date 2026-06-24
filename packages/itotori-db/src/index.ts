@@ -663,6 +663,21 @@ export type {
   AssetLocalizationDecisionPolicy,
 } from "./schema.js";
 export {
+  AuditFindingRepositoryError,
+  ItotoriAuditFindingRepository,
+  auditFindingSeverityList,
+  auditFindingSeverityValues,
+  auditFindingStatusList,
+  auditFindingStatusValues,
+} from "./repositories/audit-finding-repository.js";
+export type {
+  ItotoriAuditFindingRepositoryPort,
+  LoadFindingsByNodeOptions,
+  LoadOpenFindingsOptions,
+  RecordFindingInput,
+} from "./repositories/audit-finding-repository.js";
+export type { AuditFindingRecord, AuditFindingSeverity, AuditFindingStatus } from "./schema.js";
+export {
   EngineCapabilityReportRepository,
   EngineCapabilityReportShapeError,
 } from "./repositories/engine-capability-report-repository.js";
