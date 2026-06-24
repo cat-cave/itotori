@@ -6408,7 +6408,7 @@
     {
       "id": "ITOTORI-019",
       "title": "Translation drafting fixture command",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -6464,9 +6464,7 @@
         "Dependency bypass of normalized slices",
         "Support or readiness overclaim"
       ],
-      "owner": "orchestrator-itotori-019",
-      "branch": "spec/itotori-019",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-019"
+      "statusReason": "Implementation merged (commit 3bbffeb). itotori:draft-fixture vp command + draft-artifact-bundle v1 schema + 5 scenario bundles + provenance-linkage tests + just hello-draft recipe."
     },
     {
       "id": "ITOTORI-020",
