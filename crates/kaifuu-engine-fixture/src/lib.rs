@@ -81,12 +81,6 @@ const REALLIVE_GAMEEXE_INI_MAGIC: &[u8] = b"# RealLive Gameexe.ini fixture";
 const REALLIVE_PROFILE_ID: &str = "019ed000-0000-7000-8000-000000172001";
 const REALLIVE_GAME_ID: &str = "kaifuu-reallive-synthetic-scene-seen";
 const REALLIVE_SUPPORT_BOUNDARY: &str = "RealLive detector profile identifies SEEN.TXT/Gameexe.ini/SEEN.GAN fixtures for identify and (in a single later slice) profile/asset-inventory only; parser, extraction, decryption, patch-back, and runtime support are not claimed.";
-// Conservative upper bound on the synthetic SEEN.TXT scene-count read by the
-// generic envelope check. Real RealLive titles ship far fewer scenes; this
-// bound exists only to reject pathological "first 4 bytes happen to be a huge
-// integer" cases on hostile inputs and is not a structural claim about the
-// format.
-const REALLIVE_SEEN_TXT_MAX_SCENE_COUNT: u32 = 1 << 17;
 // RealLive Gameexe.ini ASCII prefixes recognized as positive engine evidence.
 // All are documented on Haeleth's RLDEV site
 // (https://dev.haeleth.net/rldev.shtml) and observable in any RealLive title's
@@ -4248,10 +4242,9 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         let mut scenes = Vec::new();
         let mut adapter_warnings: Vec<kaifuu_core::AdapterWarning> = Vec::new();
         for entry in &scene_index.entries {
-            let blob = &archive_bytes
-                [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
-            let outcome =
-                kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
+            let blob = &archive_bytes[entry.byte_offset as usize
+                ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+            let outcome = kaifuu_reallive::parse_scene(blob, entry.scene_id, entry.byte_offset);
             for diagnostic in &outcome.diagnostics {
                 adapter_warnings.push(kaifuu_core::AdapterWarning {
                     code: diagnostic.code.as_str().to_string(),
@@ -4318,10 +4311,9 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         };
         let mut scenes = Vec::new();
         for entry in &scene_index.entries {
-            let blob = &archive_bytes
-                [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
-            let outcome =
-                kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
+            let blob = &archive_bytes[entry.byte_offset as usize
+                ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+            let outcome = kaifuu_reallive::parse_scene(blob, entry.scene_id, entry.byte_offset);
             if let Some(scene) = outcome.scene {
                 scenes.push(scene);
             }
@@ -4370,10 +4362,9 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         };
         let mut scenes = Vec::new();
         for entry in &scene_index.entries {
-            let blob = &archive_bytes
-                [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
-            let outcome =
-                kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
+            let blob = &archive_bytes[entry.byte_offset as usize
+                ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
+            let outcome = kaifuu_reallive::parse_scene(blob, entry.scene_id, entry.byte_offset);
             if let Some(scene) = outcome.scene {
                 scenes.push(scene);
             }
@@ -4484,10 +4475,10 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         match kaifuu_reallive::parse_archive(&archive_bytes) {
             Ok(index) => {
                 for entry in &index.entries {
-                    let blob = &archive_bytes
-                        [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize];
+                    let blob = &archive_bytes[entry.byte_offset as usize
+                        ..(entry.byte_offset + u64::from(entry.byte_len)) as usize];
                     let outcome =
-                        kaifuu_reallive::parse_scene(blob, entry.archive_index, entry.byte_offset);
+                        kaifuu_reallive::parse_scene(blob, entry.scene_id, entry.byte_offset);
                     if outcome.scene.is_none() {
                         failures.push(Self::unsupported_failure(
                             SemanticErrorCode::UnsupportedLayeredTransform,
@@ -4698,37 +4689,33 @@ fn reallive_extension_counts(dir: &Path) -> (u64, u64, u64) {
     (g00_count, voice_archive_count, pdt_count)
 }
 
-// Generic real-shape SEEN.TXT envelope check.
+// Generic real-shape SEEN.TXT envelope check (KAIFUU-188).
 //
-// Derivation: Haeleth's RLDEV documentation describes SEEN.TXT as a
-// little-endian count-plus-offset-table archive. The check here is
-// intentionally minimal so we do not encode rlvm structure layouts: a
-// reasonable scene count (1..=REALLIVE_SEEN_TXT_MAX_SCENE_COUNT) followed
-// by enough file length to hold an 8-byte-per-entry table. We do not
-// parse entries.
+// Derivation: every RealLive title since AVG32 stores SEEN.TXT as a fixed
+// 10,000-slot directory of (u32_le offset, u32_le size) pairs at file
+// offset 0. Each slot is 8 bytes; an unused slot is zeroed. See
+// `docs/research/reallive-engine.md` §C and the Sweetie HD verification
+// in `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
+//
+// We accept any file that is at least 80,000 bytes long (the fixed
+// directory), contains at least one non-zero slot, and whose every
+// non-zero slot resolves to a payload range inside the file. We do not
+// parse scene bytecode.
 fn reallive_seen_txt_envelope_ok(path: &Path) -> bool {
     let Ok(metadata) = fs::metadata(path) else {
         return false;
     };
     let file_len = metadata.len();
-    if file_len < 8 {
+    if file_len < kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN {
         return false;
     }
     let Ok(bytes) = fs::read(path) else {
         return false;
     };
-    if bytes.len() < 4 {
-        return false;
+    match kaifuu_reallive::parse_archive(&bytes) {
+        Ok(index) => !index.entries.is_empty(),
+        Err(_) => false,
     }
-    let count = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
-    if count == 0 || count > REALLIVE_SEEN_TXT_MAX_SCENE_COUNT {
-        return false;
-    }
-    // 8 bytes per (offset, size) table entry is the publicly-documented
-    // minimum for a count + offset table envelope shape; we use it as a
-    // floor without claiming an exact entry layout.
-    let required = 4u64.saturating_add((count as u64).saturating_mul(8));
-    required <= file_len
 }
 
 // Read up to 64 KiB of Gameexe.ini and check for the documented
@@ -6903,16 +6890,19 @@ mod tests {
 
     #[test]
     fn detects_reallive_on_positive_live_layout_with_gameexe_ini_key_hits() {
-        // Generic envelope: no synthetic SEEN.TXT magic; just LE count + table
-        // shape. Gameexe.ini has #GAMEEXE_VERSION present without the
-        // synthetic-magic prefix. Mirrors what a real RealLive title looks
-        // like at the SEEN.TXT + Gameexe.ini layer.
-        let mut seen_bytes = Vec::new();
-        seen_bytes.extend_from_slice(&3_u32.to_le_bytes());
-        for index in 0..3_u64 {
-            seen_bytes.extend_from_slice(&index.to_le_bytes());
-        }
-        seen_bytes.extend_from_slice(b"generic-shape-payload");
+        // Generic envelope: no synthetic SEEN.TXT magic; just the real
+        // 10,000-slot fixed-offset-table shape (KAIFUU-188) with one
+        // populated slot at slot 1. Gameexe.ini has #GAMEEXE_VERSION
+        // present without the synthetic-magic prefix. Mirrors what a real
+        // RealLive title looks like at the SEEN.TXT + Gameexe.ini layer.
+        let directory_byte_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
+        let payload_offset = directory_byte_len as u32;
+        let payload: &[u8] = b"generic-shape-payload";
+        let mut seen_bytes = vec![0u8; directory_byte_len + payload.len()];
+        let slot1 = 1usize * 8;
+        seen_bytes[slot1..slot1 + 4].copy_from_slice(&payload_offset.to_le_bytes());
+        seen_bytes[slot1 + 4..slot1 + 8].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+        seen_bytes[directory_byte_len..].copy_from_slice(payload);
         let dir = reallive_fixture_dir(
             "reallive-positive-live-layout",
             &[

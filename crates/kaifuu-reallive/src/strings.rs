@@ -12,7 +12,7 @@ use crate::ast::{StringSlot, StringSlotId, StringSlotRef, StringSlotRole};
 /// Build a new [`StringSlot`] plus its [`StringSlotRef`] given the
 /// byte-range, encoding, and role context.
 pub(crate) fn make_slot(
-    archive_index: u32,
+    scene_id: u16,
     slot_byte_offset_within_scene: u64,
     slot_index_within_instruction: u8,
     raw_bytes: &[u8],
@@ -21,7 +21,7 @@ pub(crate) fn make_slot(
     next_global_index: u32,
 ) -> (StringSlot, StringSlotRef) {
     let slot_id = StringSlotId::for_scene(
-        archive_index,
+        scene_id,
         slot_byte_offset_within_scene,
         slot_index_within_instruction,
     );

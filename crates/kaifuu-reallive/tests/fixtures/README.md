@@ -1,9 +1,18 @@
-# KAIFUU-173 parser-boundary smoke fixtures
+# KAIFUU-173 / KAIFUU-188 parser-boundary smoke fixtures
 
 Synthetic-only. Every byte is authored from public RealLive format
 archaeology (Haeleth's RLDEV documentation) and the documented in-crate
 bytecode shape (see `crates/kaifuu-reallive/src/lib.rs`). No retail bytes,
 no opcode tables copied from rlvm or RLDEV.
+
+All envelopes use the real 10,000-slot fixed-offset-table shape
+(KAIFUU-188): 80,000 bytes of `(u32_le offset, u32_le length)` pairs at
+file offset 0, with the single scene populated at slot 1
+(`reallive:scene-0001`). The scene payload sits at file offset
+`0x0001_3880`, mirroring Sweetie HD's first-scene layout. These are
+**synthetic envelope-shape smokes** that exercise the parser's behavior on
+authored bytes — the real-bytes anchor lives in
+`tests/parse_archive_real_bytes.rs`.
 
 License: CC0-1.0.
 
@@ -39,12 +48,9 @@ KAIFUU-174 inventory + patchback fixtures:
 - `patchback-overflow-001/SEEN.TXT` — same bytes; exercised with a
   length-changing edit that must be rejected with
   `kaifuu.reallive.patchback_offset_overflow` Fatal.
-- `unsupported-text-shape-001/SEEN.TXT` — scene with an Unrecognized
-  opcode carrying a string operand so the slot ends up with
-  `StringSlotRole::Unknown`. Asserts
-  `kaifuu.reallive.unsupported_text_shape` Warning.
-
-The same byte runs are produced by builder helpers in
-`tests/smoke.rs` (see the `synthetic` module) so the fixtures can be
-regenerated. The on-disk bytes are committed for hermetic CI; the tests
-assert builder output matches the on-disk bytes.
+  The same byte runs are produced by builder helpers in
+  `tests/smoke.rs` (see the `synthetic` module) so the fixtures can be
+  regenerated. The on-disk bytes are committed for hermetic CI; the tests
+  assert builder output matches the on-disk bytes. Run
+  `cargo run -p kaifuu-reallive --example regenerate_fixtures` after
+  changing a builder.

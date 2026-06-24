@@ -17,7 +17,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::archive::{SceneIndex, parse_archive};
+use crate::archive::{RealLiveSceneIndex, parse_archive};
 use crate::ast::{Operand, Scene};
 use crate::encoding::{ShiftJisEncodeError, encode_shift_jis_slot, slice_control_bytes};
 use crate::parser::parse_scene;
@@ -136,7 +136,7 @@ pub struct PatchBackPlan {
 /// edit list returns `archive_bytes.to_vec()`.
 pub fn apply_patches(
     archive_bytes: &[u8],
-    scene_index: &SceneIndex,
+    scene_index: &RealLiveSceneIndex,
     scenes: &[Scene],
     edits: &[SlotEdit],
 ) -> Result<Vec<u8>, PatchBackError> {
@@ -162,7 +162,7 @@ pub fn apply_patches(
         let entry = scene_index
             .entries
             .iter()
-            .find(|e| e.scene_id.as_str() == *scene_id)
+            .find(|e| e.scene_id_str() == *scene_id)
             .ok_or_else(|| {
                 PatchBackError::new(
                     PatchBackErrorCode::UnknownSlotId,
@@ -443,7 +443,7 @@ fn encode_replacement(
 /// the patch-back integrity gate referenced in §7.1 of the plan.
 fn verify_archive_round_trip(
     output: &[u8],
-    original_scene_index: &SceneIndex,
+    original_scene_index: &RealLiveSceneIndex,
     original_scenes: &[Scene],
 ) -> Result<(), PatchBackError> {
     let new_index = parse_archive(output).map_err(|diag| {
@@ -469,41 +469,42 @@ fn verify_archive_round_trip(
         if new_entry.byte_offset != original_entry.byte_offset
             || new_entry.byte_len != original_entry.byte_len
         {
+            let new_scene_id_str = new_entry.scene_id_str();
             return Err(PatchBackError::new(
                 PatchBackErrorCode::ParserRegression,
                 format!(
                     "post-patch scene {} entry table drifted ({}..{} vs {}..{})",
-                    new_entry.scene_id.as_str(),
+                    new_scene_id_str,
                     new_entry.byte_offset,
-                    new_entry.byte_offset + new_entry.byte_len,
+                    new_entry.byte_offset + u64::from(new_entry.byte_len),
                     original_entry.byte_offset,
-                    original_entry.byte_offset + original_entry.byte_len
+                    original_entry.byte_offset + u64::from(original_entry.byte_len)
                 ),
             ));
         }
-        let blob = &output
-            [new_entry.byte_offset as usize..(new_entry.byte_offset + new_entry.byte_len) as usize];
-        let outcome = parse_scene(blob, new_entry.archive_index, new_entry.byte_offset);
+        let blob_end = (new_entry.byte_offset + u64::from(new_entry.byte_len)) as usize;
+        let blob = &output[new_entry.byte_offset as usize..blob_end];
+        let outcome = parse_scene(blob, new_entry.scene_id, new_entry.byte_offset);
+        let new_scene_id_str = new_entry.scene_id_str();
         if outcome.scene.is_none() {
             return Err(PatchBackError::new(
                 PatchBackErrorCode::ParserRegression,
                 format!(
                     "post-patch scene {} failed to parse: {:?}",
-                    new_entry.scene_id.as_str(),
-                    outcome.diagnostics
+                    new_scene_id_str, outcome.diagnostics
                 ),
             ));
         }
         let new_scene = outcome.scene.unwrap();
         let original_scene = original_scenes
             .iter()
-            .find(|s| s.scene_id == new_entry.scene_id)
+            .find(|s| s.scene_id == new_scene_id_str)
             .ok_or_else(|| {
                 PatchBackError::new(
                     PatchBackErrorCode::ParserRegression,
                     format!(
                         "post-patch scene {} has no matching original scene",
-                        new_entry.scene_id.as_str()
+                        new_scene_id_str
                     ),
                 )
             })?;
@@ -512,7 +513,7 @@ fn verify_archive_round_trip(
                 PatchBackErrorCode::ParserRegression,
                 format!(
                     "post-patch scene {} has {} instructions, source had {}",
-                    new_entry.scene_id.as_str(),
+                    new_scene_id_str,
                     new_scene.instructions.len(),
                     original_scene.instructions.len()
                 ),
@@ -523,7 +524,7 @@ fn verify_archive_round_trip(
                 PatchBackErrorCode::ParserRegression,
                 format!(
                     "post-patch scene {} has {} string slots, source had {}",
-                    new_entry.scene_id.as_str(),
+                    new_scene_id_str,
                     new_scene.strings.len(),
                     original_scene.strings.len()
                 ),

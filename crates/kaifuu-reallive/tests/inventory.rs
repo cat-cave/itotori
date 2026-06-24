@@ -47,12 +47,20 @@ mod synthetic {
         instruction(0x03, &refs)
     }
 
+    /// Slot index that synthetic single-scene inventory fixtures populate.
+    pub const SINGLE_SCENE_SLOT: u16 = 1;
+
+    /// Build a SEEN.TXT archive in the real 10,000-slot fixed-offset
+    /// envelope shape (KAIFUU-188).
     pub fn single_scene_archive(scene_bytes: &[u8]) -> Vec<u8> {
-        let mut out = Vec::with_capacity(12 + scene_bytes.len());
-        out.extend_from_slice(&1u32.to_le_bytes());
-        out.extend_from_slice(&12u32.to_le_bytes());
-        out.extend_from_slice(&(scene_bytes.len() as u32).to_le_bytes());
-        out.extend_from_slice(scene_bytes);
+        let directory_byte_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
+        let payload_offset = directory_byte_len as u32;
+        let mut out = vec![0u8; directory_byte_len + scene_bytes.len()];
+        let slot_byte_offset = (SINGLE_SCENE_SLOT as usize) * 8;
+        out[slot_byte_offset..slot_byte_offset + 4].copy_from_slice(&payload_offset.to_le_bytes());
+        out[slot_byte_offset + 4..slot_byte_offset + 8]
+            .copy_from_slice(&(scene_bytes.len() as u32).to_le_bytes());
+        out[directory_byte_len..].copy_from_slice(scene_bytes);
         out
     }
 
@@ -128,13 +136,15 @@ fn assert_synthetic_matches_committed(name: &str, expected: &[u8]) {
     );
 }
 
-fn parse_first(archive_bytes: &[u8]) -> (kaifuu_reallive::SceneIndex, kaifuu_reallive::Scene) {
+fn parse_first(
+    archive_bytes: &[u8],
+) -> (kaifuu_reallive::RealLiveSceneIndex, kaifuu_reallive::Scene) {
     let index = parse_archive(archive_bytes).expect("archive parses");
     let entry = index.entries[0].clone();
     let blob = archive_bytes
-        [entry.byte_offset as usize..(entry.byte_offset + entry.byte_len) as usize]
+        [entry.byte_offset as usize..(entry.byte_offset + u64::from(entry.byte_len)) as usize]
         .to_vec();
-    let outcome = parse_scene(&blob, entry.archive_index, entry.byte_offset);
+    let outcome = parse_scene(&blob, entry.scene_id, entry.byte_offset);
     let scene = outcome.scene.expect("scene parses");
     (index, scene)
 }

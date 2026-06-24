@@ -17,7 +17,7 @@ use std::collections::HashMap;
 use kaifuu_core::{BridgeUnit, PatchRef, ProtectedSpan, sha256_hash_bytes};
 use serde::{Deserialize, Serialize};
 
-use crate::archive::{SceneEntry, SceneIndex};
+use crate::archive::{RealLiveSceneIndex, SceneEntry};
 use crate::ast::{InstructionKind, Operand, Scene, StringSlotRole};
 use crate::encoding::decode_shift_jis_slot;
 use crate::opcodes::NamedOpcode;
@@ -95,7 +95,7 @@ pub struct InventoryReport {
 /// calls, respectively.
 pub fn build_scene_inventory(
     _archive_bytes: &[u8],
-    scene_index: &SceneIndex,
+    scene_index: &RealLiveSceneIndex,
     scenes: &[Scene],
 ) -> InventoryReport {
     let mut bridge_units = Vec::new();
@@ -106,7 +106,8 @@ pub fn build_scene_inventory(
         scenes.iter().map(|s| (s.scene_id.as_str(), s)).collect();
 
     for entry in &scene_index.entries {
-        let Some(scene) = scene_by_id.get(entry.scene_id.as_str()) else {
+        let entry_scene_id_str = entry.scene_id_str();
+        let Some(scene) = scene_by_id.get(entry_scene_id_str.as_str()) else {
             continue;
         };
         walk_scene(
@@ -215,7 +216,7 @@ fn walk_scene(
                 asset_assets.push(AssetReference {
                     reference_id: format!(
                         "asset-ref:scene-{:04}:slot-{}",
-                        entry.archive_index,
+                        entry.scene_id,
                         slot.slot_id.as_str()
                     ),
                     kind,
