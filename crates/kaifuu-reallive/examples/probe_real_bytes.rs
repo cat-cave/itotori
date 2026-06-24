@@ -94,16 +94,22 @@ fn probe_gameexe_ini(path: &str) -> Result<(), Box<dyn std::error::Error>> {
         .iter()
         .filter(|e| e.treatment == GameexeKeyTreatment::AssetReference)
         .count();
+    let config = report
+        .entries
+        .iter()
+        .filter(|e| e.treatment == GameexeKeyTreatment::Config)
+        .count();
     let unknown = report
         .entries
         .iter()
         .filter(|e| e.treatment == GameexeKeyTreatment::Unknown)
         .count();
     println!(
-        "parse_gameexe_inventory: entries={} bridge={} asset_ref={} unknown={} warnings={}",
+        "parse_gameexe_inventory: entries={} bridge={} asset_ref={} config={} unknown={} warnings={}",
         total,
         bridge,
         asset,
+        config,
         unknown,
         report.warnings.len()
     );
