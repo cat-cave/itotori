@@ -112,6 +112,7 @@
 
 mod archive;
 mod ast;
+pub mod detector;
 mod diagnostics;
 pub mod encoding;
 pub mod gameexe;
@@ -129,6 +130,11 @@ pub use archive::{
 pub use ast::{
     DiagnosticSeverity, Instruction, InstructionId, InstructionKind, Operand, ParseOutcome,
     ParseStatus, Scene, StringSlot, StringSlotId, StringSlotRef, StringSlotRole,
+};
+pub use detector::{
+    REALLIVE_DATA_DIR_NAME, REALLIVE_DETECTOR_DEFAULT_MAX_DEPTH, RealLiveDetectError,
+    RealLiveDetectionEvidence, detect as detect_reallive_data_dir,
+    detect_with_max_depth as detect_reallive_data_dir_with_max_depth,
 };
 pub use diagnostics::{
     ParseDiagnostic, ParseDiagnosticCode, semantic_error_code_for_parser_diagnostic,

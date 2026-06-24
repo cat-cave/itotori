@@ -71,6 +71,13 @@ const SIGLUS_SUPPORT_BOUNDARY: &str = "Siglus detector profile identifies synthe
 const REALLIVE_SEEN_TXT_PATH: &str = "SEEN.TXT";
 const REALLIVE_SEEN_GAN_PATH: &str = "SEEN.GAN";
 const REALLIVE_GAMEEXE_INI_PATH: &str = "Gameexe.ini";
+// KAIFUU-189 resolved-data-dir evidence kind. Emitted whenever the
+// detector walks past the game root and locates a nested REALLIVEDATA/
+// subdirectory (e.g. Sweetie HD ships its REALLIVEDATA under a
+// Japanese-named title subdir). The evidence carries the on-disk path
+// relative to the game root so downstream `extract` / `profile` /
+// `verify` can re-use it without re-walking.
+const REALLIVE_RESOLVED_DATA_DIR_KIND: &str = "reallive_resolved_data_dir";
 // Synthetic fixture short-circuit signatures. Public CI uses these to assert
 // detector wiring without needing observed real-game SEEN.TXT bytes. The
 // generic envelope check (see `reallive_seen_txt_envelope_ok`) is what
@@ -3301,28 +3308,79 @@ struct RealLiveFixtureState {
     seen_gan_hash: Option<String>,
     gameexe_ini_hash: Option<String>,
     variant: RealLiveFixtureVariant,
+    // KAIFUU-189: when the depth-N walk locates a nested REALLIVEDATA/
+    // subdirectory, the relative path is recorded here so the detector
+    // can surface it as evidence (`reallive_resolved_data_dir`). `None`
+    // means the SEEN.TXT/Gameexe.ini lookups fell back to the game root
+    // (synthetic fixtures or `kaifuu detect` invoked directly against a
+    // REALLIVEDATA-named directory).
+    resolved_reallive_data_dir: Option<std::path::PathBuf>,
 }
 
 impl RealLiveProfileDetectorAdapter {
+    // KAIFUU-189: depth-N descent that locates the REALLIVEDATA/ engine
+    // asset root inside an arbitrary game directory tree. Sweetie HD
+    // ships its REALLIVEDATA at
+    // `<game_root>/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/`
+    // (depth 2 from the install root); pointing `kaifuu detect` at the
+    // install root must walk the title subdir before reporting any
+    // RealLive marker missing. See `docs/audits/real-bytes-validation-2026-06-24.md`
+    // §2.1 and `kaifuu_reallive::detector` for the depth bound rationale.
+    //
+    // I/O errors are swallowed into `None` here because this helper feeds
+    // a detector that already tolerates "directory unreadable" elsewhere
+    // (e.g. extract / profile flows). The kaifuu-reallive detector
+    // surfaces three-state outcomes for callers that care about the
+    // difference (see `kaifuu_reallive::RealLiveDetectError`).
+    fn resolve_reallive_data_dir(game_dir: &Path) -> Option<std::path::PathBuf> {
+        kaifuu_reallive::detect_reallive_data_dir(game_dir)
+            .ok()
+            .flatten()
+            .map(|evidence| evidence.reallive_data_path)
+    }
+
+    // Returns the effective data-root for SEEN.TXT/Gameexe.ini/extension
+    // lookups: the resolved REALLIVEDATA subdir when found, else
+    // `game_dir` itself. Keeps synthetic fixtures (which ship SEEN.TXT
+    // at the game root) working without a REALLIVEDATA marker.
+    fn effective_data_dir<'a>(game_dir: &'a Path, resolved: Option<&'a Path>) -> &'a Path {
+        resolved.unwrap_or(game_dir)
+    }
+
     fn seen_txt_path(game_dir: &Path) -> std::path::PathBuf {
-        case_insensitive_find(game_dir, REALLIVE_SEEN_TXT_PATH)
-            .unwrap_or_else(|| game_dir.join(REALLIVE_SEEN_TXT_PATH))
+        let resolved = Self::resolve_reallive_data_dir(game_dir);
+        Self::seen_txt_path_with_resolved(game_dir, resolved.as_deref())
     }
 
-    fn seen_gan_path(game_dir: &Path) -> std::path::PathBuf {
-        case_insensitive_find(game_dir, REALLIVE_SEEN_GAN_PATH)
-            .unwrap_or_else(|| game_dir.join(REALLIVE_SEEN_GAN_PATH))
+    fn seen_txt_path_with_resolved(game_dir: &Path, resolved: Option<&Path>) -> std::path::PathBuf {
+        let effective = Self::effective_data_dir(game_dir, resolved);
+        case_insensitive_find(effective, REALLIVE_SEEN_TXT_PATH)
+            .unwrap_or_else(|| effective.join(REALLIVE_SEEN_TXT_PATH))
     }
 
-    fn gameexe_ini_path(game_dir: &Path) -> std::path::PathBuf {
-        case_insensitive_find(game_dir, REALLIVE_GAMEEXE_INI_PATH)
-            .unwrap_or_else(|| game_dir.join(REALLIVE_GAMEEXE_INI_PATH))
+    fn seen_gan_path_with_resolved(game_dir: &Path, resolved: Option<&Path>) -> std::path::PathBuf {
+        let effective = Self::effective_data_dir(game_dir, resolved);
+        case_insensitive_find(effective, REALLIVE_SEEN_GAN_PATH)
+            .unwrap_or_else(|| effective.join(REALLIVE_SEEN_GAN_PATH))
+    }
+
+    fn gameexe_ini_path_with_resolved(
+        game_dir: &Path,
+        resolved: Option<&Path>,
+    ) -> std::path::PathBuf {
+        let effective = Self::effective_data_dir(game_dir, resolved);
+        case_insensitive_find(effective, REALLIVE_GAMEEXE_INI_PATH)
+            .unwrap_or_else(|| effective.join(REALLIVE_GAMEEXE_INI_PATH))
     }
 
     fn inspect(game_dir: &Path) -> RealLiveFixtureState {
-        let seen_txt_path = Self::seen_txt_path(game_dir);
-        let seen_gan_path = Self::seen_gan_path(game_dir);
-        let gameexe_ini_path = Self::gameexe_ini_path(game_dir);
+        let resolved_reallive_data_dir = Self::resolve_reallive_data_dir(game_dir);
+        let seen_txt_path =
+            Self::seen_txt_path_with_resolved(game_dir, resolved_reallive_data_dir.as_deref());
+        let seen_gan_path =
+            Self::seen_gan_path_with_resolved(game_dir, resolved_reallive_data_dir.as_deref());
+        let gameexe_ini_path =
+            Self::gameexe_ini_path_with_resolved(game_dir, resolved_reallive_data_dir.as_deref());
         let seen_txt_exists = seen_txt_path.is_file();
         let seen_gan_exists = seen_gan_path.is_file();
         let gameexe_ini_exists = gameexe_ini_path.is_file();
@@ -3337,7 +3395,13 @@ impl RealLiveProfileDetectorAdapter {
         } else {
             GameexeIniKeyHits::default()
         };
-        let (g00_count, voice_archive_count, avg32_pdt_count) = reallive_extension_counts(game_dir);
+        let effective_extension_dir =
+            Self::effective_data_dir(game_dir, resolved_reallive_data_dir.as_deref());
+        let (g00_count, voice_archive_count, avg32_pdt_count) =
+            reallive_extension_counts(effective_extension_dir);
+        // Siglus cross-check stays anchored to the game root: Siglus
+        // markers (`Scene.pck`, `Gameexe.dat`) never live inside a
+        // RealLive `REALLIVEDATA/` subtree.
         let siglus_scene_pck_present = case_insensitive_find(game_dir, "Scene.pck").is_some();
         let siglus_gameexe_dat_present = case_insensitive_find(game_dir, "Gameexe.dat").is_some();
         let variant = Self::resolve_variant(
@@ -3354,6 +3418,12 @@ impl RealLiveProfileDetectorAdapter {
             siglus_gameexe_dat_present,
             avg32_pdt_count,
         );
+        let resolved_relative = resolved_reallive_data_dir.as_deref().map(|resolved| {
+            resolved
+                .strip_prefix(game_dir)
+                .map(std::path::Path::to_path_buf)
+                .unwrap_or_else(|_| resolved.to_path_buf())
+        });
         RealLiveFixtureState {
             seen_txt_exists,
             seen_txt_envelope_ok,
@@ -3378,6 +3448,7 @@ impl RealLiveProfileDetectorAdapter {
                 .then(|| sha256_file_ref(&gameexe_ini_path).ok())
                 .flatten(),
             variant,
+            resolved_reallive_data_dir: resolved_relative,
         }
     }
 
@@ -4086,6 +4157,130 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
         let state = Self::inspect(request.game_dir);
         let detected = Self::is_detected(state.variant);
         let diagnostic_only = !detected && state.variant != RealLiveFixtureVariant::NotRealLive;
+        // KAIFUU-189: when the depth-N walk found a nested REALLIVEDATA/,
+        // the SEEN.TXT/SEEN.GAN/Gameexe.ini evidence paths are reported
+        // relative to the game root with the REALLIVEDATA/ prefix so
+        // downstream tools (and human auditors) see exactly where the
+        // detector read its bytes. When no nested dir was resolved, the
+        // bare top-level names are kept for backward compatibility with
+        // the existing synthetic fixtures.
+        let resolved_data_dir_display = state
+            .resolved_reallive_data_dir
+            .as_deref()
+            .map(path_to_forward_slash);
+        let seen_txt_evidence_path =
+            nest_evidence_path(resolved_data_dir_display.as_deref(), REALLIVE_SEEN_TXT_PATH);
+        let seen_gan_evidence_path =
+            nest_evidence_path(resolved_data_dir_display.as_deref(), REALLIVE_SEEN_GAN_PATH);
+        let gameexe_ini_evidence_path = nest_evidence_path(
+            resolved_data_dir_display.as_deref(),
+            REALLIVE_GAMEEXE_INI_PATH,
+        );
+
+        let mut evidence_rows = vec![
+            DetectionEvidence {
+                path: seen_txt_evidence_path,
+                kind: "reallive_seen_txt_envelope".to_string(),
+                status: evidence_status(state.seen_txt_exists, state.seen_txt_envelope_ok),
+                detail: signature_detail(
+                    state.seen_txt_exists,
+                    state.seen_txt_envelope_ok,
+                    "SEEN.TXT envelope",
+                ),
+            },
+            DetectionEvidence {
+                path: seen_gan_evidence_path,
+                kind: "reallive_seen_gan_marker".to_string(),
+                status: evidence_status(state.seen_gan_exists, state.seen_gan_synthetic_magic),
+                detail: signature_detail(
+                    state.seen_gan_exists,
+                    state.seen_gan_synthetic_magic,
+                    "SEEN.GAN marker",
+                ),
+            },
+            DetectionEvidence {
+                path: gameexe_ini_evidence_path,
+                kind: "reallive_gameexe_ini_keys".to_string(),
+                status: evidence_status(state.gameexe_ini_exists, state.gameexe_ini_keys.any()),
+                detail: gameexe_ini_detail(state.gameexe_ini_exists, state.gameexe_ini_keys),
+            },
+            DetectionEvidence {
+                path: "*.g00".to_string(),
+                kind: "reallive_g00_extension_count".to_string(),
+                status: if state.g00_count > 0 {
+                    EvidenceStatus::Matched
+                } else {
+                    EvidenceStatus::Missing
+                },
+                detail: format!("RealLive .g00 image asset count: {}", state.g00_count),
+            },
+            DetectionEvidence {
+                path: "*.ovk|*.koe|*.nwk".to_string(),
+                kind: "reallive_voice_archive_count".to_string(),
+                status: if state.voice_archive_count > 0 {
+                    EvidenceStatus::Matched
+                } else {
+                    EvidenceStatus::Missing
+                },
+                detail: format!(
+                    "RealLive voice archive extension count: {}",
+                    state.voice_archive_count
+                ),
+            },
+            DetectionEvidence {
+                path: "Scene.pck".to_string(),
+                kind: "siglus_cross_check_scene_pck".to_string(),
+                status: if state.siglus_scene_pck_present {
+                    EvidenceStatus::Invalid
+                } else {
+                    EvidenceStatus::Missing
+                },
+                detail: if state.siglus_scene_pck_present {
+                    "Scene.pck co-present (Siglus marker)".to_string()
+                } else {
+                    "Scene.pck not present".to_string()
+                },
+            },
+            DetectionEvidence {
+                path: "Gameexe.dat".to_string(),
+                kind: "siglus_cross_check_gameexe_dat".to_string(),
+                status: if state.siglus_gameexe_dat_present {
+                    EvidenceStatus::Invalid
+                } else {
+                    EvidenceStatus::Missing
+                },
+                detail: if state.siglus_gameexe_dat_present {
+                    "Gameexe.dat co-present (Siglus marker)".to_string()
+                } else {
+                    "Gameexe.dat not present".to_string()
+                },
+            },
+            DetectionEvidence {
+                path: "*.pdt".to_string(),
+                kind: "avg32_cross_check_pdt_count".to_string(),
+                status: if state.avg32_pdt_count > 0 {
+                    EvidenceStatus::Invalid
+                } else {
+                    EvidenceStatus::Missing
+                },
+                detail: format!(
+                    "AVG32 .PDT image asset count (informational): {}",
+                    state.avg32_pdt_count
+                ),
+            },
+        ];
+
+        if let Some(resolved_display) = resolved_data_dir_display.as_deref() {
+            evidence_rows.push(DetectionEvidence {
+                path: resolved_display.to_string(),
+                kind: REALLIVE_RESOLVED_DATA_DIR_KIND.to_string(),
+                status: EvidenceStatus::Matched,
+                detail: format!(
+                    "RealLive REALLIVEDATA/ engine asset root resolved at relative path {resolved_display} (KAIFUU-189 depth-N descent)",
+                ),
+            });
+        }
+
         let mut result = DetectionResult {
             adapter_id: REALLIVE_DETECTOR_ADAPTER_ID.to_string(),
             detected,
@@ -4093,98 +4288,7 @@ impl EngineAdapter for RealLiveProfileDetectorAdapter {
             engine_version: None,
             detected_variant: (detected || diagnostic_only)
                 .then(|| Self::detected_variant(state.variant).to_string()),
-            evidence: vec![
-                DetectionEvidence {
-                    path: REALLIVE_SEEN_TXT_PATH.to_string(),
-                    kind: "reallive_seen_txt_envelope".to_string(),
-                    status: evidence_status(state.seen_txt_exists, state.seen_txt_envelope_ok),
-                    detail: signature_detail(
-                        state.seen_txt_exists,
-                        state.seen_txt_envelope_ok,
-                        "SEEN.TXT envelope",
-                    ),
-                },
-                DetectionEvidence {
-                    path: REALLIVE_SEEN_GAN_PATH.to_string(),
-                    kind: "reallive_seen_gan_marker".to_string(),
-                    status: evidence_status(state.seen_gan_exists, state.seen_gan_synthetic_magic),
-                    detail: signature_detail(
-                        state.seen_gan_exists,
-                        state.seen_gan_synthetic_magic,
-                        "SEEN.GAN marker",
-                    ),
-                },
-                DetectionEvidence {
-                    path: REALLIVE_GAMEEXE_INI_PATH.to_string(),
-                    kind: "reallive_gameexe_ini_keys".to_string(),
-                    status: evidence_status(state.gameexe_ini_exists, state.gameexe_ini_keys.any()),
-                    detail: gameexe_ini_detail(state.gameexe_ini_exists, state.gameexe_ini_keys),
-                },
-                DetectionEvidence {
-                    path: "*.g00".to_string(),
-                    kind: "reallive_g00_extension_count".to_string(),
-                    status: if state.g00_count > 0 {
-                        EvidenceStatus::Matched
-                    } else {
-                        EvidenceStatus::Missing
-                    },
-                    detail: format!("RealLive .g00 image asset count: {}", state.g00_count),
-                },
-                DetectionEvidence {
-                    path: "*.ovk|*.koe|*.nwk".to_string(),
-                    kind: "reallive_voice_archive_count".to_string(),
-                    status: if state.voice_archive_count > 0 {
-                        EvidenceStatus::Matched
-                    } else {
-                        EvidenceStatus::Missing
-                    },
-                    detail: format!(
-                        "RealLive voice archive extension count: {}",
-                        state.voice_archive_count
-                    ),
-                },
-                DetectionEvidence {
-                    path: "Scene.pck".to_string(),
-                    kind: "siglus_cross_check_scene_pck".to_string(),
-                    status: if state.siglus_scene_pck_present {
-                        EvidenceStatus::Invalid
-                    } else {
-                        EvidenceStatus::Missing
-                    },
-                    detail: if state.siglus_scene_pck_present {
-                        "Scene.pck co-present (Siglus marker)".to_string()
-                    } else {
-                        "Scene.pck not present".to_string()
-                    },
-                },
-                DetectionEvidence {
-                    path: "Gameexe.dat".to_string(),
-                    kind: "siglus_cross_check_gameexe_dat".to_string(),
-                    status: if state.siglus_gameexe_dat_present {
-                        EvidenceStatus::Invalid
-                    } else {
-                        EvidenceStatus::Missing
-                    },
-                    detail: if state.siglus_gameexe_dat_present {
-                        "Gameexe.dat co-present (Siglus marker)".to_string()
-                    } else {
-                        "Gameexe.dat not present".to_string()
-                    },
-                },
-                DetectionEvidence {
-                    path: "*.pdt".to_string(),
-                    kind: "avg32_cross_check_pdt_count".to_string(),
-                    status: if state.avg32_pdt_count > 0 {
-                        EvidenceStatus::Invalid
-                    } else {
-                        EvidenceStatus::Missing
-                    },
-                    detail: format!(
-                        "AVG32 .PDT image asset count (informational): {}",
-                        state.avg32_pdt_count
-                    ),
-                },
-            ],
+            evidence: evidence_rows,
             requirements: if detected || diagnostic_only {
                 state.detection_requirements()
             } else {
@@ -4657,19 +4761,61 @@ fn case_insensitive_find(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
     None
 }
 
-// Walks the game root (direct children only) to count the RealLive
-// corroborating extensions and the AVG32 disqualifier. Top-level only,
-// matching plan §3 inputs.
+// KAIFUU-189: walks the effective RealLive data dir (the resolved
+// REALLIVEDATA subdir or, when no marker was found, the game root) up
+// to two directory levels deep to count corroborating extensions and
+// the AVG32 disqualifier. The depth-2 bound captures Sweetie HD's
+// observed layout (`<REALLIVEDATA>/g00/*.g00`,
+// `<REALLIVEDATA>/koe/*.koe`, etc.) without descending into save /
+// debug subtrees that ship with some retail installers. See
+// `docs/audits/real-bytes-validation-2026-06-24.md` §2.1 for the
+// `find <REALLIVEDATA> -maxdepth 2` reference command that fixed the
+// 2,450 `.g00` / 139 `.koe` corpus counts.
 fn reallive_extension_counts(dir: &Path) -> (u64, u64, u64) {
     let mut g00_count: u64 = 0;
     let mut voice_archive_count: u64 = 0;
     let mut pdt_count: u64 = 0;
+    walk_reallive_extension_dir(
+        dir,
+        2,
+        0,
+        &mut g00_count,
+        &mut voice_archive_count,
+        &mut pdt_count,
+    );
+    (g00_count, voice_archive_count, pdt_count)
+}
+
+fn walk_reallive_extension_dir(
+    dir: &Path,
+    max_depth: usize,
+    current_depth: usize,
+    g00_count: &mut u64,
+    voice_archive_count: &mut u64,
+    pdt_count: &mut u64,
+) {
     let Ok(entries) = fs::read_dir(dir) else {
-        return (0, 0, 0);
+        return;
     };
     for entry in entries.flatten() {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
         let path = entry.path();
-        if !path.is_file() {
+        if file_type.is_dir() {
+            if current_depth < max_depth {
+                walk_reallive_extension_dir(
+                    &path,
+                    max_depth,
+                    current_depth + 1,
+                    g00_count,
+                    voice_archive_count,
+                    pdt_count,
+                );
+            }
+            continue;
+        }
+        if !file_type.is_file() {
             continue;
         }
         let Some(extension) = path
@@ -4680,13 +4826,12 @@ fn reallive_extension_counts(dir: &Path) -> (u64, u64, u64) {
             continue;
         };
         match extension.as_str() {
-            "g00" => g00_count += 1,
-            "ovk" | "koe" | "nwk" => voice_archive_count += 1,
-            "pdt" => pdt_count += 1,
+            "g00" => *g00_count += 1,
+            "ovk" | "koe" | "nwk" => *voice_archive_count += 1,
+            "pdt" => *pdt_count += 1,
             _ => {}
         }
     }
-    (g00_count, voice_archive_count, pdt_count)
 }
 
 // Generic real-shape SEEN.TXT envelope check (KAIFUU-188).
@@ -4787,6 +4932,28 @@ fn file_starts_with(path: &Path, expected: &[u8]) -> bool {
     fs::read(path)
         .map(|bytes| bytes.starts_with(expected))
         .unwrap_or(false)
+}
+
+// KAIFUU-189: normalises a `Path` to a forward-slash string for the
+// JSON-serialised `DetectionEvidence.path` field. Detector evidence is
+// always reported with `/` separators because the detection report is
+// platform-portable.
+fn path_to_forward_slash(path: &Path) -> String {
+    path.components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+// KAIFUU-189: prepends the resolved REALLIVEDATA/ relative path to a
+// top-level marker file name so the evidence row points at the actual
+// on-disk location. Falls back to the bare marker name when no nested
+// dir was resolved (synthetic-fixture compatibility).
+fn nest_evidence_path(resolved_data_dir: Option<&str>, marker: &str) -> String {
+    match resolved_data_dir {
+        Some(dir) if !dir.is_empty() => format!("{dir}/{marker}"),
+        _ => marker.to_string(),
+    }
 }
 
 fn xp3_inventory_asset_kind(path: &str) -> AssetInventoryAssetKind {
@@ -6921,6 +7088,142 @@ mod tests {
             detection.detected_variant.as_deref(),
             Some("reallive-positive-live-layout")
         );
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn detects_reallive_when_seen_txt_lives_under_nested_reallivedata_subdir() {
+        // KAIFUU-189 regression: when SEEN.TXT / Gameexe.ini live under
+        // a REALLIVEDATA/ subdirectory at depth 2 (Sweetie HD shape:
+        // `<root>/<JP title subdir>/REALLIVEDATA/`), the detector must
+        // resolve the data dir and treat the files as engine evidence
+        // even though they're not at game-root depth 1.
+        let directory_byte_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
+        let payload_offset = directory_byte_len as u32;
+        let payload: &[u8] = b"nested-shape-payload";
+        let mut seen_bytes = vec![0u8; directory_byte_len + payload.len()];
+        let slot1 = 8usize;
+        seen_bytes[slot1..slot1 + 4].copy_from_slice(&payload_offset.to_le_bytes());
+        seen_bytes[slot1 + 4..slot1 + 8].copy_from_slice(&(payload.len() as u32).to_le_bytes());
+        seen_bytes[directory_byte_len..].copy_from_slice(payload);
+
+        let game_dir = temp_dir("reallive-nested-realivedata");
+        let nested_dir = game_dir
+            .join("オシオキSweetie＋Sweets!! HD_DL版")
+            .join("REALLIVEDATA");
+        fs::create_dir_all(&nested_dir).unwrap();
+        fs::write(nested_dir.join(REALLIVE_SEEN_TXT_PATH), &seen_bytes).unwrap();
+        fs::write(
+            nested_dir.join(REALLIVE_GAMEEXE_INI_PATH),
+            b"#GAMEEXE_VERSION=1.0\n#REGNAME=KaifuuFixture\\RealLive\n#KOEPAC=koe.ovk\n",
+        )
+        .unwrap();
+        // .g00 / .koe in nested asset subdirs (depth 2 inside REALLIVEDATA
+        // — Sweetie HD ships them as `REALLIVEDATA/g00/*.g00` etc).
+        fs::create_dir_all(nested_dir.join("g00")).unwrap();
+        fs::write(nested_dir.join("g00/image.g00"), b"\0").unwrap();
+        fs::create_dir_all(nested_dir.join("koe")).unwrap();
+        fs::write(nested_dir.join("koe/voice.koe"), b"\0").unwrap();
+
+        let adapter = RealLiveProfileDetectorAdapter;
+        let detection = adapter
+            .detect(DetectRequest {
+                game_dir: &game_dir,
+            })
+            .unwrap();
+        assert!(
+            detection.detected,
+            "depth-N descent must find REALLIVEDATA under JP-named parent; got: {detection:#?}"
+        );
+        assert_eq!(
+            detection.detected_variant.as_deref(),
+            Some("reallive-positive-live-layout")
+        );
+        // The resolved-data-dir evidence row must appear and carry the
+        // relative path with forward-slash separators.
+        let resolved_row = detection
+            .evidence
+            .iter()
+            .find(|row| row.kind == REALLIVE_RESOLVED_DATA_DIR_KIND)
+            .expect("resolved REALLIVEDATA evidence row must be emitted");
+        assert_eq!(resolved_row.status, EvidenceStatus::Matched);
+        assert!(
+            resolved_row.path.ends_with("/REALLIVEDATA"),
+            "resolved data dir path must end with `/REALLIVEDATA`, got `{}`",
+            resolved_row.path
+        );
+        // SEEN.TXT / Gameexe.ini evidence paths must be reported relative
+        // to the game root, prefixed with the resolved data dir.
+        let seen_row = detection
+            .evidence
+            .iter()
+            .find(|row| row.kind == "reallive_seen_txt_envelope")
+            .expect("SEEN.TXT envelope row must be present");
+        assert_eq!(seen_row.status, EvidenceStatus::Matched);
+        assert!(
+            seen_row.path.ends_with("/REALLIVEDATA/SEEN.TXT"),
+            "SEEN.TXT evidence path must include the resolved REALLIVEDATA prefix; got `{}`",
+            seen_row.path
+        );
+        // .g00 / .koe extension counts must reflect the depth-2 walk
+        // inside REALLIVEDATA (the asset subdirs).
+        let g00_row = detection
+            .evidence
+            .iter()
+            .find(|row| row.kind == "reallive_g00_extension_count")
+            .expect("g00 count row must be present");
+        assert_eq!(g00_row.status, EvidenceStatus::Matched);
+        assert!(
+            g00_row.detail.contains("count: 1"),
+            "g00 extension count must reflect the file under REALLIVEDATA/g00/ subdir; got `{}`",
+            g00_row.detail
+        );
+        let voice_row = detection
+            .evidence
+            .iter()
+            .find(|row| row.kind == "reallive_voice_archive_count")
+            .expect("voice archive count row must be present");
+        assert_eq!(voice_row.status, EvidenceStatus::Matched);
+        assert!(
+            voice_row.detail.contains("count: 1"),
+            "voice archive count must reflect the file under REALLIVEDATA/koe/ subdir; got `{}`",
+            voice_row.detail
+        );
+        let _ = fs::remove_dir_all(game_dir);
+    }
+
+    #[test]
+    fn does_not_emit_resolved_data_dir_evidence_when_no_nested_reallivedata_present() {
+        // KAIFUU-189 regression: synthetic fixtures that ship SEEN.TXT
+        // at the game root (no nested REALLIVEDATA/ marker) must keep
+        // emitting the original bare-marker evidence paths so the
+        // public-CI golden fixtures stay byte-stable.
+        let dir = reallive_fixture_dir(
+            "reallive-no-nested-data-dir",
+            &[
+                (REALLIVE_SEEN_TXT_PATH, &synthetic_seen_txt(2)),
+                (REALLIVE_GAMEEXE_INI_PATH, &synthetic_gameexe_ini()),
+                ("image.g00", b"\0"),
+                ("voice.ovk", b"\0"),
+            ],
+        );
+        let adapter = RealLiveProfileDetectorAdapter;
+        let detection = adapter.detect(DetectRequest { game_dir: &dir }).unwrap();
+        assert!(detection.detected);
+        let resolved_row = detection
+            .evidence
+            .iter()
+            .find(|row| row.kind == REALLIVE_RESOLVED_DATA_DIR_KIND);
+        assert!(
+            resolved_row.is_none(),
+            "no nested REALLIVEDATA/ marker means no resolved-data-dir evidence row; got {resolved_row:?}",
+        );
+        let seen_row = detection
+            .evidence
+            .iter()
+            .find(|row| row.kind == "reallive_seen_txt_envelope")
+            .expect("SEEN.TXT envelope row must be present");
+        assert_eq!(seen_row.path, REALLIVE_SEEN_TXT_PATH);
         let _ = fs::remove_dir_all(dir);
     }
 
