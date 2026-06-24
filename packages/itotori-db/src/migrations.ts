@@ -196,6 +196,10 @@ export const migrations = [
     id: "0034_draft_jobs",
     file: "0034_draft_jobs.sql",
   },
+  {
+    id: "0035_draft_attempt_provider_ledger",
+    file: "0035_draft_attempt_provider_ledger.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

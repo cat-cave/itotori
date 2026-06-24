@@ -13,6 +13,7 @@ import { EngineCapabilityReportRepository } from "../src/repositories/engine-cap
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import { ItotoriContextArtifactRepository } from "../src/repositories/context-artifact-repository.js";
+import { ItotoriDraftAttemptProviderLedgerRepository } from "../src/repositories/draft-attempt-provider-ledger-repository.js";
 import { ItotoriDraftJobRepository } from "../src/repositories/draft-job-repository.js";
 import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-search-document-repository.js";
@@ -681,6 +682,34 @@ const repositoryPermissionGateMatrix = [
     "draft-job-repository.test.ts load draft job attempts coverage",
     (repo) => repo.loadDraftJobAttempts(deniedActor, "draft-job"),
   ),
+  draftAttemptProviderLedgerGate(
+    "recordLedgerEntry",
+    "draftWrite",
+    "draft-attempt-provider-ledger-repository.test.ts record ledger entry coverage",
+    (repo) => repo.recordLedgerEntry(deniedActor, undefined as never),
+  ),
+  draftAttemptProviderLedgerGate(
+    "loadEntriesByAttempt",
+    "catalogRead",
+    "draft-attempt-provider-ledger-repository.test.ts load entries by attempt coverage",
+    (repo) => repo.loadEntriesByAttempt(deniedActor, "draft-job-attempt"),
+  ),
+  draftAttemptProviderLedgerGate(
+    "loadEntriesByProviderProof",
+    "catalogRead",
+    "draft-attempt-provider-ledger-repository.test.ts load entries by provider proof coverage",
+    (repo) => repo.loadEntriesByProviderProof(deniedActor, "provider-proof"),
+  ),
+  draftAttemptProviderLedgerGate(
+    "sumCostByProject",
+    "catalogRead",
+    "draft-attempt-provider-ledger-repository.test.ts sum cost by project coverage",
+    (repo) =>
+      repo.sumCostByProject(deniedActor, "project", {
+        from: new Date(0),
+        to: new Date(0),
+      }),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -1338,6 +1367,30 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "draft-job-repository.test.ts load draft job attempts coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.recordLedgerEntry",
+          "requiredPermission": "draft.write",
+          "successFixture": "draft-attempt-provider-ledger-repository.test.ts record ledger entry coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.loadEntriesByAttempt",
+          "requiredPermission": "catalog.read",
+          "successFixture": "draft-attempt-provider-ledger-repository.test.ts load entries by attempt coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.loadEntriesByProviderProof",
+          "requiredPermission": "catalog.read",
+          "successFixture": "draft-attempt-provider-ledger-repository.test.ts load entries by provider proof coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftAttemptProviderLedgerRepository.sumCostByProject",
+          "requiredPermission": "catalog.read",
+          "successFixture": "draft-attempt-provider-ledger-repository.test.ts sum cost by project coverage",
+        },
       ]
     `);
   });
@@ -1689,6 +1742,22 @@ function draftJobGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriDraftJobRepository(db)),
+  });
+}
+
+function draftAttemptProviderLedgerGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriDraftAttemptProviderLedgerRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriDraftAttemptProviderLedgerRepository",
+    sourceFile: "draft-attempt-provider-ledger-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriDraftAttemptProviderLedgerRepository(db)),
   });
 }
 

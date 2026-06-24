@@ -627,6 +627,23 @@ export type {
   DraftJobStatus,
 } from "./schema.js";
 export {
+  DraftAttemptProviderLedgerRepositoryError,
+  ItotoriDraftAttemptProviderLedgerRepository,
+} from "./repositories/draft-attempt-provider-ledger-repository.js";
+export type {
+  DraftAttemptProviderLedgerEntry,
+  ItotoriDraftAttemptProviderLedgerRepositoryPort,
+  RecordLedgerEntryInput,
+  SumCostByProjectOptions,
+  SumCostByProjectResult,
+  SumCostByProjectWindow,
+} from "./repositories/draft-attempt-provider-ledger-repository.js";
+export type {
+  DraftAttemptFallbackChainEntry,
+  DraftAttemptProviderLedgerContextRef,
+  DraftAttemptProviderLedgerPolicyVersions,
+} from "./schema.js";
+export {
   EngineCapabilityReportRepository,
   EngineCapabilityReportShapeError,
 } from "./repositories/engine-capability-report-repository.js";

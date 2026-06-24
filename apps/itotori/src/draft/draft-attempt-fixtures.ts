@@ -1,0 +1,221 @@
+// ITOTORI-077 - Draft attempt recorder fixtures.
+//
+// Three canonical shapes the recorder must round-trip cleanly:
+//  - successfulAttemptFixture: one model, no fallback, live cost.
+//  - fallbackChainFixture:     primary failed, fallback succeeded.
+//  - recordedProviderFixture:  recorded mode (no live cost; 0.00).
+
+import type {
+  DraftAttemptFallbackChainEntry,
+  DraftAttemptProviderLedgerContextRef,
+  DraftAttemptProviderLedgerPolicyVersions,
+} from "@itotori/db";
+import { deterministicFixtureDataHandlingPolicy } from "../providers/policy.js";
+import type { ProviderRunRecord, TokenUsage } from "../providers/types.js";
+import type {
+  TranslationInvocationModelMetadata,
+  TranslationInvocationResult,
+  TranslationModelProfile,
+} from "../agents/translation/shapes.js";
+import type { TranslationDraft } from "@itotori/localization-bridge-schema";
+import type { DraftAttemptRecorderArgs } from "./draft-attempt-recorder.js";
+
+const FIXTURE_DRAFT_JOB_ATTEMPT_ID = "draft-job-attempt-fixture-01";
+const FIXTURE_PROMPT_HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+const FIXTURE_DRAFTS: TranslationDraft[] = [
+  {
+    bridgeUnitId: "unit-fixture-1",
+    sourceLocale: "ja-JP",
+    targetLocale: "en-US",
+    draftText: "Hello fixture",
+    confidenceFloor: "medium",
+    protectedSpanRefs: [],
+    citationRefs: [],
+    agentRationale: "fixture rationale",
+  },
+];
+
+const FIXTURE_POLICY_VERSIONS: DraftAttemptProviderLedgerPolicyVersions = {
+  styleGuide: "style-guide-v1",
+  glossary: "glossary-v1",
+};
+
+const FIXTURE_CONTEXT_REFS: DraftAttemptProviderLedgerContextRef[] = [
+  {
+    contextArtifactId: "context-scene-001",
+    category: "scene-summary",
+    contentHash: "context-hash-001",
+  },
+];
+
+function fixtureTokenUsage(): TokenUsage {
+  return {
+    tokenCountSource: "provider_reported",
+    promptTokens: 480,
+    completionTokens: 220,
+    totalTokens: 700,
+  };
+}
+
+function fixtureProviderRun(overrides: Partial<ProviderRunRecord> = {}): ProviderRunRecord {
+  return {
+    runId: "provider-run-success-01",
+    taskKind: "draft_translation",
+    startedAt: "2026-06-23T12:00:00.000Z",
+    completedAt: "2026-06-23T12:00:01.200Z",
+    latencyMs: 1200,
+    status: "succeeded",
+    provider: {
+      providerFamily: "openrouter",
+      endpointFamily: "chat-completions",
+      providerName: "openrouter:test",
+      requestedModelId: "anthropic/claude-3.5-sonnet",
+      actualModelId: "anthropic/claude-3.5-sonnet",
+    },
+    structuredOutputMode: "json_schema",
+    retryCount: 0,
+    errorClasses: [],
+    fallbackUsed: false,
+    fallbackPlan: ["anthropic/claude-3.5-sonnet"],
+    tokenUsage: fixtureTokenUsage(),
+    cost: {
+      costKind: "provider_estimate",
+      currency: "USD",
+      amountMicrosUsd: 12_500,
+    },
+    prompt: {
+      presetId: "itotori-translation-agent",
+      templateVersion: "itotori-translation-agent-v1",
+      promptHash: `sha256:${FIXTURE_PROMPT_HASH}`,
+    },
+    dataHandling: deterministicFixtureDataHandlingPolicy,
+    ...overrides,
+  };
+}
+
+function fixtureModelProfile(): TranslationModelProfile {
+  return {
+    providerFamily: "openrouter",
+    modelId: "anthropic/claude-3.5-sonnet",
+    contextWindowTokens: 200_000,
+    maxOutputTokens: 8_192,
+  };
+}
+
+function fixtureModelMetadata(providerRun: ProviderRunRecord): TranslationInvocationModelMetadata {
+  return {
+    modelProfile: fixtureModelProfile(),
+    providerIdentity: providerRun.provider,
+    providerRun,
+  };
+}
+
+function fixtureTranslationResult(
+  providerRun: ProviderRunRecord,
+  recordedArtifactId?: string,
+): TranslationInvocationResult {
+  const result: TranslationInvocationResult = {
+    drafts: FIXTURE_DRAFTS,
+    providerRunId: providerRun.runId,
+    promptHashUsed: FIXTURE_PROMPT_HASH,
+    modelMetadata: fixtureModelMetadata(providerRun),
+    tokensIn: providerRun.tokenUsage.promptTokens ?? 0,
+    tokensOut: providerRun.tokenUsage.completionTokens ?? 0,
+  };
+  if (recordedArtifactId !== undefined) {
+    result.recordedArtifactId = recordedArtifactId;
+  }
+  return result;
+}
+
+export function successfulAttemptFixture(
+  overrides: Partial<DraftAttemptRecorderArgs> = {},
+): DraftAttemptRecorderArgs {
+  const providerRun = fixtureProviderRun();
+  return {
+    draftJobAttemptId: FIXTURE_DRAFT_JOB_ATTEMPT_ID,
+    translationResult: fixtureTranslationResult(providerRun),
+    fallbackChain: [],
+    costEstimate: { unit: "usd", amount: "0.01250000" },
+    latencyMs: providerRun.latencyMs,
+    policyVersions: { ...FIXTURE_POLICY_VERSIONS },
+    contextArtifactRefs: [...FIXTURE_CONTEXT_REFS],
+    promptTemplateVersion: "itotori-translation-agent-v1",
+    ...overrides,
+  };
+}
+
+export function fallbackChainFixture(
+  overrides: Partial<DraftAttemptRecorderArgs> = {},
+): DraftAttemptRecorderArgs {
+  const providerRun = fixtureProviderRun({
+    runId: "provider-run-fallback-01",
+    fallbackUsed: true,
+    fallbackPlan: ["anthropic/claude-3.5-sonnet", "openai/gpt-4o-mini"],
+    provider: {
+      providerFamily: "openrouter",
+      endpointFamily: "chat-completions",
+      providerName: "openrouter:test",
+      requestedModelId: "anthropic/claude-3.5-sonnet",
+      actualModelId: "openai/gpt-4o-mini",
+    },
+    retryCount: 1,
+    latencyMs: 2400,
+    completedAt: "2026-06-23T12:00:02.400Z",
+  });
+  const fallbackChain: DraftAttemptFallbackChainEntry[] = [
+    {
+      modelProviderFamily: "openrouter",
+      modelId: "anthropic/claude-3.5-sonnet",
+      failureReason: "provider_http_error: upstream 503",
+      attemptedAt: "2026-06-23T12:00:00.000Z",
+    },
+  ];
+  return {
+    draftJobAttemptId: FIXTURE_DRAFT_JOB_ATTEMPT_ID,
+    translationResult: fixtureTranslationResult(providerRun),
+    fallbackChain,
+    costEstimate: { unit: "usd", amount: "0.00850000" },
+    latencyMs: providerRun.latencyMs,
+    policyVersions: { ...FIXTURE_POLICY_VERSIONS },
+    contextArtifactRefs: [...FIXTURE_CONTEXT_REFS],
+    promptTemplateVersion: "itotori-translation-agent-v1",
+    ...overrides,
+  };
+}
+
+export function recordedProviderFixture(
+  overrides: Partial<DraftAttemptRecorderArgs> = {},
+): DraftAttemptRecorderArgs {
+  const providerRun = fixtureProviderRun({
+    runId: "provider-run-recorded-01",
+    provider: {
+      providerFamily: "recorded",
+      endpointFamily: "recorded-fixture",
+      providerName: "recorded:fixture-bundle",
+      requestedModelId: "anthropic/claude-3.5-sonnet",
+      actualModelId: "anthropic/claude-3.5-sonnet",
+    },
+    cost: {
+      costKind: "zero",
+      currency: "USD",
+      amountMicrosUsd: 0,
+    },
+  });
+  return {
+    draftJobAttemptId: FIXTURE_DRAFT_JOB_ATTEMPT_ID,
+    translationResult: fixtureTranslationResult(providerRun, "recorded-bundle-01"),
+    fallbackChain: [],
+    costEstimate: { unit: "usd", amount: "0.00000000" },
+    latencyMs: providerRun.latencyMs,
+    recordedProviderBundleId: "recorded-bundle-01",
+    policyVersions: { ...FIXTURE_POLICY_VERSIONS },
+    contextArtifactRefs: [...FIXTURE_CONTEXT_REFS],
+    promptTemplateVersion: "itotori-translation-agent-v1",
+    ...overrides,
+  };
+}
+
+export const DRAFT_ATTEMPT_FIXTURE_DRAFT_JOB_ATTEMPT_ID = FIXTURE_DRAFT_JOB_ATTEMPT_ID;
+export const DRAFT_ATTEMPT_FIXTURE_PROMPT_HASH = FIXTURE_PROMPT_HASH;
