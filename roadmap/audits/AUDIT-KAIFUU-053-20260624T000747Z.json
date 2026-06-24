@@ -1,0 +1,131 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-053-20260624T000747Z",
+  "generatedAt": "2026-06-24T00:07:47Z",
+  "spec": {
+    "id": "KAIFUU-053",
+    "title": "Capability-leveled engine detector registry",
+    "branch": "spec/kaifuu-053",
+    "worktree": "/scratch/worktrees/itotori-spec-kaifuu-053",
+    "commit": "009e61d"
+  },
+  "auditor": {
+    "name": "kaifuu-053-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "KAIFUU-053 delivers the capability-leveled engine detector registry as specified. `kaifuu_core::registry::capability` ships `CapabilityLevel` (Identify < Inventory < Extract < Patch, `Ord` ladder confirmed at `capability.rs:22`), `CapabilityLevelStatus` (Supported / Partial { limitations } / Unsupported { reason }), and `AdapterCapabilityMatrix` with the per-rung typed status. `kaifuu_core::registry::AdapterRegistry::adapters_supporting(level)` is strict-Supported-only (`registry/mod.rs:30-36`) - test `adapters_supporting_extract_excludes_identify_and_inventory_only_adapters` (`registry/mod.rs:152-157`) asserts the identify-only adapter is excluded from `adapters_supporting(Extract)`; test `adapters_supporting_partial_extract_still_excludes_them` (`registry/mod.rs:175-197`) asserts that even Partial-at-Extract is excluded. All four acceptance criteria are satisfied. (1) Typed enum `CapabilityLevel` and `CapabilityLevelStatus` are first-class Rust types, not strings; the kebab/snake-case wire form is pinned via `#[serde(rename_all = \"snake_case\")]` and the `as_str` helper (`capability.rs:38-46`). (2) Identify-only adapters never appear in `adapters_supporting(Extract)` or `adapters_supporting(Patch)`: the Siglus detector at `kaifuu-engine-fixture/src/lib.rs:3137` uses `AdapterCapabilityMatrix::identify_only(...)` which yields `Supported(Identify)` + three `Unsupported` rungs; the test above directly exercises this contract. (3) TS + Rust + DB parity: TS adds `assertCapabilityLevelStatusV02` (`packages/localization-bridge-schema/src/index.ts:3263-3302`) and `assertAdapterCapabilityMatrixV02` (`index.ts:3307-3315`), both hand-written - no Zod import; `grep -n \"zod\\|Zod\" packages/localization-bridge-schema/src/index.ts` returns zero hits in this slice. The DB migration `0028_engine_capability_reports.sql` declares two Postgres enums (`capability_level_enum`, `capability_level_status_kind`) and a CHECK constraint that mirrors the Rust discriminator: `supported -> no reason, no limitations`; `partial -> reason null, limitations is a non-empty jsonb array`; `unsupported -> reason non-empty, limitations empty`. (4) Existing detector migration without breaking output: the four detectors (`FIXTURE_ADAPTER_ID`, `XP3_DETECTOR_ADAPTER_ID`, `SIGLUS_DETECTOR_ADAPTER_ID`, `REALLIVE_DETECTOR_ADAPTER_ID`) each declare their `level_matrix` via `with_level_matrix(...)`, including a clean-room provenance preamble for the RealLive detector (`kaifuu-engine-fixture/src/lib.rs:1-19`). Itotori consumer plumbing lands cleanly: `apps/itotori/src/services/engine-capability-report.ts` carries `EngineCapabilityReportPort`, the repository (`packages/itotori-db/src/repositories/engine-capability-report-repository.ts`, 248 LOC), the dashboard panel (`apps/itotori/src/dashboard.ts`, 97 added LOC), and two CLI commands. The kaifuu-engine-playbook update at `docs/kaifuu-engine-playbook.md:223-264` documents the ladder rules every adapter author follows and pins the next-rung policy as a coordinated Rust+TS+DB bump. The `derive_from_reports` mapping (mentioned in the playbook) is a safety net; the explicit `with_level_matrix` declaration is the contract. Verification reruns: `cargo test -p kaifuu-core` 190 passed / 0 failed; full workspace test result spans across `kaifuu-core` (190), `kaifuu-cli` (78), `kaifuu-engine-fixture` (22), `kaifuu-reallive` (22+11+11+9+32+8+5+3+5+3), `utsushi-core` (611+7+10+9+9+14+3+5+15+11), totalling ~1100+ tests passed / 0 failed / 5 ignored; `pnpm exec vp run ts:test` reports 207 passed + 3 skipped across 17 test files; `just check` clean (cargo fmt, schema:check, ts:typecheck, cargo check --workspace). DB integration test (`pnpm --filter @itotori/db test:db`) not run in this audit (requires `just db-up`); the in-source TS + SQL CHECK constraints pin every invariant the integration test would re-verify. Two P3 follow-ups: (F001) migration is numbered `0028` and so are UTSUSHI-030 and ITOTORI-013's migrations - orchestrator must renumber two at merge; (F002) the playbook update names `derive_from_reports` as a safety-net mapping but the source code declares `with_level_matrix` is preferred; the safety-net is only invoked when an adapter omits the explicit declaration - in this slice every detector ships an explicit declaration, so the safety net is currently dead code. Document the policy or add a `#[deny(missing_level_matrix)]`-style fence so future adapters cannot silently rely on the fallback.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-053-F001", "KAIFUU-053-F002"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-053-F001",
+      "severity": "P3",
+      "title": "Migration number 0028 collides with sibling UTSUSHI-030 and ITOTORI-013",
+      "category": "orchestration",
+      "locations": [
+        {
+          "path": "packages/itotori-db/migrations/0028_engine_capability_reports.sql"
+        }
+      ],
+      "description": "KAIFUU-053, UTSUSHI-030, and ITOTORI-013 each ship a migration named `0028_*.sql`. Each is internally consistent on its branch (no overlap in tables; `_engine_capability_reports`, `_runtime_conformance_results`, `_scene_summaries` are disjoint, and the two Postgres enums KAIFUU-053 creates are also disjoint). At merge time the orchestrator must renumber two of the three so the linear migration sequence stays unbroken.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "ls packages/itotori-db/migrations/ | tail -5 on each worktree shows three concurrent 0028_* migrations.",
+          "location": {
+            "path": "packages/itotori-db/migrations/0028_engine_capability_reports.sql"
+          }
+        }
+      ],
+      "impact": "On merge, `pnpm --filter @itotori/db test:db` will refuse the duplicate migration id. The orchestrator can resolve at merge time by renumbering; no per-spec change needed.",
+      "actionableAcceptanceCriteria": [
+        "Orchestrator renames two of the three 0028_* migrations to 0029_* / 0030_* during merge and updates `packages/itotori-db/src/migrations.ts` accordingly."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "KAIFUU-053",
+          "acceptanceCriteria": [
+            "At merge into main, renumber the migration so it does not collide with UTSUSHI-030 / ITOTORI-013; update `migrations.ts`."
+          ],
+          "notes": "This is a merge-time orchestrator task, not an in-branch fix."
+        }
+      }
+    },
+    {
+      "id": "KAIFUU-053-F002",
+      "severity": "P3",
+      "title": "derive_from_reports safety-net invites silent fallback for future detectors",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "docs/kaifuu-engine-playbook.md",
+          "line": 234,
+          "symbol": "Capability Ladder rules"
+        },
+        {
+          "path": "crates/kaifuu-engine-fixture/src/lib.rs",
+          "line": 1245
+        }
+      ],
+      "description": "The playbook update at `docs/kaifuu-engine-playbook.md:234-237` describes `derive_from_reports` as a \"conservative safety net\" for adapters that omit `with_level_matrix`. In this slice every detector ships an explicit declaration, so the safety net is currently dead code. A future detector author who omits the declaration will silently get the derived mapping, which may over- or under-claim against the per-rung intent. The playbook documents the rule but the type system does not enforce it.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "kaifuu-engine-playbook.md:234-237 - \"Declare `level_matrix` explicitly via `AdapterCapabilities::with_level_matrix`. The default `derive_from_reports` mapping is conservative and is a safety net, not a substitute for the explicit declaration.\"",
+          "location": {
+            "path": "docs/kaifuu-engine-playbook.md",
+            "line": 234
+          }
+        }
+      ],
+      "impact": "A new detector that forgets `with_level_matrix` will compile and ship a derived matrix that may not match the author's intent. The strict-Supported gate in `adapters_supporting` could then either drop the adapter from `Extract` consumers or promote it incorrectly.",
+      "actionableAcceptanceCriteria": [
+        "Either remove `derive_from_reports` as a fallback and require `with_level_matrix` at construction, or add a `debug_assert!` / lint-style fence that warns when the fallback is invoked, with documented test coverage."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Force explicit level_matrix declaration on every adapter",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "engine-adapters",
+          "dependsOn": ["KAIFUU-053"],
+          "summary": "Make `with_level_matrix` mandatory at construction time so the `derive_from_reports` fallback cannot silently produce a wrong mapping. Either move the matrix into `AdapterCapabilities::new` or add a `debug_assert!` that fires when an adapter ships without an explicit declaration.",
+          "deliverables": [
+            "Constructor changes so `AdapterCapabilities` requires a `level_matrix`.",
+            "Test that asserts every adapter in `kaifuu-engine-fixture` ships an explicit declaration.",
+            "Playbook updated to drop the safety-net language."
+          ],
+          "acceptanceCriteria": [
+            "An adapter that does not call `with_level_matrix` fails to compile or fails a debug-assert at construction time.",
+            "Every existing detector continues to register without behavioural drift in `adapters_supporting(...)`."
+          ],
+          "verification": [
+            {"type": "command", "value": "cargo test -p kaifuu-core -p kaifuu-engine-fixture -p kaifuu-reallive"}
+          ],
+          "auditFocus": [
+            "No silent fallback to derive_from_reports.",
+            "Adapter authors get a compile- or test-time failure if they forget the declaration."
+          ]
+        }
+      }
+    }
+  ]
+}
