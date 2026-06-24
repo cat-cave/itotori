@@ -169,8 +169,8 @@ export const migrations = [
     file: "0027_translation_batches.sql",
   },
   {
-    id: "0028_engine_capability_reports",
-    file: "0028_engine_capability_reports.sql",
+    id: "0030_engine_capability_reports",
+    file: "0030_engine_capability_reports.sql",
   },
 ] as const;
 
