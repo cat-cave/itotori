@@ -184,6 +184,10 @@ export const migrations = [
     id: "0031_character_relationships",
     file: "0031_character_relationships.sql",
   },
+  {
+    id: "0032_route_choice_maps",
+    file: "0032_route_choice_maps.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {
