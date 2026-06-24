@@ -5,10 +5,140 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utsushi_core::{
-    EvidenceTier, ObservationArtifactRef, ObservationHookEvent, ObservationHookPayload,
-    ObservationRedactionStatus, RUNTIME_ARTIFACT_ROOT_MARKER, RuntimeArtifactRoot, UtsushiResult,
-    validate_runtime_artifact_uri, validate_runtime_evidence_report_value,
+    EvidenceTier, ObservationArtifactRef, ObservationRedactionStatus, RUNTIME_ARTIFACT_ROOT_MARKER,
+    RuntimeArtifactRoot, UtsushiResult, validate_runtime_artifact_uri,
+    validate_runtime_evidence_report_value,
 };
+
+/// Local JSON-shape view of one entry under `observationHookEvents[]`,
+/// introduced in UTSUSHI-224 in place of the deleted typed envelope
+/// Rust type. Carries exactly the fields the reference-corpus validator
+/// needs to compare a fixture against its runtime report.
+#[derive(Debug)]
+struct ParsedObservationEvent {
+    event_id: String,
+    runtime_target_id: String,
+    source_revision: Option<ParsedObservationSourceRevision>,
+    redaction_status: ObservationRedactionStatus,
+    payload: ParsedObservationPayload,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ParsedObservationSourceRevision {
+    source_id: String,
+    revision_id: Option<String>,
+    content_hash: Option<String>,
+}
+
+#[derive(Debug)]
+enum ParsedObservationPayload {
+    Frame {
+        artifact_ref: Option<ObservationArtifactRef>,
+    },
+    Other,
+}
+
+impl ParsedObservationEvent {
+    fn from_value(value: &Value, label: &str) -> UtsushiResult<Self> {
+        let object = value
+            .as_object()
+            .ok_or_else(|| -> Box<dyn std::error::Error> {
+                format!("{label} observation envelope must be an object").into()
+            })?;
+        let event_id = object
+            .get("eventId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| -> Box<dyn std::error::Error> {
+                format!("{label} observation envelope missing eventId").into()
+            })?
+            .to_string();
+        let runtime_target_id = object
+            .get("runtimeTargetId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| -> Box<dyn std::error::Error> {
+                format!("{label} observation envelope missing runtimeTargetId").into()
+            })?
+            .to_string();
+        let source_revision = object
+            .get("sourceRevision")
+            .filter(|value| !value.is_null())
+            .map(|value| ParsedObservationSourceRevision::from_value(value, label))
+            .transpose()?;
+        let redaction_status = object
+            .get("redaction")
+            .and_then(|redaction| redaction.get("status"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| -> Box<dyn std::error::Error> {
+                format!("{label} observation envelope missing redaction.status").into()
+            })?
+            .parse::<ObservationRedactionStatus>()
+            .map_err(|error| -> Box<dyn std::error::Error> {
+                format!("{label} observation envelope redaction.status invalid: {error}").into()
+            })?;
+        let payload = match object
+            .get("payload")
+            .and_then(|payload| payload.get("payloadKind"))
+            .and_then(Value::as_str)
+        {
+            Some("frame") => {
+                let artifact_ref_value = object
+                    .get("payload")
+                    .and_then(|payload| payload.get("artifactRef"));
+                let artifact_ref = match artifact_ref_value {
+                    Some(value) if !value.is_null() => {
+                        let parsed: ObservationArtifactRef =
+                            serde_json::from_value(value.clone()).map_err(|error| {
+                                format!(
+                                    "{label} observation envelope payload.artifactRef invalid: {error}"
+                                )
+                            })?;
+                        Some(parsed)
+                    }
+                    _ => None,
+                };
+                ParsedObservationPayload::Frame { artifact_ref }
+            }
+            _ => ParsedObservationPayload::Other,
+        };
+        Ok(Self {
+            event_id,
+            runtime_target_id,
+            source_revision,
+            redaction_status,
+            payload,
+        })
+    }
+}
+
+impl ParsedObservationSourceRevision {
+    fn from_value(value: &Value, label: &str) -> UtsushiResult<Self> {
+        let object = value
+            .as_object()
+            .ok_or_else(|| -> Box<dyn std::error::Error> {
+                format!("{label} observation envelope sourceRevision must be an object").into()
+            })?;
+        let source_id = object
+            .get("sourceId")
+            .and_then(Value::as_str)
+            .ok_or_else(|| -> Box<dyn std::error::Error> {
+                format!("{label} observation envelope sourceRevision missing sourceId").into()
+            })?
+            .to_string();
+        let revision_id = object
+            .get("revisionId")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        let content_hash = object
+            .get("contentHash")
+            .and_then(Value::as_str)
+            .map(ToString::to_string);
+        Ok(Self {
+            source_id,
+            revision_id,
+            content_hash,
+        })
+    }
+}
 
 const REFERENCE_CAPTURE_CORPUS_SCHEMA_VERSION: &str = "0.1.0";
 const VALIDATION_REPORT_SCHEMA_VERSION: &str = "0.1.0";
@@ -241,14 +371,15 @@ fn validate_reference_capture_fixture(
 fn parse_observation_events(
     report: &Value,
     label: &str,
-) -> UtsushiResult<Vec<ObservationHookEvent>> {
+) -> UtsushiResult<Vec<ParsedObservationEvent>> {
     report_array(report, "observationHookEvents", label)?
         .iter()
         .enumerate()
         .map(|(index, value)| {
-            ObservationHookEvent::from_json_value(value.clone()).map_err(|error| {
-                format!("{label} observationHookEvents[{index}] invalid envelope: {error}").into()
-            })
+            ParsedObservationEvent::from_value(
+                value,
+                &format!("{label} observationHookEvents[{index}]"),
+            )
         })
         .collect()
 }
@@ -256,7 +387,7 @@ fn parse_observation_events(
 fn validate_observation_metadata(
     label: &str,
     fixture: &ReferenceCaptureFixture,
-    events: &[ObservationHookEvent],
+    events: &[ParsedObservationEvent],
 ) -> UtsushiResult<()> {
     let expected_ids = fixture
         .observation_event_ids
@@ -312,11 +443,11 @@ fn validate_observation_metadata(
             )
             .into());
         }
-        if event.redaction.status != fixture.redaction_status {
+        if event.redaction_status != fixture.redaction_status {
             return Err(format!(
                 "{label} event {} redaction status {} does not match fixture redactionStatus {}",
                 event.event_id,
-                event.redaction.status.as_str(),
+                event.redaction_status.as_str(),
                 fixture.redaction_status.as_str()
             )
             .into());
@@ -363,7 +494,7 @@ fn reject_static_runtime_claims(
 
 fn collect_report_artifacts(
     report: &Value,
-    events: &[ObservationHookEvent],
+    events: &[ParsedObservationEvent],
     label: &str,
 ) -> UtsushiResult<Vec<ReportArtifactRef>> {
     let mut artifacts = Vec::new();
@@ -375,8 +506,9 @@ fn collect_report_artifacts(
         artifacts.push(artifact);
     }
     for event in events {
-        if let ObservationHookPayload::Frame(payload) = &event.payload
-            && let Some(artifact_ref) = &payload.artifact_ref
+        if let ParsedObservationPayload::Frame {
+            artifact_ref: Some(artifact_ref),
+        } = &event.payload
         {
             artifacts.push(ReportArtifactRef {
                 artifact_id: artifact_ref.artifact_id.clone(),

@@ -25,6 +25,14 @@ pub trait TextSurfaceSink: Send + Sync {
     /// MUST return [`SinkError::UnsupportedKind`] when the adapter declares
     /// the sink as [`SinkCapability::Unsupported`].
     fn emit_line(&self, line: TextLine) -> SinkResult<()>;
+
+    /// Drain queued emissions. Called by the runner after `EnginePort::observe`
+    /// to surface lines into [`crate::port::RunnerOutcome`]. Implementors that
+    /// stream directly to disk may return an empty `Vec`; the runner treats
+    /// the absence of buffered lines as "no in-tick emissions to surface".
+    fn drain_lines(&self) -> Vec<TextLine> {
+        Vec::new()
+    }
 }
 
 /// Runtime-observed text line. Engine-neutral: no JSON shape, DOM shape, or

@@ -9,14 +9,12 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use utsushi_core::redaction::reject_unredacted_local_paths;
 use utsushi_core::vfs::case_rule_matches;
 use utsushi_core::{
-    AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule, EvidenceTier,
-    HelperId, IoSummary, OBSERVATION_HOOK_SCHEMA_VERSION, ObservationAdapterId,
-    ObservationEnvironment, ObservationErrorPayload, ObservationHookEvent,
-    ObservationHookEventKind, ObservationHookPayload, ObservationRedactionMetadata,
-    PackageDescriptor, PackageKind, PackageSource, RequiredCapability, RuntimeAdapterDiagnostic,
-    TraversalKind, VfsError, VfsResult,
+    AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule, HelperId,
+    IoSummary, MountedVfs, PackageDescriptor, PackageKind, PackageSource, RequiredCapability,
+    RuntimeAdapterDiagnostic, RuntimeVfs, TraversalKind, VfsError, VfsResult,
 };
 
 /// Synthetic per-path access policy parsed from the fixture's `package.toml`.
@@ -525,44 +523,27 @@ fn case_rule_sensitive_helper_matches_only_exact_case() {
     ));
 }
 
-fn observation_event_for_message(message: String) -> ObservationHookEvent {
-    ObservationHookEvent {
-        schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
-        event_id: "obs-vfs-0001".to_string(),
-        observed_at: "2026-06-23T12:00:00.000Z".to_string(),
-        event_kind: ObservationHookEventKind::Error,
-        runtime_target_id: "fixture:runtime-target".to_string(),
-        adapter_id: ObservationAdapterId {
-            name: "utsushi-vfs-test".to_string(),
-            version: "0.0.0-test".to_string(),
-        },
-        evidence_tier: EvidenceTier::E1,
-        environment: ObservationEnvironment {
-            runtime: "browser".to_string(),
-            engine: Some("test-engine".to_string()),
-            platform: Some("linux".to_string()),
-            display: Some("browser-headless".to_string()),
-            locale: Some("ja-JP".to_string()),
-        },
-        source_revision: None,
-        bridge_refs: Vec::new(),
-        redaction: ObservationRedactionMetadata::not_required(),
-        payload: ObservationHookPayload::Error(ObservationErrorPayload {
-            error_type: "vfs_diagnostic".to_string(),
-            message,
-            fatal: false,
-            stack: None,
-        }),
-    }
+/// Build a deterministic JSON envelope around an error message and feed
+/// it through the substrate's public redaction filter
+/// (`utsushi_core::redaction::reject_unredacted_local_paths`). The
+/// envelope shape mirrors the previous test, which used the deleted
+/// (now-deleted) typed hook envelope as a transport for the same assertion;
+/// after UTSUSHI-224 we exercise the redaction filter directly.
+fn assert_message_passes_redaction(message: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let value = serde_json::json!({
+        "diagnostic": {
+            "errorType": "vfs_diagnostic",
+            "message": message,
+        }
+    });
+    reject_unredacted_local_paths("", &value)
 }
 
 #[test]
 fn vfs_error_serialized_into_runtime_diagnostic_passes_observation_redaction() {
     // Wrap a VfsError into a RuntimeAdapterDiagnostic, embed its
-    // `Display` text into an ObservationHookEvent error payload, and
-    // round-trip it through ObservationHookEvent::from_json_value (which
-    // calls `validate`). The internal `reject_unredacted_local_paths`
-    // filter must accept it.
+    // `Display` text into the diagnostic message field, and assert the
+    // `reject_unredacted_local_paths` filter accepts it.
     let package = fixture_package();
     let id = AssetId::from_parts("synthetic", "hello/absent.txt").unwrap();
     let error = package.open(&id).unwrap_err();
@@ -575,18 +556,14 @@ fn vfs_error_serialized_into_runtime_diagnostic_passes_observation_redaction() {
                 serde_json::to_value(&asset_ref).expect("AssetRef serializes"),
             );
 
-    let event = observation_event_for_message(diagnostic.message.clone());
-    let value = event
-        .to_json_value()
-        .expect("observation hook payload validates with VFS diagnostic display message embedded");
-    let round_tripped = ObservationHookEvent::from_json_value(value).unwrap();
-    assert_eq!(round_tripped.event_kind, ObservationHookEventKind::Error);
+    assert_message_passes_redaction(&diagnostic.message)
+        .expect("VFS diagnostic display message passes redaction filter");
 }
 
 #[test]
 fn every_vfs_error_display_passes_observation_redaction() {
-    // Exhaustively check the Display text for every variant — feed each as
-    // an ObservationErrorPayload message and require validate() to accept.
+    // Exhaustively check the Display text for every variant — feed each
+    // through the redaction filter and assert pass.
     let id = AssetId::from_parts("synthetic", "hello/intro.txt").unwrap();
     let helper_id = HelperId::Named("synthetic-helper".to_string());
     let cases: Vec<VfsError> = vec![
@@ -628,9 +605,7 @@ fn every_vfs_error_display_passes_observation_redaction() {
         },
     ];
     for error in &cases {
-        let event = observation_event_for_message(error.to_string());
-        event
-            .to_json_value()
+        assert_message_passes_redaction(&error.to_string())
             .unwrap_or_else(|err| panic!("variant {error:?} failed redaction: {err}"));
     }
 }

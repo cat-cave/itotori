@@ -51,6 +51,33 @@ impl SinkSet {
         self.audio.as_deref()
     }
 
+    /// Drain queued text emissions. Returns an empty `Vec` when no text sink is
+    /// registered.
+    pub fn drain_text(&self) -> Vec<super::text::TextLine> {
+        self.text
+            .as_deref()
+            .map(TextSurfaceSink::drain_lines)
+            .unwrap_or_default()
+    }
+
+    /// Drain queued frame emissions. Returns an empty `Vec` when no frame sink
+    /// is registered.
+    pub fn drain_frame(&self) -> Vec<super::frame::FrameArtifact> {
+        self.frame
+            .as_deref()
+            .map(FrameArtifactSink::drain_frames)
+            .unwrap_or_default()
+    }
+
+    /// Drain queued audio emissions. Returns an empty `Vec` when no audio sink
+    /// is registered.
+    pub fn drain_audio(&self) -> Vec<super::audio::AudioEvent> {
+        self.audio
+            .as_deref()
+            .map(AudioEventSink::drain_events)
+            .unwrap_or_default()
+    }
+
     /// Capability summary suitable for descriptor / conformance introspection.
     pub fn capabilities(&self) -> SinkCapabilitySummary {
         SinkCapabilitySummary {

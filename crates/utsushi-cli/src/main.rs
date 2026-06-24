@@ -729,7 +729,7 @@ mod tests {
         assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
         assert_eq!(
             report["observationHookEvents"][0]["schemaVersion"],
-            utsushi_core::OBSERVATION_HOOK_SCHEMA_VERSION
+            utsushi_fixture::FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL
         );
         assert_eq!(report["observationHookEvents"][1]["eventKind"], "frame");
         assert!(output.is_file());

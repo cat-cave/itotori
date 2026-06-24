@@ -75,7 +75,7 @@ pub use crate::conformance::{
     cross_validate_results_against_manifest,
 };
 
-// --- Port + observation hook (UTSUSHI-025/056) ------------------------
+// --- Port + sinks bridge (UTSUSHI-025/056, refactored in UTSUSHI-224) -
 pub use crate::port::{
     EnginePort, EnginePortAdapter, EnginePortError, LifecycleStage, MomentId,
     OPTIONAL_LIFECYCLE_STAGES, PortCapability, PortEnv, PortManifest, PortRequest,
