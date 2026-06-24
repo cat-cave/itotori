@@ -7,16 +7,21 @@ use serde_json::Value;
 use crate::EvidenceTier;
 
 use super::diagnostics::SnapshotError;
+use super::envelope::SnapshotEnvelope;
 use super::inspectable::{Inspectable, Restorable, RestoreReport};
 use super::redaction::reject_unredacted_local_paths_in_value;
-use super::state::{STATE_TREE_MAX_SERIALIZED_BYTES, StateTree};
+use super::state::StateTree;
 
 /// Schema version pin for the snapshot substrate.
-pub const SNAPSHOT_SCHEMA_VERSION: &str = "0.1.0-alpha";
-
-/// Max serialized snapshot size (JSON, bytes). 16 KiB catches accidental
-/// binary embedding loudly.
-pub const SNAPSHOT_MAX_SERIALIZED_BYTES: usize = 16 * 1024;
+///
+/// UTSUSHI-223 bumped the pin from `0.1.0-alpha` to `0.2.0-alpha` when the
+/// previous fixed-byte ceiling was replaced with the per-port
+/// [`SnapshotEnvelope`] tier and the manifest grew a required
+/// `envelope_class` field. **No upgrade path; old snapshots are not
+/// readable by this version.** A consumer that needs to load a
+/// pre-0.2.0-alpha snapshot must re-snapshot from its source port at the
+/// new schema.
+pub const SNAPSHOT_SCHEMA_VERSION: &str = "0.2.0-alpha";
 
 /// Evidence-tier ceiling for snapshots. Snapshots are E2-by-default
 /// (controlled-playback evidence) and capped at E3. Higher tiers require a
@@ -268,6 +273,11 @@ pub struct Snapshot {
     /// Evidence tier of the snapshot. Capped at
     /// [`SNAPSHOT_EVIDENCE_TIER_CEILING`].
     evidence_tier: EvidenceTier,
+    /// Per-port snapshot envelope tier. The runner enforces the declared
+    /// class on every serialized write; an over-budget snapshot surfaces
+    /// as [`SnapshotError::SnapshotEnvelopeOverflow`] and produces no
+    /// partial output.
+    envelope_class: SnapshotEnvelope,
 }
 
 impl Snapshot {
@@ -294,6 +304,11 @@ impl Snapshot {
     /// Snapshot evidence tier.
     pub fn evidence_tier(&self) -> EvidenceTier {
         self.evidence_tier
+    }
+    /// Declared envelope tier. The runner enforces
+    /// `envelope_class.max_bytes()` on every serialized write.
+    pub fn envelope_class(&self) -> SnapshotEnvelope {
+        self.envelope_class
     }
 
     /// Validate the snapshot end-to-end. Runs on construction and on
@@ -325,10 +340,12 @@ impl Snapshot {
             serde_json::to_vec(self).map_err(|err| SnapshotError::SerializationFailure {
                 reason: err.to_string(),
             })?;
-        if serialized.len() > SNAPSHOT_MAX_SERIALIZED_BYTES {
-            return Err(SnapshotError::SnapshotTooLarge {
-                size: serialized.len(),
-                ceiling: SNAPSHOT_MAX_SERIALIZED_BYTES,
+        let limit_bytes = self.envelope_class.max_bytes();
+        if serialized.len() > limit_bytes {
+            return Err(SnapshotError::SnapshotEnvelopeOverflow {
+                envelope_class: self.envelope_class,
+                observed_bytes: serialized.len(),
+                limit_bytes,
             });
         }
         // Belt-and-suspenders: redaction walk on the fully serialized
@@ -412,11 +429,17 @@ pub struct SnapshotRequest<'a> {
     /// Optional logical clock tick used as the deterministic id seed when
     /// `snapshot_id` is `None`.
     pub tick: Option<u64>,
+    /// Per-port declared envelope tier. The runner threads this through
+    /// from the port's [`super::SnapshotManifest`]; the serializer
+    /// enforces the declared ceiling at write time.
+    pub envelope_class: SnapshotEnvelope,
 }
 
 impl<'a> SnapshotRequest<'a> {
     /// Construct a request with the required fields and no tick / explicit
-    /// id.
+    /// id. The envelope class defaults to the smallest tier
+    /// ([`SnapshotEnvelope::Small`]); callers with non-fixture state must
+    /// explicitly upshift via [`SnapshotRequest::with_envelope_class`].
     pub fn new(run_id: &'a str, generated_at: &'a str, evidence_tier: EvidenceTier) -> Self {
         Self {
             run_id,
@@ -424,6 +447,7 @@ impl<'a> SnapshotRequest<'a> {
             evidence_tier,
             generated_at,
             tick: None,
+            envelope_class: SnapshotEnvelope::Small,
         }
     }
 
@@ -437,6 +461,13 @@ impl<'a> SnapshotRequest<'a> {
     /// Set the logical tick used as the deterministic id seed.
     pub fn with_tick(mut self, tick: u64) -> Self {
         self.tick = Some(tick);
+        self
+    }
+
+    /// Set the per-port envelope tier declared on the port's
+    /// [`super::SnapshotManifest`].
+    pub fn with_envelope_class(mut self, envelope_class: SnapshotEnvelope) -> Self {
+        self.envelope_class = envelope_class;
         self
     }
 }
@@ -487,19 +518,11 @@ pub fn take_snapshot(
     }
     let state_tree = inspectable.inspect_state()?;
     state_tree.validate()?;
-    // Cap the state-tree size early so `Snapshot::validate` can attribute
-    // the failure to the substrate's per-tree ceiling when the wider
-    // snapshot envelope would still fit.
-    let tree_bytes =
-        serde_json::to_vec(&state_tree).map_err(|err| SnapshotError::SerializationFailure {
-            reason: err.to_string(),
-        })?;
-    if tree_bytes.len() > STATE_TREE_MAX_SERIALIZED_BYTES {
-        return Err(SnapshotError::StateTreeTooLarge {
-            size: tree_bytes.len(),
-            ceiling: STATE_TREE_MAX_SERIALIZED_BYTES,
-        });
-    }
+    // The canonical envelope check runs against the whole serialized
+    // snapshot inside `Snapshot::validate`, attributing observed_bytes
+    // and limit_bytes to the declared `envelope_class.max_bytes()`. No
+    // separate per-tree pre-check fires here — under UTSUSHI-223 the
+    // envelope ceiling is the single canonical size gate.
     let snapshot_id = match &request.snapshot_id {
         Some(id) => id.clone(),
         None => derive_snapshot_id(request.run_id, request.tick)?,
@@ -511,6 +534,7 @@ pub fn take_snapshot(
         inspectable_id: inspectable_id.to_string(),
         state_tree,
         evidence_tier: request.evidence_tier,
+        envelope_class: request.envelope_class,
     };
     snapshot.validate()?;
     Ok(snapshot)
@@ -637,13 +661,15 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_serialized_form_stays_under_documented_ceiling() {
+    fn snapshot_serialized_form_stays_under_declared_envelope_class_ceiling() {
         let snapshot = make_snapshot();
         let bytes = serde_json::to_vec(&snapshot).expect("serialize");
+        let limit = snapshot.envelope_class().max_bytes();
         assert!(
-            bytes.len() < SNAPSHOT_MAX_SERIALIZED_BYTES,
-            "size {} exceeded ceiling",
-            bytes.len()
+            bytes.len() < limit,
+            "size {} exceeded ceiling {}",
+            bytes.len(),
+            limit
         );
     }
 
@@ -1005,6 +1031,7 @@ mod tests {
             inspectable_id: String,
             state_tree: StateTree,
             evidence_tier: EvidenceTier,
+            envelope_class: SnapshotEnvelope,
         }
         impl Raw {
             fn into_snapshot(self) -> Snapshot {
@@ -1017,6 +1044,7 @@ mod tests {
                     "inspectableId": self.inspectable_id,
                     "stateTree": self.state_tree,
                     "evidenceTier": self.evidence_tier,
+                    "envelopeClass": self.envelope_class,
                 }))
                 .expect("snapshot")
             }
@@ -1028,6 +1056,7 @@ mod tests {
             inspectable_id: snapshot.inspectable_id().to_string(),
             state_tree: snapshot.state_tree().clone(),
             evidence_tier: snapshot.evidence_tier(),
+            envelope_class: snapshot.envelope_class(),
         };
         let bad_snapshot = raw.into_snapshot();
         let mut port = FakePort {

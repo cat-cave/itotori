@@ -10,9 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::{
-    EvidenceTier, SNAPSHOT_EVIDENCE_TIER_CEILING, SNAPSHOT_MAX_SERIALIZED_BYTES, Snapshot, TextLine,
-};
+use crate::{EvidenceTier, SNAPSHOT_EVIDENCE_TIER_CEILING, Snapshot, SnapshotEnvelope, TextLine};
 
 use super::artifact::EmbedArtifactRef;
 use super::capability::{
@@ -83,8 +81,11 @@ pub struct EmbedSnapshotRef {
     pub adapter_id: String,
     /// Lowercase hex SHA-256 of the canonical-serialized [`Snapshot`] JSON.
     pub content_hash: String,
-    /// Serialized payload byte length, bounded by
-    /// [`SNAPSHOT_MAX_SERIALIZED_BYTES`].
+    /// Serialized payload byte length, bounded by the worst-case
+    /// [`SnapshotEnvelope::Large`] tier's `max_bytes()`. The
+    /// underlying snapshot's `envelope_class` declares the actual
+    /// ceiling; this field carries the observed length so embed hosts
+    /// can size buffers without consulting the snapshot payload.
     pub size_bytes: u32,
     /// Evidence tier declared on the underlying snapshot. Bounded by
     /// [`SNAPSHOT_EVIDENCE_TIER_CEILING`].
@@ -98,11 +99,12 @@ impl EmbedSnapshotRef {
         validate_adapter_id_field(&self.adapter_id, "snapshot adapter_id")
             .map_err(|reason| EmbedError::InvalidSnapshotRef { reason })?;
         validate_content_hash(&self.content_hash)?;
-        if (self.size_bytes as usize) > SNAPSHOT_MAX_SERIALIZED_BYTES {
+        let embed_size_ceiling = SnapshotEnvelope::Large.max_bytes();
+        if (self.size_bytes as usize) > embed_size_ceiling {
             return Err(EmbedError::InvalidSnapshotRef {
                 reason: format!(
-                    "size_bytes={} exceeds SNAPSHOT_MAX_SERIALIZED_BYTES={}",
-                    self.size_bytes, SNAPSHOT_MAX_SERIALIZED_BYTES
+                    "size_bytes={} exceeds SnapshotEnvelope::Large.max_bytes()={}",
+                    self.size_bytes, embed_size_ceiling
                 ),
             });
         }
@@ -647,7 +649,7 @@ mod tests {
     #[test]
     fn embed_snapshot_ref_rejects_size_above_snapshot_ceiling() {
         let mut snapshot_ref = sample_snapshot_ref();
-        snapshot_ref.size_bytes = (SNAPSHOT_MAX_SERIALIZED_BYTES + 1) as u32;
+        snapshot_ref.size_bytes = (SnapshotEnvelope::Large.max_bytes() + 1) as u32;
         let error = snapshot_ref
             .validate()
             .expect_err("over-ceiling size rejected");
