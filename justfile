@@ -131,6 +131,17 @@ hello: build
     node apps/itotori/dist/cli.js dashboard-status --output .tmp/hello-world/dashboard-status.json
     node scripts/print-hello-summary.mjs .tmp/hello-world/final-summary.json
 
+# ITOTORI-019: synthetic hello-world loop with the drafting fixture
+# command spliced in at the drafting stage. Keeps the regular `hello`
+# recipe unchanged. Produces a `DraftArtifactBundle` and verifies its
+# well-formedness via the schema asserter shipped in
+# `@itotori/localization-bridge-schema`.
+hello-draft: build
+    rm -rf .tmp/hello-draft
+    mkdir -p .tmp/hello-draft
+    node apps/itotori/dist/cli.js draft-fixture --project apps/itotori/test/fixtures/draft-fixture-project.json --locale en-US --output .tmp/hello-draft/draft-artifact-bundle.json
+    node scripts/print-draft-fixture-bundle-summary.mjs .tmp/hello-draft/draft-artifact-bundle.json
+
 affected:
     node scripts/affected.mjs
 
