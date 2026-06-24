@@ -172,6 +172,10 @@ export const migrations = [
     id: "0028_runtime_conformance_results",
     file: "0028_runtime_conformance_results.sql",
   },
+  {
+    id: "0029_scene_summaries",
+    file: "0029_scene_summaries.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

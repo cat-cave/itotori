@@ -19,6 +19,7 @@ import { ItotoriProjectRepository } from "../src/repositories/project-repository
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
 import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
 import { ItotoriTranslationBatchRepository } from "../src/repositories/translation-batch-repository.js";
+import { ItotoriSceneSummaryRepository } from "../src/repositories/scene-summary-repository.js";
 import { ItotoriTranslationMemoryRepository } from "../src/repositories/translation-memory-repository.js";
 import type { DatabaseContext, ItotoriDatabase } from "../src/connection.js";
 import { assertDeniedRepositoryMutation } from "./authorization-test-helpers.js";
@@ -439,6 +440,42 @@ const repositoryPermissionGateMatrix = [
     "catalogRead",
     "conformance-repository.test.ts load coverage",
     (repo) => repo.loadConformanceRun(deniedActor, "conformance-run-id"),
+  ),
+  sceneSummaryGate(
+    "saveSummary",
+    "draftWrite",
+    "scene-summary-repository.test.ts save coverage",
+    (repo) => repo.saveSummary(deniedActor, undefined as never),
+  ),
+  sceneSummaryGate(
+    "loadSummaryByScene",
+    "catalogRead",
+    "scene-summary-repository.test.ts load-by-scene coverage",
+    (repo) => repo.loadSummaryByScene(deniedActor, undefined as never),
+  ),
+  sceneSummaryGate(
+    "loadSummaries",
+    "catalogRead",
+    "scene-summary-repository.test.ts load coverage",
+    (repo) => repo.loadSummaries(deniedActor, undefined as never),
+  ),
+  sceneSummaryGate(
+    "markStale",
+    "draftWrite",
+    "scene-summary-repository.test.ts mark stale coverage",
+    (repo) => repo.markStale(deniedActor, undefined as never),
+  ),
+  sceneSummaryGate(
+    "currentSourceHashesForBridgeUnits",
+    "catalogRead",
+    "scene-summary-repository.test.ts hashes coverage",
+    (repo) => repo.currentSourceHashesForBridgeUnits(deniedActor, { bridgeUnitIds: [] }),
+  ),
+  sceneSummaryGate(
+    "loadBridgeUnitsForSummary",
+    "catalogRead",
+    "scene-summary-repository.test.ts bridge units coverage",
+    (repo) => repo.loadBridgeUnitsForSummary(deniedActor, { bridgeUnitIds: [] }),
   ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
@@ -869,6 +906,42 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "conformance-repository.test.ts load coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSceneSummaryRepository.saveSummary",
+          "requiredPermission": "draft.write",
+          "successFixture": "scene-summary-repository.test.ts save coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSceneSummaryRepository.loadSummaryByScene",
+          "requiredPermission": "catalog.read",
+          "successFixture": "scene-summary-repository.test.ts load-by-scene coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSceneSummaryRepository.loadSummaries",
+          "requiredPermission": "catalog.read",
+          "successFixture": "scene-summary-repository.test.ts load coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSceneSummaryRepository.markStale",
+          "requiredPermission": "draft.write",
+          "successFixture": "scene-summary-repository.test.ts mark stale coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSceneSummaryRepository.currentSourceHashesForBridgeUnits",
+          "requiredPermission": "catalog.read",
+          "successFixture": "scene-summary-repository.test.ts hashes coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriSceneSummaryRepository.loadBridgeUnitsForSummary",
+          "requiredPermission": "catalog.read",
+          "successFixture": "scene-summary-repository.test.ts bridge units coverage",
+        },
       ]
     `);
   });
@@ -1124,6 +1197,22 @@ function conformanceGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriConformanceRepository(db)),
+  });
+}
+
+function sceneSummaryGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriSceneSummaryRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriSceneSummaryRepository",
+    sourceFile: "scene-summary-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriSceneSummaryRepository(db)),
   });
 }
 

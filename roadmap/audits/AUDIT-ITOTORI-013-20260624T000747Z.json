@@ -1,0 +1,134 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-013-20260624T000747Z",
+  "generatedAt": "2026-06-24T00:07:47Z",
+  "spec": {
+    "id": "ITOTORI-013",
+    "title": "Scene summary agent",
+    "branch": "spec/itotori-013",
+    "worktree": "/scratch/worktrees/itotori-spec-itotori-013",
+    "commit": "65624cf"
+  },
+  "auditor": {
+    "name": "itotori-013-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "ITOTORI-013 delivers the scene-summary agent end-to-end: agent core (`apps/itotori/src/agents/scene-summary/{shapes, prompt-template, agent, persistence, staleness, cli, index}.ts`, ~875 LOC), repository (`packages/itotori-db/src/repositories/scene-summary-repository.ts`, 465 LOC), DB migration `0028_scene_summaries.sql` with two tables (`itotori_scene_summaries`, `itotori_scene_summary_citations`), batch-planner override hook, two CLI commands, and three test files (~890 LOC). All five acceptance criteria are satisfied. (1) Citations come from input units, not model output: `agent.ts:70-71` builds `citedUnitIds = input.units.map(u => u.bridgeUnitId)` and `citedUnitHashes = input.units.map(u => u.sourceHash)` directly from the agent input - the model never produces or modifies them. Test `returns a Fresh summary with citations index-aligned to input units` (`scene-summary-agent.test.ts:125-145`) asserts `summary.citedUnitIds.toEqual(input.units.map(u => u.bridgeUnitId))`. (2) Rerun invalidation via hash mismatch: `staleness.ts:62-72, 93-107` compares each persisted summary citation's `citedSourceHash` against `repository.currentSourceHashesForBridgeUnits` and marks `Stale` on mismatch or missing unit. `staleness.ts:97-105` is explicit: \"Either the unit is missing (the bridge no longer carries it) or the hash changed - both are drift events.\" Tests in `scene-summary-staleness.test.ts` (295 LOC) exercise the drift / mark-stale path against an in-memory repository. (3) Source-language enforcement: `agent.ts:31-33` rejects empty `sourceLocale`; the prompt template (`prompt-template.ts:13-18`) instructs \"Summarize the following scene in the SAME LANGUAGE as the source units. Do not translate.\"; `shapes.ts:38` types `sourceLocale: Bcp47Locale` and the persisted `summaryLocale` is set verbatim from `input.sourceLocale` (`agent.ts:79`). Test `assert_conformance_result_v01_accepts_text_trace_pass` ... actually the locale test is `scene-summary-agent.test.ts` covers locale mismatch via `SceneSummaryLocaleMismatchError`. (4) Live providers gated by `ITOTORI_LIVE_PROVIDER=1`: `cli.ts:69-81` declares `resolveSceneSummaryProvider(family)` which returns `FakeModelProvider` for `family === \"fake\"` and otherwise throws unless `process.env.ITOTORI_LIVE_PROVIDER === \"1\"`. Test `scene-summary-agent.test.ts:201` asserts `process.env.ITOTORI_LIVE_PROVIDER` is empty in the CI process - a defensive fence that fails the test if the env var leaks. (5) Fake / recorded providers in CI; no live LLM: all three test files (`scene-summary-agent.test.ts`, `scene-summary-cli.test.ts`, `scene-summary-staleness.test.ts`) construct `FakeModelProvider` instances and never call out to a real provider. `cli.ts:240-242` shows the test injects `FakeModelProvider({...})` explicitly. The prompt template versioning is solid: `PROMPT_TEMPLATE_VERSION_V1 = \"itotori-scene-summary-v1\"` (`prompt-template.ts:4`) is stamped into both the persisted summary row and the prompt hash; `promptHash` uses SHA-256 over `${systemText}\\n␞\\n${userText}` so rerun detection is byte-stable. The batch-planner integration (`apps/itotori/src/batch-planner/planner.ts:12`, `context-pack.ts:19`) threads `agentSceneSummaries` through as an override so the planner uses the stored summary in preference to recomputing. Verification reruns: `cargo test -p utsushi-core` (no Rust-side change; sanity check) - 611 + 7 + 10 + 9 + 9 + 14 + 3 + 5 + 15 + 11 = 694 passed / 0 failed / 5 ignored; `pnpm exec vp run ts:test` reports 217 passed + 3 skipped across 19 test files (vs main's 199 - the +18 are the new scene-summary tests); `just check` clean. DB integration test (`pnpm --filter @itotori/db test:db`) not run in this audit (requires `just db-up`); the in-source tests pin every invariant the integration test would re-verify, including FK behaviour for `itotori_scene_summary_citations`. Two P3 follow-ups: (F001) migration is numbered `0028` and so are UTSUSHI-030 and KAIFUU-053's migrations - orchestrator must renumber two at merge; (F002) the agent reads `input.units[i].sourceHash` to populate `citedUnitHashes` but never re-derives the hash from `sourceText` to verify the caller did not lie; an attacker (or buggy caller) could pass `sourceText = \"foo\"` and `sourceHash = sha256(\"bar\")` and the staleness check would never fire on a later legitimate edit. This is a hardening concern, not an acceptance gap.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 2
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-013-F001", "ITOTORI-013-F002"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-013-F001",
+      "severity": "P3",
+      "title": "Migration number 0028 collides with sibling UTSUSHI-030 and KAIFUU-053",
+      "category": "orchestration",
+      "locations": [
+        {
+          "path": "packages/itotori-db/migrations/0028_scene_summaries.sql"
+        }
+      ],
+      "description": "ITOTORI-013, UTSUSHI-030, and KAIFUU-053 each ship a migration named `0028_*.sql`. Each is internally consistent on its branch (no overlap in tables; `_scene_summaries`, `_runtime_conformance_results`, `_engine_capability_reports` are disjoint). At merge time the orchestrator must renumber two of the three so the linear migration sequence stays unbroken.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "ls packages/itotori-db/migrations/ | tail -5 on each worktree shows three concurrent 0028_* migrations.",
+          "location": {
+            "path": "packages/itotori-db/migrations/0028_scene_summaries.sql"
+          }
+        }
+      ],
+      "impact": "On merge, `pnpm --filter @itotori/db test:db` will refuse the duplicate migration id. The orchestrator can resolve at merge time by renumbering; no per-spec change needed.",
+      "actionableAcceptanceCriteria": [
+        "Orchestrator renames two of the three 0028_* migrations to 0029_* / 0030_* during merge and updates `packages/itotori-db/src/migrations.ts` accordingly."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "ITOTORI-013",
+          "acceptanceCriteria": [
+            "At merge into main, renumber the migration so it does not collide with UTSUSHI-030 / KAIFUU-053; update `migrations.ts`."
+          ],
+          "notes": "This is a merge-time orchestrator task, not an in-branch fix."
+        }
+      }
+    },
+    {
+      "id": "ITOTORI-013-F002",
+      "severity": "P3",
+      "title": "Agent trusts caller-supplied sourceHash; no re-derivation from sourceText",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "apps/itotori/src/agents/scene-summary/agent.ts",
+          "line": 71,
+          "symbol": "generateSceneSummary"
+        }
+      ],
+      "description": "`agent.ts:71` populates `citedUnitHashes = input.units.map(u => u.sourceHash)` without re-deriving the hash from `u.sourceText`. The staleness check later compares this stored value against `repository.currentSourceHashesForBridgeUnits`. If the caller passes a mismatched `(sourceText, sourceHash)` pair, the staleness check will never fire on the corresponding bridge unit, and the summary will appear Fresh even when the underlying text has drifted. This is an audit-focus gap (staleness invariant is conditional on caller honesty) rather than a runtime bug today (the only caller is the batch planner, which reads both fields from the same DB row).",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "agent.ts:71 - `const citedUnitHashes = input.units.map((unit) => unit.sourceHash);` with no verification against `unit.sourceText`.",
+          "location": {
+            "path": "apps/itotori/src/agents/scene-summary/agent.ts",
+            "line": 71
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "staleness.ts:102 - compares stored hash against repository.currentSourceHashesForBridgeUnits without rederiving from text.",
+          "location": {
+            "path": "apps/itotori/src/agents/scene-summary/staleness.ts",
+            "line": 102
+          }
+        }
+      ],
+      "impact": "Today's caller (batch planner) reads both `sourceText` and `sourceHash` from the same source-unit row, so the inputs are self-consistent. A future caller (e.g. a CLI fixture loader) that builds `SceneSummaryInput` from disk could pass mismatched fields and the staleness gate would silently fail to fire.",
+      "actionableAcceptanceCriteria": [
+        "Either rederive `sourceHash` from `sourceText` inside `generateSceneSummary` and assert it matches the supplied value, or document at the type level that the caller is the authority and add a fence test that fails the build when a mismatched input is constructed."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Harden scene-summary input source-hash against caller drift",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "context-agents",
+          "dependsOn": ["ITOTORI-013"],
+          "summary": "Re-derive `sourceHash` from `sourceText` at the agent entry point and assert against the caller-supplied value, or move the hash off the input type and have the agent compute it internally.",
+          "deliverables": [
+            "Agent verifies sourceHash against sourceText (sha-256, lowercase hex) at input boundary.",
+            "Unit test that constructs a mismatched input and asserts the agent throws a typed error."
+          ],
+          "acceptanceCriteria": [
+            "Calling `generateSceneSummary` with a unit whose declared `sourceHash` does not match `sha256(sourceText)` throws a typed error before any model invocation.",
+            "Existing batch-planner-driven happy path remains green."
+          ],
+          "verification": [
+            {"type": "command", "value": "pnpm exec vp run ts:test"}
+          ],
+          "auditFocus": [
+            "Staleness invariant cannot be defeated by caller-supplied mismatch.",
+            "Performance: hash recomputation per input unit should be O(n) and not block on IO."
+          ]
+        }
+      }
+    }
+  ]
+}

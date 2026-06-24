@@ -499,6 +499,25 @@ export type {
   CatalogRecordedStorefrontResponse,
   CatalogRecordedStorefrontSource,
 } from "./services/catalog-recorded-importers.js";
+export {
+  ItotoriSceneSummaryRepository,
+  sceneSummaryInvalidatedReasonValues,
+  sceneSummaryStatusValues,
+} from "./repositories/scene-summary-repository.js";
+export type {
+  BridgeUnitTextRecord,
+  ItotoriSceneSummaryRepositoryPort,
+  LoadBridgeUnitsForSummaryInput,
+  LoadCurrentSourceHashesInput,
+  LoadSceneSummariesQuery,
+  LoadSceneSummaryByScene,
+  MarkSceneSummaryStaleInput,
+  SaveSceneSummaryInput,
+  SceneSummaryCitationRecord,
+  SceneSummaryInvalidatedReason,
+  SceneSummaryRecord,
+  SceneSummaryStatus,
+} from "./repositories/scene-summary-repository.js";
 export { ItotoriTranslationBatchRepository } from "./repositories/translation-batch-repository.js";
 export { ItotoriConformanceRepository } from "./repositories/conformance-repository.js";
 export type {

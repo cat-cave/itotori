@@ -8,6 +8,7 @@ import {
   ItotoriCatalogRepository,
   ItotoriModelLedgerRepository,
   ItotoriProjectRepository,
+  ItotoriSceneSummaryRepository,
   ItotoriStyleGuideFixtureFlowService,
   ItotoriStyleGuideRepository,
   ItotoriTerminologyRepository,
@@ -35,6 +36,11 @@ import {
   type StyleGuideFixtureFlowResult,
 } from "@itotori/db";
 import { persistBatches } from "../batch-planner/index.js";
+import {
+  resolveSceneSummaryProvider,
+  type SceneSummaryCliDependencies,
+} from "../agents/scene-summary/index.js";
+import type { ProviderFamily } from "../providers/types.js";
 import type {
   PlanBatchesContextLoader,
   PlanBatchesPersister,
@@ -83,6 +89,12 @@ export type ItotoriApplicationServices = {
   batchPlanner: {
     loadContext: PlanBatchesContextLoader;
     persist: PlanBatchesPersister;
+  };
+  sceneSummary: {
+    cliDependencies(provider: ProviderFamily): Promise<SceneSummaryCliDependencies>;
+    defaultModelId: string;
+    defaultProviderFamily: ProviderFamily;
+    defaultContextWindowTokens: number;
   };
 };
 
@@ -205,6 +217,7 @@ export async function withDatabaseItotoriServices<T>(
       translationMemoryRepository,
     );
     const translationBatchRepository = new ItotoriTranslationBatchRepository(context.db);
+    const sceneSummaryRepository = new ItotoriSceneSummaryRepository(context.db);
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -251,6 +264,17 @@ export async function withDatabaseItotoriServices<T>(
         persist: async (batches, identity) => {
           await persistBatches(translationBatchRepository, localUserActor, batches, identity);
         },
+      },
+      sceneSummary: {
+        cliDependencies: async (providerFamily) => ({
+          actor: localUserActor,
+          batchRepository: translationBatchRepository,
+          summaryRepository: sceneSummaryRepository,
+          provider: resolveSceneSummaryProvider(providerFamily),
+        }),
+        defaultModelId: "itotori-fake-scene-summary-v0",
+        defaultProviderFamily: "fake",
+        defaultContextWindowTokens: 16000,
       },
     });
   } finally {
