@@ -16507,7 +16507,7 @@
     {
       "id": "UTSUSHI-120",
       "title": "Runtime substrate facade and conformance release",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -16558,10 +16558,7 @@
         "Scope creep into new substrate primitives",
         "Private evidence leakage",
         "E-tier confusion in conformance reports"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-120",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-120"
+      ]
     },
     {
       "id": "UTSUSHI-121",

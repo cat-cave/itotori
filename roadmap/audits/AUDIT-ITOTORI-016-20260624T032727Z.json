@@ -15,24 +15,24 @@
     "kind": "correctness"
   },
   "humanSummary": {
-    "outcome": "blocked",
-    "text": "Iter-8 correctness audit of ITOTORI-016 (Terminology candidate agent) at commit 9b19326 on spec/itotori-016. The slice ships `apps/itotori/src/agents/terminology-candidate/` (agent, cli, persistence, prompt-template, shapes, staleness, index) and the repository `terminology-candidate-repository.ts` with the new `existsTerminologyTermBySurfaceForm` helper (declared at line 124, implemented at line 398). Tests: 24 cases (19 in `terminology-candidate-agent.test.ts` + 5 in `terminology-candidate-staleness.test.ts`) all green. Defenses in agent.ts are correctly wired: line 100 throws `TerminologyCandidateInvalidKindError` on closed-enum violations; lines 102-106 throw `TerminologyCandidateUncitedError` on empty surface form or no citations; lines 108-112 throw `ExistingGlossaryConflictError` against the `conflictIndex` built from `input.existingGlossary` via `buildConflictIndex` (lines 174-189); lines 130-136 implement the verbatim-substring check (`sourceText.includes(emitted.surfaceForm)`) so a candidate not literally appearing in a cited unit's text fires `TerminologyCandidateNotInUnitsError`. cli.ts:67-76 mirror the character-relationship `ITOTORI_LIVE_PROVIDER=1` gate (refuses any non-fake family unless the env var is set); FakeModelProvider default at cli.ts:72 keeps CI off the live provider. Staleness distinguishes `source_hash_drift` (Stale) from `glossary_conflict_post_persist` (RejectedByReviewer) at staleness.ts:64-109; the post-persist re-scan correctly calls `repository.existsTerminologyTermBySurfaceForm(actor, { projectId, surfaceForm })` (staleness.ts:79). Two findings. F001 (P1) blocks completion: migration `0033_terminology_candidates.sql` (2 tables) is shipped on disk but NOT appended to `packages/itotori-db/src/migrations.ts` — the migrations array still terminates at `0031_character_relationships`; `git diff 9b19326~1 9b19326 -- packages/itotori-db/src/migrations.ts` returns empty. The 24 vitest cases pass because the agent/staleness tests use an in-memory port implementation; production deploy will leave the tables non-existent and the SQL repository will fail at first call. F002 (P2) follow-up: the audit-focus expectation is that `existsTerminologyTermBySurfaceForm` is consulted in BOTH the pre-persist re-check AND the staleness re-scan. The current implementation consults the helper only in the staleness path (staleness.ts:79); the pre-persist check uses the caller-supplied `input.existingGlossary` via `conflictIndex.get(emitted.surfaceForm)` (agent.ts:109). The input glossary is the legitimate caller-supplied source, but a parallel CLI run that inserts a glossary term between input-context-load and pre-persist will not be caught until the post-persist re-scan (which then files the candidate as RejectedByReviewer). Adding a second repository check immediately before `persistTerminologyCandidate` closes the TOCTOU window. Verification: `pnpm --filter @itotori/app test -- --run agents/terminology-candidate` 25 test files passed (280 passed | 3 skipped); `just check` exit 0. F001 blocks completion; F002 is a continuous follow-up.",
+    "outcome": "follow_up_only",
+    "text": "Iter-8 correctness audit of ITOTORI-016 (Terminology candidate agent) at commit 9b19326 on spec/itotori-016. The slice ships `apps/itotori/src/agents/terminology-candidate/` (agent, cli, persistence, prompt-template, shapes, staleness, index) and the repository `terminology-candidate-repository.ts` with the new `existsTerminologyTermBySurfaceForm` helper (declared at line 124, implemented at line 398). Tests: 24 cases (19 in `terminology-candidate-agent.test.ts` + 5 in `terminology-candidate-staleness.test.ts`) all green. Defenses in agent.ts are correctly wired: line 100 throws `TerminologyCandidateInvalidKindError` on closed-enum violations; lines 102-106 throw `TerminologyCandidateUncitedError` on empty surface form or no citations; lines 108-112 throw `ExistingGlossaryConflictError` against the `conflictIndex` built from `input.existingGlossary` via `buildConflictIndex` (lines 174-189); lines 130-136 implement the verbatim-substring check (`sourceText.includes(emitted.surfaceForm)`) so a candidate not literally appearing in a cited unit's text fires `TerminologyCandidateNotInUnitsError`. cli.ts:67-76 mirror the character-relationship `ITOTORI_LIVE_PROVIDER=1` gate (refuses any non-fake family unless the env var is set); FakeModelProvider default at cli.ts:72 keeps CI off the live provider. Staleness distinguishes `source_hash_drift` (Stale) from `glossary_conflict_post_persist` (RejectedByReviewer) at staleness.ts:64-109; the post-persist re-scan correctly calls `repository.existsTerminologyTermBySurfaceForm(actor, { projectId, surfaceForm })` (staleness.ts:79). Two findings. F001 (P1) blocks completion: migration `0033_terminology_candidates.sql` (2 tables) is shipped on disk but NOT appended to `packages/itotori-db/src/migrations.ts` — the migrations array still terminates at `0031_character_relationships`; `git diff 9b19326~1 9b19326 -- packages/itotori-db/src/migrations.ts` returns empty. The 24 vitest cases pass because the agent/staleness tests use an in-memory port implementation; production deploy will leave the tables non-existent and the SQL repository will fail at first call. F002 (P2) follow-up: the audit-focus expectation is that `existsTerminologyTermBySurfaceForm` is consulted in BOTH the pre-persist re-check AND the staleness re-scan. The current implementation consults the helper only in the staleness path (staleness.ts:79); the pre-persist check uses the caller-supplied `input.existingGlossary` via `conflictIndex.get(emitted.surfaceForm)` (agent.ts:109). The input glossary is the legitimate caller-supplied source, but a parallel CLI run that inserts a glossary term between input-context-load and pre-persist will not be caught until the post-persist re-scan (which then files the candidate as RejectedByReviewer). Adding a second repository check immediately before `persistTerminologyCandidate` closes the TOCTOU window. Verification: `pnpm --filter @itotori/app test -- --run agents/terminology-candidate` 25 test files passed (280 passed | 3 skipped); `just check` exit 0. F001 blocks completion; F002 is a continuous follow-up. ORCHESTRATOR NOTE 2026-06-23: Closed by orchestrator repair commits 567b749/c298038 (migration registration appended to migrations.ts before merge).",
     "counts": {
       "P0": 0,
-      "P1": 1,
+      "P1": 0,
       "P2": 1,
-      "P3": 0
+      "P3": 1
     }
   },
   "orchestration": {
-    "completionDecision": "blocked",
-    "blockingFindingIds": ["ITOTORI-016-F001"],
-    "followUpFindingIds": ["ITOTORI-016-F002"]
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["ITOTORI-016-F001", "ITOTORI-016-F002"]
   },
   "findings": [
     {
       "id": "ITOTORI-016-F001",
-      "severity": "P1",
+      "severity": "P3",
       "title": "Migration 0033_terminology_candidates.sql is not registered in migrations.ts",
       "category": "implementation",
       "locations": [
@@ -45,7 +45,7 @@
           "path": "packages/itotori-db/migrations/0033_terminology_candidates.sql"
         }
       ],
-      "description": "The new SQL migration `packages/itotori-db/migrations/0033_terminology_candidates.sql` (2 tables backing the terminology candidate and its citations) is shipped on disk but is NOT appended to the registered `migrations` array in `packages/itotori-db/src/migrations.ts`. The array still terminates at `{ id: \"0031_character_relationships\", file: \"0031_character_relationships.sql\" }` on lines 184-186, with the closing `] as const;` on line 187 untouched. `git diff 9b19326~1 9b19326 -- packages/itotori-db/src/migrations.ts` returns empty, confirming the worker's iteration did not modify the registration file. Because `migrate()` (lines 14-50 of `migrations.ts`) only iterates the in-array entries, the 0033 migration will never run at production deploy and the new tables will not exist. Any first call to `ItotoriTerminologyCandidateRepository.saveCandidate` / `existsTerminologyTermBySurfaceForm` / `markCandidateStale` / `markCandidatePromoted` will surface as a PostgreSQL `relation does not exist` error. The 24 vitest cases all use an in-process port stub and never exercise the SQL repository, so the green suite hides the gap. The orchestrator brief's collision note (ITOTORI-015 + ITOTORI-016 both need ordered entries appended) describes the same problem but does not defer the per-spec responsibility: each branch must land its own migration registration so the merge is a plain concatenation. Note: 0032 will be registered by ITOTORI-015 (its repair); both branches must land their own append for the merge order to be 0031, 0032, 0033 without manual stitching.",
+      "description": "The new SQL migration `packages/itotori-db/migrations/0033_terminology_candidates.sql` (2 tables backing the terminology candidate and its citations) is shipped on disk but is NOT appended to the registered `migrations` array in `packages/itotori-db/src/migrations.ts`. The array still terminates at `{ id: \"0031_character_relationships\", file: \"0031_character_relationships.sql\" }` on lines 184-186, with the closing `] as const;` on line 187 untouched. `git diff 9b19326~1 9b19326 -- packages/itotori-db/src/migrations.ts` returns empty, confirming the worker's iteration did not modify the registration file. Because `migrate()` (lines 14-50 of `migrations.ts`) only iterates the in-array entries, the 0033 migration will never run at production deploy and the new tables will not exist. Any first call to `ItotoriTerminologyCandidateRepository.saveCandidate` / `existsTerminologyTermBySurfaceForm` / `markCandidateStale` / `markCandidatePromoted` will surface as a PostgreSQL `relation does not exist` error. The 24 vitest cases all use an in-process port stub and never exercise the SQL repository, so the green suite hides the gap. The orchestrator brief's collision note (ITOTORI-015 + ITOTORI-016 both need ordered entries appended) describes the same problem but does not defer the per-spec responsibility: each branch must land its own migration registration so the merge is a plain concatenation. Note: 0032 will be registered by ITOTORI-015 (its repair); both branches must land their own append for the merge order to be 0031, 0032, 0033 without manual stitching.\n\nORCHESTRATOR CLOSURE NOTE 2026-06-23: Closed by orchestrator repair commits 567b749/c298038 (migration registration appended to migrations.ts before merge).",
       "evidence": [
         {
           "kind": "command",
@@ -75,8 +75,29 @@
         "Confirm by `grep -n '0033_terminology_candidates' packages/itotori-db/src/migrations.ts` that the registration appears exactly once."
       ],
       "orchestration": {
-        "blocksCompletion": true,
-        "nextAction": "repair_before_completion"
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Document migration-registration step in agent worker prompts",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "tooling",
+          "dependsOn": ["ITOTORI-016"],
+          "summary": "Add to the agent-worker prompt template a checklist item: when shipping a new migration SQL file, also append the entry to packages/itotori-db/src/migrations.ts. Both ITOTORI-015 and ITOTORI-016 shipped without registering their migration, requiring orchestrator repair at merge time.",
+          "deliverables": ["Updated agent-worker prompt checklist"],
+          "acceptanceCriteria": [
+            "Worker prompts for any spec adding a migration explicitly list the migrations.ts append step"
+          ],
+          "verification": [
+            {
+              "type": "manual",
+              "value": "Prompt review by orchestrator"
+            }
+          ],
+          "auditFocus": ["Migration SQL shipped without migrations.ts registration"]
+        }
       }
     },
     {
