@@ -3938,3 +3938,82 @@ export const assetLocalizationDecisions = pgTable(
     ),
   ],
 );
+
+// ---------------------------------------------------------------------
+// alpha gate 5 — audit findings persistence
+// ---------------------------------------------------------------------
+
+export const auditFindingSeverityValues = {
+  p0: "P0",
+  p1: "P1",
+  p2: "P2",
+  p3: "P3",
+} as const;
+
+export type AuditFindingSeverity =
+  (typeof auditFindingSeverityValues)[keyof typeof auditFindingSeverityValues];
+
+export const auditFindingStatusValues = {
+  open: "open",
+  superseded: "superseded",
+  fixed: "fixed",
+  wontfix: "wontfix",
+  duplicate: "duplicate",
+} as const;
+
+export type AuditFindingStatus =
+  (typeof auditFindingStatusValues)[keyof typeof auditFindingStatusValues];
+
+/**
+ * Shape of an audit-finding row as it appears in the DB. The dashboard
+ * read model and the bootstrap script both consume this shape directly;
+ * the repository class wraps it with auth + invariants.
+ */
+export type AuditFindingRecord = {
+  auditFindingId: string;
+  auditReportId: string;
+  nodeId: string;
+  severity: AuditFindingSeverity;
+  category: string;
+  summary: string;
+  detail: string | null;
+  fileRef: string | null;
+  proposedDagNode: string | null;
+  status: AuditFindingStatus;
+  supersededByFindingId: string | null;
+  createdAt: Date;
+  resolvedAt: Date | null;
+};
+
+export const auditFindings = pgTable(
+  "itotori_audit_findings",
+  {
+    auditFindingId: text("audit_finding_id").primaryKey(),
+    auditReportId: text("audit_report_id").notNull(),
+    nodeId: text("node_id").notNull(),
+    severity: text("severity").$type<AuditFindingSeverity>().notNull(),
+    category: text("category").notNull(),
+    summary: text("summary").notNull(),
+    detail: text("detail"),
+    fileRef: text("file_ref"),
+    proposedDagNode: text("proposed_dag_node"),
+    status: text("status").$type<AuditFindingStatus>().notNull().default("open"),
+    supersededByFindingId: text("superseded_by_finding_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.supersededByFindingId],
+      foreignColumns: [table.auditFindingId],
+      name: "itotori_audit_findings_superseded_by_fkey",
+    }),
+    index("itotori_audit_findings_node_status_severity_idx").on(
+      table.nodeId,
+      table.status,
+      table.severity,
+    ),
+    index("itotori_audit_findings_report_idx").on(table.auditReportId),
+    index("itotori_audit_findings_severity_status_idx").on(table.severity, table.status),
+  ],
+);

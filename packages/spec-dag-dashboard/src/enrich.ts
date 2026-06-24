@@ -5,8 +5,15 @@
 // I/O, no git, no validation here — callers pass the already-loaded DAG and the
 // already-computed validator errors.
 
-import type { DashboardData, EnrichedNode, SpecNode, StatusCounts } from "./types.js";
+import type {
+  AuditFindingsStatus,
+  DashboardData,
+  EnrichedNode,
+  SpecNode,
+  StatusCounts,
+} from "./types.js";
 import { PRANK, TRANK } from "./types.js";
+import type { AuditFindingsByNode } from "./db-audit-findings.js";
 
 const ID_RE = /\b[A-Z][A-Z0-9]*-\d+\b/g;
 const PATH_RE = /\/nodes\/(\d+)/;
@@ -87,6 +94,7 @@ export function enrich(dag: unknown, errors: string[]): EnrichResult {
       ready,
       blockedBy,
       issues: issuesByNode.get(n.id) ?? [],
+      findings: emptyFindings(),
     };
   });
 
@@ -112,6 +120,10 @@ export function buildDashboardData(
   errors: string[],
   enriched: EnrichResult,
   provenance: DashboardData["provenance"],
+  auditFindingsStatus: AuditFindingsStatus = {
+    kind: "disabled",
+    reason: "flag_not_set",
+  },
 ): DashboardData {
   const doc = dag as { schemaVersion?: unknown; metadata?: unknown };
   return {
@@ -124,5 +136,45 @@ export function buildDashboardData(
     globalIssues: enriched.globalIssues,
     nodes: enriched.nodes,
     provenance,
+    auditFindingsStatus,
+  };
+}
+
+/**
+ * Merge an audit-findings rollup (keyed by DAG node id) into a list of
+ * already-enriched nodes. Pure: returns a new node list; the input
+ * stays untouched. Nodes with no findings keep `findings = empty`.
+ */
+export function mergeAuditFindings(
+  nodes: EnrichedNode[],
+  byNode: AuditFindingsByNode,
+): EnrichedNode[] {
+  return nodes.map((node) => {
+    const bundle = byNode.get(node.id);
+    if (bundle === undefined) {
+      return node;
+    }
+    return {
+      ...node,
+      findings: {
+        counts: { ...bundle.counts },
+        openFindings: bundle.openFindings.map((finding) => ({
+          auditFindingId: finding.auditFindingId,
+          auditReportId: finding.auditReportId,
+          severity: finding.severity,
+          category: finding.category,
+          summary: finding.summary,
+          fileRef: finding.fileRef,
+          proposedDagNode: finding.proposedDagNode,
+        })),
+      },
+    };
+  });
+}
+
+function emptyFindings(): EnrichedNode["findings"] {
+  return {
+    counts: { P0: 0, P1: 0, P2: 0, P3: 0 },
+    openFindings: [],
   };
 }

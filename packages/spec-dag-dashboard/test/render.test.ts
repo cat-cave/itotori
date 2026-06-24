@@ -24,9 +24,14 @@ function dataWith(provenance: DashboardData["provenance"]): DashboardData {
         ready: true,
         blockedBy: [],
         issues: [],
+        findings: {
+          counts: { P0: 0, P1: 0, P2: 0, P3: 0 },
+          openFindings: [],
+        },
       },
     ],
     provenance,
+    auditFindingsStatus: { kind: "disabled", reason: "flag_not_set" },
   };
 }
 

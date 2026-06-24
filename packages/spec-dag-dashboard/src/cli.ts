@@ -1,10 +1,19 @@
 #!/usr/bin/env node
 // CLI for the spec-dag dashboard generator.
 //
-//   spec-dag-dashboard            regenerate then open in the browser
-//   spec-dag-dashboard --no-open  regenerate only (CI / smoke)
-//   spec-dag-dashboard --watch    watch roadmap/spec-dag.json, regenerate on
-//                                 change (debounced), open once
+//   spec-dag-dashboard                        regenerate then open in browser
+//   spec-dag-dashboard --no-open              regenerate only (CI / smoke)
+//   spec-dag-dashboard --watch                watch roadmap/spec-dag.json,
+//                                             regenerate on change (debounced),
+//                                             open once
+//   spec-dag-dashboard --with-audit-findings  read itotori_audit_findings via
+//                                             DATABASE_URL and merge open
+//                                             findings into the rendered DAG.
+//                                             Default off. When DATABASE_URL
+//                                             is unset, the dashboard still
+//                                             renders and emits a clear
+//                                             "DATABASE_URL not set; audit
+//                                             findings not rendered" warning.
 //
 // Opening is best-effort and WSL2-aware; a failed open must never fail
 // generation.
@@ -51,8 +60,8 @@ function openInBrowser(filePath: string): void {
   }
 }
 
-async function regenerate(): Promise<string> {
-  const result = await generateDashboard();
+async function regenerate(withAuditFindings: boolean): Promise<string> {
+  const result = await generateDashboard({ withAuditFindings });
   printSummary(result);
   return result.outPath;
 }
@@ -61,11 +70,12 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const noOpen = args.includes("--no-open");
   const watchMode = args.includes("--watch");
+  const withAuditFindings = args.includes("--with-audit-findings");
 
   if (watchMode) {
     const root = repoRoot();
     const watchTarget = resolve(root, "roadmap/spec-dag.json");
-    const outPath = await regenerate();
+    const outPath = await regenerate(withAuditFindings);
     if (!noOpen) openInBrowser(outPath);
 
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -76,7 +86,7 @@ async function main(): Promise<void> {
       timer = setTimeout(() => {
         if (running) return;
         running = true;
-        regenerate()
+        regenerate(withAuditFindings)
           .catch((err: unknown) => {
             process.stderr.write(`dashboard regeneration failed: ${String(err)}\n`);
           })
@@ -88,7 +98,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const outPath = await regenerate();
+  const outPath = await regenerate(withAuditFindings);
   if (!noOpen) openInBrowser(outPath);
 }
 

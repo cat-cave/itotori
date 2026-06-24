@@ -1,7 +1,8 @@
 // Pure HTML renderer for the dashboard. The <style> block and body markup are
 // copied VERBATIM from spec-dag-dashboard.reference.mjs to preserve the UX; the
-// only additions are the provenance banner element (#provbanner) and a small
-// .provbanner CSS variant consistent with the existing .badwarn styling.
+// only additions are the provenance banner element (#provbanner), a small
+// .provbanner CSS variant consistent with the existing .badwarn styling, and
+// the alpha-gate-5 audit-findings banner + per-node finding badges.
 //
 // renderHtml takes the serializable data and the already-bundled client JS and
 // stitches them into one self-contained document. The embedded `var DATA`
@@ -11,6 +12,8 @@ import type { DashboardData } from "./types.js";
 
 export function renderHtml(data: DashboardData, clientJs: string): string {
   const dataJson = JSON.stringify(data).replace(/</g, "\\u003c");
+  const auditFindingsBannerHtml = renderAuditFindingsBanner(data);
+  const auditFindingsServerOpenList = renderAuditFindingsServerHtml(data);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -58,6 +61,18 @@ export function renderHtml(data: DashboardData, clientJs: string): string {
     border:1px solid var(--line);font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
   .provbanner.ok{color:#03150d;background:var(--done);border-color:transparent}
   .provbanner.warn{color:#2a0608;background:var(--bad);border-color:transparent}
+  .auditbanner{font-size:11.5px;font-weight:600;padding:5px 10px;border-radius:8px;color:var(--muted);
+    border:1px solid var(--line);font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  .auditbanner.ok{color:#03150d;background:var(--done);border-color:transparent}
+  .auditbanner.warn{color:#2a0608;background:var(--bad);border-color:transparent}
+  .auditbanner.disabled{color:var(--muted)}
+  .row .findings{display:flex;gap:3px;flex:none}
+  .findings .fb{font:700 9px monospace;padding:1px 5px;border-radius:4px}
+  .findings .fb.P0{color:#2a0608;background:var(--p0)}
+  .findings .fb.P1{color:#2a1400;background:var(--p1)}
+  .findings .fb.P2{color:#04223f;background:var(--p2)}
+  .findings .fb.P3{color:#15172a;background:var(--p3)}
+  #audit-findings-server-fallback{display:none}
 
   .main{display:grid;grid-template-columns:248px 1fr;min-height:0;position:relative}
   .list{border-right:1px solid var(--line);overflow:auto;height:100%}
@@ -153,6 +168,7 @@ export function renderHtml(data: DashboardData, clientJs: string): string {
     <label class="tg"><input type="checkbox" id="t_issues"> issues</label>
     <button class="clearbtn" id="clear">clear</button>
     <span class="spacer"></span>
+    ${auditFindingsBannerHtml}
     <span class="provbanner" id="provbanner"></span>
     <span class="stat">nodes <b id="s_nodes">0</b></span>
     <span class="stat">edges <b id="s_edges">0</b></span>
@@ -198,10 +214,83 @@ export function renderHtml(data: DashboardData, clientJs: string): string {
 <div class="toast" id="toast"></div>
 <div class="modal" id="modal"><div class="modalbox"><span class="close" id="modalclose">×</span><div id="modalbody"></div></div></div>
 
+${auditFindingsServerOpenList}
 <script>
 var DATA = ${dataJson};
 </script>
 <script>${clientJs}</script>
 </body>
 </html>`;
+}
+
+function renderAuditFindingsBanner(data: DashboardData): string {
+  const status = data.auditFindingsStatus;
+  if (status.kind === "loaded") {
+    return `<span class="auditbanner ok" id="auditbanner">audit findings: ${status.totalOpenFindings} open / ${status.nodesWithFindings} nodes</span>`;
+  }
+  if (status.kind === "error") {
+    const escaped = escapeHtml(status.reason);
+    return `<span class="auditbanner warn" id="auditbanner">audit findings could not be loaded: ${escaped}</span>`;
+  }
+  if (status.kind === "disabled" && status.reason === "database_url_not_set") {
+    return `<span class="auditbanner warn" id="auditbanner">DATABASE_URL not set; audit findings not rendered</span>`;
+  }
+  // flag_not_set: the dashboard ran in its default fixture-less mode.
+  return `<span class="auditbanner disabled" id="auditbanner">audit findings: disabled (pass --with-audit-findings to enable)</span>`;
+}
+
+/**
+ * Server-rendered, hidden-by-default list of every open finding per
+ * node. The interactive client reads DATA for the UI; this static
+ * fallback gives tests and non-JS readers a stable place to assert
+ * that findings made it into the rendered HTML.
+ */
+function renderAuditFindingsServerHtml(data: DashboardData): string {
+  const sections: string[] = [];
+  for (const node of data.nodes) {
+    const findings = node.findings.openFindings;
+    if (findings.length === 0) continue;
+    const badges = renderSeverityBadges(node.findings.counts);
+    const items = findings
+      .map((finding) => {
+        const sev = escapeHtml(finding.severity);
+        const cat = escapeHtml(finding.category);
+        const sum = escapeHtml(finding.summary);
+        const ref = finding.fileRef === null ? "" : ` (${escapeHtml(finding.fileRef)})`;
+        return `<li data-finding-id="${escapeHtml(finding.auditFindingId)}" data-severity="${sev}"><span class="fb ${sev}">${sev}</span> <span class="cat">${cat}</span>: ${sum}${ref}</li>`;
+      })
+      .join("");
+    sections.push(
+      `<section data-node-id="${escapeHtml(node.id)}" class="node-findings">` +
+        `<h3>${escapeHtml(node.id)} <span class="findings">${badges}</span></h3>` +
+        `<ul>${items}</ul>` +
+        `</section>`,
+    );
+  }
+  if (sections.length === 0) {
+    return `<div id="audit-findings-server-fallback" data-empty="true"></div>`;
+  }
+  return `<div id="audit-findings-server-fallback">${sections.join("")}</div>`;
+}
+
+function renderSeverityBadges(counts: { P0: number; P1: number; P2: number; P3: number }): string {
+  const parts: string[] = [];
+  for (const severity of ["P0", "P1", "P2", "P3"] as const) {
+    const count = counts[severity];
+    if (count > 0) {
+      parts.push(
+        `<span class="fb ${severity}" title="${severity} findings">${severity}:${count}</span>`,
+      );
+    }
+  }
+  return parts.join("");
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }

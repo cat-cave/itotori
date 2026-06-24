@@ -176,6 +176,13 @@ roadmap-dashboard-watch:
     pnpm --filter @itotori/spec-dag-dashboard build
     node packages/spec-dag-dashboard/dist/cli.js --watch
 
+# Seed itotori_audit_findings from docs/audits/*.md structured finding blocks.
+# Requires DATABASE_URL. Runs the migration first so the audit_findings table
+# is present even on a fresh DB.
+audit-findings-seed:
+    pnpm --filter @itotori/app build
+    node apps/itotori/dist/audit-findings/seed-cli.js
+
 upgrade:
     corepack enable
     node scripts/update-node-version.mjs
