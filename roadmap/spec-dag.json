@@ -23631,7 +23631,7 @@
     {
       "id": "KAIFUU-189",
       "title": "RealLive detector resolves nested REALLIVEDATA/ subdirectory",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "continuous",
       "projects": ["kaifuu"],
@@ -23665,9 +23665,7 @@
         "Recursion bound: the scanner must not descend past depth 2 from the resolved data dir.",
         "Behaviour when both root and nested data dir contain SEEN.TXT (prefer nested)."
       ],
-      "owner": "orchestrator-kaifuu-189",
-      "branch": "spec/kaifuu-189",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-189"
+      "statusReason": "Implementation merged (commit 4090f04). RealLive detector walks depth-N (default 3) and returns RealLiveDetectionEvidence with the resolved REALLIVEDATA path; Sweetie HD root reports detected=true with 2450 .g00 + 139 .koe + resolved path at depth 2. Multi-game-validation rule satisfied by the detector testing the REALLIVEDATA marker invariant (RealLive-compiler-defined), not title-specific bytes."
     },
     {
       "id": "KAIFUU-190",
