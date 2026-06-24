@@ -161,9 +161,9 @@ conflict-check, the CLI, and the existing glossary review queue.
 
 ```ts
 export type TerminologyCandidateStatus =
-  | "Fresh"             // emitted, never reviewed
-  | "Stale"             // a citation drifted
-  | "Promoted"          // accepted by reviewer, written into terminology_terms
+  | "Fresh" // emitted, never reviewed
+  | "Stale" // a citation drifted
+  | "Promoted" // accepted by reviewer, written into terminology_terms
   | "RejectedByReviewer"; // explicitly rejected (kept for audit)
 
 export type TerminologyCandidate = {
@@ -240,12 +240,12 @@ export type TerminologyCandidateModelProfile = {
 
 ```ts
 export type CandidateKind =
-  | "ProperNoun"            // character / place / brand name
-  | "TitleOrHonorific"      // 先輩 / 様 / 先生
-  | "TechnicalTerm"         // domain jargon
-  | "Catchphrase"           // recurring stylized phrase
-  | "SoundEffect"           // SFX / onomatopoeia
-  | "WrittenSign"           // text overlay seen as in-world signage
+  | "ProperNoun" // character / place / brand name
+  | "TitleOrHonorific" // 先輩 / 様 / 先生
+  | "TechnicalTerm" // domain jargon
+  | "Catchphrase" // recurring stylized phrase
+  | "SoundEffect" // SFX / onomatopoeia
+  | "WrittenSign" // text overlay seen as in-world signage
   | "Other";
 ```
 
@@ -297,7 +297,7 @@ export type ExistingGlossaryEntry = {
   /** All known aliases (for the same terminologyTermId). Includes
    *  the preferred form itself for convenient set membership. */
   aliases: ReadonlyArray<string>;
-  kind?: string;  // mapped from terminology_term_kind for context
+  kind?: string; // mapped from terminology_term_kind for context
 };
 
 export type PriorCandidateRef = {
@@ -517,7 +517,7 @@ New SQL migration via existing tooling. Additive only. Runs under
   conditions):
   - Within the same transaction, the repository calls a new helper
     `existsTerminologyTermBySurfaceForm(actor, tx, { projectId,
-  surfaceForm })` (added to
+surfaceForm })` (added to
     `terminology-repository.ts`).
   - If the helper returns a `terminologyTermId`, the repository
     writes the candidate row with
@@ -527,6 +527,7 @@ New SQL migration via existing tooling. Additive only. Runs under
   - This catches the case where a curator created the term in
     `itotori_terminology_terms` between the agent loading
     `existingGlossary` and persisting candidates.
+
 - `loadCandidatesByProject(actor, { projectId, localeBranchId,
 sourceRevisionId, [statusFilter] })`.
 - `currentSourceHashesForBridgeUnits(actor, { bridgeUnitIds })` —

@@ -550,6 +550,30 @@ export type {
   CharacterRelationshipStatus,
 } from "./schema.js";
 export {
+  ItotoriTerminologyCandidateRepository,
+  countTerminologyTerms,
+  terminologyCandidateInvalidatedReasonValues,
+  terminologyCandidateKindList,
+  terminologyCandidateKindValues,
+  terminologyCandidateStatusValues,
+} from "./repositories/terminology-candidate-repository.js";
+export type {
+  ExistsTerminologyTermBySurfaceFormInput,
+  ItotoriTerminologyCandidateRepositoryPort,
+  LoadTerminologyCandidatesQuery,
+  LoadCurrentSourceHashesInput as LoadTerminologyCandidateCurrentSourceHashesInput,
+  MarkTerminologyCandidatePromotedInput,
+  MarkTerminologyCandidateStaleInput,
+  SaveTerminologyCandidateInput,
+  TerminologyCandidateCitationRecord,
+  TerminologyCandidateRecord,
+} from "./repositories/terminology-candidate-repository.js";
+export type {
+  TerminologyCandidateInvalidatedReason,
+  TerminologyCandidateKind,
+  TerminologyCandidateStatus,
+} from "./schema.js";
+export {
   EngineCapabilityReportRepository,
   EngineCapabilityReportShapeError,
 } from "./repositories/engine-capability-report-repository.js";
