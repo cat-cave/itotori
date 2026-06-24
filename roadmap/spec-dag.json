@@ -24783,7 +24783,7 @@
     {
       "id": "ITOTORI-220",
       "title": "itotori-agent-runtime: required (modelId, providerId) pair across every agent seam",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -24825,7 +24825,9 @@
         "Recorded bundle key shape silently widened to accept legacy keys",
         "Capability-guard left keyed by model alone for a subset of agents"
       ],
-      "statusReason": "Minted 2026-06-24 per docs/proposals/alpha-gap-analysis-2026-06-24.md §3 ITOTORI-NEW-Apair: standing (model, providerId) pair rule needs an enforcement node before any live LLM call lands."
+      "owner": "orchestrator-itotori-220",
+      "branch": "spec/itotori-220",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-220"
     },
     {
       "id": "ITOTORI-221",
