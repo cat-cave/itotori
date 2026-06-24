@@ -1,17 +1,27 @@
 //! `RuntimeVfs` trait and concrete implementations.
 //!
-//! `MountedVfs` composes one or more `AssetPackage`s and routes by the
-//! `<package-id>` prefix carried in an `AssetId`. `PlaintextDirPackage` is a
-//! straight directory-tree `AssetPackage` impl backed by `std::fs`. It is
-//! the natural plaintext case for extracted Kaifuu vault trees and the
-//! synthetic-package fixture used by integration tests.
+//! `MountedVfs` is a thin wrapper around a single internal
+//! [`CompositeAssetPackage`] (substrate extension M.1, UTSUSHI-222). The
+//! caller registers plaintext directories and sealed archive readers in
+//! priority order via `mount_plaintext_dir` / `mount_archive`; every
+//! resolve walks the composite's source list first-match-wins. This
+//! replaces the route-by-package-id resolver that shipped with
+//! UTSUSHI-020. No shim, no `#[deprecated]` alias, no `legacy_*` module —
+//! the orchestration-operating-model "Legacy-path preservation" rule
+//! refuses dual paths.
+//!
+//! [`PlaintextDirPackage`] is the straight-directory `AssetPackage` impl
+//! backed by `std::fs`. It exposes a lazily-built case-folded directory
+//! index that the composite consumes so resolution is O(1) per lookup
+//! rather than O(directory) per call.
 
-use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
+use super::archive::{AssetArchiveReader, CaseFoldedIndex};
+use super::composite::CompositeAssetPackage;
 use super::diagnostics::{IoSummary, TraversalKind, VfsError, VfsResult};
 use super::id::AssetId;
 use super::package::{
@@ -21,8 +31,9 @@ use super::package::{
 
 /// Engine-neutral, read-only runtime virtual filesystem.
 ///
-/// Routes by the `<package-id>` prefix of an `AssetId` to one of the
-/// registered `AssetPackage`s.
+/// The composite-based [`MountedVfs`] is the in-tree implementation; the
+/// trait is kept abstract so engine ports can plug their own
+/// composition strategy.
 pub trait RuntimeVfs: Send + Sync {
     /// List packages mounted into this VFS. Order is deterministic
     /// per-implementation (typically registration order).
@@ -43,118 +54,110 @@ pub trait RuntimeVfs: Send + Sync {
     /// List immediate children under a directory-shaped asset id.
     fn list(&self, prefix: &AssetId) -> VfsResult<Vec<AssetId>>;
 
-    /// Resolve an engine-supplied logical path against a package id.
-    fn resolve(&self, package: &str, logical: &str) -> VfsResult<AssetId>;
+    /// Resolve an engine-supplied logical path to an [`AssetId`]. The
+    /// resolver walks the composite's source list first-match-wins.
+    fn resolve(&self, logical: &str) -> VfsResult<AssetId>;
 }
 
-/// In-memory composition of `AssetPackage` implementations.
+/// In-memory composition of one canonical [`AssetId`] package id over an
+/// ordered list of plaintext directories and sealed archive readers.
+#[derive(Debug)]
 pub struct MountedVfs {
-    packages: Vec<Arc<dyn AssetPackage>>,
-    index: BTreeMap<String, usize>,
+    composite: CompositeAssetPackage,
 }
 
 impl MountedVfs {
-    pub fn new() -> Self {
+    /// Construct an empty composite-backed VFS under the canonical package
+    /// id. `source` is the redacted public name surfaced via the
+    /// descriptor.
+    pub fn new(id: impl Into<String>, source: PackageSource) -> Self {
         Self {
-            packages: Vec::new(),
-            index: BTreeMap::new(),
+            composite: CompositeAssetPackage::new(id, source),
         }
     }
 
-    /// Register a package. Returns an error if the package id is empty or
-    /// collides with a previously-mounted package.
-    pub fn mount(&mut self, package: Arc<dyn AssetPackage>) -> VfsResult<()> {
-        let package_id = package.id().to_string();
-        if package_id.is_empty() {
-            return Err(VfsError::AssetPathUnsafe {
-                package: package_id,
-                logical: String::new(),
-                kind: TraversalKind::EmptySegment,
-            });
-        }
-        if self.index.contains_key(&package_id) {
-            return Err(VfsError::AssetOutsidePackage {
-                id: AssetId::from_parts(&package_id, "")?,
-                package: package_id,
-            });
-        }
-        let index = self.packages.len();
-        self.packages.push(package);
-        self.index.insert(package_id, index);
-        Ok(())
+    /// Attach a revision / content-hash provenance string. Forwarded to
+    /// [`AssetMetadata::revision`].
+    pub fn with_revision(mut self, revision: impl Into<String>) -> Self {
+        self.composite = self.composite.with_revision(revision);
+        self
     }
 
-    fn package_for(&self, id: &AssetId) -> VfsResult<&Arc<dyn AssetPackage>> {
-        let package_id = id.package();
-        let index = self
-            .index
-            .get(package_id)
-            .ok_or_else(|| VfsError::AssetOutsidePackage {
-                id: id.clone(),
-                package: package_id.to_string(),
-            })?;
-        Ok(&self.packages[*index])
+    /// Append a plaintext directory source. Earlier-registered sources
+    /// take precedence (first-match-wins).
+    pub fn mount_plaintext_dir(&mut self, dir: PlaintextDirPackage) {
+        self.composite.push_plaintext_dir(Arc::new(dir));
     }
-}
 
-impl Default for MountedVfs {
-    fn default() -> Self {
-        Self::new()
+    /// Append a sealed archive-reader source. Earlier-registered sources
+    /// take precedence (first-match-wins).
+    pub fn mount_archive(&mut self, archive: Arc<dyn AssetArchiveReader>) {
+        self.composite.push_archive(archive);
+    }
+
+    /// Borrow the internal composite. Exposed so callers that want to
+    /// pass the composite directly to a downstream consumer don't need to
+    /// re-build it. The composite implements [`AssetPackage`].
+    pub fn composite(&self) -> &CompositeAssetPackage {
+        &self.composite
     }
 }
 
 impl RuntimeVfs for MountedVfs {
     fn packages(&self) -> Vec<PackageDescriptor> {
-        self.packages
-            .iter()
-            .map(|package| package.descriptor())
-            .collect()
+        vec![self.composite.descriptor()]
     }
 
     fn exists(&self, id: &AssetId) -> VfsResult<bool> {
-        match self.package_for(id) {
-            Ok(package) => package.exists(id),
-            Err(VfsError::AssetOutsidePackage { .. }) => Ok(false),
-            Err(other) => Err(other),
-        }
+        self.composite.exists(id)
     }
 
     fn stat(&self, id: &AssetId) -> VfsResult<AssetMetadata> {
-        let package = self.package_for(id)?;
-        package.stat(id)
+        self.composite.stat(id)
     }
 
     fn open(&self, id: &AssetId) -> VfsResult<AssetBytes> {
-        let package = self.package_for(id)?;
-        package.open(id)
+        self.composite.open(id)
     }
 
     fn list(&self, prefix: &AssetId) -> VfsResult<Vec<AssetId>> {
-        let package = self.package_for(prefix)?;
-        package.list(prefix)
+        self.composite.list(prefix)
     }
 
-    fn resolve(&self, package: &str, logical: &str) -> VfsResult<AssetId> {
-        let index = self
-            .index
-            .get(package)
-            .ok_or_else(|| VfsError::AssetPathUnsafe {
-                package: package.to_string(),
-                logical: logical.to_string(),
-                kind: TraversalKind::EmptySegment,
-            })?;
-        self.packages[*index].resolve(logical)
+    fn resolve(&self, logical: &str) -> VfsResult<AssetId> {
+        self.composite.resolve(logical)
     }
 }
 
 /// Plaintext directory-tree `AssetPackage`. Reads via `std::fs`; never shells
 /// out. Suitable for extracted Kaifuu trees and the synthetic-package fixture.
+///
+/// Exposes a [`CaseFoldedIndex`] built lazily on first request and cached
+/// for the lifetime of the package. The composite uses that index to give
+/// O(1) per-lookup resolution across mixed plaintext/archive sources.
 pub struct PlaintextDirPackage {
     id: String,
     root: PathBuf,
     case_rule: CaseRule,
     source: PackageSource,
     revision: Option<String>,
+    /// Lazily-built case-folded index of every file under `root`.
+    /// `OnceLock` enforces a single build; the cached value is reused
+    /// across every composite resolve, satisfying the audit-focus
+    /// rebuild-per-call invariant.
+    index: OnceLock<Result<CaseFoldedIndex, VfsError>>,
+}
+
+impl std::fmt::Debug for PlaintextDirPackage {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("PlaintextDirPackage")
+            .field("id", &self.id)
+            .field("case_rule", &self.case_rule)
+            .field("source", &self.source)
+            .field("revision", &self.revision)
+            .finish_non_exhaustive()
+    }
 }
 
 impl PlaintextDirPackage {
@@ -173,12 +176,25 @@ impl PlaintextDirPackage {
             case_rule,
             source,
             revision: None,
+            index: OnceLock::new(),
         }
     }
 
     pub fn with_revision(mut self, revision: impl Into<String>) -> Self {
         self.revision = Some(revision.into());
         self
+    }
+
+    /// Borrow the lazily-built case-folded directory index. Walks the root
+    /// the first time it's called and caches the result.
+    pub fn case_folded_index(&self) -> VfsResult<&CaseFoldedIndex> {
+        let cell = self
+            .index
+            .get_or_init(|| build_dir_index(&self.id, &self.root));
+        match cell {
+            Ok(index) => Ok(index),
+            Err(error) => Err(error.clone()),
+        }
     }
 
     fn join_under_root(&self, id: &AssetId) -> VfsResult<PathBuf> {
@@ -200,10 +216,6 @@ impl PlaintextDirPackage {
             }
             accumulator.push(segment);
         }
-        // Verify the resolved path does not escape the package root via a
-        // symlink resolution upstream. We do not call canonicalize here
-        // (which would touch the host fs); instead we re-check the component
-        // structure: `Path::join` cannot escape because we rejected `..` above.
         for component in accumulator.components() {
             if matches!(component, Component::ParentDir) {
                 return Err(VfsError::AssetPathUnsafe {
@@ -442,23 +454,110 @@ impl AssetPackage for PlaintextDirPackage {
     }
 }
 
+impl super::archive::sealed::Sealed for PlaintextDirPackage {}
+
+/// Walk `root` recursively, building a case-folded index of every file
+/// path relative to `root`. Used as the one-shot lazy initialiser for
+/// [`PlaintextDirPackage::case_folded_index`].
+///
+/// Directory traversal failures are surfaced via [`VfsError::PackageIo`]
+/// so the composite resolver reports a redaction-safe diagnostic instead
+/// of leaking the host path through the underlying `io::Error`.
+fn build_dir_index(package_id: &str, root: &Path) -> Result<CaseFoldedIndex, VfsError> {
+    let mut index = CaseFoldedIndex::new();
+    let root_metadata = match fs::symlink_metadata(root) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            // No root → empty index. Composite resolves miss; no error.
+            return Ok(index);
+        }
+        Err(error) => {
+            return Err(VfsError::PackageIo {
+                id: AssetId::from_parts(package_id, "")?,
+                summary: IoSummary::from_io_error_kind(error.kind()),
+            });
+        }
+    };
+    if !root_metadata.is_dir() {
+        return Ok(index);
+    }
+    walk_dir(package_id, root, root, &mut index)?;
+    Ok(index)
+}
+
+fn walk_dir(
+    package_id: &str,
+    root: &Path,
+    current: &Path,
+    index: &mut CaseFoldedIndex,
+) -> Result<(), VfsError> {
+    let entries = match fs::read_dir(current) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(VfsError::PackageIo {
+                id: AssetId::from_parts(package_id, "")?,
+                summary: IoSummary::from_io_error_kind(error.kind()),
+            });
+        }
+    };
+    for entry in entries {
+        let entry = entry.map_err(|error| VfsError::PackageIo {
+            id: AssetId::from_parts(package_id, "").expect("valid package id"),
+            summary: IoSummary::from_io_error_kind(error.kind()),
+        })?;
+        let file_type = entry.file_type().map_err(|error| VfsError::PackageIo {
+            id: AssetId::from_parts(package_id, "").expect("valid package id"),
+            summary: IoSummary::from_io_error_kind(error.kind()),
+        })?;
+        let entry_path = entry.path();
+        if file_type.is_dir() {
+            walk_dir(package_id, root, &entry_path, index)?;
+        } else if file_type.is_file() {
+            let Ok(relative) = entry_path.strip_prefix(root) else {
+                continue;
+            };
+            // Build a forward-slash-separated logical path from the
+            // platform-native path components. Skip non-UTF8 names.
+            let mut segments: Vec<String> = Vec::new();
+            let mut valid = true;
+            for component in relative.components() {
+                let Component::Normal(os_segment) = component else {
+                    continue;
+                };
+                match os_segment.to_str() {
+                    Some(segment) => segments.push(segment.to_string()),
+                    None => {
+                        valid = false;
+                        break;
+                    }
+                }
+            }
+            if !valid || segments.is_empty() {
+                continue;
+            }
+            index.insert(segments.join("/"));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
     use tempfile::TempDir;
 
-    fn make_temp_package(case_rule: CaseRule) -> (TempDir, Arc<dyn AssetPackage>) {
+    fn make_temp_package(case_rule: CaseRule) -> (TempDir, PlaintextDirPackage) {
         let temp = tempfile::tempdir().unwrap();
         fs::create_dir_all(temp.path().join("nested")).unwrap();
         fs::write(temp.path().join("intro.txt"), "hello world\n").unwrap();
         fs::write(temp.path().join("nested").join("glyph.txt"), "glyph").unwrap();
-        let package = Arc::new(PlaintextDirPackage::new(
+        let package = PlaintextDirPackage::new(
             "hello",
             temp.path(),
             case_rule,
             PackageSource::PublicName("public-fixture:plaintext".to_string()),
-        )) as Arc<dyn AssetPackage>;
+        );
         (temp, package)
     }
 
@@ -531,52 +630,51 @@ mod tests {
     }
 
     #[test]
-    fn mounted_vfs_routes_to_correct_package_by_id() {
-        let (_temp_a, package_a) = make_temp_package(CaseRule::Sensitive);
-        let temp_b = tempfile::tempdir().unwrap();
-        fs::write(temp_b.path().join("greeting.txt"), "yo").unwrap();
-        let package_b = Arc::new(PlaintextDirPackage::new(
-            "other",
-            temp_b.path(),
-            CaseRule::Sensitive,
-            PackageSource::PublicName("public-fixture:other".to_string()),
-        )) as Arc<dyn AssetPackage>;
-        let mut vfs = MountedVfs::new();
-        vfs.mount(package_a).unwrap();
-        vfs.mount(package_b).unwrap();
-
-        let bytes_a = vfs
-            .open(&AssetId::from_parts("hello", "intro.txt").unwrap())
-            .unwrap();
-        assert_eq!(bytes_a.as_slice(), b"hello world\n");
-
-        let bytes_b = vfs
-            .open(&AssetId::from_parts("other", "greeting.txt").unwrap())
-            .unwrap();
-        assert_eq!(bytes_b.as_slice(), b"yo");
+    fn case_folded_index_is_built_once_and_cached() {
+        let (_temp, package) = make_temp_package(CaseRule::Sensitive);
+        let first = package.case_folded_index().unwrap() as *const CaseFoldedIndex;
+        let second = package.case_folded_index().unwrap() as *const CaseFoldedIndex;
+        assert_eq!(first, second, "OnceLock must hand back the same reference");
     }
 
     #[test]
-    fn mounted_vfs_unknown_package_id_returns_asset_outside_package() {
-        let vfs = MountedVfs::new();
-        let id = AssetId::from_parts("missing", "x.txt").unwrap();
-        let err = vfs.open(&id).unwrap_err();
-        match err {
-            VfsError::AssetOutsidePackage { package, .. } => {
-                assert_eq!(package, "missing");
-            }
-            other => panic!("expected AssetOutsidePackage, got {other:?}"),
-        }
+    fn case_folded_index_contains_every_file_under_root() {
+        let (_temp, package) = make_temp_package(CaseRule::Sensitive);
+        let index = package.case_folded_index().unwrap();
+        assert_eq!(index.len(), 2);
+        assert_eq!(
+            index.lookup("intro.txt").unwrap().stored_path(),
+            "intro.txt"
+        );
+        assert_eq!(
+            index.lookup("nested/glyph.txt").unwrap().stored_path(),
+            "nested/glyph.txt"
+        );
     }
 
     #[test]
-    fn mounted_vfs_rejects_duplicate_package_id() {
-        let (_temp_a, package_a) = make_temp_package(CaseRule::Sensitive);
-        let (_temp_b, package_b) = make_temp_package(CaseRule::Sensitive);
-        let mut vfs = MountedVfs::new();
-        vfs.mount(package_a).unwrap();
-        let err = vfs.mount(package_b).unwrap_err();
-        assert!(matches!(err, VfsError::AssetOutsidePackage { .. }));
+    fn mounted_vfs_routes_through_internal_composite() {
+        let (_temp, package) = make_temp_package(CaseRule::Sensitive);
+        let mut vfs = MountedVfs::new(
+            "hello",
+            PackageSource::PublicName("public-fixture:hello".to_string()),
+        );
+        vfs.mount_plaintext_dir(package);
+        let id = vfs.resolve("intro.txt").unwrap();
+        let bytes = vfs.open(&id).unwrap();
+        assert_eq!(bytes.as_slice(), b"hello world\n");
+    }
+
+    #[test]
+    fn mounted_vfs_unknown_logical_returns_asset_missing() {
+        let (_temp, package) = make_temp_package(CaseRule::Sensitive);
+        let mut vfs = MountedVfs::new(
+            "hello",
+            PackageSource::PublicName("public-fixture:hello".to_string()),
+        );
+        vfs.mount_plaintext_dir(package);
+        let err = vfs.resolve("definitely-absent.bin").unwrap_err();
+        assert!(matches!(err, VfsError::AssetMissing { .. }));
     }
 
     #[test]

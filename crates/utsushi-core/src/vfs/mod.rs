@@ -1,18 +1,26 @@
 //! Runtime virtual filesystem and asset-package boundary.
 //!
-//! See plan `.plan/UTSUSHI-020.md` for the design rationale. The trait
-//! surface is engine-neutral, read-only, and produces redaction-safe
-//! diagnostics. `RuntimeVfs` is implemented by `MountedVfs`, which routes by
-//! the `<package-id>` prefix of an `AssetId` to one of its registered
-//! `AssetPackage` implementations. The plaintext directory case is provided
-//! as `PlaintextDirPackage`; engine-specific packages (XP3, RGSS3, RPGMVP)
-//! live in their own crates and implement `AssetPackage` directly.
+//! See plan `.plan/UTSUSHI-020.md` for the design rationale and
+//! `docs/audits/substrate-honesty.md` §M.1 for the multiplex extension
+//! that landed with UTSUSHI-222. The trait surface is engine-neutral,
+//! read-only, and produces redaction-safe diagnostics.
+//!
+//! `RuntimeVfs` is implemented by `MountedVfs`, which composes one
+//! canonical [`id::AssetId`] package id over an ordered, first-match-wins
+//! list of plaintext directories and sealed archive readers. The
+//! plaintext-directory case is provided as `PlaintextDirPackage`; archive
+//! readers are deferred to follow-up engine nodes (PAK, XP3) and plug in
+//! through the sealed [`archive::AssetArchiveReader`] trait.
 
+pub mod archive;
+pub mod composite;
 pub mod diagnostics;
 pub mod id;
 pub mod package;
 pub mod runtime;
 
+pub use archive::{AssetArchiveReader, CaseFoldedIndex, CaseFoldedIndexEntry};
+pub use composite::{CompositeAssetPackage, CompositeSource};
 pub use diagnostics::{
     AssetIdErrorReason, AssetRef, HelperId, IoSummary, RequiredCapability, ResourceBoundKind,
     TransformKind, TraversalKind, VfsError, VfsResult, codes,
