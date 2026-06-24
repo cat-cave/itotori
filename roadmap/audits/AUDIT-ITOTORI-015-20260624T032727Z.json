@@ -1,0 +1,83 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-015-20260624T032727Z",
+  "generatedAt": "2026-06-24T03:27:28Z",
+  "spec": {
+    "id": "ITOTORI-015",
+    "title": "Route and choice map agent",
+    "branch": "spec/itotori-015",
+    "worktree": "/scratch/worktrees/itotori-spec-itotori-015",
+    "commit": "13ad9c7"
+  },
+  "auditor": {
+    "name": "itotori-015-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "blocked",
+    "text": "Iter-8 correctness audit of ITOTORI-015 (Route and choice map agent) at commit 13ad9c7 on spec/itotori-015. The slice ships `apps/itotori/src/agents/route-choice-map/` (agent.ts 411 LOC, cli.ts 234, persistence.ts 188, prompt-template.ts 119, shapes.ts 257, staleness.ts 202, index.ts 64), the repository `packages/itotori-db/src/repositories/route-choice-map-repository.ts` (710 LOC), and 25 tests across `route-choice-map-agent.test.ts` (20 cases) and `route-choice-map-staleness.test.ts` (5 cases). Defenses for citations and engine-neutral provider gating are correctly wired: agent.ts:103 and agent.ts:147 throw `RouteUncitedError` when an emitted route arrives with no citations, and the parallel `ChoiceUncitedError`/`UnknownRouteError`/`ChoiceOptionOutOfOrderError` paths are present. cli.ts:67-76 mirror the character-relationship `ITOTORI_LIVE_PROVIDER=1` gate verbatim (refuses any non-fake family unless the env var is set), and the FakeModelProvider default at cli.ts:72 means CI never reaches a live provider. Staleness distinguishes `source_hash_drift` (mark Stale) from `unknown_route_target` (also mark Stale; routes whose target choice option drifted) as planned. F001 is a P1 blocker: the new migration `packages/itotori-db/migrations/0032_route_choice_maps.sql` (136 LOC, 3 tables: `itotori_route_maps`, `itotori_route_choices`, `itotori_route_evidence`) is NOT registered in `packages/itotori-db/src/migrations.ts` (the migrations list still ends at `0031_character_relationships`); `git diff HEAD~1 HEAD -- packages/itotori-db/src/migrations.ts` is empty, confirming the worker forgot the registration step. Tests still pass because all 25 test cases use an in-memory `InMemoryRouteChoiceMapRepository` (see `route-choice-map-staleness.test.ts:14`) and never run the SQL — so the green test suite hides the fact that production deploy will leave `itotori_route_maps` non-existent and the `ItotoriRouteChoiceMapRepository` SQL queries will fail at first call. The orchestrator's migration-collision note (ITOTORI-015 + ITOTORI-016 both need entries appended in order at merge) calls out exactly this gap, but it cannot be deferred to merge time because each spec branch is supposed to land its own migration registration. Verification: `pnpm --filter @itotori/app test -- --run agents/route-choice-map` 25 test files passed (281 passed | 3 skipped); `just check` exit 0 (fmt+clippy+ts:typecheck+schema:check clean). One P1 finding (F001) blocks completion; no other findings — the structural defenses (citation closure, FakeModelProvider gating, staleness reasons) are all sound.",
+    "counts": {
+      "P0": 0,
+      "P1": 1,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "blocked",
+    "blockingFindingIds": ["ITOTORI-015-F001"],
+    "followUpFindingIds": []
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-015-F001",
+      "severity": "P1",
+      "title": "Migration 0032_route_choice_maps.sql is not registered in migrations.ts",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/migrations.ts",
+          "line": 187,
+          "symbol": "migrations array"
+        },
+        {
+          "path": "packages/itotori-db/migrations/0032_route_choice_maps.sql"
+        }
+      ],
+      "description": "The new SQL migration `packages/itotori-db/migrations/0032_route_choice_maps.sql` (3 tables: `itotori_route_maps`, `itotori_route_choices`, `itotori_route_evidence`) is shipped on disk but is NOT appended to the registered `migrations` array in `packages/itotori-db/src/migrations.ts`. The array still terminates at `{ id: \"0031_character_relationships\", file: \"0031_character_relationships.sql\" }` on line 184-186, followed immediately by the `] as const;` closing brace on line 187. `git diff 13ad9c7~1 13ad9c7 -- packages/itotori-db/src/migrations.ts` returns empty output, confirming the worker did not touch the registration file. Because `migrate()` (lines 14-50 of `migrations.ts`) only iterates the in-array entries, the 0032 migration will never run at production deploy and the three new tables will not exist. Any first call to `ItotoriRouteChoiceMapRepository.upsertRouteMap` / `recordEvidence` / `markStale` will surface as a PostgreSQL `relation \"itotori_route_maps\" does not exist` error. The 25 vitest cases all use an `InMemoryRouteChoiceMapRepository` (see `apps/itotori/test/route-choice-map-staleness.test.ts:14` and the corresponding agent test) and never exercise the SQL repository, so the green suite hides the gap. The collision note in the orchestrator brief (ITOTORI-015 + ITOTORI-016 both need ordered entries appended at merge) describes the same problem but does not defer the per-spec responsibility: each branch must land its own migration registration so the merge is a plain concatenation, not a hand-stitched recovery.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "`grep -n '0032' packages/itotori-db/src/migrations.ts` returns no lines; `grep -n '0031' packages/itotori-db/src/migrations.ts` returns the closing entry at line 184-186. The migrations array literal ends at line 187 with `] as const;`."
+        },
+        {
+          "kind": "file",
+          "detail": "`packages/itotori-db/migrations/0032_route_choice_maps.sql` exists on disk (136 LOC, three tables) but is unreferenced by the registration file.",
+          "location": {
+            "path": "packages/itotori-db/migrations/0032_route_choice_maps.sql"
+          }
+        },
+        {
+          "kind": "command",
+          "detail": "`git diff 13ad9c7~1 13ad9c7 -- packages/itotori-db/src/migrations.ts` returns empty output (no diff lines), confirming the worker's iteration did not modify the registration file."
+        },
+        {
+          "kind": "test",
+          "detail": "All 25 vitest cases pass because the agent and staleness tests use an in-process `InMemoryRouteChoiceMapRepository` that ignores SQL entirely. The DB-backed repository's SQL is never exercised by CI; a smoke test against a real Postgres connection would fail at first call."
+        }
+      ],
+      "impact": "Production deploy of this spec to main will leave the three new tables non-existent. The first attempt to write a route-choice-map record (via the `generate-route-maps` CLI or any consumer of `ItotoriRouteChoiceMapRepository`) will fail with a PostgreSQL `relation does not exist` error. The repository's authorization-aware wrappers will surface the failure as an unhandled exception, blocking ingestion. The fix is one structural literal append plus a small ordering invariant; deferring this to merge time risks the post-merge migrations.ts edit being lost or ordered wrong.",
+      "actionableAcceptanceCriteria": [
+        "Append `{ id: \"0032_route_choice_maps\", file: \"0032_route_choice_maps.sql\" }` to the `migrations` array literal in `packages/itotori-db/src/migrations.ts` immediately after the `0031_character_relationships` entry (before the closing `] as const;`).",
+        "Re-run `pnpm --filter @itotori/app test -- --run agents/route-choice-map` and confirm the 25-test suite remains green.",
+        "Re-run `just check` (fmt + clippy + ts:typecheck + schema:check + spec DAG validate) and confirm exit 0.",
+        "Confirm by `grep -n '0032_route_choice_maps' packages/itotori-db/src/migrations.ts` that the registration appears exactly once in the array literal."
+      ],
+      "orchestration": {
+        "blocksCompletion": true,
+        "nextAction": "repair_before_completion"
+      }
+    }
+  ]
+}
