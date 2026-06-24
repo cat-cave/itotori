@@ -11641,7 +11641,7 @@
     {
       "id": "ITOTORI-074",
       "title": "Draft job schema and repository",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11686,9 +11686,7 @@
         "Retry state encoded only in provider logs",
         "Migration drift weakening draft job constraints"
       ],
-      "owner": "orchestrator-itotori-074",
-      "branch": "spec/itotori-074",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-074"
+      "statusReason": "Implementation merged (commit 222f36b). Migration 0034_draft_jobs registered; ItotoriDraftJobRepository with 8 methods (5 draftWrite + 3 catalogRead); 312 vitest tests pass with DATABASE_URL; auth-matrix +8 entries; just check exit 0."
     },
     {
       "id": "ITOTORI-075",
