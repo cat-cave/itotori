@@ -6162,7 +6162,7 @@
     {
       "id": "ITOTORI-014",
       "title": "Character relationship agent",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -6206,7 +6206,10 @@
         "Hallucinated bios",
         "Missing chronology",
         "Reader-known vs parser-known confusion"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/itotori-014",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-014"
     },
     {
       "id": "ITOTORI-015",
@@ -14367,7 +14370,7 @@
     {
       "id": "UTSUSHI-062",
       "title": "Bridge-linked jump target and replay-log fixture",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -14400,12 +14403,15 @@
         "Jump target fixture not linked to bridge units",
         "Replay log nondeterminism",
         "Unsupported jump capability hidden as success"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-062",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-062"
     },
     {
       "id": "UTSUSHI-063",
       "title": "Fixture snapshot restore playback smoke",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -14438,12 +14444,15 @@
         "Snapshot restore nondeterminism",
         "Artifact schema missing replay state",
         "Unsupported snapshot capability hidden"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-063",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-063"
     },
     {
       "id": "UTSUSHI-064",
       "title": "Controlled playback recording metadata smoke",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -14476,7 +14485,10 @@
         "Recording bytes embedded in reports",
         "Trace-to-frame linkage missing",
         "Artifact root confinement bypass"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-064",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-064"
     },
     {
       "id": "UTSUSHI-065",
