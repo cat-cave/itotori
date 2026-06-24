@@ -6706,7 +6706,7 @@
     {
       "id": "ITOTORI-025",
       "title": "Patch export and Kaifuu handoff v0.2",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "kaifuu"],
@@ -6751,9 +6751,7 @@
         }
       ],
       "auditFocus": ["Engine leakage into Itotori", "Skipping preflight", "Stale source exports"],
-      "owner": "orchestrator-itotori-025",
-      "branch": "spec/itotori-025",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-025"
+      "statusReason": "Implementation merged (commit 022abd2). Patch export v0.2 schema + preflight (4 blocking + 2 warn) + PatchExporter + export-patch-v2 CLI + just hello-patch recipe + 20 tests. just hello-patch produces valid bundle end-to-end."
     },
     {
       "id": "ITOTORI-026",
