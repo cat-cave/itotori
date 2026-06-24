@@ -14367,7 +14367,7 @@
     {
       "id": "UTSUSHI-062",
       "title": "Bridge-linked jump target and replay-log fixture",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -14400,10 +14400,7 @@
         "Jump target fixture not linked to bridge units",
         "Replay log nondeterminism",
         "Unsupported jump capability hidden as success"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-062",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-062"
+      ]
     },
     {
       "id": "UTSUSHI-063",
