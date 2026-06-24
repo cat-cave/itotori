@@ -38,6 +38,12 @@ import {
   runGenerateSceneSummariesCli,
   type SceneSummaryCliDependencies,
 } from "./agents/scene-summary/index.js";
+import {
+  resolveCharacterRelationshipProvider,
+  runCheckCharacterRelationshipsCli,
+  runGenerateCharacterRelationshipsCli,
+  type CharacterRelationshipCliDependencies,
+} from "./agents/character-relationship/index.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -62,6 +68,12 @@ export type ItotoriCliServices = {
      * actor). Optional so unit suites can omit it.
      */
     cliDependencies(provider: ProviderFamily): Promise<SceneSummaryCliDependencies>;
+    defaultModelId: string;
+    defaultProviderFamily: ProviderFamily;
+    defaultContextWindowTokens: number;
+  };
+  characterRelationship?: {
+    cliDependencies(provider: ProviderFamily): Promise<CharacterRelationshipCliDependencies>;
     defaultModelId: string;
     defaultProviderFamily: ProviderFamily;
     defaultContextWindowTokens: number;
@@ -131,6 +143,12 @@ export async function runItotoriCliCommand(
       break;
     case "check-scene-summaries":
       await runCheckSceneSummariesHandler(args, dependencies);
+      break;
+    case "generate-character-relationships":
+      await runGenerateCharacterRelationshipsHandler(args, dependencies);
+      break;
+    case "check-character-relationships":
+      await runCheckCharacterRelationshipsHandler(args, dependencies);
       break;
     case "engine-capabilities-record":
       await runEngineCapabilitiesRecord(args, dependencies);
@@ -500,6 +518,97 @@ async function runCheckSceneSummariesHandler(
 // Helper used internally during the legacy CLI bridging so unused-import lints
 // pass while the resolveSceneSummaryProvider symbol stays public for embedders.
 export const _internalResolveSceneSummaryProviderForCliHandlers = resolveSceneSummaryProvider;
+
+async function runGenerateCharacterRelationshipsHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const projectId = requiredFlag(args, "--project");
+  const localeBranchId = requiredFlag(args, "--locale-branch");
+  const sourceLocale = requiredFlag(args, "--source-locale");
+  const sourceRevisionId = requiredFlag(args, "--source-revision");
+  const modelId = optionalFlag(args, "--model");
+  const providerRaw = optionalFlag(args, "--provider");
+  const characterId = optionalFlag(args, "--character-id");
+  const includeStale = args.includes("--include-stale");
+  const dryRun = args.includes("--dry-run");
+  const contextWindowRaw = optionalFlag(args, "--context-window");
+  const maxOutputRaw = optionalFlag(args, "--max-output-tokens");
+
+  await dependencies.withServices(async (services) => {
+    if (!services.characterRelationship) {
+      throw new Error("character-relationship service factory is not configured in this CLI build");
+    }
+    const providerFamily =
+      providerRaw === undefined
+        ? services.characterRelationship.defaultProviderFamily
+        : asProviderFamily(providerRaw);
+    const deps = await services.characterRelationship.cliDependencies(providerFamily);
+    const result = await runGenerateCharacterRelationshipsCli(
+      {
+        projectId,
+        localeBranchId,
+        sourceLocale,
+        sourceRevisionId,
+        modelProfile: {
+          providerFamily,
+          modelId: modelId ?? services.characterRelationship.defaultModelId,
+          contextWindowTokens:
+            contextWindowRaw === undefined
+              ? services.characterRelationship.defaultContextWindowTokens
+              : Number.parseInt(contextWindowRaw, 10),
+          ...(maxOutputRaw === undefined
+            ? {}
+            : { maxOutputTokens: Number.parseInt(maxOutputRaw, 10) }),
+        },
+        ...(characterId === undefined ? {} : { characterIdFilter: characterId }),
+        includeStale,
+        dryRun,
+      },
+      deps,
+    );
+    process.stdout.write(
+      `bios_generated=${result.generatedBioCount} relationships_generated=${result.generatedRelationshipCount} bios_skipped_fresh=${result.skippedFreshBioCount}\n`,
+    );
+  });
+}
+
+async function runCheckCharacterRelationshipsHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const projectId = requiredFlag(args, "--project");
+  const localeBranchId = requiredFlag(args, "--locale-branch");
+  const sourceRevisionId = requiredFlag(args, "--source-revision");
+  const markStale = args.includes("--mark-stale");
+  const providerRaw = optionalFlag(args, "--provider");
+
+  await dependencies.withServices(async (services) => {
+    if (!services.characterRelationship) {
+      throw new Error("character-relationship service factory is not configured in this CLI build");
+    }
+    const providerFamily =
+      providerRaw === undefined
+        ? services.characterRelationship.defaultProviderFamily
+        : asProviderFamily(providerRaw);
+    const deps = await services.characterRelationship.cliDependencies(providerFamily);
+    const result = await runCheckCharacterRelationshipsCli(
+      {
+        projectId,
+        localeBranchId,
+        sourceRevisionId,
+        markStale,
+      },
+      deps,
+    );
+    process.stdout.write(
+      `scanned_bios=${result.scannedBioCount} scanned_relationships=${result.scannedRelationshipCount} drifted_bios=${result.driftedBios.length} drifted_relationships=${result.driftedRelationships.length} marked_stale_bios=${result.markedStaleBioCount} marked_stale_relationships=${result.markedStaleRelationshipCount}\n`,
+    );
+  });
+}
+
+export const _internalResolveCharacterRelationshipProviderForCliHandlers =
+  resolveCharacterRelationshipProvider;
 
 // KAIFUU-053: CLI commands for the capability-leveled engine detector
 // registry. `engine-capabilities-record` upserts one adapter's matrix

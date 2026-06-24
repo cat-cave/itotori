@@ -10,10 +10,10 @@
 - **Dependencies landed**: ITOTORI-013 (scene-summary agent — the pattern
   this slice mirrors), ITOTORI-012 (provider routing + recorded providers),
   ITOTORI-010 (project workflow), ITOTORI-049 / ITOTORI-052 (bridge unit
-  + locale branch foundations).
+  - locale branch foundations).
 - **Direct downstream**: future drafting batches that need a character bio
-  + relationship pack alongside the scene summary; ITOTORI-016 terminology
-  mining (relationship surface informs glossary candidate terms).
+  - relationship pack alongside the scene summary; ITOTORI-016 terminology
+    mining (relationship surface informs glossary candidate terms).
 
 ## 1. Goal restatement
 
@@ -180,10 +180,7 @@ export type CharacterBio = {
   generatedAt: string;
   status: CharacterRelationshipStatus;
   invalidatedAt?: string;
-  invalidatedReason?:
-    | "source_hash_drift"
-    | "template_version_bump"
-    | "manual";
+  invalidatedReason?: "source_hash_drift" | "template_version_bump" | "manual";
 };
 ```
 
@@ -241,10 +238,7 @@ export type CharacterRelationship = {
   generatedAt: string;
   status: CharacterRelationshipStatus;
   invalidatedAt?: string;
-  invalidatedReason?:
-    | "source_hash_drift"
-    | "template_version_bump"
-    | "manual";
+  invalidatedReason?: "source_hash_drift" | "template_version_bump" | "manual";
 };
 
 export type CharacterRelationshipModelProfile = {
@@ -365,7 +359,7 @@ Promise<CharacterRelationshipOutput>` in `agent.ts`. Pipeline:
    value observed in `units`. Canonicalize ordering by string sort. The
    agent does not invent characters outside this roster.
 4. **Canonicalize input.** Sort `units` by `(sourceUnitKey,
-   occurrenceId)` to match the planner's ordering; sort
+occurrenceId)` to match the planner's ordering; sort
    `glossaryExcerpt` by `termKey`; sort `curatedCharacters` by
    `characterId`.
 5. **Build prompt** via `prompt-template.ts` (see §4.1). Hash the prompt
@@ -384,7 +378,7 @@ Promise<CharacterRelationshipOutput>` in `agent.ts`. Pipeline:
    - `characterId` must appear in the computed roster — else
      `UnknownCharacterError`.
    - `citedUnitIds.length > 0` and every cited id is in `input.units`.
-   For every emitted relationship:
+     For every emitted relationship:
    - Both `fromCharacterId` and `toCharacterId` must appear in the
      roster.
    - `citedUnitIds.length > 0` — else `UncitedEdgeError`.

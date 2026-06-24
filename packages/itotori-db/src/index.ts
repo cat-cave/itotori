@@ -519,6 +519,37 @@ export type {
   SceneSummaryStatus,
 } from "./repositories/scene-summary-repository.js";
 export {
+  ItotoriCharacterRelationshipRepository,
+  characterBioStatusValues,
+  characterRelationshipDirectionList,
+  characterRelationshipDirectionValues,
+  characterRelationshipInvalidatedReasonValues,
+  characterRelationshipKindList,
+  characterRelationshipKindValues,
+  characterRelationshipStatusValues,
+} from "./repositories/character-relationship-repository.js";
+export type {
+  CharacterBioRecord,
+  CharacterCitationRecord,
+  CharacterRelationshipRecord,
+  ItotoriCharacterRelationshipRepositoryPort,
+  LoadCharacterBioByCharacter,
+  LoadCharacterBiosQuery,
+  LoadCharacterRelationshipsQuery,
+  LoadCurrentSourceHashesInput as LoadCharacterRelationshipCurrentSourceHashesInput,
+  MarkCharacterBioStaleInput,
+  MarkCharacterRelationshipStaleInput,
+  SaveCharacterBioInput,
+  SaveCharacterRelationshipInput,
+} from "./repositories/character-relationship-repository.js";
+export type {
+  CharacterBioStatus,
+  CharacterRelationshipDirection,
+  CharacterRelationshipInvalidatedReason,
+  CharacterRelationshipKind,
+  CharacterRelationshipStatus,
+} from "./schema.js";
+export {
   EngineCapabilityReportRepository,
   EngineCapabilityReportShapeError,
 } from "./repositories/engine-capability-report-repository.js";

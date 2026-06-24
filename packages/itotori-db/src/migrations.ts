@@ -180,6 +180,10 @@ export const migrations = [
     id: "0030_engine_capability_reports",
     file: "0030_engine_capability_reports.sql",
   },
+  {
+    id: "0031_character_relationships",
+    file: "0031_character_relationships.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

@@ -3172,3 +3172,206 @@ export const engineCapabilityReports = pgTable(
     index("itotori_engine_capability_reports_level_idx").on(table.level, table.statusKind),
   ],
 );
+
+// ITOTORI-014: character relationship agent persistence.
+//
+// Three tables back the character bio + relationship pack a project owns at
+// a given (project, locale branch, source revision, prompt template) tuple.
+// The bio and relationship tables share lifecycle semantics with
+// itotori_scene_summaries: a Fresh row is the latest valid artifact; a Stale
+// row records the prior state for audit after a source-hash drift or
+// template-version bump invalidates it.
+
+export const characterBioStatusValues = {
+  fresh: "Fresh",
+  stale: "Stale",
+} as const;
+
+export type CharacterBioStatus =
+  (typeof characterBioStatusValues)[keyof typeof characterBioStatusValues];
+
+export const characterRelationshipStatusValues = {
+  fresh: "Fresh",
+  stale: "Stale",
+} as const;
+
+export type CharacterRelationshipStatus =
+  (typeof characterRelationshipStatusValues)[keyof typeof characterRelationshipStatusValues];
+
+export const characterRelationshipInvalidatedReasonValues = {
+  sourceHashDrift: "source_hash_drift",
+  templateVersionBump: "template_version_bump",
+  manual: "manual",
+} as const;
+
+export type CharacterRelationshipInvalidatedReason =
+  (typeof characterRelationshipInvalidatedReasonValues)[keyof typeof characterRelationshipInvalidatedReasonValues];
+
+export const characterRelationshipKindValues = {
+  familyRelation: "FamilyRelation",
+  romantic: "Romantic",
+  friendship: "Friendship",
+  mentor: "Mentor",
+  rivalry: "Rivalry",
+  allegiance: "Allegiance",
+  antagonism: "Antagonism",
+  other: "Other",
+} as const;
+
+export type CharacterRelationshipKind =
+  (typeof characterRelationshipKindValues)[keyof typeof characterRelationshipKindValues];
+
+export const characterRelationshipDirectionValues = {
+  symmetric: "Symmetric",
+  fromAToB: "FromAToB",
+} as const;
+
+export type CharacterRelationshipDirection =
+  (typeof characterRelationshipDirectionValues)[keyof typeof characterRelationshipDirectionValues];
+
+export const characterBios = pgTable(
+  "itotori_character_bios",
+  {
+    characterBioId: text("character_bio_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    characterId: text("character_id").notNull(),
+    bioLocale: text("bio_locale").notNull(),
+    bioText: text("bio_text").notNull(),
+    modelProviderFamily: text("model_provider_family").notNull(),
+    modelId: text("model_id").notNull(),
+    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
+    modelMaxOutputTokens: integer("model_max_output_tokens"),
+    promptTemplateVersion: text("prompt_template_version").notNull(),
+    promptHash: text("prompt_hash").notNull(),
+    inputTokenEstimate: integer("input_token_estimate").notNull(),
+    completionTokens: integer("completion_tokens").notNull(),
+    status: text("status").notNull(),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    invalidatedReason: text("invalidated_reason"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_character_bios_unique_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.characterId,
+      table.promptTemplateVersion,
+    ),
+    index("itotori_character_bios_status_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.status,
+    ),
+    index("itotori_character_bios_character_idx").on(table.characterId),
+  ],
+);
+
+export const characterBioEvidence = pgTable(
+  "itotori_character_bio_evidence",
+  {
+    characterBioId: text("character_bio_id")
+      .notNull()
+      .references(() => characterBios.characterBioId, { onDelete: "cascade" }),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    citedSourceHash: text("cited_source_hash").notNull(),
+    citeOrdinal: integer("cite_ordinal").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.characterBioId, table.bridgeUnitId] }),
+    index("itotori_character_bio_evidence_bridge_unit_idx").on(
+      table.bridgeUnitId,
+      table.citedSourceHash,
+    ),
+    index("itotori_character_bio_evidence_ordinal_idx").on(table.characterBioId, table.citeOrdinal),
+  ],
+);
+
+export const characterRelationships = pgTable(
+  "itotori_character_relationships",
+  {
+    characterRelationshipId: text("character_relationship_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    fromCharacterId: text("from_character_id").notNull(),
+    toCharacterId: text("to_character_id").notNull(),
+    kind: text("kind").$type<CharacterRelationshipKind>().notNull(),
+    direction: text("direction").$type<CharacterRelationshipDirection>().notNull(),
+    descriptor: text("descriptor").notNull(),
+    descriptorLocale: text("descriptor_locale").notNull(),
+    modelProviderFamily: text("model_provider_family").notNull(),
+    modelId: text("model_id").notNull(),
+    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
+    modelMaxOutputTokens: integer("model_max_output_tokens"),
+    promptTemplateVersion: text("prompt_template_version").notNull(),
+    promptHash: text("prompt_hash").notNull(),
+    status: text("status").notNull(),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    invalidatedReason: text("invalidated_reason"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_character_relationships_unique_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.fromCharacterId,
+      table.toCharacterId,
+      table.kind,
+      table.promptTemplateVersion,
+    ),
+    index("itotori_character_relationships_status_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.status,
+    ),
+    index("itotori_character_relationships_from_idx").on(table.fromCharacterId),
+    index("itotori_character_relationships_to_idx").on(table.toCharacterId),
+  ],
+);
+
+export const characterRelationshipEvidence = pgTable(
+  "itotori_character_relationship_evidence",
+  {
+    characterRelationshipId: text("character_relationship_id")
+      .notNull()
+      .references(() => characterRelationships.characterRelationshipId, {
+        onDelete: "cascade",
+      }),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    citedSourceHash: text("cited_source_hash").notNull(),
+    citeOrdinal: integer("cite_ordinal").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.characterRelationshipId, table.bridgeUnitId] }),
+    index("itotori_character_relationship_evidence_bridge_unit_idx").on(
+      table.bridgeUnitId,
+      table.citedSourceHash,
+    ),
+    index("itotori_character_relationship_evidence_ordinal_idx").on(
+      table.characterRelationshipId,
+      table.citeOrdinal,
+    ),
+  ],
+);
