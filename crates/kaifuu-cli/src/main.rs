@@ -22,6 +22,8 @@ use kaifuu_core::{
 };
 use kaifuu_delta::{apply_delta, create_delta};
 
+mod binary_patch_smoke;
+
 const APPLY_REPORT_FILE_NAME: &str = "patch-result.json";
 
 fn main() {
@@ -186,14 +188,45 @@ fn run_with_args_and_registry(
                 .collect::<Vec<_>>();
             write_json(&output, &capabilities)?;
         }
+        Some("binary-patch-smoke") => {
+            return run_binary_patch_smoke_command(&args);
+        }
         _ => {
             return Err(
-                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|siglus|rpg-maker|profile|capabilities> ..."
+                "usage: kaifuu <detect|extract|asset-inventory|patch|diff|apply|verify|golden|offset-map|helper-result|key-helper|helper-registry|key|siglus|rpg-maker|profile|capabilities|binary-patch-smoke> ..."
                     .into(),
             );
         }
     }
     Ok(())
+}
+
+fn run_binary_patch_smoke_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture_dir = flag_optional(args, "--fixture").map(PathBuf::from);
+    let output_dir = PathBuf::from(flag(args, "--output")?);
+    let inject_failure_raw = flag_optional(args, "--inject-failure").unwrap_or("none");
+    let inject_failure = binary_patch_smoke::InjectFailure::parse(inject_failure_raw)
+        .map_err(|message| -> Box<dyn std::error::Error> { message.into() })?;
+    let run_id = flag_optional(args, "--run-id").unwrap_or("binary-patch-smoke-0001");
+
+    let outcome =
+        binary_patch_smoke::run_binary_patch_smoke(binary_patch_smoke::BinaryPatchSmokeConfig {
+            fixture_dir: fixture_dir.as_deref(),
+            output_dir: &output_dir,
+            inject_failure,
+            run_id,
+        });
+
+    let mut stdout = io::stdout();
+    binary_patch_smoke::write_smoke_summary(&mut stdout, &outcome);
+
+    match outcome {
+        binary_patch_smoke::BinarySmokeOutcome::Passed => Ok(()),
+        binary_patch_smoke::BinarySmokeOutcome::Failed => {
+            std::process::exit(1);
+        }
+        binary_patch_smoke::BinarySmokeOutcome::Aborted(reason) => Err(reason.into()),
+    }
 }
 
 fn run_rpg_maker_command(args: &[String]) -> Result<(), Box<dyn std::error::Error>> {

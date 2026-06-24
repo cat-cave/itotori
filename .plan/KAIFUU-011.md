@@ -3,7 +3,7 @@
 | Field           | Value                                        |
 | --------------- | -------------------------------------------- |
 | DAG node        | `KAIFUU-011`                                 |
-| Title           | Binary patcher composed smoke command         |
+| Title           | Binary patcher composed smoke command        |
 | Branch          | `spec/kaifuu-011`                            |
 | Worktree        | `/scratch/worktrees/itotori-spec-kaifuu-011` |
 | Plan author     | planning worker (orchestrator)               |
@@ -15,15 +15,15 @@
 
 ## 0. Evidence Map (what already exists, what must change)
 
-| Surface | State today | Change demanded by KAIFUU-011 |
-| ------- | ----------- | ------------------------------ |
-| `crates/kaifuu-cli/src/main.rs` (`run_with_args_and_registry`) | Dispatches a fixed set of subcommands (`detect`, `extract`, `patch`, `verify`, `apply-patch`, `validate-fixture-key`, …). `patch` calls the registry's `patch_preflight` + `patch` and writes a `patch-result.json`. There is no end-to-end composed smoke command. | Add a new `binary-patch-smoke` subcommand that drives KAIFUU-084's `PatchTransaction` over a synthetic fixture and emits a `PatchResult v0.2` JSON. The smoke command exercises preflight + stage + verify + promote in one transaction and supports an injected failure mode for the rollback path. |
-| `crates/kaifuu-core/src/patch_transaction.rs` (KAIFUU-084) | Provides `PatchTransaction`, `PatchTransactionConfig`, `PatchTransactionOutcome` (`patch_result_v02: serde_json::Value` + `legacy_patch_result`). Length-preserving identity-only relocation. Emits the v0.2 contract via `build_patch_result_v02`. | KAIFUU-011 is the **first** consumer. The smoke command constructs the config, drives the state machine, and persists the v0.2 outcome. No change to `patch_transaction.rs`. |
-| `crates/kaifuu-reallive/src/patchback.rs` (KAIFUU-174) | `apply_patches(archive_bytes, scene_index, scenes, edits) -> Result<Vec<u8>, PatchBackError>`. In-memory transform. `PatchBackErrorCode` mapping to v0.2 `PatchFailureCategoryV02` is documented in KAIFUU-010 §6 / KAIFUU-084 §6. | KAIFUU-011 is the **first** consumer of the mapping. The smoke command runs `apply_patches` against a synthetic SEEN.TXT fixture, computes `expected_output_hash`, and threads the result through the transaction harness. On injected failure, the smoke maps `PatchBackErrorCode` to the v0.2 category via the mapping table and emits a `PatchResult v0.2 Fail`. |
-| `packages/localization-bridge-schema/src/index.ts` `assertPatchResultV02` (KAIFUU-010) | Validates v0.2 shape: structured failures, failure-category enum, partial-write accounting, output-hash rollup. | The smoke command's emitted JSON must pass `assertPatchResultV02` (TS-side validator) and `validate_patch_result_v02` (Rust-side validator). The Rust validator is the in-binary check; the TS validator runs as a Node-side fixture test. |
-| `crates/kaifuu-engine-fixture/src/lib.rs` (reference adapter) | Fixture engine exposing `patch_preflight` / `patch` / `verify`. Used as the test consumer for KAIFUU-084 happy-path. | The smoke command uses the **kaifuu-reallive synthetic fixture** (not the engine-fixture adapter) because the audit demands the smoke composes the RealLive patchback path. The engine-fixture adapter remains the unit-test sandbox for `patch_transaction.rs`; the smoke is the integration consumer for RealLive. |
-| Test fixtures | KAIFUU-173 ships `crates/kaifuu-reallive/tests/fixtures/patchback-length-preserving-001/` (SEEN.TXT, `patch/patch-export.json`, `expected/patched.SEEN.TXT`) and KAIFUU-174 ships `patchback-overflow-001/` (overflow diagnostics). | KAIFUU-011 reuses the existing patchback fixtures and additionally commits **one new composed smoke fixture** at `crates/kaifuu-cli/tests/fixtures/binary-patch-smoke/` containing `SEEN.TXT` (12 bytes), `patch/patch-export.json`, and `expected/patch-result.json`. The fixture is intentionally tiny to keep the smoke deterministic and Linux/macOS byte-equal. |
-| `apps/itotori/test/ingest-patch-result.test.ts` (KAIFUU-010 §5.5) | Itotori ingestion path validates the v0.2 shape. | Out of scope — KAIFUU-011 emits the shape; ingestion is downstream. The smoke does NOT call the Itotori path. |
+| Surface                                                                                | State today                                                                                                                                                                                                                                                         | Change demanded by KAIFUU-011                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crates/kaifuu-cli/src/main.rs` (`run_with_args_and_registry`)                         | Dispatches a fixed set of subcommands (`detect`, `extract`, `patch`, `verify`, `apply-patch`, `validate-fixture-key`, …). `patch` calls the registry's `patch_preflight` + `patch` and writes a `patch-result.json`. There is no end-to-end composed smoke command. | Add a new `binary-patch-smoke` subcommand that drives KAIFUU-084's `PatchTransaction` over a synthetic fixture and emits a `PatchResult v0.2` JSON. The smoke command exercises preflight + stage + verify + promote in one transaction and supports an injected failure mode for the rollback path.                                                                 |
+| `crates/kaifuu-core/src/patch_transaction.rs` (KAIFUU-084)                             | Provides `PatchTransaction`, `PatchTransactionConfig`, `PatchTransactionOutcome` (`patch_result_v02: serde_json::Value` + `legacy_patch_result`). Length-preserving identity-only relocation. Emits the v0.2 contract via `build_patch_result_v02`.                 | KAIFUU-011 is the **first** consumer. The smoke command constructs the config, drives the state machine, and persists the v0.2 outcome. No change to `patch_transaction.rs`.                                                                                                                                                                                         |
+| `crates/kaifuu-reallive/src/patchback.rs` (KAIFUU-174)                                 | `apply_patches(archive_bytes, scene_index, scenes, edits) -> Result<Vec<u8>, PatchBackError>`. In-memory transform. `PatchBackErrorCode` mapping to v0.2 `PatchFailureCategoryV02` is documented in KAIFUU-010 §6 / KAIFUU-084 §6.                                  | KAIFUU-011 is the **first** consumer of the mapping. The smoke command runs `apply_patches` against a synthetic SEEN.TXT fixture, computes `expected_output_hash`, and threads the result through the transaction harness. On injected failure, the smoke maps `PatchBackErrorCode` to the v0.2 category via the mapping table and emits a `PatchResult v0.2 Fail`.  |
+| `packages/localization-bridge-schema/src/index.ts` `assertPatchResultV02` (KAIFUU-010) | Validates v0.2 shape: structured failures, failure-category enum, partial-write accounting, output-hash rollup.                                                                                                                                                     | The smoke command's emitted JSON must pass `assertPatchResultV02` (TS-side validator) and `validate_patch_result_v02` (Rust-side validator). The Rust validator is the in-binary check; the TS validator runs as a Node-side fixture test.                                                                                                                           |
+| `crates/kaifuu-engine-fixture/src/lib.rs` (reference adapter)                          | Fixture engine exposing `patch_preflight` / `patch` / `verify`. Used as the test consumer for KAIFUU-084 happy-path.                                                                                                                                                | The smoke command uses the **kaifuu-reallive synthetic fixture** (not the engine-fixture adapter) because the audit demands the smoke composes the RealLive patchback path. The engine-fixture adapter remains the unit-test sandbox for `patch_transaction.rs`; the smoke is the integration consumer for RealLive.                                                 |
+| Test fixtures                                                                          | KAIFUU-173 ships `crates/kaifuu-reallive/tests/fixtures/patchback-length-preserving-001/` (SEEN.TXT, `patch/patch-export.json`, `expected/patched.SEEN.TXT`) and KAIFUU-174 ships `patchback-overflow-001/` (overflow diagnostics).                                 | KAIFUU-011 reuses the existing patchback fixtures and additionally commits **one new composed smoke fixture** at `crates/kaifuu-cli/tests/fixtures/binary-patch-smoke/` containing `SEEN.TXT` (12 bytes), `patch/patch-export.json`, and `expected/patch-result.json`. The fixture is intentionally tiny to keep the smoke deterministic and Linux/macOS byte-equal. |
+| `apps/itotori/test/ingest-patch-result.test.ts` (KAIFUU-010 §5.5)                      | Itotori ingestion path validates the v0.2 shape.                                                                                                                                                                                                                    | Out of scope — KAIFUU-011 emits the shape; ingestion is downstream. The smoke does NOT call the Itotori path.                                                                                                                                                                                                                                                        |
 
 The plan that follows is strictly bounded by these rows.
 
@@ -258,8 +258,8 @@ asserts every `PatchBackErrorCode` variant has a mapping (exhaustive
   follows KAIFUU-173's archive shape — the worker builds the
   fixture by emitting a minimal valid Scene through the existing
   `kaifuu-reallive` writer (or by hand-rolling a 12-byte header
-  + one slot, since KAIFUU-173 already ships hand-rolled tiny
-  Scene fixtures in `bridge-inventory-001`).
+  - one slot, since KAIFUU-173 already ships hand-rolled tiny
+    Scene fixtures in `bridge-inventory-001`).
 - `patch/patch-export.json`: a `PatchExport` v0.1 record with one
   entry mapping `slot-0` → `b"Hi!!!"` (5 bytes — same length as
   `Hello`). Includes `patch_export_id`, the matching
@@ -298,13 +298,14 @@ Identical inputs. `--inject-failure verify-hash-mismatch` mutates
 the staged buffer's last byte before calling
 `transaction.stage(&patched_bytes)`. The hash mismatch trips
 `verify()` → state `VerifyFailed`. `patch-result.json` carries:
+
 - `status: "failed"`.
 - `failures[0].category: "output_hash_mismatch"`.
 - `failures[0].diagnosticCode:
-  "kaifuu.patch_result.output_hash_drift"`.
+"kaifuu.patch_result.output_hash_drift"`.
 - `partialWrite.disposition: "rolled_back"`.
 - `partialWrite.rollbackDiagnosticCode:
-  "kaifuu.patch_transaction.staged_verify_rolled_back"`.
+"kaifuu.patch_transaction.staged_verify_rolled_back"`.
 - Output file `<output>/SEEN.TXT` exists and equals the **source**
   bytes (rollback preserves the original).
 - Staging file `<output>/.staging/<asset>-<run>.tmp` is absent
@@ -331,6 +332,7 @@ the staged buffer's last byte before calling
 ## 5. Test plan
 
 ### 5.1 Integration tests
+
 (`crates/kaifuu-cli/tests/binary_patch_smoke.rs`)
 
 Each test runs the CLI in-process (via `run_with_args_and_registry`
@@ -400,6 +402,7 @@ tests`). Constructs every `PatchBackErrorCode` variant via
      future variant addition fails compilation here loudly.
 
 ### 5.2 TS-side validation test
+
 (`packages/localization-bridge-schema/test/binary-patch-smoke.test.ts`)
 
 - Loads `positive/expected/patch-result.json` and asserts
@@ -416,12 +419,12 @@ Rust and the TS validators.
 
 ### 5.3 Verification matrix
 
-| Mode                       | Exit | `status`            | Output bytes      | Staging       |
-| -------------------------- | ---- | ------------------- | ----------------- | ------------- |
-| positive                   | 0    | `passed`            | patched           | clean         |
-| preflight-byte-budget      | 1    | `failed`            | source-preserved  | not created   |
-| preflight-source-hash *opt*| 1    | `failed`            | source-preserved  | not created   |
-| verify-hash-mismatch       | 1    | `failed`            | source-preserved  | cleaned up    |
+| Mode                        | Exit | `status` | Output bytes     | Staging     |
+| --------------------------- | ---- | -------- | ---------------- | ----------- |
+| positive                    | 0    | `passed` | patched          | clean       |
+| preflight-byte-budget       | 1    | `failed` | source-preserved | not created |
+| preflight-source-hash _opt_ | 1    | `failed` | source-preserved | not created |
+| verify-hash-mismatch        | 1    | `failed` | source-preserved | cleaned up  |
 
 `preflight-source-hash` is optional — the worker may add it for
 parity with the KAIFUU-084 §8.3 unit test. The hard requirement is
@@ -557,7 +560,7 @@ diff <(jq -S . /tmp/kaifuu-smoke/patch-result.json) \
 6. **Test-only `--inject-failure` flag.** Concern: a production
    build exposes a test seam. Mitigation: the flag is documented
    as test-only in `--help`; the helper module is `#[cfg(any(test,
-   feature = "test-injection"))]` gated, with the CLI dispatch
+feature = "test-injection"))]` gated, with the CLI dispatch
    arm only compiling the flag handling when the feature is on.
    The integration tests enable the feature; production builds do
    not. (Alternative: gate the flag on a `KAIFUU_SMOKE_INJECT=1`
@@ -596,10 +599,10 @@ diff <(jq -S . /tmp/kaifuu-smoke/patch-result.json) \
 
 **One worker, single Rust slice with a small TS test addendum.**
 
-| Slice            | Surfaces                                                                                                                                                                                                                                                                                                              | Effort |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Slice            | Surfaces                                                                                                                                                                                                                                                                                                                                          | Effort |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
 | **A (Rust CLI)** | `crates/kaifuu-cli/src/main.rs` (one new dispatch arm), `crates/kaifuu-cli/src/binary_patch_smoke.rs` (new module, ~300 LOC), `crates/kaifuu-cli/Cargo.toml` (path dep on `kaifuu-reallive`), `crates/kaifuu-cli/tests/binary_patch_smoke.rs` (~200 LOC), 3 fixture directories (~1 KB total), engine-fixture-style capability constructor reuse. | ~1 day |
-| **B (TS test)**  | `packages/localization-bridge-schema/test/binary-patch-smoke.test.ts` (~60 LOC) that loads the three fixtures and validates them via `assertPatchResultV02`.                                                                                                                                                          | ~½ day |
+| **B (TS test)**  | `packages/localization-bridge-schema/test/binary-patch-smoke.test.ts` (~60 LOC) that loads the three fixtures and validates them via `assertPatchResultV02`.                                                                                                                                                                                      | ~½ day |
 
 **Recommendation: one worker** runs A → B in sequence. The slice
 boundary is the v0.2 JSON contract; A produces the JSON, B
