@@ -20958,7 +20958,7 @@
     {
       "id": "UTSUSHI-200",
       "title": "utsushi-reallive crate skeleton + facade dependency (RealLive port foundation)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -20993,10 +20993,7 @@
         "rlvm header / source leakage",
         "Facade bypass via `utsushi_core::vfs::*` direct import",
         "Placeholder `Ok(())` returns that hide unimplemented stages"
-      ],
-      "owner": "orchestrator-utsushi-200",
-      "branch": "spec/utsushi-200",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-200"
+      ]
     },
     {
       "id": "UTSUSHI-201",
