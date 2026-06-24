@@ -274,11 +274,11 @@ for `BTreeMap`-backed objects.
 
 ### 8.4 Audit-focus checklist
 
-| Audit focus | Structural defense |
-| --- | --- |
-| Restore drift not surfaced | `SnapshotConformanceCheck::run()` runs on every happy-path test (6.1) and every drift twin (6.2); a Pass outcome with no `StatePath` evidence is the positive assertion. |
-| Snapshot referenced by host path | Inline fixture uses kebab-namespaced ids; redaction filter walk in test 6.6 catches any host path leakage. |
-| Deterministic playback gaps | Replay-log tail alignment test 6.5 asserts the snapshot's `clock_tick` lines up with the recorder's first post-restore entry. |
+| Audit focus                      | Structural defense                                                                                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Restore drift not surfaced       | `SnapshotConformanceCheck::run()` runs on every happy-path test (6.1) and every drift twin (6.2); a Pass outcome with no `StatePath` evidence is the positive assertion. |
+| Snapshot referenced by host path | Inline fixture uses kebab-namespaced ids; redaction filter walk in test 6.6 catches any host path leakage.                                                               |
+| Deterministic playback gaps      | Replay-log tail alignment test 6.5 asserts the snapshot's `clock_tick` lines up with the recorder's first post-restore entry.                                            |
 
 ## 9. Out of scope
 
