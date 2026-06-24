@@ -10464,7 +10464,7 @@
     {
       "id": "UTSUSHI-030",
       "title": "Runtime conformance ingestion fixture",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi", "itotori"],
@@ -10510,10 +10510,7 @@
         "Cross-validator wire-shape parity",
         "Negative fixture drift detection",
         "Conformance manifest/result reachable from non-Rust consumers"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-030",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-030"
+      ]
     },
     {
       "id": "UTSUSHI-031",
@@ -16509,7 +16506,7 @@
     {
       "id": "UTSUSHI-120",
       "title": "Runtime substrate facade and conformance release",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -16560,7 +16557,10 @@
         "Scope creep into new substrate primitives",
         "Private evidence leakage",
         "E-tier confusion in conformance reports"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/utsushi-120",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-120"
     },
     {
       "id": "UTSUSHI-121",
@@ -22328,6 +22328,85 @@
         "Migration 0031 schema drift caught only at live INSERT, not in CI.",
         "CLI text-shape regression surfaces only in operator review."
       ]
+    },
+    {
+      "id": "UTSUSHI-174",
+      "status": "planned",
+      "title": "Wire ingest-conformance CLI to itotori_artifacts insertion",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["itotori", "utsushi"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-030"],
+      "summary": "Close the gap between the CLI's file-path input and the conformance repository's FK requirement: ingest the report and manifest files into `itotori_artifacts` (with `kind = 'conformance_report'` / `'conformance_manifest'`) and pass the resulting IDs through to the workflow.",
+      "deliverables": [
+        "CLI handler resolves report/manifest paths to artifact rows before calling `ingestConformanceReport`.",
+        "A DB integration test that drives the CLI handler end-to-end against `just db-up` and asserts the FK joins succeed."
+      ],
+      "acceptanceCriteria": [
+        "Running `itotori ingest-conformance --project ... --report-file ...` against a fresh migrated DB persists a row whose `report_artifact_id` references an existing `itotori_artifacts` row.",
+        "Removing the artifact insertion path causes the integration test to fail."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "just db-up && just db-migrate && pnpm --filter @itotori/db test:db"
+        },
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": [
+        "FK integrity between conformance rows and itotori_artifacts.",
+        "Idempotency on rerun (same report file should not double-insert artifact rows)."
+      ]
+    },
+    {
+      "id": "UTSUSHI-175",
+      "status": "planned",
+      "title": "Migration numbering collision post-mortem (closed)",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "tooling",
+      "dependsOn": ["UTSUSHI-030"],
+      "summary": "Document the migration-numbering collision resolution from iter 6 (UTSUSHI-030/ITOTORI-013/KAIFUU-053 each claimed 0028); orchestrator renumbered at merge time. This node is effectively closed; left as a tracking record.",
+      "deliverables": ["Migration numbering guidance in docs"],
+      "acceptanceCriteria": ["Documentation explains the migration-numbering convention"],
+      "verification": [
+        {
+          "type": "manual",
+          "value": "Documentation review"
+        },
+        {
+          "type": "command",
+          "value": "node scripts/spec-dag.mjs validate"
+        }
+      ],
+      "auditFocus": ["Migration numbering collisions reoccurring"]
+    },
+    {
+      "id": "UTSUSHI-176",
+      "status": "planned",
+      "title": "Conformance ingest CLI warning when manifest is absent",
+      "priority": "P3",
+      "target": "continuous",
+      "projects": ["utsushi", "itotori"],
+      "parallelGroup": "runtime-adapters",
+      "dependsOn": ["UTSUSHI-030"],
+      "summary": "Add a CLI warning when itotori ingest-conformance is invoked without --manifest-file, naming the cross-validation rules that are skipped.",
+      "deliverables": ["CLI warning in ingest-conformance"],
+      "acceptanceCriteria": [
+        "Running ingest-conformance without --manifest-file emits a warning listing skipped checks"
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm exec vp run ts:test"
+        }
+      ],
+      "auditFocus": ["Silent omission of manifest-driven checks"]
     }
   ]
 }
