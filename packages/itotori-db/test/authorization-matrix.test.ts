@@ -7,6 +7,7 @@ import {
   type Permission,
 } from "../src/authorization.js";
 import { ItotoriBranchReferenceRepository } from "../src/repositories/branch-reference-repository.js";
+import { ItotoriCharacterRelationshipRepository } from "../src/repositories/character-relationship-repository.js";
 import { ItotoriConformanceRepository } from "../src/repositories/conformance-repository.js";
 import { EngineCapabilityReportRepository } from "../src/repositories/engine-capability-report-repository.js";
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
@@ -17,7 +18,9 @@ import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
 import { ItotoriModelLedgerRepository } from "../src/repositories/model-ledger-repository.js";
 import { ItotoriProjectRepository } from "../src/repositories/project-repository.js";
+import { ItotoriRouteChoiceMapRepository } from "../src/repositories/route-choice-map-repository.js";
 import { ItotoriStyleGuideRepository } from "../src/repositories/style-guide-repository.js";
+import { ItotoriTerminologyCandidateRepository } from "../src/repositories/terminology-candidate-repository.js";
 import { ItotoriTerminologyRepository } from "../src/repositories/terminology-repository.js";
 import { ItotoriTranslationBatchRepository } from "../src/repositories/translation-batch-repository.js";
 import { ItotoriSceneSummaryRepository } from "../src/repositories/scene-summary-repository.js";
@@ -491,6 +494,144 @@ const repositoryPermissionGateMatrix = [
         patch: { kind: "supported" },
       }),
   ),
+  characterRelationshipGate(
+    "saveBio",
+    "draftWrite",
+    "character-relationship-repository.test.ts save bio coverage",
+    (repo) => repo.saveBio(deniedActor, undefined as never),
+  ),
+  characterRelationshipGate(
+    "saveRelationship",
+    "draftWrite",
+    "character-relationship-repository.test.ts save relationship coverage",
+    (repo) => repo.saveRelationship(deniedActor, undefined as never),
+  ),
+  characterRelationshipGate(
+    "loadBios",
+    "catalogRead",
+    "character-relationship-repository.test.ts load bios coverage",
+    (repo) => repo.loadBios(deniedActor, undefined as never),
+  ),
+  characterRelationshipGate(
+    "loadBioByCharacter",
+    "catalogRead",
+    "character-relationship-repository.test.ts load bio by character coverage",
+    (repo) => repo.loadBioByCharacter(deniedActor, undefined as never),
+  ),
+  characterRelationshipGate(
+    "loadRelationshipsByProject",
+    "catalogRead",
+    "character-relationship-repository.test.ts load relationships by project coverage",
+    (repo) => repo.loadRelationshipsByProject(deniedActor, undefined as never),
+  ),
+  characterRelationshipGate(
+    "currentSourceHashesForBridgeUnits",
+    "catalogRead",
+    "character-relationship-repository.test.ts current-source-hashes coverage",
+    (repo) => repo.currentSourceHashesForBridgeUnits(deniedActor, undefined as never),
+  ),
+  characterRelationshipGate(
+    "markBioStale",
+    "draftWrite",
+    "character-relationship-repository.test.ts mark bio stale coverage",
+    (repo) => repo.markBioStale(deniedActor, undefined as never),
+  ),
+  characterRelationshipGate(
+    "markRelationshipStale",
+    "draftWrite",
+    "character-relationship-repository.test.ts mark relationship stale coverage",
+    (repo) => repo.markRelationshipStale(deniedActor, undefined as never),
+  ),
+  routeChoiceMapGate(
+    "saveRouteMap",
+    "draftWrite",
+    "route-choice-map-repository.test.ts save route map coverage",
+    (repo) => repo.saveRouteMap(deniedActor, undefined as never),
+  ),
+  routeChoiceMapGate(
+    "saveRouteChoice",
+    "draftWrite",
+    "route-choice-map-repository.test.ts save route choice coverage",
+    (repo) => repo.saveRouteChoice(deniedActor, undefined as never),
+  ),
+  routeChoiceMapGate(
+    "loadRouteMapsByProject",
+    "catalogRead",
+    "route-choice-map-repository.test.ts load route maps coverage",
+    (repo) => repo.loadRouteMapsByProject(deniedActor, undefined as never),
+  ),
+  routeChoiceMapGate(
+    "loadRouteChoicesByProject",
+    "catalogRead",
+    "route-choice-map-repository.test.ts load route choices coverage",
+    (repo) => repo.loadRouteChoicesByProject(deniedActor, undefined as never),
+  ),
+  routeChoiceMapGate(
+    "currentSourceHashesForBridgeUnits",
+    "catalogRead",
+    "route-choice-map-repository.test.ts current-source-hashes coverage",
+    (repo) => repo.currentSourceHashesForBridgeUnits(deniedActor, undefined as never),
+  ),
+  routeChoiceMapGate(
+    "markRouteMapStale",
+    "draftWrite",
+    "route-choice-map-repository.test.ts mark route map stale coverage",
+    (repo) => repo.markRouteMapStale(deniedActor, undefined as never),
+  ),
+  routeChoiceMapGate(
+    "markRouteChoiceStale",
+    "draftWrite",
+    "route-choice-map-repository.test.ts mark route choice stale coverage",
+    (repo) => repo.markRouteChoiceStale(deniedActor, undefined as never),
+  ),
+  terminologyCandidateGate(
+    "saveCandidate",
+    "draftWrite",
+    "terminology-candidate-repository.test.ts save candidate coverage",
+    (repo) => repo.saveCandidate(deniedActor, undefined as never),
+  ),
+  terminologyCandidateGate(
+    "loadCandidatesByProject",
+    "catalogRead",
+    "terminology-candidate-repository.test.ts load candidates coverage",
+    (repo) => repo.loadCandidatesByProject(deniedActor, undefined as never),
+  ),
+  terminologyCandidateGate(
+    "markCandidateStale",
+    "draftWrite",
+    "terminology-candidate-repository.test.ts mark candidate stale coverage",
+    (repo) => repo.markCandidateStale(deniedActor, undefined as never),
+  ),
+  terminologyCandidateGate(
+    "markCandidatePromoted",
+    "draftWrite",
+    "terminology-candidate-repository.test.ts mark candidate promoted coverage",
+    (repo) => repo.markCandidatePromoted(deniedActor, undefined as never),
+  ),
+  terminologyCandidateGate(
+    "markCandidateRejected",
+    "draftWrite",
+    "terminology-candidate-repository.test.ts mark candidate rejected coverage",
+    (repo) => repo.markCandidateRejected(deniedActor, undefined as never),
+  ),
+  terminologyCandidateGate(
+    "currentSourceHashesForBridgeUnits",
+    "catalogRead",
+    "terminology-candidate-repository.test.ts current-source-hashes coverage",
+    (repo) => repo.currentSourceHashesForBridgeUnits(deniedActor, undefined as never),
+  ),
+  terminologyCandidateGate(
+    "existsTerminologyTermBySurfaceForm",
+    "catalogRead",
+    "terminology-candidate-repository.test.ts exists surface-form coverage",
+    (repo) => repo.existsTerminologyTermBySurfaceForm(deniedActor, undefined as never),
+  ),
+  terminologyCandidateGate(
+    "countTerminologyTerms",
+    "catalogRead",
+    "terminology-candidate-repository.test.ts count terminology terms coverage",
+    (repo) => repo.countTerminologyTerms(deniedActor, undefined as never),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -962,6 +1103,144 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "project.import",
           "successFixture": "engine-capability-report-repository.test.ts write matrix coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCharacterRelationshipRepository.saveBio",
+          "requiredPermission": "draft.write",
+          "successFixture": "character-relationship-repository.test.ts save bio coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCharacterRelationshipRepository.saveRelationship",
+          "requiredPermission": "draft.write",
+          "successFixture": "character-relationship-repository.test.ts save relationship coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCharacterRelationshipRepository.loadBios",
+          "requiredPermission": "catalog.read",
+          "successFixture": "character-relationship-repository.test.ts load bios coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCharacterRelationshipRepository.loadBioByCharacter",
+          "requiredPermission": "catalog.read",
+          "successFixture": "character-relationship-repository.test.ts load bio by character coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCharacterRelationshipRepository.loadRelationshipsByProject",
+          "requiredPermission": "catalog.read",
+          "successFixture": "character-relationship-repository.test.ts load relationships by project coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCharacterRelationshipRepository.currentSourceHashesForBridgeUnits",
+          "requiredPermission": "catalog.read",
+          "successFixture": "character-relationship-repository.test.ts current-source-hashes coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCharacterRelationshipRepository.markBioStale",
+          "requiredPermission": "draft.write",
+          "successFixture": "character-relationship-repository.test.ts mark bio stale coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriCharacterRelationshipRepository.markRelationshipStale",
+          "requiredPermission": "draft.write",
+          "successFixture": "character-relationship-repository.test.ts mark relationship stale coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriRouteChoiceMapRepository.saveRouteMap",
+          "requiredPermission": "draft.write",
+          "successFixture": "route-choice-map-repository.test.ts save route map coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriRouteChoiceMapRepository.saveRouteChoice",
+          "requiredPermission": "draft.write",
+          "successFixture": "route-choice-map-repository.test.ts save route choice coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriRouteChoiceMapRepository.loadRouteMapsByProject",
+          "requiredPermission": "catalog.read",
+          "successFixture": "route-choice-map-repository.test.ts load route maps coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriRouteChoiceMapRepository.loadRouteChoicesByProject",
+          "requiredPermission": "catalog.read",
+          "successFixture": "route-choice-map-repository.test.ts load route choices coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriRouteChoiceMapRepository.currentSourceHashesForBridgeUnits",
+          "requiredPermission": "catalog.read",
+          "successFixture": "route-choice-map-repository.test.ts current-source-hashes coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriRouteChoiceMapRepository.markRouteMapStale",
+          "requiredPermission": "draft.write",
+          "successFixture": "route-choice-map-repository.test.ts mark route map stale coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriRouteChoiceMapRepository.markRouteChoiceStale",
+          "requiredPermission": "draft.write",
+          "successFixture": "route-choice-map-repository.test.ts mark route choice stale coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyCandidateRepository.saveCandidate",
+          "requiredPermission": "draft.write",
+          "successFixture": "terminology-candidate-repository.test.ts save candidate coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyCandidateRepository.loadCandidatesByProject",
+          "requiredPermission": "catalog.read",
+          "successFixture": "terminology-candidate-repository.test.ts load candidates coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyCandidateRepository.markCandidateStale",
+          "requiredPermission": "draft.write",
+          "successFixture": "terminology-candidate-repository.test.ts mark candidate stale coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyCandidateRepository.markCandidatePromoted",
+          "requiredPermission": "draft.write",
+          "successFixture": "terminology-candidate-repository.test.ts mark candidate promoted coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyCandidateRepository.markCandidateRejected",
+          "requiredPermission": "draft.write",
+          "successFixture": "terminology-candidate-repository.test.ts mark candidate rejected coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyCandidateRepository.currentSourceHashesForBridgeUnits",
+          "requiredPermission": "catalog.read",
+          "successFixture": "terminology-candidate-repository.test.ts current-source-hashes coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyCandidateRepository.existsTerminologyTermBySurfaceForm",
+          "requiredPermission": "catalog.read",
+          "successFixture": "terminology-candidate-repository.test.ts exists surface-form coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriTerminologyCandidateRepository.countTerminologyTerms",
+          "requiredPermission": "catalog.read",
+          "successFixture": "terminology-candidate-repository.test.ts count terminology terms coverage",
+        },
       ]
     `);
   });
@@ -1249,6 +1528,54 @@ function engineCapabilityReportGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new EngineCapabilityReportRepository(db)),
+  });
+}
+
+function characterRelationshipGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriCharacterRelationshipRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriCharacterRelationshipRepository",
+    sourceFile: "character-relationship-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriCharacterRelationshipRepository(db)),
+  });
+}
+
+function routeChoiceMapGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriRouteChoiceMapRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriRouteChoiceMapRepository",
+    sourceFile: "route-choice-map-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriRouteChoiceMapRepository(db)),
+  });
+}
+
+function terminologyCandidateGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriTerminologyCandidateRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriTerminologyCandidateRepository",
+    sourceFile: "terminology-candidate-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriTerminologyCandidateRepository(db)),
   });
 }
 
