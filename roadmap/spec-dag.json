@@ -11690,7 +11690,7 @@
     {
       "id": "ITOTORI-075",
       "title": "Structured translation invocation and parser",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11728,9 +11728,7 @@
         "Protected-span references dropped from draft payloads",
         "Repair loop persisting partial drafts"
       ],
-      "owner": "orchestrator-itotori-075",
-      "branch": "spec/itotori-075",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-075"
+      "statusReason": "Implementation merged (commit b1749e5). TranslationAgent + structured-output schema + recorded replay + 7 closed-enum protected-span violation reasons + 51 tests."
     },
     {
       "id": "ITOTORI-076",
