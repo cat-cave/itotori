@@ -3662,3 +3662,119 @@ export const terminologyCandidateEvidence = pgTable(
     ),
   ],
 );
+
+// ---------------------------------------------------------------------
+// ITOTORI-074 — draft job schema (jobs + attempts)
+// ---------------------------------------------------------------------
+
+export const draftJobStatusValues = {
+  queued: "queued",
+  running: "running",
+  succeeded: "succeeded",
+  failed: "failed",
+  retryable: "retryable",
+  cancelled: "cancelled",
+} as const;
+
+export type DraftJobStatus = (typeof draftJobStatusValues)[keyof typeof draftJobStatusValues];
+
+export const draftJobAttemptStatusValues = {
+  running: "running",
+  succeeded: "succeeded",
+  failed: "failed",
+  retryable: "retryable",
+  cancelled: "cancelled",
+} as const;
+
+export type DraftJobAttemptStatus =
+  (typeof draftJobAttemptStatusValues)[keyof typeof draftJobAttemptStatusValues];
+
+/**
+ * Reference to a protected-span carried by a source unit that the draft job
+ * must preserve in any candidate translation output.
+ */
+export type DraftJobProtectedSpanRef = {
+  bridgeUnitId: string;
+  spanIndex: number;
+  spanKind: string;
+};
+
+/**
+ * Reference to a context artifact (scene summary, glossary excerpt, prior
+ * draft, etc.) made available to the drafting agent.
+ */
+export type DraftJobContextRef = {
+  contextArtifactId: string;
+  category: string;
+  contentHash: string;
+};
+
+/**
+ * Versions of agent-side policies (prompt templates, model providers, etc.)
+ * that the recorded draft was generated under. Recorded so a draft can be
+ * reproduced bit-for-bit by replaying the same versioned policies.
+ */
+export type DraftJobPolicyVersions = {
+  promptTemplateVersion: string;
+  modelProviderFamily: string;
+  modelId: string;
+} & Record<string, string>;
+
+export const draftJobs = pgTable(
+  "itotori_draft_jobs",
+  {
+    draftJobId: text("draft_job_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    bridgeUnitIds: text("bridge_unit_ids").array().notNull(),
+    styleGuideVersion: text("style_guide_version").notNull(),
+    glossaryVersion: text("glossary_version").notNull(),
+    protectedSpanRefs: jsonb("protected_span_refs")
+      .$type<DraftJobProtectedSpanRef[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    policyVersions: jsonb("policy_versions")
+      .$type<DraftJobPolicyVersions>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    contextRefs: jsonb("context_refs")
+      .$type<DraftJobContextRef[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    status: text("status").$type<DraftJobStatus>().notNull(),
+    failureReason: text("failure_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_draft_jobs_project_status_idx").on(table.projectId, table.status),
+    index("itotori_draft_jobs_locale_branch_status_idx").on(table.localeBranchId, table.status),
+    index("itotori_draft_jobs_created_at_idx").on(table.projectId, table.createdAt),
+  ],
+);
+
+export const draftJobAttempts = pgTable(
+  "itotori_draft_job_attempts",
+  {
+    draftJobAttemptId: text("draft_job_attempt_id").primaryKey(),
+    draftJobId: text("draft_job_id")
+      .notNull()
+      .references(() => draftJobs.draftJobId, { onDelete: "cascade" }),
+    attemptIndex: integer("attempt_index").notNull(),
+    providerRunId: text("provider_run_id"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull(),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    status: text("status").$type<DraftJobAttemptStatus>().notNull(),
+    failureReason: text("failure_reason"),
+    recordedProviderArtifactId: text("recorded_provider_artifact_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_draft_job_attempts_attempt_idx").on(table.draftJobId, table.attemptIndex),
+    index("itotori_draft_job_attempts_status_idx").on(table.draftJobId, table.status),
+  ],
+);

@@ -604,6 +604,29 @@ export type {
   TerminologyCandidateStatus,
 } from "./schema.js";
 export {
+  DraftJobRepositoryError,
+  ItotoriDraftJobRepository,
+  draftJobAttemptStatusList,
+  draftJobAttemptStatusValues,
+  draftJobStatusList,
+  draftJobStatusValues,
+} from "./repositories/draft-job-repository.js";
+export type {
+  DraftJobAttemptRecord,
+  DraftJobInput,
+  DraftJobRecord,
+  ItotoriDraftJobRepositoryPort,
+  LoadDraftJobsByProjectOptions,
+  RecordDraftJobAttemptInput,
+} from "./repositories/draft-job-repository.js";
+export type {
+  DraftJobAttemptStatus,
+  DraftJobContextRef,
+  DraftJobPolicyVersions,
+  DraftJobProtectedSpanRef,
+  DraftJobStatus,
+} from "./schema.js";
+export {
   EngineCapabilityReportRepository,
   EngineCapabilityReportShapeError,
 } from "./repositories/engine-capability-report-repository.js";
