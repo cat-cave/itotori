@@ -1228,6 +1228,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "utsushi-reallive"
+version = "0.0.0"
+dependencies = [
+ "kaifuu-reallive",
+ "serde",
+ "serde_json",
+ "utsushi-core",
+]
+
+[[package]]
 name = "uuid"
 version = "1.23.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
