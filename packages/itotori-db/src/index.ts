@@ -644,6 +644,25 @@ export type {
   DraftAttemptProviderLedgerPolicyVersions,
 } from "./schema.js";
 export {
+  AssetLocalizationDecisionRepositoryError,
+  ItotoriAssetLocalizationDecisionRepository,
+  assetLocalizationDecisionAssetKindList,
+  assetLocalizationDecisionAssetKindValues,
+  assetLocalizationDecisionPolicyList,
+  assetLocalizationDecisionPolicyValues,
+} from "./repositories/asset-localization-decision-repository.js";
+export type {
+  AssetDecisionRecord,
+  ItotoriAssetLocalizationDecisionRepositoryPort,
+  LoadActiveDecisionsOptions,
+  RecordAssetDecisionInput,
+} from "./repositories/asset-localization-decision-repository.js";
+export type {
+  AssetLocalizationDecisionAssetKind,
+  AssetLocalizationDecisionAssetRef,
+  AssetLocalizationDecisionPolicy,
+} from "./schema.js";
+export {
   EngineCapabilityReportRepository,
   EngineCapabilityReportShapeError,
 } from "./repositories/engine-capability-report-repository.js";

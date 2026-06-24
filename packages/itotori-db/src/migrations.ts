@@ -200,6 +200,10 @@ export const migrations = [
     id: "0035_draft_attempt_provider_ledger",
     file: "0035_draft_attempt_provider_ledger.sql",
   },
+  {
+    id: "0036_asset_localization_decisions",
+    file: "0036_asset_localization_decisions.sql",
+  },
 ] as const;
 
 function migrationPath(file: string): string {

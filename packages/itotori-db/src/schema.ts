@@ -3855,3 +3855,86 @@ export const draftAttemptProviderLedger = pgTable(
     ),
   ],
 );
+
+// ---------------------------------------------------------------------
+// ITOTORI-035 — asset localization decision workflow
+// ---------------------------------------------------------------------
+
+export const assetLocalizationDecisionAssetKindValues = {
+  imageWithText: "image_with_text",
+  songTitle: "song_title",
+  uiArt: "ui_art",
+  font: "font",
+  video: "video",
+  romanization: "romanization",
+  fullLocalization: "full_localization",
+  doNotTranslate: "do_not_translate",
+} as const;
+
+export type AssetLocalizationDecisionAssetKind =
+  (typeof assetLocalizationDecisionAssetKindValues)[keyof typeof assetLocalizationDecisionAssetKindValues];
+
+export const assetLocalizationDecisionPolicyValues = {
+  keepOriginal: "keep_original",
+  translateText: "translate_text",
+  swapWithReplacement: "swap_with_replacement",
+  romanize: "romanize",
+  fullLocalize: "full_localize",
+  skip: "skip",
+} as const;
+
+export type AssetLocalizationDecisionPolicy =
+  (typeof assetLocalizationDecisionPolicyValues)[keyof typeof assetLocalizationDecisionPolicyValues];
+
+/**
+ * The asset identifier carried by an asset-localization decision. The
+ * `kind` tag discriminates the reference source (bridge bundle asset
+ * ref, engine-specific sprite id, etc.) and `ref` is the canonical
+ * string identifier used for the active-decision uniqueness index.
+ */
+export type AssetLocalizationDecisionAssetRef = {
+  kind: string;
+  ref: string;
+  // Additional discriminator-specific fields are tolerated.
+  [extraField: string]: unknown;
+};
+
+export const assetLocalizationDecisions = pgTable(
+  "itotori_asset_localization_decisions",
+  {
+    decisionId: text("decision_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    assetRef: jsonb("asset_ref").$type<AssetLocalizationDecisionAssetRef>().notNull(),
+    assetKind: text("asset_kind").$type<AssetLocalizationDecisionAssetKind>().notNull(),
+    decisionPolicy: text("decision_policy").$type<AssetLocalizationDecisionPolicy>().notNull(),
+    decisionRationale: text("decision_rationale"),
+    decidedByUserId: text("decided_by_user_id").references(() => users.userId, {
+      onDelete: "set null",
+    }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }).notNull().defaultNow(),
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+    supersededByDecisionId: text("superseded_by_decision_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    foreignKey({
+      columns: [table.supersededByDecisionId],
+      foreignColumns: [table.decisionId],
+      name: "itotori_asset_localization_decisions_superseded_by_fkey",
+    }),
+    index("itotori_asset_localization_decisions_project_branch_kind_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.assetKind,
+    ),
+    index("itotori_asset_localization_decisions_decided_by_idx").on(
+      table.decidedByUserId,
+      table.decidedAt,
+    ),
+  ],
+);

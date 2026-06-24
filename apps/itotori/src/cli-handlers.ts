@@ -21,6 +21,14 @@ import type {
   StyleGuideFixtureFlowResult,
 } from "@itotori/db";
 import type { EngineCapabilityReportPort } from "./services/engine-capability-report.js";
+import {
+  parseAssetDecisionPolicy,
+  parseAssetKind,
+  parseAssetRef,
+  runAssetDecisionsList,
+  runAssetDecisionsRecord,
+  type AssetDecisionsCliPort,
+} from "./asset-decisions/cli.js";
 import { assertBridgeInput } from "./api-schema.js";
 import type { ManualFeedbackImportPort } from "./manual-feedback.js";
 import type { ItotoriProjectWorkflowPort, ProjectState } from "./services/project-workflow.js";
@@ -79,6 +87,11 @@ export type ItotoriCliServices = {
     defaultContextWindowTokens: number;
   };
   engineCapabilityReports: EngineCapabilityReportPort;
+  /**
+   * Optional so unit suites can omit it. The CLI commands
+   * `itotori:asset-decisions-list` / `-record` require it at runtime.
+   */
+  assetDecisions?: AssetDecisionsCliPort;
 };
 
 export type ItotoriCliDependencies = {
@@ -155,6 +168,12 @@ export async function runItotoriCliCommand(
       break;
     case "engine-capabilities-list":
       await runEngineCapabilitiesList(args, dependencies);
+      break;
+    case "asset-decisions-list":
+      await runAssetDecisionsListHandler(args, dependencies);
+      break;
+    case "asset-decisions-record":
+      await runAssetDecisionsRecordHandler(args, dependencies);
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -712,4 +731,60 @@ function assertCapabilityLevelStatus(value: unknown, label: string): void {
     default:
       throw new Error(`${label}.kind must be supported, partial, or unsupported`);
   }
+}
+
+// ITOTORI-035: asset localization decision CLI commands. The handlers
+// expose the same writes the dashboard does, intended primarily for CI
+// scripts and recorded-fixture authoring.
+
+async function runAssetDecisionsListHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const projectId = requiredFlag(args, "--project");
+  const localeBranchId = requiredFlag(args, "--locale");
+  const outputPath = requiredFlag(args, "--output");
+  await dependencies.withServices(async (services) => {
+    const port = requireAssetDecisionsPort(services);
+    await runAssetDecisionsList({ projectId, localeBranchId, outputPath }, port, dependencies.io);
+  });
+}
+
+async function runAssetDecisionsRecordHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const projectId = requiredFlag(args, "--project");
+  const localeBranchId = requiredFlag(args, "--locale");
+  const assetRef = parseAssetRef(requiredFlag(args, "--asset-ref"));
+  const assetKind = parseAssetKind(requiredFlag(args, "--asset-kind"));
+  const policy = parseAssetDecisionPolicy(requiredFlag(args, "--policy"));
+  const rationale = optionalFlag(args, "--rationale");
+  const outputPath = optionalFlag(args, "--output");
+  await dependencies.withServices(async (services) => {
+    const port = requireAssetDecisionsPort(services);
+    const recordArgs: Parameters<typeof runAssetDecisionsRecord>[0] = {
+      projectId,
+      localeBranchId,
+      assetRef,
+      assetKind,
+      policy,
+    };
+    if (rationale !== undefined) {
+      recordArgs.rationale = rationale;
+    }
+    if (outputPath !== undefined) {
+      recordArgs.outputPath = outputPath;
+    }
+    await runAssetDecisionsRecord(recordArgs, port, dependencies.io);
+  });
+}
+
+function requireAssetDecisionsPort(services: ItotoriCliServices): AssetDecisionsCliPort {
+  if (services.assetDecisions === undefined) {
+    throw new Error(
+      "asset-decisions service is not configured for this CLI context (assetDecisions port missing)",
+    );
+  }
+  return services.assetDecisions;
 }
