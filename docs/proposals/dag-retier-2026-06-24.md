@@ -174,8 +174,8 @@ multi-game-validation (≥2 games per engine, including encrypted
 variants):
 
 - **MV/MZ family**: `KAIFUU-007 / 039 / 068 / 108 / 109 / 110 / 111 /
-  112 / 115 / 116 / 117`; `UTSUSHI-006 / 010 / 011 / 031 / 032 / 033
-  / 065 / 102 (P0) / 119 / 133 / 134`. Justification: every node
+112 / 115 / 116 / 117`; `UTSUSHI-006 / 010 / 011 / 031 / 032 / 033
+/ 065 / 102 (P0) / 119 / 133 / 134`. Justification: every node
   names MV/MZ; MV/MZ is not the alpha-defining engine. Note
   **UTSUSHI-102** demotes from alpha P0 to beta P1 — flag for
   priority review.
@@ -184,10 +184,10 @@ variants):
   surface. The shared substrate alignment node `UTSUSHI-147` stays
   alpha because the alpha runtime needs the alignment.
 - **KAG / plain-KiriKiri family**: `KAIFUU-009 / 038 / 054 / 056 /
-  071 / 098`; `UTSUSHI-037 / 038 / 039`. Justification: second-
+071 / 098`; `UTSUSHI-037 / 038 / 039`. Justification: second-
   engine breadth.
 - **Encrypted-corpus helper infrastructure**: `KAIFUU-036 / 042 /
-  060 / 067 / 090 / 103 / 105 / 106 / 107 / 129`. Justification:
+060 / 067 / 090 / 103 / 105 / 106 / 107 / 129`. Justification:
   encrypted variants are beta-defining ("≥2 games per engine,
   **including encrypted variants**"). If any helper subset is needed
   for Sweetie HD (e.g., `Gameexe.ini` publisher-table reading),
@@ -218,7 +218,7 @@ this interactively with `xor_2_pass = None` for Sukara):
 
 - **UTSUSHI-201..206** — Seen.txt 10,000-slot directory parser,
   scene header parser, AVG32 LZ+XOR decompressor (Sukara `xor_2 =
-  None` default per the encryption-mechanism doc), bytecode element
+None` default per the encryption-mechanism doc), bytecode element
   decoder, expression evaluator, variable banks. Foundation layer
   prerequisites for replaying any scene.
 - **UTSUSHI-207** — Structured Gameexe.ini parser; resolves speaker
@@ -297,7 +297,7 @@ when ingesting):
 - **Target:** **alpha** (real-bytes extraction clause).
 - **Summary:** Land `crates/kaifuu-reallive/src/compression.rs` —
   `decompress_scene(compressed: &[u8], dst_len: usize, xor_2_pass:
-  Option<&Xor2Pass>)`, restated from rlvm `compression.cc::Decompress`
+Option<&Xor2Pass>)`, restated from rlvm `compression.cc::Decompress`
   in our own words. Default `xor_2_pass = None` for Sukara-branch.
   256-byte AVG32 mask as `const`. Delete synthetic-envelope
   compressed path in same change (no-legacy-compat).
@@ -328,7 +328,7 @@ when ingesting):
   RealLive in same change (no-legacy-compat).
 - **Acceptance criteria (real-bytes, observable):**
   1. `cargo run -p kaifuu-cli -- extract <SWEETIE_HD>/REALLIVEDATA/Seen.txt
-     --scene 1 --bridge-out /tmp/sweetie-hd-scene-1.bridge.json`
+--scene 1 --bridge-out /tmp/sweetie-hd-scene-1.bridge.json`
      writes a schema-valid `BridgeBundle` v0.2 JSON.
   2. `units[]` length matches textout+choice element count from
      UTSUSHI-204 decoded stream.
@@ -410,9 +410,9 @@ when ingesting):
   break the runtime). Linux-only — no `Command::new("wine ...")`.
 - **Acceptance criteria (observable):**
   1. `cargo run -p utsushi-reallive --bin replay-validate-sweetie-hd
-     -- --patched-seen=<patched>/REALLIVEDATA/Seen.txt
-     --source-seen=<SWEETIE_HD>/REALLIVEDATA/Seen.txt --scene=1
-     --out=/tmp/sweetie-hd-replay/` exits 0.
+-- --patched-seen=<patched>/REALLIVEDATA/Seen.txt
+--source-seen=<SWEETIE_HD>/REALLIVEDATA/Seen.txt --scene=1
+--out=/tmp/sweetie-hd-replay/` exits 0.
   2. `<out>/text-events.json` lists ≥1 TextLine whose body is the
      localized target text (not Shift-JIS source).
   3. `<out>/frame-0001.png` is 1280x720 (per `SCREENSIZE_MOD`);

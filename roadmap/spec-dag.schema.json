@@ -82,7 +82,7 @@
         },
         "target": {
           "type": "string",
-          "enum": ["baseline", "alpha", "continuous"]
+          "enum": ["baseline", "real-game-testing-ready", "alpha", "beta", "continuous"]
         },
         "projects": {
           "type": "array",

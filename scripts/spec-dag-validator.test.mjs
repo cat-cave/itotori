@@ -543,7 +543,7 @@ function dagFixture(nodes) {
         cancelled: "replaced or intentionally dropped",
       },
     },
-    nodes: [alphaNodeFixture(), ...nodes],
+    nodes: [alphaNodeFixture(), rgtNodeFixture(), ...nodes],
   };
 }
 
@@ -560,6 +560,26 @@ function alphaNodeFixture() {
     summary: "Fixture alpha readiness milestone.",
     deliverables: ["Alpha readiness fixture"],
     acceptanceCriteria: ["The fixture milestone exists for alpha path validation"],
+    verification: [{ type: "command", value: "node scripts/spec-dag.mjs validate" }],
+    auditFocus: ["Fixture validity"],
+  };
+}
+
+function rgtNodeFixture() {
+  return {
+    id: "RGT-005",
+    title: "Real-game-testing-ready milestone fixture",
+    status: "complete",
+    priority: "P1",
+    target: "real-game-testing-ready",
+    projects: ["suite"],
+    parallelGroup: "milestone",
+    dependsOn: [],
+    summary: "Fixture real-game-testing-ready readiness milestone.",
+    deliverables: ["RGT readiness fixture"],
+    acceptanceCriteria: [
+      "The fixture milestone exists for real-game-testing-ready path validation",
+    ],
     verification: [{ type: "command", value: "node scripts/spec-dag.mjs validate" }],
     auditFocus: ["Fixture validity"],
   };

@@ -63,7 +63,13 @@ const requiredNodeFields = [
 const optionalNodeFields = ["statusReason", "issue", "branch", "worktree", "owner", "blockedBy"];
 
 const priorityRank = { P0: 0, P1: 1, P2: 2, P3: 3 };
-const targetRank = { baseline: 0, alpha: 1, continuous: 2 };
+const targetRank = {
+  baseline: 0,
+  "real-game-testing-ready": 1,
+  alpha: 2,
+  beta: 3,
+  continuous: 4,
+};
 const semanticValidationStatuses = new Set(["planned", "in_progress", "blocked"]);
 const genericDeliverableValues = new Set([
   "implementation",
@@ -733,21 +739,47 @@ function unusedDagNodeId(dagValue) {
 }
 
 function validateAlphaReadinessPath(nodes, ids) {
+  const errors = [];
+
   const releaseNode = ids.get("ALPHA-005");
   if (!releaseNode) {
-    return ["ALPHA-005 alpha readiness milestone node is required"];
-  }
-  const ancestors = ancestorsOf(releaseNode, ids);
-  return nodes
-    .filter(
-      (node) =>
+    errors.push("ALPHA-005 alpha readiness milestone node is required");
+  } else {
+    const ancestors = ancestorsOf(releaseNode, ids);
+    for (const node of nodes) {
+      if (
         node.priority === "P1" &&
         node.target === "alpha" &&
         node.status !== "complete" &&
         node.id !== "ALPHA-005" &&
-        !ancestors.has(node.id),
-    )
-    .map((node) => `${node.id} is P1 alpha-readiness work but is not an ancestor of ALPHA-005`);
+        !ancestors.has(node.id)
+      ) {
+        errors.push(`${node.id} is P1 alpha-readiness work but is not an ancestor of ALPHA-005`);
+      }
+    }
+  }
+
+  const rgtNode = ids.get("RGT-005");
+  if (!rgtNode) {
+    errors.push("RGT-005 real-game-testing-ready milestone node is required");
+  } else {
+    const ancestors = ancestorsOf(rgtNode, ids);
+    for (const node of nodes) {
+      if (
+        node.priority === "P1" &&
+        node.target === "real-game-testing-ready" &&
+        node.status !== "complete" &&
+        node.id !== "RGT-005" &&
+        !ancestors.has(node.id)
+      ) {
+        errors.push(
+          `${node.id} is P1 real-game-testing-ready work but is not an ancestor of RGT-005`,
+        );
+      }
+    }
+  }
+
+  return errors;
 }
 
 function ancestorsOf(node, ids) {

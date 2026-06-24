@@ -378,7 +378,7 @@ backfill. No `#[deprecated]`, no aliases.
 
 - **Acceptance:** `providers/types.ts` declares
   `ModelInvocationRequest.providerId: string` (no `?`); `git grep
-  'modelId?:' apps/itotori/src` returns zero hits; a type-level test
+'modelId?:' apps/itotori/src` returns zero hits; a type-level test
   asserts the TS compiler rejects an invocation without `providerId`;
   the OpenRouter request body for `providerId === "fireworks"`
   includes `"provider": { "only": ["fireworks"] }` (mocked-HTTP table
@@ -426,7 +426,7 @@ provenance per unit for patchback. Extends the v0.2 protected-span
 vocabulary same change if any RealLive kind is missing.
 
 - **Acceptance:** `kaifuu-cli extract --engine reallive --scene 1
-  --bundle-output <out>.json <Sweetie HD>` exits 0 with
+--bundle-output <out>.json <Sweetie HD>` exits 0 with
   `schemaVersion == "localization-bridge-schema/v0.2"`,
   `units.length >= 1`, first unit `sourceLocale == "ja-JP"`,
   `sourceEncoding == "shift-jis"`, ≥1 protected span of kind
@@ -482,7 +482,7 @@ invocation, provider run record, and decisions.
 
 - **Acceptance:**
   `pnpm exec vp run itotori:agentic-loop-smoke --bridge <in>.json
-  --unit-index 0 --pair-policy <policy>.json` exits 0 with a bundle
+--unit-index 0 --pair-policy <policy>.json` exits 0 with a bundle
   whose `stages` array contains `context`, `pre_translation`,
   `translation`, `deterministic_checks`, `qa_findings`, `routing`,
   optional `repair`, `final_draft`; every invocation record carries an
@@ -550,8 +550,8 @@ dashboard. No new schema beyond the `provider_id` column from -Apair.
   populates ledger rows whose `provider_id`, `model_id`,
   `prompt_tokens`, `completion_tokens`, `latency_ms`, and
   `cost_micros_usd` are non-NULL for `cost_kind in {billed,
-  provider_estimate}`; new repo method `aggregateByPair(modelId,
-  providerId, {since, until})` returns the sum for the window and the
+provider_estimate}`; new repo method `aggregateByPair(modelId,
+providerId, {since, until})` returns the sum for the window and the
   dashboard renders a per-pair table; missing cost data (free-tier
   route) writes `provider_estimate` with a local estimate AND emits
   `itotori.cost.estimate_only` Warning.
