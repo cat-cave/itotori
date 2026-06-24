@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-063-20260624T013623Z",
+  "generatedAt": "2026-06-24T01:36:23Z",
+  "spec": {
+    "id": "UTSUSHI-063",
+    "title": "Fixture snapshot restore playback smoke",
+    "branch": "spec/utsushi-063",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-063",
+    "commit": "3b40158"
+  },
+  "auditor": {
+    "name": "utsushi-063-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "UTSUSHI-063 lands the fixture snapshot restore playback smoke as a single integration test file (`crates/utsushi-core/tests/fixture_snapshot_restore.rs`, 548 LOC, 15 #[test] functions). All three acceptance criteria hold. (1) Byte-deterministic round-trip: `fixture_snapshot_round_trips_through_in_memory_store_byte_for_byte` (line 162) saves → resolves and asserts byte-equality; `fixture_snapshot_serializes_identically_across_two_consecutive_calls` (line 189) and the three-runs parametrized determinism oracle (line 200) catch serializer-internal nondeterminism. (2) State drift surfaces explicitly: `SnapshotConformanceCheck::run` returns `ResultOutcome::Fail { semantic_code: store_codes::STATE_DRIFT }` on every drift twin; the `lists_every_drifted_state_path_in_evidence` test mutates three `StatePath` values and asserts all three appear in the BTree-sorted `EvidenceRef::StatePath` evidence vec (`bridge.scene_id`, `bridge.scene_position_line`, `runtime.flags_read_count`); the `fail_detail_quotes_state_path_verbatim` test exercises the audit-focus 'drift reported too vaguely' defense. (3) Missing snapshot → typed error: `fixture_snapshot_store_resolve_returns_not_found_when_snapshot_ref_missing` asserts `SnapshotStoreError::NotFound { snapshot_id: 'smoke-missing-001' }` with semantic code `store_codes::STORE_NOT_FOUND`; `fixture_snapshot_store_does_not_silently_return_optional_none` is a compile-time pin that `SnapshotStore::resolve` returns `Result<Snapshot, SnapshotStoreError>` (NOT `Result<Option<Snapshot>, _>`) via the local generic function `assert_resolve_signature<S: SnapshotStore>`. Worker's namespace deviation is defensible. The plan §3 step 1 named `scene.id`/`scene.position.line`/`flags.read_count` paths, but UTSUSHI-023's `StateNamespace::ALL` (`crates/utsushi-core/src/snapshot/state.rs`) is the closed set `{runtime, replay, bridge, vfs, port, metadata}` and `StatePath::parse` rejects anything outside it with `SnapshotError::UnknownStateNamespace`. The worker correctly remapped to `bridge.scene_id` / `bridge.scene_position_line` / `runtime.flags_read_count` / `port.inventory_slot_0` (lines 71-88) which satisfies the substrate's validator and preserves the smoke's structural intent (multi-namespace coverage of the StateNamespace set). The `SnapshotSchemaVersion` pin holds via `fixture_snapshot_smoke_schema_version_pin_matches_substrate_constant` and the `MismatchedSchemaVersion` twin (line 384) forges `\"0.0.1-fabricated\"` through the serde round-trip and asserts `store.insert` rejects with the typed variant. Host path defense: `fixture_snapshot_smoke_payload_passes_reject_unredacted_local_paths_filter` walks baseline, observed, check, AND outcome JSON through the project-wide filter; `fixture_snapshot_smoke_does_not_inline_bytes_in_any_field` walks the serialized JSON and asserts no `bytes` or `path` keyed leaf appears. Replay-log tail alignment closes the determinism-gap audit focus: `fixture_snapshot_clock_tick_aligns_with_replay_log_post_restore_tail` records tail entries at `BASELINE_TICK+1` and `+2`, finalizes through `InMemoryReferenceRecorder`, asserts `deterministic_json_bytes(&trace)` is byte-stable across two emit passes, and round-trips through `ReplayLogBuilder` to exercise the UTSUSHI-021 surface. Verification: `cargo test -p utsushi-core --test fixture_snapshot_restore` 15 passed / 0 failed; `cargo test -p utsushi-core` lib 629 passed plus every integration suite green; `just check` clean. No P0/P1/P2/P3 findings.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
