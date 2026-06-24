@@ -247,3 +247,132 @@ Add a follow-up node when:
 Do not add a new DAG node when an existing planned node already covers the work.
 In that case, update the planned node only if the finding changes acceptance
 criteria or verification materially.
+
+## DAG Anti-Patterns The Orchestrator And Audit Workers Must Reject
+
+The 2026-06-23 audit batch (see `docs/audits/dag-critique.md` for the full
+findings) surfaced recurring patterns that produce "complete" specs the
+codebase cannot honestly support. These patterns must be rejected by the
+orchestrator at claim time and by audit workers at completion time.
+
+### Single-node engine ports
+
+A spec titled "engine port" or "runtime port" whose acceptance criteria fit a
+single PR is structurally infeasible. A real engine port (RealLive, RPG Maker,
+KiriKiri runtime, etc.) is many thousands of lines of code across opcode VM,
+variable system, asset pipeline, save/load, system-call dispatch, and so on.
+
+If a planning subagent or audit worker encounters a single node whose
+"deliverables" claim a full runtime port, the orchestrator must:
+
+1. Stop the claim or refuse completion.
+2. Demand a decomposition document (see
+   `docs/research/reallive-engine-dag-proposal.md` for the canonical example —
+   it splits UTSUSHI-146 into 22 sub-nodes with concrete behaviours).
+3. Re-enter the planning loop with the decomposition's sub-nodes.
+
+### Acceptance criteria that name no observable artifact
+
+A criterion like "the adapter inventories text surfaces" is unverifiable. A
+criterion like "running `cargo run -p kaifuu-cli detect <path>` against
+`/scratch/itotori-research/sweetie-hd/extracted/.../REALLIVEDATA/` returns
+`detected: true` with `engine_family = reallive` and `confidence != null`" is
+verifiable.
+
+Every alpha-target acceptance criterion must name at least one of:
+
+- A specific file path (real or fixture) whose content the code must produce.
+- A specific command whose `stdout`/exit code is observable.
+- A specific byte range whose parsing must succeed.
+- A specific schema-validated JSON shape and the validator command.
+
+Audit workers must reject completion when an acceptance criterion is
+unfalsifiable.
+
+### "Smoke" tests that delegate to author-generated fixtures only
+
+A "smoke" test that runs the code only against a fixture the same worker
+authored does not prove generality. The
+`crates/kaifuu-reallive/tests/fixtures/smoke-scene-001/SEEN.TXT` is 47 bytes;
+the real RealLive `Seen.txt` for Oshioki Sweetie HD is 3,876,496 bytes with a
+10,000-slot fixed directory the synthetic fixture does not exercise.
+
+When a spec claims generality across an engine family or asset class, the
+acceptance criteria must include at least one test against bytes the spec
+author did not generate: real owned-game bytes (read-only from
+`/scratch/itotori-research/...` or `/archive/vault/...`), a third-party
+public fixture, or a corpus-sampled fixture documented as
+"author-independent."
+
+### Tests that mirror implementation instead of contracts
+
+A test that asserts the structure of the implementation (e.g. that
+`buildPrompt(input) === buildPrompt(input)`, that `encode_then_decode(x) ==
+x`, or that a builder builds) is tautological. Such tests pass after any
+refactor and do not predict consumer failures.
+
+Audit workers must categorise each test as: contract / smoke /
+implementation-mirror / tautology. A spec whose test count is dominated
+(>40%) by tautological or implementation-mirror tests must be rejected at
+audit until contract tests are added.
+
+### Substrate types with no production consumer
+
+A substrate trait or type that compiles and tests but is never imported by a
+production crate is scaffolding without load. When a substrate spec lands,
+the audit must demonstrate at least one non-test consumer or attach a
+follow-up node whose acceptance criteria includes wiring at least one
+real-engine adapter to consume the new surface.
+
+The current substrate (UTSUSHI-020..120) is in a deferred state: zero
+non-test consumers exist outside `utsushi-core`. New substrate work must
+not extend this pattern.
+
+### Database migration shipped without TypeScript registration
+
+Any spec that adds a `.sql` file under `packages/itotori-db/migrations/` must
+also add the matching entry to `packages/itotori-db/src/migrations.ts` in the
+same commit. Audit workers must grep both paths and reject completion if the
+two are out of sync.
+
+A migration-parity test
+(`packages/itotori-db/test/migrations-parity.test.ts`) enforces this in CI.
+Specs that add migrations must not bypass that test by using only in-memory
+repository test doubles.
+
+### Research-reference nodes that produce no DAG output
+
+A spec that names "rlvm as research anchor" or "siglus_rs as research
+anchor" without surfacing concrete findings (opcode lists, format invariants,
+sub-format key requirements, etc.) into the DAG as follow-up nodes leaves an
+unbounded scope hole. Research-anchor specs must produce a deliverable that
+populates the DAG with concrete sub-nodes whose acceptance criteria cite the
+research.
+
+`docs/research/reallive-engine.md` and `docs/research/reallive-engine-dag-proposal.md`
+are the canonical shape for a research-anchor deliverable.
+
+### Claimed-support framings the implementation does not satisfy
+
+The orchestrator brief lists "claimed alpha engines." The
+`docs/subprojects-kaifuu.md` definition of "claimed support" requires the
+complete detect → extract → decrypt → decompile → patch → verify →
+delta-apply chain. A "claimed-support" framing for an engine whose chain
+does not round-trip real game bytes is a forbidden-state violation.
+
+Audit workers must verify the claimed chain end-to-end on at least one
+non-author byte stream before allowing any "claimed-support" status. If the
+chain cannot, the framing must be demoted from "claimed-support" to
+"readiness-record" with no completion-level claim.
+
+### Process: planning subagent checklist
+
+When the orchestrator spawns a planning subagent, the prompt must require
+the subagent to verify and document each of the above patterns it does NOT
+introduce. The plan file must include a "DAG anti-pattern self-check"
+section that states, for each pattern, whether the planned spec is
+susceptible and how it avoids the pattern.
+
+When the orchestrator spawns an audit subagent, the prompt must require the
+audit to explicitly check each pattern against the merged code and call out
+any violations as P0 or P1 findings.
