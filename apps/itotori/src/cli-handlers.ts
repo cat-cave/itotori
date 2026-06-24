@@ -56,7 +56,6 @@ export type ItotoriCliServices = {
     loadContext: PlanBatchesContextLoader;
     persist: PlanBatchesPersister;
   };
-<<<<<<< HEAD
   sceneSummary?: {
     /**
      * Construct the per-invocation dependencies (provider, repositories,
@@ -67,9 +66,7 @@ export type ItotoriCliServices = {
     defaultProviderFamily: ProviderFamily;
     defaultContextWindowTokens: number;
   };
-=======
   engineCapabilityReports: EngineCapabilityReportPort;
->>>>>>> spec/kaifuu-053
 };
 
 export type ItotoriCliDependencies = {
@@ -129,19 +126,17 @@ export async function runItotoriCliCommand(
     case "plan-batches":
       await runPlanBatchesHandler(args, dependencies);
       break;
-<<<<<<< HEAD
     case "generate-scene-summaries":
       await runGenerateSceneSummariesHandler(args, dependencies);
       break;
     case "check-scene-summaries":
       await runCheckSceneSummariesHandler(args, dependencies);
-=======
+      break;
     case "engine-capabilities-record":
       await runEngineCapabilitiesRecord(args, dependencies);
       break;
     case "engine-capabilities-list":
       await runEngineCapabilitiesList(args, dependencies);
->>>>>>> spec/kaifuu-053
       break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
@@ -414,7 +409,6 @@ function asProviderFamily(value: string): ProviderFamily {
   throw new Error(`unknown provider family: ${value}`);
 }
 
-<<<<<<< HEAD
 async function runGenerateSceneSummariesHandler(
   args: string[],
   dependencies: ItotoriCliDependencies,
@@ -506,7 +500,7 @@ async function runCheckSceneSummariesHandler(
 // Helper used internally during the legacy CLI bridging so unused-import lints
 // pass while the resolveSceneSummaryProvider symbol stays public for embedders.
 export const _internalResolveSceneSummaryProviderForCliHandlers = resolveSceneSummaryProvider;
-=======
+
 // KAIFUU-053: CLI commands for the capability-leveled engine detector
 // registry. `engine-capabilities-record` upserts one adapter's matrix
 // from a JSON file (used to import what `EngineAdapter::capabilities()`
@@ -610,4 +604,3 @@ function assertCapabilityLevelStatus(value: unknown, label: string): void {
       throw new Error(`${label}.kind must be supported, partial, or unsupported`);
   }
 }
->>>>>>> spec/kaifuu-053

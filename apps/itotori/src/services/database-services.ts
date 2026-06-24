@@ -95,16 +95,13 @@ export type ItotoriApplicationServices = {
     loadContext: PlanBatchesContextLoader;
     persist: PlanBatchesPersister;
   };
-<<<<<<< HEAD
   sceneSummary: {
     cliDependencies(provider: ProviderFamily): Promise<SceneSummaryCliDependencies>;
     defaultModelId: string;
     defaultProviderFamily: ProviderFamily;
     defaultContextWindowTokens: number;
   };
-=======
   engineCapabilityReports: EngineCapabilityReportPort;
->>>>>>> spec/kaifuu-053
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -226,11 +223,8 @@ export async function withDatabaseItotoriServices<T>(
       translationMemoryRepository,
     );
     const translationBatchRepository = new ItotoriTranslationBatchRepository(context.db);
-<<<<<<< HEAD
     const sceneSummaryRepository = new ItotoriSceneSummaryRepository(context.db);
-=======
     const engineCapabilityReportRepository = new EngineCapabilityReportRepository(context.db);
->>>>>>> spec/kaifuu-053
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -278,7 +272,6 @@ export async function withDatabaseItotoriServices<T>(
           await persistBatches(translationBatchRepository, localUserActor, batches, identity);
         },
       },
-<<<<<<< HEAD
       sceneSummary: {
         cliDependencies: async (providerFamily) => ({
           actor: localUserActor,
@@ -290,12 +283,10 @@ export async function withDatabaseItotoriServices<T>(
         defaultProviderFamily: "fake",
         defaultContextWindowTokens: 16000,
       },
-=======
       engineCapabilityReports: new EngineCapabilityReportService(
         engineCapabilityReportRepository,
         localUserActor,
       ),
->>>>>>> spec/kaifuu-053
     });
   } finally {
     await context.close();
