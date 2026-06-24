@@ -6526,7 +6526,7 @@
     {
       "id": "ITOTORI-021",
       "title": "LLM QA agents and scored findings",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -6567,7 +6567,10 @@
           "value": "QA agent precision/recall report fixture"
         }
       ],
-      "auditFocus": ["Unverifiable scores", "Overbroad QA prompts", "QA findings worse than no QA"]
+      "auditFocus": ["Unverifiable scores", "Overbroad QA prompts", "QA findings worse than no QA"],
+      "owner": "orchestrator-itotori-021",
+      "branch": "spec/itotori-021",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-021"
     },
     {
       "id": "ITOTORI-022",
@@ -6705,7 +6708,7 @@
     {
       "id": "ITOTORI-025",
       "title": "Patch export and Kaifuu handoff v0.2",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "kaifuu"],
@@ -6749,7 +6752,10 @@
           "value": "Kaifuu handoff fixture"
         }
       ],
-      "auditFocus": ["Engine leakage into Itotori", "Skipping preflight", "Stale source exports"]
+      "auditFocus": ["Engine leakage into Itotori", "Skipping preflight", "Stale source exports"],
+      "owner": "orchestrator-itotori-025",
+      "branch": "spec/itotori-025",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-025"
     },
     {
       "id": "ITOTORI-026",
