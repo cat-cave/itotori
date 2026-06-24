@@ -11819,7 +11819,7 @@
     {
       "id": "ITOTORI-078",
       "title": "Structured QA invocation and parser",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11857,9 +11857,7 @@
         "Findings detached from draft/source span evidence",
         "Provider fallback hidden from QA provenance"
       ],
-      "owner": "orchestrator-itotori-078",
-      "branch": "spec/itotori-078",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-078"
+      "statusReason": "Implementation merged (commit 7939bdc). QaAgent + structured-output schema + recorded replay mode + 37 tests. Persistence layer (qa_findings table) deferred per option B in the spec; fixtures already exported for downstream test reuse."
     },
     {
       "id": "ITOTORI-081",
