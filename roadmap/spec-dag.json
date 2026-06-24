@@ -21888,7 +21888,7 @@
     {
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
-      "status": "planned",
+      "status": "in_progress",
       "id": "UTSUSHI-223",
       "title": "Substrate M.2 — snapshot envelope size class (Small / Medium / Large)",
       "priority": "P1",
@@ -21929,12 +21929,15 @@
         "Schema-version bump skipped or marked as backwards-compatible (it is not).",
         "Test that proves the envelope works at fixture scale only — multi-engine requirement not satisfied.",
         "`SnapshotEnvelope::Large` variant used where `Medium` suffices (over-allocation hiding the regression check)."
-      ]
+      ],
+      "owner": "orchestrator-substrate-m2",
+      "branch": "spec/utsushi-223",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-223"
     },
     {
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
-      "status": "planned",
+      "status": "in_progress",
       "id": "UTSUSHI-224",
       "title": "Substrate M.3 — EnginePort → substrate-sinks bridge (legacy hooks removed)",
       "priority": "P1",
@@ -21981,7 +21984,10 @@
         "`utsushi-fixture` migration not landed in the same commit — the alpha gate's '≥1 non-test consumer' is unmet without it.",
         "Sinks documented but never drained by `Runner::tick` (silent dead-code).",
         "Tests that exercise the sinks via a collector struct declared inside the substrate's own `#[cfg(test)]` rather than a production consumer."
-      ]
+      ],
+      "owner": "orchestrator-substrate-m3",
+      "branch": "spec/utsushi-224",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-224"
     },
     {
       "projects": ["utsushi"],
@@ -23595,7 +23601,7 @@
     {
       "id": "KAIFUU-188",
       "title": "Parse real RealLive SEEN.TXT fixed offset-table envelope",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "continuous",
       "projects": ["kaifuu"],
@@ -23628,7 +23634,10 @@
         "Off-by-one slot indexing across the fixed 10,000-entry table boundary.",
         "Zero-prefix scene-id 0 slot must not be mistaken for an end-of-table marker.",
         "Synthetic fixture coverage must not regress; KAIFUU-173 envelope still parses."
-      ]
+      ],
+      "owner": "orchestrator-kaifuu-envelope",
+      "branch": "spec/kaifuu-188",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-188"
     },
     {
       "id": "KAIFUU-189",
