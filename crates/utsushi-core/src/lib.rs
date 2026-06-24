@@ -23,6 +23,7 @@ pub mod recorder;
 pub mod replay;
 pub mod sink;
 pub mod snapshot;
+pub mod substrate;
 pub mod vfs;
 
 pub use clock::{ClockOrigin, LogicalClock, LogicalClockTick};

@@ -75,8 +75,8 @@ new traits, no schema bumps, no behavior change. The facade exists to:
      capture check;
    - construct a port manifest, run a runner, observe lifecycle
      stages.
-   Compile-time reachability is not enough; the test executes each
-   path so a future API churn that breaks reachability fails CI.
+     Compile-time reachability is not enough; the test executes each
+     path so a future API churn that breaks reachability fails CI.
 
 ### Hard architectural constraints
 
@@ -569,11 +569,11 @@ not against a hardcoded literal; the constant pinning rule is in §5.
 
 ### 9.6 Audit-focus checklist
 
-| Audit focus                                | Structural defense                                                                                                                                                              |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Facade leaks substrate internals           | §3.2 exclusion list, §7.2 leakage gate, doc surface in §4, manual code-review gate against new `pub use` items.                                                                  |
-| API surface engine-specific                | §7.3 engine-neutrality lint over facade source and docs; §7.1 case 9 `SourceTag` variant pin; doc rule §4(4).                                                                    |
-| Conformance gaps undermine "one stable surface" | §7.1 nine end-to-end cases drive every subsystem through the facade only; case 6 runs a real conformance check; case 8 pins schema versions so a silent bump is loud in CI.   |
+| Audit focus                                     | Structural defense                                                                                                                                                          |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Facade leaks substrate internals                | §3.2 exclusion list, §7.2 leakage gate, doc surface in §4, manual code-review gate against new `pub use` items.                                                             |
+| API surface engine-specific                     | §7.3 engine-neutrality lint over facade source and docs; §7.1 case 9 `SourceTag` variant pin; doc rule §4(4).                                                               |
+| Conformance gaps undermine "one stable surface" | §7.1 nine end-to-end cases drive every subsystem through the facade only; case 6 runs a real conformance check; case 8 pins schema versions so a silent bump is loud in CI. |
 
 ## 10. Out of scope
 
