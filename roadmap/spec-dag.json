@@ -11641,7 +11641,7 @@
     {
       "id": "ITOTORI-074",
       "title": "Draft job schema and repository",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11685,7 +11685,10 @@
         "Draft jobs missing locale branch or policy version identity",
         "Retry state encoded only in provider logs",
         "Migration drift weakening draft job constraints"
-      ]
+      ],
+      "owner": "orchestrator-itotori-074",
+      "branch": "spec/itotori-074",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-074"
     },
     {
       "id": "ITOTORI-075",
@@ -11816,7 +11819,7 @@
     {
       "id": "ITOTORI-078",
       "title": "Structured QA invocation and parser",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11853,7 +11856,10 @@
         "QA findings accepted without schema validation",
         "Findings detached from draft/source span evidence",
         "Provider fallback hidden from QA provenance"
-      ]
+      ],
+      "owner": "orchestrator-itotori-078",
+      "branch": "spec/itotori-078",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-078"
     },
     {
       "id": "ITOTORI-081",
