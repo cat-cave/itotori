@@ -7133,7 +7133,7 @@
     {
       "id": "ITOTORI-035",
       "title": "Asset localization decision workflow",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "kaifuu"],
@@ -7170,9 +7170,7 @@
         "Overpromising asset editing",
         "Bad batch-review UX"
       ],
-      "owner": "orchestrator-itotori-035",
-      "branch": "spec/itotori-035",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-035"
+      "statusReason": "Implementation merged (commit d13d7b4). Migration 0036 + ItotoriAssetLocalizationDecisionRepository + dashboard routes + CLI + AssetDecisionPolicyResolver with unresolved-shape semantics + 28 tests."
     },
     {
       "id": "ITOTORI-036",
