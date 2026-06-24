@@ -528,6 +528,36 @@ export {
   characterRelationshipKindValues,
   characterRelationshipStatusValues,
 } from "./repositories/character-relationship-repository.js";
+export {
+  ItotoriRouteChoiceMapRepository,
+  routeChoiceKindList,
+  routeChoiceKindValues,
+  routeChoiceStatusValues,
+  routeEvidenceSubjectKindValues,
+  routeInvalidatedReasonValues,
+  routeMapStatusValues,
+} from "./repositories/route-choice-map-repository.js";
+export type {
+  ItotoriRouteChoiceMapRepositoryPort,
+  LoadRouteChoicesQuery,
+  LoadRouteMapsQuery,
+  LoadCurrentSourceHashesInput as LoadRouteChoiceMapCurrentSourceHashesInput,
+  MarkRouteChoiceStaleInput,
+  MarkRouteMapStaleInput,
+  RouteCitationRecord,
+  RouteChoiceOptionRecord,
+  RouteChoiceRecord,
+  RouteMapRecord,
+  SaveRouteChoiceInput,
+  SaveRouteMapInput,
+} from "./repositories/route-choice-map-repository.js";
+export type {
+  RouteChoiceKind,
+  RouteChoiceStatus,
+  RouteEvidenceSubjectKind,
+  RouteInvalidatedReason,
+  RouteMapStatus,
+} from "./schema.js";
 export type {
   CharacterBioRecord,
   CharacterCitationRecord,

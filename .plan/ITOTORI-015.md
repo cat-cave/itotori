@@ -204,10 +204,10 @@ export type RouteMap = {
 
 ```ts
 export type ChoiceKind =
-  | "RouteBranch"      // selects a route
-  | "FlagToggle"       // sets a flag that influences later branching
-  | "SceneSelector"    // jumps to a scene within the current route
-  | "Cosmetic"         // no narrative effect (e.g. menu reorder)
+  | "RouteBranch" // selects a route
+  | "FlagToggle" // sets a flag that influences later branching
+  | "SceneSelector" // jumps to a scene within the current route
+  | "Cosmetic" // no narrative effect (e.g. menu reorder)
   | "Other";
 
 export type RouteChoiceOption = {
@@ -405,7 +405,7 @@ export class ChoiceOptionOutOfOrderError extends Error { ... }
 
 Each error class carries a `code` field whose value matches a
 semantic constant exported alongside the schema migration so the
-DAG-level grep ("itotori.route_choice_map.*") returns all error
+DAG-level grep ("itotori.route_choice_map.\*") returns all error
 paths.
 
 ## 4. Agent service
@@ -428,7 +428,7 @@ GenerateRouteChoiceMapOptions): Promise<RouteChoiceMapOutput>` in
    collect the unique `choiceKey`s. The agent does not invent
    choiceKeys.
 5. **Canonicalize input.** Sort `units` by `(sourceUnitKey,
-   occurrenceId)` to match the planner's ordering; sort
+occurrenceId)` to match the planner's ordering; sort
    `curatedRoutes` by `routeKey`.
 6. **Build prompt** via `prompt-template.ts` (see §4.1). Hash the
    prompt bytes → `promptHash`. Compute `inputTokenEstimate` using
@@ -445,7 +445,7 @@ GenerateRouteChoiceMapOptions): Promise<RouteChoiceMapOutput>` in
      authoritative); a curated route whose agent-emitted citation
      list is empty raises `RouteUncitedError` BEFORE the persistence
      step.
-   For every emitted choice:
+     For every emitted choice:
    - `choiceKey` must appear in the computed choice set.
    - `kind` is one of the closed enum values.
    - `citedUnitIds.length > 0` — else `ChoiceUncitedError`.
@@ -898,7 +898,7 @@ test:db` — DB-backed tests (§8.6, §8.7, §8.11), and verifies the
    `choiceKey`s may change if `RouteContextV02` annotations
    change shape. Mitigation: the schema pins `choiceKey` as opaque
    text; the unique key includes `(sourceRevisionId,
-   promptTemplateVersion)` so different revisions coexist; the
+promptTemplateVersion)` so different revisions coexist; the
    staleness scan flags Fresh records whose underlying units
    drifted.
 6. **Stale records surviving source changes.** §6 hash check is

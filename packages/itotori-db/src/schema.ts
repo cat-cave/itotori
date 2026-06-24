@@ -3375,3 +3375,174 @@ export const characterRelationshipEvidence = pgTable(
     ),
   ],
 );
+
+// ---------------------------------------------------------------------
+// ITOTORI-015 — route + choice map agent
+// ---------------------------------------------------------------------
+
+export const routeMapStatusValues = {
+  fresh: "Fresh",
+  stale: "Stale",
+} as const;
+
+export type RouteMapStatus = (typeof routeMapStatusValues)[keyof typeof routeMapStatusValues];
+
+export const routeChoiceStatusValues = {
+  fresh: "Fresh",
+  stale: "Stale",
+} as const;
+
+export type RouteChoiceStatus =
+  (typeof routeChoiceStatusValues)[keyof typeof routeChoiceStatusValues];
+
+export const routeInvalidatedReasonValues = {
+  sourceHashDrift: "source_hash_drift",
+  templateVersionBump: "template_version_bump",
+  unknownRouteTarget: "unknown_route_target",
+  manual: "manual",
+} as const;
+
+export type RouteInvalidatedReason =
+  (typeof routeInvalidatedReasonValues)[keyof typeof routeInvalidatedReasonValues];
+
+export const routeChoiceKindValues = {
+  routeBranch: "RouteBranch",
+  flagToggle: "FlagToggle",
+  sceneSelector: "SceneSelector",
+  cosmetic: "Cosmetic",
+  other: "Other",
+} as const;
+
+export type RouteChoiceKind = (typeof routeChoiceKindValues)[keyof typeof routeChoiceKindValues];
+
+export const routeEvidenceSubjectKindValues = {
+  route: "route",
+  choice: "choice",
+  choiceOption: "choice_option",
+} as const;
+
+export type RouteEvidenceSubjectKind =
+  (typeof routeEvidenceSubjectKindValues)[keyof typeof routeEvidenceSubjectKindValues];
+
+export const routeMaps = pgTable(
+  "itotori_route_maps",
+  {
+    routeMapId: text("route_map_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    routeKey: text("route_key").notNull(),
+    routeTitle: text("route_title").notNull(),
+    mapLocale: text("map_locale").notNull(),
+    routeSummary: text("route_summary").notNull(),
+    modelProviderFamily: text("model_provider_family").notNull(),
+    modelId: text("model_id").notNull(),
+    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
+    modelMaxOutputTokens: integer("model_max_output_tokens"),
+    promptTemplateVersion: text("prompt_template_version").notNull(),
+    promptHash: text("prompt_hash").notNull(),
+    inputTokenEstimate: integer("input_token_estimate").notNull(),
+    completionTokens: integer("completion_tokens").notNull(),
+    status: text("status").notNull(),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    invalidatedReason: text("invalidated_reason"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_route_maps_unique_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.routeKey,
+      table.promptTemplateVersion,
+    ),
+    index("itotori_route_maps_status_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.status,
+    ),
+    index("itotori_route_maps_route_key_idx").on(table.routeKey),
+  ],
+);
+
+export const routeChoices = pgTable(
+  "itotori_route_choices",
+  {
+    routeChoiceId: text("route_choice_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    choiceKey: text("choice_key").notNull(),
+    kind: text("kind").$type<RouteChoiceKind>().notNull(),
+    fromRouteKey: text("from_route_key"),
+    promptSummary: text("prompt_summary").notNull(),
+    mapLocale: text("map_locale").notNull(),
+    options: jsonb("options").notNull(),
+    modelProviderFamily: text("model_provider_family").notNull(),
+    modelId: text("model_id").notNull(),
+    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
+    modelMaxOutputTokens: integer("model_max_output_tokens"),
+    promptTemplateVersion: text("prompt_template_version").notNull(),
+    promptHash: text("prompt_hash").notNull(),
+    status: text("status").notNull(),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    invalidatedReason: text("invalidated_reason"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_route_choices_unique_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.choiceKey,
+      table.promptTemplateVersion,
+    ),
+    index("itotori_route_choices_status_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.status,
+    ),
+    index("itotori_route_choices_choice_key_idx").on(table.choiceKey),
+    index("itotori_route_choices_from_route_key_idx").on(table.fromRouteKey),
+  ],
+);
+
+export const routeEvidence = pgTable(
+  "itotori_route_evidence",
+  {
+    routeEvidenceId: text("route_evidence_id").primaryKey(),
+    subjectKind: text("subject_kind").$type<RouteEvidenceSubjectKind>().notNull(),
+    routeMapId: text("route_map_id").references(() => routeMaps.routeMapId, {
+      onDelete: "cascade",
+    }),
+    routeChoiceId: text("route_choice_id").references(() => routeChoices.routeChoiceId, {
+      onDelete: "cascade",
+    }),
+    choiceOptionId: text("choice_option_id"),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    citedSourceHash: text("cited_source_hash").notNull(),
+    citeOrdinal: integer("cite_ordinal").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_route_evidence_by_route_idx").on(table.routeMapId, table.bridgeUnitId),
+    index("itotori_route_evidence_by_choice_idx").on(table.routeChoiceId, table.bridgeUnitId),
+    index("itotori_route_evidence_bridge_unit_idx").on(table.bridgeUnitId, table.citedSourceHash),
+  ],
+);

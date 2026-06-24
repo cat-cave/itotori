@@ -1,0 +1,64 @@
+export {
+  computeChoiceKeySet,
+  computeRouteKeySet,
+  generateRouteChoiceMap,
+  generateRouteChoiceMaps,
+  type GenerateRouteChoiceMapOptions,
+} from "./agent.js";
+export {
+  buildPrompt,
+  canonicalizeUnits,
+  PROMPT_TEMPLATE_VERSION_V1,
+  promptHash,
+  type RenderedPrompt,
+} from "./prompt-template.js";
+export {
+  persistRouteChoice,
+  persistRouteMap,
+  recordToRouteChoice,
+  recordToRouteMap,
+  routeChoiceToSaveInput,
+  routeMapToSaveInput,
+} from "./persistence.js";
+export {
+  markStaleRouteChoiceArtifactsForRevision,
+  type DanglingRouteTarget,
+  type RouteChoiceDrift,
+  type RouteChoiceStalenessScanInput,
+  type RouteChoiceStalenessScanResult,
+  type RouteMapDrift,
+} from "./staleness.js";
+export {
+  resolveRouteChoiceMapProvider,
+  runCheckRouteMapsCli,
+  runGenerateRouteMapsCli,
+  type CheckRouteMapsCliInput,
+  type GenerateRouteMapsCliInput,
+  type GenerateRouteMapsCliResult,
+  type RouteChoiceMapCliDependencies,
+} from "./cli.js";
+export {
+  ROUTE_CHOICE_KINDS,
+  ChoiceOptionOutOfOrderError,
+  ChoiceUncitedError,
+  RouteChoiceMapInvalidKindError,
+  RouteChoiceMapParseError,
+  RouteChoiceMapUnknownCitationError,
+  RouteMapEmptyInputError,
+  RouteMapLocaleMismatchError,
+  RouteUncitedError,
+  UnknownRouteError,
+  type BridgeUnitForRouteMap,
+  type ChoiceKind,
+  type CuratedRouteRef,
+  type PriorRouteMapRef,
+  type ProviderEmittedPack,
+  type RouteChoice,
+  type RouteChoiceMapInput,
+  type RouteChoiceMapModelProfile,
+  type RouteChoiceMapOutput,
+  type RouteChoiceOption,
+  type RouteMap,
+  type RouteMapInvalidatedReason,
+  type RouteMapStatus,
+} from "./shapes.js";
