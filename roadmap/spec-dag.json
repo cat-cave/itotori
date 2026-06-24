@@ -21839,7 +21839,7 @@
     {
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
-      "status": "planned",
+      "status": "in_progress",
       "id": "UTSUSHI-222",
       "title": "Substrate M.1 — composite asset package + try-dir-then-archive resolver",
       "priority": "P1",
@@ -21880,7 +21880,10 @@
         "Acceptance criteria that exercise only synthetic fixtures — multi-game requirement not satisfied; demote to `planned` until the second corpus is exercised.",
         "Case-folded index that rebuilds per call (silent O(n) on every resolve) — must be lazily cached.",
         "`AssetArchiveReader` impls leaking outside the seal so callers can bypass the resolver's first-match policy."
-      ]
+      ],
+      "owner": "orchestrator-substrate-m1",
+      "branch": "spec/utsushi-222",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-222"
     },
     {
       "projects": ["utsushi"],
