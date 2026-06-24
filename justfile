@@ -142,6 +142,20 @@ hello-draft: build
     node apps/itotori/dist/cli.js draft-fixture --project apps/itotori/test/fixtures/draft-fixture-project.json --locale en-US --output .tmp/hello-draft/draft-artifact-bundle.json
     node scripts/print-draft-fixture-bundle-summary.mjs .tmp/hello-draft/draft-artifact-bundle.json
 
+# ITOTORI-025: synthetic hello-world loop with the drafting fixture
+# command AND the v0.2 patch-export pipeline spliced in. Keeps the
+# regular `hello` and `hello-draft` recipes unchanged. Produces a
+# `PatchExportBundle` v0.2 and verifies its well-formedness via the
+# schema asserter shipped in `@itotori/localization-bridge-schema`.
+hello-patch: build
+    rm -rf .tmp/hello-patch
+    mkdir -p .tmp/hello-patch
+    node apps/itotori/dist/cli.js db-migrate
+    node apps/itotori/dist/cli.js db-reset
+    node apps/itotori/dist/cli.js draft-fixture --project apps/itotori/test/fixtures/draft-fixture-project.json --locale en-US --output .tmp/hello-patch/draft-artifact-bundle.json
+    node apps/itotori/dist/cli.js export-patch-v2 --project apps/itotori/test/fixtures/patch-export-v2-project.json --draft-bundle .tmp/hello-patch/draft-artifact-bundle.json --locale en-US --output .tmp/hello-patch/patch-export-bundle.json
+    node scripts/print-patch-export-bundle-summary.mjs .tmp/hello-patch/patch-export-bundle.json
+
 affected:
     node scripts/affected.mjs
 
