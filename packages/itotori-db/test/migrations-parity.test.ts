@@ -25,9 +25,7 @@ describe("migrations registration parity", () => {
   });
 
   it("every entry's id matches the filename without .sql", () => {
-    const mismatched = migrations.filter(
-      (m) => `${m.id}.sql` !== m.file,
-    );
+    const mismatched = migrations.filter((m) => `${m.id}.sql` !== m.file);
     expect(mismatched).toEqual([]);
   });
 

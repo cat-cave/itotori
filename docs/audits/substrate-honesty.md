@@ -68,6 +68,7 @@ runner replaying Gameexe semantics has to mirror RealLive's
 look-in-dir-then-archive resolution.
 
 Sweetie HD ground-truth corpus visible in the vault:
+
 - 2450 g00 (image), 139 koe (`.ovk` voice container), 28 bgm (`.nwa`),
   1 Seen.txt (3.88 MB), 24 KB `REALLIVE.sav` save.
 - Gameexe is **Shift-JIS encoded** (folder string contains 0x83 etc.),
@@ -234,8 +235,8 @@ not button presses.
    area fired" without round-tripping pixel coords through `Raw`.
 
 2. **No engine-system-call distinction.** `Save`/`Load` map to slot
-   integers, but RealLive's `SYSTEMCALL_SAVE=9999,20` is a *scene
-   jump*, not a slot save — the substrate's `Save { slot: u16 }`
+   integers, but RealLive's `SYSTEMCALL_SAVE=9999,20` is a _scene
+   jump_, not a slot save — the substrate's `Save { slot: u16 }`
    variant has no model for "the engine entered its save menu and the
    user picked slot N from inside the engine's UI." This is an honest
    modeling decision but it does mean replay logs for a Sweetie HD
@@ -277,6 +278,7 @@ does not actually drive a `ReplayLog` through a runtime.
 ### Sweetie HD reality
 
 A scene #0001 replay would need to:
+
 1. Boot via Gameexe (1345 directives → engine state).
 2. Enter Seen.txt scene 1 (Seen.txt is 3.88 MB).
 3. Issue a few hundred `TextDisplay` + `SetSpeaker` advances.
@@ -331,6 +333,7 @@ struct impls.
 ### Sweetie HD reality
 
 Save files on disk:
+
 - `SAVEDATA/save999.sav`: 6748 bytes.
 - `SAVEDATA/REALLIVE.sav`: 24876 bytes.
 - `SAVEDATA/read.sav`: read-history (per-line-seen flags) — typically
@@ -338,6 +341,7 @@ Save files on disk:
 
 RealLive scratchpad (from RLDEV documentation referenced in
 `kaifuu-reallive/src/lib.rs:8`):
+
 - ~50 integer banks × ~2000 entries each = `intK[]`, `intL[]`, ...,
   `intM[]` family.
 - String variable bank `strS[]`, `strM[]` of bounded but large
@@ -493,7 +497,7 @@ directly (`utsushi-fixture/src/lib.rs:335,367`) using the legacy
   (`crates/utsushi-core/src/recorder/builder.rs`).
 - `ReferenceTrace` carries: `text_events: Vec<TextLine>`,
   `capability_state: Vec<EmbedCapability>`, `snapshot_refs:
-  Vec<SnapshotRef>`, `replay_events: Vec<ReplayEntry>`
+Vec<SnapshotRef>`, `replay_events: Vec<ReplayEntry>`
   (`crates/utsushi-core/src/recorder/trace.rs:49`).
 - `SourceTag::{Browser, Native, Wine, Fixture}` — exactly four engine-
   neutral values, **policed by const-assert in `substrate.rs:132`**.
@@ -594,7 +598,7 @@ Trace pagination is "deferred to a follow-up slice"
    so the const manifest cannot statically describe "this port
    carries an inspectable surface with these state-tree namespaces" —
    only the runtime can. The substrate has no `port-declares-snapshot-
-   surface` const that would prove a manifest's claims at compile
+surface` const that would prove a manifest's claims at compile
    time.
 
 3. **`MomentId` is an opaque string with one synthetic constructor**
@@ -708,7 +712,7 @@ hypothetical future.
 
 3. **A scene/scenario position type.** `MomentId` is opaque. RealLive
    has `(scene_id, line_offset)`; RPG Maker has `(map_id, event_id,
-   page, command_index)`. The substrate could surface a
+page, command_index)`. The substrate could surface a
    `ScenarioPosition` trait without committing to any one engine's
    shape.
 
@@ -766,9 +770,10 @@ present in 13 of 13 Sweetie HD asset folders. Real RealLive ports
 cannot ship without this.
 
 **Acceptance:**
+
 - New `CompositeAssetPackage` impl whose `resolve` consults an ordered
   source list (first-match-wins) of `(plaintext_dir |
-  archive_reader)`.
+archive_reader)`.
 - New typed archive-reader trait `AssetArchiveReader` with PAK as a
   follow-up; substrate provides the multiplex policy primitive even
   if PAK lands later.
@@ -783,6 +788,7 @@ a useful snapshot is at least 64 KiB and likely 256 KiB. The current
 16 KiB envelope (`snapshot/snapshot.rs:19`) is below the floor.
 
 **Acceptance:**
+
 - Replace fixed `SNAPSHOT_MAX_SERIALIZED_BYTES` with a tier: Small =
   16 KiB (current, fixture), Medium = 256 KiB (single-engine save),
   Large = 4 MiB (full-engine state including layers).
@@ -797,6 +803,7 @@ producer. This is the single most-fixture-shaped element of the
 cascade.
 
 **Acceptance:**
+
 - New `EnginePort::sink_set(&self) -> &SinkSet` or equivalent
   surface that lets a port plug its `TextSurfaceSink`,
   `FrameArtifactSink`, `AudioEventSink` impls into the runner.
@@ -813,8 +820,9 @@ jumps via screen rectangles. The substrate's normalised pointer model
 cannot represent this without `Raw` opacity.
 
 **Acceptance:**
+
 - New `InputEvent::AreaHit { area_id: String, screen_x: u16,
-  screen_y: u16 }` or, alternatively, an explicit `screen_size`
+screen_y: u16 }` or, alternatively, an explicit `screen_size`
   metadata field on `Pointer` so the engine port can de-normalise.
 - Replay log records the hit deterministically; conformance check
   can compare across two ports.
@@ -828,12 +836,13 @@ asset_id, transform, blend_mode)" — capturing only an artifact URI
 loses the layer-level evidence the conformance comparison wants.
 
 **Acceptance:**
+
 - New `LayerCompositionSink::emit_composition(FrameComposition)`
   or extend `FrameArtifactSink` with an optional
   `composition: Option<LayerComposition>` field.
 - `LayerComposition` carries an ordered Vec of
   `(layer_index, asset_id: AssetId, transform: AffineTransform,
-  blend_mode: BlendMode)`.
+blend_mode: BlendMode)`.
 - E2 or E3 ceiling because the layer list is structural evidence.
 - Optional: substrate does not need to render; the port produces both
   the composition and (separately) a PNG artifact URI.

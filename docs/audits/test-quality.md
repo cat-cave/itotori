@@ -41,11 +41,11 @@ Categories per the task brief:
 
 ### Rust: `crates/kaifuu-reallive/tests/`
 
-| File | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes |
-|---|---|---|---|---|---|---|
-| `smoke.rs` | 8 | 1 | 1 | 6 | 0 | All bytes are produced by an in-file `synthetic` module that mirrors the parser's `lib.rs` documented shape. The "parses ... into structured AST" tests are the encoder fed to its own decoder. |
-| `inventory.rs` | 9 | 1 | 1 | 7 | 0 | Same synthetic encoder + tiny Gameexe.ini literals (`#WINTITLE=Test\n#KOEPAC=koe.ovk`); never exposed to real Gameexe. |
-| `patchback.rs` | 13 | 4 | 1 | 8 | 0 | Some real contract (stale source hash → fatal; offset overflow → fatal; protected-span loss → fatal) but base round-trip is encoder/decoder symmetry. |
+| File           | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes                                                                                                                                                                                           |
+| -------------- | ----- | -------- | ----------- | --------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `smoke.rs`     | 8     | 1        | 1           | 6         | 0     | All bytes are produced by an in-file `synthetic` module that mirrors the parser's `lib.rs` documented shape. The "parses ... into structured AST" tests are the encoder fed to its own decoder. |
+| `inventory.rs` | 9     | 1        | 1           | 7         | 0     | Same synthetic encoder + tiny Gameexe.ini literals (`#WINTITLE=Test\n#KOEPAC=koe.ovk`); never exposed to real Gameexe.                                                                          |
+| `patchback.rs` | 13    | 4        | 1           | 8         | 0     | Some real contract (stale source hash → fatal; offset overflow → fatal; protected-span loss → fatal) but base round-trip is encoder/decoder symmetry.                                           |
 
 Tautological example names (cite-able):
 
@@ -69,17 +69,17 @@ Real contract examples (kept honest):
 26 files, ~140 tests. The conformance harness has a meaningful contract —
 `ResultOutcome` envelopes, manifest cross-validation, redaction guards.
 
-| File | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes |
-|---|---|---|---|---|---|---|
-| `engine_port.rs` | ~21 | 18 | 2 | 0 | 1 | The synthetic ports inside the file genuinely exercise the public Runner trait. Refactoring `EnginePort` shape would break these for the right reason. |
-| `conformance_snapshot.rs` | 5 | 5 | 0 | 0 | 0 | Cross-validates serialized envelopes against manifests. |
-| `snapshot_redaction.rs` | 5 | 5 | 0 | 0 | 0 | Real adversarial input (unredacted paths in serialized envelope must reject). |
-| `fixture_snapshot_restore.rs` | ~12 | 8 | 2 | 1 | 1 | |
-| `recording_metadata.rs` | ~16 | 14 | 1 | 0 | 1 | |
-| `vfs_synthetic_package.rs` | ~14 | 12 | 1 | 1 | 0 | |
-| `embed_*.rs` (2 files) | ~10 | 8 | 1 | 1 | 0 | |
-| `replay_round_trip.rs` | ~8 | 8 | 0 | 0 | 0 | Genuine round-trip; high value. |
-| Remainder (10 files) | ~50 | 30 | 8 | 8 | 4 | |
+| File                          | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes                                                                                                                                                  |
+| ----------------------------- | ----- | -------- | ----------- | --------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `engine_port.rs`              | ~21   | 18       | 2           | 0         | 1     | The synthetic ports inside the file genuinely exercise the public Runner trait. Refactoring `EnginePort` shape would break these for the right reason. |
+| `conformance_snapshot.rs`     | 5     | 5        | 0           | 0         | 0     | Cross-validates serialized envelopes against manifests.                                                                                                |
+| `snapshot_redaction.rs`       | 5     | 5        | 0           | 0         | 0     | Real adversarial input (unredacted paths in serialized envelope must reject).                                                                          |
+| `fixture_snapshot_restore.rs` | ~12   | 8        | 2           | 1         | 1     |                                                                                                                                                        |
+| `recording_metadata.rs`       | ~16   | 14       | 1           | 0         | 1     |                                                                                                                                                        |
+| `vfs_synthetic_package.rs`    | ~14   | 12       | 1           | 1         | 0     |                                                                                                                                                        |
+| `embed_*.rs` (2 files)        | ~10   | 8        | 1           | 1         | 0     |                                                                                                                                                        |
+| `replay_round_trip.rs`        | ~8    | 8        | 0           | 0         | 0     | Genuine round-trip; high value.                                                                                                                        |
+| Remainder (10 files)          | ~50   | 30       | 8           | 8         | 4     |                                                                                                                                                        |
 
 Utsushi has the best contract/tautology ratio in the workspace. Likely
 because the architecture has a real seam (`EnginePort` trait) that tests
@@ -87,13 +87,13 @@ have to drive through.
 
 ### Rust: `crates/kaifuu-vault-source/tests/`
 
-| File | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes |
-|---|---|---|---|---|---|---|
-| `discovery_test.rs` | 5 | 5 | 0 | 0 | 0 | Real SQLite + real 7z; legit contract. |
-| `extraction_test.rs` | 5 | 5 | 0 | 0 | 0 | Asserts a 7z is actually extracted; idempotency. |
-| `resolution_test.rs` | 5 | 4 | 0 | 0 | 1 | |
-| `metadata_test.rs` | 6 | 6 | 0 | 0 | 0 | Cross-check embedded vs catalog. |
-| `contract_failure_modes_test.rs` | ~8 | 8 | 0 | 0 | 0 | Path-traversal, hash mismatch, missing metadata, embedded-id mismatch. Real adversarial cases. |
+| File                             | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes                                                                                          |
+| -------------------------------- | ----- | -------- | ----------- | --------- | ----- | ---------------------------------------------------------------------------------------------- |
+| `discovery_test.rs`              | 5     | 5        | 0           | 0         | 0     | Real SQLite + real 7z; legit contract.                                                         |
+| `extraction_test.rs`             | 5     | 5        | 0           | 0         | 0     | Asserts a 7z is actually extracted; idempotency.                                               |
+| `resolution_test.rs`             | 5     | 4        | 0           | 0         | 1     |                                                                                                |
+| `metadata_test.rs`               | 6     | 6        | 0           | 0         | 0     | Cross-check embedded vs catalog.                                                               |
+| `contract_failure_modes_test.rs` | ~8    | 8        | 0           | 0         | 0     | Path-traversal, hash mismatch, missing metadata, embedded-id mismatch. Real adversarial cases. |
 
 Strongest test suite in the workspace by contract ratio. KAIFUU-176 actually
 builds a synthetic vault with real 7z archives via `sevenz-rust2`,
@@ -104,18 +104,18 @@ should imitate.
 
 ### TypeScript: `apps/itotori/test/` workflow agents
 
-| File | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes |
-|---|---|---|---|---|---|---|
-| `scene-summary-agent.test.ts` | 10 | 3 | 2 | 4 | 1 | The "byte-stable prompt across calls" tests are tautological (deterministic builder is deterministic). The negative cases are contract. |
-| `scene-summary-staleness.test.ts` | 5 | 4 | 0 | 0 | 1 | Uses `InMemorySceneSummaryRepository` — never touches SQL. |
-| `character-relationship-agent.test.ts` | 19 | 5 | 4 | 9 | 1 | Same pattern. |
-| `character-relationship-staleness.test.ts` | 6 | 5 | 0 | 0 | 1 | InMemory repo. |
-| `route-choice-map-agent.test.ts` | 20 | 8 | 3 | 8 | 1 | Many negative cases (`RouteUncitedError`, `ChoiceUncitedError`, `UnknownRouteError`) are real contract. |
-| `route-choice-map-staleness.test.ts` | 5 | 4 | 0 | 0 | 1 | InMemory repo. |
-| `terminology-candidate-agent.test.ts` | 19 | 7 | 3 | 8 | 1 | |
-| `terminology-candidate-staleness.test.ts` | 5 | 4 | 0 | 0 | 1 | InMemory repo. |
-| `agent-tool-registry.test.ts` | 24 | 16 | 4 | 3 | 1 | Better contract ratio because registry has real input/output schemas. |
-| `project-workflow.test.ts` | 21 | 12 | 3 | 5 | 1 | |
+| File                                       | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes                                                                                                                                   |
+| ------------------------------------------ | ----- | -------- | ----------- | --------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `scene-summary-agent.test.ts`              | 10    | 3        | 2           | 4         | 1     | The "byte-stable prompt across calls" tests are tautological (deterministic builder is deterministic). The negative cases are contract. |
+| `scene-summary-staleness.test.ts`          | 5     | 4        | 0           | 0         | 1     | Uses `InMemorySceneSummaryRepository` — never touches SQL.                                                                              |
+| `character-relationship-agent.test.ts`     | 19    | 5        | 4           | 9         | 1     | Same pattern.                                                                                                                           |
+| `character-relationship-staleness.test.ts` | 6     | 5        | 0           | 0         | 1     | InMemory repo.                                                                                                                          |
+| `route-choice-map-agent.test.ts`           | 20    | 8        | 3           | 8         | 1     | Many negative cases (`RouteUncitedError`, `ChoiceUncitedError`, `UnknownRouteError`) are real contract.                                 |
+| `route-choice-map-staleness.test.ts`       | 5     | 4        | 0           | 0         | 1     | InMemory repo.                                                                                                                          |
+| `terminology-candidate-agent.test.ts`      | 19    | 7        | 3           | 8         | 1     |                                                                                                                                         |
+| `terminology-candidate-staleness.test.ts`  | 5     | 4        | 0           | 0         | 1     | InMemory repo.                                                                                                                          |
+| `agent-tool-registry.test.ts`              | 24    | 16       | 4           | 3         | 1     | Better contract ratio because registry has real input/output schemas.                                                                   |
+| `project-workflow.test.ts`                 | 21    | 12       | 3           | 5         | 1     |                                                                                                                                         |
 
 Tautological example: `scene-summary-agent.test.ts:84` "prompt is byte-stable
 across calls" calls `buildPrompt(input)` twice and asserts identity. The
@@ -134,34 +134,34 @@ provable by other means.
 `isolatedMigratedContext()`. As a class they are the highest-value
 TypeScript tests in the workspace.
 
-| File | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes |
-|---|---|---|---|---|---|---|
-| `repository.test.ts` | 34 | 26 | 5 | 1 | 2 | Largest single repository test; mostly contract. |
-| `catalog-repository.test.ts` | 13 | 10 | 2 | 0 | 1 | |
-| `catalog-recorded-importers.test.ts` | 14 | 11 | 1 | 1 | 1 | Reads real recorded JSON. |
-| `style-guide-repository.test.ts` | 7 | 6 | 1 | 0 | 0 | |
-| `terminology-repository.test.ts` | 14 | 11 | 2 | 0 | 1 | |
-| `model-ledger-repository.test.ts` | 11 | 10 | 1 | 0 | 0 | |
-| Remainder (18 files) | ~177 | 130 | 27 | 8 | 12 | |
+| File                                 | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes                                            |
+| ------------------------------------ | ----- | -------- | ----------- | --------- | ----- | ------------------------------------------------ |
+| `repository.test.ts`                 | 34    | 26       | 5           | 1         | 2     | Largest single repository test; mostly contract. |
+| `catalog-repository.test.ts`         | 13    | 10       | 2           | 0         | 1     |                                                  |
+| `catalog-recorded-importers.test.ts` | 14    | 11       | 1           | 1         | 1     | Reads real recorded JSON.                        |
+| `style-guide-repository.test.ts`     | 7     | 6        | 1           | 0         | 0     |                                                  |
+| `terminology-repository.test.ts`     | 14    | 11       | 2           | 0         | 1     |                                                  |
+| `model-ledger-repository.test.ts`    | 11    | 10       | 1           | 0         | 0     |                                                  |
+| Remainder (18 files)                 | ~177  | 130      | 27          | 8         | 12    |                                                  |
 
 ### TypeScript: `packages/localization-bridge-schema/test/`
 
-| File | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes |
-|---|---|---|---|---|---|---|
-| `schema.test.ts` | 80+ | 70 | 5 | 5 | 0 | Mostly real schema validation. |
-| `binary-patch-smoke.test.ts` | 5 | 5 | 0 | 0 | 0 | |
-| `conformance.test.ts` | 18 | 16 | 1 | 1 | 0 | |
-| `synthetic-large-project.test.ts` | 4 | 3 | 1 | 0 | 0 | Scale shape test. |
+| File                              | Tests | Contract | Impl-mirror | Tautology | Smoke | Notes                          |
+| --------------------------------- | ----- | -------- | ----------- | --------- | ----- | ------------------------------ |
+| `schema.test.ts`                  | 80+   | 70       | 5           | 5         | 0     | Mostly real schema validation. |
+| `binary-patch-smoke.test.ts`      | 5     | 5        | 0           | 0         | 0     |                                |
+| `conformance.test.ts`             | 18    | 16       | 1           | 1         | 0     |                                |
+| `synthetic-large-project.test.ts` | 4     | 3        | 1           | 0         | 0     | Scale shape test.              |
 
 Aggregate rough percentages across the surveyed suite:
 
-| Category | TS share | Rust share | Workspace estimate |
-|---|---|---|---|
-| Contract | ~62% | ~68% | ~65% |
-| Implementation-mirror | ~14% | ~10% | ~12% |
-| Tautological | ~13% | ~14% | ~13% |
-| Smoke | ~6% | ~5% | ~6% |
-| Coverage-for-coverage | ~5% | ~3% | ~4% |
+| Category              | TS share | Rust share | Workspace estimate |
+| --------------------- | -------- | ---------- | ------------------ |
+| Contract              | ~62%     | ~68%       | ~65%               |
+| Implementation-mirror | ~14%     | ~10%       | ~12%               |
+| Tautological          | ~13%     | ~14%       | ~13%               |
+| Smoke                 | ~6%      | ~5%        | ~6%                |
+| Coverage-for-coverage | ~5%      | ~3%        | ~4%                |
 
 Top three most tautological files:
 
@@ -384,10 +384,10 @@ being appended to the `migrations` array in
 
 Audit reports `AUDIT-ITOTORI-015-20260624T032727Z.json` and
 `AUDIT-ITOTORI-016-20260624T032727Z.json` flagged both. The audit text
-for 015 explicitly says: *"The 25 vitest cases all use an
+for 015 explicitly says: _"The 25 vitest cases all use an
 `InMemoryRouteChoiceMapRepository` (see
 `apps/itotori/test/route-choice-map-staleness.test.ts:14`) and never
-exercise the SQL repository, so the green suite hides the gap."*
+exercise the SQL repository, so the green suite hides the gap."_
 
 Why the suite didn't catch it:
 
@@ -548,7 +548,7 @@ Ten new tests, ordered by risk-closure value.
 - **Asserts**: `parse_archive(&fs::read(seen_path)?)` returns a
   `SceneIndex` with `entries.len() > 100`. Asserts a sampled entry's
   byte range is well-formed (`offset >= header_end && offset + len <=
-  archive_bytes.len()`). Currently `entries.len() == 0`. Closes the
+archive_bytes.len()`). Currently `entries.len() == 0`. Closes the
   single most consequential gap in the workspace.
 - **Input**: Sweetie HD `/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt`.
 

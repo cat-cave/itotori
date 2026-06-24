@@ -4,7 +4,7 @@ This audit reassesses what "alpha-ready" honestly means against the **current
 committed state** of the monorepo. It is the alpha-scope sibling of
 [`dag-critique.md`](dag-critique.md). The DAG critique flags single nodes that
 are over-scoped or vague; this document is one level up — it asks whether the
-*milestone* itself describes what the toolchain can actually do.
+_milestone_ itself describes what the toolchain can actually do.
 
 **No code, no DAG, no doc edits in this commit.** Proposals are concrete and
 citable so they can be executed in follow-ups.
@@ -34,35 +34,35 @@ missing sibling audit it is marked **[depends on missing sibling — confirm]**.
 
 ### A.1 The headline claim
 
-> *"Alpha readiness is achieved when the suite can run the same product loop on
+> _"Alpha readiness is achieved when the suite can run the same product loop on
 > public synthetic fixtures and at least one real-engine fixture profile, then
 > show that the engine boundary remains generic across the alpha
-> engine/readiness set."* — `alpha-localization-project-readiness.md`:28
+> engine/readiness set."_ — `alpha-localization-project-readiness.md`:28
 
-> *"The first real-engine end-to-end vertical is Sukara's Oshioki Sweetie HD
+> _"The first real-engine end-to-end vertical is Sukara's Oshioki Sweetie HD
 > Remaster + Sweets fandisc (RealLive engine), sourced from the vault-curation
 > catalog at /archive/vault/. That vertical is what proves the suite on real
 > owned content: detect, extract, decrypt, decompile, patch, verify,
-> delta-apply, and Utsushi runtime evidence through a native RealLive port."*
+> delta-apply, and Utsushi runtime evidence through a native RealLive port."_
 > — `alpha-localization-project-readiness.md`:57
 
 **Verdict: aspirational.** Of the seven stages the doc names as required for
 the Sweetie HD vertical, the toolchain can credibly deliver only "detect" today.
 
-| Stage | Status | Evidence |
-| --- | --- | --- |
-| detect | genuine | `KAIFUU-172` complete; `kaifuu.reallive` detector ships with positive + Siglus/AVG32 negative fixtures (`docs/kaifuu-adapters/reallive.md`). |
-| extract | partial | `KAIFUU-173`/`KAIFUU-174` complete but explicitly scoped to a **synthetic** 8-opcode bytecode (`crates/kaifuu-reallive/src/lib.rs`:62-100). Real `Seen.txt` opens with a different envelope (real: `00 00 00 00 ...`; synthetic: `01 00 00 00 ...`). Real-archive parse path is untested. |
-| decrypt | n/a for this title | Sweetie HD's `Seen.txt` and `Gameexe.ini` are plaintext on disk; voice/image archive decryption is excluded from this vertical scope. |
-| decompile | aspirational | The "AST" produced today is a flat instruction list with named opcodes for the synthetic 8. Real RealLive has on the order of ~500 opcodes documented in RLDEV. Anything beyond the 8 is `Unrecognized`. |
-| patch | partial (length-preserving only) | `crates/kaifuu-reallive/src/patchback.rs` ships length-preserving edits + `FixedBudget` returning fatal `unsupported_length_policy`. No offset-table rewriting. Most JA→EN translation pairs will violate length-preservation. |
-| verify | genuine for the slice it covers | `KAIFUU-010` (PatchResult v0.2) is genuinely concrete and gold-standard. Verify can report pass/fail for the slice patchback supports. |
-| delta-apply | genuine for fixture inputs | `KAIFUU-048`/`KAIFUU-049`/`KAIFUU-074` complete; delta apply works against fixture bytes. Not yet exercised against `Seen.txt`. |
-| Utsushi runtime evidence | **forbidden-state risk** | `UTSUSHI-146` is planned and is the single node that represents "Pure-Rust RealLive runtime port" — the substrate facade documentation explicitly says wrappers do not count as claimed-support, but `UTSUSHI-146`'s AC ("Scene/SEEN replay produces deterministic trace and snapshot evidence") could be satisfied today by a thin wrapper around the 8-opcode parser. See `dag-critique.md` §A.1. |
+| Stage                    | Status                           | Evidence                                                                                                                                                                                                                                                                                                                                                                                            |
+| ------------------------ | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| detect                   | genuine                          | `KAIFUU-172` complete; `kaifuu.reallive` detector ships with positive + Siglus/AVG32 negative fixtures (`docs/kaifuu-adapters/reallive.md`).                                                                                                                                                                                                                                                        |
+| extract                  | partial                          | `KAIFUU-173`/`KAIFUU-174` complete but explicitly scoped to a **synthetic** 8-opcode bytecode (`crates/kaifuu-reallive/src/lib.rs`:62-100). Real `Seen.txt` opens with a different envelope (real: `00 00 00 00 ...`; synthetic: `01 00 00 00 ...`). Real-archive parse path is untested.                                                                                                           |
+| decrypt                  | n/a for this title               | Sweetie HD's `Seen.txt` and `Gameexe.ini` are plaintext on disk; voice/image archive decryption is excluded from this vertical scope.                                                                                                                                                                                                                                                               |
+| decompile                | aspirational                     | The "AST" produced today is a flat instruction list with named opcodes for the synthetic 8. Real RealLive has on the order of ~500 opcodes documented in RLDEV. Anything beyond the 8 is `Unrecognized`.                                                                                                                                                                                            |
+| patch                    | partial (length-preserving only) | `crates/kaifuu-reallive/src/patchback.rs` ships length-preserving edits + `FixedBudget` returning fatal `unsupported_length_policy`. No offset-table rewriting. Most JA→EN translation pairs will violate length-preservation.                                                                                                                                                                      |
+| verify                   | genuine for the slice it covers  | `KAIFUU-010` (PatchResult v0.2) is genuinely concrete and gold-standard. Verify can report pass/fail for the slice patchback supports.                                                                                                                                                                                                                                                              |
+| delta-apply              | genuine for fixture inputs       | `KAIFUU-048`/`KAIFUU-049`/`KAIFUU-074` complete; delta apply works against fixture bytes. Not yet exercised against `Seen.txt`.                                                                                                                                                                                                                                                                     |
+| Utsushi runtime evidence | **forbidden-state risk**         | `UTSUSHI-146` is planned and is the single node that represents "Pure-Rust RealLive runtime port" — the substrate facade documentation explicitly says wrappers do not count as claimed-support, but `UTSUSHI-146`'s AC ("Scene/SEEN replay produces deterministic trace and snapshot evidence") could be satisfied today by a thin wrapper around the 8-opcode parser. See `dag-critique.md` §A.1. |
 
 ### A.2 The product loop (13 steps in §1.1)
 
-Of the 13 product-loop steps, the *machinery* exists end-to-end **for the
+Of the 13 product-loop steps, the _machinery_ exists end-to-end **for the
 synthetic `hello-game` fixture** (`fixtures/hello-game`, `synthetic-json`
 engine). That is a real and load-bearing demonstration: `ALPHA-CHECK-002`
 ("Synthetic loop") is genuinely demonstrable today via `just hello` and the
@@ -110,10 +110,10 @@ and conflates two very different evidence postures:
 `alpha-localization-project-readiness.md`:374-405 lists "Known Non-Goals." Two
 of them are at risk of being violated by accepting the current scope:
 
-- *"No claim of engine-perfect... fidelity unless a specific E4 report exists."*
+- _"No claim of engine-perfect... fidelity unless a specific E4 report exists."_
   Risk is low — the evidence-tier vocabulary is well enforced.
-- *"No support claim for engines outside the named positive adapters and
-  readiness profiles."* — **Risk is high.** The doc declares
+- _"No support claim for engines outside the named positive adapters and
+  readiness profiles."_ — **Risk is high.** The doc declares
   "SiglusEngine + RealLive" as a claimed-support row (line 77), but
   the only RealLive code that exists is a clean-room toy parser; SiglusEngine
   has no adapter at all. Per `subprojects-kaifuu.md`:14 ("claimed-support only
@@ -130,8 +130,8 @@ The doc lists three claimed-support engine families:
 
 ### B.1 SiglusEngine + RealLive (single Rust port scope)
 
-> *"single Rust port scope. RealLive carries the first real-engine vertical;
-> Siglus shares the port substrate."* — `alpha-localization-project-readiness.md`:77
+> _"single Rust port scope. RealLive carries the first real-engine vertical;
+> Siglus shares the port substrate."_ — `alpha-localization-project-readiness.md`:77
 
 **Reality:**
 
@@ -148,7 +148,7 @@ The doc lists three claimed-support engine families:
   RealLive saves are 24 KiB raw (§E). `MomentId` is opaque; no
   scenario-position primitive (§I.3). No composite/archive package kind for
   RealLive's try-dir-then-archive resolution (§A.1).
-- **No `utsushi-reallive` crate exists.** `find crates -name '*reallive*'` finds only `crates/kaifuu-reallive` (the extraction parser). The substrate has tested itself against *only* synthetic ports defined inline in test files (`crates/utsushi-core/tests/engine_port.rs:1-80`). This is what `dag-critique.md` §A.1 calls out: `UTSUSHI-160` ("first production engine port consumes ConformanceManifest") is planned and is the only node that would force a non-synthetic adapter through the conformance system.
+- **No `utsushi-reallive` crate exists.** `find crates -name '*reallive*'` finds only `crates/kaifuu-reallive` (the extraction parser). The substrate has tested itself against _only_ synthetic ports defined inline in test files (`crates/utsushi-core/tests/engine_port.rs:1-80`). This is what `dag-critique.md` §A.1 calls out: `UTSUSHI-160` ("first production engine port consumes ConformanceManifest") is planned and is the only node that would force a non-synthetic adapter through the conformance system.
 - **The RealLive parser is a clean-room toy.** `crates/kaifuu-reallive/src/lib.rs`:62 explicitly states "deliberately small, named-opcode bytecode that the synthetic fixtures use." Eight opcodes (`TextDisplay`, `SetSpeaker`, `Choice`, `SetVar`, `Jump`, `Return`, `ClearScreen`, `Pause`). Real RealLive (per Haeleth's RLDEV) has on the order of 500 opcodes plus complex window-rule/GAN animation/audio sink semantics.
 - **The real `Seen.txt` does not match the synthetic envelope.** First 16 bytes of real Sweetie HD `Seen.txt`: `00 00 00 00 00 00 00 00 80 38 01 00 fa 05 00 00`. First 16 bytes of synthetic smoke fixture: `01 00 00 00 0c 00 00 00 26 00 00 00 23 02 01 73`. The "count + offset/size table" envelope `parse_archive` decodes does not match the real bytes' first u32 (`0` — would be treated as empty archive).
 - **SiglusEngine has zero claimed-support code.** No SiglusEngine adapter, no `kaifuu-siglus`, no `utsushi-siglus`, no Siglus detector beyond the cross-check used to negate the RealLive detector.
@@ -163,8 +163,8 @@ claim, but it is accurate.
 
 ### B.2 RPG Maker MV/MZ
 
-> *"JSON-text adapter plus encrypted asset decrypt/replace, with browser/NW.js
-> instrumentation as the runtime path."*
+> _"JSON-text adapter plus encrypted asset decrypt/replace, with browser/NW.js
+> instrumentation as the runtime path."_
 
 **Reality:**
 
@@ -189,13 +189,13 @@ claim, but it is accurate.
 tightening done. The JSON adapter for events, common events, choices, database
 text, UI terms, and plugin-profiled text is **not yet implemented**. The
 instrumented runtime probe is **not yet implemented**." Effectively: MV/MZ has
-the same readiness posture as TyranoScript or KiriKiri/XP3 today — it is *not*
+the same readiness posture as TyranoScript or KiriKiri/XP3 today — it is _not_
 end-to-end claimed-support.
 
 ### B.3 Plain XP3 + KAG plaintext
 
-> *"the unencrypted KiriKiri case as the null-key/identity-container slice of
-> the layered pipeline."*
+> _"the unencrypted KiriKiri case as the null-key/identity-container slice of
+> the layered pipeline."_
 
 **Reality:**
 
@@ -211,7 +211,7 @@ end-to-end claimed-support.
 **Honest sub-claim that survives:**
 "Plain XP3 read + inventory shipped; deterministic writer planned; KAG
 plaintext adapter planned; XP3 runtime evidence planned." Same posture as MV/MZ
-— *not* end-to-end claimed-support today.
+— _not_ end-to-end claimed-support today.
 
 ### B.4 Summary
 
@@ -267,7 +267,7 @@ These capabilities should not be claimed for the alpha milestone at all:
   line 77 still groups it with RealLive. Excise SiglusEngine from the
   claimed-support row in §B language; keep it as a research-tier readiness
   profile.
-- **RealLive runtime evidence on real `Seen.txt`** as an *alpha* gate. Keep it
+- **RealLive runtime evidence on real `Seen.txt`** as an _alpha_ gate. Keep it
   as the project's North Star and as the proof point for the first real
   localization project; do not block alpha on it.
 
@@ -282,7 +282,7 @@ These capabilities should not be claimed for the alpha milestone at all:
   synthetic bytes. Add `KAIFUU-173b` and `KAIFUU-174b` per `dag-critique.md`
   §A.3 (real-bytes Sweetie HD round-trip), but **place them in continuous tier**.
   They are not alpha-blocking — they are how the parser stops being theater
-  *after* alpha.
+  _after_ alpha.
 - **RealLive patchback length policy** (`crates/kaifuu-reallive/src/patchback.rs`):
   current state is `LengthPreserving` only; `FixedBudget` returns fatal.
   Decompose into:
@@ -290,7 +290,7 @@ These capabilities should not be claimed for the alpha milestone at all:
   2. `FixedBudget` with offset-table rewrite for a single declared scene
      subset (post-alpha).
   3. Generalized offset rewrite with jump-target recalculation (post-alpha).
-  Stage 1 is what alpha legitimately covers.
+     Stage 1 is what alpha legitimately covers.
 - **RPG Maker MV/MZ adapter (`KAIFUU-007`)**: tighten per `dag-critique.md`
   §D.4 (byte-level `Map001.json` round-trip). Decompose:
   1. JSON adapter for map events and choices (alpha if claimed).
@@ -298,9 +298,9 @@ These capabilities should not be claimed for the alpha milestone at all:
   3. Plugin-profiled text (continuous).
   4. Encrypted media decrypt/replace via `KAIFUU-115`/`116` (continuous).
 - **Plain XP3 + KAG plaintext**: same pattern. Stage 1 = reader + writer
-  + smoke (`KAIFUU-097` + `KAIFUU-098` + `KAIFUU-071`). Stage 2 = KAG plaintext
-  adapter (`KAIFUU-009`). Stage 3 = runtime evidence (`UTSUSHI-037/038/039`).
-  Decide which stages alpha actually requires (see §D).
+  - smoke (`KAIFUU-097` + `KAIFUU-098` + `KAIFUU-071`). Stage 2 = KAG plaintext
+    adapter (`KAIFUU-009`). Stage 3 = runtime evidence (`UTSUSHI-037/038/039`).
+    Decide which stages alpha actually requires (see §D).
 
 ### C.4 Honest substitutes
 
@@ -310,7 +310,7 @@ demonstration is:
 - **Engine port architecture proof**: 146a alone — a `utsushi-reallive` crate
   that wires `EnginePort` to a no-op port emitting clean-room attestation and
   one synthetic-fixture conformance report. This proves the substrate's
-  generic-engine claim with a *second* adapter beyond the in-test synthetic
+  generic-engine claim with a _second_ adapter beyond the in-test synthetic
   port (closes the §B.4 gap).
 - **Real-bytes parser smoke**: KAIFUU-173b (inventory the real `Seen.txt`,
   report opcode frequency, surface 3+ unknown opcodes by RLDEV mnemonic). This
@@ -318,7 +318,7 @@ demonstration is:
   applied.
 - **Real-bytes patch smoke**: KAIFUU-011b per `dag-critique.md` §F.2 (apply
   a length-preserving edit to one named Sweetie HD scene slot, byte-identical
-  non-patched regions). This proves the *patchback path* works on real bytes
+  non-patched regions). This proves the _patchback path_ works on real bytes
   for the slice the patcher actually supports.
 - **MV/MZ JSON round-trip**: a public MV/MZ JSON fixture (no real game) with a
   byte-identical map-event round-trip per `dag-critique.md` §D.4. Proves the
@@ -338,7 +338,7 @@ These five together would be the honest alpha proof set.
 **Recommended redefinition (alpha = "architecture proven; first real engine is
 the post-alpha North Star"):**
 
-> *"The Itotori suite is alpha-ready when (a) the synthetic loop runs
+> _"The Itotori suite is alpha-ready when (a) the synthetic loop runs
 > end-to-end through every product-loop stage, (b) the substrate facade has at
 > least one non-synthetic engine port crate registered through the
 > conformance manifest, (c) the RealLive extraction stack demonstrates
@@ -348,14 +348,15 @@ the post-alpha North Star"):**
 > (e) the recorded-LLM proof bundle exists, and (f) every report and dashboard
 > workflow surface enumerated in `alpha-localization-project-readiness.md` §3
 > is reachable against synthetic-loop state. The first **runtime** evidence
-> on a real RealLive game is a post-alpha first-project milestone."*
+> on a real RealLive game is a post-alpha first-project milestone."_
 
 ### D.2 Tradeoffs
 
 **What this redefinition keeps:**
+
 - Strategic purpose intact — proves the architecture (substrate + adapter +
   bridge + dashboard + reports + LLM gating) is real and ships end-to-end.
-- Sweetie HD is still load-bearing — the parser and patchback meet *its bytes*,
+- Sweetie HD is still load-bearing — the parser and patchback meet _its bytes_,
   just not its runtime.
 - The "engine boundary remains generic across the alpha engine/readiness set"
   language survives, because UTSUSHI-146a delivers a second adapter through
@@ -365,13 +366,14 @@ the post-alpha North Star"):**
   engine is claimed-support runtime-wise until evidence exists.
 
 **What this redefinition gives up:**
+
 - Loses the "first real-engine end-to-end vertical" headline. Replaces it with
   "first real-engine parser/patchback on real bytes, runtime evidence
   follows." The marketing story is less punchy.
 - Loses the "playable feedback loop on a real game" item. `ALPHA-002` demotes
   to continuous; the first playable-feedback proof becomes a post-alpha
   milestone.
-- Requires accepting that the *first localization project* (not alpha) is when
+- Requires accepting that the _first localization project_ (not alpha) is when
   end-to-end runtime evidence on a real game ships. This is honest given the
   ~6-month scope of `UTSUSHI-146` and is consistent with how
   `alpha-localization-project-readiness.md`:1-13 already frames alpha ("not a
@@ -382,7 +384,7 @@ the post-alpha North Star"):**
 
 Replace `alpha-localization-project-readiness.md`:1-31 with:
 
-> *"This document defines the feature set that makes the Itotori suite ready
+> _"This document defines the feature set that makes the Itotori suite ready
 > to start a first real localization project. Alpha readiness means the suite
 > has already proven the **architecture** on public fixtures and on the
 > real-game bytes of one declared RealLive title (Sukara's Oshioki Sweetie HD
@@ -393,7 +395,7 @@ Replace `alpha-localization-project-readiness.md`:1-31 with:
 > evidence on a real game** ships in the first real localization project, not
 > at alpha. That sequencing is deliberate: a runtime port is a 6+ month
 > investment; alpha is the moment we have proven the architecture is real and
-> the first-project work has a non-toy floor to build on."*
+> the first-project work has a non-toy floor to build on."_
 
 ### D.4 What the engine matrix should say
 
@@ -419,21 +421,21 @@ row (`synthetic-json`) plus the readiness matrix above.
 References below are to current `alpha-localization-project-readiness.md`
 line ranges.
 
-| Section | Action | Rationale |
-| --- | --- | --- |
-| Headline (lines 1-13) | **EDIT** per §D.3 | Replace "the theory" with concrete architecture-proof language; drop "real-engine fixture profile" headline. |
-| Readiness Scope (lines 27-52) | **EDIT** | Keep all 13 product-loop steps as the loop definition. Add: "Step 9 (Utsushi runtime evidence) requires E2 evidence only for `synthetic-json` at alpha; readiness rows produce E0/E1 only." |
-| Alpha Engine and Readiness Set — First real-engine vertical (lines 55-70) | **CUT** | Move the Sweetie HD vertical to "first real localization project" milestone. Replace with: "The first real-bytes parser and patchback proof for the RealLive engine family is the Sukara/Oshioki Sweetie HD `Seen.txt` extracted via the vault adapter (KAIFUU-176); see `KAIFUU-173b` and `KAIFUU-011b` continuous-tier nodes." |
-| Claimed-support engine families (lines 72-97) | **EDIT (cut to one entry)** | Replace the three-row list with: "`synthetic-json` is the alpha claimed-support engine. RealLive, RPG Maker MV/MZ, Plain XP3 + KAG, TyranoScript, KiriKiri/XP3 encrypted, RPG Maker VX Ace/RGSS3, and BGI/Ethornell are readiness-tier for alpha; first-project work promotes one of them to claimed-support." |
-| Engine matrix (lines 99-112) | **EDIT** per §D.4 | Reduce to one architecture-proof row + six readiness rows. Drop the `Required alpha support` and `Runtime evidence bar` columns for readiness rows; they cannot meet either without first-project work. |
-| §3 Fixture/Corpus (lines 128-174) | **KEEP (with edits)** | Keep the required-fixtures list. Edit the synthetic encrypted XP3 fixture line (148-149) to clarify it is *contract scaffolding*, not a vertical claim — it is for `KAIFUU-171`. |
-| §4 Dashboard Workflows (lines 176-208) | **KEEP** | Dashboard workflows are reachable today against synthetic loop state. This is a real and load-bearing alpha proof. |
-| §5 Quality/Cost/Benchmark reports (lines 210-247) | **KEEP** | The reports are alpha-blocking and the report machinery is real. Tighten `ALPHA-CHECK-019` (real LLM proof) to require recorded fixtures + one opt-in live run before "first real game starts." |
-| §6 Alpha Readiness Check Matrix (lines 249-275) | **EDIT** | Re-grade each `ALPHA-CHECK-*` per §F below. Specifically: `ALPHA-CHECK-003` (RPG Maker vertical) — **CUT** until first-project. `ALPHA-CHECK-004` (engine readiness breadth) — add `UTSUSHI-160` as hard prerequisite per `dag-critique.md` §H.5. `ALPHA-CHECK-020` (encrypted patch vertical) — **EDIT** to scope to synthetic encrypted XP3 fixture (KAIFUU-171), not a real-game proof. |
-| §7 Validation Checks (lines 277-323) | **KEEP** | Concrete and verifiable. |
-| §8 Demo Script (lines 325-372) | **EDIT** | Demo step 3 (RPG Maker vertical slice) becomes "MV/MZ JSON fixture round-trip" (no runtime evidence). Demo step 5 (synthetic XP3 vertical) keeps as-is. Demo step 9 (feedback loop from runtime/playable review) becomes "feedback loop from recorded/agent-derived findings." Add a demo step: "Show the `utsushi-reallive` crate scaffold conformance report against the substrate facade." |
-| §9 Known Non-Goals (lines 374-405) | **ADD** | Add explicit non-goal: "Pure-Rust RealLive runtime port producing trace/snapshot evidence on a real RealLive game is NOT an alpha milestone. It is a first-project milestone. The substrate is alpha-proven by a non-synthetic engine port crate (146a) producing conformance evidence only." |
-| §10 Continuous Expansion (lines 407-431) | **ADD** | Add: "146b–146g (RealLive VM dispatch loop through Gameexe wiring and snapshot/replay against Sweetie HD)" and "KAIFUU-173b/174b/011b (real-bytes RealLive smoke)." |
+| Section                                                                   | Action                      | Rationale                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------------------------------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Headline (lines 1-13)                                                     | **EDIT** per §D.3           | Replace "the theory" with concrete architecture-proof language; drop "real-engine fixture profile" headline.                                                                                                                                                                                                                                                                                  |
+| Readiness Scope (lines 27-52)                                             | **EDIT**                    | Keep all 13 product-loop steps as the loop definition. Add: "Step 9 (Utsushi runtime evidence) requires E2 evidence only for `synthetic-json` at alpha; readiness rows produce E0/E1 only."                                                                                                                                                                                                   |
+| Alpha Engine and Readiness Set — First real-engine vertical (lines 55-70) | **CUT**                     | Move the Sweetie HD vertical to "first real localization project" milestone. Replace with: "The first real-bytes parser and patchback proof for the RealLive engine family is the Sukara/Oshioki Sweetie HD `Seen.txt` extracted via the vault adapter (KAIFUU-176); see `KAIFUU-173b` and `KAIFUU-011b` continuous-tier nodes."                                                              |
+| Claimed-support engine families (lines 72-97)                             | **EDIT (cut to one entry)** | Replace the three-row list with: "`synthetic-json` is the alpha claimed-support engine. RealLive, RPG Maker MV/MZ, Plain XP3 + KAG, TyranoScript, KiriKiri/XP3 encrypted, RPG Maker VX Ace/RGSS3, and BGI/Ethornell are readiness-tier for alpha; first-project work promotes one of them to claimed-support."                                                                                |
+| Engine matrix (lines 99-112)                                              | **EDIT** per §D.4           | Reduce to one architecture-proof row + six readiness rows. Drop the `Required alpha support` and `Runtime evidence bar` columns for readiness rows; they cannot meet either without first-project work.                                                                                                                                                                                       |
+| §3 Fixture/Corpus (lines 128-174)                                         | **KEEP (with edits)**       | Keep the required-fixtures list. Edit the synthetic encrypted XP3 fixture line (148-149) to clarify it is _contract scaffolding_, not a vertical claim — it is for `KAIFUU-171`.                                                                                                                                                                                                              |
+| §4 Dashboard Workflows (lines 176-208)                                    | **KEEP**                    | Dashboard workflows are reachable today against synthetic loop state. This is a real and load-bearing alpha proof.                                                                                                                                                                                                                                                                            |
+| §5 Quality/Cost/Benchmark reports (lines 210-247)                         | **KEEP**                    | The reports are alpha-blocking and the report machinery is real. Tighten `ALPHA-CHECK-019` (real LLM proof) to require recorded fixtures + one opt-in live run before "first real game starts."                                                                                                                                                                                               |
+| §6 Alpha Readiness Check Matrix (lines 249-275)                           | **EDIT**                    | Re-grade each `ALPHA-CHECK-*` per §F below. Specifically: `ALPHA-CHECK-003` (RPG Maker vertical) — **CUT** until first-project. `ALPHA-CHECK-004` (engine readiness breadth) — add `UTSUSHI-160` as hard prerequisite per `dag-critique.md` §H.5. `ALPHA-CHECK-020` (encrypted patch vertical) — **EDIT** to scope to synthetic encrypted XP3 fixture (KAIFUU-171), not a real-game proof.    |
+| §7 Validation Checks (lines 277-323)                                      | **KEEP**                    | Concrete and verifiable.                                                                                                                                                                                                                                                                                                                                                                      |
+| §8 Demo Script (lines 325-372)                                            | **EDIT**                    | Demo step 3 (RPG Maker vertical slice) becomes "MV/MZ JSON fixture round-trip" (no runtime evidence). Demo step 5 (synthetic XP3 vertical) keeps as-is. Demo step 9 (feedback loop from runtime/playable review) becomes "feedback loop from recorded/agent-derived findings." Add a demo step: "Show the `utsushi-reallive` crate scaffold conformance report against the substrate facade." |
+| §9 Known Non-Goals (lines 374-405)                                        | **ADD**                     | Add explicit non-goal: "Pure-Rust RealLive runtime port producing trace/snapshot evidence on a real RealLive game is NOT an alpha milestone. It is a first-project milestone. The substrate is alpha-proven by a non-synthetic engine port crate (146a) producing conformance evidence only."                                                                                                 |
+| §10 Continuous Expansion (lines 407-431)                                  | **ADD**                     | Add: "146b–146g (RealLive VM dispatch loop through Gameexe wiring and snapshot/replay against Sweetie HD)" and "KAIFUU-173b/174b/011b (real-bytes RealLive smoke)."                                                                                                                                                                                                                           |
 
 ---
 
@@ -456,9 +458,9 @@ The minimum ordered DAG path to reach alpha as redefined in §D:
      `TextSurfaceSink`/`FrameArtifactSink`/`AudioEventSink` instead of legacy
      `ObservationHookEvent`. Today the sinks have no production producer
      anywhere. 146a needs this to make a non-trivial claim.
-   These three are the load-bearing pre-requisites the substrate audit
-   identifies as blockers for a real port; M.4 (pixel-bound mouse) and M.5
-   (frame-as-layer-composition) can follow post-alpha.
+     These three are the load-bearing pre-requisites the substrate audit
+     identifies as blockers for a real port; M.4 (pixel-bound mouse) and M.5
+     (frame-as-layer-composition) can follow post-alpha.
 1. **Split `UTSUSHI-146`** per `dag-critique.md` §A.1 into 146a–146g.
    Re-tier 146b–146g to **research/continuous**. Keep **146a** as alpha-tier.
    146a depends on M.1–M.3.
@@ -497,28 +499,28 @@ estimate for the current "real RealLive runtime" framing.
 
 ## G. What is genuinely demonstrable end-to-end now (one-page summary)
 
-| Capability | End-to-end? | Notes |
-| --- | --- | --- |
-| `hello-game` → bridge → draft → patch → delta → apply → trace → capture → ingest → dashboard | **Yes** | Synthetic loop, `synthetic-json` engine. This is real. |
-| RealLive detector + readiness profile | **Yes** | KAIFUU-172 / synthetic + cross-engine negatives. |
-| RealLive Scene/SEEN parser on synthetic 8-opcode bytecode | **Yes** | KAIFUU-173/174. |
-| RealLive Scene/SEEN parser on real Sweetie HD `Seen.txt` | **No** | Real envelope shape differs; parser is clean-room toy. |
-| Length-preserving patchback on synthetic SEEN | **Yes** | KAIFUU-174 patchback. |
-| Length-preserving patchback on real `Seen.txt` | **No** | Untested. Would also require length-policy generalization for actual JA→EN edits. |
-| RPG Maker MV/MZ detector + encrypted-media readiness | **Yes** | KAIFUU-039 (readiness only). |
-| RPG Maker MV/MZ JSON adapter and patch | **No** | KAIFUU-007 planned. |
-| RPG Maker MV/MZ runtime evidence | **No** | UTSUSHI-031/032/033/119 planned. UTSUSHI-148 alone (browser launch) does not constitute runtime evidence. |
-| Plain XP3 read | **Yes** | KAIFUU-097. |
-| Plain XP3 write | **No** | KAIFUU-098 planned. |
-| KAG plaintext adapter | **No** | KAIFUU-009 planned. |
-| KAG/XP3 runtime evidence | **No** | UTSUSHI-037/038/039 planned. |
-| Substrate facade (VFS, clock, sinks, snapshot, replay, recorder, conformance) | **Yes** | UTSUSHI-020–120 complete; exercised by synthetic ports in tests only. |
-| Substrate proves engine-boundary is generic | **No** | No non-synthetic adapter is registered through it; UTSUSHI-160 planned. |
-| `.kaifuu` delta package contract, apply, verify | **Yes** | KAIFUU-010/048/049/074 complete. |
-| Itotori bridge import + locale-branch state | **Yes** | Plumbed through completed ITOTORI work. |
-| Itotori dashboard workflows (project/corpus, locale branch, decision queue, runtime review, patch/delta, feedback, cost/quality) | **Yes** | Workflow surfaces reachable against current state. |
-| Recorded LLM proof / live-provider opt-in | **No** | ITOTORI-116/117 planned, ALPHA-008 planned. |
-| QA-agent precision/recall against seeded defects | **No** | ITOTORI-021 vague per `dag-critique.md` §E.6; no precision/recall floor exists. |
+| Capability                                                                                                                       | End-to-end? | Notes                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
+| `hello-game` → bridge → draft → patch → delta → apply → trace → capture → ingest → dashboard                                     | **Yes**     | Synthetic loop, `synthetic-json` engine. This is real.                                                    |
+| RealLive detector + readiness profile                                                                                            | **Yes**     | KAIFUU-172 / synthetic + cross-engine negatives.                                                          |
+| RealLive Scene/SEEN parser on synthetic 8-opcode bytecode                                                                        | **Yes**     | KAIFUU-173/174.                                                                                           |
+| RealLive Scene/SEEN parser on real Sweetie HD `Seen.txt`                                                                         | **No**      | Real envelope shape differs; parser is clean-room toy.                                                    |
+| Length-preserving patchback on synthetic SEEN                                                                                    | **Yes**     | KAIFUU-174 patchback.                                                                                     |
+| Length-preserving patchback on real `Seen.txt`                                                                                   | **No**      | Untested. Would also require length-policy generalization for actual JA→EN edits.                         |
+| RPG Maker MV/MZ detector + encrypted-media readiness                                                                             | **Yes**     | KAIFUU-039 (readiness only).                                                                              |
+| RPG Maker MV/MZ JSON adapter and patch                                                                                           | **No**      | KAIFUU-007 planned.                                                                                       |
+| RPG Maker MV/MZ runtime evidence                                                                                                 | **No**      | UTSUSHI-031/032/033/119 planned. UTSUSHI-148 alone (browser launch) does not constitute runtime evidence. |
+| Plain XP3 read                                                                                                                   | **Yes**     | KAIFUU-097.                                                                                               |
+| Plain XP3 write                                                                                                                  | **No**      | KAIFUU-098 planned.                                                                                       |
+| KAG plaintext adapter                                                                                                            | **No**      | KAIFUU-009 planned.                                                                                       |
+| KAG/XP3 runtime evidence                                                                                                         | **No**      | UTSUSHI-037/038/039 planned.                                                                              |
+| Substrate facade (VFS, clock, sinks, snapshot, replay, recorder, conformance)                                                    | **Yes**     | UTSUSHI-020–120 complete; exercised by synthetic ports in tests only.                                     |
+| Substrate proves engine-boundary is generic                                                                                      | **No**      | No non-synthetic adapter is registered through it; UTSUSHI-160 planned.                                   |
+| `.kaifuu` delta package contract, apply, verify                                                                                  | **Yes**     | KAIFUU-010/048/049/074 complete.                                                                          |
+| Itotori bridge import + locale-branch state                                                                                      | **Yes**     | Plumbed through completed ITOTORI work.                                                                   |
+| Itotori dashboard workflows (project/corpus, locale branch, decision queue, runtime review, patch/delta, feedback, cost/quality) | **Yes**     | Workflow surfaces reachable against current state.                                                        |
+| Recorded LLM proof / live-provider opt-in                                                                                        | **No**      | ITOTORI-116/117 planned, ALPHA-008 planned.                                                               |
+| QA-agent precision/recall against seeded defects                                                                                 | **No**      | ITOTORI-021 vague per `dag-critique.md` §E.6; no precision/recall floor exists.                           |
 
 ---
 

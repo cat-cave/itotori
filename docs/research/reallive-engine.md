@@ -1,7 +1,7 @@
 # RealLive Engine — Research, Grounded in Sweetie HD
 
 > Scope: anchor the Pure-Rust RealLive runtime port to concrete facts taken from
-> a single shipping title (Sukara's *Oshioki Sweetie + Sweets!! HD*) and from
+> a single shipping title (Sukara's _Oshioki Sweetie + Sweets!! HD_) and from
 > publicly archived format documentation. Replaces the single-line "VFS handoff,
 > Scene/SEEN replay, headless render sink, deterministic clock/input, snapshot
 > primitives" claim that UTSUSHI-146 currently carries with a per-evidence map
@@ -28,21 +28,21 @@ Sweetie HD's `$GAME/` directory holds the executable plus a `REALLIVEDATA/`
 directory and a `SAVEDATA/` directory. The relevant numbers, verified by
 `ls`/`xxd` against the read-only mount:
 
-| Subtree                         | Count    | Notes                                                                                       |
-| ------------------------------- | -------- | ------------------------------------------------------------------------------------------- |
-| `REALLIVEDATA/Gameexe.ini`      | 1 file   | 51,800 bytes, Shift-JIS, 1,345 lines [V]                                                    |
-| `REALLIVEDATA/Seen.txt`         | 1 file   | 3,876,496 bytes, 198 used scenes in a 10,000-slot table [V]                                 |
-| `REALLIVEDATA/g00/`             | 2,450    | RealLive image format files (`.g00`) [V]                                                    |
-| `REALLIVEDATA/koe/`             | 139      | `.ovk` voice archives (Ogg Vorbis samples) [V]                                              |
-| `REALLIVEDATA/bgm/`             | 28       | `.nwa` BGM streams (NWA, AVG32 audio container) [V]                                         |
-| `REALLIVEDATA/wav/`             | 73       | `.nwa` SE samples [V]                                                                       |
-| `REALLIVEDATA/dat/mode.cgm`     | 1 file   | 1,649 bytes, `CGTABLE\0\0...` magic — CG-mode bitfield [V]                                  |
-| `REALLIVEDATA/_manual/`         | 1 dir    | HTML manual; not engine input                                                               |
-| `REALLIVEDATA/rl_d3d.dll`       | 1 file   | RealLive's Direct3D renderer dll; not needed for a headless port                            |
-| `SAVEDATA/REALLIVE.sav`         | 1 file   | 24,876 bytes, header tag `AVG_SYSTEM_SAVE` at byte 0x18 [V]                                 |
-| `SAVEDATA/save999.sav`          | 1 file   | 6,748 bytes, header tag `AVG_GLOBAL_SAVE` at byte 0x18 [V]                                  |
-| `SAVEDATA/read.sav`             | 1 file   | 44,495 bytes, header tag `ｵｼｵｷSweetie+Sweets!! HD Edition\` at byte 0x18 (Shift-JIS) [V]    |
-| `WALL/{800x600,1024x768,1600x1200}/` | 3 dirs | Wallpaper assets, not engine input                                                          |
+| Subtree                              | Count  | Notes                                                                                    |
+| ------------------------------------ | ------ | ---------------------------------------------------------------------------------------- |
+| `REALLIVEDATA/Gameexe.ini`           | 1 file | 51,800 bytes, Shift-JIS, 1,345 lines [V]                                                 |
+| `REALLIVEDATA/Seen.txt`              | 1 file | 3,876,496 bytes, 198 used scenes in a 10,000-slot table [V]                              |
+| `REALLIVEDATA/g00/`                  | 2,450  | RealLive image format files (`.g00`) [V]                                                 |
+| `REALLIVEDATA/koe/`                  | 139    | `.ovk` voice archives (Ogg Vorbis samples) [V]                                           |
+| `REALLIVEDATA/bgm/`                  | 28     | `.nwa` BGM streams (NWA, AVG32 audio container) [V]                                      |
+| `REALLIVEDATA/wav/`                  | 73     | `.nwa` SE samples [V]                                                                    |
+| `REALLIVEDATA/dat/mode.cgm`          | 1 file | 1,649 bytes, `CGTABLE\0\0...` magic — CG-mode bitfield [V]                               |
+| `REALLIVEDATA/_manual/`              | 1 dir  | HTML manual; not engine input                                                            |
+| `REALLIVEDATA/rl_d3d.dll`            | 1 file | RealLive's Direct3D renderer dll; not needed for a headless port                         |
+| `SAVEDATA/REALLIVE.sav`              | 1 file | 24,876 bytes, header tag `AVG_SYSTEM_SAVE` at byte 0x18 [V]                              |
+| `SAVEDATA/save999.sav`               | 1 file | 6,748 bytes, header tag `AVG_GLOBAL_SAVE` at byte 0x18 [V]                               |
+| `SAVEDATA/read.sav`                  | 1 file | 44,495 bytes, header tag `ｵｼｵｷSweetie+Sweets!! HD Edition\` at byte 0x18 (Shift-JIS) [V] |
+| `WALL/{800x600,1024x768,1600x1200}/` | 3 dirs | Wallpaper assets, not engine input                                                       |
 
 Asset folder remapping in `Gameexe.ini` (lines 33-46 in UTF-8 view, 1-based) declares
 fallback `.PAK` containers for each asset family even though Sweetie HD ships
@@ -114,28 +114,28 @@ The keys group into the following category buckets. Counts refer to the
 **number of lines emitted for that category** in Sweetie HD's `Gameexe.ini`
 (verified via `grep -c`):
 
-| Category                                  | Example keys                                                   | Lines | Notes                                                                                  |
-| ----------------------------------------- | -------------------------------------------------------------- | ----: | -------------------------------------------------------------------------------------- |
-| Engine bootstrap / window                 | `SCREENSIZE_MOD`, `CAPTION`, `REGNAME`, `DISKMARK`             |     ~ | One-shot scalar values                                                                  |
-| Scene routing                             | `SEEN_START`, `SEEN_MENU`, `CANCELCALL`, `SYSTEMCALL_*`        |    ~12 | Each call uses `<scene_id>,<entrypoint>` pair                                          |
-| Asset folder remap                        | `FOLDNAME.*`                                                   |    13 | Triple-valued `subdir=mode:pakname`                                                    |
-| Save spec                                 | `SAVE_USE`, `SAVE_FORMAT`, `SAVE_CNT`, `SAVE_THUMBNAIL`, `SAVE_NODATA` |   ~10 | Drives `SAVEDATA/REALLIVE.sav` shape                                                   |
-| Speaker / character roster (`NAMAE`)      | `#NAMAE="和人" = "和人" = (1,016, -1)`                          |    11 | Maps display name to canonical name + (voice_archive_id, voice_pattern_id)             |
-| Voice on/off menu                         | `KOEONOFF.000.(000).ON="凛"` etc.                              |     6 | Per-character voice toggle in syscom menu                                              |
-| `SYSCOM.NNN` system command catalogue     | `SYSCOM.005.000="フルスクリーン"`                                |   ~70 | 32 system-menu items, each with label + subitems                                       |
-| `WAKU.NNN.*` text window decoration       | `WAKU.000.000.NAME="_waku10"` etc.                             |   209 | 8 text-window themes × ~25 fields each                                                  |
-| `SELBTN.NNN.*` choice button styling      | `SELBTN.000.NAME="_selbtn00"`                                  |    62 | 3 choice-button themes × ~20 fields                                                    |
-| `BTNOBJ.*` button-object animation        | `BTNOBJ.ACTION.000.HIT`, `BTNOBJ.SE.000.DECIDE`                |    99 | 16 button-object families × HIT/NORMAL/PUSH/RPUSH/STATE1/STATE2                         |
-| `SYSBTN.000.*` system button positions    | `SYSBTN.000.NAME`, `SYSBTN.000.CLEAR_BTN`                      |   ~50 | One row of system-bar buttons                                                          |
-| `MOUSE_CURSOR_WINDOWBUTTON_*`             | per-button cursor table                                        |   ~15 | Maps mouse hover region to cursor sprite id                                            |
-| `WBCALL.NNN`                              | `WBCALL.000=9999,00`                                            |     8 | Per-system-button callback into scene/entrypoint pair                                   |
-| Object render layers                      | `OBJECT_MAX`, `INIT_OBJECT1_ONOFF_MOD`                          |     ~ |                                                                                        |
-| `HINT.AUTOMODE.*`, `HINT.READJUMP.*`      | hint-icon graphics + animation parameters                       |    12 |                                                                                        |
-| Debug flags                               | `DEBUG_MESSAGE_LOG`, `DEBUG_SAVE_HISTORY_CNT`                  |     5 | Set in retail builds                                                                   |
-| Sound defaults / fades                    | `BGM_KOEFADE_USE`, `BGM_KOEFADE_VOL`, `SOUND_DEFAULT`          |     ~ |                                                                                        |
-| Read-jump / text-skip                     | `READJUMP_SYSTEM_USE`, `UNREADJUMP_STR`                        |     ~ |                                                                                        |
-| Localisation surface                      | `LOCALNAME.A`, `NAME.A`, `NAME_MAXLEN`, `CAPTION`, `VERSION_STR` |    ~ | The handful of strings that need translation directly out of Gameexe                    |
-| Color palette                             | `COLOR_TABLE.000` … `COLOR_TABLE.NNN`                          |     ~ |                                                                                        |
+| Category                               | Example keys                                                           | Lines | Notes                                                                      |
+| -------------------------------------- | ---------------------------------------------------------------------- | ----: | -------------------------------------------------------------------------- |
+| Engine bootstrap / window              | `SCREENSIZE_MOD`, `CAPTION`, `REGNAME`, `DISKMARK`                     |     ~ | One-shot scalar values                                                     |
+| Scene routing                          | `SEEN_START`, `SEEN_MENU`, `CANCELCALL`, `SYSTEMCALL_*`                |   ~12 | Each call uses `<scene_id>,<entrypoint>` pair                              |
+| Asset folder remap                     | `FOLDNAME.*`                                                           |    13 | Triple-valued `subdir=mode:pakname`                                        |
+| Save spec                              | `SAVE_USE`, `SAVE_FORMAT`, `SAVE_CNT`, `SAVE_THUMBNAIL`, `SAVE_NODATA` |   ~10 | Drives `SAVEDATA/REALLIVE.sav` shape                                       |
+| Speaker / character roster (`NAMAE`)   | `#NAMAE="和人" = "和人" = (1,016, -1)`                                 |    11 | Maps display name to canonical name + (voice_archive_id, voice_pattern_id) |
+| Voice on/off menu                      | `KOEONOFF.000.(000).ON="凛"` etc.                                      |     6 | Per-character voice toggle in syscom menu                                  |
+| `SYSCOM.NNN` system command catalogue  | `SYSCOM.005.000="フルスクリーン"`                                      |   ~70 | 32 system-menu items, each with label + subitems                           |
+| `WAKU.NNN.*` text window decoration    | `WAKU.000.000.NAME="_waku10"` etc.                                     |   209 | 8 text-window themes × ~25 fields each                                     |
+| `SELBTN.NNN.*` choice button styling   | `SELBTN.000.NAME="_selbtn00"`                                          |    62 | 3 choice-button themes × ~20 fields                                        |
+| `BTNOBJ.*` button-object animation     | `BTNOBJ.ACTION.000.HIT`, `BTNOBJ.SE.000.DECIDE`                        |    99 | 16 button-object families × HIT/NORMAL/PUSH/RPUSH/STATE1/STATE2            |
+| `SYSBTN.000.*` system button positions | `SYSBTN.000.NAME`, `SYSBTN.000.CLEAR_BTN`                              |   ~50 | One row of system-bar buttons                                              |
+| `MOUSE_CURSOR_WINDOWBUTTON_*`          | per-button cursor table                                                |   ~15 | Maps mouse hover region to cursor sprite id                                |
+| `WBCALL.NNN`                           | `WBCALL.000=9999,00`                                                   |     8 | Per-system-button callback into scene/entrypoint pair                      |
+| Object render layers                   | `OBJECT_MAX`, `INIT_OBJECT1_ONOFF_MOD`                                 |     ~ |                                                                            |
+| `HINT.AUTOMODE.*`, `HINT.READJUMP.*`   | hint-icon graphics + animation parameters                              |    12 |                                                                            |
+| Debug flags                            | `DEBUG_MESSAGE_LOG`, `DEBUG_SAVE_HISTORY_CNT`                          |     5 | Set in retail builds                                                       |
+| Sound defaults / fades                 | `BGM_KOEFADE_USE`, `BGM_KOEFADE_VOL`, `SOUND_DEFAULT`                  |     ~ |                                                                            |
+| Read-jump / text-skip                  | `READJUMP_SYSTEM_USE`, `UNREADJUMP_STR`                                |     ~ |                                                                            |
+| Localisation surface                   | `LOCALNAME.A`, `NAME.A`, `NAME_MAXLEN`, `CAPTION`, `VERSION_STR`       |     ~ | The handful of strings that need translation directly out of Gameexe       |
+| Color palette                          | `COLOR_TABLE.000` … `COLOR_TABLE.NNN`                                  |     ~ |                                                                            |
 
 Detailed key reference for the engine subsystems:
 
@@ -157,8 +157,8 @@ Detailed key reference for the engine subsystems:
   `NAME`/`BACK`/`BTN` graphics names, an `AREA` margin tuple, a `REP_MOJI_POS`
   per-char step, then 14 named hit-box rectangles
   (`MOVE_BOX`, `CLEAR_BOX`, `READJUMP_BOX`, `AUTOMODE_BOX`, `KOEPLAY_BOX`,
-   `MSGBK_BOX`, `MSGBKLEFT_BOX`, `MSGBKRIGHT_BOX`, `EXBTN_000_BOX` …
-   `EXBTN_007_BOX`) and 14 matching `_POS` overrides. [V]
+  `MSGBK_BOX`, `MSGBKLEFT_BOX`, `MSGBKRIGHT_BOX`, `EXBTN_000_BOX` …
+  `EXBTN_007_BOX`) and 14 matching `_POS` overrides. [V]
 - **`#SELBTN.NNN.*`:** declares the `NNN`-th choice-button theme.
   `NAME`/`BACK` graphics, `BASEPOS`/`REPPOS`/`CENTERING` layout, `MOJISIZE`
   text size, `NORMAL`/`SELECT`/`PUSH`/`DONTSEL` colour states, `OPEN_ANM`
@@ -245,25 +245,25 @@ constructor [P, fetched via GitHub], the **scene header** is a fixed
 `0x1d0 = 464` byte block with the following layout (offsets are scene-blob
 relative):
 
-| Offset | Width | Field                            | Sweetie HD scene #0001 value         | Notes                                                                |
-| -----: | ----: | -------------------------------- | ------------------------------------ | -------------------------------------------------------------------- |
-|  0x00  |   u32 | `header_size`                    | `0x000001d0` (464)                   | Matches the fixed header length. [V]                                 |
-|  0x04  |   u32 | compiler version                 | `0x0001adb2` (110002)                | Distinguishes pre-1.10 / 1.10 / 1.1110 RealLive. Selects XOR-2 key.  |
-|  0x08  |   u32 | kidoku-table offset              | `0x000001d0` (464)                   | Kidoku (read-tracking) flags region.                                 |
-|  0x0c  |   u32 | kidoku-table count               | `0x00000001` (1)                     | One kidoku slot. [V]                                                 |
-|  0x10  |   u32 | (line table count, or similar)   | `0x00000004` (4)                     | [U — likely line-info count]                                         |
-|  0x14  |   u32 | dramatis-personae offset         | `0x000001d4` (468)                   | rlvm reads this from `data+0x14`. [P]                                |
-|  0x18  |   u32 | dramatis-personae count          | `0x00000000` (0)                     | Scene #0001 has no inline personae. [V]                              |
-|  0x1c  |   u32 | metadata block length            | `0x00000000` (0)                     | No inline metadata.                                                  |
-|  0x20  |   u32 | bytecode start offset            | `0x000001d4` (468)                   | rlvm cross-checks this against the calculated location. [P]          |
-|  0x24  |   u32 | bytecode uncompressed size       | `0x0000067c` (1660)                  | After AVG32 LZ + XOR. [P, cross-checked V]                           |
-|  0x28  |   u32 | bytecode compressed size         | `0x00000426` (1062)                  | Matches blob remainder: 1530 − 468 = 1062. [V]                       |
-|  0x2c  |   u32 | `z_minus_one` debug entrypoint   | `0x00000000`                         | Unused in retail. [P, V]                                             |
-|  0x30  |   u32 | `z_minus_two` debug entrypoint   | `0x00000003`                         | [V]                                                                  |
-|  0x34  |   u32 | entrypoint count                 | `0x00000006` × N                     | The 0x06 lattice from 0x34 to 0x1c0 is the entrypoint table. [V/P]   |
-| 0x1c4  |   u32 | savepoint_message setting        | `0x00000000`                         | [P]                                                                  |
-| 0x1c8  |   u32 | savepoint_selcom setting         | `0x00000000`                         | [P]                                                                  |
-| 0x1cc  |   u32 | savepoint_seentop setting        | `0x00000000`                         | [P]                                                                  |
+| Offset | Width | Field                          | Sweetie HD scene #0001 value | Notes                                                               |
+| -----: | ----: | ------------------------------ | ---------------------------- | ------------------------------------------------------------------- |
+|   0x00 |   u32 | `header_size`                  | `0x000001d0` (464)           | Matches the fixed header length. [V]                                |
+|   0x04 |   u32 | compiler version               | `0x0001adb2` (110002)        | Distinguishes pre-1.10 / 1.10 / 1.1110 RealLive. Selects XOR-2 key. |
+|   0x08 |   u32 | kidoku-table offset            | `0x000001d0` (464)           | Kidoku (read-tracking) flags region.                                |
+|   0x0c |   u32 | kidoku-table count             | `0x00000001` (1)             | One kidoku slot. [V]                                                |
+|   0x10 |   u32 | (line table count, or similar) | `0x00000004` (4)             | [U — likely line-info count]                                        |
+|   0x14 |   u32 | dramatis-personae offset       | `0x000001d4` (468)           | rlvm reads this from `data+0x14`. [P]                               |
+|   0x18 |   u32 | dramatis-personae count        | `0x00000000` (0)             | Scene #0001 has no inline personae. [V]                             |
+|   0x1c |   u32 | metadata block length          | `0x00000000` (0)             | No inline metadata.                                                 |
+|   0x20 |   u32 | bytecode start offset          | `0x000001d4` (468)           | rlvm cross-checks this against the calculated location. [P]         |
+|   0x24 |   u32 | bytecode uncompressed size     | `0x0000067c` (1660)          | After AVG32 LZ + XOR. [P, cross-checked V]                          |
+|   0x28 |   u32 | bytecode compressed size       | `0x00000426` (1062)          | Matches blob remainder: 1530 − 468 = 1062. [V]                      |
+|   0x2c |   u32 | `z_minus_one` debug entrypoint | `0x00000000`                 | Unused in retail. [P, V]                                            |
+|   0x30 |   u32 | `z_minus_two` debug entrypoint | `0x00000003`                 | [V]                                                                 |
+|   0x34 |   u32 | entrypoint count               | `0x00000006` × N             | The 0x06 lattice from 0x34 to 0x1c0 is the entrypoint table. [V/P]  |
+|  0x1c4 |   u32 | savepoint_message setting      | `0x00000000`                 | [P]                                                                 |
+|  0x1c8 |   u32 | savepoint_selcom setting       | `0x00000000`                 | [P]                                                                 |
+|  0x1cc |   u32 | savepoint_seentop setting      | `0x00000000`                 | [P]                                                                 |
 
 After 0x1d0 the **compressed bytecode** begins. Its size (1062 bytes) is
 visible from 0x1d4 to 0x5fa (end-of-blob). It is **AVG32-style LZSS** with a
@@ -296,16 +296,16 @@ Once the bytecode is decompressed, the BytecodeElement stream is decoded by a
 switch on the first byte of each element (mapped from
 `rlvm/src/libreallive/bytecode.cc:BytecodeElement::Read`) [P]:
 
-| Lead byte | Element kind     | Decoded as                                                                       |
-| --------- | ---------------- | -------------------------------------------------------------------------------- |
-| `0x00`    | CommaElement     | Separator                                                                        |
-| `0x0A`    | MetaElement      | Source-line number marker (`<line>`)                                             |
-| `0x21`    | MetaElement      | Entrypoint marker (`!N`)                                                         |
-| `0x23`    | CommandElement   | An RLOperation call — 8-byte command header follows                              |
-| `0x24`    | ExpressionElement| A standalone variable expression                                                 |
-| `0x2C`    | CommaElement     | Comma (synonym of `0x00`)                                                        |
-| `0x40`    | MetaElement      | Kidoku tracking marker (`@N`)                                                    |
-| other     | TextoutElement   | Displayable Shift-JIS text up to the next non-textout byte                       |
+| Lead byte | Element kind      | Decoded as                                                 |
+| --------- | ----------------- | ---------------------------------------------------------- |
+| `0x00`    | CommaElement      | Separator                                                  |
+| `0x0A`    | MetaElement       | Source-line number marker (`<line>`)                       |
+| `0x21`    | MetaElement       | Entrypoint marker (`!N`)                                   |
+| `0x23`    | CommandElement    | An RLOperation call — 8-byte command header follows        |
+| `0x24`    | ExpressionElement | A standalone variable expression                           |
+| `0x2C`    | CommaElement      | Comma (synonym of `0x00`)                                  |
+| `0x40`    | MetaElement       | Kidoku tracking marker (`@N`)                              |
+| other     | TextoutElement    | Displayable Shift-JIS text up to the next non-textout byte |
 
 The 8-byte command header is:
 
@@ -383,7 +383,7 @@ shows both `0x00` and `0x02` lead bytes; full survey not yet performed). [U
 @0x08: 24 00 00 00              # entry 0: data length = 36 bytes
 @0x0c: 2e 00 00 00              # entry 0: sample_num = 46
 @0x10: 9e fb 05 00              # entry 0: tail (compressed size or hash?)
-@0x14: da 72 02 00              # entry 1: data offset = 0x000272da  
+@0x14: da 72 02 00              # entry 1: data offset = 0x000272da
 @0x18: e4 b1 02 00              # entry 1: data length = 0x0002b1e4
 @0x1c: 34 00 00 00              # entry 1: sample_num = 52
 @0x20: cc 7e 05 00              # entry 1: tail
@@ -446,34 +446,34 @@ RLOperations into named modules; each module has a `module_type` (e.g. `0` for
 Kepago, `1` for system) and `module_id`. The modules observable in
 `rlvm/src/modules/`:
 
-| Module file              | Family                         | Approx opcode count (rlvm)    | What it does                                                  |
-| ------------------------ | ------------------------------ | ----------------------------: | ------------------------------------------------------------- |
-| `module_sys.cc`          | System / control               | ~110                          | `title`, `end`, `pause`, `wait`, `rnd`, `pcnt`, `sin/cos/abs`, `MenuReturn`, `SceneNum`, save/load triggers, screen mode, message speed, font weight |
-| `module_msg.cc`          | Text / messaging               | ~35–40                        | `pause`, `par`, `br`, `page`, `msgHide`, `FontColor`, `TextPos`, `FastText`, `FaceOpen` |
-| `module_str.cc`          | String manipulation            | ~32                           | `strcpy`, `strcat`, `strlen`, `Uppercase`, `itoa`, `atoi`, `strpos`, `strout`, `intout` |
-| `module_mem.cc`          | Memory / array bulk            | ~11                           | `setarray`, `setrng`, `cpyrng`, `setarray_stepped`, `cpyvars`, `sum`, `sums` |
-| `module_jmp.cc`          | Control flow                   | ~22                           | `goto`, `goto_if`, `goto_unless`, `goto_on`, `goto_case`, `gosub`, `gosub_with`, `ret`, `ret_with`, `rtl`, `jump`, `farcall`, `farcall_with` |
-| `module_sel.cc`          | Choice / selection             | ~9                            | `select`, `select_s`, `select_w`, `select_objbtn`, `objbtn_init` |
-| `module_grp.cc`          | Graphics primitives            | ~80–100 (file is 1500+ lines) | `allocDC`, `wipe`, `shake`, `load`/`open`/`openBg`, `copy`/`fill`/`invert`/`mono`/`colour`, `fade`, `stretchBlit`, `zoom`, `multi` |
-| `module_obj_management.cc` | Object management            | ~24–28                        | `objAlloc`, `objFree`, `objInit`, `objCopy` for fg/bg/child planes |
-| `module_obj_fg_bg.cc`    | Object stack ops               | ~40–45                        | Per-object setters/getters: position, scale, rotation, alpha, layer ordering |
-| `module_obj_*` (~10 more files)| Per-axis object families | ~150 total                    | Object animation, text, digits, drift, mutator, repeat                                                |
-| `module_bgm.cc`          | BGM playback                   | ~25                           | `bgmPlay`, `bgmStop`, `bgmFadeOut`, `bgmLoop`                 |
-| `module_koe.cc`          | Voice playback                 | ~15                           | `koePlay`, `koeStop`, `koeWait`, `koePlayInChar`              |
-| `module_pcm.cc`          | PCM / SFX                      | ~20                           | `pcmPlay`, `pcmStop`, `wavPlay`, `wavStop`                    |
-| `module_se.cc`           | SE table lookup                | ~10                           | `playSe`, `hasSe`                                             |
-| `module_scr.cc`          | Screen-level effects           | ~15                           |                                                               |
-| `module_shk.cc`          | Shake / shake-zoom             | ~10                           |                                                               |
-| `module_shl.cc`          | Shell utilities                | ~5                            |                                                               |
-| `module_event_loop.cc`   | Main loop primitives           | ~10                           |                                                               |
-| `module_refresh.cc`      | Frame refresh                  | ~5                            |                                                               |
-| `module_g00.cc`          | g00 region operations          | ~10                           |                                                               |
-| `module_gan.cc`          | GAN animation                  | ~15                           |                                                               |
-| `module_mov.cc`          | Movie playback                 | ~10                           |                                                               |
-| `module_os.cc`           | OS hooks                       | ~5                            |                                                               |
-| `module_dll.cc`          | Engine-extension DLL hooks     | ~5                            | Title-specific DLLs (Little Busters, Tomoyo After)            |
-| `module_debug.cc`        | Debug                          | ~5                            |                                                               |
-| `module_bgr.cc`          | Bgr (background) helpers       | ~5                            |                                                               |
+| Module file                     | Family                     |    Approx opcode count (rlvm) | What it does                                                                                                                                         |
+| ------------------------------- | -------------------------- | ----------------------------: | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `module_sys.cc`                 | System / control           |                          ~110 | `title`, `end`, `pause`, `wait`, `rnd`, `pcnt`, `sin/cos/abs`, `MenuReturn`, `SceneNum`, save/load triggers, screen mode, message speed, font weight |
+| `module_msg.cc`                 | Text / messaging           |                        ~35–40 | `pause`, `par`, `br`, `page`, `msgHide`, `FontColor`, `TextPos`, `FastText`, `FaceOpen`                                                              |
+| `module_str.cc`                 | String manipulation        |                           ~32 | `strcpy`, `strcat`, `strlen`, `Uppercase`, `itoa`, `atoi`, `strpos`, `strout`, `intout`                                                              |
+| `module_mem.cc`                 | Memory / array bulk        |                           ~11 | `setarray`, `setrng`, `cpyrng`, `setarray_stepped`, `cpyvars`, `sum`, `sums`                                                                         |
+| `module_jmp.cc`                 | Control flow               |                           ~22 | `goto`, `goto_if`, `goto_unless`, `goto_on`, `goto_case`, `gosub`, `gosub_with`, `ret`, `ret_with`, `rtl`, `jump`, `farcall`, `farcall_with`         |
+| `module_sel.cc`                 | Choice / selection         |                            ~9 | `select`, `select_s`, `select_w`, `select_objbtn`, `objbtn_init`                                                                                     |
+| `module_grp.cc`                 | Graphics primitives        | ~80–100 (file is 1500+ lines) | `allocDC`, `wipe`, `shake`, `load`/`open`/`openBg`, `copy`/`fill`/`invert`/`mono`/`colour`, `fade`, `stretchBlit`, `zoom`, `multi`                   |
+| `module_obj_management.cc`      | Object management          |                        ~24–28 | `objAlloc`, `objFree`, `objInit`, `objCopy` for fg/bg/child planes                                                                                   |
+| `module_obj_fg_bg.cc`           | Object stack ops           |                        ~40–45 | Per-object setters/getters: position, scale, rotation, alpha, layer ordering                                                                         |
+| `module_obj_*` (~10 more files) | Per-axis object families   |                    ~150 total | Object animation, text, digits, drift, mutator, repeat                                                                                               |
+| `module_bgm.cc`                 | BGM playback               |                           ~25 | `bgmPlay`, `bgmStop`, `bgmFadeOut`, `bgmLoop`                                                                                                        |
+| `module_koe.cc`                 | Voice playback             |                           ~15 | `koePlay`, `koeStop`, `koeWait`, `koePlayInChar`                                                                                                     |
+| `module_pcm.cc`                 | PCM / SFX                  |                           ~20 | `pcmPlay`, `pcmStop`, `wavPlay`, `wavStop`                                                                                                           |
+| `module_se.cc`                  | SE table lookup            |                           ~10 | `playSe`, `hasSe`                                                                                                                                    |
+| `module_scr.cc`                 | Screen-level effects       |                           ~15 |                                                                                                                                                      |
+| `module_shk.cc`                 | Shake / shake-zoom         |                           ~10 |                                                                                                                                                      |
+| `module_shl.cc`                 | Shell utilities            |                            ~5 |                                                                                                                                                      |
+| `module_event_loop.cc`          | Main loop primitives       |                           ~10 |                                                                                                                                                      |
+| `module_refresh.cc`             | Frame refresh              |                            ~5 |                                                                                                                                                      |
+| `module_g00.cc`                 | g00 region operations      |                           ~10 |                                                                                                                                                      |
+| `module_gan.cc`                 | GAN animation              |                           ~15 |                                                                                                                                                      |
+| `module_mov.cc`                 | Movie playback             |                           ~10 |                                                                                                                                                      |
+| `module_os.cc`                  | OS hooks                   |                            ~5 |                                                                                                                                                      |
+| `module_dll.cc`                 | Engine-extension DLL hooks |                            ~5 | Title-specific DLLs (Little Busters, Tomoyo After)                                                                                                   |
+| `module_debug.cc`               | Debug                      |                            ~5 |                                                                                                                                                      |
+| `module_bgr.cc`                 | Bgr (background) helpers   |                            ~5 |                                                                                                                                                      |
 
 Rough total: **~700–800 RLOperations** in rlvm. Of these, perhaps 250–400 are
 likely exercised by Sweetie HD; the rest cover Key/VisualArts-specific
@@ -535,15 +535,15 @@ opcodes) sitting under the main loop.
 
 `Gameexe.ini` declares the following dispatch table for Sweetie HD:
 
-| Key                                  | Scene/entrypoint  | Trigger                                                                                          |
-| ------------------------------------ | ----------------- | ------------------------------------------------------------------------------------------------ |
-| `CANCELCALL=9999,10`                 | scene 9999, ep 10 | Escape key / cancel input.                                                                       |
-| `SYSTEMCALL_SAVE=9999,20`            | scene 9999, ep 20 | "Save" syscom selected.                                                                          |
-| `SYSTEMCALL_LOAD=9999,21`            | scene 9999, ep 21 | "Load" syscom selected.                                                                          |
-| `SYSTEMCALL_SYSTEM=9999,22`          | scene 9999, ep 22 | "System menu" syscom selected.                                                                   |
-| `MOUSEACTIONCALL.000.SEEN=9999,30`   | scene 9999, ep 30 | Hover into rectangle `1232,0,1279,719` (top-right edge of HD screen) for 0+ms.                   |
-| `LOADCALL=9999,40`                   | scene 9999, ep 40 | Fires after a save is loaded — gives the script a chance to re-initialise state.                 |
-| `EXAFTERCALL=9999,50`                | scene 9999, ep 50 | Engine "after main scene" hook.                                                                  |
+| Key                                | Scene/entrypoint  | Trigger                                                                          |
+| ---------------------------------- | ----------------- | -------------------------------------------------------------------------------- |
+| `CANCELCALL=9999,10`               | scene 9999, ep 10 | Escape key / cancel input.                                                       |
+| `SYSTEMCALL_SAVE=9999,20`          | scene 9999, ep 20 | "Save" syscom selected.                                                          |
+| `SYSTEMCALL_LOAD=9999,21`          | scene 9999, ep 21 | "Load" syscom selected.                                                          |
+| `SYSTEMCALL_SYSTEM=9999,22`        | scene 9999, ep 22 | "System menu" syscom selected.                                                   |
+| `MOUSEACTIONCALL.000.SEEN=9999,30` | scene 9999, ep 30 | Hover into rectangle `1232,0,1279,719` (top-right edge of HD screen) for 0+ms.   |
+| `LOADCALL=9999,40`                 | scene 9999, ep 40 | Fires after a save is loaded — gives the script a chance to re-initialise state. |
+| `EXAFTERCALL=9999,50`              | scene 9999, ep 50 | Engine "after main scene" hook.                                                  |
 
 [V — read from `$GAME/REALLIVEDATA/Gameexe.ini`]
 
@@ -612,7 +612,7 @@ For a **headless** port the surfaces look like:
   pipeline already exists.
 - Audio layer → produce `AudioEvent` records (utsushi-core
   `sink::audio::AudioEvent { kind: BgmStart | VoicePlay | SeFire | Marker,
-  evidence_tier }`) — no actual sample mixing required for headless replay;
+evidence_tier }`) — no actual sample mixing required for headless replay;
   the metadata model suffices for a deterministic recording.
 - Voice cache → resolve `(speaker_id, sample_id) → ovk_sample_handle`
   using the `NAMAE`/`KOEONOFF` tables; emit `AudioEventKind::VoicePlay`
@@ -625,8 +625,8 @@ Sweetie HD's `SAVEDATA/` carries three save kinds:
 
 - **`REALLIVE.sav`** (24,876 bytes): per-slot system saves bundle. Header
   starts `2C 61 00 00` (= 24876, total file size), then a `(scene_id,
-  entrypoint?)` pair, an engine version stamp `e9 07 03 00 02 00 0b 00 12
-  00 27 00` (year=2025, month=3, day=2, h=11, m=18, s=39?), then the magic
+entrypoint?)` pair, an engine version stamp `e9 07 03 00 02 00 0b 00 12
+00 27 00` (year=2025, month=3, day=2, h=11, m=18, s=39?), then the magic
   tag `AVG_SYSTEM_SAVE` at offset 0x18. [V — byte offsets confirmed]
 - **`save999.sav`** (6,748 bytes): "global save" — read-text flags, cleared
   endings, gallery unlocks. Header magic `AVG_GLOBAL_SAVE` at offset 0x18.
@@ -765,7 +765,7 @@ conformance, and port lifecycle. The headless-replay shapes needed by a
 RealLive port — `FrameArtifact { artifact_id, width, height, frame_index }`
 pointing at a stored PNG; `TextLine { speaker, body, evidence_tier }`;
 `AudioEvent { event_kind, evidence_tier }` — are all already on the
-facade. No facade extensions are *obviously* required to host a RealLive
+facade. No facade extensions are _obviously_ required to host a RealLive
 port, but the substrate honesty subagent should independently verify
 three specific gaps:
 
@@ -814,6 +814,7 @@ verification is the right place to confirm.
 ### Citation index
 
 Sweetie HD evidence:
+
 - `$GAME/REALLIVEDATA/Gameexe.ini` — Shift-JIS, 1345 lines, 191 distinct
   top-level key prefixes.
 - `$GAME/REALLIVEDATA/Seen.txt` — 3,876,496 bytes, 10,000-slot index, 198
@@ -827,6 +828,7 @@ Sweetie HD evidence:
   format.
 
 Public sources:
+
 - Haeleth's RLDEV — http://dev.haeleth.net/rldev/manual.html — scene
   bytecode format, expression encoding, opcode catalogue (the canonical
   documentation despite the URL currently returning ECONNREFUSED from
@@ -851,6 +853,7 @@ Public sources:
   AVG32 audio (NWA), g00 type-0/1/2 reference.
 
 Existing itotori code:
+
 - `crates/kaifuu-reallive/src/lib.rs:38-99` — synthetic-fixture envelope &
   opcode shape documentation, explicitly narrower than real RealLive.
 - `crates/kaifuu-reallive/src/archive.rs:66-104` — count-plus-table envelope

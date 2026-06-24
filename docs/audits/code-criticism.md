@@ -27,12 +27,12 @@ Verdict legend:
 
 Headline tally (focus nodes, this audit):
 
-| Verdict             | Count |
-| ------------------- | ----- |
-| load-bearing        | 4     |
-| honest-prototype    | 9     |
-| minimal-pass-test   | 13    |
-| aspirational        | 8     |
+| Verdict           | Count |
+| ----------------- | ----- |
+| load-bearing      | 4     |
+| honest-prototype  | 9     |
+| minimal-pass-test | 13    |
+| aspirational      | 8     |
 
 The "32 alpha-tier" claim in the prompt under-counts: the DAG has 165
 `alpha + complete` nodes, but the user's verbatim concern was the
@@ -62,22 +62,21 @@ and would not gain from this style of review.
   Result: `detected: false` for the `kaifuu.reallive` adapter against a
   real RealLive game. Three concrete misclassifications come from the
   detector's structural shortcuts:
-
   1. `crates/kaifuu-engine-fixture/src/lib.rs:4709 reallive_seen_txt_envelope_ok`
      reads `count = u32_le(bytes[0..4])` and accepts the file only when
      `count` is in `1..=131072`. Sweetie HD's `Seen.txt` has
      `00000000 00000000` at byte 0 (the real envelope is a fixed-size
      index table where the first slot is unused), so the function returns
      `false`. Output diagnostic: `"SEEN.TXT envelope is present but does
-     not match the synthetic fixture signature"` — but the file is a
+not match the synthetic fixture signature"` — but the file is a
      valid live SEEN.TXT, not a synthetic fixture.
   2. `crates/kaifuu-engine-fixture/src/lib.rs:4672 reallive_extension_counts`
      calls `fs::read_dir(dir)` (one level deep) and counts `.g00 / .ovk /
-     .koe / .nwk / .pdt`. Real RealLive layouts put image assets in a
+.koe / .nwk / .pdt`. Real RealLive layouts put image assets in a
      `g00/` subdirectory and voice archives in `koe/` or `bgm/`
      subdirectories. `ls REALLIVEDATA/g00/ | head` shows hundreds of
      `.g00` files, but the detector reports `"RealLive .g00 image asset
-     count: 0"`.
+count: 0"`.
   3. Despite `#REGNAME`, `#KOE*`, `#SEEN*` matching in Gameexe.ini
      (`"Gameexe.ini RealLive keys matched: #REGNAME, #KOE*, #SEEN*"`),
      the detector still returns `detected: false` because three of the
@@ -94,7 +93,7 @@ and would not gain from this style of review.
 - **What would actually exercise it**: pointing the CLI at real
   RealLive bytes (Sweetie HD `REALLIVEDATA/`, or any other RealLive
   release). **Has not been run**: `grep -rn "Sweetie\|sweetie\|オシオキ"
-  crates/ apps/itotori/src` returns zero matches.
+crates/ apps/itotori/src` returns zero matches.
 
 ### KAIFUU-173 — RealLive Scene/SEEN parser-boundary smoke
 
@@ -133,21 +132,21 @@ and would not gain from this style of review.
 
   Direct probe against real bytes:
 
-      $ cd /tmp/itotori-criticism/probe-cargo && cargo run --release -- \
-          "/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt"
-      file_len = 3876496
-      first 16 bytes hex = 000000000000000080380100FA050000
-      parse_archive OK entries=0 schema=0.1.0
+        $ cd /tmp/itotori-criticism/probe-cargo && cargo run --release -- \
+            "/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt"
+        file_len = 3876496
+        first 16 bytes hex = 000000000000000080380100FA050000
+        parse_archive OK entries=0 schema=0.1.0
 
   `parse_archive` returns **false success** — `Ok(SceneIndex { entries:
-  vec![] })` — because `count = u32_le(0..4) = 0` matches the
+vec![] })` — because `count = u32_le(0..4) = 0` matches the
   "empty archive" branch at `crates/kaifuu-reallive/src/archive.rs:78-90`.
   The parser silently treats a real 3.87 MB SEEN.TXT as an empty
   archive. There is no diagnostic, no warning.
 
 - **Test sanity check**: tautological. `tests/smoke.rs:19-97` defines
-  a `synthetic` module that *writes* bytes with `opener = 0x23`, `opcode
-  = 0x01`, then the test asserts the parser parses those exact bytes.
+  a `synthetic` module that _writes_ bytes with `opener = 0x23`, `opcode
+= 0x01`, then the test asserts the parser parses those exact bytes.
   Example: `parses_smoke_scene_001_into_structured_ast_with_named_opcodes`
   (`tests/smoke.rs`) round-trips the encoder/decoder pair. No third-party
   bytes ever reach the parser in any test.
@@ -227,11 +226,12 @@ and would not gain from this style of review.
   - `crates/kaifuu-vault-source/src/extraction.rs:66 extract_archive`
     streams entries into `/scratch/itotori/<game-id>/<run-id>/extracted/`;
   - `crates/kaifuu-vault-source/src/metadata.rs:127,160 read_and_validate
-    + cross_check` runs an embedded-metadata cross-check;
+    - cross_check` runs an embedded-metadata cross-check;
   - `crates/kaifuu-vault-source/src/config.rs:157 validate_vault_root`
     enforces the vault is read-only at the configuration boundary.
 
   Vault present in this environment: `/archive/vault/{catalog.db, artifacts/by-sha/, ...}`.
+
 - **Test sanity check**: `tests/discovery_test.rs`, `tests/extraction_test.rs`,
   `tests/metadata_test.rs`, `tests/resolution_test.rs` exercise SQL +
   archive + path semantics with realistic fixture catalogs. The shared
@@ -266,7 +266,7 @@ has zero `utsushi-core` dependency in `Cargo.toml`.
 ### UTSUSHI-020 — Runtime VFS and asset package boundary
 
 - **Files**: `crates/utsushi-core/src/vfs/{runtime.rs, package.rs, id.rs,
-  diagnostics.rs}` (~2,200 LOC).
+diagnostics.rs}` (~2,200 LOC).
 - **Verdict**: **aspirational**.
 - **Evidence**: trait definitions at `vfs/runtime.rs:26 RuntimeVfs`,
   `vfs/package.rs:180 AssetPackage`. Production impls:
@@ -281,7 +281,7 @@ has zero `utsushi-core` dependency in `Cargo.toml`.
   test-internal toys, not real engines.
 - **What would actually exercise it**: a RealLive port that mounts the
   `REALLIVEDATA/` tree behind a `RuntimeVfs` and reads `Seen.txt /
-  Gameexe.ini / g00/*.g00` through it. Has not been written.
+Gameexe.ini / g00/*.g00` through it. Has not been written.
 
 ### UTSUSHI-021 — Deterministic input clock and replay log
 
@@ -298,17 +298,17 @@ has zero `utsushi-core` dependency in `Cargo.toml`.
 ### UTSUSHI-022 — Headless text render and audio sink contracts
 
 - **Files**: `crates/utsushi-core/src/sink/{text.rs, audio.rs, frame.rs,
-  set.rs}`.
+set.rs}`.
 - **Verdict**: **aspirational**.
 - **Evidence**: `sink/text.rs:19 TextSurfaceSink`, `sink/frame.rs:20
-  FrameArtifactSink`, `sink/audio.rs:15 AudioEventSink` — sole impls are
+FrameArtifactSink`, `sink/audio.rs:15 AudioEventSink` — sole impls are
   test-collector structs in the same files
   (`sink/text.rs:111 CollectingTextSink`, `sink/set.rs:136 StubText`).
 
 ### UTSUSHI-023 — Inspectable state and snapshot primitives
 
 - **Files**: `crates/utsushi-core/src/snapshot/{snapshot.rs, state.rs,
-  store.rs, inspectable.rs, diff.rs, diagnostics.rs}` (~3,800 LOC).
+store.rs, inspectable.rs, diff.rs, diagnostics.rs}` (~3,800 LOC).
 - **Verdict**: **honest-prototype** as a substrate, **aspirational** in
   application. The diff/restore logic is non-trivial and well-tested,
   but every `impl Inspectable` outside `utsushi-core` test files lives
@@ -324,14 +324,14 @@ has zero `utsushi-core` dependency in `Cargo.toml`.
   schema-version pinning; no embed consumer exists in `apps/runtime-web-review/`
   beyond test-time wiring.
 - **Evidence**: `apps/runtime-web-review/` is a Vite app; `grep -rn
-  "EMBED_SCHEMA_VERSION\|EmbedState\|EmbedCapability" apps/runtime-web-review/src/` returns nothing.
+"EMBED_SCHEMA_VERSION\|EmbedState\|EmbedCapability" apps/runtime-web-review/src/` returns nothing.
   The "embed ABI" is shipped as a Rust trait set with no JS/WASM
   consumer in the repo.
 
 ### UTSUSHI-025 — Engine port implementation map validator
 
 - **Files**: `crates/utsushi-core/src/port/impl_map/{schema.rs,
-  validator.rs, diagnostics.rs, store.rs, tests.rs}` (~2,700 LOC).
+validator.rs, diagnostics.rs, store.rs, tests.rs}` (~2,700 LOC).
 - **Verdict**: **load-bearing** as a validator, **aspirational** as an
   inflow of real engine ports. The validator validates documents; the
   documents themselves describe one fixture port.
@@ -341,14 +341,14 @@ has zero `utsushi-core` dependency in `Cargo.toml`.
 ### UTSUSHI-026/027/028/029/030 — Conformance manifest + checks + ingestion
 
 - **Files**: `crates/utsushi-core/src/conformance/{manifest.rs,
-  result.rs, fixtures.rs, trace_branch/{trace,branch}.rs,
-  snapshot_check/check.rs, capture_recording/{frame,recording}_check.rs}`
+result.rs, fixtures.rs, trace_branch/{trace,branch}.rs,
+snapshot_check/check.rs, capture_recording/{frame,recording}_check.rs}`
   (~9,400 LOC).
 - **Verdict**: **minimal-pass-test**. The conformance plumbing is real
   (checks emit typed results, schema is pinned, results validate against
   a manifest), but the only fixture exercised is
   `crates/utsushi-core/src/conformance/fixtures.rs:360
-  SnapshotFixturePort` (957 LOC of in-tree fixtures). Every "intentional
+SnapshotFixturePort` (957 LOC of in-tree fixtures). Every "intentional
   mismatch" test path constructs the mismatch byte-by-byte in the same
   test file.
 - **Test sanity check**: `tests/substrate_conformance.rs:802 LOC` is the
@@ -360,7 +360,7 @@ has zero `utsushi-core` dependency in `Cargo.toml`.
 ### UTSUSHI-103 — Engine-port runner crate template and ABI conformance
 
 - **Files**: `crates/utsushi-core/src/port/{trait_.rs, manifest.rs,
-  diagnostics.rs}` plus `tests/engine_port.rs` (775 LOC).
+diagnostics.rs}` plus `tests/engine_port.rs` (775 LOC).
 - **Verdict**: **minimal-pass-test**.
 - **Evidence**: `EnginePort` trait (`port/trait_.rs:204`) plus
   `ReferencePort`, `JumpCapablePort`, `JumpUndeclaredPort`,
@@ -373,7 +373,7 @@ has zero `utsushi-core` dependency in `Cargo.toml`.
   hash/redaction rules on validator inputs), **aspirational** as a
   proof of runtime fidelity (the corpus is in-house synthetic).
 - **Evidence**: `crates/utsushi-core/src/recorder/builder.rs:25
-  ReferenceRecorder` produces deterministic JSON. The "reference capture
+ReferenceRecorder` produces deterministic JSON. The "reference capture
   corpus" is a folder of fixture JSON files, not real engine captures.
 
 ### UTSUSHI-120 — Runtime substrate facade and conformance release
@@ -427,9 +427,8 @@ has zero `utsushi-core` dependency in `Cargo.toml`.
   **aspirational** for the "real-world failure modes" framing.
 - **Evidence**:
   - State machine is real: `patch_transaction.rs:239 new → :261
-    run_preflight → :420 stage → :574 verify → :630 promote → :713
-    into_outcome` with `OpenOptions::write().create_new(true)`
-    + `file.sync_all()` (`:507-538`) — the staged write is genuinely
+run_preflight → :420 stage → :574 verify → :630 promote → :713
+into_outcome` with `OpenOptions::write().create_new(true)` - `file.sync_all()` (`:507-538`) — the staged write is genuinely
     atomic-with-rename-style.
   - Concurrent-write detection: the `ErrorKind::AlreadyExists` branch at
     `:474-489` records a `SEMANTIC_PATCH_TRANSACTION_STAGED_COLLISION` —
@@ -487,7 +486,7 @@ has zero `utsushi-core` dependency in `Cargo.toml`.
 - **Files**: `apps/itotori/src/agents/route-choice-map/` (~1,500 LOC).
 - **Verdict**: **minimal-pass-test**. Same provider-mock pattern.
 - **Staleness invocation**: `apps/itotori/src/agents/route-choice-map/
-  staleness.ts markStaleRouteChoiceArtifactsForRevision` is called from
+staleness.ts markStaleRouteChoiceArtifactsForRevision` is called from
   `apps/itotori/src/cli-handlers.ts:491-509` only when `--mark-stale`
   is passed. There is no background job, no event-outbox subscriber,
   no scheduled scanner. The CLI flag is the only invocation.
@@ -596,7 +595,7 @@ load-bearing implementation:
    `crates/kaifuu-engine-fixture/src/lib.rs:3447-3452 detected_variant`
    maps to strings like `unknown-reallive-named-files`. On real Sweetie
    HD, the detector returns `detected: false / detected_variant:
-   "unknown-reallive-named-files"`. The "unknown-reallive-named-files"
+"unknown-reallive-named-files"`. The "unknown-reallive-named-files"
    case is the "we recognised three of four signals but the envelope
    shape was wrong" branch — i.e. the **expected** outcome on every
    real RealLive title until the envelope check is fixed.
@@ -608,55 +607,55 @@ load-bearing implementation:
 Verification commands that, if added as required at completion time,
 would have caught the patterns in §F:
 
-1. **For any node claiming to parse engine bytes**, require one
-   verification command of the shape:
+1.  **For any node claiming to parse engine bytes**, require one
+    verification command of the shape:
 
-       cargo run -p kaifuu-cli -- detect <REAL_GAME_DIR> --output <tmp>
-       && jq '.detections[] | select(.adapterId=="<adapter>") | .detected' <tmp> == true
+        cargo run -p kaifuu-cli -- detect <REAL_GAME_DIR> --output <tmp>
+        && jq '.detections[] | select(.adapterId=="<adapter>") | .detected' <tmp> == true
 
-   where `<REAL_GAME_DIR>` is a path that does **not** appear in
-   `tests/` or `fixtures/`. The KAIFUU-172 detector would fail this on
-   Sweetie HD (`detected: false`) and the gap would have surfaced at
-   completion, not in this audit.
+    where `<REAL_GAME_DIR>` is a path that does **not** appear in
+    `tests/` or `fixtures/`. The KAIFUU-172 detector would fail this on
+    Sweetie HD (`detected: false`) and the gap would have surfaced at
+    completion, not in this audit.
 
-2. **For any substrate trait introduced in `utsushi-core`**, require
-   at least one impl outside `crates/utsushi-core/`. Concretely:
+2.  **For any substrate trait introduced in `utsushi-core`**, require
+    at least one impl outside `crates/utsushi-core/`. Concretely:
 
-       grep -rn "impl\s\+<TraitName>\b" crates apps \
-         | grep -v "crates/utsushi-core/"
+        grep -rn "impl\s\+<TraitName>\b" crates apps \
+          | grep -v "crates/utsushi-core/"
 
-   must return ≥ 1. This would have flagged the UTSUSHI-020/022/023/103/120
-   nodes because every impl lives inside the cascade itself.
+    must return ≥ 1. This would have flagged the UTSUSHI-020/022/023/103/120
+    nodes because every impl lives inside the cascade itself.
 
-3. **For any node titled "smoke" that operates over bytes**, fail
-   completion when the smoke's only fixture is generated by a
-   `synthetic` module in the same test file. A purely structural check
-   would compare the encoder-bytes and parser-bytes for byte-exact
-   equality on at least one independently-sourced sample (recorded into
-   `fixtures/public/`, hash-pinned to a real-world source revision).
+3.  **For any node titled "smoke" that operates over bytes**, fail
+    completion when the smoke's only fixture is generated by a
+    `synthetic` module in the same test file. A purely structural check
+    would compare the encoder-bytes and parser-bytes for byte-exact
+    equality on at least one independently-sourced sample (recorded into
+    `fixtures/public/`, hash-pinned to a real-world source revision).
 
-4. **For any agent claiming live-provider capability**, require one
-   gated CI job that, given a credential, invokes the real provider
-   against a deterministic prompt and asserts the response shape. The
-   gate is fine; the absence of the job entirely is the issue.
+4.  **For any agent claiming live-provider capability**, require one
+    gated CI job that, given a credential, invokes the real provider
+    against a deterministic prompt and asserts the response shape. The
+    gate is fine; the absence of the job entirely is the issue.
 
-5. **For any "facade" or "release" node** (e.g. UTSUSHI-120), require
-   that downstream consumers (other crates, JS app) import from the
-   facade. The facade-imports-from-the-facade test is tautological.
+5.  **For any "facade" or "release" node** (e.g. UTSUSHI-120), require
+    that downstream consumers (other crates, JS app) import from the
+    facade. The facade-imports-from-the-facade test is tautological.
 
-6. **For any patch transaction harness**, require at least one
-   fault-injection test that does not control the failure (e.g. fork
-   a child process that kills the parent at a random moment during
-   `stage` and assert no half-promoted output remains). Synthetic
-   `InjectFailure` enum cases prove the planner can be told to fail,
-   not that real failures are handled.
+6.  **For any patch transaction harness**, require at least one
+    fault-injection test that does not control the failure (e.g. fork
+    a child process that kills the parent at a random moment during
+    `stage` and assert no half-promoted output remains). Synthetic
+    `InjectFailure` enum cases prove the planner can be told to fail,
+    not that real failures are handled.
 
-7. **For any node touching catalog/registry semantics**, require one
-   run against the real `/archive/vault/catalog.db` (or a hash-pinned
-   snapshot) with at least one real `WorkId` from a known engine. The
-   KAIFUU-176 vault adapter already meets this informally because its
-   tests use realistic fixture SQL; the verification command could be
-   formalised.
+7.  **For any node touching catalog/registry semantics**, require one
+    run against the real `/archive/vault/catalog.db` (or a hash-pinned
+    snapshot) with at least one real `WorkId` from a known engine. The
+    KAIFUU-176 vault adapter already meets this informally because its
+    tests use realistic fixture SQL; the verification command could be
+    formalised.
 
 ---
 

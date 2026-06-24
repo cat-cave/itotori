@@ -9,11 +9,13 @@
 > fixture under `crates/kaifuu-reallive/tests/fixtures/`.
 >
 > Path discipline:
+>
 > - `$GAME/` ≡ `/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/`
 > - Node ids are placeholders (`UTSUSHI-146a` … `UTSUSHI-146v`); the orchestrator assigns
 >   real ids when ingesting.
 >
 > Substrate-readiness column:
+>
 > - **substrate-ready** — UTSUSHI-120 facade suffices; no substrate change required.
 > - **substrate-gap** — the substrate honesty subagent should verify the named gap before
 >   this node is scheduled.
@@ -73,8 +75,8 @@ below.
 - **Acceptance criteria:**
   - Against `$GAME/REALLIVEDATA/Seen.txt` (3,876,496 bytes): parser returns
     **exactly 198 non-zero scenes**, with `scene_id=1` at `byte_offset=0x13880,
-    byte_len=0x5fa` and `scene_id=9999` at `byte_offset=0x20423e,
-    byte_len=0xb42`. The scene-id range is verified to be 1..=9999 inclusive
+byte_len=0x5fa` and `scene_id=9999` at `byte_offset=0x20423e,
+byte_len=0xb42`. The scene-id range is verified to be 1..=9999 inclusive
     with the documented gaps.
   - Zeroed slots emit no entry (not a diagnostic; the format reserves slots).
   - A truncated archive (declared offset+size exceeds file length) emits
@@ -97,10 +99,10 @@ below.
 - **Substrate-readiness:** substrate-ready.
 - **Title:** Decode the 0x1d0-byte scene header documented by RLDEV / rlvm
   scenario.cc into a typed `SceneHeader { compiler_version, kidoku_offset,
-  kidoku_count, dramatis_offset, dramatis_count, bytecode_offset,
-  bytecode_uncompressed_size, bytecode_compressed_size, entrypoint_table,
-  savepoint_message, savepoint_selcom, savepoint_seentop, z_minus_one,
-  z_minus_two }`.
+kidoku_count, dramatis_offset, dramatis_count, bytecode_offset,
+bytecode_uncompressed_size, bytecode_compressed_size, entrypoint_table,
+savepoint_message, savepoint_selcom, savepoint_seentop, z_minus_one,
+z_minus_two }`.
 - **Acceptance criteria:**
   - For Sweetie HD scene #0001 (file offset 0x13880, scene-blob offset 0):
     `compiler_version=110002`, `kidoku_offset=464`, `kidoku_count=1`,
@@ -200,11 +202,8 @@ below.
   - Round-trip 50 synthetic expressions covering each operator at least
     once; serialised bytes round-trip through the parser.
   - Evaluate `$\x0B[0]+5` (intB[0] + 5) against a variable bank where
-    intB[0]=10 → 15. Specific operator/bank cases:
-    - `\xFF\x01\x00\x00\x00 \x06 \xFF\x02\x00\x00\x00` (1 + 2) → 3.
-    - `\xFF\x05\x00\x00\x00 \x29 \xFF\x05\x00\x00\x00` (5 < 5) → 0.
-    - `$\x0B[\xFF\x00\x00\x00\x00] \x14 \xFF\x07\x00\x00\x00` (`intB[0] =
-      7`) → updates intB[0] to 7.
+    intB[0]=10 → 15. Specific operator/bank cases: - `\xFF\x01\x00\x00\x00 \x06 \xFF\x02\x00\x00\x00` (1 + 2) → 3. - `\xFF\x05\x00\x00\x00 \x29 \xFF\x05\x00\x00\x00` (5 < 5) → 0. - `$\x0B[\xFF\x00\x00\x00\x00] \x14 \xFF\x07\x00\x00\x00` (`intB[0] =
+7`) → updates intB[0] to 7.
   - Operators outside the documented byte set emit
     `utsushi.reallive.unknown_expression_operator` Warning and the
     expression returns its partial result.
@@ -295,7 +294,7 @@ below.
   reallive-engine.md § K).** Substrate honesty subagent must verify
   `SnapshotStore` can serialise a paused longop.
 - **Title:** Implement `Vm { scene, pc, stack, banks, store_reg,
-  longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
+longop_queue }` with fetch/decode/dispatch/advance loop. Dispatch hooks
   call into per-module RLOperation tables (separate nodes below).
 - **Acceptance criteria:**
   - Stepping the VM on a synthetic scene `goto +0` infinite loop with a
@@ -469,7 +468,7 @@ below.
   (`CANCELCALL`, `SYSTEMCALL_SAVE`/`LOAD`/`SYSTEM`,
   `MOUSEACTIONCALL.000`, `LOADCALL`, `EXAFTERCALL`, `WBCALL.000`-`007`)
   into the VM event loop. Each route is a `farcall(scene_id,
-  entrypoint)` from UTSUSHI-146k triggered by the matching substrate
+entrypoint)` from UTSUSHI-146k triggered by the matching substrate
   `InputEvent` kind.
 - **Acceptance criteria:**
   - Boot with Sweetie HD's `Gameexe.ini` loaded; the dispatcher reports
@@ -530,13 +529,13 @@ below.
 
 - **Substrate-readiness:** substrate-ready (assumes UTSUSHI-146o
   resolves the multi-artifact-per-tick gap).
-- **Title:** Implement the rlvm module_grp + module_obj_management +
+- **Title:** Implement the rlvm module*grp + module_obj_management +
   module_obj_fg_bg subset: `allocDC`, `wipe`, `shake`, `load`/`open`/
   `openBg`, `copy`/`fill`/`invert`/`mono`/`colour`/`light`, `fade`,
   `stretchBlit`/`zoom`, `objAlloc`/`objFree`/`objInit`/`objCopy`,
   per-object setters `objSetPos`, `objSetAlpha`, `objSetScale`,
   `objSetLayer`, `objShow`/`objHide`. Target: ~25 opcodes of the ~150
-  across rlvm's module_grp + module_obj_*.
+  across rlvm's module_grp + module_obj*\*.
 - **Acceptance criteria:**
   - Each opcode produces an observable mutation of UTSUSHI-146o's
     graphics object stack visible via a `state_snapshot` API.
@@ -603,11 +602,11 @@ below.
     44,100 Hz, 16-bit, 2-channel.
   - OVK: against `$GAME/REALLIVEDATA/koe/z0001.ovk`, decoder returns
     2 entries with `(sample_num=46, length=36)` and `(sample_num=52,
-    length=183,476)`. The first sample's raw bytes start with `OggS`
+length=183,476)`. The first sample's raw bytes start with `OggS`
     magic.
   - `koePlay($intA[0]=46)` resolves through the speaker table to `z0001.ovk
-    sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
-    "z0001", sample_id: 46, evidence_tier: E1 }`.
+sample 46` and emits `AudioEvent { kind: VoicePlay, archive_id:
+"z0001", sample_id: 46, evidence_tier: E1 }`.
   - `bgmPlay("ASA")` resolves through `Gameexe FOLDNAME.BGM` to
     `$GAME/REALLIVEDATA/bgm/ASA.nwa` and emits
     `AudioEvent { kind: BgmStart, asset_id: "bgm/ASA", evidence_tier: E1 }`.
@@ -638,7 +637,7 @@ below.
   - Reading `$GAME/SAVEDATA/save999.sav` produces a
     `GlobalSave { magic: "AVG_GLOBAL_SAVE", ... }`.
   - Reading `$GAME/SAVEDATA/read.sav` produces a `ReadFlags { title:
-    "オシオキSweetie＋Sweets!! HD Edition\u{8140}", ... }` (the
+"オシオキSweetie＋Sweets!! HD Edition\u{8140}", ... }` (the
     Shift-JIS title decodes round-trip).
   - Writing a freshly-snapshotted save produces byte-identical output
     to a known synthetic fixture (round-trip).
@@ -671,7 +670,7 @@ below.
     Sweetie HD scene #0001 with **no** XOR-2 pass and reports byte
     statistics of the first 64 bytes (entropy, lead-byte distribution
     against the documented `{0x00, 0x0a, 0x21, 0x23, 0x24, 0x2c, 0x40}`
-    + Shift-JIS leads).
+    - Shift-JIS leads).
   - If the entropy is structured (key off), the node ships with
     `xor_2_key = None` for the Sukara title family and
     `docs/research/reallive-engine.md` is updated to record the finding.
@@ -776,14 +775,14 @@ Across every node above:
 
 ## Summary
 
-| Layer        | Nodes                                                  | Count | Substrate-gap nodes      |
-| ------------ | ------------------------------------------------------ | ----- | ------------------------ |
-| Foundation   | 146a, 146b, 146c, 146d, 146e, 146f, 146g               | 7     | —                        |
-| Gameexe      | 146h                                                   | 1     | —                        |
-| VM execution | 146i, 146j, 146k, 146l, 146m                           | 5     | 146i, 146l               |
-| Subsystems   | 146n, 146o, 146p, 146q, 146r, 146s                     | 6     | 146o, 146r               |
-| Game state   | 146t (research), 146u (e2e), 146v (cross-engine notes) | 3     | —                        |
-| **Total**    |                                                        | **22**| **4 substrate-gap nodes** |
+| Layer        | Nodes                                                  | Count  | Substrate-gap nodes       |
+| ------------ | ------------------------------------------------------ | ------ | ------------------------- |
+| Foundation   | 146a, 146b, 146c, 146d, 146e, 146f, 146g               | 7      | —                         |
+| Gameexe      | 146h                                                   | 1      | —                         |
+| VM execution | 146i, 146j, 146k, 146l, 146m                           | 5      | 146i, 146l                |
+| Subsystems   | 146n, 146o, 146p, 146q, 146r, 146s                     | 6      | 146o, 146r                |
+| Game state   | 146t (research), 146u (e2e), 146v (cross-engine notes) | 3      | —                         |
+| **Total**    |                                                        | **22** | **4 substrate-gap nodes** |
 
 ### Substrate-gap claims (substrate honesty subagent verification points)
 

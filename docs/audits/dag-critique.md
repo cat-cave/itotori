@@ -79,15 +79,15 @@ is 79,000× larger than the smoke fixture and would never touch this
 
 **Proposed action — split into 7 sub-nodes:**
 
-| Suggested id | Scope | Acceptance hook |
-| --- | --- | --- |
-| UTSUSHI-146a | `utsushi-reallive` crate scaffold + clean-room/license attestation + `EnginePort` trait wiring (no logic) | `cargo test -p utsushi-reallive` produces a `clean-room-attestation.json` artifact naming rlvm commit, license, and which subsystems were studied vs not copied. Zero opcode handlers permitted at this stage. |
-| UTSUSHI-146b | RealLive VM dispatch loop for a declared **opcode subset list** (~30 opcodes covering scene flow, text, choices, jumps) | Test runs every listed opcode against a fixture and emits a typed event; out-of-list opcodes return `unsupported_opcode { opcode_id }` with a stable diagnostic code. Reviewer must approve the exact list before merge. |
-| UTSUSHI-146c | Gameexe.ini driven configuration loader and substrate-facade sink wiring (text window, font, language) | A second fixture varies Gameexe values and the trace varies deterministically; missing/unknown Gameexe keys are typed diagnostics, not silent defaults. |
-| UTSUSHI-146d | Scene/SEEN replay against the Sweetie HD `Seen.txt` (3.8 MB) bytes through the vault adapter (KAIFUU-176) | Replay over the real `Seen.txt` enters at least N scene entries (declared in the AC), records every encountered opcode, and surfaces an explicit `unsupported_opcode_observed` count. This is the AC that actually tests a port. |
-| UTSUSHI-146e | Deterministic clock/input wiring through `UTSUSHI-021` for choice branches | Choice traversal driven by an input log produces identical trace hashes on two runs; choice opcodes route through `crates/utsushi-core/src/input.rs` rather than RealLive-internal hooks. |
-| UTSUSHI-146f | Snapshot primitives wiring through `UTSUSHI-023` for save/restore drift | A snapshot in the Sweetie HD scene tree restores byte-identically; mutated snapshots fail with `StatePath` diagnostics per the UTSUSHI-028 contract. |
-| UTSUSHI-146g | Conformance manifest registration + UTSUSHI-160 closure | `crates/utsushi-reallive` registers a real `ConformanceManifest`, runs `cross_validate_results_against_manifest` (per `crates/utsushi-core/tests/conformance_cross_validation.rs`) on a non-synthetic adapter id, and emits drift findings as separate audit reports. Closes UTSUSHI-160. |
+| Suggested id | Scope                                                                                                                   | Acceptance hook                                                                                                                                                                                                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| UTSUSHI-146a | `utsushi-reallive` crate scaffold + clean-room/license attestation + `EnginePort` trait wiring (no logic)               | `cargo test -p utsushi-reallive` produces a `clean-room-attestation.json` artifact naming rlvm commit, license, and which subsystems were studied vs not copied. Zero opcode handlers permitted at this stage.                                                                            |
+| UTSUSHI-146b | RealLive VM dispatch loop for a declared **opcode subset list** (~30 opcodes covering scene flow, text, choices, jumps) | Test runs every listed opcode against a fixture and emits a typed event; out-of-list opcodes return `unsupported_opcode { opcode_id }` with a stable diagnostic code. Reviewer must approve the exact list before merge.                                                                  |
+| UTSUSHI-146c | Gameexe.ini driven configuration loader and substrate-facade sink wiring (text window, font, language)                  | A second fixture varies Gameexe values and the trace varies deterministically; missing/unknown Gameexe keys are typed diagnostics, not silent defaults.                                                                                                                                   |
+| UTSUSHI-146d | Scene/SEEN replay against the Sweetie HD `Seen.txt` (3.8 MB) bytes through the vault adapter (KAIFUU-176)               | Replay over the real `Seen.txt` enters at least N scene entries (declared in the AC), records every encountered opcode, and surfaces an explicit `unsupported_opcode_observed` count. This is the AC that actually tests a port.                                                          |
+| UTSUSHI-146e | Deterministic clock/input wiring through `UTSUSHI-021` for choice branches                                              | Choice traversal driven by an input log produces identical trace hashes on two runs; choice opcodes route through `crates/utsushi-core/src/input.rs` rather than RealLive-internal hooks.                                                                                                 |
+| UTSUSHI-146f | Snapshot primitives wiring through `UTSUSHI-023` for save/restore drift                                                 | A snapshot in the Sweetie HD scene tree restores byte-identically; mutated snapshots fail with `StatePath` diagnostics per the UTSUSHI-028 contract.                                                                                                                                      |
+| UTSUSHI-146g | Conformance manifest registration + UTSUSHI-160 closure                                                                 | `crates/utsushi-reallive` registers a real `ConformanceManifest`, runs `cross_validate_results_against_manifest` (per `crates/utsushi-core/tests/conformance_cross_validation.rs`) on a non-synthetic adapter id, and emits drift findings as separate audit reports. Closes UTSUSHI-160. |
 
 Sequence: 146a → 146b → 146c → 146d (depends on KAIFUU-176, already
 complete) → 146e/146f in parallel → 146g.
@@ -95,7 +95,7 @@ complete) → 146e/146f in parallel → 146g.
 ### A.2 UTSUSHI-147 — RealLive/Siglus shared substrate alignment
 
 Status: planned. Acceptance criteria depend transitively on UTSUSHI-146
-*and* UTSUSHI-034 (Siglus VM smoke). The node's job is "prove both ports
+_and_ UTSUSHI-034 (Siglus VM smoke). The node's job is "prove both ports
 share one API surface," which is reasonable, but it currently expects to
 land after a single-shot 146.
 
@@ -103,7 +103,7 @@ land after a single-shot 146.
 split, UTSUSHI-147 stays a single node but its acceptance criteria
 should be tightened to: "the conformance fixture lists the exact API
 calls each engine makes, and a drift between RealLive and Siglus on any
-of those calls fails the fixture with a *named* call-site diagnostic
+of those calls fails the fixture with a _named_ call-site diagnostic
 rather than 'shape differs.'" Otherwise both engines could share a
 diluted API surface and pass.
 
@@ -119,7 +119,7 @@ specialized to one game" cannot be evidenced by 47-byte fixtures.
 is genuinely landed and protected by 30+ unit tests), but **add two
 follow-up DAG nodes**:
 
-- `KAIFUU-173b`: Inventory the *real* Sweetie HD `Seen.txt` and emit a redacted opcode-frequency report. AC: the inventory must encounter at least three unsupported_opcode kinds and the report must list them by RLDEV-style mnemonic. This is the first time the parser meets bytes it didn't author. Depends on KAIFUU-176 (complete).
+- `KAIFUU-173b`: Inventory the _real_ Sweetie HD `Seen.txt` and emit a redacted opcode-frequency report. AC: the inventory must encounter at least three unsupported_opcode kinds and the report must list them by RLDEV-style mnemonic. This is the first time the parser meets bytes it didn't author. Depends on KAIFUU-176 (complete).
 - `KAIFUU-174b`: Round-trip a non-trivial slot replacement on a real-game scene and verify byte-for-byte equality of the non-string regions. AC names a specific scene id and a byte budget. This puts pressure on `crates/kaifuu-reallive/src/patchback.rs` (534 LOC) against bytes the author did not control.
 
 These belong in the continuous tier — not alpha-blocking — but should
@@ -131,7 +131,7 @@ claim.
 ## B. Substrate nodes (already complete)
 
 The substrate slices (UTSUSHI-020/021/022/023/056/103/120) are
-load-bearing scaffolding, *not* theater. Tests in
+load-bearing scaffolding, _not_ theater. Tests in
 `crates/utsushi-core/tests/substrate_*.rs` (802 + 251 LOC + 6,494 LOC
 across the tests directory) actually exercise the API surface with
 multiple synthetic ports including drift/missing/leaked variants. The
@@ -143,7 +143,7 @@ would catch silent regression.
 
 However:
 
-- **UTSUSHI-103** ("Engine-port runner crate template and ABI conformance") is marked complete with only synthetic ports. The AC "the fixture port passes ABI conformance checks" is satisfied by `crates/utsushi-core/tests/engine_port.rs`'s in-file `ReferencePort`. The *intent* — that a real engine port wires the template — is owned by **UTSUSHI-160** (still planned). This is *not* theater because UTSUSHI-160 explicitly exists to close the loop, but the orchestrator should be careful not to count UTSUSHI-103 as evidence that a real engine port works.
+- **UTSUSHI-103** ("Engine-port runner crate template and ABI conformance") is marked complete with only synthetic ports. The AC "the fixture port passes ABI conformance checks" is satisfied by `crates/utsushi-core/tests/engine_port.rs`'s in-file `ReferencePort`. The _intent_ — that a real engine port wires the template — is owned by **UTSUSHI-160** (still planned). This is _not_ theater because UTSUSHI-160 explicitly exists to close the loop, but the orchestrator should be careful not to count UTSUSHI-103 as evidence that a real engine port works.
 
 - **UTSUSHI-120** (substrate facade) AC4 says "this node does not implement new VFS, clock, snapshot, recording, or reference-recorder behavior beyond exposing and testing the stable facade." Good — the negative criterion is explicit. **Recommended pattern for other nodes:** every substrate-style node should have an AC of the form "this node does NOT implement X" to prevent scope creep.
 
@@ -155,7 +155,7 @@ However:
 
 UTSUSHI-027 / 028 / 029 / 030 / 060 / 062 / 063 / 064 — all complete.
 
-These nodes test *the conformance system*, which is the right scope:
+These nodes test _the conformance system_, which is the right scope:
 without UTSUSHI-160 (a non-synthetic adapter registered through them),
 they prove only that the schemas reject malformed input. That is
 genuinely useful — engine ports cannot smuggle inflated evidence
@@ -168,7 +168,7 @@ tiers through ingestion — but the orchestrator should not let
 "Itotori ingests conformance reports while preserving adapter evidence
 tier and fidelity tier separately" is currently checked by typed TS
 validators against fixture JSON. Add an AC: "an integration test
-ingests a conformance report whose adapter_id was *not* defined inside
+ingests a conformance report whose adapter*id was \_not* defined inside
 the test crate" — i.e., import a fixture from another crate. This
 guards against the worker pattern of declaring the adapter in the same
 file as the assertion.
@@ -196,7 +196,7 @@ based only on media-key detection"). No split.
 
 ### D.3 KAIFUU-115 / KAIFUU-116 — MV/MZ encrypted image / audio decrypt and re-encrypt
 
-**Verdict:** ok. These are scoped to *exactly one codec each* with a
+**Verdict:** ok. These are scoped to _exactly one codec each_ with a
 declared engine_family/variant/container/crypto/codec/surface tuple and
 proof-hash AC. They are deliberately small. The AC pattern here is the
 gold standard the rest of the DAG should imitate.
@@ -343,13 +343,14 @@ the gold-standard contract node. Keep.
 **Verdict:** theater (mild). The smoke command exists at
 `crates/kaifuu-cli/src/binary_patch_smoke.rs` (580 LOC). It composes
 KAIFUU-174 (RealLive apply_patches) + KAIFUU-084 (transaction harness)
-+ KAIFUU-010 (PatchResultV02 emission). But the default fixture is a
-**deterministic 47-byte SEEN.TXT envelope** with a fixed
-length-preserving patch
-(`crates/kaifuu-cli/src/binary_patch_smoke.rs:66-72`). The
-`fixture_dir` parameter is optional. The AC "exercises the shared
-binary patcher API rather than duplicating primitive behavior" is met,
-but the AC says nothing about the input size or surface variety.
+
+- KAIFUU-010 (PatchResultV02 emission). But the default fixture is a
+  **deterministic 47-byte SEEN.TXT envelope** with a fixed
+  length-preserving patch
+  (`crates/kaifuu-cli/src/binary_patch_smoke.rs:66-72`). The
+  `fixture_dir` parameter is optional. The AC "exercises the shared
+  binary patcher API rather than duplicating primitive behavior" is met,
+  but the AC says nothing about the input size or surface variety.
 
 **Proposed action — add one alpha follow-up node:**
 
@@ -396,7 +397,7 @@ issue class" or "no scope creep" is enforced today by file boundaries,
 not by the AC. A cross-cutting refactor opportunity exists — extract
 the citation / staleness / prompt-version surface as a shared module
 and let agents differ only in shapes + prompt — but more importantly,
-the *acceptance criteria pattern* should be a seeded-corpus precision /
+the _acceptance criteria pattern_ should be a seeded-corpus precision /
 recall floor, not a file layout.
 
 ### G.3 "Smoke command" nodes default to synthetic fixtures
@@ -418,7 +419,7 @@ and good. By contrast, KAIFUU-007 ("RPG Maker MV/MZ adapter
 integration shell") AC: "The integration composes readiness records,
 map/common-event JSON, database/system/terms JSON, and plugin-profile
 diagnostics" without saying what "composes" actually produces. Prefer
-the ITOTORI-026 pattern: state explicitly what the node does *not*
+the ITOTORI-026 pattern: state explicitly what the node does _not_
 implement.
 
 ### G.5 LLM gating defenses are not currently testable
