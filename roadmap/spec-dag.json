@@ -11733,7 +11733,7 @@
     {
       "id": "ITOTORI-076",
       "title": "Draft protected-span validation and retry policy",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11770,12 +11770,15 @@
         "Protected spans checked after draft acceptance",
         "Retry classification missing field-level diagnostics",
         "Repair policy allowing unbounded attempts"
-      ]
+      ],
+      "owner": "orchestrator-itotori-076",
+      "branch": "spec/itotori-076",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-076"
     },
     {
       "id": "ITOTORI-077",
       "title": "Draft cost and provenance recorder",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11812,7 +11815,10 @@
         "Provider cost state split from draft attempts",
         "Fallback chains lost during repair",
         "Prompt or response leakage in provenance artifacts"
-      ]
+      ],
+      "owner": "orchestrator-itotori-077",
+      "branch": "spec/itotori-077",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-077"
     },
     {
       "id": "ITOTORI-078",
