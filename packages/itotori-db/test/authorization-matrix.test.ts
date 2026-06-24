@@ -13,6 +13,7 @@ import { EngineCapabilityReportRepository } from "../src/repositories/engine-cap
 import { ItotoriCatalogCrawlerRepository } from "../src/repositories/catalog-crawler-repository.js";
 import { ItotoriCatalogRepository } from "../src/repositories/catalog-repository.js";
 import { ItotoriContextArtifactRepository } from "../src/repositories/context-artifact-repository.js";
+import { ItotoriDraftJobRepository } from "../src/repositories/draft-job-repository.js";
 import { ItotoriEventQueueRepository } from "../src/repositories/event-queue-repository.js";
 import { ItotoriExactSearchDocumentRepository } from "../src/repositories/exact-search-document-repository.js";
 import { ItotoriFeedbackRepository } from "../src/repositories/feedback-repository.js";
@@ -632,6 +633,54 @@ const repositoryPermissionGateMatrix = [
     "terminology-candidate-repository.test.ts count terminology terms coverage",
     (repo) => repo.countTerminologyTerms(deniedActor, undefined as never),
   ),
+  draftJobGate(
+    "createDraftJob",
+    "draftWrite",
+    "draft-job-repository.test.ts create draft job coverage",
+    (repo) => repo.createDraftJob(deniedActor, undefined as never),
+  ),
+  draftJobGate(
+    "recordAttempt",
+    "draftWrite",
+    "draft-job-repository.test.ts record attempt coverage",
+    (repo) => repo.recordAttempt(deniedActor, "draft-job", undefined as never),
+  ),
+  draftJobGate(
+    "markAttemptSucceeded",
+    "draftWrite",
+    "draft-job-repository.test.ts mark attempt succeeded coverage",
+    (repo) => repo.markAttemptSucceeded(deniedActor, "draft-job-attempt", new Date()),
+  ),
+  draftJobGate(
+    "markAttemptFailed",
+    "draftWrite",
+    "draft-job-repository.test.ts mark attempt failed coverage",
+    (repo) => repo.markAttemptFailed(deniedActor, "draft-job-attempt", "reason", false, new Date()),
+  ),
+  draftJobGate(
+    "cancelDraftJob",
+    "draftWrite",
+    "draft-job-repository.test.ts cancel draft job coverage",
+    (repo) => repo.cancelDraftJob(deniedActor, "draft-job"),
+  ),
+  draftJobGate(
+    "loadDraftJob",
+    "catalogRead",
+    "draft-job-repository.test.ts load draft job coverage",
+    (repo) => repo.loadDraftJob(deniedActor, "draft-job"),
+  ),
+  draftJobGate(
+    "loadDraftJobsByProject",
+    "catalogRead",
+    "draft-job-repository.test.ts load draft jobs by project coverage",
+    (repo) => repo.loadDraftJobsByProject(deniedActor, "project"),
+  ),
+  draftJobGate(
+    "loadDraftJobAttempts",
+    "catalogRead",
+    "draft-job-repository.test.ts load draft job attempts coverage",
+    (repo) => repo.loadDraftJobAttempts(deniedActor, "draft-job"),
+  ),
 ] as const satisfies readonly RepositoryPermissionGateCase[];
 
 describe("repository permission gate matrix", () => {
@@ -1241,6 +1290,54 @@ describe("repository permission gate matrix", () => {
           "requiredPermission": "catalog.read",
           "successFixture": "terminology-candidate-repository.test.ts count terminology terms coverage",
         },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftJobRepository.createDraftJob",
+          "requiredPermission": "draft.write",
+          "successFixture": "draft-job-repository.test.ts create draft job coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftJobRepository.recordAttempt",
+          "requiredPermission": "draft.write",
+          "successFixture": "draft-job-repository.test.ts record attempt coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftJobRepository.markAttemptSucceeded",
+          "requiredPermission": "draft.write",
+          "successFixture": "draft-job-repository.test.ts mark attempt succeeded coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftJobRepository.markAttemptFailed",
+          "requiredPermission": "draft.write",
+          "successFixture": "draft-job-repository.test.ts mark attempt failed coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftJobRepository.cancelDraftJob",
+          "requiredPermission": "draft.write",
+          "successFixture": "draft-job-repository.test.ts cancel draft job coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftJobRepository.loadDraftJob",
+          "requiredPermission": "catalog.read",
+          "successFixture": "draft-job-repository.test.ts load draft job coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftJobRepository.loadDraftJobsByProject",
+          "requiredPermission": "catalog.read",
+          "successFixture": "draft-job-repository.test.ts load draft jobs by project coverage",
+        },
+        {
+          "denialFixture": "missing permission actor user-without-required-permission",
+          "mutation": "ItotoriDraftJobRepository.loadDraftJobAttempts",
+          "requiredPermission": "catalog.read",
+          "successFixture": "draft-job-repository.test.ts load draft job attempts coverage",
+        },
       ]
     `);
   });
@@ -1576,6 +1673,22 @@ function terminologyCandidateGate(
     permissionKey,
     successFixture,
     runDeniedMutation: (db) => run(new ItotoriTerminologyCandidateRepository(db)),
+  });
+}
+
+function draftJobGate(
+  mutation: string,
+  permissionKey: PermissionKey,
+  successFixture: string,
+  run: (repository: ItotoriDraftJobRepository) => Promise<unknown>,
+): RepositoryPermissionGateCase {
+  return repositoryGate({
+    repository: "ItotoriDraftJobRepository",
+    sourceFile: "draft-job-repository.ts",
+    mutation,
+    permissionKey,
+    successFixture,
+    runDeniedMutation: (db) => run(new ItotoriDraftJobRepository(db)),
   });
 }
 
