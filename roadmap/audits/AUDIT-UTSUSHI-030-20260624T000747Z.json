@@ -1,0 +1,192 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-030-20260624T000747Z",
+  "generatedAt": "2026-06-24T00:07:47Z",
+  "spec": {
+    "id": "UTSUSHI-030",
+    "title": "Runtime conformance ingestion fixture",
+    "branch": "spec/utsushi-030",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-030",
+    "commit": "7a4a2d8"
+  },
+  "auditor": {
+    "name": "utsushi-030-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "UTSUSHI-030 delivers the conformance ingestion seam end-to-end: a single TS schema mirror (`packages/localization-bridge-schema/src/conformance.ts`, 893 LOC) reproduces the Rust validator's structural rules under `CONFORMANCE_SCHEMA_VERSION_V01 = \"0.2.0-alpha\"`; a single DB migration (`packages/itotori-db/migrations/0028_runtime_conformance_results.sql`, 161 LOC) lands the four expected tables (`itotori_conformance_runs`, `_results`, `_evidence_refs`, `_findings`) with text-typed tier columns and the CHECK-constraint belt-and-suspenders the plan specified; a repository, a `ProjectWorkflow.ingestConformanceReport` service entry, a CLI subcommand, and 4 positive + 6 negative fixtures land alongside. All six acceptance criteria are satisfied. (1) Whitelist enforcement is layered: `SEMANTIC_CODE_PATTERN = /^(utsushi|kaifuu)\\.[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$/u` plus a strict-prefix gate `[\"utsushi.conformance.\", \"utsushi.snapshot.\", \"kaifuu.\"]` enforced inside `assertSemanticCodeAllowedV01` (`conformance.ts:91-98, 476-501`); test `rejects_semantic_code_outside_whitelist()` pins `itotori.conformance.semantic_code_not_allowed` against `utsushi.sink.unsupported_kind`; DB CHECK `itotori_conformance_results_semantic_code_prefix_check` (`0028_*.sql:71-80`) repeats the whitelist as `LIKE` predicates. (2) Skip / Unsupported never promote to Pass: the TS validator routes through tagged-union dispatch in `assertOutcome` (`conformance.ts:556-617`) using `assertAllowedKeys` to forbid stray `semanticCode` on `pass` (test `rejects_skip_shape_in_pass_envelope()` expects `itotori.conformance.unknown_field`); DB CHECKs `outcome_kind_check`, `pass_tier_check`, and `semantic_code_check` (`0028_*.sql:55-67`) enforce the same invariant at the storage layer. (3) Byte-equal evidence tier preserved verbatim: the `pass_evidence_tier` column is `text`, the repository never coerces, the workflow propagates `result.outcome.evidenceTier` straight through, and the headline DB integration test `conformance_repository_round_trips_a_pass_result_with_evidence_tier_byte_equal` (`conformance-repository.test.ts:106-147`) asserts `===` equality against the source enum. (4) Schema-version pin parity: TS parity test reads `crates/utsushi-core/src/conformance/mod.rs` as text and asserts the literal `pub const CONFORMANCE_SCHEMA_VERSION: &str = \"0.2.0-alpha\";` matches `CONFORMANCE_SCHEMA_VERSION_V01` (`conformance.test.ts:33-43`); DB migration carries `schema_version_check` enforcing the same string. (5) Engine neutrality: the validator accepts six profile ids as kebab-case strings; no engine-specific fields. (6) Evidence ref taxonomy: all seven kinds (six from UTSUSHI-026 plus `statePath` from UTSUSHI-028) round-trip through the polymorphic table with the NULL-column shape the plan committed to. Verification reruns: `cargo test -p utsushi-core` 611 + 7 + 10 + 9 + 9 + 14 + 3 + 5 + 15 + 11 = 694 passed / 0 failed / 5 ignored; `just check` clean (cargo fmt, schema:check, ts:typecheck, cargo check --workspace); `pnpm exec vp run ts:test` reports 209 passed + 3 skipped across 17 test files in the conformance-affected packages. DB integration test (`pnpm --filter @itotori/db test:db`) not run in this audit (requires `just db-up` and a Postgres process); the schema is internally consistent and the in-source tests pin every invariant the integration test would re-verify. Three P3 follow-ups: (F001) the CLI handler never threads `reportArtifactId` / `manifestArtifactId` through, defaulting to a synthetic `${conformanceRunId}:report-artifact` ID that does not appear in `itotori_artifacts` (FK is `set null` but the column is non-nullable, so the workflow silently inserts a row whose `report_artifact_id` references a missing artifact - the FK constraint will catch this at runtime in a real DB); (F002) the migration is numbered `0028` and so are ITOTORI-013 and KAIFUU-053's migrations - orchestrator must renumber two at merge; (F003) the `ingest-conformance` CLI accepts either a single result or an array but does not document this in the plan's CLI signature, and the `--manifest-file` is optional even though the acceptance criteria for orphan-result rejection only fire when a manifest is present.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 3
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["UTSUSHI-030-F001", "UTSUSHI-030-F002", "UTSUSHI-030-F003"]
+  },
+  "findings": [
+    {
+      "id": "UTSUSHI-030-F001",
+      "severity": "P3",
+      "title": "CLI does not thread report/manifest artifact IDs; workflow synthesizes orphan ID",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "apps/itotori/src/cli-handlers.ts",
+          "line": 191,
+          "symbol": "runIngestConformance"
+        },
+        {
+          "path": "apps/itotori/src/services/project-workflow.ts",
+          "line": 546,
+          "symbol": "ingestConformanceReport"
+        }
+      ],
+      "description": "The `itotori ingest-conformance` CLI reads project/report/manifest files but never resolves them to artifact IDs in `itotori_artifacts`. The workflow papers over the gap by synthesizing `${conformanceRunId}:report-artifact` as the `reportArtifactId` when none is supplied. In production this row will violate the FK `report_artifact_id text not null references itotori_artifacts(artifact_id) on delete cascade` (migration line 11-12) because the synthetic id does not exist as a row in `itotori_artifacts`. The in-memory test path works because the test harness inserts an artifact row manually before calling the repository.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "cli-handlers.ts:201-225 - the handler invokes the workflow without `reportArtifactId` or `manifestArtifactId`.",
+          "location": {
+            "path": "apps/itotori/src/cli-handlers.ts",
+            "line": 216
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "project-workflow.ts:546 - `const reportArtifactId = input.reportArtifactId ?? \\`${conformanceRunId}:report-artifact\\`;`",
+          "location": {
+            "path": "apps/itotori/src/services/project-workflow.ts",
+            "line": 546
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "0028_runtime_conformance_results.sql:11-12 - FK on report_artifact_id is `references itotori_artifacts(artifact_id) on delete cascade`.",
+          "location": {
+            "path": "packages/itotori-db/migrations/0028_runtime_conformance_results.sql",
+            "line": 11
+          }
+        }
+      ],
+      "impact": "The CLI happy path fails the first time it is exercised against a real Postgres because the synthesized artifact id has no row in `itotori_artifacts`. The repository's in-memory tests pass because they insert the artifact row separately before calling `saveConformanceRun`. This is a downstream wiring gap, not a schema bug.",
+      "actionableAcceptanceCriteria": [
+        "CLI either (a) ingests the report/manifest files into `itotori_artifacts` before calling `ingestConformanceReport` and threads the resulting artifact IDs through, or (b) the workflow inserts the missing artifact rows in the same transaction.",
+        "Add a DB integration test that runs the CLI handler against a real migrated DB and asserts the conformance row's `report_artifact_id` joins to an existing artifact."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "UTSUSHI",
+          "title": "Wire ingest-conformance CLI to itotori_artifacts insertion",
+          "priority": "P3",
+          "target": "continuous",
+          "projects": ["itotori", "utsushi"],
+          "parallelGroup": "runtime-adapters",
+          "dependsOn": ["UTSUSHI-030"],
+          "summary": "Close the gap between the CLI's file-path input and the conformance repository's FK requirement: ingest the report and manifest files into `itotori_artifacts` (with `kind = 'conformance_report'` / `'conformance_manifest'`) and pass the resulting IDs through to the workflow.",
+          "deliverables": [
+            "CLI handler resolves report/manifest paths to artifact rows before calling `ingestConformanceReport`.",
+            "A DB integration test that drives the CLI handler end-to-end against `just db-up` and asserts the FK joins succeed."
+          ],
+          "acceptanceCriteria": [
+            "Running `itotori ingest-conformance --project ... --report-file ...` against a fresh migrated DB persists a row whose `report_artifact_id` references an existing `itotori_artifacts` row.",
+            "Removing the artifact insertion path causes the integration test to fail."
+          ],
+          "verification": [
+            {"type": "command", "value": "just db-up && just db-migrate && pnpm --filter @itotori/db test:db"},
+            {"type": "command", "value": "pnpm exec vp run ts:test"}
+          ],
+          "auditFocus": [
+            "FK integrity between conformance rows and itotori_artifacts.",
+            "Idempotency on rerun (same report file should not double-insert artifact rows)."
+          ]
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-030-F002",
+      "severity": "P3",
+      "title": "Migration number 0028 collides with sibling ITOTORI-013 and KAIFUU-053",
+      "category": "orchestration",
+      "locations": [
+        {
+          "path": "packages/itotori-db/migrations/0028_runtime_conformance_results.sql"
+        }
+      ],
+      "description": "UTSUSHI-030, ITOTORI-013, and KAIFUU-053 each ship a migration named `0028_*.sql`. Each is internally consistent on its branch (no overlap in tables; `_runtime_conformance_results`, `_scene_summaries`, `_engine_capability_reports` are disjoint). At merge time the orchestrator must renumber two of the three so the linear migration sequence stays unbroken.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "ls packages/itotori-db/migrations/ | tail -5 on each worktree shows three concurrent 0028_* migrations.",
+          "location": {
+            "path": "packages/itotori-db/migrations/0028_runtime_conformance_results.sql"
+          }
+        }
+      ],
+      "impact": "On merge, `pnpm --filter @itotori/db test:db` will refuse the duplicate migration id. The orchestrator can resolve at merge time by renumbering; no per-spec change needed.",
+      "actionableAcceptanceCriteria": [
+        "Orchestrator renames two of the three 0028_* migrations to 0029_* / 0030_* during merge and updates `packages/itotori-db/src/migrations.ts` accordingly."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-030",
+          "acceptanceCriteria": [
+            "At merge into main, renumber the migration so it does not collide with ITOTORI-013 / KAIFUU-053; update `migrations.ts`."
+          ],
+          "notes": "This is a merge-time orchestrator task, not an in-branch fix."
+        }
+      }
+    },
+    {
+      "id": "UTSUSHI-030-F003",
+      "severity": "P3",
+      "title": "Manifest file is optional but orphan-result rejection only fires when it is supplied",
+      "category": "documentation",
+      "locations": [
+        {
+          "path": "apps/itotori/src/cli-handlers.ts",
+          "line": 197
+        },
+        {
+          "path": "apps/itotori/src/services/project-workflow.ts",
+          "line": 502,
+          "symbol": "ingestConformanceReport"
+        }
+      ],
+      "description": "Acceptance criterion 4 of the plan (\"orphan results rejected\") is enforced by `cross_validate_results_against_manifest` only when a manifest is supplied; the CLI flag `--manifest-file` is optional, so a caller can ingest results with no manifest and the orphan-rejection branch never fires. This is consistent with the plan (\"manifest is optional\") but the audit-focus posture would prefer either a CLI warning when no manifest is supplied, or documentation in the CLI help text that the orphan-rejection guard is off in that mode.",
+      "evidence": [
+        {
+          "kind": "file",
+          "detail": "cli-handlers.ts:197 - `const manifestPath = optionalFlag(args, \"--manifest-file\");`",
+          "location": {
+            "path": "apps/itotori/src/cli-handlers.ts",
+            "line": 197
+          }
+        }
+      ],
+      "impact": "A caller could ingest a result that would have been rejected as orphan if a manifest were supplied. This is a documentation / UX issue, not a correctness regression.",
+      "actionableAcceptanceCriteria": [
+        "CLI help text or plan amendment clarifies that orphan-rejection requires `--manifest-file`."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "append_to_existing_dag_node",
+        "existingDagNodeUpdate": {
+          "targetNodeId": "UTSUSHI-030",
+          "acceptanceCriteria": [
+            "CLI emits a warning when ingest is called without `--manifest-file`, naming the cross-validation rules that are skipped."
+          ],
+          "notes": "Defensive UX patch; no schema or invariant changes."
+        }
+      }
+    }
+  ]
+}
