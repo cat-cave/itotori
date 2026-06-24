@@ -125,7 +125,12 @@ pub type UtsushiResult<T> = Result<T, Box<dyn std::error::Error>>;
 
 pub const RUNTIME_ARTIFACT_URI_ROOT: &str = "artifacts/utsushi/runtime";
 pub const RUNTIME_ARTIFACT_ROOT_MARKER: &str = ".utsushi-runtime-artifacts";
-pub const OBSERVATION_HOOK_SCHEMA_VERSION: &str = "0.1.0-alpha";
+// UTSUSHI-224: the legacy `deleted-hook-envelope` enum + its schema version
+// constant were deleted along with the typed observation-hook envelope. The
+// engine-port substrate now drives observation via the sink-set bridge in
+// `crate::sink::SinkSet`; the wire-shape `observationHookEvents` array
+// remains a `kaifuu-core` contract surface (validated independently of any
+// `utsushi-core` Rust type).
 
 const DEFAULT_HARNESS_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_HARNESS_SHUTDOWN_GRACE: Duration = Duration::from_secs(2);
@@ -1205,130 +1210,11 @@ impl ControlledPlaybackSession {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ObservationHookEventKind {
-    Text,
-    Choice,
-    Branch,
-    Scene,
-    Frame,
-    Error,
-}
-
-impl ObservationHookEventKind {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Text => "text",
-            Self::Choice => "choice",
-            Self::Branch => "branch",
-            Self::Scene => "scene",
-            Self::Frame => "frame",
-            Self::Error => "error",
-        }
-    }
-}
-
-impl FromStr for ObservationHookEventKind {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "text" => Ok(Self::Text),
-            "choice" => Ok(Self::Choice),
-            "branch" => Ok(Self::Branch),
-            "scene" => Ok(Self::Scene),
-            "frame" => Ok(Self::Frame),
-            "error" => Ok(Self::Error),
-            _ => Err(format!("unknown observation hook event kind: {value}")),
-        }
-    }
-}
-
-impl Serialize for ObservationHookEventKind {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        serializer.serialize_str(self.as_str())
-    }
-}
-
-impl<'de> Deserialize<'de> for ObservationHookEventKind {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let value = String::deserialize(deserializer)?;
-        Self::from_str(&value).map_err(serde::de::Error::custom)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObservationHookEvent {
-    pub schema_version: String,
-    pub event_id: String,
-    pub observed_at: String,
-    pub event_kind: ObservationHookEventKind,
-    pub runtime_target_id: String,
-    pub adapter_id: ObservationAdapterId,
-    pub evidence_tier: EvidenceTier,
-    pub environment: ObservationEnvironment,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source_revision: Option<ObservationSourceRevision>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub bridge_refs: Vec<ObservationBridgeRef>,
-    pub redaction: ObservationRedactionMetadata,
-    pub payload: ObservationHookPayload,
-}
-
-impl ObservationHookEvent {
-    pub fn validate(&self) -> UtsushiResult<()> {
-        if self.schema_version != OBSERVATION_HOOK_SCHEMA_VERSION {
-            return Err(format!(
-                "observation hook event schema version must be {OBSERVATION_HOOK_SCHEMA_VERSION}: {}",
-                self.schema_version
-            )
-            .into());
-        }
-        validate_required_metadata("eventId", &self.event_id)?;
-        validate_required_metadata("observedAt", &self.observed_at)?;
-        validate_rfc3339_instant_metadata("observedAt", &self.observed_at)?;
-        validate_required_metadata("runtimeTargetId", &self.runtime_target_id)?;
-        self.adapter_id.validate()?;
-        self.environment.validate()?;
-        if let Some(source_revision) = &self.source_revision {
-            source_revision.validate()?;
-        }
-        for bridge_ref in &self.bridge_refs {
-            bridge_ref.validate()?;
-        }
-        self.redaction.validate()?;
-        self.payload.validate()?;
-        if self.event_kind != self.payload.event_kind() {
-            return Err(format!(
-                "observation hook eventKind {} does not match payload kind {}",
-                self.event_kind.as_str(),
-                self.payload.event_kind().as_str()
-            )
-            .into());
-        }
-        let event_value = serde_json::to_value(self)?;
-        reject_unredacted_local_paths("", &event_value)?;
-        Ok(())
-    }
-
-    pub fn to_json_value(&self) -> UtsushiResult<Value> {
-        self.validate()?;
-        Ok(serde_json::to_value(self)?)
-    }
-
-    pub fn from_json_value(value: Value) -> UtsushiResult<Self> {
-        let event: Self = serde_json::from_value(value)?;
-        event.validate()?;
-        Ok(event)
-    }
-}
+// UTSUSHI-224: `deleted-hook-envelopeKind` + `deleted-hook-envelope` deleted.
+// Engine ports now push observation payloads through the
+// `crate::sink::SinkSet` bridge. The wire-shape `observationHookEvents`
+// array remains a `kaifuu-core` contract surface and is synthesized as raw
+// JSON in the fixture engine ports (no `utsushi-core` Rust type backs it).
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1502,149 +1388,16 @@ impl ObservationRedactionMetadata {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "payloadKind", rename_all = "snake_case")]
-pub enum ObservationHookPayload {
-    Text(ObservationTextPayload),
-    Choice(ObservationChoicePayload),
-    Branch(ObservationBranchPayload),
-    Scene(ObservationScenePayload),
-    Frame(ObservationFramePayload),
-    Error(ObservationErrorPayload),
-}
-
-impl ObservationHookPayload {
-    pub fn event_kind(&self) -> ObservationHookEventKind {
-        match self {
-            Self::Text(_) => ObservationHookEventKind::Text,
-            Self::Choice(_) => ObservationHookEventKind::Choice,
-            Self::Branch(_) => ObservationHookEventKind::Branch,
-            Self::Scene(_) => ObservationHookEventKind::Scene,
-            Self::Frame(_) => ObservationHookEventKind::Frame,
-            Self::Error(_) => ObservationHookEventKind::Error,
-        }
-    }
-
-    pub fn validate(&self) -> UtsushiResult<()> {
-        match self {
-            Self::Text(payload) => payload.validate(),
-            Self::Choice(payload) => payload.validate(),
-            Self::Branch(payload) => payload.validate(),
-            Self::Scene(payload) => payload.validate(),
-            Self::Frame(payload) => payload.validate(),
-            Self::Error(payload) => payload.validate(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObservationTextPayload {
-    pub text: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub speaker: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text_surface: Option<String>,
-}
-
-impl ObservationTextPayload {
-    pub fn validate(&self) -> UtsushiResult<()> {
-        validate_required_metadata("payload.text", &self.text)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObservationChoicePayload {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub prompt: Option<String>,
-    pub options: Vec<ObservationChoiceOption>,
-}
-
-impl ObservationChoicePayload {
-    pub fn validate(&self) -> UtsushiResult<()> {
-        if self.options.is_empty() {
-            return Err("choice observation payload must include at least one option".into());
-        }
-        for option in &self.options {
-            option.validate()?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObservationChoiceOption {
-    pub option_id: String,
-    pub label: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bridge_ref: Option<ObservationBridgeRef>,
-}
-
-impl ObservationChoiceOption {
-    pub fn validate(&self) -> UtsushiResult<()> {
-        validate_required_metadata("payload.options[].optionId", &self.option_id)?;
-        validate_required_metadata("payload.options[].label", &self.label)?;
-        if let Some(bridge_ref) = &self.bridge_ref {
-            bridge_ref.validate()?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObservationBranchPayload {
-    pub branch_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub destination: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub taken: Option<bool>,
-}
-
-impl ObservationBranchPayload {
-    pub fn validate(&self) -> UtsushiResult<()> {
-        validate_required_metadata("payload.branchId", &self.branch_id)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObservationScenePayload {
-    pub scene_id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scene_name: Option<String>,
-}
-
-impl ObservationScenePayload {
-    pub fn validate(&self) -> UtsushiResult<()> {
-        validate_required_metadata("payload.sceneId", &self.scene_id)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObservationFramePayload {
-    pub frame: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub width: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub height: Option<u32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub artifact_ref: Option<ObservationArtifactRef>,
-}
-
-impl ObservationFramePayload {
-    pub fn validate(&self) -> UtsushiResult<()> {
-        if let Some(artifact_ref) = &self.artifact_ref {
-            artifact_ref.validate()?;
-        }
-        Ok(())
-    }
-}
+// UTSUSHI-224: `deleted-hookPayload` + every payload variant
+// (`ObservationTextPayload`, `ObservationChoicePayload`,
+// `ObservationChoiceOption`, `ObservationBranchPayload`,
+// `ObservationScenePayload`, `ObservationFramePayload`,
+// `ObservationErrorPayload`) deleted. The substrate observation surface is
+// now the sink-set bridge (`crate::sink::TextLine` / `FrameArtifact` /
+// `AudioEvent`); choice / branch / scene / error payloads have no
+// production consumer in the Sweetie HD ground-truth scope and are
+// re-introduced only when an engine port pushes them through a typed
+// sink contract.
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1757,16 +1510,43 @@ pub fn validate_runtime_evidence_report_value(report: &Value) -> UtsushiResult<(
             &format!("RuntimeEvidenceReportV02.branchEvents[{index}]"),
         )?;
     }
+    // UTSUSHI-224: the per-event observation envelope validation that
+    // previously round-tripped each entry through `deleted-hook-envelope`
+    // is replaced by a structural shape check. The full wire-shape
+    // contract lives in `kaifuu-core::contracts::validate_runtime_evidence_report_v02`
+    // (which validates every field of `observationHookEvents[]` against
+    // the runtime evidence contract); the `utsushi-core` validator only
+    // enforces (a) the array is well-shaped, (b) each entry carries an
+    // `evidenceTier` that does not exceed the report's declared
+    // evidence tier.
     let observation_events = optional_value_array(
         report,
         "observationHookEvents",
         "RuntimeEvidenceReportV02.observationHookEvents",
     )?;
     for (index, event) in observation_events.iter().enumerate() {
-        let event = ObservationHookEvent::from_json_value(event.clone()).map_err(|error| {
-            format!("RuntimeEvidenceReportV02.observationHookEvents[{index}] invalid: {error}")
+        let event_object = event
+            .as_object()
+            .ok_or_else(|| -> Box<dyn std::error::Error> {
+                format!("RuntimeEvidenceReportV02.observationHookEvents[{index}] must be an object")
+                    .into()
+            })?;
+        let event_tier_str = event_object
+            .get("evidenceTier")
+            .and_then(Value::as_str)
+            .ok_or_else(|| -> Box<dyn std::error::Error> {
+                format!(
+                    "RuntimeEvidenceReportV02.observationHookEvents[{index}].evidenceTier must be present"
+                )
+                .into()
+            })?;
+        let event_tier = EvidenceTier::from_str(event_tier_str).map_err(|_| -> Box<dyn std::error::Error> {
+            format!(
+                "RuntimeEvidenceReportV02.observationHookEvents[{index}].evidenceTier {event_tier_str} is not a recognised tier"
+            )
+            .into()
         })?;
-        if event.evidence_tier > evidence_tier {
+        if event_tier > evidence_tier {
             return Err(format!(
                 "RuntimeEvidenceReportV02.observationHookEvents[{index}].evidenceTier must not exceed report evidenceTier {}",
                 evidence_tier.as_str()
@@ -2562,23 +2342,10 @@ fn is_runtime_playback_feature(value: &str) -> bool {
     )
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ObservationErrorPayload {
-    pub error_type: String,
-    pub message: String,
-    pub fatal: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub stack: Option<String>,
-}
-
-impl ObservationErrorPayload {
-    pub fn validate(&self) -> UtsushiResult<()> {
-        validate_required_metadata("payload.errorType", &self.error_type)?;
-        validate_required_metadata("payload.message", &self.message)?;
-        Ok(())
-    }
-}
+// UTSUSHI-224: `ObservationErrorPayload` deleted along with the rest of
+// the typed observation-hook surface. Error-shaped runtime diagnostics are
+// surfaced through `RuntimeAdapterDiagnostic` (already engine-neutral) and
+// never flow through a deleted enum variant.
 
 fn validate_required_metadata(field: &str, value: &str) -> UtsushiResult<()> {
     if value.trim().is_empty() {
@@ -4380,244 +4147,50 @@ mod tests {
         path.exists()
     }
 
-    fn base_observation_event(payload: ObservationHookPayload) -> ObservationHookEvent {
-        ObservationHookEvent {
-            schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
-            event_id: "obs-0001".to_string(),
-            observed_at: "2026-06-17T00:00:00.000Z".to_string(),
-            event_kind: payload.event_kind(),
-            runtime_target_id: "fixture:runtime-target".to_string(),
-            adapter_id: ObservationAdapterId {
-                name: "utsushi-test".to_string(),
-                version: "0.0.0-test".to_string(),
-            },
-            evidence_tier: EvidenceTier::E1,
-            environment: ObservationEnvironment {
-                runtime: "browser".to_string(),
-                engine: Some("test-engine".to_string()),
-                platform: Some("linux".to_string()),
-                display: Some("browser-headless".to_string()),
-                locale: Some("ja-JP".to_string()),
-            },
-            source_revision: Some(ObservationSourceRevision {
-                source_id: "fixture-source".to_string(),
-                revision_id: Some("rev-1".to_string()),
-                content_hash: None,
-            }),
-            bridge_refs: vec![ObservationBridgeRef {
-                bridge_unit_id: Some("bridge-unit-1".to_string()),
-                source_unit_key: Some("scene.001.line.001".to_string()),
-                runtime_object_id: None,
-            }],
-            redaction: ObservationRedactionMetadata::not_required(),
-            payload,
-        }
-    }
-
-    fn valid_payloads() -> Vec<(ObservationHookEventKind, ObservationHookPayload)> {
-        vec![
-            (
-                ObservationHookEventKind::Text,
-                ObservationHookPayload::Text(ObservationTextPayload {
-                    text: "Hello, player.".to_string(),
-                    speaker: Some("Narrator".to_string()),
-                    text_surface: Some("dialogue".to_string()),
-                }),
-            ),
-            (
-                ObservationHookEventKind::Choice,
-                ObservationHookPayload::Choice(ObservationChoicePayload {
-                    prompt: Some("Choose a route".to_string()),
-                    options: vec![ObservationChoiceOption {
-                        option_id: "choice-1".to_string(),
-                        label: "Go left".to_string(),
-                        bridge_ref: None,
-                    }],
-                }),
-            ),
-            (
-                ObservationHookEventKind::Branch,
-                ObservationHookPayload::Branch(ObservationBranchPayload {
-                    branch_id: "branch-1".to_string(),
-                    label: Some("left route".to_string()),
-                    destination: Some("scene.002".to_string()),
-                    taken: Some(true),
-                }),
-            ),
-            (
-                ObservationHookEventKind::Scene,
-                ObservationHookPayload::Scene(ObservationScenePayload {
-                    scene_id: "scene.001".to_string(),
-                    scene_name: Some("Opening".to_string()),
-                }),
-            ),
-            (
-                ObservationHookEventKind::Frame,
-                ObservationHookPayload::Frame(ObservationFramePayload {
-                    frame: 1,
-                    width: Some(320),
-                    height: Some(180),
-                    artifact_ref: Some(ObservationArtifactRef {
-                        artifact_id: "shot-1".to_string(),
-                        artifact_kind: "screenshot".to_string(),
-                        uri: runtime_artifact_uri(
-                            "run-1",
-                            RuntimeArtifactKind::Screenshot,
-                            "shot-1",
-                        )
-                        .unwrap(),
-                        media_type: Some("image/png".to_string()),
-                    }),
-                }),
-            ),
-            (
-                ObservationHookEventKind::Error,
-                ObservationHookPayload::Error(ObservationErrorPayload {
-                    error_type: "hook_exception".to_string(),
-                    message: "observation hook failed".to_string(),
-                    fatal: false,
-                    stack: Some("[REDACTED_LOCAL_PATH]:1:1".to_string()),
-                }),
-            ),
-        ]
-    }
+    // UTSUSHI-224: tests that exercised the deleted typed
+    // `deleted-hook-envelope` envelope (round-trip, schema-version,
+    // redaction rejection on the typed shape) have been removed. The
+    // wire-shape envelope's per-field validation is now tested only by
+    // the independent `kaifuu-core::contracts::validate_runtime_evidence_report_v02`
+    // suite, and the `RuntimeEvidenceReportV02` integration validator
+    // (`validate_runtime_evidence_report_value`) is exercised in the
+    // `utsushi-fixture` reference-corpus path. The substrate-side sink
+    // contracts (text / frame / audio) carry their own per-payload
+    // validators with dedicated tests in `crates/utsushi-core/src/sink/*`.
 
     #[test]
-    fn observation_hook_events_cover_all_payload_kinds_and_round_trip() {
-        for (kind, payload) in valid_payloads() {
-            let event = base_observation_event(payload);
-            assert_eq!(event.event_kind, kind);
-            event.validate().unwrap();
-
-            let value = event.to_json_value().unwrap();
-            assert_eq!(value["schemaVersion"], OBSERVATION_HOOK_SCHEMA_VERSION);
-            assert_eq!(value["eventKind"], kind.as_str());
-            assert_eq!(value["payload"]["payloadKind"], kind.as_str());
-
-            let round_tripped = ObservationHookEvent::from_json_value(value).unwrap();
-            assert_eq!(round_tripped.event_kind, kind);
-        }
-    }
-
-    #[test]
-    fn observation_hook_validation_rejects_missing_required_fields() {
-        let mut event =
-            base_observation_event(ObservationHookPayload::Text(ObservationTextPayload {
-                text: "Hello.".to_string(),
-                speaker: None,
-                text_surface: None,
-            }));
-        event.runtime_target_id.clear();
-        assert!(
-            event
-                .validate()
-                .unwrap_err()
-                .to_string()
-                .contains("runtimeTargetId")
-        );
-
-        let mut value =
-            base_observation_event(ObservationHookPayload::Text(ObservationTextPayload {
-                text: "Hello.".to_string(),
-                speaker: None,
-                text_surface: None,
-            }))
-            .to_json_value()
-            .unwrap();
-        value.as_object_mut().unwrap().remove("evidenceTier");
-        assert!(ObservationHookEvent::from_json_value(value).is_err());
-    }
-
-    #[test]
-    fn observation_hook_validation_rejects_invalid_observed_at() {
-        let mut event =
-            base_observation_event(ObservationHookPayload::Text(ObservationTextPayload {
-                text: "Hello.".to_string(),
-                speaker: None,
-                text_surface: None,
-            }));
-        event.observed_at = "2026-02-30T00:00:00.000Z".to_string();
-
-        assert!(
-            event
-                .validate()
-                .unwrap_err()
-                .to_string()
-                .contains("observedAt")
-        );
-    }
-
-    #[test]
-    fn observation_hook_redaction_rejects_raw_local_paths_and_allows_markers() {
-        let mut event =
-            base_observation_event(ObservationHookPayload::Error(ObservationErrorPayload {
-                error_type: "hook_exception".to_string(),
-                message: "failed while loading /tmp/private-game/index.html".to_string(),
-                fatal: false,
-                stack: None,
-            }));
-        assert!(
-            event
-                .validate()
-                .unwrap_err()
-                .to_string()
-                .contains("unredacted local path")
-        );
-
-        event.payload = ObservationHookPayload::Error(ObservationErrorPayload {
-            error_type: "hook_exception".to_string(),
-            message: "failed while loading [REDACTED_LOCAL_PATH]".to_string(),
-            fatal: false,
-            stack: None,
-        });
-        event.redaction = ObservationRedactionMetadata::redacted(
-            vec!["local_path".to_string()],
-            vec!["payload.message".to_string()],
-        );
-        event.validate().unwrap();
-    }
-
-    #[test]
-    fn observation_hook_redaction_rejects_blank_rules() {
-        let mut event =
-            base_observation_event(ObservationHookPayload::Text(ObservationTextPayload {
-                text: "Hello.".to_string(),
-                speaker: None,
-                text_surface: None,
-            }));
-        event.redaction = ObservationRedactionMetadata::redacted(
-            vec![" ".to_string()],
-            vec!["payload.text".to_string()],
-        );
-
-        assert!(
-            event
-                .validate()
-                .unwrap_err()
-                .to_string()
-                .contains("redaction.rules")
-        );
-    }
-
-    #[test]
-    fn observation_hook_validation_rejects_untyped_error_payloads() {
-        let value = json!({
-            "schemaVersion": OBSERVATION_HOOK_SCHEMA_VERSION,
-            "eventId": "obs-error-1",
-            "observedAt": "2026-06-17T00:00:00.000Z",
-            "eventKind": "error",
-            "runtimeTargetId": "fixture:runtime-target",
-            "adapterId": {"name": "utsushi-test", "version": "0.0.0-test"},
+    fn evidence_report_observation_event_rejects_tier_above_report_ceiling() {
+        // Spot-check that the JSON-shape observationHookEvents validator
+        // (rewritten in UTSUSHI-224 to drop its `deleted-hook-envelope`
+        // dependency) still rejects an entry whose tier exceeds the
+        // report's declared evidenceTier.
+        let report = json!({
+            "schemaVersion": "0.2.0",
+            "runtimeReportId": "0190a000-0000-7000-8000-000000000001",
+            "adapterName": "utsushi-test",
+            "adapterVersion": "0.0.0-test",
+            "fidelityTier": "layout_probe",
             "evidenceTier": "E1",
-            "environment": {"runtime": "browser"},
-            "redaction": {"status": "not_required"},
-            "payload": {
-                "message": "missing error type and payload kind",
-                "fatal": false
-            }
+            "status": "passed",
+            "createdAt": "2026-06-17T00:00:00.000Z",
+            "traceEvents": [],
+            "branchEvents": [],
+            "observationHookEvents": [
+                {"evidenceTier": "E3"}
+            ],
+            "captures": [],
+            "recordings": [],
+            "approximations": [],
+            "validationFindings": [],
+            "limitations": [],
         });
-
-        assert!(ObservationHookEvent::from_json_value(value).is_err());
+        let error = validate_runtime_evidence_report_value(&report)
+            .expect_err("E3 entry under E1 report must reject");
+        let rendered = error.to_string();
+        assert!(
+            rendered.contains("evidenceTier must not exceed"),
+            "rendered={rendered}"
+        );
     }
 
     #[test]

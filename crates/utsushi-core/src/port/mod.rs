@@ -237,11 +237,38 @@ fn derive_capability_contract(
 }
 
 fn runner_outcome_to_value(outcome: &RunnerOutcome, operation: RuntimeOperation) -> Value {
-    let observations = outcome
-        .observations
-        .iter()
-        .filter_map(|observation| observation.event.to_json_value().ok())
-        .collect::<Vec<_>>();
+    // Surface every drained sink emission as a typed JSON payload. The
+    // engine-port adapter's wire form is "list of sink-shaped observations"
+    // rather than the legacy hook-envelope; each entry
+    // names the sink kind so downstream consumers can route on it without
+    // running the full RuntimeEvidenceReportV02 validator.
+    let mut observations = Vec::new();
+    for tick in &outcome.observations {
+        for line in &tick.text {
+            if let Ok(value) = serde_json::to_value(line) {
+                observations.push(json!({
+                    "sink": "text_surface",
+                    "payload": value,
+                }));
+            }
+        }
+        for frame in &tick.frames {
+            if let Ok(value) = serde_json::to_value(frame) {
+                observations.push(json!({
+                    "sink": "frame_artifact",
+                    "payload": value,
+                }));
+            }
+        }
+        for event in &tick.audio {
+            if let Ok(value) = serde_json::to_value(event) {
+                observations.push(json!({
+                    "sink": "audio_event",
+                    "payload": value,
+                }));
+            }
+        }
+    }
     let captures = outcome
         .capture
         .as_ref()
@@ -259,7 +286,7 @@ fn runner_outcome_to_value(outcome: &RunnerOutcome, operation: RuntimeOperation)
         "adapterName": outcome.manifest_id,
         "adapterVersion": outcome.manifest_version,
         "operation": operation.as_str(),
-        "observationHookEvents": observations,
+        "sinkObservations": observations,
         "captures": captures,
         "shutdownStatus": match outcome.shutdown.status {
             PortShutdownStatus::Clean => "clean",

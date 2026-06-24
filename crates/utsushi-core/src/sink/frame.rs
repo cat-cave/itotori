@@ -28,6 +28,13 @@ pub trait FrameArtifactSink: Send + Sync {
     /// [`crate::validate_runtime_artifact_uri`], or whose `artifact_kind` is
     /// not in the allow-list.
     fn emit_frame(&self, artifact: FrameArtifact) -> SinkResult<()>;
+
+    /// Drain queued emissions. Called by the runner after `EnginePort::observe`
+    /// (after the text sink drain) to surface frame announcements into
+    /// [`crate::port::RunnerOutcome`].
+    fn drain_frames(&self) -> Vec<FrameArtifact> {
+        Vec::new()
+    }
 }
 
 /// Runtime-announced frame artifact. Bytes live behind the artifact-store

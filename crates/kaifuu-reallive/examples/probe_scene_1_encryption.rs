@@ -170,7 +170,7 @@ fn top_bytes(bytes: &[u8], k: usize) -> Vec<(u8, u64)> {
         .enumerate()
         .map(|(i, &c)| (i as u8, c))
         .collect();
-    indexed.sort_by(|a, b| b.1.cmp(&a.1));
+    indexed.sort_by_key(|entry| std::cmp::Reverse(entry.1));
     indexed.into_iter().take(k).collect()
 }
 

@@ -20,6 +20,13 @@ pub trait AudioEventSink: Send + Sync {
     /// `evidence_tier != EvidenceTier::E0` because audio events do not prove
     /// playback parity.
     fn emit_event(&self, audio: AudioEvent) -> SinkResult<()>;
+
+    /// Drain queued emissions. Called by the runner after `EnginePort::observe`
+    /// (after the frame sink drain) to surface audio metadata into
+    /// [`crate::port::RunnerOutcome`].
+    fn drain_events(&self) -> Vec<AudioEvent> {
+        Vec::new()
+    }
 }
 
 /// Runtime-observed audio event metadata. Engine-neutral; the kind enum is

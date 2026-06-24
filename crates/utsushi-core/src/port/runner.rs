@@ -5,7 +5,8 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::{ObservationHookEvent, RuntimeArtifactRoot};
+use crate::RuntimeArtifactRoot;
+use crate::sink::{AudioEvent, FrameArtifact, TextLine};
 
 use super::diagnostics::{EnginePortError, PortShutdownOutcome};
 use super::manifest::{LifecycleStage, PortCapability, PortManifest};
@@ -44,14 +45,41 @@ impl RunnerCancellation {
     }
 }
 
-/// Maximum number of observation events the runner drains per lifecycle
-/// run. Hard cap so a misbehaving port cannot run the runner forever.
-const RUNNER_OBSERVATION_DRAIN_CAP: usize = 4096;
+/// Maximum number of observation ticks the runner drives per lifecycle
+/// run. Hard cap so a misbehaving port cannot run the runner forever. A
+/// tick is one call to `EnginePort::observe` followed by the per-tick
+/// sink drain (text, then frame, then audio).
+const RUNNER_OBSERVATION_TICK_CAP: usize = 4096;
 
-/// Single observation event the runner has validated and collected.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// One tick of validated sink emissions the runner has collected from a
+/// port. Carries every payload the runner drained from the [`crate::sink::SinkSet`]
+/// after a single call to [`EnginePort::observe`].
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct RunnerObservation {
-    pub event: ObservationHookEvent,
+    /// Text emissions drained in this tick (first, per the documented
+    /// ordering invariant on [`Runner::tick`]).
+    pub text: Vec<TextLine>,
+    /// Frame emissions drained in this tick (second).
+    pub frames: Vec<FrameArtifact>,
+    /// Audio emissions drained in this tick (third).
+    pub audio: Vec<AudioEvent>,
+}
+
+impl RunnerObservation {
+    /// Total number of payloads collected across the three sinks. Used by
+    /// the conformance harness `observation_count` and by tests that need
+    /// a single end-of-stream cardinal.
+    pub fn total(&self) -> usize {
+        self.text.len() + self.frames.len() + self.audio.len()
+    }
+
+    /// True iff no sink yielded a payload for this tick. The runner uses
+    /// this as the end-of-stream signal: a tick whose drains are all
+    /// empty and whose `observe` returned `Ok(())` completes the
+    /// observation phase.
+    pub fn is_empty(&self) -> bool {
+        self.text.is_empty() && self.frames.is_empty() && self.audio.is_empty()
+    }
 }
 
 /// Aggregate result of a `Runner::run_*` call.
@@ -210,31 +238,97 @@ impl Runner {
         Ok((observations, capture_outcome))
     }
 
+    /// Drive a single observation tick against `port`.
+    ///
+    /// # Ordering invariant
+    ///
+    /// `tick` enforces a strict per-tick call order that downstream
+    /// conformance and replay rely on:
+    ///
+    /// 1. `engine.observe(request)` is called **first**. The port pushes
+    ///    any observed text / frame / audio payloads into its
+    ///    [`crate::sink::SinkSet`] during this call.
+    /// 2. The runner drains `sink_set().drain_text()` **second**.
+    /// 3. The runner drains `sink_set().drain_frame()` **third**.
+    /// 4. The runner drains `sink_set().drain_audio()` **fourth**.
+    ///
+    /// Each drained payload is re-validated through its per-sink
+    /// validator (text/frame/audio) before being attached to the
+    /// returned [`RunnerObservation`]. The ordering is the contract the
+    /// behaviour test
+    /// `runner_tick_drains_sinks_in_text_then_frame_then_audio_order`
+    /// pins.
+    ///
+    /// Returns `Ok(RunnerObservation::default())` (i.e. an empty tick)
+    /// when no sink yielded a payload. The caller treats two consecutive
+    /// empty ticks as end-of-stream.
+    pub fn tick<P: EnginePort>(
+        &self,
+        port: &mut P,
+        request: &PortRequest<'_>,
+    ) -> Result<RunnerObservation, EnginePortError> {
+        request.cancellation.check(LifecycleStage::Observe)?;
+        // Step 1: drive observe().
+        port.observe(request)?;
+
+        let sinks = port.sink_set();
+
+        // Step 2: drain text.
+        let text = sinks.drain_text();
+        for line in &text {
+            line.validate()
+                .map_err(|error| EnginePortError::ObservationInvalid {
+                    stage: LifecycleStage::Observe,
+                    source: sink_error_into_send_sync(error),
+                })?;
+        }
+
+        // Step 3: drain frame.
+        let frames = sinks.drain_frame();
+        for frame in &frames {
+            frame
+                .validate()
+                .map_err(|error| EnginePortError::ObservationInvalid {
+                    stage: LifecycleStage::Observe,
+                    source: sink_error_into_send_sync(error),
+                })?;
+        }
+
+        // Step 4: drain audio.
+        let audio = sinks.drain_audio();
+        for event in &audio {
+            event
+                .validate()
+                .map_err(|error| EnginePortError::ObservationInvalid {
+                    stage: LifecycleStage::Observe,
+                    source: sink_error_into_send_sync(error),
+                })?;
+        }
+
+        Ok(RunnerObservation {
+            text,
+            frames,
+            audio,
+        })
+    }
+
     fn drain_observations<P: EnginePort>(
         &self,
         port: &mut P,
         request: &PortRequest<'_>,
     ) -> Result<Vec<RunnerObservation>, EnginePortError> {
         let mut collected = Vec::new();
-        for _ in 0..RUNNER_OBSERVATION_DRAIN_CAP {
-            request.cancellation.check(LifecycleStage::Observe)?;
-            match port.observe(request)? {
-                Some(event) => {
-                    event
-                        .validate()
-                        .map_err(|error| EnginePortError::ObservationInvalid {
-                            stage: LifecycleStage::Observe,
-                            source: error_into_send_sync(error),
-                        })?;
-                    collected.push(RunnerObservation { event });
-                }
-                None => return Ok(collected),
+        for _ in 0..RUNNER_OBSERVATION_TICK_CAP {
+            let observation = self.tick(port, request)?;
+            if observation.is_empty() {
+                return Ok(collected);
             }
+            collected.push(observation);
         }
         Err(EnginePortError::Lifecycle {
             stage: LifecycleStage::Observe,
             message: format!(
-                "observation drain exceeded cap {RUNNER_OBSERVATION_DRAIN_CAP}; port must yield None"
+                "observation tick loop exceeded cap {RUNNER_OBSERVATION_TICK_CAP}; port must stop emitting"
             ),
             source: None,
         })
@@ -271,12 +365,11 @@ fn ensure_capture_within_root(
     Ok(())
 }
 
-fn error_into_send_sync(
-    error: Box<dyn std::error::Error>,
+fn sink_error_into_send_sync(
+    error: crate::sink::SinkError,
 ) -> Box<dyn std::error::Error + Send + Sync> {
-    // `UtsushiResult` errors are `Box<dyn std::error::Error>`. Adapt to
-    // the `Send + Sync` form by re-stringifying — the rendered text is
-    // the diagnostic surface anyway.
+    // `SinkError` already implements Display via its stable semantic code
+    // surface; re-stringify for the runner's diagnostic carrier.
     Box::<dyn std::error::Error + Send + Sync>::from(error.to_string())
 }
 

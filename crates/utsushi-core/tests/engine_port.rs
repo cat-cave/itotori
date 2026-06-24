@@ -1,10 +1,12 @@
-//! Integration tests for the UTSUSHI-103 engine-port runner template.
+//! Integration tests for the UTSUSHI-103 engine-port runner template and
+//! the UTSUSHI-224 sinks-bridge migration.
 //!
 //! Every behavior test exercises a synthetic port defined inside this
 //! file; the test crate has no dependency on `utsushi-fixture`. The
-//! synthetic ports give the conformance harness positive (`Reference`),
-//! drift (`MissingObserve`, `JumpUndeclared`), ABI mismatch
-//! (`UnsupportedAbi`), and env-leak (`UnredactedEnvRuntime`) coverage.
+//! synthetic ports exercise positive (`ReferencePort`), drift
+//! (`MissingObservePort`, `JumpUndeclaredPort`), ABI mismatch
+//! (`UnsupportedAbi`), env-leak (`UnredactedEnvRuntimePort`) and
+//! tick-ordering (`OrderingProbePort`) paths.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -13,25 +15,182 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 use utsushi_core::{
-    CapabilityReason, CaptureOutcome, DriftKind, EnginePort, EnginePortAdapter, EnginePortError,
-    EnvFieldSchema, EnvFieldShape, EvidenceTier, FidelityTier, LifecycleStage, MomentId,
-    OBSERVATION_HOOK_SCHEMA_VERSION, ObservationAdapterId, ObservationEnvironment,
-    ObservationHookEvent, ObservationHookEventKind, ObservationHookPayload,
-    ObservationRedactionMetadata, ObservationTextPayload, PortCapability, PortEnv, PortManifest,
-    PortRequest, PortShutdownOutcome, PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES, Runner,
-    RunnerCancellation, RuntimeAdapter, RuntimeAdapterDescriptor, RuntimeArtifactKind,
-    RuntimeArtifactRoot, RuntimeOperation, RuntimeRequest, port::conformance,
+    AudioEvent, AudioEventKind, AudioEventSink, CapabilityReason, CaptureOutcome, DriftKind,
+    EnginePort, EnginePortAdapter, EnginePortError, EnvFieldSchema, EnvFieldShape, EvidenceTier,
+    FidelityTier, FrameArtifact, FrameArtifactSink, LifecycleStage, MomentId,
+    ObservationArtifactRef, PortCapability, PortEnv, PortManifest, PortRequest,
+    PortShutdownOutcome, PortShutdownStatus, REQUIRED_LIFECYCLE_STAGES, RUNTIME_ARTIFACT_URI_ROOT,
+    Runner, RunnerCancellation, RuntimeAdapter, RuntimeAdapterDescriptor, RuntimeArtifactKind,
+    RuntimeArtifactRoot, RuntimeOperation, RuntimeRequest, SinkCapability, SinkResult, SinkSet,
+    TextLine, TextSurfaceSink, port::conformance,
 };
+
+// ===================================================================
+// Helper sinks shared by the synthetic ports
+// ===================================================================
+
+struct CollectingTextSink {
+    inner: Mutex<Vec<TextLine>>,
+}
+
+impl CollectingTextSink {
+    fn new() -> Self {
+        Self {
+            inner: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl TextSurfaceSink for CollectingTextSink {
+    fn capability(&self) -> SinkCapability {
+        SinkCapability::Supported {
+            evidence_tier_ceiling: EvidenceTier::E1,
+        }
+    }
+
+    fn emit_line(&self, line: TextLine) -> SinkResult<()> {
+        line.validate()?;
+        self.inner.lock().expect("text lock").push(line);
+        Ok(())
+    }
+
+    fn drain_lines(&self) -> Vec<TextLine> {
+        std::mem::take(&mut *self.inner.lock().expect("text lock"))
+    }
+}
+
+struct CollectingFrameSink {
+    inner: Mutex<Vec<FrameArtifact>>,
+}
+
+impl CollectingFrameSink {
+    fn new() -> Self {
+        Self {
+            inner: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl FrameArtifactSink for CollectingFrameSink {
+    fn capability(&self) -> SinkCapability {
+        SinkCapability::Supported {
+            evidence_tier_ceiling: EvidenceTier::E2,
+        }
+    }
+
+    fn emit_frame(&self, frame: FrameArtifact) -> SinkResult<()> {
+        frame.validate()?;
+        self.inner.lock().expect("frame lock").push(frame);
+        Ok(())
+    }
+
+    fn drain_frames(&self) -> Vec<FrameArtifact> {
+        std::mem::take(&mut *self.inner.lock().expect("frame lock"))
+    }
+}
+
+struct CollectingAudioSink {
+    inner: Mutex<Vec<AudioEvent>>,
+}
+
+impl CollectingAudioSink {
+    fn new() -> Self {
+        Self {
+            inner: Mutex::new(Vec::new()),
+        }
+    }
+}
+
+impl AudioEventSink for CollectingAudioSink {
+    fn capability(&self) -> SinkCapability {
+        SinkCapability::Supported {
+            evidence_tier_ceiling: EvidenceTier::E0,
+        }
+    }
+
+    fn emit_event(&self, event: AudioEvent) -> SinkResult<()> {
+        event.validate()?;
+        self.inner.lock().expect("audio lock").push(event);
+        Ok(())
+    }
+
+    fn drain_events(&self) -> Vec<AudioEvent> {
+        std::mem::take(&mut *self.inner.lock().expect("audio lock"))
+    }
+}
+
+fn synthetic_text_line(line_id: &str) -> TextLine {
+    TextLine {
+        line_id: line_id.to_string(),
+        evidence_tier: EvidenceTier::E1,
+        text: "synthetic text observation".to_string(),
+        speaker: None,
+        text_surface: None,
+        bridge_ref: None,
+        source_asset: None,
+    }
+}
+
+fn synthetic_frame(frame_id: &str) -> FrameArtifact {
+    let run_id = "synthetic-run-0001";
+    let uri = format!(
+        "{}/{}/screenshots/{}.png",
+        RUNTIME_ARTIFACT_URI_ROOT, run_id, frame_id
+    );
+    FrameArtifact {
+        frame_id: frame_id.to_string(),
+        evidence_tier: EvidenceTier::E2,
+        artifact_ref: ObservationArtifactRef {
+            artifact_id: frame_id.to_string(),
+            artifact_kind: "screenshot".to_string(),
+            uri,
+            media_type: Some("image/png".to_string()),
+        },
+        width: Some(320),
+        height: Some(180),
+        frame_index: 1,
+        bridge_ref: None,
+    }
+}
+
+fn synthetic_audio(event_id: &str) -> AudioEvent {
+    AudioEvent {
+        event_id: event_id.to_string(),
+        evidence_tier: EvidenceTier::E0,
+        event_kind: AudioEventKind::Marker,
+        cue_id: None,
+        source_asset: None,
+        bridge_ref: None,
+        frame_index: Some(1),
+    }
+}
+
+fn build_default_sink_set() -> (
+    Arc<CollectingTextSink>,
+    Arc<CollectingFrameSink>,
+    Arc<CollectingAudioSink>,
+    SinkSet,
+) {
+    let text = Arc::new(CollectingTextSink::new());
+    let frame = Arc::new(CollectingFrameSink::new());
+    let audio = Arc::new(CollectingAudioSink::new());
+    let sink_set = SinkSet::new()
+        .with_text(text.clone() as Arc<dyn TextSurfaceSink>)
+        .with_frame(frame.clone() as Arc<dyn FrameArtifactSink>)
+        .with_audio(audio.clone() as Arc<dyn AudioEventSink>);
+    (text, frame, audio, sink_set)
+}
 
 // ===================================================================
 // Synthetic ports
 // ===================================================================
 
-/// Reference port: implements every required stage and emits one text
-/// observation per launch. Declares no optional capability.
+/// Reference port: implements every required stage and pushes one text
+/// observation per launch into its sink set.
 struct ReferencePort {
     state: PortState,
-    artifacts_written: Vec<String>,
+    sink_set: SinkSet,
+    text: Arc<CollectingTextSink>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,9 +222,11 @@ impl ReferencePort {
     };
 
     fn new() -> Self {
+        let (text, _frame, _audio, sink_set) = build_default_sink_set();
         Self {
             state: PortState::Idle,
-            artifacts_written: Vec::new(),
+            sink_set,
+            text,
         }
     }
 }
@@ -79,17 +240,22 @@ impl EnginePort for ReferencePort {
         Ok(())
     }
 
-    fn observe(
-        &mut self,
-        _request: &PortRequest<'_>,
-    ) -> Result<Option<ObservationHookEvent>, EnginePortError> {
-        match self.state {
-            PortState::Launched => {
-                self.state = PortState::Observed;
-                Ok(Some(synthetic_text_event(Self::MANIFEST.id, "ref-event-1")))
-            }
-            _ => Ok(None),
+    fn observe(&mut self, _request: &PortRequest<'_>) -> Result<(), EnginePortError> {
+        if self.state == PortState::Launched {
+            self.state = PortState::Observed;
+            self.text
+                .emit_line(synthetic_text_line("ref-event-1"))
+                .map_err(|error| EnginePortError::Lifecycle {
+                    stage: LifecycleStage::Observe,
+                    message: format!("text emit failed: {error}"),
+                    source: None,
+                })?;
         }
+        Ok(())
+    }
+
+    fn sink_set(&self) -> &SinkSet {
+        &self.sink_set
     }
 
     fn capture(&mut self, request: &PortRequest<'_>) -> Result<CaptureOutcome, EnginePortError> {
@@ -117,7 +283,6 @@ impl EnginePort for ReferencePort {
                 message: format!("artifact write failed: {error}"),
                 source: None,
             })?;
-        self.artifacts_written.push(uri.clone());
         Ok(CaptureOutcome::new(uri).with_path(path).with_summary("ok"))
     }
 
@@ -168,11 +333,12 @@ impl EnginePort for JumpCapablePort {
         self.0.launch(request)
     }
 
-    fn observe(
-        &mut self,
-        request: &PortRequest<'_>,
-    ) -> Result<Option<ObservationHookEvent>, EnginePortError> {
+    fn observe(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError> {
         self.0.observe(request)
+    }
+
+    fn sink_set(&self) -> &SinkSet {
+        self.0.sink_set()
     }
 
     fn capture(&mut self, request: &PortRequest<'_>) -> Result<CaptureOutcome, EnginePortError> {
@@ -229,11 +395,12 @@ impl EnginePort for JumpUndeclaredPort {
         self.0.launch(request)
     }
 
-    fn observe(
-        &mut self,
-        request: &PortRequest<'_>,
-    ) -> Result<Option<ObservationHookEvent>, EnginePortError> {
+    fn observe(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError> {
         self.0.observe(request)
+    }
+
+    fn sink_set(&self) -> &SinkSet {
+        self.0.sink_set()
     }
 
     fn capture(&mut self, request: &PortRequest<'_>) -> Result<CaptureOutcome, EnginePortError> {
@@ -259,6 +426,7 @@ impl EnginePort for JumpUndeclaredPort {
 struct MissingObservePort {
     launched: bool,
     shut_down: bool,
+    sink_set: SinkSet,
 }
 
 impl MissingObservePort {
@@ -282,9 +450,11 @@ impl MissingObservePort {
     };
 
     fn new() -> Self {
+        let (_text, _frame, _audio, sink_set) = build_default_sink_set();
         Self {
             launched: false,
             shut_down: false,
+            sink_set,
         }
     }
 }
@@ -297,14 +467,15 @@ impl EnginePort for MissingObservePort {
         Ok(())
     }
 
-    fn observe(
-        &mut self,
-        _request: &PortRequest<'_>,
-    ) -> Result<Option<ObservationHookEvent>, EnginePortError> {
+    fn observe(&mut self, _request: &PortRequest<'_>) -> Result<(), EnginePortError> {
         Err(EnginePortError::CapabilityUnsupported {
             capability: PortCapability::Observe,
             reason: CapabilityReason::DefaultUnimplemented,
         })
+    }
+
+    fn sink_set(&self) -> &SinkSet {
+        &self.sink_set
     }
 
     fn capture(&mut self, _request: &PortRequest<'_>) -> Result<CaptureOutcome, EnginePortError> {
@@ -373,7 +544,9 @@ const ENV_PATH_FORBIDDEN_MANIFEST: PortManifest = PortManifest {
 /// Port that declares a single `OpaqueToken` env field. The harness
 /// supplies a runtime value matching `looks_like_local_path` to confirm
 /// the runner rejects it at launch time.
-struct UnredactedEnvRuntimePort;
+struct UnredactedEnvRuntimePort {
+    sink_set: SinkSet,
+}
 
 impl UnredactedEnvRuntimePort {
     const MANIFEST: PortManifest = PortManifest {
@@ -399,6 +572,11 @@ impl UnredactedEnvRuntimePort {
         evidence_tier_max: EvidenceTier::E2,
         limitations: &[],
     };
+
+    fn new() -> Self {
+        let (_text, _frame, _audio, sink_set) = build_default_sink_set();
+        Self { sink_set }
+    }
 }
 
 impl EnginePort for UnredactedEnvRuntimePort {
@@ -408,11 +586,12 @@ impl EnginePort for UnredactedEnvRuntimePort {
         Ok(())
     }
 
-    fn observe(
-        &mut self,
-        _request: &PortRequest<'_>,
-    ) -> Result<Option<ObservationHookEvent>, EnginePortError> {
-        Ok(None)
+    fn observe(&mut self, _request: &PortRequest<'_>) -> Result<(), EnginePortError> {
+        Ok(())
+    }
+
+    fn sink_set(&self) -> &SinkSet {
+        &self.sink_set
     }
 
     fn capture(&mut self, _request: &PortRequest<'_>) -> Result<CaptureOutcome, EnginePortError> {
@@ -426,39 +605,234 @@ impl EnginePort for UnredactedEnvRuntimePort {
     }
 }
 
+/// Recording sink that timestamps every emission against a shared
+/// counter so the runner's per-tick ordering invariant
+/// (text → frame → audio) is observable from a single `Vec<Sample>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum DrainSample {
+    Text(String),
+    Frame(String),
+    Audio(String),
+}
+
+#[derive(Default)]
+struct OrderingProbeRecorder {
+    samples: Mutex<Vec<DrainSample>>,
+}
+
+impl OrderingProbeRecorder {
+    fn new() -> Self {
+        Self::default()
+    }
+
+    fn record(&self, sample: DrainSample) {
+        self.samples.lock().expect("record lock").push(sample);
+    }
+
+    fn snapshot(&self) -> Vec<DrainSample> {
+        self.samples.lock().expect("record lock").clone()
+    }
+}
+
+struct OrderedTextSink {
+    inner: Mutex<Vec<TextLine>>,
+    recorder: Arc<OrderingProbeRecorder>,
+}
+
+impl TextSurfaceSink for OrderedTextSink {
+    fn capability(&self) -> SinkCapability {
+        SinkCapability::Supported {
+            evidence_tier_ceiling: EvidenceTier::E1,
+        }
+    }
+
+    fn emit_line(&self, line: TextLine) -> SinkResult<()> {
+        line.validate()?;
+        self.inner.lock().expect("text lock").push(line);
+        Ok(())
+    }
+
+    fn drain_lines(&self) -> Vec<TextLine> {
+        let drained = std::mem::take(&mut *self.inner.lock().expect("text lock"));
+        for line in &drained {
+            self.recorder
+                .record(DrainSample::Text(line.line_id.clone()));
+        }
+        drained
+    }
+}
+
+struct OrderedFrameSink {
+    inner: Mutex<Vec<FrameArtifact>>,
+    recorder: Arc<OrderingProbeRecorder>,
+}
+
+impl FrameArtifactSink for OrderedFrameSink {
+    fn capability(&self) -> SinkCapability {
+        SinkCapability::Supported {
+            evidence_tier_ceiling: EvidenceTier::E2,
+        }
+    }
+
+    fn emit_frame(&self, frame: FrameArtifact) -> SinkResult<()> {
+        frame.validate()?;
+        self.inner.lock().expect("frame lock").push(frame);
+        Ok(())
+    }
+
+    fn drain_frames(&self) -> Vec<FrameArtifact> {
+        let drained = std::mem::take(&mut *self.inner.lock().expect("frame lock"));
+        for frame in &drained {
+            self.recorder
+                .record(DrainSample::Frame(frame.frame_id.clone()));
+        }
+        drained
+    }
+}
+
+struct OrderedAudioSink {
+    inner: Mutex<Vec<AudioEvent>>,
+    recorder: Arc<OrderingProbeRecorder>,
+}
+
+impl AudioEventSink for OrderedAudioSink {
+    fn capability(&self) -> SinkCapability {
+        SinkCapability::Supported {
+            evidence_tier_ceiling: EvidenceTier::E0,
+        }
+    }
+
+    fn emit_event(&self, event: AudioEvent) -> SinkResult<()> {
+        event.validate()?;
+        self.inner.lock().expect("audio lock").push(event);
+        Ok(())
+    }
+
+    fn drain_events(&self) -> Vec<AudioEvent> {
+        let drained = std::mem::take(&mut *self.inner.lock().expect("audio lock"));
+        for event in &drained {
+            self.recorder
+                .record(DrainSample::Audio(event.event_id.clone()));
+        }
+        drained
+    }
+}
+
+struct OrderingProbePort {
+    recorder: Arc<OrderingProbeRecorder>,
+    text: Arc<OrderedTextSink>,
+    frame: Arc<OrderedFrameSink>,
+    audio: Arc<OrderedAudioSink>,
+    sink_set: SinkSet,
+    observe_calls: usize,
+    shut_down: bool,
+}
+
+impl OrderingProbePort {
+    const MANIFEST: PortManifest = PortManifest {
+        id: "utsushi-synthetic-order",
+        name: "Synthetic Ordering Probe Port",
+        version: "0.0.0",
+        abi_version: 1,
+        capabilities: &[
+            PortCapability::Launch,
+            PortCapability::Observe,
+            PortCapability::Capture,
+            PortCapability::Shutdown,
+        ],
+        required_methods: REQUIRED_LIFECYCLE_STAGES,
+        optional_methods: &[],
+        env_schema: &[],
+        fidelity_tier_max: FidelityTier::LayoutProbe,
+        evidence_tier_max: EvidenceTier::E2,
+        limitations: &[],
+    };
+
+    fn new() -> Self {
+        let recorder = Arc::new(OrderingProbeRecorder::new());
+        let text = Arc::new(OrderedTextSink {
+            inner: Mutex::new(Vec::new()),
+            recorder: recorder.clone(),
+        });
+        let frame = Arc::new(OrderedFrameSink {
+            inner: Mutex::new(Vec::new()),
+            recorder: recorder.clone(),
+        });
+        let audio = Arc::new(OrderedAudioSink {
+            inner: Mutex::new(Vec::new()),
+            recorder: recorder.clone(),
+        });
+        let sink_set = SinkSet::new()
+            .with_text(text.clone() as Arc<dyn TextSurfaceSink>)
+            .with_frame(frame.clone() as Arc<dyn FrameArtifactSink>)
+            .with_audio(audio.clone() as Arc<dyn AudioEventSink>);
+        Self {
+            recorder,
+            text,
+            frame,
+            audio,
+            sink_set,
+            observe_calls: 0,
+            shut_down: false,
+        }
+    }
+
+    fn recorder(&self) -> Arc<OrderingProbeRecorder> {
+        self.recorder.clone()
+    }
+}
+
+impl EnginePort for OrderingProbePort {
+    const MANIFEST: PortManifest = Self::MANIFEST;
+
+    fn launch(&mut self, _request: &PortRequest<'_>) -> Result<(), EnginePortError> {
+        Ok(())
+    }
+
+    fn observe(&mut self, _request: &PortRequest<'_>) -> Result<(), EnginePortError> {
+        if self.observe_calls > 0 {
+            return Ok(());
+        }
+        self.observe_calls = 1;
+        // Push one text + one frame + one audio in a single tick so the
+        // recorder can verify the runner drains text first, then frame,
+        // then audio, regardless of the push order on the port side.
+        // Deliberately push audio first to exercise the ordering invariant.
+        self.audio
+            .emit_event(synthetic_audio("audio-1"))
+            .expect("audio emit");
+        self.frame
+            .emit_frame(synthetic_frame("frame-1"))
+            .expect("frame emit");
+        self.text
+            .emit_line(synthetic_text_line("text-1"))
+            .expect("text emit");
+        Ok(())
+    }
+
+    fn sink_set(&self) -> &SinkSet {
+        &self.sink_set
+    }
+
+    fn capture(&mut self, _request: &PortRequest<'_>) -> Result<CaptureOutcome, EnginePortError> {
+        Ok(CaptureOutcome::new(
+            "artifacts/utsushi/runtime/order/conformance-reports/x.json",
+        ))
+    }
+
+    fn shutdown(&mut self) -> Result<PortShutdownOutcome, EnginePortError> {
+        if self.shut_down {
+            Ok(PortShutdownOutcome::already_shut_down())
+        } else {
+            self.shut_down = true;
+            Ok(PortShutdownOutcome::clean())
+        }
+    }
+}
+
 // ===================================================================
 // Helpers
 // ===================================================================
-
-fn synthetic_text_event(adapter: &str, event_id: &str) -> ObservationHookEvent {
-    ObservationHookEvent {
-        schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
-        event_id: event_id.to_string(),
-        observed_at: "2026-06-23T00:00:00.000Z".to_string(),
-        event_kind: ObservationHookEventKind::Text,
-        runtime_target_id: format!("synthetic:{adapter}"),
-        adapter_id: ObservationAdapterId {
-            name: adapter.to_string(),
-            version: "0.0.0".to_string(),
-        },
-        evidence_tier: EvidenceTier::E1,
-        environment: ObservationEnvironment {
-            runtime: "synthetic".to_string(),
-            engine: Some(adapter.to_string()),
-            platform: Some("test".to_string()),
-            display: Some("none".to_string()),
-            locale: Some("und".to_string()),
-        },
-        source_revision: None,
-        bridge_refs: Vec::new(),
-        redaction: ObservationRedactionMetadata::not_required(),
-        payload: ObservationHookPayload::Text(ObservationTextPayload {
-            text: "synthetic text observation".to_string(),
-            speaker: None,
-            text_surface: None,
-        }),
-    }
-}
 
 fn build_artifact_root() -> (TempDir, RuntimeArtifactRoot) {
     let dir = TempDir::new().expect("tempdir");
@@ -577,6 +951,35 @@ fn synthetic_port_jump_returns_capability_unsupported_when_not_declared() {
 }
 
 // ===================================================================
+// Tick ordering invariant (UTSUSHI-224)
+// ===================================================================
+
+#[test]
+fn runner_tick_drains_sinks_in_text_then_frame_then_audio_order() {
+    let (_input_dir, input_root) = build_input_root();
+    let runner = Runner::new();
+    let mut port = OrderingProbePort::new();
+    let recorder = port.recorder();
+    let request = PortRequest::new(&input_root, "order-run", RuntimeOperation::Trace);
+
+    let observation = runner.tick(&mut port, &request).expect("tick succeeds");
+    assert_eq!(observation.text.len(), 1);
+    assert_eq!(observation.frames.len(), 1);
+    assert_eq!(observation.audio.len(), 1);
+
+    let samples = recorder.snapshot();
+    assert_eq!(
+        samples,
+        vec![
+            DrainSample::Text("text-1".to_string()),
+            DrainSample::Frame("frame-1".to_string()),
+            DrainSample::Audio("audio-1".to_string()),
+        ],
+        "Runner::tick must drain in text -> frame -> audio order; got: {samples:?}"
+    );
+}
+
+// ===================================================================
 // Missing-method / drift
 // ===================================================================
 
@@ -672,7 +1075,7 @@ fn port_with_runtime_env_value_matching_local_path_filter_fails_launch() {
     let mut env = PortEnv::new();
     env.insert("UTSUSHI_RUN_TOKEN", "/home/operator/private/leak");
 
-    let mut port = UnredactedEnvRuntimePort;
+    let mut port = UnredactedEnvRuntimePort::new();
     let request = PortRequest::new(&input_root, "env-leak", RuntimeOperation::Trace)
         .with_artifact_root(&artifact_root)
         .with_env(env);
@@ -742,7 +1145,7 @@ fn engine_port_adapter_descriptor_reflects_manifest_id_and_version() {
 }
 
 #[test]
-fn engine_port_adapter_trace_runs_lifecycle_and_returns_runtime_evidence_report_v02() {
+fn engine_port_adapter_trace_runs_lifecycle_and_returns_sink_shaped_observations() {
     let (_input_dir, input_root) = build_input_root();
     let adapter = EnginePortAdapter::new(ReferencePort::new()).expect("adapter builds");
     let request = RuntimeRequest::new(&input_root);
@@ -751,7 +1154,18 @@ fn engine_port_adapter_trace_runs_lifecycle_and_returns_runtime_evidence_report_
     assert_eq!(value["adapterVersion"], "0.0.0");
     assert_eq!(value["schemaVersion"], "0.2.0");
     assert_eq!(value["operation"], "trace");
-    assert!(value["observationHookEvents"].as_array().is_some());
+    // UTSUSHI-224: the adapter's wire shape is now `sinkObservations` —
+    // a sink-shaped array — rather than the deleted hook envelope. At
+    // least the text emission the reference port pushes during observe
+    // must surface here.
+    let observations = value["sinkObservations"]
+        .as_array()
+        .expect("sinkObservations array");
+    assert!(
+        observations
+            .iter()
+            .any(|entry| entry["sink"] == "text_surface")
+    );
     assert_eq!(value["shutdownStatus"], "clean");
 }
 

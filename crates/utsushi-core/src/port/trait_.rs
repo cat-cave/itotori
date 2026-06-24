@@ -12,7 +12,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::{ObservationHookEvent, RuntimeArtifactRoot, RuntimeOperation, RuntimeVfs};
+use crate::sink::SinkSet;
+use crate::{RuntimeArtifactRoot, RuntimeOperation, RuntimeVfs};
 
 use super::diagnostics::{CapabilityReason, EnginePortError, PortShutdownOutcome};
 use super::manifest::{
@@ -195,12 +196,17 @@ impl CaptureOutcome {
     }
 }
 
-/// The substrate trait every engine port implements. Required lifecycle
-/// methods are enforced at the type system level: there is no default
-/// impl on `launch`, `observe`, `capture`, or `shutdown`. The optional
-/// `jump` method has a default impl that returns
+/// The substrate trait every engine port implements (UTSUSHI-224 sinks
+/// bridge). Required lifecycle methods are enforced at the type system
+/// level: there is no default impl on `launch`, `observe`, `capture`, or
+/// `shutdown`. The optional `jump` method has a default impl that returns
 /// `CapabilityUnsupported { reason: DefaultUnimplemented }` so ports that
 /// do not declare the capability surface a typed diagnostic by default.
+///
+/// `observe` no longer returns a typed event. Implementors push
+/// observation emissions into the [`SinkSet`] surfaced by [`Self::sink_set`]
+/// and the runner drains the sinks per tick (text, then frame, then audio)
+/// to assemble [`crate::port::RunnerOutcome`].
 pub trait EnginePort: Send + Sync {
     /// Audit-grade manifest declaration. Read by the runner before any
     /// lifecycle method runs.
@@ -217,13 +223,18 @@ pub trait EnginePort: Send + Sync {
     /// method.
     fn launch(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError>;
 
-    /// Required: drain or stream observation hook events. The runner
-    /// re-validates every emitted event. Return `Ok(None)` to signal
-    /// end-of-stream.
-    fn observe(
-        &mut self,
-        request: &PortRequest<'_>,
-    ) -> Result<Option<ObservationHookEvent>, EnginePortError>;
+    /// Required: perform one observation step. Implementors push observed
+    /// text / frame / audio emissions into the sinks held by
+    /// [`Self::sink_set`]. The runner re-validates every drained item
+    /// before forwarding it into [`crate::port::RunnerOutcome`]. Returning
+    /// `Ok(())` after a tick that emitted nothing signals end-of-stream
+    /// to the runner.
+    fn observe(&mut self, request: &PortRequest<'_>) -> Result<(), EnginePortError>;
+
+    /// Required: surface the sink set this port pushes observation
+    /// emissions into. The runner drains the sinks per tick (text, then
+    /// frame, then audio).
+    fn sink_set(&self) -> &SinkSet;
 
     /// Required: produce a capture artifact through the managed runtime
     /// artifact store via `request.artifact_root`. Implementors must NOT

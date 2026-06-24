@@ -3,26 +3,34 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 use utsushi_core::{
-    ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier,
-    OBSERVATION_HOOK_SCHEMA_VERSION, ObservationAdapterId, ObservationBridgeRef,
-    ObservationEnvironment, ObservationFramePayload, ObservationHookEvent,
-    ObservationHookEventKind, ObservationHookPayload, ObservationRedactionMetadata,
-    ObservationSourceRevision, ObservationTextPayload, RuntimeAdapter, RuntimeAdapterDescriptor,
-    RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability, RuntimeCapabilityClass,
-    RuntimeCapabilityContract, RuntimeFeatureSupport, RuntimePlaybackFeature, RuntimeRequest,
-    UtsushiResult, runtime_artifact_uri,
+    ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier, RuntimeAdapter,
+    RuntimeAdapterDescriptor, RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability,
+    RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeFeatureSupport,
+    RuntimePlaybackFeature, RuntimeRequest, UtsushiResult, runtime_artifact_uri,
 };
 
+pub mod engine_port;
 pub mod jump_targets;
 mod launch_adapters;
 mod reference_corpus;
 
+pub use engine_port::{
+    FIXTURE_OBSERVATION_HOOK_SCHEMA_VERSION, FixtureEnginePort, FixtureFrameSink,
+    FixtureObservationSinks, FixtureTextSink,
+};
 pub use jump_targets::{
     BridgeUnitIndex, InMemoryBridgeUnitIndex, JUMP_TARGET_SCHEMA_VERSION, JumpTargetError,
     JumpTargetFixture, JumpTargetSet,
 };
 pub use launch_adapters::{BrowserLaunchAdapter, NwjsLaunchAdapter};
 pub use reference_corpus::{ReferenceCaptureValidationReport, validate_reference_capture_corpus};
+
+/// Schema-version literal used inside observation-hook envelope JSON
+/// emitted by the fixture adapters. Kept as a local constant so the
+/// fixture wire shape continues to advertise the `0.1.0-alpha` value
+/// `kaifuu-core` validates against, even though the `utsushi-core` Rust
+/// type that previously held this constant was deleted by UTSUSHI-224.
+pub const FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL: &str = "0.1.0-alpha";
 
 pub struct FixtureRuntimeAdapter;
 
@@ -339,29 +347,29 @@ fn text_observation_hook_event(
     frame: usize,
     evidence_tier: EvidenceTier,
 ) -> UtsushiResult<Value> {
-    ObservationHookEvent {
-        schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
-        event_id: deterministic_uuid("observation-text", frame),
-        observed_at: "2026-06-17T00:00:00.000Z".to_string(),
-        event_kind: ObservationHookEventKind::Text,
-        runtime_target_id: runtime_target_id(source),
-        adapter_id: observation_adapter_id(descriptor),
-        evidence_tier,
-        environment: fixture_observation_environment(source),
-        source_revision: Some(observation_source_revision(source)),
-        bridge_refs: vec![observation_bridge_ref(unit, 1)?],
-        redaction: ObservationRedactionMetadata::not_required(),
-        payload: ObservationHookPayload::Text(ObservationTextPayload {
-            text: unit["targetText"]
+    let bridge_ref_value = observation_bridge_ref_value(unit, 1)?;
+    Ok(json!({
+        "schemaVersion": FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL,
+        "eventId": deterministic_uuid("observation-text", frame),
+        "observedAt": "2026-06-17T00:00:00.000Z",
+        "eventKind": "text",
+        "runtimeTargetId": runtime_target_id(source),
+        "adapterId": adapter_id_value(descriptor),
+        "evidenceTier": evidence_tier.as_str(),
+        "environment": fixture_environment_value(source),
+        "sourceRevision": source_revision_value(source),
+        "bridgeRefs": [bridge_ref_value],
+        "redaction": {"status": "not_required"},
+        "payload": {
+            "payloadKind": "text",
+            "text": unit["targetText"]
                 .as_str()
                 .or_else(|| unit["sourceText"].as_str())
-                .unwrap_or("")
-                .to_string(),
-            speaker: unit["speaker"].as_str().map(ToString::to_string),
-            text_surface: unit["textSurface"].as_str().map(ToString::to_string),
-        }),
-    }
-    .to_json_value()
+                .unwrap_or(""),
+            "speaker": unit["speaker"].as_str(),
+            "textSurface": unit["textSurface"].as_str(),
+        },
+    }))
 }
 
 fn frame_observation_hook_event(
@@ -371,61 +379,58 @@ fn frame_observation_hook_event(
     capture: &Value,
     frame: u64,
 ) -> UtsushiResult<Value> {
-    let artifact_ref: utsushi_core::ObservationArtifactRef =
-        serde_json::from_value(capture["artifactRef"].clone())?;
-    ObservationHookEvent {
-        schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
-        event_id: deterministic_uuid("observation-frame", frame as usize),
-        observed_at: "2026-06-17T00:00:00.000Z".to_string(),
-        event_kind: ObservationHookEventKind::Frame,
-        runtime_target_id: runtime_target_id(source),
-        adapter_id: observation_adapter_id(descriptor),
-        evidence_tier: EvidenceTier::E2,
-        environment: fixture_observation_environment(source),
-        source_revision: Some(observation_source_revision(source)),
-        bridge_refs: vec![observation_bridge_ref(unit, 1)?],
-        redaction: ObservationRedactionMetadata::not_required(),
-        payload: ObservationHookPayload::Frame(ObservationFramePayload {
-            frame,
-            width: capture["width"].as_u64().map(|width| width as u32),
-            height: capture["height"].as_u64().map(|height| height as u32),
-            artifact_ref: Some(artifact_ref),
-        }),
-    }
-    .to_json_value()
+    let bridge_ref_value = observation_bridge_ref_value(unit, 1)?;
+    Ok(json!({
+        "schemaVersion": FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL,
+        "eventId": deterministic_uuid("observation-frame", frame as usize),
+        "observedAt": "2026-06-17T00:00:00.000Z",
+        "eventKind": "frame",
+        "runtimeTargetId": runtime_target_id(source),
+        "adapterId": adapter_id_value(descriptor),
+        "evidenceTier": EvidenceTier::E2.as_str(),
+        "environment": fixture_environment_value(source),
+        "sourceRevision": source_revision_value(source),
+        "bridgeRefs": [bridge_ref_value],
+        "redaction": {"status": "not_required"},
+        "payload": {
+            "payloadKind": "frame",
+            "frame": frame,
+            "width": capture["width"].as_u64(),
+            "height": capture["height"].as_u64(),
+            "artifactRef": capture["artifactRef"].clone(),
+        },
+    }))
 }
 
-fn observation_adapter_id(descriptor: &RuntimeAdapterDescriptor) -> ObservationAdapterId {
-    ObservationAdapterId {
-        name: descriptor.name.clone(),
-        version: descriptor.version.clone(),
-    }
-}
-
-fn fixture_observation_environment(source: &Value) -> ObservationEnvironment {
-    ObservationEnvironment {
-        runtime: "fixture".to_string(),
-        engine: Some("utsushi-fixture".to_string()),
-        platform: Some(std::env::consts::OS.to_string()),
-        display: Some("none".to_string()),
-        locale: source["sourceLocale"].as_str().map(ToString::to_string),
-    }
-}
-
-fn observation_source_revision(source: &Value) -> ObservationSourceRevision {
-    ObservationSourceRevision {
-        source_id: source["gameId"].as_str().unwrap_or("fixture").to_string(),
-        revision_id: Some("fixture-source-v0.1".to_string()),
-        content_hash: None,
-    }
-}
-
-fn observation_bridge_ref(unit: &Value, index: usize) -> UtsushiResult<ObservationBridgeRef> {
-    Ok(ObservationBridgeRef {
-        bridge_unit_id: Some(legacy_fixture_id("bridge-unit", index)),
-        source_unit_key: Some(require_str(unit, "sourceUnitKey")?.to_string()),
-        runtime_object_id: None,
+fn adapter_id_value(descriptor: &RuntimeAdapterDescriptor) -> Value {
+    json!({
+        "name": descriptor.name,
+        "version": descriptor.version,
     })
+}
+
+fn fixture_environment_value(source: &Value) -> Value {
+    json!({
+        "runtime": "fixture",
+        "engine": "utsushi-fixture",
+        "platform": std::env::consts::OS,
+        "display": "none",
+        "locale": source["sourceLocale"].as_str(),
+    })
+}
+
+fn source_revision_value(source: &Value) -> Value {
+    json!({
+        "sourceId": source["gameId"].as_str().unwrap_or("fixture"),
+        "revisionId": "fixture-source-v0.1",
+    })
+}
+
+fn observation_bridge_ref_value(unit: &Value, index: usize) -> UtsushiResult<Value> {
+    Ok(json!({
+        "bridgeUnitId": legacy_fixture_id("bridge-unit", index),
+        "sourceUnitKey": require_str(unit, "sourceUnitKey")?,
+    }))
 }
 
 fn runtime_target_id(source: &Value) -> String {
@@ -737,7 +742,7 @@ mod tests {
         assert_eq!(report["observationHookEvents"].as_array().unwrap().len(), 2);
         assert_eq!(
             report["observationHookEvents"][0]["schemaVersion"],
-            utsushi_core::OBSERVATION_HOOK_SCHEMA_VERSION
+            FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL
         );
         assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
         assert_eq!(

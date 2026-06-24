@@ -5,17 +5,16 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use utsushi_core::{
-    ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier,
-    OBSERVATION_HOOK_SCHEMA_VERSION, ObservationEnvironment, ObservationFramePayload,
-    ObservationHookEvent, ObservationHookEventKind, ObservationHookPayload,
-    ObservationRedactionMetadata, ObservationTextPayload, RuntimeAdapter, RuntimeAdapterDescriptor,
-    RuntimeAdapterDiagnostic, RuntimeArtifactKind, RuntimeArtifactRoot, RuntimeCapability,
-    RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeCaptureBoundary,
+    ApproximationTier, ControlledPlaybackSession, EvidenceTier, FidelityTier, RuntimeAdapter,
+    RuntimeAdapterDescriptor, RuntimeAdapterDiagnostic, RuntimeArtifactKind, RuntimeArtifactRoot,
+    RuntimeCapability, RuntimeCapabilityClass, RuntimeCapabilityContract, RuntimeCaptureBoundary,
     RuntimeCaptureContext, RuntimeCaptureHook, RuntimeCaptureHooks, RuntimeCapturedArtifact,
     RuntimeFeatureSupport, RuntimeHarnessError, RuntimeHarnessErrorKind,
     RuntimeLaunchCaptureHarness, RuntimeLaunchCapturePlan, RuntimeLaunchCommand, RuntimeOperation,
     RuntimePlaybackFeature, RuntimeRequest, UtsushiResult,
 };
+
+use crate::FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL;
 
 use browser_detection::{
     BrowserUnavailabilityReason, ChromiumProbeOutcome, chromium_min_supported_version_string,
@@ -1230,29 +1229,29 @@ fn browser_text_observation_hook_event(
     unit: &Value,
     evidence_tier: EvidenceTier,
 ) -> UtsushiResult<Value> {
-    ObservationHookEvent {
-        schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
-        event_id: BROWSER_OBSERVATION_TEXT_ID.to_string(),
-        observed_at: "2026-06-17T00:00:00.000Z".to_string(),
-        event_kind: ObservationHookEventKind::Text,
-        runtime_target_id: super::runtime_target_id(source),
-        adapter_id: super::observation_adapter_id(descriptor),
-        evidence_tier,
-        environment: browser_observation_environment(source),
-        source_revision: Some(super::observation_source_revision(source)),
-        bridge_refs: vec![super::observation_bridge_ref(unit, 1)?],
-        redaction: ObservationRedactionMetadata::not_required(),
-        payload: ObservationHookPayload::Text(ObservationTextPayload {
-            text: unit["targetText"]
+    let bridge_ref_value = super::observation_bridge_ref_value(unit, 1)?;
+    Ok(json!({
+        "schemaVersion": FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL,
+        "eventId": BROWSER_OBSERVATION_TEXT_ID,
+        "observedAt": "2026-06-17T00:00:00.000Z",
+        "eventKind": "text",
+        "runtimeTargetId": super::runtime_target_id(source),
+        "adapterId": super::adapter_id_value(descriptor),
+        "evidenceTier": evidence_tier.as_str(),
+        "environment": browser_environment_value(source),
+        "sourceRevision": super::source_revision_value(source),
+        "bridgeRefs": [bridge_ref_value],
+        "redaction": {"status": "not_required"},
+        "payload": {
+            "payloadKind": "text",
+            "text": unit["targetText"]
                 .as_str()
                 .or_else(|| unit["sourceText"].as_str())
-                .unwrap_or("")
-                .to_string(),
-            speaker: unit["speaker"].as_str().map(ToString::to_string),
-            text_surface: unit["textSurface"].as_str().map(ToString::to_string),
-        }),
-    }
-    .to_json_value()
+                .unwrap_or(""),
+            "speaker": unit["speaker"].as_str(),
+            "textSurface": unit["textSurface"].as_str(),
+        },
+    }))
 }
 
 fn browser_frame_observation_hook_event(
@@ -1261,37 +1260,37 @@ fn browser_frame_observation_hook_event(
     unit: &Value,
     screenshot: &RuntimeCapturedArtifact,
 ) -> UtsushiResult<Value> {
-    let artifact_ref = serde_json::from_value(screenshot.artifact_ref_json())?;
-    ObservationHookEvent {
-        schema_version: OBSERVATION_HOOK_SCHEMA_VERSION.to_string(),
-        event_id: BROWSER_OBSERVATION_FRAME_ID.to_string(),
-        observed_at: "2026-06-17T00:00:00.000Z".to_string(),
-        event_kind: ObservationHookEventKind::Frame,
-        runtime_target_id: super::runtime_target_id(source),
-        adapter_id: super::observation_adapter_id(descriptor),
-        evidence_tier: EvidenceTier::E2,
-        environment: browser_observation_environment(source),
-        source_revision: Some(super::observation_source_revision(source)),
-        bridge_refs: vec![super::observation_bridge_ref(unit, 1)?],
-        redaction: ObservationRedactionMetadata::not_required(),
-        payload: ObservationHookPayload::Frame(ObservationFramePayload {
-            frame: 1,
-            width: Some(BROWSER_VIEWPORT_WIDTH),
-            height: Some(BROWSER_VIEWPORT_HEIGHT),
-            artifact_ref: Some(artifact_ref),
-        }),
-    }
-    .to_json_value()
+    let bridge_ref_value = super::observation_bridge_ref_value(unit, 1)?;
+    Ok(json!({
+        "schemaVersion": FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL,
+        "eventId": BROWSER_OBSERVATION_FRAME_ID,
+        "observedAt": "2026-06-17T00:00:00.000Z",
+        "eventKind": "frame",
+        "runtimeTargetId": super::runtime_target_id(source),
+        "adapterId": super::adapter_id_value(descriptor),
+        "evidenceTier": EvidenceTier::E2.as_str(),
+        "environment": browser_environment_value(source),
+        "sourceRevision": super::source_revision_value(source),
+        "bridgeRefs": [bridge_ref_value],
+        "redaction": {"status": "not_required"},
+        "payload": {
+            "payloadKind": "frame",
+            "frame": 1,
+            "width": BROWSER_VIEWPORT_WIDTH,
+            "height": BROWSER_VIEWPORT_HEIGHT,
+            "artifactRef": screenshot.artifact_ref_json(),
+        },
+    }))
 }
 
-fn browser_observation_environment(source: &Value) -> ObservationEnvironment {
-    ObservationEnvironment {
-        runtime: "browser".to_string(),
-        engine: Some("browser-smoke-fixture".to_string()),
-        platform: Some(env::consts::OS.to_string()),
-        display: Some("browser-headless".to_string()),
-        locale: source["sourceLocale"].as_str().map(ToString::to_string),
-    }
+fn browser_environment_value(source: &Value) -> Value {
+    json!({
+        "runtime": "browser",
+        "engine": "browser-smoke-fixture",
+        "platform": env::consts::OS,
+        "display": "browser-headless",
+        "locale": source["sourceLocale"].as_str(),
+    })
 }
 
 fn browser_features_used(operation: RuntimeOperation) -> Vec<RuntimePlaybackFeature> {
@@ -1665,7 +1664,7 @@ printf '\211PNG\r\n\032\nutsushi fake browser screenshot\n' > "$screenshot"
         );
         assert_eq!(
             report["observationHookEvents"][0]["schemaVersion"],
-            utsushi_core::OBSERVATION_HOOK_SCHEMA_VERSION
+            FIXTURE_OBSERVATION_HOOK_SCHEMA_LITERAL
         );
         assert_eq!(report["observationHookEvents"][0]["eventKind"], "text");
         assert_eq!(
