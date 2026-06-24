@@ -117,8 +117,8 @@ const _: () = {
     assert!(const_str_eq(REFERENCE_TRACE_SCHEMA_VERSION, "0.1.0-alpha"));
     // Conformance result + manifest schema (UTSUSHI-026/028).
     assert!(const_str_eq(CONFORMANCE_SCHEMA_VERSION, "0.2.0-alpha"));
-    // Snapshot envelope schema (UTSUSHI-023).
-    assert!(const_str_eq(SNAPSHOT_SCHEMA_VERSION, "0.1.0-alpha"));
+    // Snapshot envelope schema (UTSUSHI-023, bumped under UTSUSHI-223).
+    assert!(const_str_eq(SNAPSHOT_SCHEMA_VERSION, "0.2.0-alpha"));
     // Replay log schema (UTSUSHI-021).
     assert!(const_str_eq(REPLAY_LOG_SCHEMA_VERSION, "0.1.0-alpha"));
     // Embed ABI schema (UTSUSHI-024).

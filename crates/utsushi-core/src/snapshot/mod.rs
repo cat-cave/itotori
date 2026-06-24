@@ -49,6 +49,7 @@
 
 pub mod diagnostics;
 pub mod diff;
+pub mod envelope;
 pub mod inspectable;
 pub mod redaction;
 #[allow(clippy::module_inception)]
@@ -58,15 +59,15 @@ pub mod store;
 
 pub use diagnostics::SnapshotError;
 pub use diff::{StateChange, StateChangeKind, StateDiff, diff_snapshots};
+pub use envelope::{SnapshotEnvelope, SnapshotManifest};
 pub use inspectable::{Inspectable, Restorable, RestoreReport};
 pub use snapshot::{
-    MAX_SNAPSHOT_ID_BYTES, SNAPSHOT_EVIDENCE_TIER_CEILING, SNAPSHOT_MAX_SERIALIZED_BYTES,
-    SNAPSHOT_SCHEMA_VERSION, Snapshot, SnapshotId, SnapshotRef, SnapshotRequest,
-    SnapshotSchemaVersion, restore_snapshot, take_snapshot,
+    MAX_SNAPSHOT_ID_BYTES, SNAPSHOT_EVIDENCE_TIER_CEILING, SNAPSHOT_SCHEMA_VERSION, Snapshot,
+    SnapshotId, SnapshotRef, SnapshotRequest, SnapshotSchemaVersion, restore_snapshot,
+    take_snapshot,
 };
 pub use state::{
     BYTES_HASH_HEX_LEN, BYTES_SAMPLE_HEX_LEN, BytesValue, MAX_STATE_PATH_BYTES,
-    MAX_STATE_PATH_SEGMENTS, STATE_TREE_MAX_SERIALIZED_BYTES, StateNamespace, StatePath, StateTree,
-    StateValue,
+    MAX_STATE_PATH_SEGMENTS, StateNamespace, StatePath, StateTree, StateValue,
 };
 pub use store::{InMemorySnapshotStore, SnapshotStore, SnapshotStoreError};

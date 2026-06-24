@@ -12,6 +12,7 @@ use std::fmt;
 
 use crate::EvidenceTier;
 
+use super::envelope::SnapshotEnvelope;
 use super::state::StatePath;
 
 /// Stable Utsushi snapshot semantic codes.
@@ -28,8 +29,7 @@ pub mod codes {
     pub const DIFF_INSPECTABLE_ID_MISMATCH: &str = "utsushi.snapshot.diff_inspectable_id_mismatch";
     pub const REDACTION_VIOLATION: &str = "utsushi.snapshot.redaction_violation";
     pub const INVALID_BYTES_VALUE: &str = "utsushi.snapshot.invalid_bytes_value";
-    pub const SNAPSHOT_TOO_LARGE: &str = "utsushi.snapshot.snapshot_too_large";
-    pub const STATE_TREE_TOO_LARGE: &str = "utsushi.snapshot.state_tree_too_large";
+    pub const SNAPSHOT_ENVELOPE_OVERFLOW: &str = "utsushi.snapshot.snapshot_envelope_overflow";
     pub const EVIDENCE_TIER_OVERCLAIM: &str = "utsushi.snapshot.evidence_tier_overclaim";
     pub const INVALID_SNAPSHOT_ID: &str = "utsushi.snapshot.invalid_snapshot_id";
     pub const INVALID_INSPECTABLE_ID: &str = "utsushi.snapshot.invalid_inspectable_id";
@@ -62,8 +62,7 @@ pub mod codes {
         DIFF_INSPECTABLE_ID_MISMATCH,
         REDACTION_VIOLATION,
         INVALID_BYTES_VALUE,
-        SNAPSHOT_TOO_LARGE,
-        STATE_TREE_TOO_LARGE,
+        SNAPSHOT_ENVELOPE_OVERFLOW,
         EVIDENCE_TIER_OVERCLAIM,
         INVALID_SNAPSHOT_ID,
         INVALID_INSPECTABLE_ID,
@@ -135,11 +134,15 @@ pub enum SnapshotError {
     /// a hash of wrong length, or a non-hex digest character.
     InvalidBytesValue { field_path: String, reason: String },
 
-    /// Serialized snapshot exceeded `SNAPSHOT_MAX_SERIALIZED_BYTES`.
-    SnapshotTooLarge { size: usize, ceiling: usize },
-
-    /// Serialized state tree exceeded `STATE_TREE_MAX_SERIALIZED_BYTES`.
-    StateTreeTooLarge { size: usize, ceiling: usize },
+    /// Serialized snapshot exceeded the declared
+    /// [`super::SnapshotEnvelope`] tier's `max_bytes()`. The runner
+    /// produces no partial output and does not fall back to a larger
+    /// tier.
+    SnapshotEnvelopeOverflow {
+        envelope_class: SnapshotEnvelope,
+        observed_bytes: usize,
+        limit_bytes: usize,
+    },
 
     /// Snapshot was constructed with `evidence_tier > E3`.
     EvidenceTierOverclaim {
@@ -182,8 +185,7 @@ impl SnapshotError {
             Self::DiffInspectableIdMismatch { .. } => codes::DIFF_INSPECTABLE_ID_MISMATCH,
             Self::RedactionViolation { .. } => codes::REDACTION_VIOLATION,
             Self::InvalidBytesValue { .. } => codes::INVALID_BYTES_VALUE,
-            Self::SnapshotTooLarge { .. } => codes::SNAPSHOT_TOO_LARGE,
-            Self::StateTreeTooLarge { .. } => codes::STATE_TREE_TOO_LARGE,
+            Self::SnapshotEnvelopeOverflow { .. } => codes::SNAPSHOT_ENVELOPE_OVERFLOW,
             Self::EvidenceTierOverclaim { .. } => codes::EVIDENCE_TIER_OVERCLAIM,
             Self::InvalidSnapshotId { .. } => codes::INVALID_SNAPSHOT_ID,
             Self::InvalidInspectableId { .. } => codes::INVALID_INSPECTABLE_ID,
@@ -238,12 +240,15 @@ impl fmt::Display for SnapshotError {
             Self::InvalidBytesValue { field_path, reason } => {
                 write!(formatter, "{code}: field_path={field_path} reason={reason}")
             }
-            Self::SnapshotTooLarge { size, ceiling } => {
-                write!(formatter, "{code}: size={size} ceiling={ceiling}")
-            }
-            Self::StateTreeTooLarge { size, ceiling } => {
-                write!(formatter, "{code}: size={size} ceiling={ceiling}")
-            }
+            Self::SnapshotEnvelopeOverflow {
+                envelope_class,
+                observed_bytes,
+                limit_bytes,
+            } => write!(
+                formatter,
+                "{code}: envelope_class={} observed_bytes={observed_bytes} limit_bytes={limit_bytes}",
+                envelope_class.as_str()
+            ),
             Self::EvidenceTierOverclaim { claimed, ceiling } => write!(
                 formatter,
                 "{code}: claimed={} ceiling={}",
@@ -276,7 +281,7 @@ mod tests {
         vec![
             SnapshotError::SchemaVersionMismatch {
                 observed: "0.0.1".to_string(),
-                expected: "0.1.0-alpha",
+                expected: "0.2.0-alpha",
             },
             SnapshotError::InvalidStatePath {
                 raw: "BAD..PATH".to_string(),
@@ -317,13 +322,10 @@ mod tests {
                 field_path: "stateTree.port.frame".to_string(),
                 reason: "hash too short".to_string(),
             },
-            SnapshotError::SnapshotTooLarge {
-                size: 32_000,
-                ceiling: 16 * 1024,
-            },
-            SnapshotError::StateTreeTooLarge {
-                size: 32_000,
-                ceiling: 12 * 1024,
+            SnapshotError::SnapshotEnvelopeOverflow {
+                envelope_class: SnapshotEnvelope::Small,
+                observed_bytes: 32_000,
+                limit_bytes: 16 * 1024,
             },
             SnapshotError::EvidenceTierOverclaim {
                 claimed: EvidenceTier::E4,

@@ -631,7 +631,7 @@ fn instantiate_a_port_manifest_and_inspect_lifecycle_through_the_facade() {
 fn every_facade_exposed_schema_version_is_pinned() {
     assert_eq!(REFERENCE_TRACE_SCHEMA_VERSION, "0.1.0-alpha");
     assert_eq!(CONFORMANCE_SCHEMA_VERSION, "0.2.0-alpha");
-    assert_eq!(SNAPSHOT_SCHEMA_VERSION, "0.1.0-alpha");
+    assert_eq!(SNAPSHOT_SCHEMA_VERSION, "0.2.0-alpha");
     assert_eq!(REPLAY_LOG_SCHEMA_VERSION, "0.1.0-alpha");
     assert_eq!(EMBED_SCHEMA_VERSION, "0.1.0-alpha");
 }

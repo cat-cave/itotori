@@ -78,11 +78,11 @@ pub use sink::{
 pub use snapshot::{
     BYTES_HASH_HEX_LEN, BYTES_SAMPLE_HEX_LEN, BytesValue, InMemorySnapshotStore, Inspectable,
     MAX_STATE_PATH_BYTES, MAX_STATE_PATH_SEGMENTS, Restorable, RestoreReport,
-    SNAPSHOT_EVIDENCE_TIER_CEILING, SNAPSHOT_MAX_SERIALIZED_BYTES, SNAPSHOT_SCHEMA_VERSION,
-    STATE_TREE_MAX_SERIALIZED_BYTES, Snapshot, SnapshotError, SnapshotId, SnapshotRef,
-    SnapshotRequest, SnapshotSchemaVersion, SnapshotStore, SnapshotStoreError, StateChange,
-    StateChangeKind, StateDiff, StateNamespace, StatePath, StateTree, StateValue, diff_snapshots,
-    restore_snapshot, take_snapshot,
+    SNAPSHOT_EVIDENCE_TIER_CEILING, SNAPSHOT_SCHEMA_VERSION, Snapshot, SnapshotEnvelope,
+    SnapshotError, SnapshotId, SnapshotManifest, SnapshotRef, SnapshotRequest,
+    SnapshotSchemaVersion, SnapshotStore, SnapshotStoreError, StateChange, StateChangeKind,
+    StateDiff, StateNamespace, StatePath, StateTree, StateValue, diff_snapshots, restore_snapshot,
+    take_snapshot,
 };
 
 /// Re-exports for the local-path redaction filter. The helper itself is a

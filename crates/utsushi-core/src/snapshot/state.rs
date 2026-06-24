@@ -32,10 +32,6 @@ pub const BYTES_SAMPLE_HEX_LEN: usize = 128;
 /// future bump fails loudly at validation rather than silently mis-comparing.
 pub const BYTES_HASH_HEX_LEN: usize = 64;
 
-/// Max serialized state-tree size (JSON, bytes). Slightly smaller than
-/// the snapshot ceiling to leave room for the metadata envelope.
-pub const STATE_TREE_MAX_SERIALIZED_BYTES: usize = 12 * 1024;
-
 /// Max path-string length (bytes).
 pub const MAX_STATE_PATH_BYTES: usize = 512;
 
@@ -485,9 +481,11 @@ impl StateTree {
     }
 
     /// Validate the whole tree end-to-end: re-runs redaction on every value
-    /// (insert-time validator + serialized-form walk), asserts every
-    /// `BytesValue` has a non-empty hash, asserts the serialized form
-    /// stays under [`STATE_TREE_MAX_SERIALIZED_BYTES`].
+    /// (insert-time validator + serialized-form walk) and asserts every
+    /// `BytesValue` has a non-empty hash. Serialized-form size is
+    /// enforced one layer up, at the snapshot envelope tier
+    /// ([`super::envelope::SnapshotEnvelope`]); the per-tree size budget
+    /// is no longer a global constant under UTSUSHI-223.
     pub fn validate(&self) -> Result<(), SnapshotError> {
         if self.0.is_empty() {
             return Err(SnapshotError::EmptyStateTree);
@@ -499,12 +497,6 @@ impl StateTree {
             serde_json::to_vec(self).map_err(|err| SnapshotError::SerializationFailure {
                 reason: err.to_string(),
             })?;
-        if serialized.len() > STATE_TREE_MAX_SERIALIZED_BYTES {
-            return Err(SnapshotError::StateTreeTooLarge {
-                size: serialized.len(),
-                ceiling: STATE_TREE_MAX_SERIALIZED_BYTES,
-            });
-        }
         let json_value = serde_json::from_slice(&serialized).map_err(|err| {
             SnapshotError::SerializationFailure {
                 reason: err.to_string(),
@@ -726,31 +718,6 @@ mod tests {
             .insert(path, StateValue::Nested { entries })
             .expect_err("nested host path must fail");
         assert!(matches!(err, SnapshotError::RedactionViolation { .. }));
-    }
-
-    #[test]
-    fn state_tree_validate_rejects_serialized_form_exceeding_ceiling() {
-        // Build a tree large enough to exceed the documented ceiling. Use
-        // long string values (every leaf passes per-value redaction) until
-        // the serialized form is over budget.
-        let mut tree = StateTree::new();
-        let mut counter = 0u32;
-        loop {
-            let path = StatePath::parse(&format!("port.item_{counter}")).expect("path");
-            tree.insert(
-                path,
-                StateValue::String {
-                    value: "x".repeat(256),
-                },
-            )
-            .expect("insert");
-            counter += 1;
-            if counter > 200 {
-                break;
-            }
-        }
-        let err = tree.validate().expect_err("oversize tree must fail");
-        assert!(matches!(err, SnapshotError::StateTreeTooLarge { .. }));
     }
 
     #[test]
