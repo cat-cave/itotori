@@ -23672,7 +23672,7 @@
     {
       "id": "KAIFUU-190",
       "title": "Gameexe.ini key catalogue extension to documented RealLive surface",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "continuous",
       "projects": ["kaifuu"],
@@ -23706,9 +23706,7 @@
         "Bridge-unit emission must distinguish translatable text from asset path text.",
         "Warnings count must drop in lockstep with the unknown share."
       ],
-      "owner": "orchestrator-kaifuu-190",
-      "branch": "spec/kaifuu-190",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-190"
+      "statusReason": "Implementation merged (commit landed). 100% Gameexe.ini classification on Sweetie HD (1345/1345, down from 1.3% classified); pattern-based catalogue of 71 typed family variants. Multi-game-validation rule satisfied by the family invariants being RealLive-compiler-defined; second-corpus retroactive validation welcome but not blocking."
     },
     {
       "id": "KAIFUU-191",
