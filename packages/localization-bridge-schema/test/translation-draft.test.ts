@@ -1,0 +1,163 @@
+import { describe, expect, it } from "vitest";
+import {
+  assertStructuredTranslationDraftOutput,
+  parseStructuredTranslationDraftOutput,
+  STRUCTURED_TRANSLATION_DRAFT_OUTPUT_JSON_SCHEMA,
+  STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
+  TRANSLATION_DRAFT_CONFIDENCE_FLOORS,
+  TranslationDraftResponseValidationError,
+} from "../src/translation-draft.js";
+
+function validDraft(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    bridgeUnitId: "019ed079-0000-7000-8000-00000000a001",
+    sourceLocale: "ja-JP",
+    targetLocale: "en-US",
+    draftText: "Hello, {player}.",
+    protectedSpanRefs: [{ refId: "span-1", startInDraft: 7, endInDraft: 15 }],
+    citationRefs: ["glossary:term-yusha"],
+    agentRationale: "Translated greeting preserving the player placeholder.",
+    confidenceFloor: "medium",
+    ...overrides,
+  };
+}
+
+function validOutput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schemaVersion: STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
+    drafts: [validDraft()],
+    ...overrides,
+  };
+}
+
+describe("StructuredTranslationDraftOutput", () => {
+  it("accepts a fully-populated draft", () => {
+    expect(() => assertStructuredTranslationDraftOutput(validOutput())).not.toThrow();
+  });
+
+  it("accepts an empty drafts array", () => {
+    expect(() =>
+      assertStructuredTranslationDraftOutput({
+        schemaVersion: STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
+        drafts: [],
+      }),
+    ).not.toThrow();
+  });
+
+  it("accepts a draft with empty draftText and no spans (info-only pass-through)", () => {
+    expect(() =>
+      assertStructuredTranslationDraftOutput(
+        validOutput({
+          drafts: [validDraft({ draftText: "", protectedSpanRefs: [], citationRefs: [] })],
+        }),
+      ),
+    ).not.toThrow();
+  });
+
+  it("rejects an output without schemaVersion", () => {
+    expect(() => assertStructuredTranslationDraftOutput({ drafts: [] })).toThrow(
+      TranslationDraftResponseValidationError,
+    );
+  });
+
+  it("rejects an output with the wrong schemaVersion", () => {
+    expect(() =>
+      assertStructuredTranslationDraftOutput({ schemaVersion: "v0", drafts: [] }),
+    ).toThrow(/schemaVersion/);
+  });
+
+  it("rejects drafts missing a required field", () => {
+    const value = validOutput({
+      drafts: [validDraft({ confidenceFloor: undefined })],
+    });
+    const draft = (value.drafts as Array<Record<string, unknown>>)[0]!;
+    delete draft.confidenceFloor;
+    expect(() => assertStructuredTranslationDraftOutput(value)).toThrow(/confidenceFloor/);
+  });
+
+  it("rejects unknown top-level properties", () => {
+    expect(() =>
+      assertStructuredTranslationDraftOutput({
+        schemaVersion: STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
+        drafts: [],
+        repairAttempts: 0,
+      }),
+    ).toThrow(/repairAttempts/);
+  });
+
+  it("rejects unknown draft-level properties", () => {
+    expect(() =>
+      assertStructuredTranslationDraftOutput(
+        validOutput({ drafts: [validDraft({ alternateText: "..." })] }),
+      ),
+    ).toThrow(/alternateText/);
+  });
+
+  it("rejects every invalid confidenceFloor", () => {
+    expect(() =>
+      assertStructuredTranslationDraftOutput(
+        validOutput({ drafts: [validDraft({ confidenceFloor: "extreme" })] }),
+      ),
+    ).toThrow(/confidenceFloor/);
+  });
+
+  it("rejects a protectedSpanRef whose end is not strictly greater than start", () => {
+    expect(() =>
+      assertStructuredTranslationDraftOutput(
+        validOutput({
+          drafts: [
+            validDraft({
+              protectedSpanRefs: [{ refId: "span-1", startInDraft: 5, endInDraft: 5 }],
+            }),
+          ],
+        }),
+      ),
+    ).toThrow(/spanOrder/);
+  });
+
+  it("rejects a non-array drafts field", () => {
+    expect(() =>
+      assertStructuredTranslationDraftOutput({
+        schemaVersion: STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION,
+        drafts: "nope",
+      }),
+    ).toThrow(/drafts/);
+  });
+
+  it("parseStructuredTranslationDraftOutput surfaces a JSON parse error as TranslationDraftResponseValidationError", () => {
+    expect(() => parseStructuredTranslationDraftOutput("not-json")).toThrow(
+      TranslationDraftResponseValidationError,
+    );
+  });
+
+  it("parseStructuredTranslationDraftOutput refuses trailing commas (no silent repair)", () => {
+    // RFC 8259 forbids trailing commas; the strict parser must reject them.
+    const raw = `{"schemaVersion":"${STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION}","drafts":[],}`;
+    expect(() => parseStructuredTranslationDraftOutput(raw)).toThrow(
+      TranslationDraftResponseValidationError,
+    );
+  });
+
+  it("parseStructuredTranslationDraftOutput round-trips a valid output", () => {
+    const raw = JSON.stringify(validOutput());
+    const out = parseStructuredTranslationDraftOutput(raw);
+    expect(out.schemaVersion).toBe(STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION);
+    expect(out.drafts).toHaveLength(1);
+    expect(out.drafts[0]!.confidenceFloor).toBe("medium");
+    expect(out.drafts[0]!.protectedSpanRefs[0]!.refId).toBe("span-1");
+  });
+
+  it("confidence-floor enum matches the JSON schema constants", () => {
+    const confidenceEnum = (
+      STRUCTURED_TRANSLATION_DRAFT_OUTPUT_JSON_SCHEMA.properties.drafts.items.properties
+        .confidenceFloor as { enum: ReadonlyArray<string> }
+    ).enum;
+    expect([...confidenceEnum]).toEqual([...TRANSLATION_DRAFT_CONFIDENCE_FLOORS]);
+  });
+
+  it("schema version constant is pinned to v1 (changes require a wire-contract bump)", () => {
+    expect(STRUCTURED_TRANSLATION_DRAFT_OUTPUT_SCHEMA_VERSION).toBe(
+      "itotori.structured-translation-draft-output.v1",
+    );
+  });
+});
