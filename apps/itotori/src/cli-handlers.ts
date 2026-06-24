@@ -57,6 +57,7 @@ import {
   createInMemoryDraftFixtureRepositories,
   type DraftFixtureRepositories,
 } from "./draft/in-memory-draft-repositories.js";
+import { runExportPatchV2Command } from "./patch-export/index.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -138,6 +139,9 @@ export async function runItotoriCliCommand(
       break;
     case "export-patch":
       await runExportPatch(args, dependencies);
+      break;
+    case "export-patch-v2":
+      await runExportPatchV2(args, dependencies);
       break;
     case "ingest-runtime":
       await runIngestRuntime(args, dependencies);
@@ -269,6 +273,42 @@ async function runExportPatch(args: string[], dependencies: ItotoriCliDependenci
   );
   dependencies.io.writeJson(projectPath, result.project);
   dependencies.io.writeJson(outputPath, result.patchExport);
+}
+
+async function runExportPatchV2(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const projectPath = requiredFlag(args, "--project");
+  const draftBundlePath = requiredFlag(args, "--draft-bundle");
+  const outputPath = requiredFlag(args, "--output");
+  const locale = requiredFlag(args, "--locale");
+  const requestedBy = optionalFlag(args, "--requested-by") ?? "local-user";
+  const draftSourceBridgeHash = optionalFlag(args, "--draft-source-bridge-hash");
+  await dependencies.withServices(async (services) => {
+    const port = requireAssetDecisionsPort(services);
+    await runExportPatchV2Command({
+      projectPath,
+      draftBundlePath,
+      outputPath,
+      locale,
+      requestedBy,
+      ...(draftSourceBridgeHash === undefined ? {} : { draftSourceBridgeHash }),
+      io: {
+        readJson: (path) => dependencies.io.readJson(path),
+        writeJson: (path, value) => dependencies.io.writeJson(path, value),
+      },
+      actor: { userId: requestedBy },
+      loadActiveDecisions: async (_actor, projectId, localeBranchId) =>
+        port.loadActiveDecisions(projectId, localeBranchId),
+      exit: (code) => {
+        process.exitCode = code;
+      },
+      log: (message) => {
+        process.stdout.write(`${message}\n`);
+      },
+    });
+  });
 }
 
 async function runIngestRuntime(
