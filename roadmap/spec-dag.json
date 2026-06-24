@@ -7133,7 +7133,7 @@
     {
       "id": "ITOTORI-035",
       "title": "Asset localization decision workflow",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "kaifuu"],
@@ -7169,7 +7169,10 @@
         "Policy ignored by agents",
         "Overpromising asset editing",
         "Bad batch-review UX"
-      ]
+      ],
+      "owner": "orchestrator-itotori-035",
+      "branch": "spec/itotori-035",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-035"
     },
     {
       "id": "ITOTORI-036",
