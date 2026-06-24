@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 export * from "./style-guide-conversation.js";
 export * from "./conformance.js";
 export * from "./qa-finding.js";
+export * from "./speaker-label.js";
 
 export type Uuid7 = string;
 export type Bcp47Locale = string;
