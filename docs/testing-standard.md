@@ -1,5 +1,16 @@
 # Testing Standard
 
+> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
+> of [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> "Alpha proof" mentions below refer to the `ALPHA-009` workflow and the
+> SHARED-025 manifest contract — mechanisms that support the redefined
+> dogfood point, not the alpha gate itself. Per the multi-game and
+> no-legacy-compat standing rules, real-bytes assertions on at least two
+> games of the same engine family supersede synthetic author-fixture smokes
+> wherever both exist; the kaifuu-reallive 47-byte synthetic smokes are
+> scheduled to be replaced by real-bytes assertions gated on the documented
+> env vars.
+
 This standard defines how Itotori, Kaifuu, and Utsushi tests describe behavior,
 use fixtures, and keep CI deterministic. It applies to TypeScript packages run
 through Vitest/Vite+, Rust crates run through Cargo, Drizzle/Postgres repository

@@ -1,5 +1,16 @@
 # Kaifuu Subproject
 
+> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
+> of [`docs/alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> Alpha-ready means the architecture-proven dogfood point (substrate
+> extensions M.1–M.3, a non-synthetic engine port crate, a real-bytes Sweetie
+> HD smoke, the recorded-LLM bundle, dashboard reachability, repo hygiene) —
+> **not** the full claimed-support chain (detect, extract, decrypt, decompile,
+> patch, verify, delta-apply). The "claimed-support" definition below is
+> Kaifuu's long-term commitment for every engine variant the suite eventually
+> promotes; it remains the bar for promotion out of readiness-tier, not the
+> bar for the first dogfood pass.
+
 Kaifuu owns engine detection, inventory, readiness, extraction, patching,
 verification, and `.kaifuu` delta packages.
 

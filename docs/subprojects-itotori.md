@@ -1,5 +1,15 @@
 # Itotori Subproject
 
+> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
+> of [`docs/alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> Alpha-ready means the architecture-proven dogfood point: substrate
+> M.1–M.3, a non-synthetic engine port crate, real-bytes Sweetie HD smoke, a
+> recorded-LLM bundle, dashboard reachability, and repo hygiene. The product
+> loop and live-provider bar described below — including `ITOTORI-116` and
+> `ITOTORI-117` — remain the alpha contract for Itotori's own surface; full
+> end-to-end on a real game is the **dogfood project that follows alpha**,
+> not the alpha gate itself.
+
 Itotori owns localization state: catalog identity, local corpus inventory,
 translation-completeness intelligence, locale branches, drafts, policy, QA
 findings, feedback, runtime evidence ingestion, and patch-ready exports.

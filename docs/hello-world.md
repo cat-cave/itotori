@@ -1,5 +1,13 @@
 # Hello World
 
+> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
+> of [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> "Alpha proof" in this document refers to the SHARED-025 manifest contract
+> and the `ALPHA-009` workflow that supersedes the hello-world fixture gate
+> — those are mechanisms that support the redefined dogfood point, not the
+> alpha gate itself. The gate is the 6-item list at the top of the readiness
+> doc.
+
 The hello world is the current baseline integration guardrail. It is a full
 fixture localization loop that proves the monorepo wiring is real before the
 alpha proof workflow exists.

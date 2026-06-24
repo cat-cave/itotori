@@ -1,5 +1,15 @@
 # Kaifuu Fixture Policy
 
+> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
+> of [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> "Claimed support" in this policy is Kaifuu's long-term per-engine
+> commitment — the full claimed-support chain (detect, extract, decrypt,
+> decompile, patch, verify, delta-apply) on real owned bytes. Alpha-ready
+> means the architecture-proven dogfood point, **not** that every
+> claimed-support engine has cleared the chain. Per the multi-game standing
+> rule, engine claims require validation against at least two real-world
+> games of that engine family.
+
 KAIFUU-000 defines how engine fixtures and reference implementations are
 sourced before parallel adapter work begins. It extends
 [fixtures-and-corpora.md](fixtures-and-corpora.md) and

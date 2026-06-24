@@ -1,5 +1,13 @@
 # Utsushi Fidelity Policy
 
+> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
+> of [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> Where this policy names the first real-engine alpha proof or a specific
+> engine's runtime path, read that as the long-term contract; the alpha gate
+> is the 6-item list at the top of the readiness doc. Full RealLive runtime
+> evidence on Sweetie HD via the 22-node decomposition (`UTSUSHI-201..221`)
+> is continuous-tier post-alpha.
+
 Utsushi exists to collect runtime evidence for Kaifuu and Itotori. It does not
 need to be a pixel-perfect commercial port of every engine before it is useful,
 but it must never pretend that weak evidence is stronger than it is. Every

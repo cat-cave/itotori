@@ -1,5 +1,13 @@
 # Architecture
 
+> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
+> of [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> References below to "alpha proof" describe the SHARED-025 manifest contract
+> and the post-alpha dogfood vertical (Sukara/RealLive), not the alpha gate.
+> Alpha-ready means the architecture-proven dogfood point — substrate
+> M.1–M.3, a non-synthetic engine port crate, real-bytes Sweetie HD smoke,
+> recorded-LLM bundle, dashboard reachable, repo hygiene.
+
 Itotori is a monorepo because the shared contracts are the hard part. The three
 subprojects remain independent at runtime, but they evolve against the same
 catalog, bridge, patch, delta, readiness, and runtime evidence schemas. Itotori

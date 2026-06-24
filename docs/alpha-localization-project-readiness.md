@@ -90,6 +90,10 @@ monorepo:
 - **Utsushi** owns runtime evidence: traces, captures, smoke reports, replay or
   playable-review evidence when present, and fidelity-tier wording.
 
+> **Read with the redefinition above.** This section's product loop is the
+> long-term shape of the suite. The alpha gate is the 6-item list at the top
+> of this doc, not the totality of the 13-step loop below.
+
 ## Readiness Scope
 
 Alpha readiness is achieved when the suite can run the same product loop on
@@ -116,6 +120,12 @@ The product loop is:
     implementation can determine the affected scope.
 13. Produce benchmark, quality, and cost reports with hashes, model/provider
     metadata, prompts or preset hashes, and reproducible command lines.
+
+> **Read with the redefinition above.** The engines and readiness profiles
+> below describe the suite's long-term claimed-support set. The alpha gate
+> is the 6-item list at the top of this doc; the full per-engine chain (the
+> `detect → extract → decrypt → decompile → patch → verify → delta-apply`
+> language) is continuous-tier work, not an alpha blocker.
 
 ## Alpha Engine And Readiness Set
 
@@ -240,6 +250,11 @@ availability, key-validation proof hashes, and safe aggregate reports for those
 corpora. Public CI and public demo paths must still pass when
 `fixtures/private-local/` is absent.
 
+> **Read with the redefinition above.** The workflows below describe the
+> dashboard's long-term shape. The alpha gate (top of this doc) only
+> requires that the spec-dag-dashboard render DAG, claims, and audit state
+> from real DB state — the full workflow set below is continuous-tier.
+
 ## Required Dashboard Workflows
 
 The dashboard does not need final product polish, but alpha readiness requires
@@ -341,6 +356,12 @@ stable when editing this document.
 | `ALPHA-CHECK-019` | Real LLM proof            | `ALPHA-008`, `ITOTORI-116`, and `ITOTORI-117` recorded or explicitly opted-in live provider artifacts                                                               | Structured Itotori draft/QA output and degenerate raw MTL baseline output both exercise retries, provider/model metadata, token/cost accounting, and quality scoring before a full-game project begins              | Yes                                |
 | `ALPHA-CHECK-020` | Encrypted patch vertical  | `ALPHA-006` and `SHARED-025` artifacts for the declared synthetic encrypted XP3 profile                                                                             | Kaifuu runs detect, key/profile resolution, extract, trivial patch, verify, `.kaifuu` delta apply, and manifest-bound artifact linkage without leaking keys, helper dumps, private paths, or decrypted private text | Yes                                |
 
+> **Read with the redefinition above.** The check matrix and command list
+> below describe the suite's long-term validation set. The alpha gate's
+> repo-hygiene line maps to `just check` / `just test` / `just ci` /
+> `just hello` plus no silenced real work; the rest of the matrix below is
+> continuous-tier expansion, not an alpha blocker.
+
 ## Validation Checks
 
 Run these checks before alpha readiness is accepted:
@@ -388,6 +409,11 @@ Manual readiness checks:
 - Artifact review for hashes, environment details, and evidence-tier wording.
 - Quality/cost report audit for missing model/provider/cost metadata and
   unverifiable claims.
+
+> **Read with the redefinition above.** The demo script below describes the
+> suite's long-term dogfood storyline. The alpha gate is the 6-item list at
+> the top of this doc; demoing the full 13-step script is the **post-alpha
+> dogfood project**, not the alpha gate itself.
 
 ## Demo Script
 
@@ -438,6 +464,10 @@ documented private-local prerequisites optional.
 13. End with the readiness check matrix and mark each `ALPHA-CHECK-*` row pass,
     fail, or waived with owner and follow-up.
 
+> **Read with the redefinition above.** These exclusions remain valid
+> non-goals, but read them against the redefined alpha gate (6-item list at
+> the top of this doc) rather than the full North-Star scope below.
+
 ## Known Non-Goals
 
 These exclusions apply to the alpha readiness milestone:
@@ -470,6 +500,13 @@ These exclusions apply to the alpha readiness milestone:
   changing public CI requirements.
 - No final UX polish requirement. The dashboard must be coherent and backed by
   state, but visual polish beyond workflow clarity is continuous expansion.
+
+> **Read with the redefinition above.** Under the redefined alpha, the items
+> below are joined by the full RealLive runtime port (`UTSUSHI-201..221`),
+> the SiglusEngine port, RPG Maker MV/MZ end-to-end on a real game (vs
+> fixture vertical), and encrypted XP3 + TJS as continuous-tier work — none
+> of which are alpha blockers. The dogfood point feeds back into prioritizing
+> this list.
 
 ## Continuous Expansion Candidates
 

@@ -1,5 +1,13 @@
 # Spec DAG
 
+> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
+> of [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> References to the "alpha proof workflow" in this doc describe the
+> `ALPHA-007`/`ALPHA-009` workflow command and its hello-world succession —
+> mechanisms that support the redefined dogfood point. The alpha gate itself
+> is the 6-item list at the top of the readiness doc, not the totality of
+> nodes labelled `ALPHA-*` in the DAG.
+
 The implementation roadmap is a directed acyclic graph of PR-sized specs in
 `roadmap/spec-dag.json`. The graph is intentionally machine-readable because the
 expected development mode is orchestration by an agent that can claim ready

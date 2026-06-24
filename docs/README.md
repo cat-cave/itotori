@@ -1,5 +1,16 @@
 # Itotori Docs
 
+> **Alpha definition (2026-06-24).** The cold-start state of the monorepo
+> lives in [`current-state-2026-06-24.md`](current-state-2026-06-24.md). The
+> redefined alpha gates live at the top of
+> [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md);
+> alpha-ready means the architecture-proven dogfood point, not the full
+> `detect → extract → decrypt → decompile → patch → verify → delta-apply`
+> chain. Where this index names `ALPHA-006` (the Sukara/RealLive vertical)
+> or "alpha proof" as canonical, those references describe the **post-alpha
+> dogfood project** and the SHARED-025 manifest contract that supports it,
+> not the alpha gate. Audit index: [`audits/README.md`](audits/README.md).
+
 These docs describe the monorepo as a three-project suite:
 
 - Itotori: localization state and agentic workflows.

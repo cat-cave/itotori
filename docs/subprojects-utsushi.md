@@ -1,5 +1,15 @@
 # Utsushi Subproject
 
+> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
+> of [`docs/alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> Alpha-ready means the architecture-proven dogfood point — substrate
+> extensions M.1–M.3 (`UTSUSHI-222`/`223`/`224`) plus a non-synthetic engine
+> port crate (`UTSUSHI-200`), validated against multi-engine real bytes.
+> Sections below that describe Utsushi as the "runtime evidence layer" or the
+> alpha runtime path for a specific engine describe the long-term contract,
+> not the alpha gate. Full RealLive runtime evidence on Sweetie HD via the
+> 22-node decomposition (`UTSUSHI-201..221`) is continuous-tier post-alpha.
+
 Utsushi owns runtime validation evidence: trace, replay, capture, smoke reports, and future playable review slices.
 
 The scaffold implements a fixture runtime. It optimizes for validation usefulness first; pixel-perfect compatibility is an upside target, not the entry bar.
