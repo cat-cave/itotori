@@ -6,6 +6,14 @@ export {
 } from "./capability-guard.js";
 export { FakeModelProvider, fakeModelCapabilities } from "./fake.js";
 export {
+  RecordedBundleMissingError,
+  RecordedModelProvider,
+  recordedModelCapabilities,
+  type RecordedModelProviderOptions,
+  type RecordedProviderBundle,
+  type RecordedProviderResponse,
+} from "./recorded.js";
+export {
   LocalOpenAICompatibleProvider,
   localOpenAICompatibleDefaultCapabilities,
 } from "./local-openai-compatible.js";
