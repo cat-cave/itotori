@@ -1,0 +1,33 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-120-20260624T032727Z",
+  "generatedAt": "2026-06-24T03:27:28Z",
+  "spec": {
+    "id": "UTSUSHI-120",
+    "title": "Runtime substrate facade and conformance release",
+    "branch": "spec/utsushi-120",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-120",
+    "commit": "0ce2414"
+  },
+  "auditor": {
+    "name": "utsushi-120-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "Iter-8 correctness audit of UTSUSHI-120 (Runtime substrate facade and conformance release) at commit 0ce2414 on spec/utsushi-120. The slice ships `crates/utsushi-core/src/substrate.rs` (159 LOC) as a pure re-export facade with no new types/traits/functions; every entry is `pub use crate::<subsystem>::...` and the file contains zero plain `use crate::` imports (per `grep -E '^use crate::' crates/utsushi-core/src/substrate.rs` returning empty). `lib.rs:26` declares `pub mod substrate;` in alphabetic position. The const-assertion block (lines 115-141) pins all 5 schema versions (REFERENCE_TRACE/CONFORMANCE/SNAPSHOT/REPLAY_LOG/EMBED) to their expected literals via a `const _: () = { assert!(const_str_eq(...)); ... };` block plus an exhaustive `SourceTag` match arm that compile-errors on any new variant. Acceptance criteria are all met. (1) Facade leaks substrate internals: structurally impossible — `tests/substrate_no_internal_leakage.rs` (251 LOC, 2 tests) lists 32 excluded symbols (VFS implementation helpers like `MountedVfs`/`PlaintextDirPackage`, trace-branch internals like `BranchCheckOptions`/`TraceMismatch`, embed-internal constants like `EMBED_MAX_ARTIFACT_REFS`, snapshot-internal `BYTES_HASH_HEX_LEN`/`SNAPSHOT_EVIDENCE_TIER_CEILING`, replay-internal codes) and asserts none appear in the facade source as `pub use`-tree tokens; the mirror REQUIRED_SYMBOLS list pins every documented re-export so a narrowing diff that drops `AssetId` or `TraceConformanceCheck` fails CI. (2) API surface engine-specific: a 13-string forbidden list (`RealLive`, `real_live`, `reallive`, `RPGM`, `RpgMaker`, `rpg_maker`, `rpgm`, `Kirikiri`, `kirikiri`, `Xp3`, `xp3`, `Siglus`, `siglus`) is asserted against BOTH `src/substrate.rs` and `docs/utsushi-substrate-facade.md` via `include_str!` lints (`facade_module_source_contains_no_engine_family_names` + `facade_documentation_contains_no_engine_family_names`); my own `grep -rni 'reallive|siglus|xp3|kirikiri|rpgm|rpgmaker|rpg_maker|kag|rgss' src/substrate.rs docs/utsushi-substrate-facade.md` returned zero hits. The four-variant `SourceTag` engine-neutral set (Browser/Native/Wine/Fixture) is pinned in both the const-assertion block and `source_tag_variant_set_is_engine_neutral` runtime test. (3) Conformance gaps: `tests/substrate_conformance.rs` (802 LOC, 13 tests) imports ONLY through `utsushi_core::substrate::{...}` and drives a fixture runtime end-to-end through every subsystem — `mount_a_fixture_vfs_through_the_facade` builds an `InMemoryFixturePackage` impl of `AssetPackage` + a `SinglePackageVfs` impl of `RuntimeVfs`; `drive_a_logical_clock_and_replay_log_through_the_facade` round-trips a `ReplayLog` built via `ReplayLogBuilder` and asserts the schema-version pin; `emit_text_audio_frame_sink_events_through_the_facade` constructs a `SinkSet` with text+audio+frame sinks and runs the result through `reject_unredacted_local_paths`; `take_and_restore_a_snapshot_through_the_facade` exercises `Inspectable`/`Restorable`/`take_snapshot`/`InMemorySnapshotStore::resolve`; `record_a_reference_trace_through_the_facade` proves `finalize_to_bytes()` is byte-stable across two calls and matches `deterministic_json_bytes(&trace)`; `run_a_trace_conformance_check_through_the_facade` runs a real `TraceConformanceCheck` and asserts `Pass`; `instantiate_a_port_manifest_and_inspect_lifecycle_through_the_facade` asserts `REQUIRED_LIFECYCLE_STAGES` covers Launch/Observe/Capture/Shutdown and `OPTIONAL_LIFECYCLE_STAGES` is `[Jump]`. The import-discipline self-lint `substrate_conformance_test_imports_only_through_the_facade` walks the test source via `include_str!` and asserts no `use utsushi_core::<vfs|clock|input|replay|sink|snapshot|embed|recorder|conformance|port|redaction>` substring appears, with the forbidden pattern assembled dynamically so the assertion data does not self-trip. Verification: `cargo test -p utsushi-core` 549+ passed (full crate green; substrate_conformance.rs 13 passed / substrate_no_internal_leakage.rs 2 passed = 15 new tests as planned); `just check` exit 0 (fmt, clippy, schema lint, ts:typecheck, spec DAG validate all clean). No P0/P1/P2/P3 findings — the facade meets every audit-focus constraint.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
