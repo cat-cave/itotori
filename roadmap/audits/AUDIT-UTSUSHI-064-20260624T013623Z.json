@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-064-20260624T013623Z",
+  "generatedAt": "2026-06-24T01:36:23Z",
+  "spec": {
+    "id": "UTSUSHI-064",
+    "title": "Controlled playback recording metadata smoke",
+    "branch": "spec/utsushi-064",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-064",
+    "commit": "b0af917"
+  },
+  "auditor": {
+    "name": "utsushi-064-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "UTSUSHI-064 lands the controlled playback recording metadata smoke as a single integration test file (`crates/utsushi-core/tests/recording_metadata.rs`, 722 LOC, 26 #[test] functions). All three acceptance criteria hold. (1) Portable metadata: the inline `baseline_metadata` builds three `frame_capture` artifact refs and one `recording` container ref through `runtime_artifact_uri(RUN_ID, RuntimeArtifactKind::FrameCapture/Recording, ...)` (lines 137-158), keeping every URI inside the substrate's `RUNTIME_ARTIFACT_URI_ROOT` namespace; `recording_metadata_serialized_form_passes_reject_unredacted_local_paths_filter` and the parallel `_envelope_passes_...` test (lines 564-578) walk both metadata and ConformanceCheck JSON through `reject_unredacted_local_paths`. (2) No evidence-tier overclaim: the E4 and E3 overclaim twins (lines 369-396) assert `ResultOutcome::Fail { semantic_code: recording_codes::RECORDING_EVIDENCE_TIER_OVERCLAIM }`; the audio-discipline JSON walk (`_does_not_contain_audio_event_tier_field`, line 399) forbids `audioEventTier`, `audioSampleRate`, `audio_event_tier`, `audio_sample_rate`, `codec`, `channels`, `mixLevels`, `mix_levels`, `bitrate` at any depth across BOTH the bare metadata and the conformance check envelope. (3) Missing recording is never a silent Pass: `recording_runner_emits_unsupported_outcome_when_manifest_does_not_declare_recording_capture` constructs `ResultOutcome::Unsupported { semantic_code: RECORDING_CAPTURE_UNSUPPORTED, declared_in_manifest: false }` and asserts the wire JSON contains `\"kind\":\"unsupported\"` and the literal semantic code (lines 431-462); `_fails_with_frame_count_mismatch_when_frame_count_is_zero_but_artifact_refs_are_nonempty` (line 465) exercises the manifest-declared-but-empty case; `_does_not_return_pass_for_a_recording_with_zero_frame_count_and_zero_audio_events` (line 495) is the structural anti-Pass assertion (matches `Fail` and asserts the semantic_code starts with `utsushi.conformance.recording_`). Host-path defense covers three injection points: absolute path in artifact uri (`/home/leak/frame.png`), `file:` scheme (`file:///srv/leak/frame.png`), and `recording_id` shaped like a host path (`/tmp/leak/recording`), each surfacing the correct `RECORDING_ARTIFACT_HOST_PATH` or `RECORDING_ID_MALFORMED` code. Sink-contract integration: `CollectingFrameSink` and `CollectingAudioSink` exercise `FrameArtifactSink`/`AudioEventSink` traits and three assertions tie frame_count and audio_event_count to the sinks' emitted counts (lines 581-617). Cross-validation: the Pass envelope is projected into `EvidenceRef::RuntimeArtifact` entries and run through `ConformanceResult::validate` (line 675), pinning compatibility with UTSUSHI-026's envelope validator. Codes registry: `_smoke_only_emits_codes_registered_in_capture_recording_codes_all` (line 620) captures every twin's `semantic_code()` and asserts each is in `recording_codes::ALL`. The worker noted inlining the `canonicalize` BTreeMap walk (lines 234-256) because `deterministic_json_bytes` is typed for `ReferenceTrace` only — this is the same canonicalization algorithm the recorder uses, just specialized to `serde_json::Value`; semantically equivalent and the byte oracle still pins serializer determinism. Verification: `cargo test -p utsushi-core --test recording_metadata` 26 passed / 0 failed; `cargo test -p utsushi-core` lib 629 passed plus every integration suite green; `just check` clean. No P0/P1/P2/P3 findings.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
