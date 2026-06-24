@@ -1,5 +1,42 @@
 # Alpha Localization Project Readiness
 
+> **Audit-evidence callout (2026-06-23):** A 6-angle audit batch landed in
+> `docs/audits/` and `docs/research/`. The audits found that several claims in
+> this document are not currently met by the codebase. **The aspirational
+> claims below are preserved** so the project does not lose sight of its goal,
+> but the callout below names the major evidence gaps. No scope is being
+> deleted — the annotation exists so a reader can see at a glance which claims
+> are demonstrable today vs which require concrete follow-up work before the
+> alpha milestone can honestly be declared.
+>
+> Specific findings:
+>
+> - **RealLive chain on real game bytes**: `kaifuu-cli detect REALLIVEDATA/`
+>   returns `detected: false` against the real Oshioki Sweetie HD files.
+>   `parse_archive` on the real 3.87 MB `Seen.txt` returns `Ok(entries=[])`
+>   (silent zero-scene parse). Gameexe parser classifies 1,328/1,345 (98.7%)
+>   of Sweetie HD's keys as Unknown. See `docs/audits/code-criticism.md` and
+>   `docs/research/reallive-engine.md` for evidence.
+> - **UTSUSHI-146 as a single DAG node is structurally infeasible**:
+>   `docs/research/reallive-engine-dag-proposal.md` proposes a 22-node
+>   decomposition (146a–v) with 6–12 engineer-months of work. Pending
+>   maintainer adoption.
+> - **Substrate consumers**: zero non-test consumers of the UTSUSHI substrate
+>   types exist outside `utsushi-core`. `EnginePort::observe` returns the
+>   legacy `ObservationHookEvent`, not the new substrate sink payloads — the
+>   UTSUSHI-022/023 work is unreachable from the official port trait. Five
+>   substrate extensions (M.1–M.5 in `docs/audits/substrate-honesty.md`) are
+>   required before a real engine port can land.
+> - **Forbidden-state risk**: the claimed-support framing for SiglusEngine +
+>   RealLive currently relies on extraction and patch-back work that does not
+>   round-trip real game bytes. See `docs/audits/alpha-scope-honesty.md` for
+>   the proposed redefinition.
+>
+> Until the maintainer adopts the proposed redefinitions, this document
+> retains its original wording so the goal remains visible. The DAG, the
+> claimed-engine list, and the engine-set table below are all subject to the
+> redefinition outlined in `docs/audits/alpha-scope-honesty.md`.
+
 This document defines the feature set that makes the Itotori suite ready to
 start a first real localization project. It does not define a terminal product
 state for the monorepo. The projects keep moving after this milestone; the first
