@@ -1,0 +1,168 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-ITOTORI-016-20260624T032727Z",
+  "generatedAt": "2026-06-24T03:27:28Z",
+  "spec": {
+    "id": "ITOTORI-016",
+    "title": "Terminology candidate agent",
+    "branch": "spec/itotori-016",
+    "worktree": "/scratch/worktrees/itotori-spec-itotori-016",
+    "commit": "9b19326"
+  },
+  "auditor": {
+    "name": "itotori-016-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "blocked",
+    "text": "Iter-8 correctness audit of ITOTORI-016 (Terminology candidate agent) at commit 9b19326 on spec/itotori-016. The slice ships `apps/itotori/src/agents/terminology-candidate/` (agent, cli, persistence, prompt-template, shapes, staleness, index) and the repository `terminology-candidate-repository.ts` with the new `existsTerminologyTermBySurfaceForm` helper (declared at line 124, implemented at line 398). Tests: 24 cases (19 in `terminology-candidate-agent.test.ts` + 5 in `terminology-candidate-staleness.test.ts`) all green. Defenses in agent.ts are correctly wired: line 100 throws `TerminologyCandidateInvalidKindError` on closed-enum violations; lines 102-106 throw `TerminologyCandidateUncitedError` on empty surface form or no citations; lines 108-112 throw `ExistingGlossaryConflictError` against the `conflictIndex` built from `input.existingGlossary` via `buildConflictIndex` (lines 174-189); lines 130-136 implement the verbatim-substring check (`sourceText.includes(emitted.surfaceForm)`) so a candidate not literally appearing in a cited unit's text fires `TerminologyCandidateNotInUnitsError`. cli.ts:67-76 mirror the character-relationship `ITOTORI_LIVE_PROVIDER=1` gate (refuses any non-fake family unless the env var is set); FakeModelProvider default at cli.ts:72 keeps CI off the live provider. Staleness distinguishes `source_hash_drift` (Stale) from `glossary_conflict_post_persist` (RejectedByReviewer) at staleness.ts:64-109; the post-persist re-scan correctly calls `repository.existsTerminologyTermBySurfaceForm(actor, { projectId, surfaceForm })` (staleness.ts:79). Two findings. F001 (P1) blocks completion: migration `0033_terminology_candidates.sql` (2 tables) is shipped on disk but NOT appended to `packages/itotori-db/src/migrations.ts` — the migrations array still terminates at `0031_character_relationships`; `git diff 9b19326~1 9b19326 -- packages/itotori-db/src/migrations.ts` returns empty. The 24 vitest cases pass because the agent/staleness tests use an in-memory port implementation; production deploy will leave the tables non-existent and the SQL repository will fail at first call. F002 (P2) follow-up: the audit-focus expectation is that `existsTerminologyTermBySurfaceForm` is consulted in BOTH the pre-persist re-check AND the staleness re-scan. The current implementation consults the helper only in the staleness path (staleness.ts:79); the pre-persist check uses the caller-supplied `input.existingGlossary` via `conflictIndex.get(emitted.surfaceForm)` (agent.ts:109). The input glossary is the legitimate caller-supplied source, but a parallel CLI run that inserts a glossary term between input-context-load and pre-persist will not be caught until the post-persist re-scan (which then files the candidate as RejectedByReviewer). Adding a second repository check immediately before `persistTerminologyCandidate` closes the TOCTOU window. Verification: `pnpm --filter @itotori/app test -- --run agents/terminology-candidate` 25 test files passed (280 passed | 3 skipped); `just check` exit 0. F001 blocks completion; F002 is a continuous follow-up.",
+    "counts": {
+      "P0": 0,
+      "P1": 1,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "blocked",
+    "blockingFindingIds": ["ITOTORI-016-F001"],
+    "followUpFindingIds": ["ITOTORI-016-F002"]
+  },
+  "findings": [
+    {
+      "id": "ITOTORI-016-F001",
+      "severity": "P1",
+      "title": "Migration 0033_terminology_candidates.sql is not registered in migrations.ts",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "packages/itotori-db/src/migrations.ts",
+          "line": 187,
+          "symbol": "migrations array"
+        },
+        {
+          "path": "packages/itotori-db/migrations/0033_terminology_candidates.sql"
+        }
+      ],
+      "description": "The new SQL migration `packages/itotori-db/migrations/0033_terminology_candidates.sql` (2 tables backing the terminology candidate and its citations) is shipped on disk but is NOT appended to the registered `migrations` array in `packages/itotori-db/src/migrations.ts`. The array still terminates at `{ id: \"0031_character_relationships\", file: \"0031_character_relationships.sql\" }` on lines 184-186, with the closing `] as const;` on line 187 untouched. `git diff 9b19326~1 9b19326 -- packages/itotori-db/src/migrations.ts` returns empty, confirming the worker's iteration did not modify the registration file. Because `migrate()` (lines 14-50 of `migrations.ts`) only iterates the in-array entries, the 0033 migration will never run at production deploy and the new tables will not exist. Any first call to `ItotoriTerminologyCandidateRepository.saveCandidate` / `existsTerminologyTermBySurfaceForm` / `markCandidateStale` / `markCandidatePromoted` will surface as a PostgreSQL `relation does not exist` error. The 24 vitest cases all use an in-process port stub and never exercise the SQL repository, so the green suite hides the gap. The orchestrator brief's collision note (ITOTORI-015 + ITOTORI-016 both need ordered entries appended) describes the same problem but does not defer the per-spec responsibility: each branch must land its own migration registration so the merge is a plain concatenation. Note: 0032 will be registered by ITOTORI-015 (its repair); both branches must land their own append for the merge order to be 0031, 0032, 0033 without manual stitching.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "`grep -n '0033' packages/itotori-db/src/migrations.ts` returns no lines; `grep -n '0031' packages/itotori-db/src/migrations.ts` returns only the closing entry at lines 184-186. The migrations array literal ends at line 187 with `] as const;`."
+        },
+        {
+          "kind": "file",
+          "detail": "`packages/itotori-db/migrations/0033_terminology_candidates.sql` exists on disk but is unreferenced by the registration file.",
+          "location": {
+            "path": "packages/itotori-db/migrations/0033_terminology_candidates.sql"
+          }
+        },
+        {
+          "kind": "command",
+          "detail": "`git diff 9b19326~1 9b19326 -- packages/itotori-db/src/migrations.ts` returns empty output, confirming no edit to the registration file."
+        },
+        {
+          "kind": "test",
+          "detail": "All 24 vitest cases pass because the agent/staleness tests use an in-memory implementation of `ItotoriTerminologyCandidateRepositoryPort`. The DB-backed repository's SQL is never exercised by CI."
+        }
+      ],
+      "impact": "Production deploy will leave the terminology candidate tables non-existent. The first attempt to write a candidate (via the `generate-terminology-candidates` CLI or any consumer) will fail with a PostgreSQL `relation does not exist` error. The new `existsTerminologyTermBySurfaceForm` helper that staleness depends on will also fail at runtime. The fix is one structural literal append.",
+      "actionableAcceptanceCriteria": [
+        "Append `{ id: \"0033_terminology_candidates\", file: \"0033_terminology_candidates.sql\" }` to the `migrations` array literal in `packages/itotori-db/src/migrations.ts` immediately after the `0031_character_relationships` entry (note: after ITOTORI-015's 0032 entry lands at merge, this entry must follow 0032).",
+        "Re-run `pnpm --filter @itotori/app test -- --run agents/terminology-candidate` and confirm the 24-test suite remains green.",
+        "Re-run `just check` (fmt + clippy + ts:typecheck + schema:check + spec DAG validate) and confirm exit 0.",
+        "Confirm by `grep -n '0033_terminology_candidates' packages/itotori-db/src/migrations.ts` that the registration appears exactly once."
+      ],
+      "orchestration": {
+        "blocksCompletion": true,
+        "nextAction": "repair_before_completion"
+      }
+    },
+    {
+      "id": "ITOTORI-016-F002",
+      "severity": "P2",
+      "title": "Pre-persist conflict check does not consult the existsTerminologyTermBySurfaceForm repository helper",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "apps/itotori/src/agents/terminology-candidate/agent.ts",
+          "line": 109,
+          "symbol": "ExistingGlossaryConflictError pre-persist check"
+        },
+        {
+          "path": "apps/itotori/src/agents/terminology-candidate/staleness.ts",
+          "line": 79,
+          "symbol": "existsTerminologyTermBySurfaceForm post-persist re-scan"
+        }
+      ],
+      "description": "The audit-focus expectation is that `existsTerminologyTermBySurfaceForm` is consulted in BOTH the pre-persist re-check AND the staleness re-scan. The current implementation consults the repository helper only in the staleness path (staleness.ts:79: `await repository.existsTerminologyTermBySurfaceForm(actor, { projectId, surfaceForm })`). The pre-persist path uses the caller-supplied `input.existingGlossary` via the `conflictIndex` built by `buildConflictIndex` (agent.ts:52 + 109: `const conflict = conflictIndex.get(emitted.surfaceForm);`). The conflict index reflects the glossary state at the moment the caller assembled the input context, which may be milliseconds-to-minutes stale by the time `generateTerminologyCandidates` runs. A parallel `generate-terminology-candidates` or curator-driven glossary edit between context-load and pre-persist will not be caught until the post-persist staleness scan (which then files the candidate as RejectedByReviewer with reason `glossary_conflict_post_persist`). The fix is additive: immediately after the conflict-index check on agent.ts:108-112, call `repository.existsTerminologyTermBySurfaceForm(actor, { projectId, surfaceForm })` (or push a parallel hook through the agent options) and throw `ExistingGlossaryConflictError` on a non-null return. This closes the TOCTOU window without changing the existing in-memory test pattern (the in-memory port can answer the helper trivially).",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "`grep -rn 'existsTerminologyTermBySurfaceForm' apps/itotori/src/agents/terminology-candidate/` returns one hit: `staleness.ts:79`. The agent.ts file does not call the helper."
+        },
+        {
+          "kind": "file",
+          "detail": "agent.ts:52 builds `const conflictIndex = buildConflictIndex(input.existingGlossary);` and agent.ts:109 reads `const conflict = conflictIndex.get(emitted.surfaceForm);`. The conflict source is the caller-supplied input, not the repository.",
+          "location": {
+            "path": "apps/itotori/src/agents/terminology-candidate/agent.ts",
+            "line": 52
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "staleness.ts:77-89 documents the gap explicitly: 'Post-persist conflict re-scan: a curator may have inserted a glossary term between persist time and the staleness scan.' The pre-persist path has no equivalent re-check.",
+          "location": {
+            "path": "apps/itotori/src/agents/terminology-candidate/staleness.ts",
+            "line": 77
+          }
+        }
+      ],
+      "impact": "A candidate that was glossary-clean at input-context-load time but conflicts at pre-persist time will silently persist as `Draft` and only get marked `RejectedByReviewer` at the next staleness scan. This burns a model invocation token budget and adds a churn step (Draft → RejectedByReviewer) that a synchronous pre-persist repository check would prevent. Non-blocking because the post-persist re-scan does catch the race and the rejection reason `glossary_conflict_post_persist` is correctly tagged.",
+      "actionableAcceptanceCriteria": [
+        "Add a `repository.existsTerminologyTermBySurfaceForm` call inside the pre-persist loop in agent.ts (immediately after the existing `conflictIndex.get` check on line 109) and throw `ExistingGlossaryConflictError` when the repository returns a non-null terminologyTermId.",
+        "Wire the repository handle through `GenerateTerminologyCandidatesOptions` or as a separate optional `glossaryGuard` callback so the in-memory test port can satisfy it without a DB.",
+        "Add one vitest case asserting that a candidate generated against an empty `input.existingGlossary` but with a repository-side conflict still throws `ExistingGlossaryConflictError` at pre-persist time.",
+        "Re-run `pnpm --filter @itotori/app test -- --run agents/terminology-candidate` and confirm the new case passes alongside the existing 24."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "ITOTORI",
+          "title": "Add repository-side pre-persist conflict check to terminology candidate agent",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["itotori"],
+          "parallelGroup": "context-agents",
+          "dependsOn": ["ITOTORI-016"],
+          "summary": "Close the TOCTOU window between input-context-load and pre-persist by calling `repository.existsTerminologyTermBySurfaceForm` directly inside the terminology candidate agent's pre-persist loop, parallel to the existing `conflictIndex` check, so a curator-inserted glossary term mid-run surfaces synchronously as `ExistingGlossaryConflictError` instead of asynchronously as `RejectedByReviewer` at the next staleness scan.",
+          "deliverables": [
+            "Patch to `apps/itotori/src/agents/terminology-candidate/agent.ts` adding a repository-side `existsTerminologyTermBySurfaceForm` call inside the pre-persist loop, hung off the agent options.",
+            "One additive vitest case in `apps/itotori/test/terminology-candidate-agent.test.ts` proving the repository-side conflict fires `ExistingGlossaryConflictError` even when the input `existingGlossary` is empty."
+          ],
+          "acceptanceCriteria": [
+            "`grep -rn 'existsTerminologyTermBySurfaceForm' apps/itotori/src/agents/terminology-candidate/` returns hits in BOTH agent.ts and staleness.ts.",
+            "A candidate with no input-glossary conflict but a repository-side conflict throws `ExistingGlossaryConflictError` at pre-persist time (no asynchronous RejectedByReviewer round trip).",
+            "All existing 24 cases plus the new one pass under `pnpm --filter @itotori/app test -- --run agents/terminology-candidate`."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "pnpm --filter @itotori/app test -- --run agents/terminology-candidate"
+            },
+            {
+              "type": "command",
+              "value": "grep -rn 'existsTerminologyTermBySurfaceForm' apps/itotori/src/agents/terminology-candidate/"
+            }
+          ],
+          "auditFocus": [
+            "Pre-persist re-check must call the repository helper, not only the caller-supplied input glossary.",
+            "Staleness re-scan must continue to call the repository helper (post-persist defense in depth)."
+          ]
+        }
+      }
+    }
+  ]
+}
