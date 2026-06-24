@@ -439,6 +439,48 @@ cross-engine (e.g. a generic asset resolver, a generic snapshot envelope)
 — multiple real-world games means multiple engine families, not multiple
 titles of the same engine.
 
+### Investigation as a DAG node (2026-06-24)
+
+Research and investigation happen **interactively** between the user and
+the orchestrator/subagents — probing real bytes at
+`/scratch/itotori-research/`, reading source, consulting docs, running
+one-shot probes. Concrete implementation nodes are written **from** the
+research output, not as scaffolding for it. A node whose deliverable is
+"figure out whether X" instead of "ship X" is not a DAG node; it is a
+conversation that has not happened yet.
+
+The footgun is precise: UTSUSHI-146's original "rlvm as research anchor"
+framing collapsed an unknown-scope research effort into a single DAG node
+that never bottomed out and was only made visible by the 2026-06-23 audit
+batch. UTSUSHI-219 ("Sukara title XOR-2 key resolution (research-only)")
+is the same shape — a research bench whose outcome ("either key off, or
+key recovered, or follow-up path") cannot be committed to up front — and
+is cancelled in this change. Resolution of the XOR-2 question happens
+interactively (see the encryption-mechanism probe under
+`docs/research/`); whatever falls out of that probe gets written as
+concrete nodes (a `xor_2_key = None` ship, a key constant + test, or a
+specific recovery node), not as a planning ticket.
+
+Signals an audit worker or orchestrator must reject at claim time:
+
+- Title contains "research-only", "investigation-only", "spike", "POC",
+  or "research phase".
+- Summary frames the work as "determine whether X" with conditional
+  outcomes ("if A then X, if B then Y") instead of a committed
+  deliverable.
+- Acceptance criteria boil down to "the question is resolved" or "either
+  outcome is acceptable" rather than naming a runnable artifact.
+- The work product is a doc that says **what to build next** rather than
+  the thing being built.
+
+This rule is the sibling of the "Research-reference nodes that produce no
+DAG output" anti-pattern above. That rule covers research anchors that
+must produce concrete sub-nodes when they are admitted; this rule says
+raw "do research" nodes should not be admitted to the DAG in the first
+place. Together they close both shapes: research that gets deferred
+forever as an anchor, and research that gets deferred forever as a
+standalone planning ticket.
+
 ### Process: planning subagent checklist
 
 When the orchestrator spawns a planning subagent, the prompt must require

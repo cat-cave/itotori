@@ -4814,7 +4814,7 @@
     },
     {
       "id": "KAIFUU-018",
-      "title": "Unity localization asset fixture spike",
+      "title": "Unity localization asset fixture profile",
       "status": "planned",
       "priority": "P3",
       "target": "continuous",
@@ -17880,15 +17880,15 @@
       "projects": ["itotori", "shared", "kaifuu"],
       "parallelGroup": "catalog",
       "dependsOn": ["CATALOG-012", "CATALOG-013", "CATALOG-061", "CATALOG-065"],
-      "summary": "Refactor the temporary VNDB, EGS, DLsite, Steam, IGDB, and Wikidata market-research crawler scripts into the durable Rust/core catalog and readiness systems, then remove the temporary research-only scripts.",
+      "summary": "Refactor the temporary VNDB, EGS, DLsite, Steam, IGDB, and Wikidata market-research crawler scripts into the durable Rust/core catalog and readiness systems, then remove the temporary temporary market-research scripts.",
       "deliverables": [
         "Durable core crawler modules or commands for the market-research sources that remain product-relevant",
         "Migration map from temporary research script outputs to typed catalog facts and readiness facts",
-        "Deletion plan and validation for superseded research-only scripts once equivalent product paths exist"
+        "Deletion plan and validation for superseded temporary market-research scripts once equivalent product paths exist"
       ],
       "acceptanceCriteria": [
         "Temporary research script outputs used by the product have equivalent typed core-system import paths",
-        "Research-only scripts are either deleted or explicitly archived after the product path reproduces their required aggregate outputs",
+        "temporary market-research scripts are either deleted or explicitly archived after the product path reproduces their required aggregate outputs",
         "Crawler commands emit provenance, fetched_at, source ids, checkpoint ids, and parse-drift diagnostics",
         "No raw private corpus paths, retail text, or live credentials are written to committed fixtures"
       ],
@@ -20953,7 +20953,7 @@
         "Out-of-profile scenes hidden as silent skips",
         "rlvm provenance, license, or clean-room boundary gaps"
       ],
-      "statusReason": "Decomposed into UTSUSHI-200..UTSUSHI-221 per docs/research/reallive-engine-dag-proposal.md; per docs/audits/alpha-scope-honesty.md §D + docs/alpha-localization-project-readiness.md, only the crate-skeleton (UTSUSHI-200) retains target=alpha. End-to-end scene-1 replay (originally UTSUSHI-146) lands as UTSUSHI-219."
+      "statusReason": "Decomposed into UTSUSHI-200..UTSUSHI-221 per docs/research/reallive-engine-dag-proposal.md; per docs/audits/alpha-scope-honesty.md §D + docs/alpha-localization-project-readiness.md, only the crate-skeleton (UTSUSHI-200) retains target=alpha. End-to-end scene-1 replay (originally UTSUSHI-146) lands as UTSUSHI-220 (e2e Sweetie HD scene-1 text-replay smoke)."
     },
     {
       "id": "UTSUSHI-200",
@@ -21086,7 +21086,7 @@
         "Decompressing Sweetie HD scene #0001's 1062 compressed bytes (file offset 0x13a54..0x13e7a) produces exactly 1660 uncompressed bytes.",
         "The first byte of the uncompressed stream is in the documented BytecodeElement opener set `{0x00, 0x0a, 0x21, 0x23, 0x24, 0x2c, 0x40}` or a printable Shift-JIS lead byte (`0x81`-`0x9F` / `0xE0`-`0xFC`). If it is not, the test fails (an immediate 'XOR-2 key is wrong' canary).",
         "A round-trip suite recompresses + decompresses 8 synthetic streams covering pure literals, pure back-references, 1-byte distance, max-distance (4096-byte window), max-length runs (17 bytes), mixed.",
-        "Sukara-title XOR-2 key handling: if the key is unknown for Sweetie HD, the node ships with `xor_2_key = None` and emits `utsushi.reallive.xor2_key_unknown` Warning — the node does not silently skip the second pass and pretend success. Resolution of the actual key happens in UTSUSHI-219 (research-only)."
+        "Sukara-title XOR-2 key handling: if the key is unknown for Sweetie HD, the node ships with `xor_2_key = None` and emits `utsushi.reallive.xor2_key_unknown` Warning — the node does not silently skip the second pass and pretend success. Concrete identification of the Sweetie HD encryption mechanism is captured in docs/research/reallive-sweetie-hd-encryption-mechanism.md; any recovered mask lands as a separate concrete node, not as a research deferral."
       ],
       "verification": [
         {
@@ -21708,13 +21708,14 @@
     {
       "id": "UTSUSHI-219",
       "title": "Sukara title XOR-2 key resolution (research-only)",
-      "status": "planned",
+      "status": "cancelled",
+      "statusReason": "Investigation deferred into the DAG (2026-06-24 rule). Research happens interactively; concrete nodes get written from findings. See docs/orchestration-operating-model.md \"Investigation as a DAG node\" anti-pattern.",
       "priority": "P2",
       "target": "continuous",
       "projects": ["utsushi"],
       "parallelGroup": "runtime-adapters",
       "dependsOn": ["UTSUSHI-203"],
-      "summary": "Determine whether Sweetie HD's compiler-version-110002 bytecode uses the AVG32 second-level XOR pass, and if so, recover the key. Research-only node — no code changes if the key is off; one constant + documentation if it's recoverable. Either outcome acceptable; what is not is shipping UTSUSHI-203 with a hardcoded 'Key 09' guess and pretending it's Sukara's.",
+      "summary": "Cancelled 2026-06-24 as an instance of the \"Investigation as a DAG node\" anti-pattern (see docs/orchestration-operating-model.md). The XOR-2 question is being resolved interactively via the encryption-mechanism probe under docs/research/; concrete follow-up (a `xor_2_key = None` ship, a recovered key constant + test, or a specific recovery node) gets written from that probe's findings instead of from this planning ticket. Original framing follows: Determine whether Sweetie HD's compiler-version-110002 bytecode uses the AVG32 second-level XOR pass, and if so, recover the key. Research-only node — no code changes if the key is off; one constant + documentation if it's recoverable. Either outcome acceptable; what is not is shipping UTSUSHI-203 with a hardcoded 'Key 09' guess and pretending it's Sukara's.",
       "deliverables": [
         "Bench tool under `crates/utsushi-reallive/benches/` decompressing scene #0001 with no XOR-2 and reporting byte statistics",
         "Entropy + lead-byte distribution analysis against the documented opener set",
@@ -21763,8 +21764,7 @@
         "UTSUSHI-215",
         "UTSUSHI-216",
         "UTSUSHI-217",
-        "UTSUSHI-218",
-        "UTSUSHI-219"
+        "UTSUSHI-218"
       ],
       "summary": "Drive Sweetie HD scene #0001 through the VM until either (a) the first `pause` opcode fires producing a `TextLine` capture through the substrate `TextSurfaceSink`, or (b) an unimplemented opcode trips a documented diagnostic. Byte-deterministic `ReplayLog` JSON across two runs; snapshot/restore identity at any tick boundary.",
       "deliverables": [

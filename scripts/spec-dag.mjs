@@ -99,7 +99,7 @@ const docsOnlyPattern = /\b(?:docs?|documentation|readme|adr|policy|spec|guide|p
 const implementationPattern =
   /\b(?:adapter|api|artifact|bridge|cli|command|contract|dashboard|database|delta|fixture|generator|harness|implementation|ingest|migration|model|parser|patch|queue|repository|runner|schema|service|smoke|test|ui|validator|workflow)\b/iu;
 const metaNodePattern =
-  /\b(?:meta[- ]?pack|follow[- ]up pack|normalize[- ]later|granularity follow[- ]up normalizer|report[- ]only|decision[- ]only|decision node|decision record|feasibility[- ]only|feasibility (?:assessment|report|node|study))\b/iu;
+  /\b(?:meta[- ]?pack|follow[- ]up pack|normalize[- ]later|granularity follow[- ]up normalizer|report[- ]only|decision[- ]only|decision node|decision record|feasibility[- ]only|feasibility (?:assessment|report|node|study)|research[- ]only|research only|investigation[- ]only|investigation only|research node|investigation node|spike(?!-)|proof[- ]of[- ]concept|POC|research phase|investigation phase)\b/iu;
 const implementableDecisionPattern =
   /\b(?:api|command|contract|dashboard|events?|generator|import|model|persistence|queue|read model|renderer|schema|service|ui|validator|workflow|wiring)\b/iu;
 const placeholderCommandVerificationPattern =
