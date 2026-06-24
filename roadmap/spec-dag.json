@@ -11776,7 +11776,7 @@
     {
       "id": "ITOTORI-077",
       "title": "Draft cost and provenance recorder",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -11814,9 +11814,7 @@
         "Fallback chains lost during repair",
         "Prompt or response leakage in provenance artifacts"
       ],
-      "owner": "orchestrator-itotori-077",
-      "branch": "spec/itotori-077",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-077"
+      "statusReason": "Implementation merged (commit dd615b4). Migration 0035 + ItotoriDraftAttemptProviderLedgerRepository + DraftAttemptRecorder + redaction regression + 14 tests."
     },
     {
       "id": "ITOTORI-078",
