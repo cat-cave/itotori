@@ -1,0 +1,13 @@
+{
+  "schemaVersion": "0.1.0-alpha",
+  "source": "fixture",
+  "adapterId": "utsushi-fixture",
+  "targets": [
+    {
+      "targetId": "single-branch-target-a",
+      "bridgeUnitId": "bridge-unit-single-branch-a",
+      "label": "Single branch destination A",
+      "activatesAtTick": 4
+    }
+  ]
+}

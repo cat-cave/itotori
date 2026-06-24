@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "0.1.0-alpha",
+  "source": "fixture",
+  "adapterId": "utsushi-fixture",
+  "targets": [
+    {
+      "targetId": "multi-branch-target-a",
+      "bridgeUnitId": "bridge-unit-multi-branch-a",
+      "label": "Multi branch destination A",
+      "activatesAtTick": 5
+    },
+    {
+      "targetId": "multi-branch-target-b",
+      "bridgeUnitId": "bridge-unit-multi-branch-b",
+      "label": "Multi branch destination B",
+      "activatesAtTick": 5
+    },
+    {
+      "targetId": "multi-branch-target-c",
+      "bridgeUnitId": "bridge-unit-multi-branch-c",
+      "label": "Multi branch destination C",
+      "activatesAtTick": 5
+    }
+  ]
+}

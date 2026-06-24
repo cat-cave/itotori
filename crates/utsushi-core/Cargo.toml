@@ -23,3 +23,4 @@ unicode-normalization.workspace = true
 [dev-dependencies]
 jsonschema.workspace = true
 tempfile.workspace = true
+utsushi-fixture = { path = "../utsushi-fixture" }

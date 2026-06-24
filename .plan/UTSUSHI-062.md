@@ -403,11 +403,11 @@ fourth fixture is a JSON drop, not a code change.
 
 ### 9.4 Audit-focus checklist
 
-| Audit focus | Structural defense |
-| --- | --- |
+| Audit focus                             | Structural defense                                                                                                                                                                                 |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Jump targets unlinked from bridge units | `JumpTargetFixture.bridge_unit_id` is required (serde non-Option); validator emits `JumpTargetMissingBridgeUnit` against the `BridgeUnitIndex`; integration test 7.6 asserts every fixture aligns. |
-| Replay log diverges from playback | Byte-equality determinism gate (test 7.5) runs through `deterministic_json_bytes`; `ReplayLogFingerprintMismatch` quotes both sides. |
-| Fixtures committing host paths | `reject_unredacted_local_paths_in_value` walk in `load_from_json`; test 7.4 asserts every committed file passes the filter. |
+| Replay log diverges from playback       | Byte-equality determinism gate (test 7.5) runs through `deterministic_json_bytes`; `ReplayLogFingerprintMismatch` quotes both sides.                                                               |
+| Fixtures committing host paths          | `reject_unredacted_local_paths_in_value` walk in `load_from_json`; test 7.4 asserts every committed file passes the filter.                                                                        |
 
 ## 10. Out of scope
 

@@ -1212,6 +1212,7 @@ dependencies = [
  "sha2",
  "tempfile",
  "unicode-normalization",
+ "utsushi-fixture",
 ]
 
 [[package]]

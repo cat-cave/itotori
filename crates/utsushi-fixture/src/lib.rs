@@ -13,9 +13,14 @@ use utsushi_core::{
     UtsushiResult, runtime_artifact_uri,
 };
 
+pub mod jump_targets;
 mod launch_adapters;
 mod reference_corpus;
 
+pub use jump_targets::{
+    BridgeUnitIndex, InMemoryBridgeUnitIndex, JUMP_TARGET_SCHEMA_VERSION, JumpTargetError,
+    JumpTargetFixture, JumpTargetSet,
+};
 pub use launch_adapters::{BrowserLaunchAdapter, NwjsLaunchAdapter};
 pub use reference_corpus::{ReferenceCaptureValidationReport, validate_reference_capture_corpus};
 

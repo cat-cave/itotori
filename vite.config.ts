@@ -2,6 +2,13 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
+  fmt: {
+    // Deterministic recorder artifacts (UTSUSHI-062 bridge-linked jump
+    // target replay logs) are byte-pinned to the output of
+    // `deterministic_json_bytes`. Letting the formatter rewrite them
+    // would silently break the byte-equality determinism gate.
+    ignorePatterns: ["crates/utsushi-fixture/tests/fixtures/jump_targets/replay_logs/**"],
+  },
   resolve: {
     alias: {
       "@itotori/db": fileURLToPath(new URL("./packages/itotori-db/src/index.ts", import.meta.url)),
