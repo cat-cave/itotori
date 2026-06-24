@@ -5,6 +5,19 @@ doc answers, its headline finding, and the situation in which an orchestrator
 should consult it. For the cold-start orientation that points at this index,
 see [`../current-state-2026-06-24.md`](../current-state-2026-06-24.md).
 
+> **Post-audit-batch rename note (2026-06-24).** After this audit batch
+> landed, the maintainer redefined the milestone framework into a four-tier
+> structure: **real-game-testing-ready → alpha → beta → full release**.
+> What the audits below (especially `alpha-scope-honesty.md` §D) call
+> "alpha" is the dogfood/architecture-proven milestone now renamed to
+> **real-game-testing-ready**. The new "alpha" names a stricter Sweetie HD
+> end-to-end milestone with live LLM, full agentic loop, real patchback,
+> and Linux replay. The audit docs are preserved as the historical record
+> of the redefinition that prompted the rename; read them with the new
+> vocabulary in mind. Authoritative tier definitions:
+> [`../project-readiness.md`](../project-readiness.md). DAG re-tier
+> proposal: [`../proposals/dag-retier-2026-06-24.md`](../proposals/dag-retier-2026-06-24.md).
+
 ## `alpha-scope-honesty.md`
 
 Asks whether the alpha milestone description honestly matches what the

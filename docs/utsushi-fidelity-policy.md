@@ -1,7 +1,7 @@
 # Utsushi Fidelity Policy
 
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> of [`alpha-localization-project-readiness.md`](project-readiness.md).
 > Where this policy names the first real-engine alpha proof or a specific
 > engine's runtime path, read that as the long-term contract; the alpha gate
 > is the 6-item list at the top of the readiness doc. Full RealLive runtime

@@ -2,7 +2,7 @@
 
 Date: 2026-06-24. Scope: the two non-RealLive engines named as
 claimed-alpha in
-[`docs/alpha-localization-project-readiness.md`](../alpha-localization-project-readiness.md)
+[`docs/alpha-localization-project-readiness.md`](../project-readiness.md)
 §2. RealLive readiness is covered in
 [`docs/audits/alpha-scope-honesty.md`](alpha-scope-honesty.md) §B.1.
 

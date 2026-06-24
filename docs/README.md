@@ -3,7 +3,7 @@
 > **Alpha definition (2026-06-24).** The cold-start state of the monorepo
 > lives in [`current-state-2026-06-24.md`](current-state-2026-06-24.md). The
 > redefined alpha gates live at the top of
-> [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md);
+> [`alpha-localization-project-readiness.md`](project-readiness.md);
 > alpha-ready means the architecture-proven dogfood point, not the full
 > `detect → extract → decrypt → decompile → patch → verify → delta-apply`
 > chain. Where this index names `ALPHA-006` (the Sukara/RealLive vertical)
@@ -19,7 +19,7 @@ These docs describe the monorepo as a three-project suite:
 
 Start with [hello-world.md](hello-world.md), then read [architecture.md](architecture.md).
 The alpha localization project readiness definition and check matrix live in
-[alpha-localization-project-readiness.md](alpha-localization-project-readiness.md).
+[alpha-localization-project-readiness.md](project-readiness.md).
 The current spec dashboard is documented in
 [`packages/spec-dag-dashboard/README.md`](../packages/spec-dag-dashboard/README.md),
 and the current runtime evidence dashboard is documented in

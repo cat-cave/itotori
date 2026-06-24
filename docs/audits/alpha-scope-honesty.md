@@ -1,5 +1,21 @@
 # Alpha Scope Honesty — What Alpha Actually Requires
 
+> **Vocabulary rename (2026-06-24).** §D below proposes redefining
+> "alpha-ready" as the architecture-proven dogfood point. On 2026-06-24 the
+> maintainer redefined the milestone framework again into a four-tier
+> structure (real-game-testing-ready → alpha → beta → full release), and
+> the §D definition of "alpha" was renamed to **real-game-testing-ready**.
+> Alpha now names a stricter milestone — live LLM via OpenRouter with an
+> explicit (model, provider) pair, the full agentic loop, real patchback,
+> and Linux replay of Sweetie HD via `utsushi-reallive`. This document
+> stays in place as the historical record of the redefinition that led to
+> the rename; the authoritative tier definitions live in
+> [`../project-readiness.md`](../project-readiness.md) and the DAG re-tier
+> proposal is at
+> [`../proposals/dag-retier-2026-06-24.md`](../proposals/dag-retier-2026-06-24.md).
+> When reading §D below, substitute "real-game-testing-ready" for "alpha"
+> mentally; the substance of the redefinition is unchanged.
+
 This audit reassesses what "alpha-ready" honestly means against the **current
 committed state** of the monorepo. It is the alpha-scope sibling of
 [`dag-critique.md`](dag-critique.md). The DAG critique flags single nodes that
@@ -11,7 +27,7 @@ citable so they can be executed in follow-ups.
 
 ## Inputs consulted
 
-- [`docs/alpha-localization-project-readiness.md`](../alpha-localization-project-readiness.md) — current alpha scope spec.
+- `docs/alpha-localization-project-readiness.md` — current alpha scope spec at the time of this audit; renamed to [`docs/project-readiness.md`](../project-readiness.md) on 2026-06-24.
 - [`roadmap/spec-dag.json`](../../roadmap/spec-dag.json) — 563 nodes; 273 `target: alpha` (165 complete, 106 planned, 2 in_progress); 10 `ALPHA-*` nodes (1 complete, 9 planned).
 - [`docs/audits/dag-critique.md`](dag-critique.md) — landed on main as `40106e5`.
 - [`crates/kaifuu-reallive/src/lib.rs`](../../crates/kaifuu-reallive/src/lib.rs) — 3,318 LOC pure-Rust parser; module doc explicitly states "deliberately small, named-opcode bytecode... intentionally narrower than the real RealLive opcode space."

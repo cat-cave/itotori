@@ -1,136 +1,142 @@
 # Current State — 2026-06-24
 
-Cold-start orientation for an orchestrator or subagent. Read this first; drill
-into the named audit/research doc only when you need the evidence.
+Cold-start orientation for an orchestrator or subagent. Read this first;
+drill into the named audit/research doc only when you need the evidence.
 
 ## Where We Stand
 
-The alpha milestone was redefined on 2026-06-24 from "end-to-end runtime
-evidence on Sweetie HD via a complete native RealLive port" to "architecture
-proven on synthetic + real-bytes smoke, dogfoodable for a first localization
-project." The redefinition lives at the top of
-[`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md);
-the body of that doc below the redefinition block is the long-term North Star,
-not the alpha gate. `roadmap/spec-dag.json` is at **613 nodes** (209 ready);
-`direnv exec . node scripts/spec-dag.mjs validate` reports valid. CI is green
-locally (`just check` / `just test` / `just ci` / `just hello`). Four engine
-research surfaces are staged read-only at `/scratch/itotori-research/`. Four
-standing rules govern future work (see below).
+The milestone framework was redefined on 2026-06-24 into a four-tier
+framework: **real-game-testing-ready → alpha → beta → full release**.
+What was previously called "alpha" is now **real-game-testing-ready**;
+alpha now requires live LLM via OpenRouter with an explicit
+(model, provider) pair, the full agentic loop, real patchback, and Linux
+replay of Sweetie HD via `utsushi-reallive`. Authoritative tier definitions
+live in [`project-readiness.md`](project-readiness.md) (renamed from
+`alpha-localization-project-readiness.md` on 2026-06-24). DAG re-tier
+proposal: [`proposals/dag-retier-2026-06-24.md`](proposals/dag-retier-2026-06-24.md).
 
-## The 6 Alpha Gates
+What landed this session (~17+ nodes): kaifuu real-bytes parsers,
+substrate extensions M.1–M.3 (`UTSUSHI-222/223/224`), `utsushi-reallive`
+scaffold (`UTSUSHI-200`), itotori agentic stack with recorded provider
+(`ITOTORI-019/021/025`), plus dashboard and CI-hygiene work in flight.
+**This puts the suite at real-game-testing-ready, not alpha.**
+`roadmap/spec-dag.json` is at 613 nodes (209 ready);
+`direnv exec . node scripts/spec-dag.mjs validate` reports valid. CI green
+locally. Four engine research surfaces staged read-only at
+`/scratch/itotori-research/`.
 
-1. **Substrate extensions M.1–M.3 landed.** `UTSUSHI-222` (composite asset
-   package + try-dir-then-archive resolver), `UTSUSHI-223` (snapshot envelope
-   size class), `UTSUSHI-224` (`EnginePort` → substrate-sinks bridge with
-   legacy `ObservationHookEvent` deleted). Each ships with multi-engine
-   validation and same-change legacy deletion. M.4/M.5 (`UTSUSHI-225/226`)
-   are RealLive-specific and continuous-tier.
-2. **Non-synthetic engine port crate scaffolded.** `UTSUSHI-200` registers
-   conformance against the substrate with the smallest credible opcode subset
-   (call/return/text-display/wait), no author-fixture envelopes. Depends on
-   M.1–M.3.
-3. **Real-bytes smoke on Sweetie HD.** `kaifuu-cli detect` returns true,
-   `parse_archive` returns a non-empty entry list, Gameexe classifies the
-   dominant key families. Closed by `KAIFUU-188` (10000-slot envelope),
-   `KAIFUU-189` (depth-N detector), `KAIFUU-190` (Gameexe key family
-   expansion).
-4. **Recorded-LLM bundle.** A reproducible recorded-provider run through
-   draft → QA → patch export is reachable behind `ITOTORI_LIVE_PROVIDER=0`
-   with deterministic outputs.
-5. **Dashboard reachable.** `spec-dag-dashboard` renders DAG, claims, and
-   audit state from real DB state, not fixtures.
-6. **Repo hygiene.** `just check` / `just test` / `just ci` / `just hello`
-   green; no silenced tests that represent real outstanding work
-   (`audits/silenced-2026-06-24.md`); no foreign-tool subprocess invocations
-   in production code.
+## Real-Game-Testing-Ready Gates
 
-## Wave A — What To Claim First
+The seven requirements (six original + the audit-findings dashboard work
+in flight):
 
-Three independent parallel streams; none blocks the others:
+1. **Substrate M.1–M.3.** `UTSUSHI-222/223/224` with multi-engine
+   validation against ≥2 real-bytes corpora and same-change legacy
+   deletion.
+2. **Non-synthetic engine port crate scaffolded.** `UTSUSHI-200`
+   registers conformance (call/return/text-display/wait).
+3. **Real-bytes Sweetie HD smoke.** `kaifuu-cli detect` returns true,
+   `parse_archive` returns non-empty, Gameexe classifies dominant key
+   families. Closed by `KAIFUU-188/189/190`.
+4. **Recorded-LLM bundle** reachable behind `ITOTORI_LIVE_PROVIDER=0`
+   (`ITOTORI-019/021/025`).
+5. **Dashboard reachable** from real DB state.
+6. **Repo hygiene.** `just check`/`test`/`ci`/`hello` green; no silenced
+   real work; no foreign-tool subprocess invocations in production.
+7. **Audit-findings dashboard in flight** — extends gate (5) for
+   orchestrator triage of the 2026-06-24 audit batch.
 
-- **Substrate extensions.** `UTSUSHI-222` / `UTSUSHI-223` / `UTSUSHI-224`.
-  Multi-engine validation against ≥2 real-bytes corpora; legacy deletion in
-  same change.
-- **Kaifuu real-bytes follow-ups.** `KAIFUU-188` / `KAIFUU-189` /
-  `KAIFUU-190`, derived from `audits/real-bytes-validation-2026-06-24.md`.
-- **Test-quality cleanup.** Replace the kaifuu-reallive 47-byte synthetic
-  smokes (tautological — author-fixture round-trip) with real-bytes
-  assertions gated on the documented Sweetie HD env vars. Tracked under the
-  test-quality audit; no node-addition needed.
+## Alpha Gates
+
+Stricter than the seven above. Adds:
+
+1. **Live LLM via OpenRouter with explicit (model, provider) pair.**
+2. **UTSUSHI-201..221 runtime port largely landed** — enough opcode VM,
+   variable system, asset pipeline, and system-call dispatch to run a
+   patched Sweetie HD scene on Linux.
+3. **Full agentic loop fires.** Context-build + pre-translation +
+   translation + QA agents + deterministic checks + editing/review
+   cycles, all minimally functional and swappable. Output quality is not
+   the bar; piece-swappability is.
+4. **Real patchback** (not length-preserving only) with offset-table
+   rewriting on Sweetie HD scene bytecode.
+5. **Linux replay via `utsushi-reallive`** to the point where the
+   localized scene renders.
+6. **Verifiable patch evidence** — trace + frame capture (E2 or better)
+   shows the patched scene rendered with the new text. Single-game
+   (Sweetie HD) by definition.
+
+Cross-ref [`project-readiness.md`](project-readiness.md) §2.2.
+
+## Beta Gates
+
+Multi-game-validation rule is the gate:
+
+1. **≥2 real-world games per claimed engine family**, end-to-end.
+2. **Encrypted variants land** for at least one per family.
+3. **All claimed engine families** clear (1) and (2). Intent set today:
+   RealLive, SiglusEngine, RPG Maker MV/MZ, plain KiriKiri/XP3 + KAG.
+4. **Cross-engine substrate generality** — no per-engine shim leaks into
+   substrate code.
+
+Cross-ref [`project-readiness.md`](project-readiness.md) §2.3.
+
+## Wave Priorities
+
+Concrete per-node retag list lives in the parallel DAG re-tier proposal at
+[`proposals/dag-retier-2026-06-24.md`](proposals/dag-retier-2026-06-24.md).
+Immediate work surfaces:
+
+- Close real-game-testing-ready gate (3): land
+  `KAIFUU-188/189/190`.
+- Close real-game-testing-ready gate (7): audit-findings dashboard.
+- Replace kaifuu-reallive 47-byte synthetic smokes with real-bytes
+  assertions (test-quality follow-up).
+- Begin alpha work: `(model, provider)` pair surface (alpha gate 1),
+  `UTSUSHI-201..221` runtime decomposition (alpha gate 2), full agentic
+  loop wiring (alpha gate 3).
 
 ## Research Surfaces (read-only)
 
-| Engine               | Title              | Path                                                      | Lang | Current scope     |
-| -------------------- | ------------------ | --------------------------------------------------------- | ---- | ----------------- |
-| RealLive             | Oshioki Sweetie HD | `/scratch/itotori-research/sweetie-hd/extracted/`         | JA   | Alpha (dogfood)   |
-| RPG Maker MV/MZ      | Lust Memory        | `/scratch/itotori-research/rpg-maker-mv-mz/extracted/`    | EN   | Alpha (substrate) |
-| Plain KiriKiri (XP3) | Bukkake Ranch      | `/scratch/itotori-research/kirikiri-plain/extracted/`     | EN   | Alpha (substrate) |
-| Encrypted KiriKiri   | Wolf Girl          | `/scratch/itotori-research/kirikiri-encrypted/extracted/` | EN   | Continuous        |
+| Engine               | Title              | Path                                                      | Tier role                                               |
+| -------------------- | ------------------ | --------------------------------------------------------- | ------------------------------------------------------- |
+| RealLive             | Oshioki Sweetie HD | `/scratch/itotori-research/sweetie-hd/extracted/`         | Alpha (single-game)                                     |
+| RPG Maker MV/MZ      | Lust Memory        | `/scratch/itotori-research/rpg-maker-mv-mz/extracted/`    | Real-game-testing-ready (substrate corpus) / Beta (e2e) |
+| Plain KiriKiri (XP3) | Bukkake Ranch      | `/scratch/itotori-research/kirikiri-plain/extracted/`     | Real-game-testing-ready (substrate corpus) / Beta (e2e) |
+| Encrypted KiriKiri   | Wolf Girl          | `/scratch/itotori-research/kirikiri-encrypted/extracted/` | Beta                                                    |
 
-User can source a JA original of the plain-KiriKiri title when needed; other
-engines hold for now.
+## Standing Rules
 
-## Four Standing Rules
+Five rules, sourced from
+`~/.claude/projects/-home-trevor-projects-itotori/memory/`:
 
-- **No timeline.** No eng-month/week/year estimates in DAG nodes, plans, or
-  docs. Sized scope, not calendar promises. See
-  [`feedback memory`](file:///home/trevor/.claude/projects/-home-trevor-projects-itotori/memory/project_no_timeline.md);
-  mirrored as an anti-pattern in `orchestration-operating-model.md`.
-- **No legacy-compat preservation.** Greenfield code deletes the legacy path
-  in the same change — no shims, no `#[deprecated]` markers, no compat
-  aliases. See
-  [`feedback memory`](file:///home/trevor/.claude/projects/-home-trevor-projects-itotori/memory/feedback_no_legacy_compat.md);
-  `orchestration-operating-model.md` §Legacy-path preservation.
-- **Multi-game validation.** Engine-family claims require validation against
-  ≥2 real-world games of that engine. Single-title pass is fixture-shaped.
-  See
-  [`feedback memory`](file:///home/trevor/.claude/projects/-home-trevor-projects-itotori/memory/feedback_multi_game_validation.md);
-  `orchestration-operating-model.md` §Single-game validation.
-- **Investigation is not a DAG node.** Research happens interactively against
-  real bytes; concrete implementation nodes are written **from** research
-  output, not as scaffolding for it. See
-  [`feedback memory`](file:///home/trevor/.claude/projects/-home-trevor-projects-itotori/memory/feedback_investigation_not_in_dag.md);
-  `orchestration-operating-model.md` §Investigation as a DAG node.
+- **`feedback_model_provider_pair`** — every model invocation declares
+  `(modelId, providerId)` as a pair.
+- **`feedback_no_legacy_compat`** — greenfield code deletes the legacy
+  path in the same change.
+- **`feedback_multi_game_validation`** — engine-family claims require ≥2
+  real-world games of that engine.
+- **`feedback_investigation_not_in_dag`** — research happens
+  interactively against real bytes; nodes are written from research
+  output.
+- **`project_no_timeline`** — no eng-month/week/year estimates.
 
-## What's NOT In Alpha
-
-Continuous-tier post-alpha: the full RealLive runtime port
-(`UTSUSHI-201..221`, 22 sub-nodes), the SiglusEngine port, RPG Maker MV/MZ
-end-to-end on a real game (vs fixture vertical), encrypted XP3 + TJS, and
-every engine in the "Continuous Expansion Candidates" section of the
-readiness doc. The dogfood point feeds back into prioritizing this list.
+Authoritative anti-pattern enforcement:
+[`orchestration-operating-model.md`](orchestration-operating-model.md).
 
 ## Where To Drill In
 
-Audits — see [`audits/README.md`](audits/README.md) for the full index. Quick
-pointers:
+Audits — see [`audits/README.md`](audits/README.md) for the full index.
+Quick pointers: `audits/alpha-scope-honesty.md` §D is the 2026-06-23
+redefinition now called real-game-testing-ready;
+`audits/dag-critique.md` surfaced UTSUSHI-146;
+`audits/substrate-honesty.md` named M.1–M.5;
+`audits/real-bytes-validation-2026-06-24.md` sourced KAIFUU-188/189/190;
+`audits/non-reallive-fixture-needs-2026-06-24.md` mapped MV/MZ + plain
+XP3 fixtures; `audits/silenced-2026-06-24.md`,
+`audits/code-criticism.md`, `audits/test-quality.md`,
+`audits/ci-state-2026-06-24.md` round out the batch.
 
-- `audits/alpha-scope-honesty.md` — milestone-level honesty check that drove
-  the redefinition.
-- `audits/dag-critique.md` — over-coarse-node review; surfaced UTSUSHI-146.
-- `audits/substrate-honesty.md` — substrate cascade vs hypothetical RealLive
-  port; named M.1–M.5 extensions.
-- `audits/code-criticism.md` — load-bearing vs aspirational verdicts on every
-  claimed-complete alpha capability.
-- `audits/test-quality.md` — contract-vs-tautology grading of the ~2,000-test
-  suite.
-- `audits/ci-state-2026-06-24.md` — `just check`/`test`/`ci` diagnostic
-  snapshot.
-- `audits/real-bytes-validation-2026-06-24.md` — every kaifuu/utsushi CLI
-  surface against real Sweetie HD bytes; sourced `KAIFUU-188/189/190`.
-- `audits/non-reallive-fixture-needs-2026-06-24.md` — MV/MZ + plain XP3
-  fixture-readiness map.
-- `audits/silenced-2026-06-24.md` — silenced-test / ignored-failure /
-  disabled-lint scan.
-
-Research:
-
-- `research/reallive-engine.md` — RealLive format research; reference for the
-  port crate.
-- `research/reallive-engine-dag-proposal.md` — 22-node decomposition of the
-  former UTSUSHI-146.
-- `research/reallive-sweetie-hd-encryption-mechanism.md` — Sweetie HD scene
-  bytecode encryption mechanism probe.
-
-Operating model: [`orchestration-operating-model.md`](orchestration-operating-model.md)
-holds the four standing rules in their authoritative form.
+Research: `research/reallive-engine.md`,
+`research/reallive-engine-dag-proposal.md` (22-node decomposition),
+`research/reallive-sweetie-hd-encryption-mechanism.md`.

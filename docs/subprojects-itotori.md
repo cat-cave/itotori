@@ -1,7 +1,7 @@
 # Itotori Subproject
 
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`docs/alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> of [`docs/alpha-localization-project-readiness.md`](project-readiness.md).
 > Alpha-ready means the architecture-proven dogfood point: substrate
 > M.1–M.3, a non-synthetic engine port crate, real-bytes Sweetie HD smoke, a
 > recorded-LLM bundle, dashboard reachability, and repo hygiene. The product

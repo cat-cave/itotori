@@ -1,7 +1,7 @@
 # Spec DAG
 
 > **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> of [`alpha-localization-project-readiness.md`](project-readiness.md).
 > References to the "alpha proof workflow" in this doc describe the
 > `ALPHA-007`/`ALPHA-009` workflow command and its hello-world succession —
 > mechanisms that support the redefined dogfood point. The alpha gate itself

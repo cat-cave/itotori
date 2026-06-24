@@ -1,12 +1,13 @@
 # Hello World
 
-> **Alpha definition (2026-06-24).** The redefined alpha gates live at the top
-> of [`alpha-localization-project-readiness.md`](alpha-localization-project-readiness.md).
+> **Milestone framework (2026-06-24).** The four-tier framework
+> (real-game-testing-ready → alpha → beta → full release) and per-tier
+> acceptance criteria live in [`project-readiness.md`](project-readiness.md)
+> (renamed from `alpha-localization-project-readiness.md` on 2026-06-24).
 > "Alpha proof" in this document refers to the SHARED-025 manifest contract
-> and the `ALPHA-009` workflow that supersedes the hello-world fixture gate
-> — those are mechanisms that support the redefined dogfood point, not the
-> alpha gate itself. The gate is the 6-item list at the top of the readiness
-> doc.
+> and the `ALPHA-009` workflow that originally supersedes the hello-world
+> fixture gate — those mechanisms now support the **real-game-testing-ready**
+> tier, not the new (stricter) alpha tier.
 
 The hello world is the current baseline integration guardrail. It is a full
 fixture localization loop that proves the monorepo wiring is real before the
