@@ -385,11 +385,11 @@ list at the same time.
 
 ### 9.6 Audit-focus checklist
 
-| Audit focus | Structural defense |
-| --- | --- |
-| Recording metadata exposing host paths | Tests 7.5 — `reject_unredacted_local_paths` walk on both metadata and result envelope JSON; `RecordingArtifactHostPath` twin asserts the validator quotes the host-path code. |
-| Metadata overclaiming fidelity tier | Tests 7.3 — E4 / E3 overclaim twins emit `RecordingEvidenceTierOverclaim`; serialized JSON forbidden-key audit on audio side. |
-| Missing recording silently passed | Tests 7.4 — `Unsupported` outcome when manifest does not declare; `RecordingFrameCountMismatch` when manifest declares but recording is empty; explicit "does not return Pass for empty recording" assertion. |
+| Audit focus                            | Structural defense                                                                                                                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recording metadata exposing host paths | Tests 7.5 — `reject_unredacted_local_paths` walk on both metadata and result envelope JSON; `RecordingArtifactHostPath` twin asserts the validator quotes the host-path code.                                 |
+| Metadata overclaiming fidelity tier    | Tests 7.3 — E4 / E3 overclaim twins emit `RecordingEvidenceTierOverclaim`; serialized JSON forbidden-key audit on audio side.                                                                                 |
+| Missing recording silently passed      | Tests 7.4 — `Unsupported` outcome when manifest does not declare; `RecordingFrameCountMismatch` when manifest declares but recording is empty; explicit "does not return Pass for empty recording" assertion. |
 
 ## 10. Out of scope
 
