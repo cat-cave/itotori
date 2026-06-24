@@ -6526,7 +6526,7 @@
     {
       "id": "ITOTORI-021",
       "title": "LLM QA agents and scored findings",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -6568,9 +6568,7 @@
         }
       ],
       "auditFocus": ["Unverifiable scores", "Overbroad QA prompts", "QA findings worse than no QA"],
-      "owner": "orchestrator-itotori-021",
-      "branch": "spec/itotori-021",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-021"
+      "statusReason": "Implementation merged (commit e16ddd7). 4 focused QA agents in lanes + scored-finding workflow + fresh-judge regrade + 6 calibration fixtures + 28 recorded bundles + 32 tests."
     },
     {
       "id": "ITOTORI-022",
