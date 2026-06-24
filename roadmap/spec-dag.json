@@ -2776,7 +2776,7 @@
     {
       "id": "KAIFUU-011",
       "title": "Binary patcher composed smoke command",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -2819,10 +2819,7 @@
         "PatchBackError variants that silently fall through to a default category",
         "RealLive emitting v0.1 strings instead of v0.2 failures",
         "Missing structured attribution at the engine boundary"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/kaifuu-011",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-011"
+      ]
     },
     {
       "id": "KAIFUU-012",
@@ -6214,7 +6211,7 @@
     {
       "id": "ITOTORI-015",
       "title": "Route and choice map agent",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "utsushi"],
@@ -6264,12 +6261,14 @@
       "auditFocus": ["Context-window scaling", "Branch ambiguity", "Route graph performance"],
       "owner": "orchestrator",
       "branch": "spec/itotori-015",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-015"
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-015",
+      "statusReason": "Audit AUDIT-ITOTORI-015-20260624T032727Z found blocking findings: ITOTORI-015-F001",
+      "blockedBy": "audit:AUDIT-ITOTORI-015-20260624T032727Z"
     },
     {
       "id": "ITOTORI-016",
       "title": "Terminology candidate agent",
-      "status": "in_progress",
+      "status": "blocked",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -6319,7 +6318,9 @@
       "auditFocus": ["Noisy terminology spam", "Uncited candidates", "Locale scope mistakes"],
       "owner": "orchestrator",
       "branch": "spec/itotori-016",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-016"
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-016",
+      "statusReason": "Audit AUDIT-ITOTORI-016-20260624T032727Z found blocking findings: ITOTORI-016-F001",
+      "blockedBy": "audit:AUDIT-ITOTORI-016-20260624T032727Z"
     },
     {
       "id": "ITOTORI-017",
@@ -22407,6 +22408,76 @@
         }
       ],
       "auditFocus": ["Silent omission of manifest-driven checks"]
+    },
+    {
+      "id": "ITOTORI-150",
+      "status": "planned",
+      "title": "Add repository-side pre-persist conflict check to terminology candidate agent",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["itotori"],
+      "parallelGroup": "context-agents",
+      "dependsOn": ["ITOTORI-016"],
+      "summary": "Close the TOCTOU window between input-context-load and pre-persist by calling `repository.existsTerminologyTermBySurfaceForm` directly inside the terminology candidate agent's pre-persist loop, parallel to the existing `conflictIndex` check, so a curator-inserted glossary term mid-run surfaces synchronously as `ExistingGlossaryConflictError` instead of asynchronously as `RejectedByReviewer` at the next staleness scan.",
+      "deliverables": [
+        "Patch to `apps/itotori/src/agents/terminology-candidate/agent.ts` adding a repository-side `existsTerminologyTermBySurfaceForm` call inside the pre-persist loop, hung off the agent options.",
+        "One additive vitest case in `apps/itotori/test/terminology-candidate-agent.test.ts` proving the repository-side conflict fires `ExistingGlossaryConflictError` even when the input `existingGlossary` is empty."
+      ],
+      "acceptanceCriteria": [
+        "`grep -rn 'existsTerminologyTermBySurfaceForm' apps/itotori/src/agents/terminology-candidate/` returns hits in BOTH agent.ts and staleness.ts.",
+        "A candidate with no input-glossary conflict but a repository-side conflict throws `ExistingGlossaryConflictError` at pre-persist time (no asynchronous RejectedByReviewer round trip).",
+        "All existing 24 cases plus the new one pass under `pnpm --filter @itotori/app test -- --run agents/terminology-candidate`."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "pnpm --filter @itotori/app test -- --run agents/terminology-candidate"
+        },
+        {
+          "type": "command",
+          "value": "grep -rn 'existsTerminologyTermBySurfaceForm' apps/itotori/src/agents/terminology-candidate/"
+        }
+      ],
+      "auditFocus": [
+        "Pre-persist re-check must call the repository helper, not only the caller-supplied input glossary.",
+        "Staleness re-scan must continue to call the repository helper (post-persist defense in depth)."
+      ]
+    },
+    {
+      "id": "KAIFUU-187",
+      "status": "planned",
+      "title": "Gate kaifuu binary-patch-smoke --inject-failure behind a cargo feature flag",
+      "priority": "P2",
+      "target": "continuous",
+      "projects": ["kaifuu"],
+      "parallelGroup": "kaifuu-core",
+      "dependsOn": ["KAIFUU-011"],
+      "summary": "Gate the failure-injection seam (`--inject-failure` flag + `InjectFailure` enum + `BinaryPatchSmokeConfig.inject_failure` field) behind `cfg(any(debug_assertions, feature = \"failure-injection\"))` so a release-mode `kaifuu` binary refuses the flag with an `unknown flag` diagnostic. Keeps the 14 existing tests green (dev/test enables the feature implicitly) while removing the failure-injection surface from release operators' reach.",
+      "deliverables": [
+        "New `failure-injection` cargo feature in `crates/kaifuu-cli/Cargo.toml` (default off).",
+        "`#[cfg(...)]` attributes on `BinaryPatchSmokeConfig.inject_failure`, the `InjectFailure` enum, and the `--inject-failure` flag-parse arm in main.rs.",
+        "One additive `--release --no-default-features` integration test asserting the flag is rejected in release builds.",
+        "Documentation note in the KAIFUU-011 doc / runtime README that failure injection is a dev/CI-only seam."
+      ],
+      "acceptanceCriteria": [
+        "`cargo build -p kaifuu-cli --release --no-default-features` produces a binary that rejects `--inject-failure` with an `unknown flag` error.",
+        "`cargo test -p kaifuu-cli` (with the default dev features) keeps all 14 existing tests green.",
+        "`grep -n '#\\[cfg(any(debug_assertions, feature = \\\"failure-injection\\\"))\\]' crates/kaifuu-cli/src/binary_patch_smoke.rs crates/kaifuu-cli/src/main.rs` returns hits on all three gated sites."
+      ],
+      "verification": [
+        {
+          "type": "command",
+          "value": "cargo test -p kaifuu-cli"
+        },
+        {
+          "type": "command",
+          "value": "cargo build -p kaifuu-cli --release --no-default-features"
+        }
+      ],
+      "auditFocus": [
+        "Release binary must not expose --inject-failure.",
+        "Dev / CI builds keep failure-mode coverage (preflight-byte-budget, preflight-source-hash, verify-hash-mismatch)."
+      ]
     }
   ]
 }
