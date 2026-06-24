@@ -1,0 +1,129 @@
+{
+  "$schema": "../audit-report.schema.json",
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-KAIFUU-011-20260624T032727Z",
+  "generatedAt": "2026-06-24T03:27:28Z",
+  "spec": {
+    "id": "KAIFUU-011",
+    "title": "Binary patcher composed smoke command",
+    "branch": "spec/kaifuu-011",
+    "worktree": "/scratch/worktrees/itotori-spec-kaifuu-011",
+    "commit": "bc8a3cd"
+  },
+  "auditor": {
+    "name": "kaifuu-011-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "follow_up_only",
+    "text": "Iter-8 correctness audit of KAIFUU-011 (Binary patcher composed smoke) at commit bc8a3cd on spec/kaifuu-011. The slice ships `crates/kaifuu-cli/src/binary_patch_smoke.rs` (580 LOC) + the CLI dispatch arm in `main.rs:204-230` + `crates/kaifuu-cli/tests/binary_patch_smoke.rs` (189 LOC, 6 integration cases) + `packages/localization-bridge-schema/test/binary-patch-smoke.test.ts` (159 LOC, 5 TS validator cases). Total 14 tests as planned (6 integration + 3 unit + 5 TS validator) — all green: `cargo test -p kaifuu-cli` reports `81 passed` (lib + unit) and `9 passed` (the integration suite that includes the 6 smoke cases). The composition is structurally complete and exercises real bytes: (1) KAIFUU-174 `apply_patches` is invoked at line 293 against a real `build_synthetic_seen_txt` archive (47 bytes, single SEEN.TXT scene with one 6-byte dialogue slot) plus a real `build_synthetic_slot_edit`; (2) KAIFUU-084 `PatchTransaction` is constructed at line 367 with a full `PatchTransactionConfig` (adapter_id, patch_export_id, bridge_unit_id, expected_source_hash, expected_output_hash, expected_payload_len, byte_budget, required_transforms, adapter_capabilities) and driven through the full state machine `run_preflight() -> stage() -> verify() -> promote()` (lines 369-378) with an `is_terminal()` helper that names every terminal state (Promoted, PreflightFailed, VerifyFailed, PromoteFailed, Cancelled); (3) KAIFUU-010 PatchResult v0.2 is emitted from `outcome.patch_result_v02` (line 385) and immediately re-validated through `kaifuu_core::contracts::validate_patch_result_v02` (line 393) as defense in depth, plus the TS-side `assertPatchResultV02` walks the same JSON in `packages/localization-bridge-schema/test/binary-patch-smoke.test.ts`. The PatchBackErrorCode -> PatchFailureCategoryV02 mapping is materialised as `map_patchback_error_to_v02_failure` (lines 157-200) with 7 variant arms (OffsetOverflow, ShiftJisEncodeFailure, UnsupportedLengthPolicy, ParserRegression, UnknownSlotId, StaleSourceHash, ProtectedSpanLost) and an exhaustive-match unit test `map_patchback_error_to_v02_failure_is_exhaustive_over_every_variant` (line 526) that compile-errors if a new variant lands without a mapping. Three failure modes are exercised end-to-end: PreflightByteBudget (line 339-342, forces byte_budget=1 -> preflight rejection -> patch_write_failed); PreflightSourceHash (line 283-291, poisons SlotEdit.expected_source_hash -> StaleSourceHash -> source_incompatible via the patchback branch at line 293-313); VerifyHashMismatch (line 327-336, flips last byte after apply_patches -> VerifyFailed -> output_hash_mismatch and rollback). Cargo path-dep on kaifuu-reallive is added in `crates/kaifuu-cli/Cargo.toml`. F001 is a P2 follow-up: the `--inject-failure` flag is wired into main.rs:207 (`flag_optional(args, \"--inject-failure\")`) and dispatched via the unconditional `run_binary_patch_smoke_command` arm without ANY `#[cfg(...)]` or `#[cfg(feature = \"...\")]` gating. `grep -n 'cfg' crates/kaifuu-cli/src/main.rs` shows only test-context `#[cfg(test)]` and `#[cfg(unix)]` arms; no feature-flag gate covers the failure-injection seam. The audit-focus posture explicitly asks for `--inject-failure` to be cfg/feature-gated so a release-mode CLI cannot be coerced into a failure-shape emit by an end user. The current implementation lets any caller pass `--inject-failure preflight-byte-budget` against a real fixture and produce a Failed PatchResult — useful in CI, defensive when used by a release operator. The fix is to gate the `inject_failure` field of `BinaryPatchSmokeConfig` plus the CLI flag parse behind a `cfg(any(debug_assertions, feature = \"failure-injection\"))` attribute or equivalent, so production binaries refuse the flag. Verification: `cargo test -p kaifuu-cli` reports 81 + 9 passed across the lib and integration tests; `just check` exit 0 (fmt + clippy + ts:typecheck + schema:check clean). Outcome: `follow_up_only` — one P2 follow-up, no blocker. The composition, transaction-state coverage, mapping table exhaustiveness, and dual-validator posture are all sound.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 1,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": ["KAIFUU-011-F001"]
+  },
+  "findings": [
+    {
+      "id": "KAIFUU-011-F001",
+      "severity": "P2",
+      "title": "--inject-failure flag is not cfg/feature-gated; release CLI exposes failure-injection surface",
+      "category": "implementation",
+      "locations": [
+        {
+          "path": "crates/kaifuu-cli/src/main.rs",
+          "line": 207,
+          "symbol": "run_binary_patch_smoke_command flag parse"
+        },
+        {
+          "path": "crates/kaifuu-cli/src/binary_patch_smoke.rs",
+          "line": 71,
+          "symbol": "BinaryPatchSmokeConfig.inject_failure"
+        }
+      ],
+      "description": "The `--inject-failure` CLI flag (parsed at main.rs:207-209) and the `BinaryPatchSmokeConfig.inject_failure` field (binary_patch_smoke.rs:71) are wired into the binary unconditionally. `grep -n 'cfg(' crates/kaifuu-cli/src/main.rs crates/kaifuu-cli/src/binary_patch_smoke.rs | grep -v '#\\[cfg(test)\\]'` returns only `#[cfg(unix)]` arms (unrelated) and the `#[cfg(test)]` unit-test module — no `#[cfg(any(debug_assertions, feature = ...))]` covers the failure-injection seam. A release-mode caller can run `kaifuu binary-patch-smoke --fixture <dir> --output <dir> --inject-failure verify-hash-mismatch --run-id <id>` and the binary will dutifully flip the last byte after `apply_patches` and emit a Failed PatchResult with `output_hash_mismatch` plus a rollback record. The audit-focus posture is explicit: failure-injection is a CI / development seam and the release CLI must not expose it (otherwise a downstream pipeline could be coerced into emitting Failed PatchResults that look authentic). The structural fix is straightforward: wrap the `inject_failure` field of `BinaryPatchSmokeConfig`, the `InjectFailure::parse` call, and the entire `--inject-failure` flag-parse arm in main.rs behind `#[cfg(any(debug_assertions, feature = \"failure-injection\"))]`, with a release-mode fallback that hard-codes `InjectFailure::None` and rejects the flag with an `unknown flag` error. Add a release-build test that asserts the flag is rejected and a debug-build test that asserts the three failure modes still work.",
+      "evidence": [
+        {
+          "kind": "command",
+          "detail": "`grep -n 'inject-failure\\|inject_failure\\|cfg(' crates/kaifuu-cli/src/main.rs crates/kaifuu-cli/src/binary_patch_smoke.rs | grep -v '#\\[cfg(test)\\]\\|#\\[cfg(unix)\\]'` shows the `inject_failure` field and `--inject-failure` flag-parse arm with zero feature-gate or debug-assertion attributes."
+        },
+        {
+          "kind": "file",
+          "detail": "main.rs:207-209 unconditionally parses `--inject-failure` via `flag_optional(args, \"--inject-failure\").unwrap_or(\"none\")`; the result feeds straight into `BinaryPatchSmokeConfig` at lines 213-217.",
+          "location": {
+            "path": "crates/kaifuu-cli/src/main.rs",
+            "line": 207
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "binary_patch_smoke.rs:71 declares `pub inject_failure: InjectFailure,` as a public field of `BinaryPatchSmokeConfig` with no cfg gating.",
+          "location": {
+            "path": "crates/kaifuu-cli/src/binary_patch_smoke.rs",
+            "line": 71
+          }
+        },
+        {
+          "kind": "file",
+          "detail": "The `InjectFailure` enum (preceding lines 60-71 area) and the parse helper are exposed as part of the public surface; no feature flag in `crates/kaifuu-cli/Cargo.toml` ties them to a release-time toggle.",
+          "location": {
+            "path": "crates/kaifuu-cli/Cargo.toml"
+          }
+        }
+      ],
+      "impact": "A release-mode CLI can be coerced into producing Failed PatchResult JSON that looks authentic but is in fact a synthetic injection. Downstream pipelines that key off PatchResult shape (KAIFUU-010 validators on both Rust and TS sides happily accept the emitted JSON) cannot distinguish a real apply_patches failure from a forced failure-injection. Non-blocking because the smoke is well-documented and the flag's name makes intent obvious, but the audit-focus posture is that the seam should not exist in release binaries.",
+      "actionableAcceptanceCriteria": [
+        "Add a `failure-injection` feature to `crates/kaifuu-cli/Cargo.toml` (default off in release, on in dev/test).",
+        "Wrap the `inject_failure` field of `BinaryPatchSmokeConfig` and the `InjectFailure::parse` import in `#[cfg(any(debug_assertions, feature = \"failure-injection\"))]`; in the cfg-off branch, the field is hard-coded to `InjectFailure::None`.",
+        "Wrap the `--inject-failure` flag-parse arm in main.rs in the same cfg attribute; the cfg-off branch returns an `unknown flag` error when the flag is supplied.",
+        "Add one integration test that builds with `--release --no-default-features` and confirms `kaifuu binary-patch-smoke --inject-failure verify-hash-mismatch` exits non-zero with an `unknown flag` diagnostic.",
+        "Keep the existing 14 dev-mode tests green by enabling the `failure-injection` feature in `[dev-dependencies.kaifuu-cli]` or via the workspace test-runner default."
+      ],
+      "orchestration": {
+        "blocksCompletion": false,
+        "nextAction": "draft_new_dag_node",
+        "proposedDagNode": {
+          "idPrefix": "KAIFUU",
+          "title": "Gate kaifuu binary-patch-smoke --inject-failure behind a cargo feature flag",
+          "priority": "P2",
+          "target": "continuous",
+          "projects": ["kaifuu"],
+          "parallelGroup": "kaifuu-core",
+          "dependsOn": ["KAIFUU-011"],
+          "summary": "Gate the failure-injection seam (`--inject-failure` flag + `InjectFailure` enum + `BinaryPatchSmokeConfig.inject_failure` field) behind `cfg(any(debug_assertions, feature = \"failure-injection\"))` so a release-mode `kaifuu` binary refuses the flag with an `unknown flag` diagnostic. Keeps the 14 existing tests green (dev/test enables the feature implicitly) while removing the failure-injection surface from release operators' reach.",
+          "deliverables": [
+            "New `failure-injection` cargo feature in `crates/kaifuu-cli/Cargo.toml` (default off).",
+            "`#[cfg(...)]` attributes on `BinaryPatchSmokeConfig.inject_failure`, the `InjectFailure` enum, and the `--inject-failure` flag-parse arm in main.rs.",
+            "One additive `--release --no-default-features` integration test asserting the flag is rejected in release builds.",
+            "Documentation note in the KAIFUU-011 doc / runtime README that failure injection is a dev/CI-only seam."
+          ],
+          "acceptanceCriteria": [
+            "`cargo build -p kaifuu-cli --release --no-default-features` produces a binary that rejects `--inject-failure` with an `unknown flag` error.",
+            "`cargo test -p kaifuu-cli` (with the default dev features) keeps all 14 existing tests green.",
+            "`grep -n '#\\[cfg(any(debug_assertions, feature = \\\"failure-injection\\\"))\\]' crates/kaifuu-cli/src/binary_patch_smoke.rs crates/kaifuu-cli/src/main.rs` returns hits on all three gated sites."
+          ],
+          "verification": [
+            {
+              "type": "command",
+              "value": "cargo test -p kaifuu-cli"
+            },
+            {
+              "type": "command",
+              "value": "cargo build -p kaifuu-cli --release --no-default-features"
+            }
+          ],
+          "auditFocus": [
+            "Release binary must not expose --inject-failure.",
+            "Dev / CI builds keep failure-mode coverage (preflight-byte-budget, preflight-source-hash, verify-hash-mismatch)."
+          ]
+        }
+      }
+    }
+  ]
+}
