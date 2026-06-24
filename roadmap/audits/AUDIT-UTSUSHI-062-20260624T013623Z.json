@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-062-20260624T013623Z",
+  "generatedAt": "2026-06-24T01:36:23Z",
+  "spec": {
+    "id": "UTSUSHI-062",
+    "title": "Bridge-linked jump target and replay-log fixture",
+    "branch": "spec/utsushi-062",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-062",
+    "commit": "a091e5d"
+  },
+  "auditor": {
+    "name": "utsushi-062-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "UTSUSHI-062 lands the bridge-linked jump target + replay-log fixture set as specified. The new `utsushi_fixture::jump_targets` module (606 LOC) carries `JumpTargetFixture` with `bridge_unit_id: String` (non-Option per acceptance), `JumpTargetSet` with `schema_version`/`source: SourceTag`/`adapter_id`/`targets`, `BridgeUnitIndex` trait + `InMemoryBridgeUnitIndex`, `JumpTargetError` with 9 typed variants, and a `codes` module whose `ALL` slice registers every variant's `semantic_code()` (`jump_targets.rs:211-223, 229-257`). All three acceptance criteria hold. (1) Bridge linkage: `JumpTargetFixture.bridge_unit_id` is required serde-side (line 45), `JumpTargetSet::validate` calls `index.contains(bridge_unit_id)` for every target and surfaces `JumpTargetError::JumpTargetMissingBridgeUnit { target_id, bridge_unit_id }` on miss (semantic code `utsushi.fixture.jump_target.missing_bridge_unit`); negative test `jump_target_set_rejects_missing_bridge_unit` pins the rejection path. (2) Replay-log determinism: `replay_log_jump_target.rs` (346 LOC, 8 tests) drives the fixture through `InMemoryReferenceRecorder`, serializes via `deterministic_json_bytes` (UTSUSHI-060), and asserts byte-equality against the three committed `replay_logs/*.replay-log.json` artifacts; `replay_log_byte_match_holds_across_two_consecutive_runs` pins same-process determinism, `replay_log_mismatch_emits_fingerprint_diagnostic_with_observed_and_expected` exercises the `ReplayLogFingerprintMismatch` failure path with quoted observed/expected. (3) No host paths in committed fixtures: `JumpTargetSet::load_from_json` walks every string leaf through `reject_unredacted_local_paths_in_value` (line 272) before parsing into the typed shape; `grep -rE '/home|C:|/tmp' crates/utsushi-fixture/tests/fixtures/` returns nothing on the committed JSON; all six committed fixture files use kebab-namespaced ids (`single-branch-target-a`, `bridge-unit-multi-branch-b`, etc.) and engine-neutral `\"source\": \"fixture\"`. `ReplayLog` is NOT extended — bridge linkage stays in the fixture domain via tick-correspondence (`replay_log_byte_form_does_not_embed_bridge_unit_id_on_replay_entry_shape` test). The `vite.config.ts` fmt.ignorePatterns entry covers the compact one-line `*.replay-log.json` artifacts so vite-plus does not rewrite them — operationally clean. Verification reruns (after `cargo clean -p utsushi-fixture` to clear cross-worktree shared target dir staleness): `cargo test -p utsushi-fixture` 16 jump_target_round_trip + 5 lib + the existing reference_corpus tests pass; `cargo test -p utsushi-core --test replay_log_jump_target` 8 passed / 0 failed; `cargo test -p utsushi-core` lib 629 passed plus every integration suite green; `just check` clean (cargo fmt, schema:check, ts:typecheck, cargo check --workspace). No P0/P1/P2/P3 findings. Note: the first `cargo test` invocation in this worktree initially surfaced E0432 'no JumpTargetSet in the root' errors due to a stale `/scratch/cache/itotori/target` artifact from a sibling worktree (the cargo target dir is shared via `CARGO_TARGET_DIR`); this is an environmental shared-cache issue, not a defect in the spec branch's source, and resolved cleanly with `cargo clean -p utsushi-fixture` before the re-run. The code itself compiles and all targets pass.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
