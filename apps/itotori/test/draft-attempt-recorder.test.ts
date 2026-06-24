@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 import type {
   AuthorizationActor,
   DraftAttemptProviderLedgerEntry,
-  ItotoriDraftAttemptProviderLedgerRepository,
+  ItotoriDraftAttemptProviderLedgerRepositoryPort,
   RecordLedgerEntryInput,
   SumCostByProjectOptions,
   SumCostByProjectResult,
@@ -27,7 +27,7 @@ import {
 
 const FIXED_ACTOR: AuthorizationActor = { userId: "local-user" };
 
-class InMemoryLedgerRepository implements ItotoriDraftAttemptProviderLedgerRepository {
+class InMemoryLedgerRepository implements ItotoriDraftAttemptProviderLedgerRepositoryPort {
   public readonly entries: DraftAttemptProviderLedgerEntry[] = [];
   // Allow access to the constructor parameter for type compatibility.
   // The recorder only invokes `recordLedgerEntry`.
@@ -107,9 +107,7 @@ class InMemoryLedgerRepository implements ItotoriDraftAttemptProviderLedgerRepos
 describe("DraftAttemptRecorder", () => {
   it("successfulAttemptFixture persists and round-trips byte-equal via the in-memory repository", async () => {
     const repo = new InMemoryLedgerRepository();
-    const recorder = new DraftAttemptRecorder(
-      repo as unknown as ItotoriDraftAttemptProviderLedgerRepository,
-    );
+    const recorder = new DraftAttemptRecorder(repo);
     const args = successfulAttemptFixture();
 
     const entry = await recorder.record(FIXED_ACTOR, args);
@@ -136,9 +134,7 @@ describe("DraftAttemptRecorder", () => {
 
   it("fallbackChainFixture persists the fallback chain and the actual-model id", async () => {
     const repo = new InMemoryLedgerRepository();
-    const recorder = new DraftAttemptRecorder(
-      repo as unknown as ItotoriDraftAttemptProviderLedgerRepository,
-    );
+    const recorder = new DraftAttemptRecorder(repo);
     const args = fallbackChainFixture();
     const entry = await recorder.record(FIXED_ACTOR, args);
 
@@ -152,9 +148,7 @@ describe("DraftAttemptRecorder", () => {
 
   it("recordedProviderFixture marks the entry as recorded and stamps a zero cost", async () => {
     const repo = new InMemoryLedgerRepository();
-    const recorder = new DraftAttemptRecorder(
-      repo as unknown as ItotoriDraftAttemptProviderLedgerRepository,
-    );
+    const recorder = new DraftAttemptRecorder(repo);
     const args = recordedProviderFixture();
     const entry = await recorder.record(FIXED_ACTOR, args);
 
@@ -167,9 +161,7 @@ describe("DraftAttemptRecorder", () => {
 
   it("never writes the raw prompt body or raw response payload (redaction regression)", async () => {
     const repo = new InMemoryLedgerRepository();
-    const recorder = new DraftAttemptRecorder(
-      repo as unknown as ItotoriDraftAttemptProviderLedgerRepository,
-    );
+    const recorder = new DraftAttemptRecorder(repo);
 
     // Inject the must-never-appear sentinel into a fresh translation
     // result by piggybacking on the fixture's draftText and the
@@ -200,9 +192,7 @@ describe("DraftAttemptRecorder", () => {
 
   it("aggregates cost across all three fixtures via sumCostByProject", async () => {
     const repo = new InMemoryLedgerRepository();
-    const recorder = new DraftAttemptRecorder(
-      repo as unknown as ItotoriDraftAttemptProviderLedgerRepository,
-    );
+    const recorder = new DraftAttemptRecorder(repo);
 
     await recorder.record(FIXED_ACTOR, successfulAttemptFixture());
     await recorder.record(FIXED_ACTOR, fallbackChainFixture());

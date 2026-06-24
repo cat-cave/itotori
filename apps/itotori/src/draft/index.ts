@@ -42,3 +42,25 @@ export {
   validDraftFixture,
   variableSubstitutedDraftFixture,
 } from "./draft-fixtures.js";
+
+export {
+  DraftAttemptRecorder,
+  type DraftAttemptRecorderArgs,
+  type DraftAttemptCostEstimate,
+  type FallbackEntry,
+} from "./draft-attempt-recorder.js";
+
+export {
+  DraftFixtureCommandLiveProviderRefusalError,
+  DraftFixtureCommandLocaleMismatchError,
+  DraftFixtureCommandUnknownProvenanceError,
+  runDraftFixtureCommand,
+  type DraftFixtureAttempt,
+  type DraftFixtureAttemptProviderIdentity,
+  type DraftFixtureBridgeUnit,
+  type DraftFixtureBundle,
+  type DraftFixtureCommandArgs,
+  type DraftFixtureCommandIo,
+  type DraftFixtureProject,
+  type DraftFixtureProtectedSpan,
+} from "./draft-fixture-command.js";

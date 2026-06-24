@@ -55,6 +55,17 @@ export default defineConfig({
         dependsOn: ["db:migrate:test"],
         cache: false,
       },
+      "itotori:draft-fixture": {
+        // ITOTORI-019: end-to-end drafting fixture command. The default
+        // entry point relies on the in-memory fixture repositories
+        // baked into `cli-handlers.ts`, so it does NOT need a Postgres
+        // connection. Tasks that want DB-backed runs pass the project
+        // path of their choice; CI invokes the deterministic fake
+        // provider fixture.
+        command: "node apps/itotori/dist/cli.js draft-fixture",
+        dependsOn: ["ts:build"],
+        cache: false,
+      },
       "style-guide:live-provider-smoke": {
         command: "node apps/itotori/dist/style-guide-provider-smoke.js --live",
         dependsOn: ["ts:build"],

@@ -20,7 +20,7 @@ import type {
   DraftAttemptProviderLedgerContextRef,
   DraftAttemptProviderLedgerEntry,
   DraftAttemptProviderLedgerPolicyVersions,
-  ItotoriDraftAttemptProviderLedgerRepository,
+  ItotoriDraftAttemptProviderLedgerRepositoryPort,
   RecordLedgerEntryInput,
 } from "@itotori/db";
 import type { TranslationInvocationResult } from "../agents/translation/shapes.js";
@@ -45,7 +45,7 @@ export type DraftAttemptRecorderArgs = {
 };
 
 export class DraftAttemptRecorder {
-  constructor(private readonly repository: ItotoriDraftAttemptProviderLedgerRepository) {}
+  constructor(private readonly repository: ItotoriDraftAttemptProviderLedgerRepositoryPort) {}
 
   async record(
     actor: AuthorizationActor,

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "itotori.draft-fixture-bundle.v1",
+  "bundleId": "itotori-019-draft-bundle-provider-fallback",
+  "attempts": [
+    {
+      "attemptIndex": 0,
+      "provider": {
+        "capturedProviderFamily": "openrouter",
+        "capturedProviderName": "openrouter:itotori-019-primary",
+        "capturedRequestedModelId": "itotori-fixture-translation-v0",
+        "capturedActualModelId": "itotori-fixture-translation-v0"
+      },
+      "outcome": {
+        "kind": "provider_invocation_partial",
+        "finishReason": "length",
+        "detail": "primary provider truncated the response mid-JSON"
+      },
+      "costEstimateOverride": {
+        "unit": "usd",
+        "amount": "0.00200000"
+      }
+    },
+    {
+      "attemptIndex": 1,
+      "provider": {
+        "capturedProviderFamily": "recorded",
+        "capturedProviderName": "recorded:itotori-019-fallback",
+        "capturedRequestedModelId": "itotori-fixture-translation-v0",
+        "capturedActualModelId": "itotori-fixture-translation-v0"
+      },
+      "outcome": {
+        "kind": "provider_invocation_success",
+        "response": {
+          "content": "{\"schemaVersion\":\"itotori.structured-translation-draft-output.v1\",\"drafts\":[{\"bridgeUnitId\":\"019ed079-0000-7000-8000-019019019001\",\"sourceLocale\":\"ja-JP\",\"targetLocale\":\"en-US\",\"draftText\":\"Hello, {player}.\",\"protectedSpanRefs\":[{\"refId\":\"span-019-unit-01-player\",\"startInDraft\":7,\"endInDraft\":15}],\"citationRefs\":[\"019ed079-0000-7000-8000-glossary00001\"],\"agentRationale\":\"Fallback model produced the greeting localization with placeholder preserved.\",\"confidenceFloor\":\"medium\"},{\"bridgeUnitId\":\"019ed079-0000-7000-8000-019019019002\",\"sourceLocale\":\"ja-JP\",\"targetLocale\":\"en-US\",\"draftText\":\"The Hero greeted the king.\",\"protectedSpanRefs\":[],\"citationRefs\":[\"019ed079-0000-7000-8000-glossary00001\"],\"agentRationale\":\"Fallback model applied glossary preferred form Hero.\",\"confidenceFloor\":\"medium\"}]}",
+          "finishReason": "stop",
+          "tokenUsage": {
+            "tokenCountSource": "provider_reported",
+            "promptTokens": 520,
+            "completionTokens": 132,
+            "totalTokens": 652
+          }
+        }
+      },
+      "costEstimateOverride": {
+        "unit": "usd",
+        "amount": "0.00652000"
+      }
+    }
+  ]
+}

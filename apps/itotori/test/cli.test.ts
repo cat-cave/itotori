@@ -431,6 +431,60 @@ describe("Itotori CLI handlers", () => {
       styleGuideFixtureFlowResult,
     );
   });
+
+  it("draft-fixture writes a DraftArtifactBundle to --output and uses the in-memory repositories", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const { dirname, resolve } = await import("node:path");
+    const here = dirname(fileURLToPath(import.meta.url));
+    const repoRoot = resolve(here, "../../..");
+    const projectJson = JSON.parse(
+      readFileSync(
+        resolve(repoRoot, "apps/itotori/test/fixtures/draft-fixture-project.json"),
+        "utf8",
+      ),
+    );
+    const bundleJson = JSON.parse(
+      readFileSync(
+        resolve(
+          repoRoot,
+          "apps/itotori/src/draft/draft-fixture-bundles/deterministic-fake-provider.json",
+        ),
+        "utf8",
+      ),
+    );
+    const reads = new Map<string, unknown>([
+      ["fixtures/draft-fixture-project.json", projectJson],
+      ["fixtures/deterministic-fake-provider.json", bundleJson],
+    ]);
+    const writes = new Map<string, unknown>();
+    const services = servicesFixture();
+    await runItotoriCliCommand(
+      [
+        "draft-fixture",
+        "--project",
+        "fixtures/draft-fixture-project.json",
+        "--locale",
+        "en-US",
+        "--output",
+        "out/bundle.json",
+        "--bundle",
+        "fixtures/deterministic-fake-provider.json",
+      ],
+      {
+        io: jsonStoreFixture(reads, writes),
+        migrateDatabase: vi.fn(async () => {}),
+        withServices: async (callback) => await callback(services),
+      },
+    );
+    const written = writes.get("out/bundle.json") as
+      | { schemaVersion: string; drafts: unknown[] }
+      | undefined;
+    expect(written).toBeDefined();
+    if (written === undefined) return;
+    expect(written.schemaVersion).toBe("itotori.draft-artifact-bundle.v1");
+    expect(written.drafts).toHaveLength(2);
+  });
 });
 
 function jsonStoreFixture(reads: Map<string, unknown>, writes: Map<string, unknown>) {

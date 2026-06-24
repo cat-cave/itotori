@@ -5,6 +5,7 @@ export * from "./conformance.js";
 export * from "./qa-finding.js";
 export * from "./speaker-label.js";
 export * from "./translation-draft.js";
+export * from "./draft-artifact-bundle.js";
 
 export type Uuid7 = string;
 export type Bcp47Locale = string;
