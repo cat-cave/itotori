@@ -10,7 +10,7 @@
 
 use kaifuu_core::SourceEncoding;
 
-use crate::archive::{SceneId, preview_hex};
+use crate::archive::{preview_hex, scene_id_string};
 use crate::ast::{
     Instruction, InstructionId, InstructionKind, Operand, ParseOutcome, SCHEMA_VERSION, Scene,
     StringSlotRole,
@@ -21,9 +21,9 @@ use crate::strings::make_slot;
 
 /// Parse a single scene blob into an AST plus diagnostics.
 ///
-/// `archive_index` is the zero-based ordinal of this scene within the
-/// parent SEEN.TXT archive; it feeds into the stable [`crate::ast::SceneId`],
-/// [`crate::ast::InstructionId`], and [`crate::ast::StringSlotId`]
+/// `scene_id` is the 10,000-slot directory slot index for this scene
+/// (matches the historical `seenNNNN` naming); it feeds into the stable
+/// [`crate::ast::InstructionId`] and [`crate::ast::StringSlotId`]
 /// derivations (see `lib.rs` § "Stable id derivation rule"). The
 /// `scene_offset` parameter is recorded for downstream tools and exists
 /// for parity with the documented public surface (KAIFUU-174 will use it
@@ -33,7 +33,7 @@ use crate::strings::make_slot;
 /// more [`ParseDiagnostic`] entries. The returned [`ParseOutcome`] has
 /// `scene = None` iff any diagnostic carries
 /// [`crate::ast::DiagnosticSeverity::Fatal`].
-pub fn parse_scene(scene_bytes: &[u8], archive_index: u32, _scene_offset: u64) -> ParseOutcome {
+pub fn parse_scene(scene_bytes: &[u8], scene_id: u16, _scene_offset: u64) -> ParseOutcome {
     let mut diagnostics = Vec::new();
     let mut instructions = Vec::new();
     let mut strings = Vec::new();
@@ -51,7 +51,7 @@ pub fn parse_scene(scene_bytes: &[u8], archive_index: u32, _scene_offset: u64) -
             // The byte range is recorded as an Unrecognized instruction
             // so the partition invariant holds.
             instructions.push(Instruction {
-                instruction_id: InstructionId::for_scene(archive_index, instr_offset),
+                instruction_id: InstructionId::for_scene(scene_id, instr_offset),
                 byte_offset: instr_offset,
                 byte_len: 1,
                 kind: InstructionKind::Unrecognized {
@@ -178,7 +178,7 @@ pub fn parse_scene(scene_bytes: &[u8], archive_index: u32, _scene_offset: u64) -
                             ),
                         ));
                         let (slot, slot_ref) = make_slot(
-                            archive_index,
+                            scene_id,
                             slot_byte_offset,
                             slot_index_within_instruction,
                             &[],
@@ -205,7 +205,7 @@ pub fn parse_scene(scene_bytes: &[u8], archive_index: u32, _scene_offset: u64) -
                     }
                     let raw_bytes = &scene_bytes[local_cursor + 2..local_cursor + 2 + len];
                     let (slot, slot_ref) = make_slot(
-                        archive_index,
+                        scene_id,
                         slot_byte_offset,
                         slot_index_within_instruction,
                         raw_bytes,
@@ -319,7 +319,7 @@ pub fn parse_scene(scene_bytes: &[u8], archive_index: u32, _scene_offset: u64) -
         };
 
         instructions.push(Instruction {
-            instruction_id: InstructionId::for_scene(archive_index, instr_offset),
+            instruction_id: InstructionId::for_scene(scene_id, instr_offset),
             byte_offset: instr_offset,
             byte_len: consumed as u64,
             kind,
@@ -340,7 +340,7 @@ pub fn parse_scene(scene_bytes: &[u8], archive_index: u32, _scene_offset: u64) -
 
     let scene = Scene {
         schema_version: SCHEMA_VERSION.to_string(),
-        scene_id: SceneId::for_index(archive_index),
+        scene_id: scene_id_string(scene_id),
         instructions,
         strings,
     };

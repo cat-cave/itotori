@@ -6,7 +6,6 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::archive::SceneId;
 use crate::diagnostics::ParseDiagnostic;
 use crate::opcodes::NamedOpcode;
 
@@ -54,14 +53,17 @@ pub enum ParseStatus {
 #[serde(rename_all = "camelCase")]
 pub struct Scene {
     pub schema_version: String,
-    pub scene_id: SceneId,
+    /// Stable string scene id (`reallive:scene-NNNN`) derived from the
+    /// 10,000-slot directory index. See
+    /// `crate::archive::scene_id_string`.
+    pub scene_id: String,
     pub instructions: Vec<Instruction>,
     pub strings: Vec<StringSlot>,
 }
 
 /// Stable per-scene instruction id derived from byte position only.
 ///
-/// Format: `reallive:scene-{archive_index:04}:ins-off-{instr_byte_offset_within_scene:08x}`.
+/// Format: `reallive:scene-{scene_id:04}:ins-off-{instr_byte_offset_within_scene:08x}`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct InstructionId(pub(crate) String);
@@ -71,9 +73,9 @@ impl InstructionId {
         &self.0
     }
 
-    pub(crate) fn for_scene(archive_index: u32, byte_offset_within_scene: u64) -> Self {
+    pub(crate) fn for_scene(scene_id: u16, byte_offset_within_scene: u64) -> Self {
         Self(format!(
-            "reallive:scene-{archive_index:04}:ins-off-{byte_offset_within_scene:08x}"
+            "reallive:scene-{scene_id:04}:ins-off-{byte_offset_within_scene:08x}"
         ))
     }
 }
@@ -122,7 +124,7 @@ pub enum Operand {
 /// Stable string-slot id derived from byte position only.
 ///
 /// Format:
-/// `reallive:scene-{archive_index:04}:str-off-{slot_byte_offset_within_scene:08x}-idx{slot_index_within_instruction:02}`.
+/// `reallive:scene-{scene_id:04}:str-off-{slot_byte_offset_within_scene:08x}-idx{slot_index_within_instruction:02}`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct StringSlotId(pub(crate) String);
@@ -133,12 +135,12 @@ impl StringSlotId {
     }
 
     pub(crate) fn for_scene(
-        archive_index: u32,
+        scene_id: u16,
         slot_byte_offset_within_scene: u64,
         slot_index_within_instruction: u8,
     ) -> Self {
         Self(format!(
-            "reallive:scene-{archive_index:04}:str-off-{slot_byte_offset_within_scene:08x}-idx{slot_index_within_instruction:02}"
+            "reallive:scene-{scene_id:04}:str-off-{slot_byte_offset_within_scene:08x}-idx{slot_index_within_instruction:02}"
         ))
     }
 }

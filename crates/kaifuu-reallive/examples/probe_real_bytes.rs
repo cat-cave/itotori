@@ -30,16 +30,15 @@ fn probe_seen_txt(path: &str) -> Result<(), Box<dyn std::error::Error>> {
     match parse_archive(&bytes) {
         Ok(index) => {
             println!(
-                "parse_archive: OK, schema={}, archive_len={}, entries={}",
-                index.schema_version,
-                index.source_archive_byte_len,
+                "parse_archive: OK, archive_len={}, entries={}",
+                bytes.len(),
                 index.entries.len()
             );
             if let Some(first) = index.entries.first() {
                 println!(
-                    "  first entry: id={} archive_index={} byte_offset={} byte_len={}",
-                    first.scene_id.as_str(),
-                    first.archive_index,
+                    "  first entry: id={} scene_id={} byte_offset={} byte_len={}",
+                    first.scene_id_str(),
+                    first.scene_id,
                     first.byte_offset,
                     first.byte_len
                 );
@@ -48,7 +47,7 @@ fn probe_seen_txt(path: &str) -> Result<(), Box<dyn std::error::Error>> {
                 let end = start + first.byte_len as usize;
                 if end <= bytes.len() {
                     let outcome =
-                        parse_scene(&bytes[start..end], first.archive_index, first.byte_offset);
+                        parse_scene(&bytes[start..end], first.scene_id, first.byte_offset);
                     let instruction_count = outcome
                         .scene
                         .as_ref()

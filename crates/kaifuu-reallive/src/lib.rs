@@ -28,31 +28,40 @@
 //! # Surface
 //!
 //! - [`parse_archive`] — decode a SEEN.TXT archive envelope into a
-//!   [`SceneIndex`]. Out: per-scene `(byte_offset, byte_len)` ranges plus a
-//!   stable [`SceneId`].
+//!   [`RealLiveSceneIndex`]. Out: per-scene `(byte_offset, byte_len)`
+//!   ranges keyed by the 10,000-slot directory index ([`SceneEntry`]).
 //! - [`parse_scene`] — decode a single scene byte-blob into a [`Scene`]
 //!   AST plus diagnostics. Out: structured AST with named opcodes,
 //!   [`StringSlot`]s with stable position-derived ids, and a
 //!   [`ParseStatus`] indicating fatal / warning / clean.
 //!
-//! # SEEN.TXT envelope (synthetic-fixture shape, clean-room)
+//! # SEEN.TXT envelope (real 10,000-slot fixed-offset-table — KAIFUU-188)
 //!
-//! The envelope this crate parses is the documented count-plus-table shape:
+//! The envelope this crate parses is the **real RealLive 10,000-slot
+//! fixed-offset-table** documented at `docs/research/reallive-engine.md`
+//! §C and confirmed against Sweetie HD's
+//! `REALLIVEDATA/Seen.txt` per
+//! `docs/audits/real-bytes-validation-2026-06-24.md` §2.8.
 //!
 //! ```text
-//! +--------+---------+---------+--- ... ---+----------+
-//! | u32 LE | u32 LE  | u32 LE  |           | scene    |
-//! | count  | off[0]  | size[0] |           | payload  |
-//! +--------+---------+---------+--- ... ---+----------+
-//! ^        ^                              ^
-//! |        | per-scene (offset, size) entries
-//! | scene count (u32 LE) at offset 0
+//! +----------+----------+----- … -----+----------+--------- … -----------+
+//! | slot 0   | slot 1   |             | slot 9999| scene payloads        |
+//! | u32 off  | u32 off  |             | u32 off  | (referenced by        |
+//! | u32 size | u32 size |             | u32 size |  absolute u32 offset) |
+//! +----------+----------+----- … -----+----------+--------- … -----------+
+//! 0x0000     0x0008                   0x1_3878    0x1_3880
 //! ```
 //!
-//! `count` may be zero (treated as an empty archive). Per-scene entries are
-//! eight bytes each: `u32` little-endian offset followed by `u32`
-//! little-endian size. `offset` is absolute from the start of the archive;
-//! `size` is the byte length of the scene payload.
+//! - 10,000 slots × 8 bytes = 80,000 bytes (`0x0001_3880`) of fixed
+//!   directory at file offset 0.
+//! - Each slot is `(u32_le offset, u32_le length)`. Both zero means the
+//!   slot is reserved/unused (silently omitted by the parser).
+//! - Non-zero slots whose `offset + length` runs past the file end emit
+//!   `kaifuu.reallive.truncated_scene` Fatal.
+//! - Sweetie HD has 198 populated slots, scene-id range 1..=9999.
+//!
+//! The pre-KAIFUU-188 synthetic count-plus-table envelope is removed — no
+//! legacy compat, no alias, no flag.
 //!
 //! # Scene bytecode (synthetic-fixture shape, clean-room)
 //!
@@ -113,7 +122,10 @@ pub mod patchback;
 pub mod protected_spans;
 mod strings;
 
-pub use archive::{SceneEntry, SceneId, SceneIndex, parse_archive};
+pub use archive::{
+    REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN, REALLIVE_SEEN_TXT_SLOT_COUNT, RealLiveSceneIndex,
+    SceneEntry, parse_archive,
+};
 pub use ast::{
     DiagnosticSeverity, Instruction, InstructionId, InstructionKind, Operand, ParseOutcome,
     ParseStatus, Scene, StringSlot, StringSlotId, StringSlotRef, StringSlotRole,

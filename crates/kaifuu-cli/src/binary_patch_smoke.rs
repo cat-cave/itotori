@@ -27,7 +27,7 @@ use kaifuu_core::{
     AdapterCapabilities, LayeredAccessCapabilityContract, sha256_hash_bytes, write_json,
 };
 use kaifuu_reallive::{
-    PatchBackError, PatchBackErrorCode, Scene, SceneIndex, SlotEdit, SlotEditLengthPolicy,
+    PatchBackError, PatchBackErrorCode, RealLiveSceneIndex, Scene, SlotEdit, SlotEditLengthPolicy,
     apply_patches, parse_archive, parse_scene,
 };
 use serde_json::{Value, json};
@@ -98,8 +98,11 @@ impl BinarySmokeOutcome {
     }
 }
 
-/// Build a deterministic synthetic SEEN.TXT envelope. Single scene
-/// holding a 6-byte dialogue slot containing `b"Hello!"`.
+/// Build a deterministic synthetic SEEN.TXT envelope in the real RealLive
+/// 10,000-slot fixed-offset-table shape (KAIFUU-188). One scene is
+/// populated at slot 1 (`reallive:scene-0001`); its payload sits at file
+/// offset `0x0001_3880` (immediately after the 80,000-byte directory),
+/// mirroring Sweetie HD's first-scene layout.
 pub fn build_synthetic_seen_txt() -> Vec<u8> {
     // Scene blob: SetSpeaker("S") + TextDisplay("Hello!").
     // String operand: 0x73 + u16 LE length + bytes.
@@ -126,11 +129,14 @@ pub fn build_synthetic_seen_txt() -> Vec<u8> {
     scene_blob.extend_from_slice(&instruction(0x02, &[speaker.as_slice()]));
     scene_blob.extend_from_slice(&instruction(0x01, &[dialogue.as_slice()]));
 
-    let mut archive = Vec::with_capacity(12 + scene_blob.len());
-    archive.extend_from_slice(&1u32.to_le_bytes()); // scene count
-    archive.extend_from_slice(&12u32.to_le_bytes()); // offset
-    archive.extend_from_slice(&(scene_blob.len() as u32).to_le_bytes()); // size
-    archive.extend_from_slice(&scene_blob);
+    let directory_byte_len = kaifuu_reallive::REALLIVE_SEEN_TXT_DIRECTORY_BYTE_LEN as usize;
+    let payload_offset = directory_byte_len as u32;
+    let mut archive = vec![0u8; directory_byte_len + scene_blob.len()];
+    // Slot 1: (offset = 0x13880, size = scene_blob.len()).
+    let slot1 = 1usize * 8;
+    archive[slot1..slot1 + 4].copy_from_slice(&payload_offset.to_le_bytes());
+    archive[slot1 + 4..slot1 + 8].copy_from_slice(&(scene_blob.len() as u32).to_le_bytes());
+    archive[directory_byte_len..].copy_from_slice(&scene_blob);
     archive
 }
 
@@ -417,19 +423,19 @@ fn is_terminal(state: &TransactionState) -> bool {
     )
 }
 
-fn parse_scenes(archive_bytes: &[u8], scene_index: &SceneIndex) -> Result<Vec<Scene>, String> {
+fn parse_scenes(
+    archive_bytes: &[u8],
+    scene_index: &RealLiveSceneIndex,
+) -> Result<Vec<Scene>, String> {
     let mut scenes = Vec::with_capacity(scene_index.entries.len());
     for entry in &scene_index.entries {
         let blob_start = entry.byte_offset as usize;
         let blob_end = blob_start + entry.byte_len as usize;
         let blob = &archive_bytes[blob_start..blob_end];
-        let outcome = parse_scene(blob, entry.archive_index, entry.byte_offset);
-        let scene = outcome.scene.ok_or_else(|| {
-            format!(
-                "synthetic scene at index {} failed to parse",
-                entry.archive_index
-            )
-        })?;
+        let outcome = parse_scene(blob, entry.scene_id, entry.byte_offset);
+        let scene = outcome
+            .scene
+            .ok_or_else(|| format!("synthetic scene at slot {} failed to parse", entry.scene_id))?;
         scenes.push(scene);
     }
     Ok(scenes)
