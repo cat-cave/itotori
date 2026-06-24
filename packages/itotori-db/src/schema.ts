@@ -3778,3 +3778,80 @@ export const draftJobAttempts = pgTable(
     index("itotori_draft_job_attempts_status_idx").on(table.draftJobId, table.status),
   ],
 );
+
+/**
+ * Policy version snapshot persisted on each draft attempt provider
+ * ledger row. Mirrors the agent-side policy versions but kept as a
+ * loosely-typed Record because the agent layer may carry additional
+ * named policies that the ledger should not enumerate.
+ */
+export type DraftAttemptProviderLedgerPolicyVersions = Record<string, string>;
+
+/**
+ * Reference to a context artifact (scene summary, glossary excerpt,
+ * prior draft, etc.) used as input for the draft attempt. The ledger
+ * persists the reference only; the artifact body lives in the
+ * context-artifacts table.
+ */
+export type DraftAttemptProviderLedgerContextRef = {
+  contextArtifactId: string;
+  category: string;
+  contentHash: string;
+};
+
+/**
+ * One step in the fallback chain that ran before this attempt
+ * succeeded (or failed). `attemptedAt` is ISO-8601 so the row is
+ * trivially comparable across runs.
+ */
+export type DraftAttemptFallbackChainEntry = {
+  modelProviderFamily: string;
+  modelId: string;
+  failureReason: string;
+  attemptedAt: string;
+};
+
+export const draftAttemptProviderLedger = pgTable(
+  "itotori_draft_attempt_provider_ledger",
+  {
+    ledgerEntryId: text("ledger_entry_id").primaryKey(),
+    draftJobAttemptId: text("draft_job_attempt_id")
+      .notNull()
+      .references(() => draftJobAttempts.draftJobAttemptId, { onDelete: "cascade" }),
+    providerProofId: text("provider_proof_id").notNull(),
+    modelProviderFamily: text("model_provider_family"),
+    modelId: text("model_id"),
+    modelContextWindowTokens: integer("model_context_window_tokens"),
+    modelMaxOutputTokens: integer("model_max_output_tokens"),
+    promptTemplateVersion: text("prompt_template_version"),
+    promptHash: text("prompt_hash"),
+    policyVersions: jsonb("policy_versions")
+      .$type<DraftAttemptProviderLedgerPolicyVersions>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    contextArtifactRefs: jsonb("context_artifact_refs")
+      .$type<DraftAttemptProviderLedgerContextRef[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    tokensIn: integer("tokens_in"),
+    tokensOut: integer("tokens_out"),
+    costUnit: text("cost_unit").notNull(),
+    costAmount: numeric("cost_amount", { precision: 20, scale: 8 }).notNull(),
+    latencyMs: integer("latency_ms"),
+    fallbackChain: jsonb("fallback_chain")
+      .$type<DraftAttemptFallbackChainEntry[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    isRecordedProvider: boolean("is_recorded_provider").notNull().default(false),
+    recordedProviderBundleId: text("recorded_provider_bundle_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("itotori_draft_attempt_provider_ledger_attempt_idx").on(table.draftJobAttemptId),
+    uniqueIndex("itotori_draft_attempt_provider_ledger_proof_idx").on(table.providerProofId),
+    index("itotori_draft_attempt_provider_ledger_family_created_idx").on(
+      table.modelProviderFamily,
+      table.createdAt,
+    ),
+  ],
+);
