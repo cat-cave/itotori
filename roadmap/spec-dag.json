@@ -21839,7 +21839,7 @@
     {
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
-      "status": "in_progress",
+      "status": "complete",
       "id": "UTSUSHI-222",
       "title": "Substrate M.1 — composite asset package + try-dir-then-archive resolver",
       "priority": "P1",
@@ -21880,15 +21880,12 @@
         "Acceptance criteria that exercise only synthetic fixtures — multi-game requirement not satisfied; demote to `planned` until the second corpus is exercised.",
         "Case-folded index that rebuilds per call (silent O(n) on every resolve) — must be lazily cached.",
         "`AssetArchiveReader` impls leaking outside the seal so callers can bypass the resolver's first-match policy."
-      ],
-      "owner": "orchestrator-substrate-m1",
-      "branch": "spec/utsushi-222",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-222"
+      ]
     },
     {
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
-      "status": "in_progress",
+      "status": "complete",
       "id": "UTSUSHI-223",
       "title": "Substrate M.2 — snapshot envelope size class (Small / Medium / Large)",
       "priority": "P1",
@@ -21929,15 +21926,12 @@
         "Schema-version bump skipped or marked as backwards-compatible (it is not).",
         "Test that proves the envelope works at fixture scale only — multi-engine requirement not satisfied.",
         "`SnapshotEnvelope::Large` variant used where `Medium` suffices (over-allocation hiding the regression check)."
-      ],
-      "owner": "orchestrator-substrate-m2",
-      "branch": "spec/utsushi-223",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-223"
+      ]
     },
     {
       "projects": ["utsushi"],
       "parallelGroup": "utsushi-core",
-      "status": "in_progress",
+      "status": "complete",
       "id": "UTSUSHI-224",
       "title": "Substrate M.3 — EnginePort → substrate-sinks bridge (legacy hooks removed)",
       "priority": "P1",
@@ -21984,10 +21978,7 @@
         "`utsushi-fixture` migration not landed in the same commit — the alpha gate's '≥1 non-test consumer' is unmet without it.",
         "Sinks documented but never drained by `Runner::tick` (silent dead-code).",
         "Tests that exercise the sinks via a collector struct declared inside the substrate's own `#[cfg(test)]` rather than a production consumer."
-      ],
-      "owner": "orchestrator-substrate-m3",
-      "branch": "spec/utsushi-224",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-224"
+      ]
     },
     {
       "projects": ["utsushi"],
@@ -23601,7 +23592,7 @@
     {
       "id": "KAIFUU-188",
       "title": "Parse real RealLive SEEN.TXT fixed offset-table envelope",
-      "status": "in_progress",
+      "status": "planned",
       "priority": "P1",
       "target": "continuous",
       "projects": ["kaifuu"],
@@ -23635,9 +23626,7 @@
         "Zero-prefix scene-id 0 slot must not be mistaken for an end-of-table marker.",
         "Synthetic fixture coverage must not regress; KAIFUU-173 envelope still parses."
       ],
-      "owner": "orchestrator-kaifuu-envelope",
-      "branch": "spec/kaifuu-188",
-      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-188"
+      "statusReason": "Implementation merged into main (commit 89445fb). Status remains in_progress per the multi-game-validation rule: kaifuu-reallive::parse_archive parses Sweetie HD (only RealLive corpus currently staged) to 198 entries with first scene (1, 0x13880, 0x5fa); a second RealLive title must be sourced and exercised by tests/parse_archive_second_reallive_real_bytes.rs before this node can be marked complete."
     },
     {
       "id": "KAIFUU-189",
