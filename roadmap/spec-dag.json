@@ -2776,7 +2776,7 @@
     {
       "id": "KAIFUU-011",
       "title": "Binary patcher composed smoke command",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["kaifuu"],
@@ -2819,7 +2819,10 @@
         "PatchBackError variants that silently fall through to a default category",
         "RealLive emitting v0.1 strings instead of v0.2 failures",
         "Missing structured attribution at the engine boundary"
-      ]
+      ],
+      "owner": "orchestrator",
+      "branch": "spec/kaifuu-011",
+      "worktree": "/scratch/worktrees/itotori-spec-kaifuu-011"
     },
     {
       "id": "KAIFUU-012",
@@ -6211,7 +6214,7 @@
     {
       "id": "ITOTORI-015",
       "title": "Route and choice map agent",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori", "utsushi"],
@@ -6258,12 +6261,15 @@
           "value": "Dashboard smoke"
         }
       ],
-      "auditFocus": ["Context-window scaling", "Branch ambiguity", "Route graph performance"]
+      "auditFocus": ["Context-window scaling", "Branch ambiguity", "Route graph performance"],
+      "owner": "orchestrator",
+      "branch": "spec/itotori-015",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-015"
     },
     {
       "id": "ITOTORI-016",
       "title": "Terminology candidate agent",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -6310,7 +6316,10 @@
           "value": "Dashboard decision fixture"
         }
       ],
-      "auditFocus": ["Noisy terminology spam", "Uncited candidates", "Locale scope mistakes"]
+      "auditFocus": ["Noisy terminology spam", "Uncited candidates", "Locale scope mistakes"],
+      "owner": "orchestrator",
+      "branch": "spec/itotori-016",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-016"
     },
     {
       "id": "ITOTORI-017",
