@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v1",
+  "fixtureId": "calibration-semantic-drift",
+  "agentName": "semantic-drift",
+  "authority": "original",
+  "findings": [
+    {
+      "findingId": "019ed079-0000-7000-8000-000fa0000002",
+      "bridgeUnitId": "019ed079-0000-7000-8000-000000ca0002",
+      "severity": "major",
+      "category": "mistranslation",
+      "evidenceRefs": ["scene-summary:scene-calibration"],
+      "recommendation": "Remove 'and the queen' — the source bows only to the king.",
+      "agentRationale": "Source references only the king; the draft adds the queen as a second target, changing the propositional content."
+    }
+  ]
+}

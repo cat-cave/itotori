@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v1",
+  "fixtureId": "calibration-regrade-trigger",
+  "agentName": "style-adherence",
+  "authority": "fresh-judge",
+  "findings": [
+    {
+      "findingId": "019ed079-0000-7000-8000-000fb0000001",
+      "bridgeUnitId": "019ed079-0000-7000-8000-000000ca0002",
+      "severity": "critical",
+      "category": "protected-span-violation",
+      "evidenceRefs": ["style-guide:protected-spans-001"],
+      "recommendation": "Restore the {player} placeholder — fresh-judge confirms the protected-span loss.",
+      "agentRationale": "Fresh judge: {player} is in the source but missing from the draft."
+    }
+  ]
+}

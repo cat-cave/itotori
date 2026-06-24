@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v1",
+  "fixtureId": "calibration-style-violation",
+  "agentName": "style-adherence",
+  "authority": "original",
+  "findings": [
+    {
+      "findingId": "019ed079-0000-7000-8000-000fa0000001",
+      "bridgeUnitId": "019ed079-0000-7000-8000-000000ca0002",
+      "severity": "critical",
+      "category": "protected-span-violation",
+      "evidenceRefs": ["style-guide:protected-spans-001"],
+      "recommendation": "Restore the {player} placeholder before exporting the draft.",
+      "agentRationale": "Source carries the {player} placeholder; draft omits it entirely, breaking the protected-span contract."
+    }
+  ]
+}
