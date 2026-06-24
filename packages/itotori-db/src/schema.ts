@@ -3546,3 +3546,119 @@ export const routeEvidence = pgTable(
     index("itotori_route_evidence_bridge_unit_idx").on(table.bridgeUnitId, table.citedSourceHash),
   ],
 );
+
+// ---------------------------------------------------------------------
+// ITOTORI-016 — terminology candidate agent
+// ---------------------------------------------------------------------
+
+export const terminologyCandidateStatusValues = {
+  fresh: "Fresh",
+  stale: "Stale",
+  promoted: "Promoted",
+  rejectedByReviewer: "RejectedByReviewer",
+} as const;
+
+export type TerminologyCandidateStatus =
+  (typeof terminologyCandidateStatusValues)[keyof typeof terminologyCandidateStatusValues];
+
+export const terminologyCandidateInvalidatedReasonValues = {
+  sourceHashDrift: "source_hash_drift",
+  templateVersionBump: "template_version_bump",
+  glossaryConflictPostPersist: "glossary_conflict_post_persist",
+  manual: "manual",
+} as const;
+
+export type TerminologyCandidateInvalidatedReason =
+  (typeof terminologyCandidateInvalidatedReasonValues)[keyof typeof terminologyCandidateInvalidatedReasonValues];
+
+export const terminologyCandidateKindValues = {
+  properNoun: "ProperNoun",
+  titleOrHonorific: "TitleOrHonorific",
+  technicalTerm: "TechnicalTerm",
+  catchphrase: "Catchphrase",
+  soundEffect: "SoundEffect",
+  writtenSign: "WrittenSign",
+  other: "Other",
+} as const;
+
+export type TerminologyCandidateKind =
+  (typeof terminologyCandidateKindValues)[keyof typeof terminologyCandidateKindValues];
+
+export const terminologyCandidates = pgTable(
+  "itotori_terminology_candidates",
+  {
+    terminologyCandidateId: text("terminology_candidate_id").primaryKey(),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projects.projectId, { onDelete: "cascade" }),
+    localeBranchId: text("locale_branch_id")
+      .notNull()
+      .references(() => localeBranches.localeBranchId, { onDelete: "cascade" }),
+    sourceRevisionId: text("source_revision_id")
+      .notNull()
+      .references(() => sourceRevisions.sourceRevisionId, { onDelete: "restrict" }),
+    kind: text("kind").$type<TerminologyCandidateKind>().notNull(),
+    surfaceForm: text("surface_form").notNull(),
+    surfaceLocale: text("surface_locale").notNull(),
+    rationale: text("rationale").notNull(),
+    readingHint: text("reading_hint"),
+    conflictingTerminologyTermId: text("conflicting_terminology_term_id").references(
+      () => terminologyTerms.termId,
+      { onDelete: "set null" },
+    ),
+    modelProviderFamily: text("model_provider_family").notNull(),
+    modelId: text("model_id").notNull(),
+    modelContextWindowTokens: integer("model_context_window_tokens").notNull(),
+    modelMaxOutputTokens: integer("model_max_output_tokens"),
+    promptTemplateVersion: text("prompt_template_version").notNull(),
+    promptHash: text("prompt_hash").notNull(),
+    inputTokenEstimate: integer("input_token_estimate").notNull(),
+    completionTokens: integer("completion_tokens").notNull(),
+    status: text("status").notNull(),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    invalidatedReason: text("invalidated_reason"),
+    generatedAt: timestamp("generated_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("itotori_terminology_candidates_unique_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.surfaceForm,
+      table.kind,
+      table.promptTemplateVersion,
+    ),
+    index("itotori_terminology_candidates_status_idx").on(
+      table.projectId,
+      table.localeBranchId,
+      table.sourceRevisionId,
+      table.status,
+    ),
+    index("itotori_terminology_candidates_surface_idx").on(table.surfaceForm),
+  ],
+);
+
+export const terminologyCandidateEvidence = pgTable(
+  "itotori_terminology_candidate_evidence",
+  {
+    terminologyCandidateId: text("terminology_candidate_id")
+      .notNull()
+      .references(() => terminologyCandidates.terminologyCandidateId, { onDelete: "cascade" }),
+    bridgeUnitId: text("bridge_unit_id").notNull(),
+    citedSourceHash: text("cited_source_hash").notNull(),
+    citeOrdinal: integer("cite_ordinal").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.terminologyCandidateId, table.bridgeUnitId] }),
+    index("itotori_terminology_candidate_evidence_bridge_unit_idx").on(
+      table.bridgeUnitId,
+      table.citedSourceHash,
+    ),
+    index("itotori_terminology_candidate_evidence_ordinal_idx").on(
+      table.terminologyCandidateId,
+      table.citeOrdinal,
+    ),
+  ],
+);
