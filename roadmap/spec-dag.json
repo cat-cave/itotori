@@ -8972,7 +8972,7 @@
     {
       "id": "UTSUSHI-060",
       "title": "Reference runtime trace and capture recorder",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P3",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -9009,10 +9009,7 @@
         "Reference goldens leaking private data",
         "Environment missing from comparisons",
         "Recorder output treated as pixel-perfect proof"
-      ],
-      "owner": "orchestrator",
-      "branch": "spec/utsushi-060",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-060"
+      ]
     },
     {
       "id": "UTSUSHI-061",
