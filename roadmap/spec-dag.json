@@ -6408,7 +6408,7 @@
     {
       "id": "ITOTORI-019",
       "title": "Translation drafting fixture command",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -6463,7 +6463,10 @@
         "Integration shell hiding new implementation work",
         "Dependency bypass of normalized slices",
         "Support or readiness overclaim"
-      ]
+      ],
+      "owner": "orchestrator-itotori-019",
+      "branch": "spec/itotori-019",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-019"
     },
     {
       "id": "ITOTORI-020",
