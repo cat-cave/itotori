@@ -12,11 +12,11 @@ use std::sync::Arc;
 use utsushi_core::vfs::case_rule_matches;
 use utsushi_core::{
     AssetBytes, AssetId, AssetKind, AssetMetadata, AssetPackage, AssetSize, CaseRule, EvidenceTier,
-    HelperId, IoSummary, MountedVfs, OBSERVATION_HOOK_SCHEMA_VERSION, ObservationAdapterId,
+    HelperId, IoSummary, OBSERVATION_HOOK_SCHEMA_VERSION, ObservationAdapterId,
     ObservationEnvironment, ObservationErrorPayload, ObservationHookEvent,
     ObservationHookEventKind, ObservationHookPayload, ObservationRedactionMetadata,
     PackageDescriptor, PackageKind, PackageSource, RequiredCapability, RuntimeAdapterDiagnostic,
-    RuntimeVfs, TraversalKind, VfsError, VfsResult,
+    TraversalKind, VfsError, VfsResult,
 };
 
 /// Synthetic per-path access policy parsed from the fixture's `package.toml`.
@@ -360,53 +360,54 @@ fn fixture_package() -> Arc<FixturePolicyPackage> {
     Arc::new(FixturePolicyPackage::load(fixture_root()))
 }
 
-fn mount(package: Arc<FixturePolicyPackage>) -> MountedVfs {
-    let mut vfs = MountedVfs::new();
-    vfs.mount(package as Arc<dyn AssetPackage>).unwrap();
-    vfs
-}
+// The UTSUSHI-020 route-by-package-id `MountedVfs` is removed; the
+// synthetic fixture exercises the `AssetPackage` boundary directly. The
+// composite path is exercised by `composite_asset_package.rs` and the
+// real-bytes integration suite. See
+// `docs/orchestration-operating-model.md` "Legacy-path preservation"
+// (2026-06-24) for the no-shim rule.
 
 #[test]
 fn synthetic_package_open_returns_plaintext_bytes_for_intro_txt() {
-    let vfs = mount(fixture_package());
-    let id = vfs.resolve("synthetic", "hello/intro.txt").unwrap();
-    let bytes = vfs.open(&id).unwrap();
+    let package = fixture_package();
+    let id = package.resolve("hello/intro.txt").unwrap();
+    let bytes = package.open(&id).unwrap();
     assert_eq!(bytes.as_slice(), b"hello world!");
     assert_eq!(bytes.len(), 12);
 }
 
 #[test]
 fn synthetic_package_list_root_returns_three_subdirectories() {
-    let vfs = mount(fixture_package());
+    let package = fixture_package();
     let root = AssetId::from_parts("synthetic", "").unwrap();
-    let children = vfs.list(&root).unwrap();
+    let children = package.list(&root).unwrap();
     let names: Vec<&str> = children.iter().map(|id| id.path()).collect();
     assert_eq!(names, vec!["encrypted/", "hello/", "helper-gated/"]);
 }
 
 #[test]
 fn synthetic_package_stat_directory_reports_directory_kind() {
-    let vfs = mount(fixture_package());
+    let package = fixture_package();
     let id = AssetId::from_parts("synthetic", "hello/").unwrap();
-    let metadata = vfs.stat(&id).unwrap();
+    let metadata = package.stat(&id).unwrap();
     assert_eq!(metadata.kind, AssetKind::Directory);
     assert_eq!(metadata.size, AssetSize::Unknown);
 }
 
 #[test]
 fn synthetic_package_stat_file_reports_file_kind_and_byte_size() {
-    let vfs = mount(fixture_package());
-    let id = vfs.resolve("synthetic", "hello/intro.txt").unwrap();
-    let metadata = vfs.stat(&id).unwrap();
+    let package = fixture_package();
+    let id = package.resolve("hello/intro.txt").unwrap();
+    let metadata = package.stat(&id).unwrap();
     assert_eq!(metadata.kind, AssetKind::File);
     assert_eq!(metadata.size, AssetSize::Bytes(12));
 }
 
 #[test]
 fn synthetic_package_open_missing_path_returns_asset_missing() {
-    let vfs = mount(fixture_package());
+    let package = fixture_package();
     let id = AssetId::from_parts("synthetic", "hello/absent.txt").unwrap();
-    let error = vfs.open(&id).unwrap_err();
+    let error = package.open(&id).unwrap_err();
     match error {
         VfsError::AssetMissing { id: missing } => {
             assert_eq!(missing.path(), "hello/absent.txt");
@@ -417,9 +418,9 @@ fn synthetic_package_open_missing_path_returns_asset_missing() {
 
 #[test]
 fn synthetic_package_open_encrypted_asset_returns_asset_encrypted_with_crypto_capability() {
-    let vfs = mount(fixture_package());
+    let package = fixture_package();
     let id = AssetId::from_parts("synthetic", "encrypted/locked.bin").unwrap();
-    let error = vfs.open(&id).unwrap_err();
+    let error = package.open(&id).unwrap_err();
     match error {
         VfsError::AssetEncrypted {
             required_capability,
@@ -433,9 +434,9 @@ fn synthetic_package_open_encrypted_asset_returns_asset_encrypted_with_crypto_ca
 
 #[test]
 fn synthetic_package_open_helper_gated_asset_returns_asset_helper_gated_with_named_helper() {
-    let vfs = mount(fixture_package());
+    let package = fixture_package();
     let id = AssetId::from_parts("synthetic", "helper-gated/remote.bin").unwrap();
-    let error = vfs.open(&id).unwrap_err();
+    let error = package.open(&id).unwrap_err();
     match error {
         VfsError::AssetHelperGated { helper_id, .. } => {
             assert_eq!(
@@ -449,8 +450,8 @@ fn synthetic_package_open_helper_gated_asset_returns_asset_helper_gated_with_nam
 
 #[test]
 fn synthetic_package_resolve_outside_root_returns_asset_path_unsafe_parent_escape() {
-    let vfs = mount(fixture_package());
-    let error = vfs.resolve("synthetic", "../escape.txt").unwrap_err();
+    let package = fixture_package();
+    let error = package.resolve("../escape.txt").unwrap_err();
     match error {
         VfsError::AssetPathUnsafe { kind, .. } => {
             assert_eq!(kind, TraversalKind::ParentEscape);
@@ -461,8 +462,8 @@ fn synthetic_package_resolve_outside_root_returns_asset_path_unsafe_parent_escap
 
 #[test]
 fn synthetic_package_resolve_drive_letter_returns_asset_path_unsafe_absolute_root() {
-    let vfs = mount(fixture_package());
-    let error = vfs.resolve("synthetic", "C:/Windows/system32").unwrap_err();
+    let package = fixture_package();
+    let error = package.resolve("C:/Windows/system32").unwrap_err();
     match error {
         VfsError::AssetPathUnsafe { kind, .. } => {
             assert_eq!(kind, TraversalKind::AbsoluteRoot);
@@ -472,20 +473,26 @@ fn synthetic_package_resolve_drive_letter_returns_asset_path_unsafe_absolute_roo
 }
 
 #[test]
-fn mounted_vfs_routes_to_correct_package_by_id() {
-    let vfs = mount(fixture_package());
+fn synthetic_package_open_via_asset_id_returns_expected_bytes() {
+    let package = fixture_package();
     let id = AssetId::from_parts("synthetic", "hello/intro.txt").unwrap();
-    let bytes = vfs.open(&id).unwrap();
+    let bytes = package.open(&id).unwrap();
     assert_eq!(bytes.as_slice(), b"hello world!");
 }
 
 #[test]
-fn mounted_vfs_unknown_package_id_returns_asset_outside_package() {
-    let vfs = mount(fixture_package());
-    let id = AssetId::from_parts("not-mounted", "x.txt").unwrap();
-    let error = vfs.open(&id).unwrap_err();
+fn synthetic_package_open_with_mismatched_package_id_returns_asset_outside_package() {
+    // An id whose package portion does not match the synthetic
+    // fixture's own id is rejected at the `AssetPackage` boundary. The
+    // outer routing layer (composite or runtime VFS) is gone, so the
+    // package itself owns this check.
+    let package = fixture_package();
+    let id = AssetId::from_parts("other-pkg", "x.txt").unwrap();
+    let error = package.open(&id).unwrap_err();
     match error {
-        VfsError::AssetOutsidePackage { package, .. } => assert_eq!(package, "not-mounted"),
+        VfsError::AssetOutsidePackage {
+            package: rejected, ..
+        } => assert_eq!(rejected, "synthetic"),
         other => panic!("expected AssetOutsidePackage, got {other:?}"),
     }
 }
@@ -556,9 +563,9 @@ fn vfs_error_serialized_into_runtime_diagnostic_passes_observation_redaction() {
     // round-trip it through ObservationHookEvent::from_json_value (which
     // calls `validate`). The internal `reject_unredacted_local_paths`
     // filter must accept it.
-    let vfs = mount(fixture_package());
+    let package = fixture_package();
     let id = AssetId::from_parts("synthetic", "hello/absent.txt").unwrap();
-    let error = vfs.open(&id).unwrap_err();
+    let error = package.open(&id).unwrap_err();
     let asset_ref = error.asset_ref();
     let diagnostic =
         RuntimeAdapterDiagnostic::new("asset_loader", "blocked", "warning", error.to_string())

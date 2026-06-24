@@ -211,13 +211,7 @@ impl RuntimeVfs for SinglePackageVfs {
         self.0.list(prefix)
     }
 
-    fn resolve(&self, package: &str, logical: &str) -> VfsResult<AssetId> {
-        if package != self.0.id() {
-            return Err(VfsError::AssetOutsidePackage {
-                id: AssetId::from_parts(package, logical)?,
-                package: package.to_string(),
-            });
-        }
+    fn resolve(&self, logical: &str) -> VfsResult<AssetId> {
         self.0.resolve(logical)
     }
 }
@@ -236,7 +230,7 @@ fn mount_a_fixture_vfs_through_the_facade() {
     assert_eq!(descriptors[0].id, "fixture");
     assert_eq!(descriptors[0].kind, PackageKind::Plaintext);
 
-    let id = vfs.resolve("fixture", "hello.txt").expect("resolve");
+    let id = vfs.resolve("hello.txt").expect("resolve");
     assert!(vfs.exists(&id).expect("exists"));
     let metadata = vfs.stat(&id).expect("stat");
     assert_eq!(metadata.kind, AssetKind::File);

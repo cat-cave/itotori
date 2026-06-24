@@ -103,10 +103,11 @@ pub mod redaction {
     }
 }
 pub use vfs::{
-    AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata, AssetPackage, AssetRef,
-    AssetSize, CaseRule, HelperId, IoSummary, MountedVfs, PackageDescriptor, PackageKind,
-    PackageSource, PlaintextDirPackage, RequiredCapability, ResourceBoundKind, RuntimeVfs,
-    TransformKind, TraversalKind, VfsError, VfsResult,
+    AssetArchiveReader, AssetBytes, AssetId, AssetIdErrorReason, AssetKind, AssetMetadata,
+    AssetPackage, AssetRef, AssetSize, CaseFoldedIndex, CaseFoldedIndexEntry, CaseRule,
+    CompositeAssetPackage, CompositeSource, HelperId, IoSummary, MountedVfs, PackageDescriptor,
+    PackageKind, PackageSource, PlaintextDirPackage, RequiredCapability, ResourceBoundKind,
+    RuntimeVfs, TransformKind, TraversalKind, VfsError, VfsResult,
 };
 
 /// Crate-private re-export so the `replay` module can reuse the redaction
