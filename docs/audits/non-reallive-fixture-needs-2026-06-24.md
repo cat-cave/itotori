@@ -171,7 +171,7 @@ real-game bytes and those nodes' acceptance criteria.
   Runs `KAIFUU-115`/`116` against profile B's fixture and asserts a
   byte-equal round-trip against the author-provided plaintext.
   Depends on `KAIFUU-115`, `KAIFUU-116`, and `KAIFUU-200`.
-- **UTSUSHI-200** — `utsushi-rpgmaker-mv-mz` crate scaffold. Wires a
+- **UTSUSHI-179** — `utsushi-rpgmaker-mv-mz` crate scaffold. Wires a
   `RpgMakerMvMzEnginePort` through the substrate facade conformance
   manifest and emits a clean-room attestation for the browser/NW.js
   path. Zero opcode handlers — analogous to the proposed `146a` in
@@ -179,10 +179,10 @@ real-game bytes and those nodes' acceptance criteria.
   M.1–M.3 from `substrate-honesty.md` §M. AC: registers via
   `ConformanceManifest`; substrate conformance tests pass; no
   Show-Text/choice handler exists yet.
-- **UTSUSHI-201** — MV/MZ browser launch fixture replay. Drives the
+- **UTSUSHI-180** — MV/MZ browser launch fixture replay. Drives the
   Chromium launch contract against `KAIFUU-200`'s fixture and emits
   an E1 trace recording text + choice events. Depends on
-  `UTSUSHI-200`, `UTSUSHI-031`/`032`/`033`, `KAIFUU-200`. AC: trace
+  `UTSUSHI-179`, `UTSUSHI-031`/`032`/`033`, `KAIFUU-200`. AC: trace
   contains ≥1 `Show Text` event id matching the `KAIFUU-109` bridge
   unit id.
 
@@ -205,7 +205,7 @@ Acceptance bundle (no eng-month estimates):
 6. (Encrypted-media slice — separate gate.) A new
    `kaifuu rpg-maker decrypt-image` (via `KAIFUU-115`) round-trips
    one `.rpgmvp` / `.png_` byte-equal over the declared header.
-7. `utsushi run` (per `UTSUSHI-201`) produces an E1 trace whose body
+7. `utsushi run` (per `UTSUSHI-180`) produces an E1 trace whose body
    matches the patched bridge unit content; trace metadata declares
    `engine_family: rpg_maker_mv_mz` and `runtime: browser-chromium`
    or `nwjs`.
@@ -216,7 +216,7 @@ Acceptance bundle (no eng-month estimates):
    `crates/kaifuu-core/src/lib.rs`:1668 verbatim.
 
 Steps 1–2 are demonstrable today. Steps 3–5 require `KAIFUU-108`–`112`.
-Step 6 requires `KAIFUU-115`–`117`. Step 7 requires `UTSUSHI-200`
+Step 6 requires `KAIFUU-115`–`117`. Step 7 requires `UTSUSHI-179`
 (plus `UTSUSHI-031`/`032`/`033`/`102`/`119`) and substrate extensions
 M.1–M.3.
 
@@ -361,16 +361,16 @@ fixture-bridging** layer.
   Owned game under `fixtures/private-local/`; redacted readiness
   summary. Depends on `KAIFUU-036`. AC: redaction test forbids any
   filename, KAG body, or key material in the output.
-- **UTSUSHI-202** — `utsushi-kirikiri-xp3` crate scaffold. Wires a
+- **UTSUSHI-181** — `utsushi-kirikiri-xp3` crate scaffold. Wires a
   `KirikiriXp3EnginePort` through the substrate facade conformance
   manifest; clean-room attestation for the KAG plaintext path. Zero
   opcode handlers. Depends on substrate extensions M.1–M.3. AC:
   registers via `ConformanceManifest`; substrate conformance tests
   pass; no KAG opcode handler exists.
-- **UTSUSHI-203** — KAG plaintext fixture replay against the
+- **UTSUSHI-182** — KAG plaintext fixture replay against the
   synthetic corpus. Drives `UTSUSHI-037`/`038` against `KAIFUU-203`
   and emits an E0/E1 trace of text + jump events. Depends on
-  `UTSUSHI-202`, `UTSUSHI-037`, `UTSUSHI-038`, `KAIFUU-009`,
+  `UTSUSHI-181`, `UTSUSHI-037`, `UTSUSHI-038`, `KAIFUU-009`,
   `KAIFUU-203`. AC: trace contains ≥1 text event id and ≥1 label-jump
   event id matching `KAIFUU-009` bridge unit ids.
 
@@ -398,7 +398,7 @@ Acceptance bundle (no eng-month estimates):
    `KAIFUU-098` + `KAIFUU-009`).
 6. `kaifuu verify` returns v0.2 `PatchResult` `status: passed`; the
    `.kaifuu` delta apply produces byte-equal output.
-7. `utsushi run` (per `UTSUSHI-203`) produces an E0/E1 trace whose
+7. `utsushi run` (per `UTSUSHI-182`) produces an E0/E1 trace whose
    text-event body matches the patched bridge unit content; trace
    metadata declares `engine_family: kirikiri_xp3` and
    `runtime: kag-plaintext-interpreter`.
@@ -410,7 +410,7 @@ Acceptance bundle (no eng-month estimates):
 
 Steps 1–2 are demonstrable today. Steps 3, 5, 6 require
 `KAIFUU-098`+`009`+`071`+`205`. Step 4 also requires
-`KAIFUU-009`+`203`. Step 7 requires `UTSUSHI-202` (plus
+`KAIFUU-009`+`203`. Step 7 requires `UTSUSHI-181` (plus
 `UTSUSHI-037`/`038`/`039`) and substrate extensions M.1–M.3.
 
 ---
@@ -424,14 +424,14 @@ Steps 1–2 are demonstrable today. Steps 3, 5, 6 require
 | `KAIFUU-200`  | MV/MZ     | Public-licensed real-game MV/MZ fixture intake        |
 | `KAIFUU-201`  | MV/MZ     | Private-local owned-game readiness lane               |
 | `KAIFUU-202`  | MV/MZ     | Encrypted-asset real-bytes decrypt smoke              |
-| `UTSUSHI-200` | MV/MZ     | `utsushi-rpgmaker-mv-mz` crate scaffold + conformance |
-| `UTSUSHI-201` | MV/MZ     | MV/MZ browser launch fixture replay → E1 trace        |
+| `UTSUSHI-179` | MV/MZ     | `utsushi-rpgmaker-mv-mz` crate scaffold + conformance |
+| `UTSUSHI-180` | MV/MZ     | MV/MZ browser launch fixture replay → E1 trace        |
 | `KAIFUU-203`  | XP3 + KAG | Public synthetic KAG `.ks` corpus                     |
 | `KAIFUU-204`  | XP3 + KAG | Public licensed real-game plain-XP3 fixture intake    |
 | `KAIFUU-205`  | XP3 + KAG | Plain XP3 real-bytes round-trip smoke                 |
 | `KAIFUU-206`  | XP3 + KAG | Private-local KAG/XP3 owned-game readiness lane       |
-| `UTSUSHI-202` | XP3 + KAG | `utsushi-kirikiri-xp3` crate scaffold + conformance   |
-| `UTSUSHI-203` | XP3 + KAG | KAG plaintext fixture replay → E0/E1 trace            |
+| `UTSUSHI-181` | XP3 + KAG | `utsushi-kirikiri-xp3` crate scaffold + conformance   |
+| `UTSUSHI-182` | XP3 + KAG | KAG plaintext fixture replay → E0/E1 trace            |
 
 All proposed ids are free per `roadmap/spec-dag.json` at time of
 writing (max existing `KAIFUU-187`, max existing `UTSUSHI-176`).
@@ -487,6 +487,6 @@ The DAG already carries the deep nodes
 `UTSUSHI-031`–`033`/`037`–`039`/`065`/`102`/`119`/`134`). The
 fixture-bridging layer between owned real-game bytes and those nodes'
 acceptance criteria is missing. The eleven proposals
-(`KAIFUU-200`–`206`, `UTSUSHI-200`–`203`) close that gap without
+(`KAIFUU-200`–`206`, `UTSUSHI-179`–`182`) close that gap without
 inventing new engine support claims and without spending
 the user's time on unrealistic acquisitions.
