@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "0.1.0",
+  "reportId": "AUDIT-UTSUSHI-060-20260624T000747Z",
+  "generatedAt": "2026-06-24T00:07:47Z",
+  "spec": {
+    "id": "UTSUSHI-060",
+    "title": "Reference runtime trace recorder",
+    "branch": "spec/utsushi-060",
+    "worktree": "/scratch/worktrees/itotori-spec-utsushi-060",
+    "commit": "c21c0e9"
+  },
+  "auditor": {
+    "name": "utsushi-060-correctness",
+    "kind": "correctness"
+  },
+  "humanSummary": {
+    "outcome": "pass",
+    "text": "UTSUSHI-060 delivers the reference runtime trace recorder substrate exactly as specified. The new `utsushi_core::recorder` module (832 LOC across `mod`, `trace`, `builder`, `serialize`, `sink_bridge`) carries `ReferenceTrace`, `SourceTag` (kebab-case enum `Browser`/`Native`/`Wine`/`Fixture`), `REFERENCE_TRACE_SCHEMA_VERSION = \"0.1.0-alpha\"`, the `ReferenceRecorder` trait, the in-memory accumulator `InMemoryReferenceRecorder`, the determinism helper `deterministic_json_bytes`, and the `RecordingTextSink` adaptor. All three acceptance criteria hold. (1) Engine-neutral: `SourceTag` is a closed enum with no host paths, no engine binary versions, no engine family names beyond the four declared variants (`trace.rs:22-33`); `grep -rn '/home|C:\\\\\\|wine-' crates/utsushi-core/src/recorder/` returns only the three negative assertions inside `builder.rs:280-282` that *guard* against host paths, never producing them. (2) Deterministic JSON: `deterministic_json_bytes` walks the `serde_json::Value` post-emit and re-emits every object through a `BTreeMap` (`serialize.rs:42-62`), then uses `CompactFormatter` for whitespace stability. The `round_trip_byte_identical` test (`builder.rs:197-207`) asserts two consecutive `finalize_to_bytes` calls produce byte-equal output; `cross_recorder_determinism` (`builder.rs:210-222`) asserts two independent recorders with the same input produce byte-equal output; `canonicalise_sorts_object_keys`, `_preserves_array_order`, and `_recurses_into_nested_objects` (`serialize.rs:80-118`) pin the canonicalisation algorithm itself. (3) Id-only refs / no raw bytes: snapshot refs carry `snapshot_id`, `inspectable_id`, and `evidence_tier` only; the test `with_snapshot_refs_preserves_insertion_order_and_id_only_shape` (`builder.rs:328-351`) asserts neither `\"bytes\"` nor `\"path\"` ever appears in the serialised JSON. Capability state is canonicalised on `finalize` via `sort_capabilities` so two recorders that observed the same capabilities in different orders produce the same wire form (`builder.rs:115-116`; `capability_list_canonicalised_to_sort_order` test). `RecordingTextSink` only records on inner-sink success (`sink_bridge.rs:41-47`) - rejected emissions are not pretended-recorded, a contract test 10 from the plan. The schema-version pin is verified by the in-source test `schema_version_pin_is_alpha` (`trace.rs:91-94`). 18 unit tests across `recorder/*` (the worker claim of \"18\" vs the plan's promised \"11\" is a real over-delivery: 5 in `trace.rs`, 11 in `builder.rs`, 3 in `serialize.rs` per module; plus 7 in `sink_bridge.rs` = actually 26 spread across the five files, but the lib test suite reports 611 passed which absorbs them). One small structural concern: `serialize.rs:49-56` rebuilds `serde_json::Map` from a sorted `BTreeMap` iterator and depends on `serde_json::Map` serializing in insertion order. Under the default `serde_json` feature set the backing type is itself sorted (it does not enable `preserve_order`), so the chain `BTreeMap (sorted iter) -> serde_json::Map -> CompactFormatter` produces sorted output regardless of which detail wins. Belt-and-suspenders: the canonicalise test at `serialize.rs:80-94` would fail loudly if the chain reordered. Pinning the feature absence is not required because `Cargo.toml` declares `serde_json = \"1\"` without `features = [\"preserve_order\"]`. Verification reruns: `cargo test -p utsushi-core` 611 + 7 + 10 + 9 + 9 + 14 + 3 + 5 + 15 + 11 = 694 passed / 0 failed / 5 ignored across lib + integration suites; `just check` clean (cargo fmt, schema:check, ts:typecheck, cargo check --workspace). No `pnpm exec vp run ts:test` impact - this is a Rust-only slice. No P0/P1/P2/P3 findings.",
+    "counts": {
+      "P0": 0,
+      "P1": 0,
+      "P2": 0,
+      "P3": 0
+    }
+  },
+  "orchestration": {
+    "completionDecision": "complete_allowed",
+    "blockingFindingIds": [],
+    "followUpFindingIds": []
+  },
+  "findings": []
+}
