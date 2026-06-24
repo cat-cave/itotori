@@ -132,11 +132,11 @@ crates/ apps/itotori/src` returns zero matches.
 
   Direct probe against real bytes:
 
-                $ cd /tmp/itotori-criticism/probe-cargo && cargo run --release -- \
-                    "/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt"
-                file_len = 3876496
-                first 16 bytes hex = 000000000000000080380100FA050000
-                parse_archive OK entries=0 schema=0.1.0
+                    $ cd /tmp/itotori-criticism/probe-cargo && cargo run --release -- \
+                        "/scratch/itotori-research/sweetie-hd/extracted/オシオキSweetie＋Sweets!! HD_DL版/REALLIVEDATA/Seen.txt"
+                    file_len = 3876496
+                    first 16 bytes hex = 000000000000000080380100FA050000
+                    parse_archive OK entries=0 schema=0.1.0
 
   `parse_archive` returns **false success** — `Ok(SceneIndex { entries:
 vec![] })` — because `count = u32_le(0..4) = 0` matches the
