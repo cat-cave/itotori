@@ -190,10 +190,23 @@ pub use rlop::{
     LongOpReadiness, LongOpScheduler, NeverReadyScheduler, RLOperation, RlopKey, RlopRegistry,
 };
 
+pub use rlop::longops::{SELECTION_LONGOP_MANIFEST, SelectionLongOp, SelectionLongOpError};
+
+pub use rlop::module_ctrl::{
+    CONTROL_FLOW_LONGOP_ID_BASE, CONTROL_FLOW_RLOP_COUNT, FARCALL_ARG_BANK,
+    FARCALL_ARG_BANK_SLOT_CAP, FarcallOp, FarcallWithArgsOp, GosubIfOp, GosubOp, GotoIfOp,
+    GotoOnOp, GotoOp, GotoUnlessOp, HaltOp, KEY_FARCALL, KEY_FARCALL_WITH_ARGS, KEY_GOSUB,
+    KEY_GOSUB_IF, KEY_GOTO, KEY_GOTO_IF, KEY_GOTO_ON, KEY_GOTO_UNLESS, KEY_HALT, KEY_RET, KEY_RTL,
+    KEY_SELECT, MODULE_JMP_ID, MODULE_JMP_TYPE, OPCODE_FARCALL, OPCODE_FARCALL_WITH_ARGS,
+    OPCODE_GOSUB, OPCODE_GOSUB_IF, OPCODE_GOTO, OPCODE_GOTO_IF, OPCODE_GOTO_ON, OPCODE_GOTO_UNLESS,
+    OPCODE_HALT, OPCODE_RET, OPCODE_RTL, OPCODE_SELECT, RetOp, RtlOp, SELECT_LONGOP_ID, SelectOp,
+    register_control_flow_rlops,
+};
+
 pub use vm::{
-    DEFAULT_STEP_BUDGET, InMemorySceneStore, Scene, SceneId, SceneStore, StackFrame,
-    StackFrameKind, StepManyOutcome, StepOutcome, VM_INSPECTABLE_ID, Vm, VmError, VmEvent,
-    VmWarning,
+    DEFAULT_STEP_BUDGET, InMemorySceneStore, STACK_DEPTH_LIMIT, Scene, SceneId, SceneStore,
+    StackFrame, StackFrameKind, StepManyOutcome, StepOutcome, VM_INSPECTABLE_ID, Vm, VmError,
+    VmEvent, VmWarning,
 };
 
 /// Stable port id used by the manifest and by audit tooling.
