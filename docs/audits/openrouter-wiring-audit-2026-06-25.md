@@ -5,10 +5,10 @@ Trigger: `just localize-sweetie-hd --project sweetie-hd-alpha-1` hard-blocked on
 phase 2 (the live OpenRouter invocation) with the typed error
 
 > `provider policy blocks private_corpus input: cost tier is unknown; prompt
-> logging is unknown; completion logging is unknown; retention is unknown;
-> training use is unknown; account input/output logging is unknown; account
-> use of inputs/outputs is unknown; account provider data policy filters are
-> unknown`
+logging is unknown; completion logging is unknown; retention is unknown;
+training use is unknown; account input/output logging is unknown; account
+use of inputs/outputs is unknown; account provider data policy filters are
+unknown`
 
 The user surfaced three load-bearing wrongnesses on the spot: (a) the
 `DEV_PAIR` model id is wrong, (b) ZDR is enforced account-wide by OpenRouter
@@ -71,21 +71,21 @@ canonical doc") rather than guessing.
 `POST /api/v1/chat/completions` accepts a `provider` object whose documented
 fields are (source: provider-selection.md):
 
-| Field | Type | Default | Semantics |
-|---|---|---|---|
-| `order` | `string[]` | none | "List of provider slugs to try in order"; falls back to other providers unless `allow_fallbacks=false`. |
-| `allow_fallbacks` | `boolean` | **`true`** | Controls whether backup providers become available when primary providers are unavailable. |
-| `require_parameters` | `boolean` | **`false`** | "Only use providers that support all parameters in your request." Without this, unsupported parameters are silently ignored by providers. |
-| `data_collection` | `"allow" \| "deny"` | **`"allow"`** | `"deny"` restricts routing to providers that do not retain data for training. |
-| `only` | `string[]` | none | "List of provider slugs to allow for this request." Merged with account-wide allowances. |
-| `ignore` | `string[]` | none | "List of provider slugs to skip for this request." Merged with account-wide ignores. |
-| `quantizations` | `string[]` | none | Filter providers by quantization (`int4`, `int8`, `fp4`, `fp6`, `fp8`, `fp16`, `bf16`, `fp32`, `unknown`). |
-| `sort` | `"price" \| "throughput" \| "latency"` *or* `{by, partition}` | none | Sorts providers; disables OR's default load-balancing. |
-| `preferred_min_throughput` | `number` *or* percentile cutoffs (`p50/75/90/99`) | none | Endpoints below threshold are de-prioritised but still in the fallback list. |
-| `preferred_max_latency` | `number` *or* percentile cutoffs | none | Same shape, latency dimension. |
-| `max_price` | `{prompt?, completion?, request?, image?}` | none | Cap pricing; request fails when no provider matches. |
-| `zdr` | `boolean` | none | "Restrict routing to only ZDR (Zero Data Retention) endpoints." **Acts as an OR with account-wide and guardrail ZDR settings — if any is enabled, ZDR applies; the per-request parameter cannot DISABLE account-wide enforcement.** (Per zdr.md.) |
-| `enforce_distillable_text` | `boolean` | none | Routes only to models that allow text distillation. |
+| Field                      | Type                                                          | Default       | Semantics                                                                                                                                                                                                                                         |
+| -------------------------- | ------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `order`                    | `string[]`                                                    | none          | "List of provider slugs to try in order"; falls back to other providers unless `allow_fallbacks=false`.                                                                                                                                           |
+| `allow_fallbacks`          | `boolean`                                                     | **`true`**    | Controls whether backup providers become available when primary providers are unavailable.                                                                                                                                                        |
+| `require_parameters`       | `boolean`                                                     | **`false`**   | "Only use providers that support all parameters in your request." Without this, unsupported parameters are silently ignored by providers.                                                                                                         |
+| `data_collection`          | `"allow" \| "deny"`                                           | **`"allow"`** | `"deny"` restricts routing to providers that do not retain data for training.                                                                                                                                                                     |
+| `only`                     | `string[]`                                                    | none          | "List of provider slugs to allow for this request." Merged with account-wide allowances.                                                                                                                                                          |
+| `ignore`                   | `string[]`                                                    | none          | "List of provider slugs to skip for this request." Merged with account-wide ignores.                                                                                                                                                              |
+| `quantizations`            | `string[]`                                                    | none          | Filter providers by quantization (`int4`, `int8`, `fp4`, `fp6`, `fp8`, `fp16`, `bf16`, `fp32`, `unknown`).                                                                                                                                        |
+| `sort`                     | `"price" \| "throughput" \| "latency"` _or_ `{by, partition}` | none          | Sorts providers; disables OR's default load-balancing.                                                                                                                                                                                            |
+| `preferred_min_throughput` | `number` _or_ percentile cutoffs (`p50/75/90/99`)             | none          | Endpoints below threshold are de-prioritised but still in the fallback list.                                                                                                                                                                      |
+| `preferred_max_latency`    | `number` _or_ percentile cutoffs                              | none          | Same shape, latency dimension.                                                                                                                                                                                                                    |
+| `max_price`                | `{prompt?, completion?, request?, image?}`                    | none          | Cap pricing; request fails when no provider matches.                                                                                                                                                                                              |
+| `zdr`                      | `boolean`                                                     | none          | "Restrict routing to only ZDR (Zero Data Retention) endpoints." **Acts as an OR with account-wide and guardrail ZDR settings — if any is enabled, ZDR applies; the per-request parameter cannot DISABLE account-wide enforcement.** (Per zdr.md.) |
+| `enforce_distillable_text` | `boolean`                                                     | none          | Routes only to models that allow text distillation.                                                                                                                                                                                               |
 
 Source quote — `data_collection`: itotori's request flows `"deny"` whenever
 input is non-public (see §2 / §3-B), which is correct semantically but is
@@ -158,7 +158,7 @@ From parameters.md, model-fallbacks.md, latest-resolution:
 ### §1.4 Structured outputs (structured-outputs.md)
 
 - `response_format: { type: "json_schema", json_schema: { name, strict,
-  schema } }` is the strict path. `strict: true` enforces schema adherence.
+schema } }` is the strict path. `strict: true` enforces schema adherence.
 - `response_format: { type: "json_object" }` exists (parameters.md confirms
   the type, structured-outputs.md does not detail it separately).
 - Supported model families: "OpenAI models (GPT-4o and later versions),
@@ -177,7 +177,7 @@ From parameters.md, model-fallbacks.md, latest-resolution:
   the docs are not crisp on whether the boolean alone (without
   `response_format`) does anything useful. **DOC-AMBIGUOUS-5**.
 - Tool-call enforcement (`tool_choice: "required"` / `{type: "function",
-  function: {name}}` / `parallel_tool_calls: false`) is documented in
+function: {name}}` / `parallel_tool_calls: false`) is documented in
   parameters.md but not in the structured-outputs.md page. itotori's
   `tool_call_arguments` mode wires `tool_choice: {type: "function", ...}`
   which lines up with the OpenAI shape OR mirrors.
@@ -470,13 +470,14 @@ openrouter.ai/api/v1/models`) lists exactly two DeepSeek v4 slugs:
 intent was `deepseek/deepseek-v4-flash`.
 
 **Where**:
+
 - `apps/itotori/src/providers/dev-pair.ts:47` — `modelId: "deepseek/deepseek-chat-v4"`.
 - `presets/localize-sweetie-hd.pair-policy.json:4, 12, 14, 17, 18, 21, 24, 27, 28, 29, 30, 33` — same wrong slug in 12 places.
 - `apps/itotori/src/providers/dev-pair.ts:12` — code comment "deepseek-chat-v4 is the cheapest production-grade model on OpenRouter that still supports JSON-schema structured output well" — this rationale was written against an imagined slug.
 - `apps/itotori/src/providers/dev-pair.ts:133` — note claims "verified against OpenRouter's published Fireworks-hosted deepseek-v4 endpoint as of 2026-06" — there is no Fireworks-hosted entry for either v4-flash or v4-pro in the live catalog (see §3-A-2).
 
 **§3-A-2 — Provider id pin is unverified**. The catalog endpoint pricing
-data shows each v4 model carries a *single* "top provider" (the catalog
+data shows each v4 model carries a _single_ "top provider" (the catalog
 truncated the per-endpoint list, but neither v4 entry returned `fireworks`
 in the small slice we fetched). Whether `fireworks` actually hosts
 `deepseek/deepseek-v4-flash` in 2026-06 is an empirical question — Trevor
@@ -498,6 +499,7 @@ should NOT be used for itotori's pair pin.
 the in-progress UTSUSHI-228 run that triggered this audit.
 
 **Blast radius**:
+
 - `dev-pair.ts` exported constant `DEV_PAIR` — used by `DEV_POLICY` in
   `agentic-loop.ts:126`, by `OpenRouterModelProvider` capability
   registration (line 1213), by `openrouter-provider.test.ts` (line 24).
@@ -546,6 +548,7 @@ every request self-documenting, and it ensures that if Trevor's account
 state ever changes, the request still gets ZDR-only routing.
 
 **Where**:
+
 - `apps/itotori/src/providers/openrouter.ts:382-399` — `openRouterDefaultCapabilities` declares "unknown".
 - `apps/itotori/src/providers/policy.ts:13-56` — `evaluateProviderInputPolicy` is the failing gate.
 - `apps/itotori/src/providers/openrouter.ts:457-515` — `buildOpenRouterProviderRouting` reads `zdr` from the caller, never sets it as a default.
@@ -560,6 +563,7 @@ the per-request flag (provider-selection.md).
 literal blocker the alpha closer hit.
 
 **Blast radius**:
+
 - `policy.ts` `evaluateProviderInputPolicy` — used everywhere via
   `assertProviderInputAllowed` (capability-guard.ts:25).
 - `types.ts:69-75` `OpenRouterAccountPrivacyState` shape is itself
@@ -597,29 +601,29 @@ plumbing until it's removed.
 Audit of every documented `provider.*` field against itotori's
 `buildOpenRouterRequestBody` + `buildOpenRouterProviderRouting`:
 
-| OR field | itotori behaviour today | Should be |
-|---|---|---|
-| `provider.order` | Caller-supplied only. | OK, no change. |
-| `provider.allow_fallbacks` | Always `false`. | OK — pins the providerId. |
-| `provider.require_parameters` | Set to `true` only when structured-output or tools are requested. | OK; OR docs explicitly recommend this pairing. |
-| `provider.data_collection` | `"deny"` when input is non-public, else caller-supplied. | OK. |
-| `provider.only` | Always `[request.providerId]`. | OK; pins the providerId. |
-| `provider.ignore` | Caller-supplied only. | OK. |
-| `provider.quantizations` | Caller-supplied only. | OK; the alpha pair doesn't care. |
-| `provider.sort` | Caller-supplied only. | OK; `only`+`allow_fallbacks=false` makes sort moot. |
-| `provider.zdr` | Caller-supplied only — **alpha closer never sets it**. | **Should default to `true` for private-corpus inputs.** (§3-D-1) |
-| `provider.enforce_distillable_text` | Caller-supplied only. | OK — itotori doesn't want distillation. |
-| `provider.max_price` | Caller-supplied only. | Optional belt-and-suspenders for the per-process cap. |
-| `provider.preferred_min_throughput` / `preferred_max_latency` | **Not in `OpenRouterProviderRouting` type at all.** | Acceptable for alpha; mention in §4-3. |
-| `models` (top-level fallback array) | Set when `fallbackPlanForRequest` returns >1 entry. | OK shape-wise, but the alpha pair-policy never populates `fallbackModels`, so `models` is never emitted. (§3-D-2) |
-| `response_format` | json_schema and json_object both wired. | OK. |
-| `tool_choice` | Forced when structured-output is `tool_call_arguments`. | OK. |
-| `structured_outputs: true` (boolean param) | **Not sent.** | Probably benign — `response_format.json_schema` is the canonical path. Note as DOC-AMBIGUOUS-5. |
-| `parallel_tool_calls` | **Not sent.** | itotori's QA prompts request one tool call at a time; OK default. |
-| `seed` | **Not sent.** | Deterministic replay would benefit from this; medium priority. (§3-D-3) |
-| `usage.include` / `usage` request opt-in | Not configured. | OR's response always includes `usage` per overview.md; no action. |
-| `plugins` | Not configured. | OK — itotori doesn't want web-search or PDF-parse. |
-| Headers — `X-OpenRouter-Metadata: enabled` | Sent (line 139). | This header is undocumented in the pages we can access (it appears to be the toggle for the `openrouter_metadata.endpoints` echo block). The cost-fallback path 4 (§2.5) depends on it — but the docs do not document the header. **DOC-AMBIGUOUS-8.** §4 should resolve this empirically; if the header is unsupported, the endpoint-pricing cost fallback is dead code. |
+| OR field                                                      | itotori behaviour today                                           | Should be                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `provider.order`                                              | Caller-supplied only.                                             | OK, no change.                                                                                                                                                                                                                                                                                                                                                            |
+| `provider.allow_fallbacks`                                    | Always `false`.                                                   | OK — pins the providerId.                                                                                                                                                                                                                                                                                                                                                 |
+| `provider.require_parameters`                                 | Set to `true` only when structured-output or tools are requested. | OK; OR docs explicitly recommend this pairing.                                                                                                                                                                                                                                                                                                                            |
+| `provider.data_collection`                                    | `"deny"` when input is non-public, else caller-supplied.          | OK.                                                                                                                                                                                                                                                                                                                                                                       |
+| `provider.only`                                               | Always `[request.providerId]`.                                    | OK; pins the providerId.                                                                                                                                                                                                                                                                                                                                                  |
+| `provider.ignore`                                             | Caller-supplied only.                                             | OK.                                                                                                                                                                                                                                                                                                                                                                       |
+| `provider.quantizations`                                      | Caller-supplied only.                                             | OK; the alpha pair doesn't care.                                                                                                                                                                                                                                                                                                                                          |
+| `provider.sort`                                               | Caller-supplied only.                                             | OK; `only`+`allow_fallbacks=false` makes sort moot.                                                                                                                                                                                                                                                                                                                       |
+| `provider.zdr`                                                | Caller-supplied only — **alpha closer never sets it**.            | **Should default to `true` for private-corpus inputs.** (§3-D-1)                                                                                                                                                                                                                                                                                                          |
+| `provider.enforce_distillable_text`                           | Caller-supplied only.                                             | OK — itotori doesn't want distillation.                                                                                                                                                                                                                                                                                                                                   |
+| `provider.max_price`                                          | Caller-supplied only.                                             | Optional belt-and-suspenders for the per-process cap.                                                                                                                                                                                                                                                                                                                     |
+| `provider.preferred_min_throughput` / `preferred_max_latency` | **Not in `OpenRouterProviderRouting` type at all.**               | Acceptable for alpha; mention in §4-3.                                                                                                                                                                                                                                                                                                                                    |
+| `models` (top-level fallback array)                           | Set when `fallbackPlanForRequest` returns >1 entry.               | OK shape-wise, but the alpha pair-policy never populates `fallbackModels`, so `models` is never emitted. (§3-D-2)                                                                                                                                                                                                                                                         |
+| `response_format`                                             | json_schema and json_object both wired.                           | OK.                                                                                                                                                                                                                                                                                                                                                                       |
+| `tool_choice`                                                 | Forced when structured-output is `tool_call_arguments`.           | OK.                                                                                                                                                                                                                                                                                                                                                                       |
+| `structured_outputs: true` (boolean param)                    | **Not sent.**                                                     | Probably benign — `response_format.json_schema` is the canonical path. Note as DOC-AMBIGUOUS-5.                                                                                                                                                                                                                                                                           |
+| `parallel_tool_calls`                                         | **Not sent.**                                                     | itotori's QA prompts request one tool call at a time; OK default.                                                                                                                                                                                                                                                                                                         |
+| `seed`                                                        | **Not sent.**                                                     | Deterministic replay would benefit from this; medium priority. (§3-D-3)                                                                                                                                                                                                                                                                                                   |
+| `usage.include` / `usage` request opt-in                      | Not configured.                                                   | OR's response always includes `usage` per overview.md; no action.                                                                                                                                                                                                                                                                                                         |
+| `plugins`                                                     | Not configured.                                                   | OK — itotori doesn't want web-search or PDF-parse.                                                                                                                                                                                                                                                                                                                        |
+| Headers — `X-OpenRouter-Metadata: enabled`                    | Sent (line 139).                                                  | This header is undocumented in the pages we can access (it appears to be the toggle for the `openrouter_metadata.endpoints` echo block). The cost-fallback path 4 (§2.5) depends on it — but the docs do not document the header. **DOC-AMBIGUOUS-8.** §4 should resolve this empirically; if the header is unsupported, the endpoint-pricing cost fallback is dead code. |
 
 **§3-D-1**. Default `provider.zdr: true` for non-public input — also
 addresses §3-B-3. Severity: high.
@@ -1111,9 +1115,8 @@ keep node count manageable. We do NOT mint separate nodes for §3-H-1..6.)
   `acceptanceCriteria` was met with the wrong DEV_PAIR slug; the slug
   defect is tracked in ITOTORI-225 (does not regress ITOTORI-220).
 - **What would have caught it at merge**: a one-shot live call against
-  the OR endpoint with the asserted modelId would have surfaced the
-  404. That check did not run because the verification list (`pnpm
-  --filter @itotori/app test -- providers/pair`) is mock-only.
+  the OR endpoint with the asserted modelId would have surfaced the 404. That check did not run because the verification list (`pnpm
+--filter @itotori/app test -- providers/pair`) is mock-only.
 
 ### §5.2 ITOTORI-221 (OpenRouter provider)
 
@@ -1130,7 +1133,7 @@ keep node count manageable. We do NOT mint separate nodes for §3-H-1..6.)
   trail with a one-line note that the gate's removal is by design.
 - **What would have caught it at merge**: a live call against OR with
   `OPENROUTER_ZDR_ACCOUNT_ASSERTED=1` and `inputClassification:
-  "private_corpus"` would have hit the same eight-reason failure mode
+"private_corpus"` would have hit the same eight-reason failure mode
   the alpha closer hit on 2026-06-25 — but the live-smoke test uses
   `inputClassification: "synthetic_public"` (test fixture line 37), so
   the gate is never exercised in CI.

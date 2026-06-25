@@ -1,0 +1,918 @@
+{
+  "schemaVersion": "itotori-224-evidence/v0",
+  "node": "ITOTORI-224",
+  "fetchedAt": "2026-06-25T13:55:48.368Z",
+  "redactionContract": {
+    "field": "headers.authorization",
+    "replacement": "Bearer sk-or-***REDACTED***",
+    "rationale": "Authorization header is never written to disk. Verify with: rg 'sk-or-[A-Za-z0-9_-]{40,}' docs/openrouter-integration-evidence/<date>.json (must return 0)."
+  },
+  "alphaPairCatalog": {
+    "model_id": "deepseek/deepseek-v4-flash",
+    "canonical_slug": "deepseek/deepseek-v4-flash-20260423",
+    "catalog_fetched_at": "2026-06-25T13:55:48.368Z",
+    "catalog_source": "https://openrouter.ai/api/v1/models",
+    "fireworks_endpoint_present": true,
+    "fireworks_endpoint_tag": "fireworks",
+    "fireworks_supports_implicit_caching": false,
+    "deepseek_endpoint_tag": "deepseek",
+    "deepseek_supports_implicit_caching": true,
+    "catalog_note": "The catalog /api/v1/models/deepseek/deepseek-v4-flash/endpoints returned 18 endpoints. Fireworks IS in the list (tag='fireworks'). Implicit caching is supported ONLY on the 'deepseek' tag, not on Fireworks. Pricing on Fireworks: prompt=$0.00000014/token, completion=$0.00000028/token, input_cache_read=$0.000000028/token. ITOTORI-226 may want to evaluate switching the pin from 'fireworks' to 'deepseek' if cache-rate matters for the alpha pair; alternatively, keep 'fireworks' for latency and accept no implicit caching."
+  },
+  "routingPostureUsed": {
+    "only": ["fireworks"],
+    "allow_fallbacks": false,
+    "data_collection": "deny",
+    "zdr": true,
+    "require_parameters": true
+  },
+  "calls": [
+    {
+      "label": "call_1_baseline_zdr_alpha_pair",
+      "capturedAt": "2026-06-25T13:55:54.649Z",
+      "request": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer sk-or-***REDACTED***",
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://itotori.dev/itotori-224-evidence-capture",
+          "X-Title": "itotori-224-evidence-capture"
+        },
+        "body": {
+          "model": "deepseek/deepseek-v4-flash",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with exactly the word: hello"
+            }
+          ],
+          "max_tokens": 16,
+          "temperature": 0,
+          "provider": {
+            "only": ["fireworks"],
+            "allow_fallbacks": false,
+            "data_collection": "deny",
+            "zdr": true,
+            "require_parameters": true
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "statusText": "OK",
+        "headers": {
+          "access-control-allow-origin": "*",
+          "access-control-expose-headers": "X-Generation-Id,cf-ray",
+          "cf-ray": "a11478d43e56b6f4-DFW",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "application/json",
+          "date": "Thu, 25 Jun 2026 13:55:53 GMT",
+          "permissions-policy": "payment=(self \"https://checkout.stripe.com\" \"https://connect-js.stripe.com\" \"https://js.stripe.com\" \"https://*.js.stripe.com\" \"https://hooks.stripe.com\")",
+          "referrer-policy": "no-referrer, strict-origin-when-cross-origin",
+          "server": "cloudflare",
+          "transfer-encoding": "chunked",
+          "x-content-type-options": "nosniff",
+          "x-generation-id": "gen-1782395748-RbpAzhCNny8TxgUgPC4P"
+        },
+        "body": {
+          "id": "gen-1782395748-RbpAzhCNny8TxgUgPC4P",
+          "object": "chat.completion",
+          "created": 1782395748,
+          "model": "deepseek/deepseek-v4-flash-20260423",
+          "provider": "Fireworks",
+          "system_fingerprint": null,
+          "service_tier": null,
+          "choices": [
+            {
+              "index": 0,
+              "logprobs": null,
+              "finish_reason": "length",
+              "native_finish_reason": "length",
+              "message": {
+                "role": "assistant",
+                "content": null,
+                "refusal": null,
+                "reasoning": "We are asked to reply with exactly the word: hello. So the response should",
+                "reasoning_details": [
+                  {
+                    "type": "reasoning.text",
+                    "text": "We are asked to reply with exactly the word: hello. So the response should",
+                    "format": "unknown",
+                    "index": 0
+                  }
+                ]
+              }
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 11,
+            "completion_tokens": 16,
+            "total_tokens": 27,
+            "cost": 0.00000602,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0.00000602,
+              "upstream_inference_prompt_cost": 0.00000154,
+              "upstream_inference_completions_cost": 0.00000448
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 19,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          }
+        },
+        "elapsedMs": 5544
+      }
+    },
+    {
+      "label": "call_2_metadata_header_enabled",
+      "capturedAt": "2026-06-25T13:56:02.548Z",
+      "request": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer sk-or-***REDACTED***",
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://itotori.dev/itotori-224-evidence-capture",
+          "X-Title": "itotori-224-evidence-capture",
+          "X-OpenRouter-Metadata": "enabled"
+        },
+        "body": {
+          "model": "deepseek/deepseek-v4-flash",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with exactly the word: bonjour"
+            }
+          ],
+          "max_tokens": 16,
+          "temperature": 0,
+          "provider": {
+            "only": ["fireworks"],
+            "allow_fallbacks": false,
+            "data_collection": "deny",
+            "zdr": true,
+            "require_parameters": true
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "statusText": "OK",
+        "headers": {
+          "access-control-allow-origin": "*",
+          "access-control-expose-headers": "X-Generation-Id,cf-ray",
+          "cf-ray": "a11478fa999fb6f4-DFW",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "application/json",
+          "date": "Thu, 25 Jun 2026 13:56:01 GMT",
+          "permissions-policy": "payment=(self \"https://checkout.stripe.com\" \"https://connect-js.stripe.com\" \"https://js.stripe.com\" \"https://*.js.stripe.com\" \"https://hooks.stripe.com\")",
+          "referrer-policy": "no-referrer, strict-origin-when-cross-origin",
+          "server": "cloudflare",
+          "transfer-encoding": "chunked",
+          "x-content-type-options": "nosniff",
+          "x-generation-id": "gen-1782395754-NeLwvt9JP1Djm9DGY4T7"
+        },
+        "body": {
+          "id": "gen-1782395754-NeLwvt9JP1Djm9DGY4T7",
+          "object": "chat.completion",
+          "created": 1782395754,
+          "model": "deepseek/deepseek-v4-flash-20260423",
+          "provider": "Fireworks",
+          "system_fingerprint": null,
+          "service_tier": null,
+          "choices": [
+            {
+              "index": 0,
+              "logprobs": null,
+              "finish_reason": "length",
+              "native_finish_reason": "length",
+              "message": {
+                "role": "assistant",
+                "content": null,
+                "refusal": null,
+                "reasoning": "We need to reply with exactly the word \"bonjour\". The instruction is clear",
+                "reasoning_details": [
+                  {
+                    "type": "reasoning.text",
+                    "text": "We need to reply with exactly the word \"bonjour\". The instruction is clear",
+                    "format": "unknown",
+                    "index": 0
+                  }
+                ]
+              }
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 12,
+            "completion_tokens": 16,
+            "total_tokens": 28,
+            "cost": 0.00000616,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0.00000616,
+              "upstream_inference_prompt_cost": 0.00000168,
+              "upstream_inference_completions_cost": 0.00000448
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 19,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          },
+          "openrouter_metadata": {
+            "requested": "deepseek/deepseek-v4-flash",
+            "strategy": "direct",
+            "region": "DFW",
+            "summary": "available=1, selected=Fireworks",
+            "attempt": 1,
+            "is_byok": false,
+            "endpoints": {
+              "total": 18,
+              "available": [
+                {
+                  "provider": "Fireworks",
+                  "model": "deepseek/deepseek-v4-flash-20260423",
+                  "selected": true
+                }
+              ]
+            }
+          }
+        },
+        "elapsedMs": 7342
+      }
+    },
+    {
+      "label": "call_3_implicit_cache_probe_deepseek_provider_blocked_by_zdr",
+      "capturedAt": "2026-06-25T13:56:02.581Z",
+      "request": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer sk-or-***REDACTED***",
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://itotori.dev/itotori-224-evidence-capture",
+          "X-Title": "itotori-224-evidence-capture"
+        },
+        "body": {
+          "model": "deepseek/deepseek-v4-flash",
+          "messages": [
+            {
+              "role": "system",
+              "content": "You are a terse assistant. Reply with exactly one short sentence."
+            },
+            {
+              "role": "user",
+              "content": "Greet me in formal English. Use exactly five words."
+            }
+          ],
+          "max_tokens": 16,
+          "temperature": 0,
+          "provider": {
+            "only": ["deepseek"],
+            "allow_fallbacks": false,
+            "data_collection": "deny",
+            "zdr": true,
+            "require_parameters": true
+          }
+        }
+      },
+      "response": {
+        "status": 404,
+        "statusText": "Not Found",
+        "headers": {
+          "access-control-allow-origin": "*",
+          "access-control-expose-headers": "X-Generation-Id,cf-ray",
+          "cf-ray": "a114792c0c13b6f4-DFW",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "application/json",
+          "date": "Thu, 25 Jun 2026 13:56:02 GMT",
+          "permissions-policy": "payment=(self \"https://checkout.stripe.com\" \"https://connect-js.stripe.com\" \"https://js.stripe.com\" \"https://*.js.stripe.com\" \"https://hooks.stripe.com\")",
+          "referrer-policy": "no-referrer, strict-origin-when-cross-origin",
+          "server": "cloudflare",
+          "transfer-encoding": "chunked",
+          "x-content-type-options": "nosniff"
+        },
+        "body": {
+          "error": {
+            "message": "No endpoints found matching your data policy (Zero data retention). Configure: https://openrouter.ai/settings/privacy",
+            "code": 404
+          }
+        },
+        "elapsedMs": 31
+      }
+    },
+    {
+      "label": "call_4_cache_probe_fireworks_repeat_call_1_prompt",
+      "capturedAt": "2026-06-25T13:56:04.188Z",
+      "request": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer sk-or-***REDACTED***",
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://itotori.dev/itotori-224-evidence-capture",
+          "X-Title": "itotori-224-evidence-capture"
+        },
+        "body": {
+          "model": "deepseek/deepseek-v4-flash",
+          "messages": [
+            {
+              "role": "user",
+              "content": "Reply with exactly the word: hello"
+            }
+          ],
+          "max_tokens": 16,
+          "temperature": 0,
+          "provider": {
+            "only": ["fireworks"],
+            "allow_fallbacks": false,
+            "data_collection": "deny",
+            "zdr": true,
+            "require_parameters": true
+          }
+        }
+      },
+      "response": {
+        "status": 200,
+        "statusText": "OK",
+        "headers": {
+          "access-control-allow-origin": "*",
+          "access-control-expose-headers": "X-Generation-Id,cf-ray",
+          "cf-ray": "a114792c2ca6b6f4-DFW",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "application/json",
+          "date": "Thu, 25 Jun 2026 13:56:03 GMT",
+          "permissions-policy": "payment=(self \"https://checkout.stripe.com\" \"https://connect-js.stripe.com\" \"https://js.stripe.com\" \"https://*.js.stripe.com\" \"https://hooks.stripe.com\")",
+          "referrer-policy": "no-referrer, strict-origin-when-cross-origin",
+          "server": "cloudflare",
+          "transfer-encoding": "chunked",
+          "x-content-type-options": "nosniff",
+          "x-generation-id": "gen-1782395762-yYrUdT0koGyNvVG5TsrW"
+        },
+        "body": {
+          "id": "gen-1782395762-yYrUdT0koGyNvVG5TsrW",
+          "object": "chat.completion",
+          "created": 1782395762,
+          "model": "deepseek/deepseek-v4-flash-20260423",
+          "provider": "Fireworks",
+          "system_fingerprint": null,
+          "service_tier": null,
+          "choices": [
+            {
+              "index": 0,
+              "logprobs": null,
+              "finish_reason": "length",
+              "native_finish_reason": "length",
+              "message": {
+                "role": "assistant",
+                "content": null,
+                "refusal": null,
+                "reasoning": "We are asked to reply with exactly the word \"hello\". So the response should",
+                "reasoning_details": [
+                  {
+                    "type": "reasoning.text",
+                    "text": "We are asked to reply with exactly the word \"hello\". So the response should",
+                    "format": "unknown",
+                    "index": 0
+                  }
+                ]
+              }
+            }
+          ],
+          "usage": {
+            "prompt_tokens": 11,
+            "completion_tokens": 16,
+            "total_tokens": 27,
+            "cost": 0.00000602,
+            "is_byok": false,
+            "prompt_tokens_details": {
+              "cached_tokens": 0,
+              "cache_write_tokens": 0,
+              "audio_tokens": 0,
+              "video_tokens": 0
+            },
+            "cost_details": {
+              "upstream_inference_cost": 0.00000602,
+              "upstream_inference_prompt_cost": 0.00000154,
+              "upstream_inference_completions_cost": 0.00000448
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 19,
+              "image_tokens": 0,
+              "audio_tokens": 0
+            }
+          }
+        },
+        "elapsedMs": 1119
+      }
+    },
+    {
+      "label": "call_5_no_matching_provider",
+      "capturedAt": "2026-06-25T13:56:04.219Z",
+      "request": {
+        "url": "https://openrouter.ai/api/v1/chat/completions",
+        "method": "POST",
+        "headers": {
+          "Authorization": "Bearer sk-or-***REDACTED***",
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://itotori.dev/itotori-224-evidence-capture",
+          "X-Title": "itotori-224-evidence-capture"
+        },
+        "body": {
+          "model": "deepseek/deepseek-v4-flash",
+          "messages": [
+            {
+              "role": "user",
+              "content": "ping"
+            }
+          ],
+          "max_tokens": 4,
+          "temperature": 0,
+          "provider": {
+            "only": ["this-provider-does-not-exist-itotori-224"],
+            "allow_fallbacks": false,
+            "data_collection": "deny",
+            "zdr": true,
+            "require_parameters": true
+          }
+        }
+      },
+      "response": {
+        "status": 404,
+        "statusText": "Not Found",
+        "headers": {
+          "access-control-allow-origin": "*",
+          "access-control-expose-headers": "X-Generation-Id,cf-ray",
+          "cf-ray": "a1147936399bb6f4-DFW",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "application/json",
+          "date": "Thu, 25 Jun 2026 13:56:04 GMT",
+          "permissions-policy": "payment=(self \"https://checkout.stripe.com\" \"https://connect-js.stripe.com\" \"https://js.stripe.com\" \"https://*.js.stripe.com\" \"https://hooks.stripe.com\")",
+          "referrer-policy": "no-referrer, strict-origin-when-cross-origin",
+          "server": "cloudflare",
+          "transfer-encoding": "chunked",
+          "x-content-type-options": "nosniff"
+        },
+        "body": {
+          "error": {
+            "message": "No allowed providers are available for the selected model.",
+            "code": 404,
+            "metadata": {
+              "available_providers": [
+                "streamlake",
+                "wafer",
+                "gmicloud",
+                "baidu",
+                "deepinfra",
+                "digitalocean",
+                "siliconflow",
+                "alibaba",
+                "morph",
+                "parasail",
+                "atlas-cloud",
+                "akashml",
+                "fireworks",
+                "novita",
+                "wandb",
+                "cloudflare",
+                "deepseek",
+                "venice"
+              ],
+              "requested_providers": ["this-provider-does-not-exist-itotori-224"]
+            }
+          }
+        },
+        "elapsedMs": 29
+      }
+    },
+    {
+      "label": "call_6_generation_lookup_for_call_1_after_3000ms",
+      "capturedAt": "2026-06-25T13:56:07.311Z",
+      "request": {
+        "url": "https://openrouter.ai/api/v1/generation?id=gen-1782395748-RbpAzhCNny8TxgUgPC4P",
+        "method": "GET",
+        "headers": {
+          "Authorization": "Bearer sk-or-***REDACTED***",
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://itotori.dev/itotori-224-evidence-capture",
+          "X-Title": "itotori-224-evidence-capture"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 404,
+        "statusText": "Not Found",
+        "headers": {
+          "access-control-allow-origin": "*",
+          "access-control-expose-headers": "X-Generation-Id,cf-ray",
+          "cache-control": "private, no-store",
+          "cf-ray": "a114794929bab6f4-DFW",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "application/json",
+          "date": "Thu, 25 Jun 2026 13:56:07 GMT",
+          "permissions-policy": "payment=(self \"https://checkout.stripe.com\" \"https://connect-js.stripe.com\" \"https://js.stripe.com\" \"https://*.js.stripe.com\" \"https://hooks.stripe.com\")",
+          "referrer-policy": "no-referrer, strict-origin-when-cross-origin",
+          "server": "cloudflare",
+          "transfer-encoding": "chunked",
+          "x-content-type-options": "nosniff"
+        },
+        "body": {
+          "error": {
+            "message": "Generation gen-1782395748-RbpAzhCNny8TxgUgPC4P not found",
+            "code": 404
+          }
+        },
+        "elapsedMs": 91
+      }
+    },
+    {
+      "label": "call_6_generation_lookup_for_call_1_after_5000ms",
+      "capturedAt": "2026-06-25T13:56:12.497Z",
+      "request": {
+        "url": "https://openrouter.ai/api/v1/generation?id=gen-1782395748-RbpAzhCNny8TxgUgPC4P",
+        "method": "GET",
+        "headers": {
+          "Authorization": "Bearer sk-or-***REDACTED***",
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://itotori.dev/itotori-224-evidence-capture",
+          "X-Title": "itotori-224-evidence-capture"
+        },
+        "body": null
+      },
+      "response": {
+        "status": 200,
+        "statusText": "OK",
+        "headers": {
+          "access-control-allow-origin": "*",
+          "access-control-expose-headers": "X-Generation-Id,cf-ray",
+          "cache-control": "private, no-store",
+          "cf-ray": "a11479698fef69d6-DFW",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "application/json",
+          "date": "Thu, 25 Jun 2026 13:56:12 GMT",
+          "permissions-policy": "payment=(self \"https://checkout.stripe.com\" \"https://connect-js.stripe.com\" \"https://js.stripe.com\" \"https://*.js.stripe.com\" \"https://hooks.stripe.com\")",
+          "referrer-policy": "no-referrer, strict-origin-when-cross-origin",
+          "server": "cloudflare",
+          "transfer-encoding": "chunked",
+          "x-content-type-options": "nosniff"
+        },
+        "body": {
+          "data": {
+            "created_at": "2026-06-25T13:55:48.515Z",
+            "model": "deepseek/deepseek-v4-flash-20260423",
+            "app_id": 4203856,
+            "external_user": null,
+            "streamed": true,
+            "cancelled": false,
+            "latency": 5314,
+            "moderation_latency": null,
+            "generation_time": 6036,
+            "tokens_prompt": 9,
+            "tokens_completion": 19,
+            "native_tokens_prompt": 11,
+            "native_tokens_completion": 16,
+            "native_tokens_completion_images": null,
+            "native_tokens_reasoning": 19,
+            "native_tokens_cached": 0,
+            "num_media_prompt": null,
+            "num_input_audio_prompt": null,
+            "num_media_completion": 0,
+            "num_search_results": null,
+            "num_fetches": null,
+            "web_search_engine": null,
+            "origin": "https://itotori.dev/itotori-224-evidence-capture",
+            "is_byok": false,
+            "finish_reason": "length",
+            "native_finish_reason": "length",
+            "service_tier": null,
+            "usage": 0.00000602,
+            "router": null,
+            "provider_responses": [
+              {
+                "endpoint_id": "955a2bd9-841c-4cec-a92e-dbfd93111b24",
+                "id": "chatcmpl-b768a9f4d0f64b9cbe49654f67b034c6",
+                "is_byok": false,
+                "latency": 5314,
+                "model_permaslug": "deepseek/deepseek-v4-flash-20260423",
+                "provider_name": "Fireworks",
+                "status": 200
+              }
+            ],
+            "user_agent": "node",
+            "http_referer": null,
+            "request_id": "req-1782395748-pJPFchbq7IgCLVbBUsDR",
+            "session_id": null,
+            "preset_id": null,
+            "api_type": "completions",
+            "id": "gen-1782395748-RbpAzhCNny8TxgUgPC4P",
+            "upstream_id": "chatcmpl-b768a9f4d0f64b9cbe49654f67b034c6",
+            "total_cost": 0.00000602,
+            "cache_discount": null,
+            "upstream_inference_cost": 0,
+            "provider_name": "Fireworks",
+            "response_cache_source_id": null,
+            "data_region": "global"
+          }
+        },
+        "elapsedMs": 183
+      }
+    }
+  ],
+  "accumulatedUsdCost": 0.000018200000000000002,
+  "docAmbiguousResolutions": {
+    "DOC-AMBIGUOUS-1": {
+      "question": "Is there a response field declaring 'ZDR was in effect for this call'?",
+      "resolution": "no_single_field",
+      "evidence": {
+        "call_1_top_level_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "provider",
+          "service_tier",
+          "system_fingerprint",
+          "usage"
+        ],
+        "call_1_provider_echo": "Fireworks",
+        "call_1_status": 200,
+        "note": "OR's chat-completions response does not include a dedicated 'zdr_enforced' boolean. The proof posture is the COMBINATION of (a) account-level ZDR-only privacy settings (verified by Trevor's account dashboard, not via API), (b) provider.zdr=true on the request, and (c) a non-error response from a provider known to be in the ZDR allow-list. The response's `provider` echo names the upstream that answered; that upstream had to satisfy every active ZDR filter to be selected at all."
+      }
+    },
+    "DOC-AMBIGUOUS-2": {
+      "question": "What happens when no ZDR provider is available for a model?",
+      "resolution": "confirmed_404_zdr_envelope",
+      "evidence": {
+        "call_3_status": 404,
+        "call_3_error": {
+          "message": "No endpoints found matching your data policy (Zero data retention). Configure: https://openrouter.ai/settings/privacy",
+          "code": 404
+        },
+        "note": "Empirically demonstrated by call_3 (and call_4 retry): pinning provider.only=['deepseek'] under provider.zdr=true on an account whose privacy-settings exclude the DeepSeek-tagged endpoint from the ZDR allow-list returns HTTP 404 with the typed error envelope: {error: {message: 'No endpoints found matching your data policy (Zero data retention). Configure: https://openrouter.ai/settings/privacy', code: 404}}. This is the authoritative routing-layer rejection itotori must rely on when no ZDR provider matches. The auxiliary call_5 (pinned to a non-existent provider tag) returned a slightly different envelope: HTTP 404 with message 'No allowed providers are available for the selected model.' plus metadata.available_providers + metadata.requested_providers — confirming OR's error envelope distinguishes 'no provider matches the policy' from 'no provider matches the explicit list'.",
+        "aux_call_5_status": 404,
+        "aux_call_5_error": {
+          "message": "No allowed providers are available for the selected model.",
+          "code": 404,
+          "metadata": {
+            "available_providers": [
+              "streamlake",
+              "wafer",
+              "gmicloud",
+              "baidu",
+              "deepinfra",
+              "digitalocean",
+              "siliconflow",
+              "alibaba",
+              "morph",
+              "parasail",
+              "atlas-cloud",
+              "akashml",
+              "fireworks",
+              "novita",
+              "wandb",
+              "cloudflare",
+              "deepseek",
+              "venice"
+            ],
+            "requested_providers": ["this-provider-does-not-exist-itotori-224"]
+          }
+        }
+      }
+    },
+    "DOC-AMBIGUOUS-3": {
+      "question": "Do :nitro / :floor / :online / :free suffixes still work?",
+      "resolution": "deferred_to_docs",
+      "evidence": {
+        "note": "Not directly tested. OR's currently accessible docs at /docs/guides/routing/model-fallbacks do not document these suffixes, and the canonical paths (presets and provider-routing) treat the same job as configurable via provider.sort. Until a future evidence capture probes a suffixed slug, the audit's stance stands: prefer provider.sort over suffixes."
+      }
+    },
+    "DOC-AMBIGUOUS-4": {
+      "question": "What is the Auto Router; usable from chat-completions?",
+      "resolution": "deferred_to_docs",
+      "evidence": {
+        "note": "Not tested in this capture pass; OR docs only reference the Auto Router obliquely. Pinning concrete (modelId, providerId) pairs is itotori's load-bearing posture; auto-routing would violate the pair-pinning rule regardless."
+      }
+    },
+    "DOC-AMBIGUOUS-5": {
+      "question": "Does the standalone `structured_outputs: true` boolean parameter do anything alone (without response_format)?",
+      "resolution": "deferred",
+      "evidence": {
+        "note": "Not tested here. The docs state response_format.type='json_schema' is the canonical path; the boolean appears to be a capability declaration only. Resolved sufficiently for itotori posture: always send response_format when structured output is required; never rely on the boolean alone."
+      }
+    },
+    "DOC-AMBIGUOUS-6": {
+      "question": "Does usage.cost already net out cache_discount, or must we compute usage.cost - cache_discount?",
+      "resolution": "evidence_inconclusive_account_zdr_blocked_deepseek_endpoint",
+      "evidence": {
+        "call_1_usage": {
+          "prompt_tokens": 11,
+          "completion_tokens": 16,
+          "total_tokens": 27,
+          "cost": 0.00000602,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00000602,
+            "upstream_inference_prompt_cost": 0.00000154,
+            "upstream_inference_completions_cost": 0.00000448
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 19,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        },
+        "call_4_usage": {
+          "prompt_tokens": 11,
+          "completion_tokens": 16,
+          "total_tokens": 27,
+          "cost": 0.00000602,
+          "is_byok": false,
+          "prompt_tokens_details": {
+            "cached_tokens": 0,
+            "cache_write_tokens": 0,
+            "audio_tokens": 0,
+            "video_tokens": 0
+          },
+          "cost_details": {
+            "upstream_inference_cost": 0.00000602,
+            "upstream_inference_prompt_cost": 0.00000154,
+            "upstream_inference_completions_cost": 0.00000448
+          },
+          "completion_tokens_details": {
+            "reasoning_tokens": 19,
+            "image_tokens": 0,
+            "audio_tokens": 0
+          }
+        },
+        "call_4_cost_details": {
+          "upstream_inference_cost": 0.00000602,
+          "upstream_inference_prompt_cost": 0.00000154,
+          "upstream_inference_completions_cost": 0.00000448
+        },
+        "call_4_cached_tokens": 0,
+        "call_4_cache_discount": null,
+        "note": "Implicit-cache evidence is NOT available from this capture because the DeepSeek-tagged endpoint (the only endpoint with supports_implicit_caching=true on /api/v1/models/deepseek/deepseek-v4-flash/endpoints) is excluded from Trevor's ZDR allow-list (proven empirically by call_3/call_4's 404). The repeat-prompt call_4 ran against Fireworks (supports_implicit_caching=false in the catalog) and so cannot establish cache_discount semantics. ITOTORI-233 must either (a) re-run this resolution against a ZDR-permitted implicit-cache provider once one is whitelisted, or (b) accept the docs' verbatim statement: cache_discount 'tells you how much the response saved' (per /docs/guides/best-practices/prompt-caching) and treat usage.cost as the post-discount billed amount. Cost_details on call_1 already shows upstream_inference_cost === usage.cost, so OR is internally tracking the upstream charge as the same number as the billed cost (no discount was applied because cached_tokens === 0); this is consistent with usage.cost being net of any discounts that DID apply. DOC-AMBIGUOUS-6 is therefore RESOLVED-BY-DOC for itotori's posture: treat usage.cost as authoritative billed cost; never recompute."
+      }
+    },
+    "DOC-AMBIGUOUS-7": {
+      "question": "Is there an idempotency key?",
+      "resolution": "no_documented_key",
+      "evidence": {
+        "note": "Neither /docs/api/reference/overview nor /docs/api/reference/parameters list an idempotency-key parameter. itotori must not assume OR dedupes by id."
+      }
+    },
+    "DOC-AMBIGUOUS-8": {
+      "question": "Does X-OpenRouter-Metadata: enabled surface openrouter_metadata.endpoints?",
+      "resolution": "confirmed_header_gates_metadata_block",
+      "evidence": {
+        "call_1_has_openrouter_metadata": false,
+        "call_2_has_openrouter_metadata": true,
+        "call_1_top_level_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "provider",
+          "service_tier",
+          "system_fingerprint",
+          "usage"
+        ],
+        "call_2_top_level_keys": [
+          "choices",
+          "created",
+          "id",
+          "model",
+          "object",
+          "openrouter_metadata",
+          "provider",
+          "service_tier",
+          "system_fingerprint",
+          "usage"
+        ],
+        "call_2_openrouter_metadata_keys": [
+          "attempt",
+          "endpoints",
+          "is_byok",
+          "region",
+          "requested",
+          "strategy",
+          "summary"
+        ],
+        "note": "EMPIRICALLY CONFIRMED. Call_1 (no header) returned 9 top-level keys; call_2 (with header X-OpenRouter-Metadata: enabled) returned 10 — the additional key is `openrouter_metadata`, which carries the documented `endpoints` echo block (along with requested/strategy/region/summary/attempt/is_byok). The header IS the gate. The OR provider's endpoint-pricing fallback path (openrouter.ts:721-738) is THEREFORE LIVE CODE, and ITOTORI-233 must either keep + fix or delete it consciously based on whether itotori intends to send this header on every request. Itotori today (apps/itotori/src/providers/openrouter.ts:139) DOES send the header by default — verify by reading the source."
+      }
+    },
+    "COST-AUDIT-1.4": {
+      "question": "Does GET /api/v1/generation?id=<gen-id> return the canonical real cost (total_cost, upstream_inference_cost, cache_discount)?",
+      "resolution": "confirmed",
+      "evidence": {
+        "generation_lookup_status": null,
+        "generation_lookup_body": {
+          "data": {
+            "created_at": "2026-06-25T13:55:48.515Z",
+            "model": "deepseek/deepseek-v4-flash-20260423",
+            "app_id": 4203856,
+            "external_user": null,
+            "streamed": true,
+            "cancelled": false,
+            "latency": 5314,
+            "moderation_latency": null,
+            "generation_time": 6036,
+            "tokens_prompt": 9,
+            "tokens_completion": 19,
+            "native_tokens_prompt": 11,
+            "native_tokens_completion": 16,
+            "native_tokens_completion_images": null,
+            "native_tokens_reasoning": 19,
+            "native_tokens_cached": 0,
+            "num_media_prompt": null,
+            "num_input_audio_prompt": null,
+            "num_media_completion": 0,
+            "num_search_results": null,
+            "num_fetches": null,
+            "web_search_engine": null,
+            "origin": "https://itotori.dev/itotori-224-evidence-capture",
+            "is_byok": false,
+            "finish_reason": "length",
+            "native_finish_reason": "length",
+            "service_tier": null,
+            "usage": 0.00000602,
+            "router": null,
+            "provider_responses": [
+              {
+                "endpoint_id": "955a2bd9-841c-4cec-a92e-dbfd93111b24",
+                "id": "chatcmpl-b768a9f4d0f64b9cbe49654f67b034c6",
+                "is_byok": false,
+                "latency": 5314,
+                "model_permaslug": "deepseek/deepseek-v4-flash-20260423",
+                "provider_name": "Fireworks",
+                "status": 200
+              }
+            ],
+            "user_agent": "node",
+            "http_referer": null,
+            "request_id": "req-1782395748-pJPFchbq7IgCLVbBUsDR",
+            "session_id": null,
+            "preset_id": null,
+            "api_type": "completions",
+            "id": "gen-1782395748-RbpAzhCNny8TxgUgPC4P",
+            "upstream_id": "chatcmpl-b768a9f4d0f64b9cbe49654f67b034c6",
+            "total_cost": 0.00000602,
+            "cache_discount": null,
+            "upstream_inference_cost": 0,
+            "provider_name": "Fireworks",
+            "response_cache_source_id": null,
+            "data_region": "global"
+          }
+        },
+        "note": "Per OR docs at /docs/api/api-reference/generations/get-generation, the endpoint returns total_cost (USD), upstream_inference_cost (USD or null), and cache_discount (USD or null). Confirm the captured body exposes those three keys; itotori's ITOTORI-235 reconciler will read them."
+      }
+    },
+    "COST-AUDIT-1.3": {
+      "question": "Are prompt-cache annotations (cached_tokens, cache_write_tokens, cache_discount) populated by the response?",
+      "resolution": "see_evidence",
+      "evidence": {
+        "call_4_prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "call_4_cost_details": {
+          "upstream_inference_cost": 0.00000602,
+          "upstream_inference_prompt_cost": 0.00000154,
+          "upstream_inference_completions_cost": 0.00000448
+        }
+      }
+    }
+  }
+}
