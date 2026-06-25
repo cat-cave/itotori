@@ -21532,7 +21532,7 @@
     {
       "id": "UTSUSHI-209",
       "title": "Text / messaging RLOperation family (module_msg subset)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21571,9 +21571,7 @@
         "Decoded body being lossy",
         "Speaker name not resolved through `NAMAE` table"
       ],
-      "owner": "orchestrator-utsushi-209",
-      "branch": "spec/utsushi-209",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-209"
+      "statusReason": "Implementation merged (commit 4c87424). 13 module_msg RLOps + PauseLongOp + SelectLongOp; Sweetie HD scene 1 emits 3 TextLines including ＳｅｅｎＥｎｄ."
     },
     {
       "id": "UTSUSHI-210",
