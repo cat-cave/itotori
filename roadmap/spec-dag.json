@@ -21578,7 +21578,7 @@
     {
       "id": "UTSUSHI-210",
       "title": "Control-flow RLOperation family (`goto`/`gosub`/`farcall`/`ret`/`rtl` subset)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P2",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21619,9 +21619,7 @@
         "Missing parameter-stack cleanup on `ret_with`",
         "Treating `goto_case` default as a fatal instead of a fallthrough"
       ],
-      "owner": "orchestrator-utsushi-210",
-      "branch": "spec/utsushi-210",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-210"
+      "statusReason": "Implementation merged (commit cbbd7a6). 12 control-flow opcodes + SelectionLongOp; 277 tests pass."
     },
     {
       "id": "UTSUSHI-211",
