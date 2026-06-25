@@ -7,9 +7,11 @@ repository.workspace = true
 description = "UTSUSHI-200 alpha-gate scaffold: pure-Rust RealLive engine port that registers conformance against the utsushi-core substrate facade. Clean-room; rlvm is a research anchor only and is not linked, vendored, or mechanically translated."
 
 [dependencies]
+encoding_rs.workspace = true
 kaifuu-reallive = { path = "../kaifuu-reallive" }
 serde.workspace = true
 serde_json.workspace = true
+thiserror.workspace = true
 utsushi-core = { path = "../utsushi-core" }
 
 [package.metadata.research-anchor]

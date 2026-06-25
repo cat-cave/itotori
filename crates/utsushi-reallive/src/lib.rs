@@ -68,6 +68,13 @@
 #![forbid(unsafe_code)]
 #![deny(missing_debug_implementations)]
 
+pub mod gameexe;
+
+pub use gameexe::{
+    GAMEEXE_SHIFT_JIS_DECODE_FAILURE_CODE, Gameexe, GameexeParseError, GameexeValue, NamaeEntry,
+    SyscomLabel, SyscomVisibility, parse_into_arc as parse_gameexe_into_arc,
+};
+
 use std::sync::Arc;
 
 use utsushi_core::substrate::{
