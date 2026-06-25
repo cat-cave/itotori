@@ -119,6 +119,14 @@ pub mod decompressor;
 // partition the input slice exactly.
 pub mod bytecode_element;
 
+// UTSUSHI-205: RealLive expression byte-stream parser + evaluator.
+// `parse_expression` consumes the `raw_bytes` payload of a
+// `BytecodeElement::Expression` (UTSUSHI-204) and produces a typed
+// `ExprNode`. `evaluate` / `evaluate_assignment` reduce the AST against
+// a typed `VarBanks` snapshot.
+pub mod expression;
+pub mod expression_eval;
+
 pub use scene_header::{
     COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,
     ENTRYPOINT_TABLE_BYTE_OFFSET, ENTRYPOINT_TABLE_LEN, EntrypointEntry,
@@ -137,6 +145,16 @@ pub use decompressor::{
     AVG32_COMPRESSED_PREAMBLE_LEN, AVG32_LZSS_MAX_BACK_DISTANCE, AVG32_LZSS_MAX_RUN,
     AVG32_LZSS_MIN_RUN, AVG32_XOR_MASK, AVG32_XOR_MASK_LEN, AVG32_XOR2_KEY_LEN, AvgDecompressor,
     DecompressError, DecompressWarning,
+};
+pub use expression::{
+    AssignOp, BANK_BYTE_INT_A, BANK_BYTE_INT_B, BANK_BYTE_INT_F, BANK_BYTE_INT_G, COMMA_BYTE,
+    EXPRESSION_BACKSLASH, EXPRESSION_INT_LITERAL_TAG, EXPRESSION_STORE_REGISTER_TAG,
+    EXPRESSION_TOKEN_LEAD, ExprNode, ExprOp, ExpressionParseError, ExpressionWarning,
+    ParsedExpression, UnaryOp, parse_expression, parse_expression_with_warnings,
+};
+pub use expression_eval::{
+    EvaluationError, INT_BANK_COUNT, INT_BANK_SLOT_COUNT, VarBanks, bank_byte_to_index, evaluate,
+    evaluate_assignment,
 };
 pub use scene_index::{
     REAL_SCENE_DIRECTORY_BYTE_LEN, REAL_SCENE_DIRECTORY_SLOT_BYTE_LEN,
