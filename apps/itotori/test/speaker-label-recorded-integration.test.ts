@@ -19,11 +19,13 @@ import {
   type SpeakerLabelOutput,
 } from "@itotori/localization-bridge-schema";
 import {
+  RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
   RecordedBundleMissingError,
   RecordedModelProvider,
   recordedBundleKey,
   type RecordedProviderBundle,
 } from "../src/providers/recorded.js";
+import { ZERO_COST } from "../src/providers/cost.js";
 import {
   buildSpeakerLabelPrompt,
   SpeakerLabelAgent,
@@ -156,6 +158,7 @@ function bundleFor(
     labels,
   };
   return {
+    schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
     bundleId: "speaker-label-bundle-fixture-001",
     capturedProviderFamily: "openrouter",
     capturedProviderName: "openrouter:speaker-label-judge",
@@ -172,6 +175,9 @@ function bundleFor(
           completionTokens: 512,
           totalTokens: 1536,
         },
+        // ITOTORI-228 — synthetic test bundle (no LIVE OR capture); the
+        // test asserts label byte-equality, not cost. ZERO_COST.
+        cost: ZERO_COST,
       },
     },
   };
@@ -220,6 +226,7 @@ describe("SpeakerLabelAgent + RecordedModelProvider integration", () => {
     const input = recordedInputFixture();
     const labels = recordedLabelsFor(input);
     const bundle: RecordedProviderBundle = {
+      schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
       bundleId: "speaker-label-bundle-fixture-miss",
       capturedProviderFamily: "openrouter",
       capturedProviderName: "openrouter:speaker-label-judge",
@@ -233,6 +240,8 @@ describe("SpeakerLabelAgent + RecordedModelProvider integration", () => {
             labels,
           }),
           finishReason: "stop",
+          // ITOTORI-228 — see note above; bundle-miss test, ZERO_COST.
+          cost: ZERO_COST,
         },
       },
     };

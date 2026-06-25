@@ -17,11 +17,13 @@ import {
   type TranslationDraft,
 } from "@itotori/localization-bridge-schema";
 import {
+  RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
   RecordedBundleMissingError,
   RecordedModelProvider,
   recordedBundleKey,
   type RecordedProviderBundle,
 } from "../src/providers/recorded.js";
+import { ZERO_COST } from "../src/providers/cost.js";
 import {
   buildTranslationPrompt,
   makeStructuredTranslationDraftOutputFixture,
@@ -154,6 +156,7 @@ function bundleFor(
     inputClassification: "private_corpus",
   });
   return {
+    schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
     bundleId: "translation-bundle-fixture-001",
     capturedProviderFamily: "openrouter",
     capturedProviderName: "openrouter:translation-judge",
@@ -170,6 +173,12 @@ function bundleFor(
           completionTokens: 384,
           totalTokens: 2432,
         },
+        // ITOTORI-228 — synthetic test bundle (no real LIVE capture
+        // exists to crib `usage.cost` from); the test asserts response
+        // shape + replay byte-equality, not cost-cap arithmetic, so
+        // ZERO_COST is the structurally honest stand-in. Re-record from
+        // a LIVE OR run if a future regression needs accurate cost.
+        cost: ZERO_COST,
       },
     },
   };
@@ -226,6 +235,7 @@ describe("TranslationAgent + RecordedModelProvider integration", () => {
     const input = recordedInputFixture();
     const drafts = recordedDrafts(input);
     const bundle: RecordedProviderBundle = {
+      schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
       bundleId: "translation-bundle-fixture-miss",
       capturedProviderFamily: "openrouter",
       capturedProviderName: "openrouter:translation-judge",
@@ -236,6 +246,9 @@ describe("TranslationAgent + RecordedModelProvider integration", () => {
         ["sha256:wrong-key-no-match"]: {
           content: JSON.stringify(makeStructuredTranslationDraftOutputFixture(drafts)),
           finishReason: "stop",
+          // ITOTORI-228 — see note above; bundle-miss test asserts the
+          // typed error, not cost, so ZERO_COST is the honest stand-in.
+          cost: ZERO_COST,
         },
       },
     };

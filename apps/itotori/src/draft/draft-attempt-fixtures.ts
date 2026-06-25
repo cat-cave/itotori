@@ -202,6 +202,13 @@ export function recordedProviderFixture(
       actualModelId: "anthropic/claude-3.5-sonnet",
       upstreamProvider: "anthropic",
     },
+    // ITOTORI-228 — recorded-mode fixture: the replayed providerRun.cost
+    // mirrors the captured `usage.cost`. This synthetic fixture stands
+    // in for a session that genuinely produced no charge upstream (no
+    // LIVE OR call was ever taken to back it), so `ZERO_COST` is the
+    // structurally honest mirror. A future re-record from a real LIVE
+    // capture will replace this with the actual `usage.cost` value the
+    // recorded-bundle response carries.
     cost: {
       costKind: "zero",
       currency: "USD",

@@ -16,11 +16,13 @@ import {
   type QaFinding,
 } from "@itotori/localization-bridge-schema";
 import {
+  RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
   RecordedBundleMissingError,
   RecordedModelProvider,
   recordedBundleKey,
   type RecordedProviderBundle,
 } from "../src/providers/recorded.js";
+import { ZERO_COST } from "../src/providers/cost.js";
 import {
   buildQaPrompt,
   makeStructuredQaFindingOutputFixture,
@@ -127,6 +129,7 @@ function bundleFor(input: QaInvocationInput, findings: QaFinding[]): RecordedPro
     inputClassification: "private_corpus",
   });
   return {
+    schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
     bundleId: "qa-bundle-fixture-001",
     capturedProviderFamily: "openrouter",
     capturedProviderName: "openrouter:qa-judge",
@@ -143,6 +146,10 @@ function bundleFor(input: QaInvocationInput, findings: QaFinding[]): RecordedPro
           completionTokens: 512,
           totalTokens: 1536,
         },
+        // ITOTORI-228 — synthetic test bundle; the QA reproducibility
+        // test asserts response shape, not cost-cap arithmetic. ZERO_COST
+        // is structurally honest (no real charge was made).
+        cost: ZERO_COST,
       },
     },
   };
@@ -194,6 +201,7 @@ describe("QaAgent + RecordedModelProvider integration", () => {
       bridgeUnitId: input.units[index]!.bridgeUnitId,
     }));
     const bundle: RecordedProviderBundle = {
+      schemaVersion: RECORDED_PROVIDER_BUNDLE_SCHEMA_VERSION,
       bundleId: "qa-bundle-fixture-miss",
       capturedProviderFamily: "openrouter",
       capturedProviderName: "openrouter:qa-judge",
@@ -204,6 +212,8 @@ describe("QaAgent + RecordedModelProvider integration", () => {
         ["sha256:wrong-key-no-match"]: {
           content: JSON.stringify(makeStructuredQaFindingOutputFixture(findings)),
           finishReason: "stop",
+          // ITOTORI-228 — see note above; bundle-miss test, ZERO_COST.
+          cost: ZERO_COST,
         },
       },
     };
