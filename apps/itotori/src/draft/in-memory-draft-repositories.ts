@@ -1,11 +1,11 @@
-// ITOTORI-019 — In-memory port implementations for the draft fixture
-// command.
+// ITOTORI-019 / ITOTORI-222 — In-memory port implementations for the
+// orchestrator's fixture-mode draft loop.
 //
-// The fixture command is structurally bound to the same repository
-// ports used by the live database-backed services, but its CI guarantee
-// is that no DB connection is required. These in-memory implementations
-// fulfil the ports for fixture mode and are also reused by the
-// `draft-fixture-command.test.ts` suite.
+// The orchestrator is structurally bound to the same repository ports
+// used by the live database-backed services, but its CI guarantee is
+// that no DB connection is required. These in-memory implementations
+// fulfil the ports for fixture mode and are reused by the orchestrator
+// tests (`agentic-loop.test.ts`).
 //
 // The implementations are intentionally minimal: they track the rows
 // the command actually exercises (createDraftJob, recordAttempt,
@@ -306,12 +306,12 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
   }
 }
 
-export type DraftFixtureRepositories = {
+export type OrchestratorDraftRepositories = {
   draftJobRepository: InMemoryDraftJobRepository;
   ledgerRepository: InMemoryDraftAttemptProviderLedgerRepository;
 };
 
-export function createInMemoryDraftFixtureRepositories(): DraftFixtureRepositories {
+export function createInMemoryOrchestratorDraftRepositories(): OrchestratorDraftRepositories {
   return {
     draftJobRepository: new InMemoryDraftJobRepository(),
     ledgerRepository: new InMemoryDraftAttemptProviderLedgerRepository(),

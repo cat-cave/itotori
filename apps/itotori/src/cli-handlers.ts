@@ -52,11 +52,7 @@ import {
   runGenerateCharacterRelationshipsCli,
   type CharacterRelationshipCliDependencies,
 } from "./agents/character-relationship/index.js";
-import { runDraftFixtureCommand, type DraftFixtureBundle } from "./draft/draft-fixture-command.js";
-import {
-  createInMemoryDraftFixtureRepositories,
-  type DraftFixtureRepositories,
-} from "./draft/in-memory-draft-repositories.js";
+import { runAgenticLoopSmokeCommand } from "./orchestrator/agentic-loop-smoke-command.js";
 import { runExportPatchV2Command } from "./patch-export/index.js";
 
 export type JsonFileStore = {
@@ -108,13 +104,6 @@ export type ItotoriCliDependencies = {
   io: JsonFileStore;
   migrateDatabase(): Promise<void>;
   withServices<T>(callback: (services: ItotoriCliServices) => Promise<T>): Promise<T>;
-  /**
-   * Optional override for the in-process draft / ledger repositories
-   * used by the `draft-fixture` command. Defaults to the in-memory
-   * pair from `createInMemoryDraftFixtureRepositories`. Tests inject
-   * spies; the CLI entry point uses the default.
-   */
-  draftFixtureRepositories?: () => DraftFixtureRepositories;
 };
 
 export async function runItotoriCliCommand(
@@ -138,8 +127,8 @@ export async function runItotoriCliCommand(
     case "draft":
       await runDraft(args, dependencies);
       break;
-    case "draft-fixture":
-      await runDraftFixture(args, dependencies);
+    case "agentic-loop-smoke":
+      await runAgenticLoopSmoke(args, dependencies);
       break;
     case "export-patch":
       await runExportPatch(args, dependencies);
@@ -235,36 +224,35 @@ async function runDraft(args: string[], dependencies: ItotoriCliDependencies): P
   dependencies.io.writeJson(projectPath, nextProject);
 }
 
-async function runDraftFixture(
+async function runAgenticLoopSmoke(
   args: string[],
   dependencies: ItotoriCliDependencies,
 ): Promise<void> {
-  const projectPath = requiredFlag(args, "--project");
+  const bridgePath = requiredFlag(args, "--bridge");
+  const unitIndexRaw = requiredFlag(args, "--unit-index");
+  const unitIndex = Number.parseInt(unitIndexRaw, 10);
+  if (!Number.isFinite(unitIndex) || unitIndex < 0) {
+    throw new Error(
+      `agentic-loop-smoke refused: --unit-index '${unitIndexRaw}' must be a non-negative integer`,
+    );
+  }
+  const pairPolicyPath = requiredFlag(args, "--pair-policy");
   const outputPath = requiredFlag(args, "--output");
-  const locale = requiredFlag(args, "--locale");
-  const repositories = dependencies.draftFixtureRepositories
-    ? dependencies.draftFixtureRepositories()
-    : createInMemoryDraftFixtureRepositories();
-  const bundle: DraftFixtureBundle | undefined = (() => {
-    const bundlePath = optionalFlag(args, "--bundle");
-    if (bundlePath === undefined) return undefined;
-    return dependencies.io.readJson(bundlePath) as DraftFixtureBundle;
-  })();
-  await runDraftFixtureCommand({
-    projectPath,
+  const draftArtifactOutputPath = optionalFlag(args, "--draft-artifact-output");
+  await runAgenticLoopSmokeCommand({
+    bridgePath,
+    unitIndex,
+    pairPolicyPath,
     outputPath,
-    locale,
     io: {
       readJson: (path) => dependencies.io.readJson(path),
       writeJson: (path, value) => dependencies.io.writeJson(path, value),
     },
     actor: { userId: "local-user" },
-    draftJobRepository: repositories.draftJobRepository,
-    ledgerRepository: repositories.ledgerRepository,
-    ...(bundle === undefined ? {} : { resolveBundle: () => bundle }),
     log: (message) => {
       process.stdout.write(`${message}\n`);
     },
+    ...(draftArtifactOutputPath === undefined ? {} : { draftArtifactOutputPath }),
   });
 }
 

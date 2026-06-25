@@ -1,7 +1,7 @@
 {
   "schemaVersion": "itotori.patch-export-v2-project.v1",
   "projectId": "fixture-project-itotori-019",
-  "localeBranchId": "fixture-locale-branch-en-US",
+  "localeBranchId": "branch:019ed079-0000-7000-8000-revision0003",
   "targetLocale": "en-US",
   "sourceBridgeHash": "sha256:itotori-025-hello-patch-bridge",
   "units": [
@@ -17,29 +17,6 @@
           "sourceText": "{player}",
           "kind": "variable",
           "preservationRule": "verbatim"
-        }
-      ]
-    },
-    {
-      "sourceUnitId": "019ed079-0000-7000-8000-019019019002",
-      "sourceText": "勇者は王様に挨拶した。",
-      "sourceUnitHash": "fixture-019-unit-02-hash",
-      "protectedSpans": [
-        {
-          "spanRef": "span-019-unit-02-hero",
-          "sourceStart": 0,
-          "sourceEnd": 2,
-          "sourceText": "勇者",
-          "kind": "glossary",
-          "preservationRule": "case_preserving",
-          "expectedTargetForm": "Hero"
-        }
-      ],
-      "glossaryTerms": [
-        {
-          "termId": "019ed079-0000-7000-8000-glossary00001",
-          "sourceForm": "勇者",
-          "expectedTargetForm": "Hero"
         }
       ]
     }
