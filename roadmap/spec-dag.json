@@ -25063,7 +25063,7 @@
     {
       "id": "UTSUSHI-227",
       "title": "utsushi-reallive: patched-Seen.txt replay-and-verify smoke (en-US TextLine assertion)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -25103,7 +25103,9 @@
         "ReplayLog non-deterministic across runs (timestamp / nondet ordering)",
         "Wine / Windows-binary invocation hidden in a dependency"
       ],
-      "statusReason": "Minted 2026-06-24 per docs/proposals/alpha-gap-analysis-2026-06-24.md §3 UTSUSHI-NEW-Areplay: the alpha verifiable-patch-landed clause needs programmatic TextLine assertion through the TextSurfaceSink."
+      "owner": "orchestrator-utsushi-227",
+      "branch": "spec/utsushi-227",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-227"
     },
     {
       "id": "UTSUSHI-228",
