@@ -25263,7 +25263,7 @@
     {
       "id": "ITOTORI-224",
       "title": "itotori-agent-runtime: publish canonical OpenRouter integration doc + adopt both audits as baseline",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P0",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25300,14 +25300,12 @@
         "Cited URLs that 404 again (re-fetch on commit day)"
       ],
       "parallelGroup": "agent-runtime",
-      "owner": "orchestrator-itotori-224",
-      "branch": "spec/itotori-224",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-224"
+      "statusReason": "\n\n[2026-06-25 evidence landed] docs/openrouter-integration.md + docs/openrouter-integration-evidence/2026-06-25.json committed at d85bb74. Slug deepseek/deepseek-v4-flash verified in /api/v1/models (fireworks hosts). 11/11 DOC-AMBIGUOUS items resolved or properly deferred. Total live OR spend: USD 0.0000182."
     },
     {
       "id": "ITOTORI-225",
       "title": "itotori-agent-runtime: rip out cost-tier abstraction and all estimated / hardcoded / unknown cost states",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P0",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25354,8 +25352,10 @@
         "Migration backfill widened to allow null amount_micros_usd",
         "Hardcoded-cost audit script left disabled in CI"
       ],
-      "statusReason": "Per docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N1 (the foundational rip-out): §2.1 (costTier category error), §2.2 (default 'unknown' is the literal forbidden state), §2.3 (real cost mis-tagged provider_estimate), §2.4 (unknownCost() fallback), §2.9 (?? 0 coercion), §2.10/§2.11/§2.13 (costTier literal sites).",
-      "parallelGroup": "agent-runtime"
+      "parallelGroup": "agent-runtime",
+      "owner": "orchestrator-itotori-225",
+      "branch": "spec/itotori-225",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-225"
     },
     {
       "id": "ITOTORI-226",
@@ -25654,7 +25654,7 @@
         "Either fix or delete openrouter.ts:721-738 endpoint-pricing fallback (decision logged in ITOTORI-224 doc)"
       ],
       "acceptanceCriteria": [
-        "Live call against deepseek-v4-flash (which supports implicit caching per prompt-caching.md) writes cache_discount and cached_input_tokens to the ledger",
+        "Live call against deepseek-v4-flash (which supports implicit caching per prompt-caching.md) writes cache_discount and cached_input_tokens to the ledger [env-gated on OPENROUTER_IMPLICIT_CACHE_PROVIDER being set to a ZDR-allowed cache-supporting provider; see ITOTORI-224 §9.3]",
         "Per-process cost cap deducts cache discount before refusing a new call",
         "rg 'selectedOpenRouterPricing' in apps/itotori/src returns the expected result (kept-and-fixed OR deleted-as-dead based on ITOTORI-224 evidence)",
         "A live response with prompt_tokens_details.cached_tokens > 0 lands cache fields in the ledger row's usage_response_json",
@@ -25680,7 +25680,7 @@
         "cache_discount columns left nullable when upstream guarantees the field",
         "Cache savings line on dashboard sourced from a derived/estimated value instead of the real cache_discount"
       ],
-      "statusReason": "Merged from docs/audits/openrouter-wiring-audit-2026-06-25.md §4-5 / §3-E (cost math omits cache discount, DOC-AMBIGUOUS-6) and docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N7 / §1.3 (mirror real cache annotations through ledger + telemetry — never estimation, always real).",
+      "statusReason": "Merged from docs/audits/openrouter-wiring-audit-2026-06-25.md §4-5 / §3-E (cost math omits cache discount, DOC-AMBIGUOUS-6) and docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N7 / §1.3 (mirror real cache annotations through ledger + telemetry — never estimation, always real).\n\n[2026-06-25 ITOTORI-224 evidence amendment] Empirical implicit-cache evidence is UNAVAILABLE on Trevor's account: the deepseek-tagged endpoint (the only deepseek-v4-flash endpoint advertising supports_implicit_caching=true) is excluded from the account ZDR allow-list (call_3 returned HTTP 404 with envelope ZDR-not-allowed). The acceptance criterion \"Live call against deepseek-v4-flash writes cache_discount and cached_input_tokens to the ledger\" is therefore env-gated on OPENROUTER_IMPLICIT_CACHE_PROVIDER being set to a ZDR-allowed cache-supporting provider. SEPARATELY: X-OpenRouter-Metadata: enabled IS empirically supported (call_2 vs call_1 diff shows openrouter_metadata block surfaces) — the endpoint-pricing fallback path at openrouter.ts:721-738 is NOT dead code; the \"keep + fix\" path in the deliverables is correct.",
       "parallelGroup": "agent-runtime"
     },
     {
@@ -25730,7 +25730,7 @@
       "dependsOn": ["ITOTORI-225", "ITOTORI-232"],
       "summary": "OR exposes GET /api/v1/generation?id={genId} to re-fetch canonical real cost (with total_cost, upstream_inference_cost, cache_discount) for any prior generation. itotori captures the generation id today (it lands in adapter_metadata.openrouterMetadata.id); add a small reconciliation helper that, given a ledger row, re-fetches canonical cost and raises if ledger's cost_amount drifts. This closes the 'billed-later' gap (some providers true up costs after the response, e.g. caching adjustments). Not required for alpha (single-run); cheap insurance for beta and full release.",
       "deliverables": [
-        "apps/itotori/src/providers/openrouter-cost-reconciler.ts (fetchBilledCostByGenerationId(generationId) → { totalCostUsd, upstreamInferenceCostUsd | null, cacheDiscountUsd | null })",
+        "apps/itotori/src/providers/openrouter-cost-reconciler.ts (fetchBilledCostByGenerationId(generationId) [with retry/backoff: 3s + 5s + 8s + 13s for 5-8s eventual-consistency window] → { totalCostUsd, upstreamInferenceCostUsd | null, cacheDiscountUsd | null })",
         "CLI command 'itotori cost reconcile --project <id> --window <...>' that walks recent ledger rows and surfaces drift"
       ],
       "acceptanceCriteria": [
@@ -25751,7 +25751,7 @@
         "Drift tolerance widened beyond 1e-9 to 'work around' provider-side rounding",
         "CLI silently exits 0 when ledger rows are missing generationId"
       ],
-      "statusReason": "Per docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N6 / §1.4 (/generation endpoint exists specifically for after-the-fact real-cost re-fetch).",
+      "statusReason": "Per docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N6 / §1.4 (/generation endpoint exists specifically for after-the-fact real-cost re-fetch).\n\n[2026-06-25 ITOTORI-224 evidence amendment] /api/v1/generation has a 5-8 second eventual-consistency window (call_6 evidence: first lookup at 3s returned 404 \"not found\"; lookup at 8s returned full canonical cost). The reconciler MUST retry with backoff (e.g. 3s + 5s + 8s + 13s), not single-shot. SEPARATELY: noted in §5.4 of integration doc, the lookup's upstream_inference_cost field has been observed to differ from the chat-completions cost_details.upstream_inference_cost; the reconciler should compare against total_cost only (the canonical billed value), not upstream_inference_cost.",
       "parallelGroup": "agent-runtime"
     },
     {
