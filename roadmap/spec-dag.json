@@ -21257,7 +21257,7 @@
     {
       "id": "UTSUSHI-202",
       "title": "Scene header parser (0x1d0-byte typed decoder)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21284,14 +21284,12 @@
       "auditFocus": [
         "Any field whose offset can't be cited from rlvm's `scenario.cc` header constructor (P) or the Sweetie HD bytes (V) — speculative fields are out"
       ],
-      "owner": "orchestrator-utsushi-202",
-      "branch": "spec/utsushi-202",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-202"
+      "statusReason": "Implementation merged (commit 6142a4d). SceneHeader::parse + encode in utsushi-reallive; Sweetie HD scene 1 verified."
     },
     {
       "id": "UTSUSHI-203",
       "title": "AVG32 LZ + XOR scene decompressor",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21326,7 +21324,9 @@
         "LZSS window pointer arithmetic copied verbatim from C without re-derivation",
         "Wrong distance-encoding silently producing garbage"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-utsushi-203",
+      "branch": "spec/utsushi-203",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-203"
     },
     {
       "id": "UTSUSHI-204",
