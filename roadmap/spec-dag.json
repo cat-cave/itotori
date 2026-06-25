@@ -24783,7 +24783,7 @@
     {
       "id": "ITOTORI-220",
       "title": "itotori-agent-runtime: required (modelId, providerId) pair across every agent seam",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -24825,9 +24825,7 @@
         "Recorded bundle key shape silently widened to accept legacy keys",
         "Capability-guard left keyed by model alone for a subset of agents"
       ],
-      "owner": "orchestrator-itotori-220",
-      "branch": "spec/itotori-220",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-220"
+      "statusReason": "Implementation merged (commit 7f661eb). (modelId, providerId) pair required across 7 agent seams; 28 recorded bundles re-keyed; migration 0038 + ledger provider_id NOT NULL; OpenRouter pair lock + pair_mismatch enforcement; capability guard keyed by pair. 15 new tests + 552 itotori app pass."
     },
     {
       "id": "ITOTORI-221",
