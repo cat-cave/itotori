@@ -356,6 +356,116 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
     }
   });
 
+  it("ITOTORI-223: sumByPairAndDay aggregates cost/tokens/latency per (model, provider) pair", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "proof-pair-a-1",
+        modelId: "anthropic/claude-3.5-sonnet",
+        providerId: "anthropic",
+        costAmount: "0.01000000",
+        tokensIn: 100,
+        tokensOut: 50,
+        latencyMs: 1000,
+      });
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "proof-pair-a-2",
+        modelId: "anthropic/claude-3.5-sonnet",
+        providerId: "anthropic",
+        costAmount: "0.02000000",
+        tokensIn: 200,
+        tokensOut: 100,
+        latencyMs: 3000,
+      });
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "proof-pair-b-1",
+        modelId: "openai/gpt-4o-mini",
+        providerId: "openai",
+        costAmount: "0.00500000",
+        tokensIn: 50,
+        tokensOut: 25,
+        latencyMs: 500,
+      });
+
+      const window = {
+        from: new Date("2020-01-01T00:00:00Z"),
+        to: new Date("2099-01-01T00:00:00Z"),
+      };
+      const rows = await repo.sumByPairAndDay(localActor, draftJobFixtureProjectId, window);
+      expect(rows).toHaveLength(2);
+
+      const anthropicRow = rows.find(
+        (row) => row.modelId === "anthropic/claude-3.5-sonnet" && row.providerId === "anthropic",
+      );
+      expect(anthropicRow).toBeDefined();
+      expect(anthropicRow!.totalCostUsd).toBe("0.03000000");
+      expect(anthropicRow!.totalTokensIn).toBe(300);
+      expect(anthropicRow!.totalTokensOut).toBe(150);
+      expect(anthropicRow!.invocationCount).toBe(2);
+      expect(anthropicRow!.avgLatencyMs).toBe(2000);
+      // p95 of [1000, 3000] = 2900
+      expect(anthropicRow!.p95LatencyMs).toBe(2900);
+      expect(anthropicRow!.bucketDay).toBeNull();
+
+      const openaiRow = rows.find(
+        (row) => row.modelId === "openai/gpt-4o-mini" && row.providerId === "openai",
+      );
+      expect(openaiRow).toBeDefined();
+      expect(openaiRow!.totalCostUsd).toBe("0.00500000");
+      expect(openaiRow!.invocationCount).toBe(1);
+      expect(openaiRow!.avgLatencyMs).toBe(500);
+      expect(openaiRow!.p95LatencyMs).toBe(500);
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-223: sumByPairAndDay with groupByDay returns one row per (pair, day)", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "proof-day-1",
+        modelId: "anthropic/claude-3.5-sonnet",
+        providerId: "anthropic",
+        costAmount: "0.01000000",
+      });
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "proof-day-2",
+        modelId: "anthropic/claude-3.5-sonnet",
+        providerId: "anthropic",
+        costAmount: "0.02000000",
+      });
+
+      const window = {
+        from: new Date("2020-01-01T00:00:00Z"),
+        to: new Date("2099-01-01T00:00:00Z"),
+      };
+      const rows = await repo.sumByPairAndDay(localActor, draftJobFixtureProjectId, window, {
+        groupByDay: true,
+      });
+      expect(rows.length).toBeGreaterThanOrEqual(1);
+      for (const row of rows) {
+        expect(row.bucketDay).not.toBeNull();
+        expect(row.bucketDay).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
+    } finally {
+      await context.close();
+    }
+  });
+
   it("sumCostByProject returns zero when the window excludes every entry", async () => {
     const context = await isolatedMigratedContext();
     try {

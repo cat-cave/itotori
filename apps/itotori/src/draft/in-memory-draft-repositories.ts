@@ -25,9 +25,11 @@ import type {
   DraftJobStatus,
   ItotoriDraftAttemptProviderLedgerRepositoryPort,
   ItotoriDraftJobRepositoryPort,
+  LedgerPairAggregateRow,
   LoadDraftJobsByProjectOptions,
   RecordDraftJobAttemptInput,
   RecordLedgerEntryInput,
+  SumByPairAndDayOptions,
   SumCostByProjectOptions,
   SumCostByProjectResult,
   SumCostByProjectWindow,
@@ -304,6 +306,107 @@ export class InMemoryDraftAttemptProviderLedgerRepository implements ItotoriDraf
     }
     return result;
   }
+
+  // ITOTORI-223 — per-(modelId, providerId) aggregate. Mirrors the
+  // DB-backed repository so in-memory fixtures preserve typed parity.
+  // Latency p95 uses linear interpolation to match Postgres's
+  // `percentile_cont(0.95)` semantics.
+  async sumByPairAndDay(
+    _actor: AuthorizationActor,
+    _projectId: string,
+    window: SumCostByProjectWindow,
+    opts?: SumByPairAndDayOptions,
+  ): Promise<LedgerPairAggregateRow[]> {
+    const groupByDay = opts?.groupByDay === true;
+    const filtered = this.entries.filter(
+      (entry) =>
+        entry.createdAt.getTime() >= window.from.getTime() &&
+        entry.createdAt.getTime() <= window.to.getTime(),
+    );
+
+    type Bucket = {
+      modelId: string | null;
+      providerId: string;
+      day: string | null;
+      costSum: number;
+      tokensInSum: number;
+      tokensOutSum: number;
+      count: number;
+      latencies: number[];
+    };
+    const buckets = new Map<string, Bucket>();
+    for (const entry of filtered) {
+      const day = groupByDay ? entry.createdAt.toISOString().slice(0, 10) : null;
+      const key = `${entry.modelId ?? "__null__"}|${entry.providerId}|${day ?? "__all__"}`;
+      const existing = buckets.get(key);
+      if (existing === undefined) {
+        buckets.set(key, {
+          modelId: entry.modelId,
+          providerId: entry.providerId,
+          day,
+          costSum: Number(entry.costAmount),
+          tokensInSum: entry.tokensIn ?? 0,
+          tokensOutSum: entry.tokensOut ?? 0,
+          count: 1,
+          latencies: entry.latencyMs === null ? [] : [entry.latencyMs],
+        });
+      } else {
+        existing.costSum += Number(entry.costAmount);
+        existing.tokensInSum += entry.tokensIn ?? 0;
+        existing.tokensOutSum += entry.tokensOut ?? 0;
+        existing.count += 1;
+        if (entry.latencyMs !== null) {
+          existing.latencies.push(entry.latencyMs);
+        }
+      }
+    }
+
+    const rows: LedgerPairAggregateRow[] = [];
+    for (const bucket of buckets.values()) {
+      const sortedLatencies = [...bucket.latencies].sort((a, b) => a - b);
+      const avgLatencyMs =
+        sortedLatencies.length === 0
+          ? null
+          : sortedLatencies.reduce((acc, v) => acc + v, 0) / sortedLatencies.length;
+      const p95LatencyMs =
+        sortedLatencies.length === 0 ? null : computeP95LinearInterp(sortedLatencies);
+      rows.push({
+        modelId: bucket.modelId,
+        providerId: bucket.providerId,
+        bucketDay: bucket.day,
+        totalCostUsd: bucket.costSum.toFixed(8),
+        totalTokensIn: bucket.tokensInSum,
+        totalTokensOut: bucket.tokensOutSum,
+        invocationCount: bucket.count,
+        avgLatencyMs,
+        p95LatencyMs,
+      });
+    }
+    rows.sort((a, b) => {
+      const am = a.modelId ?? "";
+      const bm = b.modelId ?? "";
+      if (am !== bm) return am.localeCompare(bm);
+      if (a.providerId !== b.providerId) return a.providerId.localeCompare(b.providerId);
+      const ad = a.bucketDay ?? "";
+      const bd = b.bucketDay ?? "";
+      return ad.localeCompare(bd);
+    });
+    return rows;
+  }
+}
+
+function computeP95LinearInterp(sorted: ReadonlyArray<number>): number {
+  if (sorted.length === 1) {
+    return sorted[0]!;
+  }
+  const rank = 0.95 * (sorted.length - 1);
+  const lower = Math.floor(rank);
+  const upper = Math.ceil(rank);
+  if (lower === upper) {
+    return sorted[lower]!;
+  }
+  const frac = rank - lower;
+  return sorted[lower]! + (sorted[upper]! - sorted[lower]!) * frac;
 }
 
 export type DraftFixtureRepositories = {

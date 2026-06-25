@@ -1,6 +1,7 @@
 import {
   EngineCapabilityReportRepository,
   ItotoriAssetLocalizationDecisionRepository,
+  ItotoriDraftAttemptProviderLedgerRepository,
   ItotoriFeedbackRepository,
   ItotoriExactSearchDocumentRepository,
   ItotoriCatalogExactExternalIdLinkerService,
@@ -64,6 +65,9 @@ import {
   ItotoriProjectWorkflowService,
   type ItotoriProjectWorkflowPort,
 } from "./project-workflow.js";
+import { LedgerTelemetryQuery } from "../telemetry/queries-impl.js";
+import type { TelemetryQuery } from "../telemetry/queries.js";
+import type { AuthorizationActor } from "@itotori/db";
 
 export type ItotoriApplicationServices = {
   authorization: ItotoriAuthorizationPort;
@@ -107,6 +111,14 @@ export type ItotoriApplicationServices = {
   };
   engineCapabilityReports: EngineCapabilityReportPort;
   assetDecisions: AssetDecisionsCliPort;
+  /**
+   * ITOTORI-223 — per-(modelId, providerId) telemetry query surface
+   * over the draft-attempt provider ledger.
+   */
+  telemetry: {
+    query: TelemetryQuery;
+    actor: AuthorizationActor;
+  };
 };
 
 export type ItotoriServiceFactory = <T>(
@@ -231,6 +243,10 @@ export async function withDatabaseItotoriServices<T>(
     const sceneSummaryRepository = new ItotoriSceneSummaryRepository(context.db);
     const engineCapabilityReportRepository = new EngineCapabilityReportRepository(context.db);
     const assetDecisionRepository = new ItotoriAssetLocalizationDecisionRepository(context.db);
+    const draftAttemptProviderLedgerRepository = new ItotoriDraftAttemptProviderLedgerRepository(
+      context.db,
+    );
+    const telemetryQuery = new LedgerTelemetryQuery(draftAttemptProviderLedgerRepository);
     return await callback({
       authorization: new ItotoriAuthorizationService(context.db, localUserActor),
       projectWorkflow: new ItotoriProjectWorkflowService(
@@ -298,6 +314,10 @@ export async function withDatabaseItotoriServices<T>(
         loadActiveDecisions: (projectId, localeBranchId) =>
           assetDecisionRepository.loadActiveDecisions(localUserActor, projectId, localeBranchId),
         recordDecision: (input) => assetDecisionRepository.recordDecision(localUserActor, input),
+      },
+      telemetry: {
+        query: telemetryQuery,
+        actor: localUserActor,
       },
     });
   } finally {

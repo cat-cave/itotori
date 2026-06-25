@@ -11,6 +11,7 @@ import {
 import { capabilityLevelValues, createCatalogResolverFixtureArtifact } from "@itotori/db";
 import type {
   AdapterCapabilityMatrixRecord,
+  AuthorizationActor,
   CapabilityLevel,
   CatalogExactExternalIdLinkRequest,
   CatalogFuzzyCandidateRequest,
@@ -58,6 +59,12 @@ import {
   type DraftFixtureRepositories,
 } from "./draft/in-memory-draft-repositories.js";
 import { runExportPatchV2Command } from "./patch-export/index.js";
+import {
+  parseTelemetrySummaryCliFlags,
+  runTelemetrySummaryCli,
+  type TelemetrySummaryCliDeps,
+} from "./telemetry/cli.js";
+import type { TelemetryQuery } from "./telemetry/queries.js";
 
 export type JsonFileStore = {
   readJson(path: string): unknown;
@@ -102,6 +109,16 @@ export type ItotoriCliServices = {
    * `itotori:asset-decisions-list` / `-record` require it at runtime.
    */
   assetDecisions?: AssetDecisionsCliPort;
+  /**
+   * ITOTORI-223 — per-(modelId, providerId) telemetry query surface
+   * powering the `itotori:telemetry-summary` command. Optional so
+   * unit suites that don't exercise the telemetry command can omit
+   * it; the CLI handler raises a typed error when missing.
+   */
+  telemetry?: {
+    query: TelemetryQuery;
+    actor: AuthorizationActor;
+  };
 };
 
 export type ItotoriCliDependencies = {
@@ -198,9 +215,43 @@ export async function runItotoriCliCommand(
     case "asset-decisions-record":
       await runAssetDecisionsRecordHandler(args, dependencies);
       break;
+    case "telemetry-summary":
+      await runTelemetrySummaryHandler(args, dependencies);
+      break;
     default:
       throw new Error(`unknown itotori command: ${String(command)}`);
   }
+}
+
+async function runTelemetrySummaryHandler(
+  args: string[],
+  dependencies: ItotoriCliDependencies,
+): Promise<void> {
+  const flags = parseTelemetrySummaryCliFlags(args);
+  await dependencies.withServices(async (services) => {
+    if (services.telemetry === undefined) {
+      throw new Error(
+        "telemetry service is not configured for this CLI context (telemetry port missing)",
+      );
+    }
+    const deps: TelemetrySummaryCliDeps = {
+      telemetry: services.telemetry.query,
+      writeJson: (path, value) => dependencies.io.writeJson(path, value),
+      stdoutWrite: (line) => process.stdout.write(line),
+    };
+    await runTelemetrySummaryCli(
+      {
+        actor: services.telemetry.actor,
+        projectId: flags.projectId,
+        from: flags.from,
+        to: flags.to,
+        outputPath: flags.outputPath,
+        groupByDay: flags.groupByDay,
+        format: flags.format,
+      },
+      deps,
+    );
+  });
 }
 
 async function runDashboardStatus(
