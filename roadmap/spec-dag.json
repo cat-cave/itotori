@@ -25263,7 +25263,7 @@
     {
       "id": "ITOTORI-224",
       "title": "itotori-agent-runtime: publish canonical OpenRouter integration doc + adopt both audits as baseline",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P0",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25299,8 +25299,10 @@
         "Evidence JSON committed with API key or PII present",
         "Cited URLs that 404 again (re-fetch on commit day)"
       ],
-      "statusReason": "Per docs/audits/openrouter-wiring-audit-2026-06-25.md §4-1 (anchor for DOC-AMBIGUOUS resolution) and docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §1 (the 'usage.cost is real' contract this doc canonicalises).",
-      "parallelGroup": "agent-runtime"
+      "parallelGroup": "agent-runtime",
+      "owner": "orchestrator-itotori-224",
+      "branch": "spec/itotori-224",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-224"
     },
     {
       "id": "ITOTORI-225",
