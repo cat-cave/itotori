@@ -19,6 +19,7 @@ import {
 import {
   RecordedBundleMissingError,
   RecordedModelProvider,
+  recordedBundleKey,
   type RecordedProviderBundle,
 } from "../src/providers/recorded.js";
 import {
@@ -46,6 +47,8 @@ function modelProfile(): TranslationModelProfile {
   return {
     providerFamily: "fake",
     modelId: "itotori-fake-translation-v0",
+    // ITOTORI-220 — required (modelId, providerId) pair.
+    providerId: "fake-fixture",
     contextWindowTokens: 16000,
     maxOutputTokens: 1024,
   };
@@ -142,15 +145,23 @@ function bundleFor(
   drafts: TranslationDraft[],
 ): RecordedProviderBundle {
   const rendered = buildTranslationPrompt(input);
-  const promptHashKey = `sha256:${translationPromptHash(rendered)}`;
+  // ITOTORI-220 — keying by the pair-aware default bundle key so the
+  // replay matches the request the translation agent will produce.
+  const bundleKey = recordedBundleKey({
+    modelId: input.modelProfile.modelId,
+    providerId: input.modelProfile.providerId,
+    promptHash: `sha256:${translationPromptHash(rendered)}`,
+    inputClassification: "private_corpus",
+  });
   return {
     bundleId: "translation-bundle-fixture-001",
     capturedProviderFamily: "openrouter",
     capturedProviderName: "openrouter:translation-judge",
     capturedRequestedModelId: input.modelProfile.modelId,
+    capturedProviderId: input.modelProfile.providerId,
     capturedActualModelId: "openrouter:claude-opus-fixture",
     responses: {
-      [promptHashKey]: {
+      [bundleKey]: {
         content: JSON.stringify(makeStructuredTranslationDraftOutputFixture(drafts)),
         finishReason: "stop",
         tokenUsage: {
@@ -197,7 +208,12 @@ describe("TranslationAgent + RecordedModelProvider integration", () => {
     // Re-derive the expected key independently to assert the agent
     // uses the same canonical hash as the bundle authority.
     const rendered = buildTranslationPrompt(input);
-    const expectedKey = `sha256:${translationPromptHash(rendered)}`;
+    const expectedKey = recordedBundleKey({
+      modelId: input.modelProfile.modelId,
+      providerId: input.modelProfile.providerId,
+      promptHash: `sha256:${translationPromptHash(rendered)}`,
+      inputClassification: "private_corpus",
+    });
     expect(Object.keys(bundle.responses)).toEqual([expectedKey]);
 
     const provider = new RecordedModelProvider({ bundle });
@@ -214,6 +230,7 @@ describe("TranslationAgent + RecordedModelProvider integration", () => {
       capturedProviderFamily: "openrouter",
       capturedProviderName: "openrouter:translation-judge",
       capturedRequestedModelId: input.modelProfile.modelId,
+      capturedProviderId: input.modelProfile.providerId,
       capturedActualModelId: "openrouter:claude-opus-fixture",
       responses: {
         ["sha256:wrong-key-no-match"]: {

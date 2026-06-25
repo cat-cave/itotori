@@ -54,6 +54,8 @@ function fakeModelProfile(): TranslationModelProfile {
   return {
     providerFamily: "fake",
     modelId: "itotori-fake-translation-v0",
+    // ITOTORI-220 — required (modelId, providerId) pair.
+    providerId: "fake-fixture",
     contextWindowTokens: 16000,
     maxOutputTokens: 1024,
   };
@@ -218,6 +220,34 @@ describe("TranslationAgent.invokeTranslation happy path", () => {
     const agent = new TranslationAgent({ provider });
     const result = await agent.invokeTranslation(FIXED_ACTOR, input);
     expect(result.drafts).toEqual([]);
+  });
+
+  it("ITOTORI-220: providerId is propagated through to the ModelProvider call", async () => {
+    const input = inputFixture({
+      modelProfile: {
+        ...fakeModelProfile(),
+        modelId: "itotori-fake-translation-v0",
+        providerId: "fake-fixture-pair-test",
+      },
+    });
+    let observedRequest: ModelInvocationRequest | undefined;
+    const provider = new FakeModelProvider({
+      providerName: "translation-fake",
+      modelId: "itotori-fake-translation-v0",
+      generate: (request) => {
+        observedRequest = request;
+        return JSON.stringify(
+          makeStructuredTranslationDraftOutputFixture(representativeTranslationDraftsFixture()),
+        );
+      },
+    });
+    const agent = new TranslationAgent({ provider });
+    const result = await agent.invokeTranslation(FIXED_ACTOR, input);
+    expect(observedRequest?.providerId).toBe("fake-fixture-pair-test");
+    expect(observedRequest?.modelId).toBe("itotori-fake-translation-v0");
+    expect(result.modelMetadata.providerIdentity.requestedProviderId).toBe(
+      "fake-fixture-pair-test",
+    );
   });
 });
 

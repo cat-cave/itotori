@@ -29,6 +29,11 @@ export type TerminologyCandidateInvalidatedReason =
 export type TerminologyCandidateModelProfile = {
   providerFamily: ProviderFamily;
   modelId: string;
+  /**
+   * ITOTORI-220 — required (modelId, providerId) pair. Pins the
+   * terminology-candidate invocation to a specific upstream provider.
+   */
+  providerId: string;
   contextWindowTokens: number;
   maxOutputTokens?: number | undefined;
 };

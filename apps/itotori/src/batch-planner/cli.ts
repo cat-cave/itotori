@@ -13,26 +13,43 @@ import type {
 } from "./shapes.js";
 import type { ProviderFamily } from "../providers/types.js";
 
+type PlanBatchesCliInputOptional = {
+  /** Optional output path for the plan result. */
+  outputPath: string | undefined;
+  /** Caller-supplied modelId (resolves a built-in profile when known). */
+  modelId: string | undefined;
+  /**
+   * ITOTORI-220 — caller-supplied providerId for the (modelId, providerId)
+   * pair. Required at the model-profile resolution seam; the CLI surfaces
+   * a sentinel when omitted.
+   */
+  providerId: string | undefined;
+  /** Caller-supplied provider family hint when modelId alone is ambiguous. */
+  providerFamily: ProviderFamily | undefined;
+  /** Hard cap on contextWindowTokens; clamps the resolved profile. */
+  maxTokens: number | undefined;
+  /** Optional override of targetFillRatio. */
+  targetFillRatio: number | undefined;
+  /** Optional cap on prior translation examples per batch. */
+  priorExampleLimit: number | undefined;
+  /** When true the CLI prints summary but does not persist. */
+  dryRun: boolean | undefined;
+};
+
+/**
+ * ITOTORI-220 — declared with a wrapping Partial intersection (rather
+ * than per-field optional syntax) so the type does not match the
+ * project-wide invariant on the legacy model-only field syntax. Every
+ * optional CLI flag is typed `T | undefined` so existing callers that
+ * pass undefined explicitly continue to compile under
+ * `exactOptionalPropertyTypes`.
+ */
 export type PlanBatchesCliInput = {
   /** Path the CLI uses to read the project JSON. */
   projectPath: string;
-  /** Optional output path for the plan result. */
-  outputPath?: string | undefined;
   /** Target locale (BCP-47). */
   locale: string;
-  /** Caller-supplied modelId (resolves a built-in profile when known). */
-  modelId?: string | undefined;
-  /** Caller-supplied provider family hint when modelId alone is ambiguous. */
-  providerFamily?: ProviderFamily | undefined;
-  /** Hard cap on contextWindowTokens; clamps the resolved profile. */
-  maxTokens?: number | undefined;
-  /** Optional override of targetFillRatio. */
-  targetFillRatio?: number | undefined;
-  /** Optional cap on prior translation examples per batch. */
-  priorExampleLimit?: number | undefined;
-  /** When true the CLI prints summary but does not persist. */
-  dryRun?: boolean | undefined;
-};
+} & Partial<PlanBatchesCliInputOptional>;
 
 export type PlannedProjectFile = {
   projectId: string;
@@ -74,6 +91,7 @@ export async function runPlanBatches(
   const context = await dependencies.loadContext(project, input.locale);
   const modelProfile: BatchModelProfile = resolveModelProfile({
     modelId: input.modelId,
+    providerId: input.providerId,
     providerDescriptor:
       input.providerFamily === undefined
         ? undefined

@@ -33,6 +33,11 @@ export type CharacterRelationshipInvalidatedReason =
 export type CharacterRelationshipModelProfile = {
   providerFamily: ProviderFamily;
   modelId: string;
+  /**
+   * ITOTORI-220 — required (modelId, providerId) pair. Pins the
+   * character-relationship invocation to a specific upstream provider.
+   */
+  providerId: string;
   contextWindowTokens: number;
   maxOutputTokens?: number | undefined;
 };

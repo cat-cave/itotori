@@ -112,6 +112,7 @@ export class SpeakerLabelAgent {
     const request: ModelInvocationRequest = {
       taskKind: "experiment",
       modelId: input.modelMetadata.modelId,
+      providerId: input.modelMetadata.providerId,
       inputClassification: "private_corpus",
       messages,
       structuredOutput,

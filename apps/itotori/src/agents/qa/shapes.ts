@@ -28,6 +28,11 @@ export const QA_DEFAULT_STRUCTURED_OUTPUT_NAME = "itotori-structured-qa-finding-
 export type QaModelProfile = {
   providerFamily: ProviderFamily;
   modelId: string;
+  /**
+   * ITOTORI-220 — required (modelId, providerId) pair. Names the specific
+   * upstream provider the QA agent must be pinned to.
+   */
+  providerId: string;
   contextWindowTokens: number;
   maxOutputTokens?: number | undefined;
 };

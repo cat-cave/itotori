@@ -1,7 +1,8 @@
 {
-  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v1",
+  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v2",
   "fixtureId": "calibration-style-violation",
   "agentName": "semantic-drift",
   "authority": "original",
+  "providerId": "anthropic",
   "findings": []
 }

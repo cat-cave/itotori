@@ -32,6 +32,12 @@ export const TRANSLATION_DEFAULT_STRUCTURED_OUTPUT_NAME =
 export type TranslationModelProfile = {
   providerFamily: ProviderFamily;
   modelId: string;
+  /**
+   * ITOTORI-220 — required (modelId, providerId) pair. Names the specific
+   * upstream provider the agent must be pinned to; surfaced into the
+   * `ModelInvocationRequest.providerId` field on every call.
+   */
+  providerId: string;
   contextWindowTokens: number;
   maxOutputTokens?: number | undefined;
 };

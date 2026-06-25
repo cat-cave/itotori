@@ -26,6 +26,12 @@ export const STYLE_GUIDE_PROVIDER_SMOKE_SCHEMA_VERSION =
 export const STYLE_GUIDE_SUGGESTION_TOOL_NAME = "emit_style_guide_suggestion";
 export const STYLE_GUIDE_LIVE_PROVIDER_SMOKE_FLAG = "ITOTORI_STYLE_GUIDE_LIVE_PROVIDER_SMOKE";
 export const STYLE_GUIDE_LIVE_PROVIDER_MODEL_ENV = "ITOTORI_STYLE_GUIDE_PROVIDER_MODEL";
+/**
+ * ITOTORI-220 — env var for the explicit providerId the smoke must pin.
+ * Falls back to the deepseek default when not set, matching the default
+ * model.
+ */
+export const STYLE_GUIDE_LIVE_PROVIDER_ID_ENV = "ITOTORI_STYLE_GUIDE_PROVIDER_ID";
 
 export type StyleGuideProviderSmokeFixture = {
   schemaVersion: typeof STYLE_GUIDE_PROVIDER_SMOKE_SCHEMA_VERSION;
@@ -137,7 +143,8 @@ export async function runLiveStyleGuideProviderSmoke(
   const provider = new OpenRouterProvider({
     ...providerOptions,
   });
-  const request = styleGuideSuggestionRequest(provider.descriptor.defaultModelId);
+  const providerId = env[STYLE_GUIDE_LIVE_PROVIDER_ID_ENV] ?? "deepseek";
+  const request = styleGuideSuggestionRequest(provider.descriptor.defaultModelId, providerId);
   const result = await provider.invoke(request);
   const parsed = parseStyleGuideSuggestionFromProviderResult(result);
   assertStyleGuideProviderSmokeLedger(result.providerRun);
@@ -177,10 +184,16 @@ export function parseStyleGuideSuggestionFromProviderResult(
   };
 }
 
-export function styleGuideSuggestionRequest(modelId: string): ModelInvocationRequest {
+export function styleGuideSuggestionRequest(
+  modelId: string,
+  providerId: string = "deepseek",
+): ModelInvocationRequest {
   return {
     taskKind: "experiment",
     modelId,
+    // ITOTORI-220 — defaults to the deepseek provider that matches the
+    // built-in style-guide-smoke fixture; callers may override.
+    providerId,
     inputClassification: "synthetic_public",
     prompt: {
       presetId: "itotori-style-guide-smoke-v1",

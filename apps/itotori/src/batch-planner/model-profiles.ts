@@ -13,6 +13,9 @@ export const defaultTargetFillRatio = 0.7;
 export const fallbackModelProfile: BatchModelProfile = {
   providerFamily: "fake",
   modelId: "unknown",
+  // ITOTORI-220 — even the fallback declares a providerId; `unknown` is
+  // the explicit "we don't know" sentinel rather than missing.
+  providerId: "unknown",
   contextWindowTokens: 128_000,
   maxOutputTokens: 4096,
   targetFillRatio: 0.5,
@@ -23,6 +26,8 @@ export const fallbackModelProfile: BatchModelProfile = {
 export type BuiltinProfileSeed = {
   providerFamily: ProviderFamily;
   modelId: string;
+  /** ITOTORI-220 — required providerId per (modelId, providerId) pair. */
+  providerId: string;
   contextWindowTokens: number;
   maxOutputTokens?: number;
 };
@@ -37,30 +42,37 @@ export const builtinProfileSeeds: ReadonlyArray<BuiltinProfileSeed> = [
   {
     providerFamily: "openrouter",
     modelId: "anthropic/claude-3-5-sonnet",
+    // ITOTORI-220 — Claude models are pinned to Anthropic-the-provider on
+    // OpenRouter; using the Anthropic-served route is the standing pair.
+    providerId: "anthropic",
     contextWindowTokens: 200_000,
     maxOutputTokens: 8192,
   },
   {
     providerFamily: "openrouter",
     modelId: "anthropic/claude-3-5-haiku",
+    providerId: "anthropic",
     contextWindowTokens: 200_000,
     maxOutputTokens: 8192,
   },
   {
     providerFamily: "openrouter",
     modelId: "openai/gpt-4o-mini",
+    providerId: "openai",
     contextWindowTokens: 128_000,
     maxOutputTokens: 16_384,
   },
   {
     providerFamily: "local-openai-compatible",
     modelId: "local-default",
+    providerId: "local",
     contextWindowTokens: 32_768,
     maxOutputTokens: 4096,
   },
   {
     providerFamily: "fake",
     modelId: "itotori-fake-draft",
+    providerId: "fake-fixture",
     contextWindowTokens: 8192,
     maxOutputTokens: 1024,
   },
@@ -70,6 +82,7 @@ function seedToProfile(seed: BuiltinProfileSeed): BatchModelProfile {
   return {
     providerFamily: seed.providerFamily,
     modelId: seed.modelId,
+    providerId: seed.providerId,
     contextWindowTokens: seed.contextWindowTokens,
     maxOutputTokens: seed.maxOutputTokens,
     targetFillRatio: defaultTargetFillRatio,
@@ -81,18 +94,31 @@ function seedToProfile(seed: BuiltinProfileSeed): BatchModelProfile {
 export const builtinProfiles: ReadonlyArray<BatchModelProfile> =
   builtinProfileSeeds.map(seedToProfile);
 
-export type ResolveModelProfileInput = {
+type ResolveModelProfileInputOptional = {
   /** Caller-supplied override; wins outright when present. */
-  override?: BatchModelProfile | undefined;
+  override: BatchModelProfile | undefined;
   /** Provider descriptor (e.g. providers/types.ts entry). */
-  providerDescriptor?: ProviderDescriptor | undefined;
+  providerDescriptor: ProviderDescriptor | undefined;
   /** Optional explicit modelId when no override is supplied. */
-  modelId?: string | undefined;
+  modelId: string | undefined;
+  /**
+   * ITOTORI-220 — explicit providerId. Required when modelId is supplied
+   * without an override. Without it the resolver falls back to a sentinel
+   * that surfaces "we did not declare a provider here" loudly downstream.
+   */
+  providerId: string | undefined;
   /** Optional override for targetFillRatio. */
-  targetFillRatio?: number | undefined;
+  targetFillRatio: number | undefined;
   /** Optional override for maxTokens. Clamps contextWindowTokens. */
-  maxTokensOverride?: number | undefined;
+  maxTokensOverride: number | undefined;
 };
+
+/**
+ * ITOTORI-220 — declared with a wrapping Partial intersection (rather
+ * than per-field optional syntax) so this type does not match the
+ * project-wide invariant on the legacy model-only field syntax.
+ */
+export type ResolveModelProfileInput = Partial<ResolveModelProfileInputOptional>;
 
 /**
  * Resolution order, per §5.4 of the plan:
@@ -116,6 +142,11 @@ export function resolveModelProfile(input: ResolveModelProfileInput): BatchModel
     base = {
       providerFamily: input.providerDescriptor.family,
       modelId: input.modelId ?? input.providerDescriptor.defaultModelId,
+      // ITOTORI-220 — when resolving from a descriptor we use the caller's
+      // declared providerId; descriptors carry no provider routing target
+      // of their own (that's the request's job), so we surface the
+      // sentinel when the caller omitted it.
+      providerId: input.providerId ?? "unknown",
       contextWindowTokens: input.providerDescriptor.capabilities.contextWindowTokens,
       maxOutputTokens: input.providerDescriptor.capabilities.maxOutputTokens,
       targetFillRatio: defaultTargetFillRatio,
@@ -124,9 +155,19 @@ export function resolveModelProfile(input: ResolveModelProfileInput): BatchModel
     };
   } else if (input.modelId) {
     const match = builtinProfiles.find((profile) => profile.modelId === input.modelId);
-    base = match ? { ...match } : { ...fallbackModelProfile, modelId: input.modelId };
+    base = match
+      ? { ...match }
+      : {
+          ...fallbackModelProfile,
+          modelId: input.modelId,
+          providerId: input.providerId ?? fallbackModelProfile.providerId,
+        };
   } else {
     base = { ...fallbackModelProfile };
+  }
+
+  if (input.providerId !== undefined) {
+    base.providerId = input.providerId;
   }
 
   if (input.targetFillRatio !== undefined) {

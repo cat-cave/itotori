@@ -13,6 +13,11 @@ export type SceneSummaryInvalidatedReason =
 export type SceneSummaryModelProfile = {
   providerFamily: ProviderFamily;
   modelId: string;
+  /**
+   * ITOTORI-220 — required (modelId, providerId) pair. Pins the scene-
+   * summary invocation to a specific upstream provider.
+   */
+  providerId: string;
   contextWindowTokens: number;
   maxOutputTokens?: number | undefined;
 };

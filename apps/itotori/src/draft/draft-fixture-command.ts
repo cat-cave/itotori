@@ -151,6 +151,12 @@ export type DraftFixtureAttemptProviderIdentity = {
   capturedProviderFamily: RecordedProviderBundle["capturedProviderFamily"];
   capturedProviderName: string;
   capturedRequestedModelId: string;
+  /**
+   * ITOTORI-220 — providerId pinned at the time the bundle was captured.
+   * Optional in the on-disk shape so the existing fixture bundles can be
+   * loaded; new fixtures must declare it.
+   */
+  capturedProviderId?: string;
   capturedActualModelId: string;
 };
 
@@ -282,6 +288,7 @@ export async function runDraftFixtureCommand(
       promptTemplateVersion: project.promptTemplateVersion,
       modelProviderFamily: project.modelProfile.providerFamily,
       modelId: project.modelProfile.modelId,
+      providerId: project.modelProfile.providerId,
     },
   });
   log(`created draft job ${draftJob.draftJobId}`);
@@ -769,6 +776,11 @@ function buildRecordedProviderBundle(args: {
     capturedProviderFamily: args.fixtureAttempt.provider.capturedProviderFamily,
     capturedProviderName: args.fixtureAttempt.provider.capturedProviderName,
     capturedRequestedModelId: args.fixtureAttempt.provider.capturedRequestedModelId,
+    // ITOTORI-220 — default the captured providerId to the project's
+    // pinned providerId so the bundle stays self-consistent. Authors of
+    // new fixtures supply it explicitly.
+    capturedProviderId:
+      args.fixtureAttempt.provider.capturedProviderId ?? args.project.modelProfile.providerId,
     capturedActualModelId: args.fixtureAttempt.provider.capturedActualModelId,
     responses,
   };
@@ -896,6 +908,8 @@ function synthesizeFailureLedgerInput(args: {
         endpointFamily: "recorded-fixture",
         providerName: args.fixtureAttempt.provider.capturedProviderName,
         requestedModelId: args.fixtureAttempt.provider.capturedRequestedModelId,
+        requestedProviderId:
+          args.fixtureAttempt.provider.capturedProviderId ?? args.project.modelProfile.providerId,
         actualModelId: args.fixtureAttempt.provider.capturedActualModelId,
       },
       providerRun: {
@@ -910,6 +924,8 @@ function synthesizeFailureLedgerInput(args: {
           endpointFamily: "recorded-fixture",
           providerName: args.fixtureAttempt.provider.capturedProviderName,
           requestedModelId: args.fixtureAttempt.provider.capturedRequestedModelId,
+          requestedProviderId:
+            args.fixtureAttempt.provider.capturedProviderId ?? args.project.modelProfile.providerId,
           actualModelId: args.fixtureAttempt.provider.capturedActualModelId,
         },
         structuredOutputMode: "json_schema",

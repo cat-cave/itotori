@@ -66,6 +66,7 @@
   "modelProfile": {
     "providerFamily": "recorded",
     "modelId": "itotori-fixture-translation-v0",
+    "providerId": "recorded-fixture",
     "contextWindowTokens": 16000,
     "maxOutputTokens": 1024
   }

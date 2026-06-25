@@ -6,6 +6,15 @@ import type {
 } from "@itotori/db";
 import type { TerminologyCandidate } from "./shapes.js";
 
+/**
+ * ITOTORI-220 — sentinel providerId surfaced when reconstructing a model
+ * profile from a legacy terminology-candidate persistence record. The
+ * terminology-candidate table does not yet carry a provider_id column
+ * (out of scope for ITOTORI-220); new invocations always pin a
+ * providerId explicitly on the way in.
+ */
+const RECONSTRUCTED_LEGACY_PROVIDER_ID = "unknown";
+
 export function candidateToSaveInput(
   candidate: TerminologyCandidate,
 ): SaveTerminologyCandidateInput {
@@ -73,6 +82,7 @@ export function recordToCandidate(record: TerminologyCandidateRecord): Terminolo
       providerFamily:
         record.modelProviderFamily as TerminologyCandidate["modelProfile"]["providerFamily"],
       modelId: record.modelId,
+      providerId: RECONSTRUCTED_LEGACY_PROVIDER_ID,
       contextWindowTokens: record.modelContextWindowTokens,
       maxOutputTokens: record.modelMaxOutputTokens ?? undefined,
     },

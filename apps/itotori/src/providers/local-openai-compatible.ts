@@ -59,7 +59,7 @@ export class LocalOpenAICompatibleProvider implements ModelProvider {
       );
     }
 
-    const requestedModelId = request.modelId ?? this.descriptor.defaultModelId;
+    const requestedModelId = request.modelId;
     assertProviderInvocationSupported({ descriptor: this.descriptor, request, requestedModelId });
     const startedAt = new Date();
     let response: Response;
@@ -419,6 +419,7 @@ function buildRun(input: {
       endpointFamily: input.descriptor.endpointFamily,
       providerName: input.descriptor.providerName,
       requestedModelId: input.requestedModelId,
+      requestedProviderId: input.request.providerId,
       actualModelId: input.actualModelId,
     },
     structuredOutputMode: input.request.structuredOutput?.mode ?? "none",

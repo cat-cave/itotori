@@ -1,15 +1,17 @@
-// ITOTORI-078 — RecordedModelProvider.
+// ITOTORI-078 / ITOTORI-220 — RecordedModelProvider.
 //
 // Replays a previously-recorded model invocation from an in-memory bundle.
 // Used by the QA invocation service in recorded mode so tests and offline
 // CI runs exercise the parse / validate / persist path without ever
 // touching a live provider. Same input bundle → byte-equal output.
 //
-// Bundles are matched against requests by `bundleKey` — usually the
-// promptHash of the request, but the caller may use any deterministic key.
-// A miss throws `RecordedBundleMissingError` so silent fallbacks are
-// impossible.
+// Bundles are matched against requests by `bundleKey`. The default key is
+// the SHA-256 of (modelId, providerId, promptHash, inputClassification)
+// per ITOTORI-220 so a replay is pinned to the (model, provider) pair
+// that originally produced it. A miss throws `RecordedBundleMissingError`
+// so silent fallbacks are impossible.
 
+import { createHash } from "node:crypto";
 import { assertProviderInvocationSupported } from "./capability-guard.js";
 import { deterministicFixtureDataHandlingPolicy } from "./policy.js";
 import {
@@ -51,6 +53,12 @@ export type RecordedProviderBundle = {
   capturedProviderName: string;
   capturedRequestedModelId: string;
   capturedActualModelId: string;
+  /**
+   * ITOTORI-220 — providerId the originally-captured request pinned. Used
+   * as part of the bundle key so replays are pinned to the same
+   * (model, provider) pair that originally produced the bytes.
+   */
+  capturedProviderId: string;
   /** Keyed lookup: `bundleKey` → response. */
   responses: Record<string, RecordedProviderResponse>;
 };
@@ -108,7 +116,7 @@ export class RecordedModelProvider implements ModelProvider {
     }
     const startedAt = new Date(0).toISOString();
     const completedAt = startedAt;
-    const requestedModelId = request.modelId ?? this.bundle.capturedRequestedModelId;
+    const requestedModelId = request.modelId;
     const structuredOutputMode: StructuredOutputMode | "none" =
       request.structuredOutput?.mode ?? "none";
     const run: ProviderRunRecord = {
@@ -123,7 +131,9 @@ export class RecordedModelProvider implements ModelProvider {
         endpointFamily: this.descriptor.endpointFamily,
         providerName: this.bundle.capturedProviderName,
         requestedModelId,
+        requestedProviderId: request.providerId,
         actualModelId: this.bundle.capturedActualModelId,
+        upstreamProvider: this.bundle.capturedProviderId,
       },
       structuredOutputMode,
       retryCount: 0,
@@ -160,8 +170,41 @@ export class RecordedModelProvider implements ModelProvider {
   }
 }
 
+/**
+ * ITOTORI-220 — default bundle key combines modelId + providerId +
+ * promptHash + inputClassification under SHA-256 so a recorded bundle is
+ * keyed by the (model, provider) pair that originally produced it.
+ * Callers MAY override via `bundleKey` (used by the QA calibration suite
+ * which keys directly on the prompt hash today), but the default refuses
+ * to collapse different (model, provider) pairs onto the same key.
+ */
 function defaultBundleKey(request: ModelInvocationRequest): string {
-  return request.prompt.promptHash;
+  return recordedBundleKey({
+    modelId: request.modelId,
+    providerId: request.providerId,
+    promptHash: request.prompt.promptHash,
+    inputClassification: request.inputClassification,
+  });
+}
+
+export type RecordedBundleKeyInputs = {
+  modelId: string;
+  providerId: string;
+  promptHash: string;
+  inputClassification: string;
+};
+
+/**
+ * Deterministic recorded-bundle key per ITOTORI-220. Stable across runs;
+ * any drift in (modelId, providerId, promptHash, inputClassification)
+ * invalidates the cached bundle.
+ */
+export function recordedBundleKey(inputs: RecordedBundleKeyInputs): string {
+  const hash = createHash("sha256");
+  hash.update(
+    [inputs.modelId, inputs.providerId, inputs.promptHash, inputs.inputClassification].join(":"),
+  );
+  return `sha256:${hash.digest("hex")}`;
 }
 
 function defaultTokenUsage(request: ModelInvocationRequest, content: string | null): TokenUsage {

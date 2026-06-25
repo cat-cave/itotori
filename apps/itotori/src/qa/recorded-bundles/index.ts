@@ -22,7 +22,11 @@ import {
 import { buildQaPrompt, qaPromptHash } from "../../agents/qa/prompt-template.js";
 import type { FocusedQaAgentDescriptor, FocusedQaAgentName } from "../../agents/qa/agents/index.js";
 import type { QaBridgeUnit, QaInvocationInput } from "../../agents/qa/shapes.js";
-import type { RecordedProviderBundle, RecordedProviderResponse } from "../../providers/recorded.js";
+import {
+  recordedBundleKey,
+  type RecordedProviderBundle,
+  type RecordedProviderResponse,
+} from "../../providers/recorded.js";
 import type { ProviderFamily } from "../../providers/types.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -33,15 +37,25 @@ const __dirname = dirname(__filename);
  * snapshots under `original/` and `fresh-judge/`. The schema-version
  * gate is enforced strictly so a stale file fails fast instead of
  * silently mis-seeding the calibration tests.
+ *
+ * ITOTORI-220 v2 — the on-disk bundle gains a required `providerId`
+ * field; the `v2` bump rejects any v1 file still on disk so calibration
+ * cannot accidentally replay a pre-pair bundle.
  */
 export const QA_CALIBRATION_RECORDED_BUNDLE_SCHEMA_VERSION =
-  "itotori.qa-calibration-recorded-bundle.v1" as const;
+  "itotori.qa-calibration-recorded-bundle.v2" as const;
 
 export type QaCalibrationRecordedBundleFile = {
   schemaVersion: typeof QA_CALIBRATION_RECORDED_BUNDLE_SCHEMA_VERSION;
   fixtureId: string;
   agentName: FocusedQaAgentName;
   authority: RecordedBundleAuthority;
+  /**
+   * ITOTORI-220 — providerId pinned by the bundle. Must match what the
+   * test's invocation pins via `modelProfile.providerId` so the key
+   * computed at runtime matches what the bundle was authored for.
+   */
+  providerId: string;
   findings: QaFinding[];
 };
 
@@ -79,6 +93,18 @@ export function loadCalibrationBundleFindings(
   agentName: FocusedQaAgentName,
   authority: RecordedBundleAuthority,
 ): QaFinding[] {
+  return loadCalibrationBundleFile(fixtureId, agentName, authority).findings;
+}
+
+/**
+ * Read the canonical on-disk recorded bundle for a (fixture, agent,
+ * authority) triple, including the ITOTORI-220 `providerId` metadata.
+ */
+export function loadCalibrationBundleFile(
+  fixtureId: string,
+  agentName: FocusedQaAgentName,
+  authority: RecordedBundleAuthority,
+): QaCalibrationRecordedBundleFile {
   const path = resolve(__dirname, authority, `${fixtureId}.${agentName}.json`);
   let raw: string;
   try {
@@ -117,10 +143,23 @@ export function loadCalibrationBundleFindings(
       `authority mismatch: file='${parsed.authority}' expected='${authority}'`,
     );
   }
+  if (typeof parsed.providerId !== "string" || parsed.providerId.length === 0) {
+    throw new QaCalibrationBundleSchemaError(
+      path,
+      `providerId mismatch: file must declare a non-empty providerId per ITOTORI-220 (got '${String(parsed.providerId)}')`,
+    );
+  }
   if (!Array.isArray(parsed.findings)) {
     throw new QaCalibrationBundleSchemaError(path, "findings field is not an array");
   }
-  return parsed.findings;
+  return {
+    schemaVersion: parsed.schemaVersion,
+    fixtureId: parsed.fixtureId,
+    agentName: parsed.agentName,
+    authority: parsed.authority,
+    providerId: parsed.providerId,
+    findings: parsed.findings,
+  };
 }
 
 /**
@@ -128,10 +167,17 @@ export function loadCalibrationBundleFindings(
  * the recorded-bundle authority used elsewhere in the codebase; the
  * `capturedProviderFamily` is `openrouter` because the calibration
  * authority pretends a real OpenRouter run produced the bytes.
+ *
+ * ITOTORI-220 — the calibration bundles also carry an explicit
+ * providerId. The original authority routes through `anthropic` (the
+ * pinned upstream for the calibration capture); the fresh-judge
+ * authority routes through `google-vertex` to keep the regrade
+ * independent at both the model and the provider level.
  */
 const CAPTURED_PROVIDER_FAMILY: ProviderFamily = "openrouter";
 const CAPTURED_PROVIDER_NAME = "openrouter:itotori-qa-calibration-recorder";
 const CAPTURED_ACTUAL_MODEL_ID = "openrouter:claude-opus-itotori-qa-calibration-v1";
+export const QA_CALIBRATION_ORIGINAL_PROVIDER_ID = "anthropic" as const;
 
 /**
  * Stable captured identity for the fresh-judge bundles. Different
@@ -141,6 +187,7 @@ const CAPTURED_ACTUAL_MODEL_ID = "openrouter:claude-opus-itotori-qa-calibration-
 const FRESH_JUDGE_CAPTURED_PROVIDER_NAME = "openrouter:itotori-qa-calibration-fresh-judge-recorder";
 const FRESH_JUDGE_CAPTURED_ACTUAL_MODEL_ID =
   "openrouter:claude-sonnet-itotori-qa-calibration-fresh-judge-v1";
+export const QA_CALIBRATION_FRESH_JUDGE_PROVIDER_ID = "google-vertex" as const;
 
 export type RecordedBundleAuthority = "original" | "fresh-judge";
 
@@ -170,7 +217,15 @@ export function buildFocusedRecordedBundle(
   // identical to the one in `focused-agent.ts`.
   const augmentedInput = withFocusedScopeDirective(args.input, args.agentDescriptor);
   const rendered = buildQaPrompt(augmentedInput);
-  const promptHashKey = `sha256:${qaPromptHash(rendered)}`;
+  // ITOTORI-220 — pair-aware bundle key. The runtime `RecordedModelProvider`
+  // computes the same hash from the request's (modelId, providerId,
+  // promptHash, inputClassification); we mirror that here.
+  const promptHashKey = recordedBundleKey({
+    modelId: args.input.modelProfile.modelId,
+    providerId: args.input.modelProfile.providerId,
+    promptHash: `sha256:${qaPromptHash(rendered)}`,
+    inputClassification: "private_corpus",
+  });
 
   const payload: StructuredQaFindingOutput = {
     schemaVersion: STRUCTURED_QA_FINDING_OUTPUT_SCHEMA_VERSION,
@@ -195,6 +250,9 @@ export function buildFocusedRecordedBundle(
     capturedProviderFamily: CAPTURED_PROVIDER_FAMILY,
     capturedProviderName: isFresh ? FRESH_JUDGE_CAPTURED_PROVIDER_NAME : CAPTURED_PROVIDER_NAME,
     capturedRequestedModelId: args.input.modelProfile.modelId,
+    capturedProviderId: isFresh
+      ? QA_CALIBRATION_FRESH_JUDGE_PROVIDER_ID
+      : QA_CALIBRATION_ORIGINAL_PROVIDER_ID,
     capturedActualModelId: isFresh
       ? FRESH_JUDGE_CAPTURED_ACTUAL_MODEL_ID
       : CAPTURED_ACTUAL_MODEL_ID,

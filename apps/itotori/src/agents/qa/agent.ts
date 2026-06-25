@@ -104,6 +104,7 @@ export class QaAgent {
     const request: ModelInvocationRequest = {
       taskKind: "llm_qa",
       modelId: input.modelProfile.modelId,
+      providerId: input.modelProfile.providerId,
       inputClassification: "private_corpus",
       messages,
       structuredOutput,

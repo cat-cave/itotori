@@ -192,7 +192,11 @@ describe("style-guide provider smoke", () => {
       live: { enabled: true, artifactRecorder: recorder, rawCapture: "disabled" },
     });
 
-    const result = await provider.invoke(styleGuideSuggestionRequest("openai/gpt-4o-mini"));
+    // ITOTORI-220 — pin the providerId so the post-response upstream check
+    // accepts the mocked `OpenAI` upstream.
+    const result = await provider.invoke(
+      styleGuideSuggestionRequest("openai/gpt-4o-mini", "OpenAI"),
+    );
 
     expect(result.providerRun.cost).toEqual({
       costKind: "provider_estimate",

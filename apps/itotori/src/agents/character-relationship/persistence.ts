@@ -8,6 +8,16 @@ import type {
 } from "@itotori/db";
 import type { CharacterBio, CharacterRelationship } from "./shapes.js";
 
+/**
+ * ITOTORI-220 — sentinel providerId surfaced when reconstructing a model
+ * profile from a legacy persistence record. The character-relationship
+ * persistence tables do not yet carry a provider_id column (out of scope
+ * for ITOTORI-220; the ledger is the load-bearing surface), so old
+ * records cannot be roundtripped with their original providerId. New
+ * invocations always pin a providerId explicitly on the way in.
+ */
+const RECONSTRUCTED_LEGACY_PROVIDER_ID = "unknown";
+
 export function bioToSaveInput(bio: CharacterBio): SaveCharacterBioInput {
   if (bio.citedUnitIds.length === 0) {
     throw new Error(`character bio ${bio.id} cites no units`);
@@ -108,6 +118,7 @@ export function recordToBio(record: CharacterBioRecord): CharacterBio {
     modelProfile: {
       providerFamily: record.modelProviderFamily as CharacterBio["modelProfile"]["providerFamily"],
       modelId: record.modelId,
+      providerId: RECONSTRUCTED_LEGACY_PROVIDER_ID,
       contextWindowTokens: record.modelContextWindowTokens,
       maxOutputTokens: record.modelMaxOutputTokens ?? undefined,
     },
@@ -141,6 +152,7 @@ export function recordToRelationship(record: CharacterRelationshipRecord): Chara
       providerFamily:
         record.modelProviderFamily as CharacterRelationship["modelProfile"]["providerFamily"],
       modelId: record.modelId,
+      providerId: RECONSTRUCTED_LEGACY_PROVIDER_ID,
       contextWindowTokens: record.modelContextWindowTokens,
       maxOutputTokens: record.modelMaxOutputTokens ?? undefined,
     },

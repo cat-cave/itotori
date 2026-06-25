@@ -184,9 +184,27 @@ export type PromptPresetReference = {
   configSnapshot?: JsonObject;
 };
 
+/**
+ * ITOTORI-220 — every model invocation seam declares BOTH a model id AND
+ * a specific provider id as a **pair**. Calling out by model alone is a
+ * P0 architectural violation: OpenRouter is a marketplace and provider
+ * quality, cost, latency, and structured-output support vary by provider
+ * for the same model. The pair is non-optional at the type level so a
+ * caller cannot silently fall back to "any provider that happens to be
+ * cheapest right now".
+ */
 export type ModelInvocationRequest = {
   taskKind: "draft_translation" | "llm_qa" | "repair" | "experiment";
-  modelId?: string;
+  /** Required by ITOTORI-220 — no defaulting at the request seam. */
+  modelId: string;
+  /**
+   * Required by ITOTORI-220 — pinned upstream provider id. For OpenRouter
+   * this is the value passed to `provider: { only: [providerId] }` and
+   * the value that must equal `response.upstreamProvider` after the call.
+   * For local/recorded/fake providers this is a stable identifier like
+   * `local`, `recorded`, or `fake-fixture`.
+   */
+  providerId: string;
   messages: ModelMessage[];
   inputClassification: ProviderInputClassification;
   structuredOutput?: StructuredOutputRequest;
@@ -222,6 +240,12 @@ export type ProviderRunIdentity = {
   providerName: string;
   requestedModelId: string;
   actualModelId: string;
+  /**
+   * ITOTORI-220 — the providerId the request pinned. Populated for every
+   * invocation; downstream consumers (ledger, audit) read it without
+   * having to mirror request shape.
+   */
+  requestedProviderId: string;
   upstreamProvider?: string;
   routeSettingsHash?: string;
 };
@@ -299,12 +323,19 @@ export interface ModelProvider {
   invoke(request: ModelInvocationRequest): Promise<ModelInvocationResult>;
 }
 
+/**
+ * ITOTORI-220 — `pair_mismatch` is raised when the upstream provider that
+ * actually answered does not match the providerId the caller pinned. This
+ * fails LOUDLY because silently accepting a different provider would
+ * defeat the whole point of locking the (model, provider) pair.
+ */
 export class ModelProviderError extends Error {
   constructor(
     message: string,
     readonly code:
       | "capability_unsupported"
       | "configuration_error"
+      | "pair_mismatch"
       | "policy_blocked"
       | "provider_http_error"
       | "provider_response_invalid",

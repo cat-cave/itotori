@@ -20,6 +20,8 @@ function fakeModelProfile(): SceneSummaryModelProfile {
   return {
     providerFamily: "fake",
     modelId: "itotori-fake-scene-summary-v0",
+    // ITOTORI-220 — required (modelId, providerId) pair.
+    providerId: "fake-fixture",
     contextWindowTokens: 16000,
     maxOutputTokens: 256,
   };
@@ -157,6 +159,24 @@ describe("generateSceneSummary", () => {
     expect(a.summary.citedUnitIds).toEqual(b.summary.citedUnitIds);
     expect(a.summary.citedUnitHashes).toEqual(b.summary.citedUnitHashes);
     expect(a.summary.inputTokenEstimate).toBe(b.summary.inputTokenEstimate);
+  });
+
+  it("ITOTORI-220: providerId is propagated through to the ModelProvider call", async () => {
+    const input: SceneSummaryInput = {
+      ...inputFixture(),
+      modelProfile: { ...fakeModelProfile(), providerId: "fake-fixture-pair-test" },
+    };
+    let observedProviderId: string | undefined;
+    const provider = new FakeModelProvider({
+      providerName: "scene-summary-fake",
+      modelId: input.modelProfile.modelId,
+      generate: (request) => {
+        observedProviderId = request.providerId;
+        return "ok";
+      },
+    });
+    await generateSceneSummary(input, { provider });
+    expect(observedProviderId).toBe("fake-fixture-pair-test");
   });
 
   it("refuses empty input", async () => {

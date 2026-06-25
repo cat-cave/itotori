@@ -21,6 +21,7 @@ import {
 import {
   RecordedBundleMissingError,
   RecordedModelProvider,
+  recordedBundleKey,
   type RecordedProviderBundle,
 } from "../src/providers/recorded.js";
 import {
@@ -40,6 +41,8 @@ function modelProfile(): SpeakerLabelModelProfile {
   return {
     providerFamily: "fake",
     modelId: "itotori-fake-speaker-label-v0",
+    // ITOTORI-220 — required (modelId, providerId) pair.
+    providerId: "fake-fixture",
     contextWindowTokens: 16000,
     maxOutputTokens: 1024,
   };
@@ -141,7 +144,13 @@ function bundleFor(
   labels: SpeakerLabel[],
 ): RecordedProviderBundle {
   const rendered = buildSpeakerLabelPrompt(input);
-  const promptHashKey = `sha256:${speakerLabelPromptHash(rendered)}`;
+  // ITOTORI-220 — key by the pair-aware default bundle key.
+  const bundleKey = recordedBundleKey({
+    modelId: input.modelMetadata.modelId,
+    providerId: input.modelMetadata.providerId,
+    promptHash: `sha256:${speakerLabelPromptHash(rendered)}`,
+    inputClassification: "private_corpus",
+  });
   const output: SpeakerLabelOutput = {
     schemaVersion: SPEAKER_LABEL_OUTPUT_SCHEMA_VERSION,
     labels,
@@ -151,9 +160,10 @@ function bundleFor(
     capturedProviderFamily: "openrouter",
     capturedProviderName: "openrouter:speaker-label-judge",
     capturedRequestedModelId: input.modelMetadata.modelId,
+    capturedProviderId: input.modelMetadata.providerId,
     capturedActualModelId: "openrouter:claude-opus-fixture",
     responses: {
-      [promptHashKey]: {
+      [bundleKey]: {
         content: JSON.stringify(output),
         finishReason: "stop",
         tokenUsage: {
@@ -214,6 +224,7 @@ describe("SpeakerLabelAgent + RecordedModelProvider integration", () => {
       capturedProviderFamily: "openrouter",
       capturedProviderName: "openrouter:speaker-label-judge",
       capturedRequestedModelId: input.modelMetadata.modelId,
+      capturedProviderId: input.modelMetadata.providerId,
       capturedActualModelId: "openrouter:claude-opus-fixture",
       responses: {
         ["sha256:wrong-key-no-match"]: {

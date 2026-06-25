@@ -77,6 +77,8 @@ const FIXTURE_GLOSSARY_TERM_ID = "019ed079-0000-7000-8000-000000cb0001";
 const FIXTURE_MODEL_PROFILE: QaModelProfile = {
   providerFamily: "openrouter",
   modelId: "openrouter:itotori-qa-calibration-v1",
+  // ITOTORI-220 — pinned provider for the original calibration authority.
+  providerId: "anthropic",
   contextWindowTokens: 16000,
   maxOutputTokens: 1024,
 };
@@ -84,6 +86,9 @@ const FIXTURE_MODEL_PROFILE: QaModelProfile = {
 const FIXTURE_FRESH_JUDGE_MODEL_PROFILE: QaModelProfile = {
   providerFamily: "openrouter",
   modelId: "openrouter:itotori-qa-calibration-fresh-judge-v1",
+  // ITOTORI-220 — different upstream provider so the fresh-judge regrade
+  // is independent at both the model and provider level.
+  providerId: "google-vertex",
   contextWindowTokens: 16000,
   maxOutputTokens: 1024,
 };

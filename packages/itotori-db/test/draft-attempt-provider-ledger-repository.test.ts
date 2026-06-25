@@ -52,6 +52,9 @@ function baseLedgerInput(draftJobAttemptId: string): RecordLedgerEntryInput {
     providerProofId: "provider-proof-fixture-01",
     modelProviderFamily: "openrouter",
     modelId: "anthropic/claude-3.5-sonnet",
+    // ITOTORI-220 — required pinned providerId per the (modelId, providerId)
+    // pair rule.
+    providerId: "anthropic",
     modelContextWindowTokens: 200_000,
     modelMaxOutputTokens: 8_192,
     promptTemplateVersion: "itotori-translation-agent-v1",
@@ -253,6 +256,100 @@ describe.skipIf(!process.env.DATABASE_URL)("ItotoriDraftAttemptProviderLedgerRep
       expect(grouped.byModel).toEqual({
         "anthropic/claude-3.5-sonnet": "0.03000000",
         "openai/gpt-4o-mini": "0.00500000",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-220: recordLedgerEntry rejects null/empty providerId", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      // Empty string rejected at the typed input boundary.
+      const emptyInput = { ...baseLedgerInput(attemptId), providerId: "" };
+      await expect(repo.recordLedgerEntry(localActor, emptyInput)).rejects.toMatchObject({
+        name: "DraftAttemptProviderLedgerRepositoryError",
+        code: "ledger_entry_invalid_input",
+      });
+
+      // The DB column itself is NOT NULL — drop the providerId via a cast and
+      // attempt the insert to confirm the schema layer enforces it.
+      const nullInput = { ...baseLedgerInput(attemptId) } as RecordLedgerEntryInput & {
+        providerId?: string;
+      };
+      delete nullInput.providerId;
+      await expect(
+        repo.recordLedgerEntry(localActor, nullInput as RecordLedgerEntryInput),
+      ).rejects.toMatchObject({
+        name: "DraftAttemptProviderLedgerRepositoryError",
+        code: "ledger_entry_invalid_input",
+      });
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-220: recordLedgerEntry persists providerId and surfaces it on read", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      const entry = await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerId: "anthropic",
+      });
+      expect(entry.providerId).toBe("anthropic");
+
+      const reread = await repo.loadEntriesByProviderProof(localActor, entry.providerProofId);
+      expect(reread?.providerId).toBe("anthropic");
+    } finally {
+      await context.close();
+    }
+  });
+
+  it("ITOTORI-220: sumCostByProject aggregates by provider via byProvider option", async () => {
+    const context = await isolatedMigratedContext();
+    try {
+      await provisionDraftJobFixtureProject(context.db, localActor);
+      const attemptId = await provisionDraftAttempt(context.db);
+      const repo = new ItotoriDraftAttemptProviderLedgerRepository(context.db);
+
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "proof-prov-a",
+        providerId: "anthropic",
+        costAmount: "0.01500000",
+      });
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "proof-prov-b",
+        providerId: "anthropic",
+        costAmount: "0.02500000",
+      });
+      await repo.recordLedgerEntry(localActor, {
+        ...baseLedgerInput(attemptId),
+        providerProofId: "proof-prov-c",
+        providerId: "openai",
+        costAmount: "0.00750000",
+      });
+
+      const window = {
+        from: new Date("2020-01-01T00:00:00Z"),
+        to: new Date("2099-01-01T00:00:00Z"),
+      };
+      const grouped = await repo.sumCostByProject(localActor, draftJobFixtureProjectId, window, {
+        byProvider: true,
+      });
+      expect(grouped.totalCost).toBe("0.04750000");
+      expect(grouped.byProvider).toEqual({
+        anthropic: "0.04000000",
+        openai: "0.00750000",
       });
     } finally {
       await context.close();

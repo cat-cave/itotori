@@ -42,6 +42,8 @@ function modelProfile(): SpeakerLabelModelProfile {
   return {
     providerFamily: "fake",
     modelId: "itotori-fake-speaker-label-v0",
+    // ITOTORI-220 — required (modelId, providerId) pair.
+    providerId: "fake-fixture",
     contextWindowTokens: 16000,
     maxOutputTokens: 1024,
   };
@@ -258,6 +260,30 @@ describe("SpeakerLabelAgent.invokeSpeakerLabel happy path", () => {
     const agent = new SpeakerLabelAgent({ provider });
     const result = await agent.invokeSpeakerLabel(FIXED_ACTOR, input);
     expect(result.labels).toEqual([]);
+  });
+
+  it("ITOTORI-220: providerId is propagated through to the ModelProvider call", async () => {
+    const input = inputFixture({
+      modelMetadata: {
+        ...modelProfile(),
+        providerId: "fake-fixture-pair-test",
+      },
+    });
+    let observedProviderId: string | undefined;
+    const provider = new FakeModelProvider({
+      providerName: "speaker-label-fake",
+      modelId: "itotori-fake-speaker-label-v0",
+      generate: (request) => {
+        observedProviderId = request.providerId;
+        return JSON.stringify(makeOutput([]));
+      },
+    });
+    const agent = new SpeakerLabelAgent({ provider });
+    const result = await agent.invokeSpeakerLabel(FIXED_ACTOR, input);
+    expect(observedProviderId).toBe("fake-fixture-pair-test");
+    expect(result.modelMetadata.providerIdentity.requestedProviderId).toBe(
+      "fake-fixture-pair-test",
+    );
   });
 });
 

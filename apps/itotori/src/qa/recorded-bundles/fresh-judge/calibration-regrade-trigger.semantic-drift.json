@@ -1,8 +1,9 @@
 {
-  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v1",
+  "schemaVersion": "itotori.qa-calibration-recorded-bundle.v2",
   "fixtureId": "calibration-regrade-trigger",
   "agentName": "semantic-drift",
   "authority": "fresh-judge",
+  "providerId": "google-vertex",
   "findings": [
     {
       "findingId": "019ed079-0000-7000-8000-000fb0000002",
