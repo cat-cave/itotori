@@ -127,6 +127,13 @@ pub mod bytecode_element;
 pub mod expression;
 pub mod expression_eval;
 
+// UTSUSHI-206: sparse `VarBanks` adopted into the substrate
+// `Inspectable` / `Restorable` traits. Replaces UTSUSHI-205's dense
+// `[i32; 4096]` representation; integer banks clamp to the
+// rlvm-documented 2 000 indices per bank, string banks store raw
+// Shift-JIS bytes, and the store register lives on the same struct.
+pub mod var_banks;
+
 pub use scene_header::{
     COMPILER_VERSION_1_0, COMPILER_VERSION_1_10, COMPILER_VERSION_1_1110,
     ENTRYPOINT_TABLE_BYTE_OFFSET, ENTRYPOINT_TABLE_LEN, EntrypointEntry,
@@ -152,13 +159,15 @@ pub use expression::{
     EXPRESSION_TOKEN_LEAD, ExprNode, ExprOp, ExpressionParseError, ExpressionWarning,
     ParsedExpression, UnaryOp, parse_expression, parse_expression_with_warnings,
 };
-pub use expression_eval::{
-    EvaluationError, INT_BANK_COUNT, INT_BANK_SLOT_COUNT, VarBanks, bank_byte_to_index, evaluate,
-    evaluate_assignment,
-};
+pub use expression_eval::{EvaluationError, bank_byte_to_index, evaluate, evaluate_assignment};
 pub use scene_index::{
     REAL_SCENE_DIRECTORY_BYTE_LEN, REAL_SCENE_DIRECTORY_SLOT_BYTE_LEN,
     REAL_SCENE_DIRECTORY_SLOT_COUNT, RealSceneEntry, RealSceneIndex, RealSceneIndexError,
+};
+pub use var_banks::{
+    BANK_BYTE_INT_M, BANK_BYTE_STR_K, BANK_BYTE_STR_M, BANK_BYTE_STR_S, BANK_INDEX_CAP, BankId,
+    INT_BANK_COUNT, STR_BANK_COUNT, VAR_BANKS_INSPECTABLE_ID, Value, VarBanks,
+    VarBanksRestoreError, VarBanksWarning,
 };
 
 /// Stable port id used by the manifest and by audit tooling.
