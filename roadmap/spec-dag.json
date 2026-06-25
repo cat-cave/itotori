@@ -21371,7 +21371,7 @@
     {
       "id": "UTSUSHI-205",
       "title": "Expression evaluator (RealLive expression byte-stream)",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21405,14 +21405,12 @@
         "Adding C-style precedence to flat / fully-parenthesised RealLive expressions",
         "Store-register read vs write distinction silently confused"
       ],
-      "owner": "orchestrator-utsushi-205",
-      "branch": "spec/utsushi-205",
-      "worktree": "/scratch/worktrees/itotori-spec-utsushi-205"
+      "statusReason": "Implementation merged (commit a42e31b). Expression evaluator + VarBanks; 20/20 Sweetie HD scene-1 expressions parse to Assignment ASTs."
     },
     {
       "id": "UTSUSHI-206",
       "title": "Variable banks + store register (typed `intA`..`intZ` / `strS`/`strM`/`strK`)",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P2",
       "target": "alpha",
       "projects": ["utsushi"],
@@ -21447,7 +21445,9 @@
         "Treating `intC` as identical to `intA` (the banks are semantically distinct in scripts)",
         "Snapshot key format leaking banks-by-position rather than banks-by-name"
       ],
-      "statusReason": "Re-tier 2026-06-24: promoted continuous -> alpha — required for the redefined alpha (utsushi-reallive Linux runtime / real-bytes extraction) per docs/proposals/dag-retier-2026-06-24.md."
+      "owner": "orchestrator-utsushi-206",
+      "branch": "spec/utsushi-206",
+      "worktree": "/scratch/worktrees/itotori-spec-utsushi-206"
     },
     {
       "id": "UTSUSHI-207",
