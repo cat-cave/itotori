@@ -25305,7 +25305,7 @@
     {
       "id": "ITOTORI-225",
       "title": "itotori-agent-runtime: rip out cost-tier abstraction and all estimated / hardcoded / unknown cost states",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P0",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25353,14 +25353,12 @@
         "Hardcoded-cost audit script left disabled in CI"
       ],
       "parallelGroup": "agent-runtime",
-      "owner": "orchestrator-itotori-225",
-      "branch": "spec/itotori-225",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-225"
+      "statusReason": "\n\n[2026-06-25 landed at 5474f9d] Six scope-drift items all defensible (ProjectCostReport narrowed; amountMicrosUsd non-optional; endpoint-pricing extracted+parked for ITOTORI-233; bridge-schema BenchmarkCostKindV02 left for separate node with ingest-boundary narrowing; failed-run cost → zero). 602+227 tests pass. just check green."
     },
     {
       "id": "ITOTORI-226",
       "title": "itotori-agent-runtime: fix DEV_PAIR to deepseek/deepseek-v4-flash + re-key recorded bundles",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P0",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25397,8 +25395,10 @@
         "Recorded bundles left with stale key",
         "providerId pinned to a provider that does not host the model"
       ],
-      "statusReason": "Per docs/audits/openrouter-wiring-audit-2026-06-25.md §3-A (wrong DEV_PAIR model id, critical) + §3-A-2 (provider id pin unverified) + §3-H-3 (notes grounded in fiction).",
-      "parallelGroup": "agent-runtime"
+      "parallelGroup": "agent-runtime",
+      "owner": "orchestrator-itotori-226",
+      "branch": "spec/itotori-226",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-226"
     },
     {
       "id": "ITOTORI-227",
@@ -25488,7 +25488,7 @@
     {
       "id": "ITOTORI-229",
       "title": "itotori-agent-runtime: rename costEstimate → costUsd in agentic-loop bundle and every downstream consumer",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25518,8 +25518,10 @@
         "Schema version not bumped",
         "Downstream consumer left reading the old name silently"
       ],
-      "statusReason": "Per docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N3 / §2.8 (wire name lies: it's billed cost, not an estimate).",
-      "parallelGroup": "agent-runtime"
+      "parallelGroup": "agent-runtime",
+      "owner": "orchestrator-itotori-229",
+      "branch": "spec/itotori-229",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-229"
     },
     {
       "id": "ITOTORI-230",
@@ -25566,7 +25568,7 @@
     {
       "id": "ITOTORI-231",
       "title": "itotori-agent-runtime: single source of truth for DEFAULT_COST_CAP_USD; delete duplicated 0.5 in alpha closer",
-      "status": "planned",
+      "status": "in_progress",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -25595,8 +25597,10 @@
         "Default value picked unilaterally without justification comment",
         "Local constant left as a 'fallback'"
       ],
-      "statusReason": "Per docs/audits/openrouter-cost-tracking-audit-2026-06-25.md §3 N4 / §2.5 (two different hardcoded defaults, high).",
-      "parallelGroup": "agent-runtime"
+      "parallelGroup": "agent-runtime",
+      "owner": "orchestrator-itotori-231",
+      "branch": "spec/itotori-231",
+      "worktree": "/scratch/worktrees/itotori-spec-itotori-231"
     },
     {
       "id": "ITOTORI-232",
