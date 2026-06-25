@@ -24935,7 +24935,7 @@
     {
       "id": "ITOTORI-223",
       "title": "itotori-agent-runtime: live cost / token / latency telemetry per (modelId, providerId) pair",
-      "status": "in_progress",
+      "status": "complete",
       "priority": "P1",
       "target": "alpha",
       "projects": ["itotori"],
@@ -24973,9 +24973,7 @@
         "Free-tier path falling back to NULL without the Warning",
         "Dashboard rendering pair label without provider id (visual MPP violation)"
       ],
-      "owner": "orchestrator-itotori-223",
-      "branch": "spec/itotori-223",
-      "worktree": "/scratch/worktrees/itotori-spec-itotori-223"
+      "statusReason": "Implementation merged (commit 87aaf4d). TelemetryQuery + sumByPairAndDay + telemetry-summary CLI; 12 telemetry + 2 ledger + 1 auth-matrix tests."
     },
     {
       "id": "KAIFUU-210",
