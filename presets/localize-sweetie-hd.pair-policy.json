@@ -1,4 +1,5 @@
 {
+  "schemaVersion": "itotori.pair-policy.v0.2",
   "policyId": "localize-sweetie-hd-alpha-1",
   "pair": {
     "modelId": "deepseek/deepseek-v4-flash",
@@ -6,37 +7,50 @@
   },
   "enUsSentinel": "STELLA-ALPHA-EN-US-SENTINEL",
   "sceneId": 1,
-  "notes": "UTSUSHI-228 alpha closer. Single (modelId, providerId) pair pinned for every stage of the agentic loop. The enUsSentinel substring is woven into the translation prompt so the patched Seen.txt's replay produces a TextLine whose bodyUtf8 contains the substring verbatim. ASCII-only by deliberate choice: the leading SJIS bracket required by the KAIFUU-191 lexer is wrapped around the sentinel by the patch step, not by the prompt. See UTSUSHI-227 for the sentinel-validation contract. The discriminator '228' lives ONLY in this policyId; the sentinel never embeds digits because lexer leads 0-4 collide with SELECTION_OPTION_MARKER under UTSUSHI-204.",
+  "notes": "ITOTORI-234 v0.2 shape (was UTSUSHI-228 v0.1). Single (modelId, providerId) pair pinned for every stage of the agentic loop. The enUsSentinel substring is woven into the translation prompt so the patched Seen.txt's replay produces a TextLine whose bodyUtf8 contains the substring verbatim. ASCII-only by deliberate choice: the leading SJIS bracket required by the KAIFUU-191 lexer is wrapped around the sentinel by the patch step, not by the prompt. See UTSUSHI-227 for the sentinel-validation contract. The discriminator '228' lives ONLY in this policyId; the sentinel never embeds digits because lexer leads 0-4 collide with SELECTION_OPTION_MARKER under UTSUSHI-204. Per-stage zdr / fallbackModels / seed / maxPriceUsd are intentionally omitted: the parser fills in the canonical defaults (zdr=true everywhere, no fallback list, deterministic seed from leaf path, USD cap = DEFAULT_COST_CAP_USD/stage_count). Operator-level zdr downgrades require OPENROUTER_ZDR_DOWNGRADE; no file-level escape hatch.",
   "stages": {
     "context": {
-      "sceneSummary": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" },
+      "sceneSummary": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      },
       "characterRelationship": {
-        "modelId": "deepseek/deepseek-v4-flash",
-        "providerId": "fireworks"
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
       },
       "terminologyCandidate": {
-        "modelId": "deepseek/deepseek-v4-flash",
-        "providerId": "fireworks"
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
       },
-      "routeChoiceMap": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      "routeChoiceMap": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      }
     },
     "preTranslation": {
-      "speakerLabel": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      "speakerLabel": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      }
     },
     "translation": {
-      "primary": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      "primary": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      }
     },
     "qa": {
-      "styleAdherence": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" },
-      "semanticDrift": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" },
-      "toneRegister": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" },
+      "styleAdherence": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      },
+      "semanticDrift": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      },
+      "toneRegister": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      },
       "unresolvedTerminology": {
-        "modelId": "deepseek/deepseek-v4-flash",
-        "providerId": "fireworks"
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
       }
     },
     "repair": {
-      "primary": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      "primary": {
+        "pair": { "modelId": "deepseek/deepseek-v4-flash", "providerId": "fireworks" }
+      }
     }
   }
 }

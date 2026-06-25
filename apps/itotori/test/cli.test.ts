@@ -479,7 +479,7 @@ describe("Itotori CLI handlers", () => {
       | undefined;
     expect(written).toBeDefined();
     if (written === undefined) return;
-    expect(written.schemaVersion).toBe("itotori.agentic-loop-bundle.v1");
+    expect(written.schemaVersion).toBe("itotori.agentic-loop-bundle.v2");
     expect(written.stages.map((s) => s.stageName)).toEqual([
       "context",
       "pre_translation",

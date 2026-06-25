@@ -36,6 +36,7 @@ import {
   type AgenticLoopStageRecord,
   type LocalizationUnitV02,
   type QaFinding,
+  type StagePostureV02,
 } from "@itotori/localization-bridge-schema";
 import { SpeakerLabelAgent } from "../agents/speaker-label/agent.js";
 import {
@@ -75,21 +76,25 @@ import { assertBilledCost } from "../providers/cost.js";
 // ---------------------------------------------------------------------------
 
 /**
- * A single pinned (modelId, providerId) choice. Stage-level
- * configuration is built from these. Mirrored on every invocation
- * inside the bundle so audit can prove the orchestrator never
- * silently defaulted.
+ * ITOTORI-234 — A single stage / agent's full posture: pinned
+ * (modelId, providerId) pair + ZDR posture + fallback list + seed +
+ * USD cap. Every invocation carries the seed + zdr + pair fields onto
+ * the bundle so audit can prove the orchestrator never defaulted.
+ *
+ * The orchestrator never constructs these — callers build them from
+ * the parsed v0.2 pair-policy (`parsePairPolicyV02` resolves every
+ * defaulted field) and pass them in.
  */
-export type PairChoice = AgenticLoopProviderPair;
+export type PairChoice = StagePostureV02;
 
 /**
  * Per-stage pair policy. Every stage that issues at least one LLM
- * invocation has its (modelId, providerId) pinned here. A single
- * stage can declare per-agent pairs (e.g. each focused QA agent gets
- * its own pair).
+ * invocation has its (modelId, providerId) + posture pinned here. A
+ * single stage can declare per-agent leaves (e.g. each focused QA agent
+ * gets its own pair-and-posture).
  *
- * The orchestrator NEVER falls back to a default; missing entries
- * are a typed `PairPolicyMissingEntryError`.
+ * The orchestrator NEVER falls back to a default; missing entries are
+ * a typed `PairPolicyMissingEntryError`.
  */
 export type PairPolicy = {
   context: {
@@ -117,34 +122,58 @@ export type PairPolicy = {
 };
 
 import { DEV_PAIR } from "../providers/dev-pair.js";
+import { deriveDefaultSeed } from "@itotori/localization-bridge-schema";
 
 /**
- * Pre-populated pair policy that pins every stage to `DEV_PAIR`. Used
- * by the smoke command and the orchestrator's test suite so a single
- * import drops in a complete policy. Production callers build their
- * own policy and pass it explicitly.
+ * Build a `PairChoice` (== `StagePostureV02`) keyed to `DEV_PAIR` with
+ * the canonical alpha posture: `zdr: true`, no fallbacks, a
+ * deterministic seed derived from the leaf path, and a single-stage
+ * cost cap (DEV-only — production callers feed the parsed v0.2 policy
+ * straight through and never hit this helper). The cap is set to the
+ * canonical ITOTORI-231 default 0.5 USD because DEV_POLICY is meant for
+ * smoke / unit-test paths where the cap is not load-bearing; production
+ * callers always pass an explicitly-parsed policy whose cap reflects
+ * `DEFAULT_COST_CAP_USD / stageCount`.
+ */
+function devPosture(leafPath: string): PairChoice {
+  return {
+    pair: { modelId: DEV_PAIR.modelId, providerId: DEV_PAIR.providerId },
+    zdr: true,
+    fallbackModels: [],
+    seed: deriveDefaultSeed(leafPath),
+    maxPriceUsd: 0.5,
+  };
+}
+
+/**
+ * Pre-populated pair policy that pins every stage to `DEV_PAIR` with
+ * canonical alpha posture (`zdr: true`, no fallbacks, deterministic
+ * per-stage seeds, dev-mode USD caps). Used by the smoke command and
+ * the orchestrator's test suite so a single import drops in a complete
+ * policy. Production callers build their own policy via
+ * `parsePairPolicyV02` and pass it explicitly.
  */
 export const DEV_POLICY: PairPolicy = {
   context: {
-    sceneSummary: DEV_PAIR,
-    characterRelationship: DEV_PAIR,
-    terminologyCandidate: DEV_PAIR,
-    routeChoiceMap: DEV_PAIR,
+    sceneSummary: devPosture("context.sceneSummary"),
+    characterRelationship: devPosture("context.characterRelationship"),
+    terminologyCandidate: devPosture("context.terminologyCandidate"),
+    routeChoiceMap: devPosture("context.routeChoiceMap"),
   },
   preTranslation: {
-    speakerLabel: DEV_PAIR,
+    speakerLabel: devPosture("preTranslation.speakerLabel"),
   },
   translation: {
-    primary: DEV_PAIR,
+    primary: devPosture("translation.primary"),
   },
   qa: {
-    styleAdherence: DEV_PAIR,
-    semanticDrift: DEV_PAIR,
-    toneRegister: DEV_PAIR,
-    unresolvedTerminology: DEV_PAIR,
+    styleAdherence: devPosture("qa.styleAdherence"),
+    semanticDrift: devPosture("qa.semanticDrift"),
+    toneRegister: devPosture("qa.toneRegister"),
+    unresolvedTerminology: devPosture("qa.unresolvedTerminology"),
   },
   repair: {
-    primary: DEV_PAIR,
+    primary: devPosture("repair.primary"),
   },
 };
 
@@ -268,6 +297,13 @@ type RawProviderTelemetry = {
   costMicros: bigint;
   latencyMs: number;
   providerProofId: string;
+  /**
+   * ITOTORI-234 — per-invocation seed. Defaults to `pair.seed` but the
+   * repair stage substitutes `pair.seed + attempt` so each retry
+   * records a differentiated value while leaving the first attempt
+   * byte-equal to the policy posture.
+   */
+  seed: number;
 };
 
 // ---------------------------------------------------------------------------
@@ -524,6 +560,10 @@ export async function runAgenticLoopForUnit(
           repairResult,
           pairPolicy.repair.primary,
           `repair-primary[${attempt}]`,
+          // ITOTORI-234 — bounded-repair seed derivation: the first
+          // attempt records the policy posture seed verbatim; each
+          // retry adds the attempt index so two retries can't collide.
+          pairPolicy.repair.primary.seed + attempt,
         ),
       );
       const repairedText = pickDraftTextForUnit(repairResult, input.unit.bridgeUnitId);
@@ -597,15 +637,22 @@ function startStage(stageName: AgenticLoopStageName): StageAccumulator {
 }
 
 function pushInvocation(stage: StageAccumulator, telemetry: RawProviderTelemetry): void {
+  // ITOTORI-234 — every invocation now carries the per-stage `zdr` +
+  // `seed` posture from the v0.2 pair-policy verbatim. `pair.zdr` is
+  // the policy posture for this stage/agent; `telemetry.seed` is
+  // typically `pair.seed`, but the repair stage substitutes
+  // `pair.seed + attempt` so each retry gets a distinct value.
   stage.invocations.push({
     invocationId: telemetry.invocationId,
     agentLabel: telemetry.agentLabel,
-    pair: telemetry.pair,
+    pair: { modelId: telemetry.pair.pair.modelId, providerId: telemetry.pair.pair.providerId },
     tokensIn: telemetry.tokensIn,
     tokensOut: telemetry.tokensOut,
     costUsd: microsToAmount(telemetry.costMicros),
     latencyMs: telemetry.latencyMs,
     providerProofId: telemetry.providerProofId,
+    zdr: telemetry.pair.zdr,
+    seed: telemetry.seed,
   });
   stage.tokensIn += telemetry.tokensIn;
   stage.tokensOut += telemetry.tokensOut;
@@ -667,13 +714,13 @@ async function invokeContextLikeProbe(
 ): Promise<RawProviderTelemetry> {
   const promptHashUsed = createHash("sha256")
     .update(
-      `${agentLabel}|${unit.bridgeUnitId}|${unit.sourceText}|${pair.modelId}|${pair.providerId}`,
+      `${agentLabel}|${unit.bridgeUnitId}|${unit.sourceText}|${pair.pair.modelId}|${pair.pair.providerId}`,
     )
     .digest("hex");
   const request: ModelInvocationRequest = {
     taskKind: "experiment",
-    modelId: pair.modelId,
-    providerId: pair.providerId,
+    modelId: pair.pair.modelId,
+    providerId: pair.pair.providerId,
     inputClassification: "private_corpus",
     messages: [
       { role: "system", content: `itotori agentic-loop context probe (${agentLabel})` },
@@ -699,6 +746,7 @@ async function invokeContextLikeProbe(
     costMicros: assertBilledCost(invocation.providerRun.cost),
     latencyMs: Math.max(invocation.providerRun.latencyMs, endedAt.getTime() - startedAt.getTime()),
     providerProofId: invocation.providerRun.runId,
+    seed: pair.seed,
   };
 }
 
@@ -730,8 +778,8 @@ async function invokeSpeakerLabelStage(args: {
     promptTemplateVersion: SPEAKER_LABEL_PROMPT_TEMPLATE_VERSION_V1,
     modelMetadata: {
       providerFamily: providerFamilyOf(args.provider),
-      modelId: args.pair.modelId,
-      providerId: args.pair.providerId,
+      modelId: args.pair.pair.modelId,
+      providerId: args.pair.pair.providerId,
       contextWindowTokens: 128_000,
     },
   };
@@ -751,6 +799,7 @@ function providerTelemetryFromSpeakerLabel(
     costMicros: assertBilledCost(result.modelMetadata.providerRun.cost),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
+    seed: pairPolicy.preTranslation.speakerLabel.seed,
   };
 }
 
@@ -801,8 +850,8 @@ async function invokeTranslationStage(args: {
     contextArtifactRefs: [],
     modelProfile: {
       providerFamily: providerFamilyOf(args.provider),
-      modelId: args.pair.modelId,
-      providerId: args.pair.providerId,
+      modelId: args.pair.pair.modelId,
+      providerId: args.pair.pair.providerId,
       contextWindowTokens: 128_000,
     },
     promptTemplateVersion: TRANSLATION_PROMPT_TEMPLATE_VERSION_V1,
@@ -814,6 +863,7 @@ function providerTelemetryFromTranslation(
   result: TranslationInvocationResult,
   pair: PairChoice,
   agentLabel: string,
+  seedOverride?: number,
 ): RawProviderTelemetry {
   return {
     invocationId: `translation:${agentLabel}:${result.providerRunId}`,
@@ -824,6 +874,10 @@ function providerTelemetryFromTranslation(
     costMicros: assertBilledCost(result.modelMetadata.providerRun.cost),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
+    // ITOTORI-234 — repair invocations pass `pair.seed + attempt`
+    // so each retry carries a distinct seed while the first attempt
+    // matches the policy posture exactly.
+    seed: seedOverride ?? pair.seed,
   };
 }
 
@@ -884,8 +938,8 @@ async function invokeQaStage(args: {
     styleGuide: [],
     modelProfile: {
       providerFamily: providerFamilyOf(args.provider),
-      modelId: args.pair.modelId,
-      providerId: args.pair.providerId,
+      modelId: args.pair.pair.modelId,
+      providerId: args.pair.pair.providerId,
       contextWindowTokens: 128_000,
     },
     qaPromptVersion: `${QA_PROMPT_TEMPLATE_VERSION_V1}-${args.agentLabel}`,
@@ -907,6 +961,7 @@ function providerTelemetryFromQa(
     costMicros: assertBilledCost(result.modelMetadata.providerRun.cost),
     latencyMs: result.modelMetadata.providerRun.latencyMs,
     providerProofId: result.providerRunId,
+    seed: pair.seed,
   };
 }
 
@@ -1134,15 +1189,34 @@ function assertPairPolicyComplete(policy: PairPolicy): void {
     ["qa", "unresolvedTerminology", policy.qa?.unresolvedTerminology],
     ["repair", "primary", policy.repair?.primary],
   ];
-  for (const [stage, agent, pair] of required) {
-    if (pair === undefined) {
+  for (const [stage, agent, posture] of required) {
+    if (posture === undefined) {
       throw new PairPolicyMissingEntryError(stage, agent);
     }
-    if (typeof pair.modelId !== "string" || pair.modelId.length === 0) {
-      throw new PairPolicyMissingEntryError(stage, `${agent}.modelId`);
+    if (typeof posture.pair?.modelId !== "string" || posture.pair.modelId.length === 0) {
+      throw new PairPolicyMissingEntryError(stage, `${agent}.pair.modelId`);
     }
-    if (typeof pair.providerId !== "string" || pair.providerId.length === 0) {
-      throw new PairPolicyMissingEntryError(stage, `${agent}.providerId`);
+    if (typeof posture.pair?.providerId !== "string" || posture.pair.providerId.length === 0) {
+      throw new PairPolicyMissingEntryError(stage, `${agent}.pair.providerId`);
+    }
+    if (typeof posture.zdr !== "boolean") {
+      throw new PairPolicyMissingEntryError(stage, `${agent}.zdr`);
+    }
+    if (
+      !Array.isArray(posture.fallbackModels) ||
+      posture.fallbackModels.some((f) => typeof f !== "string")
+    ) {
+      throw new PairPolicyMissingEntryError(stage, `${agent}.fallbackModels`);
+    }
+    if (typeof posture.seed !== "number" || !Number.isInteger(posture.seed) || posture.seed < 0) {
+      throw new PairPolicyMissingEntryError(stage, `${agent}.seed`);
+    }
+    if (
+      typeof posture.maxPriceUsd !== "number" ||
+      !Number.isFinite(posture.maxPriceUsd) ||
+      posture.maxPriceUsd < 0
+    ) {
+      throw new PairPolicyMissingEntryError(stage, `${agent}.maxPriceUsd`);
     }
   }
 }
